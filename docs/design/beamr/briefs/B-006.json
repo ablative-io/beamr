@@ -1,13 +1,26 @@
 {
   "id": "B-006",
   "cluster": "beamr",
-  "title": "Implement term representation — boxed types",
-  "depends_on": ["B-005"],
+  "title": "Implement term representation \u2014 boxed types",
+  "depends_on": [
+    "B-005"
+  ],
   "blocked_by": [],
-  "checklist": ["C38", "C39", "C40", "C41", "C42", "C43", "C44", "C45"],
-  "stories": ["S19"],
+  "checklist": [
+    "C38",
+    "C39",
+    "C40",
+    "C41",
+    "C42",
+    "C43",
+    "C44",
+    "C45"
+  ],
+  "stories": [
+    "S19"
+  ],
   "purpose": "Boxed terms are heap-allocated values too large to fit in a single machine word: tuples, lists, floats, binaries, big integers, closures, maps, and references. Every data structure a Gleam program builds is a boxed term. The interpreter cannot execute beyond trivial arithmetic without them. This brief defines the heap layout (header word + payload) for each boxed type and provides typed constructors and accessors.",
-  "task": "Implement boxed term types in crates/beamr/src/term/boxed.rs and crates/beamr/src/term/binary.rs. Each boxed value lives on a process-local heap as a header word (encoding type and size) followed by payload words. Define header encoding/decoding, and for each boxed type: constructor that writes the header + payload to a &mut [u64] slice (the heap), and accessor that reads back from a *const u64 pointer. Tuples, cons cells, floats, binaries, big integers, closures, maps (flatmap), and references. The heap itself is not this brief's responsibility — boxed terms write to a provided slice and read from a raw pointer.",
+  "task": "Implement boxed term types in crates/beamr/src/term/boxed.rs and crates/beamr/src/term/binary.rs. Each boxed value lives on a process-local heap as a header word (encoding type and size) followed by payload words. Define header encoding/decoding, and for each boxed type: constructor that writes the header + payload to a &mut [u64] slice (the heap), and accessor that reads back from a *const u64 pointer. Tuples, cons cells, floats, binaries, big integers, closures, maps (flatmap), and references. The heap itself is not this brief's responsibility \u2014 boxed terms write to a provided slice and read from a raw pointer.",
   "requirements": [
     {
       "id": "R1",
@@ -20,15 +33,21 @@
         "Header tags for tuple, float, bigint, closure, map, reference, binary are all distinct"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/boxed.rs"]
+        "modify": [
+          "crates/beamr/src/term/boxed.rs"
+        ]
       },
-      "checklist": ["C38"],
-      "stories": ["S19"]
+      "checklist": [
+        "C38"
+      ],
+      "stories": [
+        "S19"
+      ]
     },
     {
       "id": "R2",
       "title": "Tuple boxed type",
-      "spec": "WHEN a tuple is allocated on the heap THE SYSTEM SHALL write a header word with the tuple tag and arity, followed by arity element words. The Term pointing to the tuple SHALL use the boxed primary tag with a pointer to the header. Tuple::arity() SHALL return the element count. Tuple::get(n) SHALL return the nth element as a Term. It SHALL NOT allow access beyond arity — out-of-bounds returns None.",
+      "spec": "WHEN a tuple is allocated on the heap THE SYSTEM SHALL write a header word with the tuple tag and arity, followed by arity element words. The Term pointing to the tuple SHALL use the boxed primary tag with a pointer to the header. Tuple::arity() SHALL return the element count. Tuple::get(n) SHALL return the nth element as a Term. It SHALL NOT allow access beyond arity \u2014 out-of-bounds returns None.",
       "acceptance": [
         "A 3-element tuple occupies 4 heap words (1 header + 3 elements)",
         "Tuple::arity() returns 3 for a 3-element tuple",
@@ -37,15 +56,19 @@
         "A 0-element tuple is valid with arity 0 and 1 heap word"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/boxed.rs"]
+        "modify": [
+          "crates/beamr/src/term/boxed.rs"
+        ]
       },
-      "checklist": ["C38"],
+      "checklist": [
+        "C38"
+      ],
       "stories": []
     },
     {
       "id": "R3",
       "title": "List cons cell boxed type",
-      "spec": "WHEN a cons cell is allocated on the heap THE SYSTEM SHALL write two words: head and tail. The Term pointing to the cons cell SHALL use the list primary tag (distinct from boxed tag) with a pointer to the head word. A proper list terminates when the tail is Term::NIL. It SHALL NOT use a header word — cons cells are identified by the list tag on the pointing Term, not by a header.",
+      "spec": "WHEN a cons cell is allocated on the heap THE SYSTEM SHALL write two words: head and tail. The Term pointing to the cons cell SHALL use the list primary tag (distinct from boxed tag) with a pointer to the head word. A proper list terminates when the tail is Term::NIL. It SHALL NOT use a header word \u2014 cons cells are identified by the list tag on the pointing Term, not by a header. NOTE: cons cells are tag-identified by the pointer (list tag), not self-describing via a header word. The GC brief author must handle cons cells differently from header-tagged boxed terms \u2014 they are always exactly 2 words, identified by the list tag on the referencing Term.",
       "acceptance": [
         "A cons cell occupies exactly 2 heap words (head, tail)",
         "Cons::head() returns the head term",
@@ -54,15 +77,19 @@
         "The list tag is distinct from the boxed tag in the pointing Term"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/boxed.rs"]
+        "modify": [
+          "crates/beamr/src/term/boxed.rs"
+        ]
       },
-      "checklist": ["C39"],
+      "checklist": [
+        "C39"
+      ],
       "stories": []
     },
     {
       "id": "R4",
       "title": "Float boxed type",
-      "spec": "WHEN a float is allocated on the heap THE SYSTEM SHALL write a header word with the float tag followed by an f64 stored as a u64 (transmuted). Float::value() SHALL return the f64. It SHALL NOT use a separate allocation for the f64 — it is inline in the heap words.",
+      "spec": "WHEN a float is allocated on the heap THE SYSTEM SHALL write a header word with the float tag followed by an f64 stored as a u64 (transmuted). Float::value() SHALL return the f64. It SHALL NOT use a separate allocation for the f64 \u2014 it is inline in the heap words.",
       "acceptance": [
         "A float occupies 2 heap words (1 header + 1 f64-as-u64)",
         "Float::value() for a stored 3.14 returns 3.14",
@@ -70,15 +97,19 @@
         "Float::value() for a stored -1.5 returns -1.5"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/boxed.rs"]
+        "modify": [
+          "crates/beamr/src/term/boxed.rs"
+        ]
       },
-      "checklist": ["C40"],
+      "checklist": [
+        "C40"
+      ],
       "stories": []
     },
     {
       "id": "R5",
       "title": "Binary boxed type",
-      "spec": "WHEN a binary is allocated on the heap THE SYSTEM SHALL write a header word with the binary tag, followed by the byte length, followed by the byte data packed into words. Binary::len() SHALL return the byte count. Binary::as_bytes() SHALL return a &[u8] slice of the data. It SHALL NOT require a separate allocation — small binaries are inline on the process heap.",
+      "spec": "WHEN a binary is allocated on the heap THE SYSTEM SHALL write a header word with the binary tag, followed by the byte length, followed by the byte data packed into words. Binary::len() SHALL return the byte count. Binary::as_bytes() SHALL return a &[u8] slice of the data. It SHALL NOT require a separate allocation \u2014 small binaries are inline on the process heap.",
       "acceptance": [
         "A 5-byte binary occupies header + 1 (length) + 1 (ceil(5/8)) = 3 heap words",
         "Binary::len() returns 5 for a 5-byte binary",
@@ -86,15 +117,19 @@
         "An empty binary (0 bytes) is valid with length 0"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/binary.rs"]
+        "modify": [
+          "crates/beamr/src/term/binary.rs"
+        ]
       },
-      "checklist": ["C41"],
+      "checklist": [
+        "C41"
+      ],
       "stories": []
     },
     {
       "id": "R6",
       "title": "Big integer, closure, map, and reference boxed types",
-      "spec": "beamr::term::boxed SHALL define header layouts and accessors for: big integer (sign + digit limbs), fun/closure (module atom, function index, arity, num_free captured terms), map (flatmap: sorted key array + value array), and reference (unique u64 id). Each SHALL use its own distinct header tag. It SHALL NOT implement full arithmetic on big integers — only the storage format. Map operations beyond construction and element access are deferred.",
+      "spec": "beamr::term::boxed SHALL define header layouts and accessors for: big integer (sign + digit limbs), fun/closure (module atom, function index, arity, num_free captured terms), map (flatmap: sorted key array + value array), and reference (unique u64 id). Each SHALL use its own distinct header tag. It SHALL NOT implement full arithmetic on big integers \u2014 only the storage format. Map operations beyond construction and element access are deferred.",
       "acceptance": [
         "BigInt header stores sign and number of limbs; limbs are accessible as &[u64]",
         "Closure header stores module, function index, arity, num_free; captured terms are accessible",
@@ -103,9 +138,16 @@
         "Each type has a distinct header tag"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/boxed.rs"]
+        "modify": [
+          "crates/beamr/src/term/boxed.rs"
+        ]
       },
-      "checklist": ["C42", "C43", "C44", "C45"],
+      "checklist": [
+        "C42",
+        "C43",
+        "C44",
+        "C45"
+      ],
       "stories": []
     },
     {
@@ -119,24 +161,36 @@
         "Binary byte-level round-trip test verifies exact content"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/boxed.rs", "crates/beamr/src/term/binary.rs"]
+        "modify": [
+          "crates/beamr/src/term/boxed.rs",
+          "crates/beamr/src/term/binary.rs"
+        ]
       },
-      "checklist": ["C38", "C39", "C40", "C41", "C42", "C43", "C44", "C45"],
+      "checklist": [
+        "C38",
+        "C39",
+        "C40",
+        "C41",
+        "C42",
+        "C43",
+        "C44",
+        "C45"
+      ],
       "stories": []
     }
   ],
   "boundaries": [
-    "SHALL NOT implement heap allocation or a Heap struct — boxed terms write to provided slices, the heap is a later brief",
-    "SHALL NOT implement term comparison or ordering — B-007 scope",
-    "SHALL NOT implement GC-related forwarding pointers or mark bits — GC brief scope",
-    "SHALL NOT implement big integer arithmetic — only the storage format",
-    "SHALL NOT implement hashmap (large map) representation — flatmap only for now"
+    "SHALL NOT implement heap allocation or a Heap struct \u2014 boxed terms write to provided slices, the heap is a later brief",
+    "SHALL NOT implement term comparison or ordering \u2014 B-007 scope",
+    "SHALL NOT implement GC-related forwarding pointers or mark bits \u2014 GC brief scope",
+    "SHALL NOT implement big integer arithmetic \u2014 only the storage format",
+    "SHALL NOT implement hashmap (large map) representation \u2014 flatmap only for now"
   ],
   "verification": [
     "cargo check --workspace passes",
     "cargo clippy --workspace -- -D warnings passes",
     "cargo test -p beamr term passes with all tests green",
     "Code inspection: every boxed type has a distinct header tag",
-    "Code inspection: no heap allocation (malloc/Vec::push) — only writes to provided slices"
+    "Code inspection: no heap allocation (malloc/Vec::push) \u2014 only writes to provided slices"
   ]
 }

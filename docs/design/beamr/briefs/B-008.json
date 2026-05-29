@@ -2,17 +2,31 @@
   "id": "B-008",
   "cluster": "beamr",
   "title": "Implement BIF and NIF registries with Gate 1 minimum BIFs",
-  "depends_on": ["B-004", "B-005"],
+  "depends_on": [
+    "B-005"
+  ],
   "blocked_by": [],
-  "checklist": ["C150", "C151", "C152", "C153", "C154", "C155", "C156", "C157"],
-  "stories": ["S9", "S21"],
-  "purpose": "The native boundary is the point of the whole project — when the runtime IS Rust, native calls are zero-cost. This brief delivers the BIF and NIF registries (the lookup tables that map MFA triples to Rust function pointers), the native function calling convention (Term slice in, Result<Term, Term> out), and the minimum set of BIFs needed for Gate 1 (arithmetic, comparison, error, display). It also implements the concrete BifRegistry that satisfies the trait B-004 defined.",
+  "checklist": [
+    "C150",
+    "C151",
+    "C152",
+    "C153",
+    "C154",
+    "C155",
+    "C156",
+    "C157"
+  ],
+  "stories": [
+    "S9",
+    "S21"
+  ],
+  "purpose": "The native boundary is the point of the whole project \u2014 when the runtime IS Rust, native calls are zero-cost. This brief delivers the BIF and NIF registries (the lookup tables that map MFA triples to Rust function pointers), the native function calling convention (Term slice in, Result<Term, Term> out), and the minimum set of BIFs needed for Gate 1 (arithmetic, comparison, error, display). It also implements the concrete BifRegistry that satisfies the trait B-004 defined.",
   "task": "Implement the BIF and NIF registries in crates/beamr/src/native/. The BifRegistry struct (implementing the BifRegistry trait from B-004) maps (Module, Function, Arity) to a Rust function pointer with the native calling convention: fn(&[Term], &mut Process) -> Result<Term, Term>. The NIF registry uses the same mechanism but is populated by the host application, not built-in. Registration must happen before module loading so BIFs are available for import resolution. Implement the Gate 1 minimum BIFs: erlang:+/2, -/2, */2, div/2, rem/2, </2, >=/2, =:=/2, =/=/2, error/1, display/1. Mark dirty-scheduler support in the registry for future use but do not implement the dirty dispatch yet (scheduler brief scope).",
   "requirements": [
     {
       "id": "R1",
       "title": "BIF registry struct implementing BifRegistry trait",
-      "spec": "beamr::native SHALL define a BifRegistryImpl struct implementing the BifRegistry trait (from B-004). It SHALL store registered BIFs in a map keyed by (Atom, Atom, u8) — module, function, arity. BifRegistryImpl::register(module, function, arity, func) SHALL add a native function. BifRegistryImpl::lookup(module, function, arity) SHALL return the function pointer if registered. It SHALL NOT allow registering the same MFA twice — the second registration SHALL return an error.",
+      "spec": "beamr::native SHALL define a BifRegistryImpl struct implementing the BifRegistry trait (from B-004). It SHALL store registered BIFs in a map keyed by (Atom, Atom, u8) \u2014 module, function, arity. BifRegistryImpl::register(module, function, arity, func) SHALL add a native function. BifRegistryImpl::lookup(module, function, arity) SHALL return the function pointer if registered. It SHALL NOT allow registering the same MFA twice \u2014 the second registration SHALL return an error.",
       "acceptance": [
         "BifRegistryImpl implements the BifRegistry trait from B-004",
         "register(erlang, +, 2, add_fn) succeeds",
@@ -21,10 +35,17 @@
         "Registering the same MFA twice returns an error"
       ],
       "files": {
-        "modify": ["crates/beamr/src/native/mod.rs"]
+        "modify": [
+          "crates/beamr/src/native/mod.rs"
+        ]
       },
-      "checklist": ["C150", "C154"],
-      "stories": ["S9"]
+      "checklist": [
+        "C150",
+        "C154"
+      ],
+      "stories": [
+        "S9"
+      ]
     },
     {
       "id": "R2",
@@ -32,19 +53,25 @@
       "spec": "beamr::native SHALL define a NifRegistry struct with the same interface as BifRegistryImpl. NIFs are registered by the host application (Meridian, CLI) rather than built into the VM. The NIF registry SHALL be separate from the BIF registry so that host-registered functions don't collide with built-ins. Import resolution SHALL check BIFs first, then NIFs.",
       "acceptance": [
         "NifRegistry has register and lookup methods matching BifRegistryImpl",
-        "NifRegistry is separate from BifRegistryImpl — they can be queried independently",
+        "NifRegistry is separate from BifRegistryImpl \u2014 they can be queried independently",
         "A NIF registered for a module:function/arity that is also a BIF does not overwrite the BIF"
       ],
       "files": {
-        "modify": ["crates/beamr/src/native/mod.rs"]
+        "modify": [
+          "crates/beamr/src/native/mod.rs"
+        ]
       },
-      "checklist": ["C151"],
-      "stories": ["S9"]
+      "checklist": [
+        "C151"
+      ],
+      "stories": [
+        "S9"
+      ]
     },
     {
       "id": "R3",
       "title": "Native calling convention",
-      "spec": "Native functions SHALL have the signature fn(&[Term], &mut ProcessContext) -> Result<Term, Term> where the first argument is a slice of Term values (the function arguments) and ProcessContext provides access to the calling process's heap for allocating return values. The Ok value is the return term. The Err value becomes the process exit reason. It SHALL NOT expose the full Process struct to native functions — only the ProcessContext subset needed for allocation.",
+      "spec": "Native functions SHALL have the signature fn(&[Term], &mut ProcessContext) -> Result<Term, Term> where the first argument is a slice of Term values (the function arguments) and ProcessContext provides access to the calling process's heap for allocating return values. The Ok value is the return term. The Err value becomes the process exit reason. It SHALL NOT expose the full Process struct to native functions \u2014 only the ProcessContext subset needed for allocation.",
       "acceptance": [
         "The NativeFn type alias is defined as fn(&[Term], &mut ProcessContext) -> Result<Term, Term>",
         "ProcessContext provides a method to allocate terms on the calling process's heap",
@@ -52,15 +79,22 @@
         "A native function returning Err(Term::atom(Atom::BADARITH)) causes the calling process to exit with reason badarith"
       ],
       "files": {
-        "modify": ["crates/beamr/src/native/mod.rs"]
+        "modify": [
+          "crates/beamr/src/native/mod.rs"
+        ]
       },
-      "checklist": ["C152", "C153"],
-      "stories": ["S21"]
+      "checklist": [
+        "C152",
+        "C153"
+      ],
+      "stories": [
+        "S21"
+      ]
     },
     {
       "id": "R4",
       "title": "Dirty scheduler flag",
-      "spec": "The registry SHALL support marking a native function as dirty (requiring execution on the dirty scheduler pool). BifRegistryImpl::register_dirty(module, function, arity, func) SHALL set the dirty flag. The lookup result SHALL include the dirty flag so the interpreter knows whether to dispatch to the dirty pool. This brief SHALL NOT implement the dirty dispatch itself — only the flag in the registry.",
+      "spec": "The registry SHALL support marking a native function as dirty (requiring execution on the dirty scheduler pool). BifRegistryImpl::register_dirty(module, function, arity, func) SHALL set the dirty flag. The lookup result SHALL include the dirty flag so the interpreter knows whether to dispatch to the dirty pool. This brief SHALL NOT implement the dirty dispatch itself \u2014 only the flag in the registry.",
       "acceptance": [
         "register_dirty sets a dirty flag on the registration entry",
         "lookup returns a NativeEntry struct with a is_dirty: bool field",
@@ -68,23 +102,31 @@
         "A dirty registration has is_dirty == true"
       ],
       "files": {
-        "modify": ["crates/beamr/src/native/mod.rs"]
+        "modify": [
+          "crates/beamr/src/native/mod.rs"
+        ]
       },
-      "checklist": ["C155"],
+      "checklist": [
+        "C155"
+      ],
       "stories": []
     },
     {
       "id": "R5",
       "title": "Demand-driven BIF scope",
-      "spec": "The set of implemented BIFs SHALL be driven by the loader's unresolved-import report, not hardcoded to a list. The BIF registry SHALL provide a method to check which registered BIFs cover a given unresolved-import report. It SHALL NOT implement BIFs that no Gleam workflow currently needs — the import report is the leash.",
+      "spec": "The set of implemented BIFs SHALL be driven by the loader's unresolved-import report, not hardcoded to a list. The BIF registry SHALL provide a method to check which registered BIFs cover a given unresolved-import report. It SHALL NOT implement BIFs that no Gleam workflow currently needs \u2014 the import report is the leash.",
       "acceptance": [
         "BifRegistryImpl::coverage(report) returns a list of still-unresolved imports after checking the registry",
         "If all imports in a report are registered, coverage returns an empty list"
       ],
       "files": {
-        "modify": ["crates/beamr/src/native/mod.rs"]
+        "modify": [
+          "crates/beamr/src/native/mod.rs"
+        ]
       },
-      "checklist": ["C156"],
+      "checklist": [
+        "C156"
+      ],
       "stories": []
     },
     {
@@ -97,19 +139,23 @@
         "erlang:*/2 with args [3, 4] returns Ok(Term::small_int(12))",
         "erlang:div/2 with args [7, 2] returns Ok(Term::small_int(3))",
         "erlang:rem/2 with args [7, 2] returns Ok(Term::small_int(1))",
-        "erlang:div/2 with args [7, 0] returns Err (division by zero → badarith)",
+        "erlang:div/2 with args [7, 0] returns Err (division by zero \u2192 badarith)",
         "erlang:+/2 with args [atom, 1] returns Err (badarith)"
       ],
       "files": {
-        "modify": ["crates/beamr/src/native/bifs.rs"]
+        "modify": [
+          "crates/beamr/src/native/bifs.rs"
+        ]
       },
-      "checklist": ["C157"],
+      "checklist": [
+        "C157"
+      ],
       "stories": []
     },
     {
       "id": "R7",
       "title": "Gate 1 comparison and utility BIFs",
-      "spec": "beamr::native::bifs SHALL implement: erlang:</2, erlang:>=/2, erlang:=:=/2, erlang:=/=/2, erlang:error/1, erlang:display/1. Comparison BIFs SHALL return the atom true or false as a Term. erlang:error/1 SHALL return Err with the argument as the exit reason. erlang:display/1 SHALL print the term to stdout (using Debug formatting) and return the atom true. It SHALL NOT implement full term Display formatting — Debug is sufficient for Gate 1.",
+      "spec": "beamr::native::bifs SHALL implement: erlang:</2, erlang:>=/2, erlang:=:=/2, erlang:=/=/2, erlang:error/1, erlang:display/1. Comparison BIFs SHALL return the atom true or false as a Term. erlang:error/1 SHALL return Err with the argument as the exit reason. erlang:display/1 SHALL print the term to stdout (using Debug formatting) and return the atom true. It SHALL NOT implement full term Display formatting \u2014 Debug is sufficient for Gate 1.",
       "acceptance": [
         "erlang:</2 with args [1, 2] returns Ok(Term::atom(Atom::TRUE))",
         "erlang:</2 with args [2, 1] returns Ok(Term::atom(Atom::FALSE))",
@@ -119,9 +165,13 @@
         "erlang:display/1 prints to stdout and returns Ok(Term::atom(Atom::TRUE))"
       ],
       "files": {
-        "modify": ["crates/beamr/src/native/bifs.rs"]
+        "modify": [
+          "crates/beamr/src/native/bifs.rs"
+        ]
       },
-      "checklist": ["C157"],
+      "checklist": [
+        "C157"
+      ],
       "stories": []
     },
     {
@@ -135,18 +185,27 @@
         "Each BIF has at least one happy-path and one error-path test"
       ],
       "files": {
-        "modify": ["crates/beamr/src/native/bifs.rs", "crates/beamr/src/native/mod.rs"]
+        "modify": [
+          "crates/beamr/src/native/bifs.rs",
+          "crates/beamr/src/native/mod.rs"
+        ]
       },
-      "checklist": ["C154", "C157"],
-      "stories": ["S9"]
+      "checklist": [
+        "C154",
+        "C157"
+      ],
+      "stories": [
+        "S9"
+      ]
     }
   ],
   "boundaries": [
-    "SHALL NOT implement dirty scheduler dispatch — only the dirty flag in the registry (scheduler brief scope)",
-    "SHALL NOT implement float arithmetic in BIFs — Gate 1 needs integer arithmetic only",
-    "SHALL NOT implement big integer arithmetic — overflow returns badarith for now",
-    "SHALL NOT implement process-related BIFs (spawn, self, send) — process brief scope",
-    "SHALL NOT implement type-check BIFs (is_atom, is_integer, etc.) — those are opcodes, not BIF calls"
+    "SHALL NOT implement dirty scheduler dispatch \u2014 only the dirty flag in the registry (scheduler brief scope)",
+    "SHALL NOT implement float argument handling in arithmetic BIFs \u2014 deferred to a post-Gate-1 brief",
+    "SHALL NOT implement float arithmetic in BIFs \u2014 Gate 1 needs integer arithmetic only",
+    "SHALL NOT implement big integer arithmetic \u2014 overflow returns badarith for now",
+    "SHALL NOT implement process-related BIFs (spawn, self, send) \u2014 process brief scope",
+    "SHALL NOT implement type-check BIFs (is_atom, is_integer, etc.) \u2014 those are opcodes, not BIF calls"
   ],
   "verification": [
     "cargo check --workspace passes",

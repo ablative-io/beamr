@@ -2,9 +2,16 @@
   "id": "B-007",
   "cluster": "beamr",
   "title": "Implement term comparison and ordering",
-  "depends_on": ["B-005", "B-006"],
+  "depends_on": [
+    "B-005",
+    "B-006"
+  ],
   "blocked_by": [],
-  "checklist": ["C46", "C47", "C48"],
+  "checklist": [
+    "C46",
+    "C47",
+    "C48"
+  ],
   "stories": [],
   "purpose": "The interpreter needs term comparison for every pattern match, every guard, every case expression. Gleam compiles exhaustive case expressions into select_val/is_eq_exact chains that depend on correct equality and ordering. Without comparison, the interpreter cannot branch. This brief delivers both == semantics (number coercion) and =:= semantics (exact), plus the full BEAM term ordering that select_val relies on.",
   "task": "Implement term comparison in crates/beamr/src/term/compare.rs. Three operations: equality (== semantics, where 1 == 1.0), exact equality (=:= semantics, where 1 =/= 1.0), and ordering (the BEAM term order for < and > comparisons). Equality and ordering must handle both immediate and boxed terms. Structural comparison for boxed terms recurses into elements (tuple element-by-element, list head then tail, map by sorted keys then values). Implement PartialEq, Eq (for exact equality), and PartialOrd/Ord (for BEAM ordering) on Term.",
@@ -22,15 +29,20 @@
         "Two tuples {1, 2} and {1, 2} are equal; {1, 2} and {1, 3} are not"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/compare.rs", "crates/beamr/src/term/mod.rs"]
+        "modify": [
+          "crates/beamr/src/term/compare.rs",
+          "crates/beamr/src/term/mod.rs"
+        ]
       },
-      "checklist": ["C47"],
+      "checklist": [
+        "C47"
+      ],
       "stories": []
     },
     {
       "id": "R2",
       "title": "Numeric equality (== semantics)",
-      "spec": "beamr::term::compare SHALL provide a numeric_eq(a, b) function implementing == semantics where integer 1 and float 1.0 ARE equal. This is a separate function from PartialEq — PartialEq uses exact semantics. Numeric equality SHALL convert the integer to f64 for comparison when one operand is an integer and the other is a float. For non-numeric types, numeric_eq SHALL behave identically to exact equality.",
+      "spec": "beamr::term::compare SHALL provide a numeric_eq(a, b) function implementing == semantics where integer 1 and float 1.0 ARE equal. This is a separate function from PartialEq \u2014 PartialEq uses exact semantics. Numeric equality SHALL convert the integer to f64 for comparison when one operand is an integer and the other is a float. For non-numeric types, numeric_eq SHALL behave identically to exact equality.",
       "acceptance": [
         "numeric_eq(Term::small_int(1), float_term(1.0)) returns true",
         "numeric_eq(Term::small_int(1), float_term(1.5)) returns false",
@@ -39,15 +51,19 @@
         "numeric_eq(Term::small_int(1), Term::atom(Atom::OK)) returns false"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/compare.rs"]
+        "modify": [
+          "crates/beamr/src/term/compare.rs"
+        ]
       },
-      "checklist": ["C46"],
+      "checklist": [
+        "C46"
+      ],
       "stories": []
     },
     {
       "id": "R3",
       "title": "BEAM term ordering",
-      "spec": "beamr::term::compare SHALL implement the BEAM term ordering: number < atom < reference < fun < port < pid < tuple < map < nil < list < binary. Within the same type: integers and floats are compared numerically (with cross-type coercion), atoms by index, tuples by arity then element-by-element, lists by head then tail, maps by sorted keys then values, binaries lexicographically. Term SHALL implement PartialOrd and Ord. It SHALL NOT deviate from the BEAM ordering — select_val depends on it.",
+      "spec": "beamr::term::compare SHALL implement the BEAM term ordering: number < atom < reference < fun < port < pid < tuple < map < nil < list < binary. Within the same type: integers and floats are compared numerically (with cross-type coercion), atoms by index, tuples by arity then element-by-element, lists by head then tail, maps by sorted keys then values, binaries lexicographically. Term SHALL implement PartialOrd and Ord. It SHALL NOT deviate from the BEAM ordering \u2014 select_val depends on it.",
       "acceptance": [
         "Term::small_int(1) < Term::atom(Atom::OK) is true (number < atom)",
         "Term::atom(Atom::OK) < Term::pid(1) is true (atom < pid per BEAM order)",
@@ -58,25 +74,37 @@
         "A proper list [1, 2] < [1, 3] (head then tail comparison)"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/compare.rs", "crates/beamr/src/term/mod.rs"]
+        "modify": [
+          "crates/beamr/src/term/compare.rs",
+          "crates/beamr/src/term/mod.rs"
+        ]
       },
-      "checklist": ["C48"],
+      "checklist": [
+        "C48"
+      ],
       "stories": []
     },
     {
       "id": "R4",
       "title": "Structural comparison for boxed terms",
-      "spec": "WHEN comparing boxed terms for equality or ordering THE SYSTEM SHALL recurse into the structure: tuples compare element-by-element, lists compare head then tail, maps compare by sorted key sequence then values. The recursion SHALL terminate at immediate values or empty structures. It SHALL NOT stack-overflow on deeply nested structures — use an iterative approach or bounded recursion for lists.",
+      "spec": "WHEN comparing boxed terms for equality or ordering THE SYSTEM SHALL recurse into the structure: tuples compare element-by-element, lists compare head then tail, maps compare by sorted key sequence then values. The recursion SHALL terminate at immediate values or empty structures. It SHALL NOT stack-overflow on deeply nested structures \u2014 use an iterative approach or bounded recursion for lists.",
       "acceptance": [
         "Nested tuple {{1, 2}, 3} == {{1, 2}, 3} is true",
         "Nested tuple {{1, 2}, 3} == {{1, 3}, 3} is false",
         "List comparison [1, [2, 3]] < [1, [2, 4]] is true",
-        "Map comparison respects sorted key order"
+        "Map comparison respects sorted key order",
+        "Comparing two lists of 10,000 cons cells does not stack overflow"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/compare.rs"]
+        "modify": [
+          "crates/beamr/src/term/compare.rs"
+        ]
       },
-      "checklist": ["C46", "C47", "C48"],
+      "checklist": [
+        "C46",
+        "C47",
+        "C48"
+      ],
       "stories": []
     },
     {
@@ -90,16 +118,22 @@
         "Tests verify structural recursion for nested tuples and lists"
       ],
       "files": {
-        "modify": ["crates/beamr/src/term/compare.rs"]
+        "modify": [
+          "crates/beamr/src/term/compare.rs"
+        ]
       },
-      "checklist": ["C46", "C47", "C48"],
+      "checklist": [
+        "C46",
+        "C47",
+        "C48"
+      ],
       "stories": []
     }
   ],
   "boundaries": [
-    "SHALL NOT implement pattern matching dispatch — that is the interpreter's job using these comparison primitives",
-    "SHALL NOT implement binary comparison optimizations (bitwise comparison for heap binaries) — basic lexicographic comparison is sufficient for Gate 1",
-    "SHALL NOT modify the Term struct or tag layout — use the types from B-005 and B-006 as-is"
+    "SHALL NOT implement pattern matching dispatch \u2014 that is the interpreter's job using these comparison primitives",
+    "SHALL NOT implement binary comparison optimizations (bitwise comparison for heap binaries) \u2014 basic lexicographic comparison is sufficient for Gate 1",
+    "SHALL NOT modify the Term struct or tag layout \u2014 use the types from B-005 and B-006 as-is"
   ],
   "verification": [
     "cargo check --workspace passes",
