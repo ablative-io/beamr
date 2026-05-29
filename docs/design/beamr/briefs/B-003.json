@@ -21,11 +21,10 @@
   ],
   "stories": [
     "S16",
-    "S17",
     "S26"
   ],
   "purpose": "The loader is the front door \u2014 nothing runs until we can read a .beam file off disk and turn it into structured data. This brief delivers the container parser (FOR1/BEAM header + chunk extraction) and all chunk decoders (atoms, instructions, strings, imports, exports, lambdas, literals, line info, operands). It does NOT resolve imports or register modules \u2014 that is B-004. The split keeps the parser pure-input and independently testable against real .beam files from gleam build.",
-  "task": "Implement the .beam chunked binary parser in parser.rs and the chunk/instruction decoders in decode.rs. The parser reads the FOR1/BEAM header, iterates chunk headers, and extracts each chunk as a typed struct with raw byte payloads. The decoder processes each chunk type: registers atoms in the AtomTable, decodes the Code chunk into Instruction values using compact term encoding, decompresses and deserializes the LitT chunk, and parses ImpT/ExpT/FunT/StrT/Line chunks into structured data. Define the Instruction enum and all operand types. The loader module's public API is a load_beam_chunks() function that takes bytes and an AtomTable reference and returns a ParsedModule (all chunks decoded, imports unresolved).",
+  "task": "Implement the .beam chunked binary parser in parser.rs and the chunk decoders in decode/chunks.rs, the compact term encoding decoder in decode/compact.rs, and the Instruction enum in decode/mod.rs. The parser reads the FOR1/BEAM header, iterates chunk headers, and extracts each chunk as a typed struct with raw byte payloads. The decoder processes each chunk type: registers atoms in the AtomTable, decodes the Code chunk into Instruction values using compact term encoding, decompresses and deserializes the LitT chunk, and parses ImpT/ExpT/FunT/StrT/Line chunks into structured data. Define the Instruction enum and all operand types. The loader module's public API is a load_beam_chunks() function that takes bytes and an AtomTable reference and returns a ParsedModule (all chunks decoded, imports unresolved).",
   "requirements": [
     {
       "id": "R1",
@@ -59,7 +58,7 @@
       ],
       "files": {
         "modify": [
-          "crates/beamr/src/loader/decode.rs"
+          "crates/beamr/src/loader/decode/chunks.rs"
         ]
       },
       "checklist": [
@@ -79,7 +78,7 @@
       ],
       "files": {
         "modify": [
-          "crates/beamr/src/loader/decode.rs"
+          "crates/beamr/src/loader/decode/chunks.rs"
         ]
       },
       "checklist": [
@@ -101,7 +100,7 @@
       ],
       "files": {
         "modify": [
-          "crates/beamr/src/loader/decode.rs"
+          "crates/beamr/src/loader/decode/chunks.rs"
         ]
       },
       "checklist": [
@@ -122,8 +121,8 @@
       ],
       "files": {
         "modify": [
-          "crates/beamr/src/loader/decode.rs",
-          "crates/beamr/Cargo.toml"
+          "crates/beamr/Cargo.toml",
+          "crates/beamr/src/loader/decode/chunks.rs"
         ]
       },
       "checklist": [
@@ -145,7 +144,8 @@
       ],
       "files": {
         "modify": [
-          "crates/beamr/src/loader/decode.rs",
+          "crates/beamr/src/loader/decode/compact.rs",
+          "crates/beamr/src/loader/decode/mod.rs",
           "crates/beamr/src/loader/mod.rs"
         ]
       },
@@ -167,7 +167,7 @@
       ],
       "files": {
         "modify": [
-          "crates/beamr/src/loader/decode.rs"
+          "crates/beamr/src/loader/decode/mod.rs"
         ]
       },
       "checklist": [
@@ -178,18 +178,21 @@
     {
       "id": "R8",
       "title": "ParsedModule struct and public load API",
-      "spec": "THE SYSTEM SHALL define a ParsedModule struct that aggregates all decoded chunks: module name (Atom), atoms (Vec<Atom>), instructions (Vec<Instruction>), imports (Vec<ImportEntry>), exports (Vec<ExportEntry>), lambdas (Vec<LambdaEntry>), literals (Vec<Literal>), string table (Vec<u8>), and line info (Vec<LineInfo>). The public API SHALL be a load_beam_chunks(bytes: &[u8], atom_table: &AtomTable) -> Result<ParsedModule, LoadError> function. It SHALL NOT resolve imports or store the module in a registry \u2014 that is B-004.",
+      "spec": "THE SYSTEM SHALL define a ParsedModule struct that aggregates all decoded chunks: module name (Atom), atoms (Vec<Atom>), instructions (Vec<Instruction>), imports (Vec<ImportEntry>), exports (Vec<ExportEntry>), lambdas (Vec<LambdaEntry>), literals (Vec<Literal>), string table (Vec<u8>), and line info (Vec<LineInfo>). The public API SHALL be a load_beam_chunks(bytes: &[u8], atom_table: &AtomTable) -> Result<ParsedModule, LoadError> function defined in loader/load.rs and re-exported from loader/mod.rs. It SHALL NOT resolve imports or store the module in a registry \u2014 that is B-004.",
       "acceptance": [
         "ParsedModule is a public struct with all fields listed above",
         "load_beam_chunks(valid_beam_bytes, &table) returns Ok(ParsedModule)",
         "load_beam_chunks(garbage_bytes, &table) returns Err(LoadError::InvalidFormat)",
         "ParsedModule.name is the first atom from the atom chunk",
-        "ParsedModule.imports contains unresolved ImportEntry values (no resolution attempted)"
+        "ParsedModule.imports contains unresolved ImportEntry values (no resolution attempted)",
+        "load_beam_chunks is defined in loader/load.rs, not in loader/mod.rs"
       ],
       "files": {
         "modify": [
-          "crates/beamr/src/loader/mod.rs",
           "crates/beamr/src/loader/parser.rs"
+        ],
+        "create": [
+          "crates/beamr/src/loader/load.rs"
         ]
       },
       "checklist": [
@@ -218,15 +221,13 @@
           "crates/beamr/tests/fixtures/hello.beam"
         ],
         "modify": [
-          "crates/beamr/src/loader/parser.rs",
-          "crates/beamr/src/loader/decode.rs"
+          "crates/beamr/src/loader/parser.rs"
         ]
       },
       "checklist": [
         "C18"
       ],
       "stories": [
-        "S17",
         "S26"
       ]
     }
