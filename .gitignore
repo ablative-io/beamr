@@ -1,2 +1,10 @@
 .DS_Store
 .meridian/worksites/
+
+# Rust build output
+/target
+target/
+
+# Yggdrasil worktrees + workflow temp files
+.yggdrasil-worktrees/
+.commit-msg.tmp
