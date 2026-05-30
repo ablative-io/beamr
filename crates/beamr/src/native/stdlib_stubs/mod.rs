@@ -1,14 +1,24 @@
-//! Utility stub BIFs for OTP modules — logger, unicode, sys, gleam_stdlib.
+//! Utility stub BIFs for OTP modules — logger, unicode, sys, gleam_stdlib,
+//! maps, lists, and timer.
 //!
 //! These are simple stubs with correct semantics registered under their
 //! respective OTP module names. They satisfy imports from gleam_otp actor
 //! and supervisor modules.
+//!
+//! Non-higher-order collection BIFs (maps, lists, timer) are in the
+//! `collection_bifs` submodule to keep each file under 500 lines.
+
+pub mod collection_bifs;
 
 use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, NativeFn, NativeRegistrationError, ProcessContext};
 use crate::term::Term;
 use crate::term::binary::Binary;
 use crate::term::boxed::Cons;
+
+use collection_bifs::{
+    bif_lists_reverse, bif_maps_from_list, bif_maps_merge, bif_maps_remove, bif_timer_sleep,
+};
 
 /// A stub BIF entry: (module_name, function_name, arity, implementation).
 type StubBif = (&'static str, &'static str, u8, NativeFn);
@@ -19,6 +29,12 @@ const STDLIB_STUBS: &[StubBif] = &[
     ("unicode", "characters_to_binary", 1, bif_characters_to_binary),
     ("sys", "debug_options", 1, bif_debug_options),
     ("gleam_stdlib", "identity", 1, bif_identity),
+    // Non-higher-order collection BIFs (B-028a):
+    ("maps", "from_list", 1, bif_maps_from_list),
+    ("maps", "merge", 2, bif_maps_merge),
+    ("maps", "remove", 2, bif_maps_remove),
+    ("lists", "reverse", 1, bif_lists_reverse),
+    ("timer", "sleep", 1, bif_timer_sleep),
 ];
 
 /// Registers all stdlib stub BIFs under their OTP module names.
@@ -185,5 +201,7 @@ fn badarg() -> Term {
     Term::atom(Atom::BADARG)
 }
 
+#[cfg(test)]
+mod collection_bifs_tests;
 #[cfg(test)]
 mod tests;

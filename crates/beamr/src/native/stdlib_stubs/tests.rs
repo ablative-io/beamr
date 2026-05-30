@@ -261,6 +261,11 @@ fn register_stdlib_stubs_registers_all_expected_mfas() {
         ("unicode", "characters_to_binary", 1),
         ("sys", "debug_options", 1),
         ("gleam_stdlib", "identity", 1),
+        ("maps", "from_list", 1),
+        ("maps", "merge", 2),
+        ("maps", "remove", 2),
+        ("lists", "reverse", 1),
+        ("timer", "sleep", 1),
     ];
 
     for (module_name, function_name, arity) in expected {
