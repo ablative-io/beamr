@@ -84,8 +84,8 @@ mod tests {
     use crate::module::{Module, ResolvedImport, ResolvedImportTarget};
     use crate::native::{NativeEntry, ProcessContext};
     use crate::process::{CodePosition, ExitReason, Process};
-    use crate::term::Term;
     use crate::term::boxed::{Cons, Tuple};
+    use crate::term::{Term, compare};
     use std::collections::HashMap;
 
     fn module(name: Atom, code: Vec<Instruction>) -> Module {
@@ -289,8 +289,12 @@ mod tests {
         );
     }
 
-    fn add_one(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
-        let Some(value) = args.first().and_then(|term| term.as_small_int()) else {
+    fn add_one(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+        let _ = context;
+        let [value] = args else {
+            return Err(Term::atom(Atom::BADARG));
+        };
+        let Some(value) = value.as_small_int() else {
             return Err(Term::atom(Atom::BADARG));
         };
         Ok(Term::small_int(value + 1))
@@ -330,6 +334,187 @@ mod tests {
         );
         assert_eq!(process.x_reg(0), Term::small_int(42));
         assert_eq!(process.stack().len(), 0);
+    }
+
+    fn add(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+        let _ = context;
+        let [left, right] = args else {
+            return Err(Term::atom(Atom::BADARG));
+        };
+        let Some(left) = left.as_small_int() else {
+            return Err(Term::atom(Atom::BADARG));
+        };
+        let Some(right) = right.as_small_int() else {
+            return Err(Term::atom(Atom::BADARG));
+        };
+        Ok(Term::small_int(left + right))
+    }
+
+    #[test]
+    fn branching_opcode_sequence_dispatches_like_case_expression() {
+        let module = module(
+            Atom::OK,
+            vec![
+                Instruction::PutTuple2 {
+                    destination: Operand::X(0),
+                    elements: Operand::List(vec![
+                        Operand::Atom(Some(Atom::OK)),
+                        Operand::Integer(42),
+                    ]),
+                },
+                Instruction::TypeTest {
+                    op: crate::loader::decode::TypeTestOp::IsTuple,
+                    fail: Operand::Label(99),
+                    value: Operand::X(0),
+                },
+                Instruction::SelectTupleArity {
+                    value: Operand::X(0),
+                    fail: Operand::Label(99),
+                    list: Operand::List(vec![
+                        Operand::Unsigned(2),
+                        Operand::Label(10),
+                        Operand::Unsigned(3),
+                        Operand::Label(11),
+                    ]),
+                },
+                Instruction::Label { label: 10 },
+                Instruction::Move {
+                    source: Operand::Integer(1),
+                    destination: Operand::X(1),
+                },
+                Instruction::Jump {
+                    target: Operand::Label(100),
+                },
+                Instruction::Label { label: 11 },
+                Instruction::Move {
+                    source: Operand::Integer(2),
+                    destination: Operand::X(1),
+                },
+                Instruction::Jump {
+                    target: Operand::Label(100),
+                },
+                Instruction::Label { label: 99 },
+                Instruction::Move {
+                    source: Operand::Integer(-1),
+                    destination: Operand::X(1),
+                },
+                Instruction::Label { label: 100 },
+                Instruction::Return,
+            ],
+        );
+        let mut process = Process::new(1, 32);
+
+        assert_eq!(
+            run(&mut process, &module),
+            Ok(ExecutionResult::Exited(ExitReason::Normal))
+        );
+        assert_eq!(process.x_reg(1), Term::small_int(1));
+    }
+
+    #[test]
+    fn select_val_and_comparison_sequence_dispatches_like_guarded_case_expression() {
+        let module = module(
+            Atom::OK,
+            vec![
+                Instruction::Move {
+                    source: Operand::Atom(Some(Atom::ERROR)),
+                    destination: Operand::X(0),
+                },
+                Instruction::SelectVal {
+                    value: Operand::X(0),
+                    fail: Operand::Label(99),
+                    list: Operand::List(vec![
+                        Operand::Atom(Some(Atom::OK)),
+                        Operand::Label(10),
+                        Operand::Atom(Some(Atom::ERROR)),
+                        Operand::Label(11),
+                    ]),
+                },
+                Instruction::Label { label: 10 },
+                Instruction::Move {
+                    source: Operand::Integer(1),
+                    destination: Operand::X(1),
+                },
+                Instruction::Jump {
+                    target: Operand::Label(100),
+                },
+                Instruction::Label { label: 11 },
+                Instruction::Comparison {
+                    op: crate::loader::decode::ComparisonOp::EqExact,
+                    fail: Operand::Label(99),
+                    left: Operand::X(0),
+                    right: Operand::Atom(Some(Atom::ERROR)),
+                },
+                Instruction::Move {
+                    source: Operand::Integer(2),
+                    destination: Operand::X(1),
+                },
+                Instruction::Jump {
+                    target: Operand::Label(100),
+                },
+                Instruction::Label { label: 99 },
+                Instruction::Move {
+                    source: Operand::Integer(-1),
+                    destination: Operand::X(1),
+                },
+                Instruction::Label { label: 100 },
+                Instruction::Return,
+            ],
+        );
+        let mut process = Process::new(1, 16);
+
+        assert_eq!(
+            run(&mut process, &module),
+            Ok(ExecutionResult::Exited(ExitReason::Normal))
+        );
+        assert_eq!(process.x_reg(1), Term::small_int(2));
+        assert!(compare::exact_eq(process.x_reg(0), Term::atom(Atom::ERROR)));
+    }
+
+    #[test]
+    fn guard_bif_failure_branches_without_exiting_process() {
+        let mut module = module(
+            Atom::OK,
+            vec![
+                Instruction::Bif {
+                    op: crate::loader::decode::BifOp::GcBif2,
+                    operands: vec![
+                        Operand::Label(9),
+                        Operand::Unsigned(0),
+                        Operand::Atom(Some(Atom::OK)),
+                        Operand::Integer(1),
+                        Operand::X(0),
+                    ],
+                },
+                Instruction::Move {
+                    source: Operand::Integer(1),
+                    destination: Operand::X(1),
+                },
+                Instruction::Return,
+                Instruction::Label { label: 9 },
+                Instruction::Move {
+                    source: Operand::Integer(99),
+                    destination: Operand::X(1),
+                },
+                Instruction::Return,
+            ],
+        );
+        module.resolved_imports.push(ResolvedImport {
+            module: Atom::OK,
+            function: Atom::OK,
+            arity: 2,
+            target: ResolvedImportTarget::Native(NativeEntry {
+                function: add,
+                is_dirty: false,
+            }),
+        });
+        let mut process = Process::new(1, 16);
+
+        assert_eq!(
+            run(&mut process, &module),
+            Ok(ExecutionResult::Exited(ExitReason::Normal))
+        );
+        assert_eq!(process.x_reg(1), Term::small_int(99));
     }
 
     #[test]
