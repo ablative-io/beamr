@@ -8,13 +8,13 @@ pub mod dirty;
 pub mod run_queue;
 pub mod steal;
 
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
 use crossbeam_deque::Stealer;
 use crossbeam_queue::SegQueue;
+use dashmap::DashMap;
 
 use crate::atom::Atom;
 use crate::error::ExecError;
@@ -47,13 +47,14 @@ struct SharedState {
     next_pid: AtomicU64,
     wait_set: Mutex<WaitSet>,
     wake_condvar: Condvar,
+    process_bodies: DashMap<u64, Mutex<Option<ScheduledProcess>>>,
     #[cfg(test)]
     idle_parks: AtomicUsize,
 }
 
 #[derive(Default)]
 struct WaitSet {
-    waiting: HashMap<u64, usize>,
+    waiting: std::collections::HashMap<u64, usize>,
     woken: Vec<(u64, usize)>,
 }
 
@@ -63,6 +64,16 @@ struct SpawnRequest {
     instruction_pointer: usize,
     args: Vec<Term>,
 }
+
+struct ScheduledProcess(Process);
+
+// SAFETY: `Process` is intentionally not `Send` at the public API boundary so
+// arbitrary code cannot share or move process bodies between threads. The
+// scheduler is the sole owner of process execution. It stores each process body
+// behind a mutex-protected `Option` and workers must take exclusive ownership of
+// the body before executing a time slice, then either put it back or remove it on
+// exit. No references to the wrapped `Process` cross thread boundaries.
+unsafe impl Send for ScheduledProcess {}
 
 /// Work-stealing scheduler with N OS threads.
 pub struct Scheduler {
@@ -88,6 +99,7 @@ impl Scheduler {
             next_pid: AtomicU64::new(0),
             wait_set: Mutex::new(WaitSet::default()),
             wake_condvar: Condvar::new(),
+            process_bodies: DashMap::new(),
             #[cfg(test)]
             idle_parks: AtomicUsize::new(0),
         });
@@ -256,7 +268,6 @@ fn scheduler_loop(
     stealers: &[Stealer<u64>],
     inject: &SegQueue<SpawnRequest>,
 ) {
-    let mut local_processes = HashMap::new();
     let mut last_victim = my_index;
 
     loop {
@@ -264,7 +275,7 @@ fn scheduler_loop(
             return;
         }
 
-        drain_injected(queue, inject, &mut local_processes);
+        drain_injected(shared, queue, inject);
         drain_woken(shared, queue, my_index);
 
         let pid = match queue.pop() {
@@ -289,29 +300,33 @@ fn scheduler_loop(
             }
         };
 
-        run_process(shared, queue, pid, my_index, &mut local_processes);
+        run_process(shared, queue, pid, my_index);
     }
 }
 
-fn drain_injected(
-    queue: &RunQueue,
-    inject: &SegQueue<SpawnRequest>,
-    local_processes: &mut HashMap<u64, Process>,
-) {
+fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<SpawnRequest>) {
     while let Some(request) = inject.pop() {
-        let mut process = Process::new(request.pid, DEFAULT_HEAP_SIZE);
-        process.set_code_position(Some(CodePosition {
-            module: request.module,
-            instruction_pointer: request.instruction_pointer,
-        }));
-        for (index, arg) in request.args.into_iter().enumerate().take(256) {
-            if let Ok(register) = u8::try_from(index) {
-                process.set_x_reg(register, arg);
-            }
-        }
-        local_processes.insert(request.pid, process);
-        queue.push(request.pid);
+        let pid = request.pid;
+        let process = build_process(request);
+        shared
+            .process_bodies
+            .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
+        queue.push(pid);
     }
+}
+
+fn build_process(request: SpawnRequest) -> Process {
+    let mut process = Process::new(request.pid, DEFAULT_HEAP_SIZE);
+    process.set_code_position(Some(CodePosition {
+        module: request.module,
+        instruction_pointer: request.instruction_pointer,
+    }));
+    for (index, arg) in request.args.into_iter().enumerate().take(256) {
+        if let Ok(register) = u8::try_from(index) {
+            process.set_x_reg(register, arg);
+        }
+    }
+    process
 }
 
 enum SliceOutcome {
@@ -320,35 +335,48 @@ enum SliceOutcome {
     Exited,
 }
 
-fn run_process(
-    shared: &SharedState,
-    queue: &RunQueue,
-    pid: u64,
-    my_index: usize,
-    local_processes: &mut HashMap<u64, Process>,
-) {
+fn run_process(shared: &SharedState, queue: &RunQueue, pid: u64, my_index: usize) {
     if shared.process_table.get(pid).is_none() {
         return;
     }
 
-    let mut process = local_processes
-        .remove(&pid)
-        .unwrap_or_else(|| Process::new(pid, DEFAULT_HEAP_SIZE));
+    let Some(mut process) = take_runnable_process(shared, pid) else {
+        return;
+    };
 
     let outcome = execute_slice(shared, &mut process);
     match outcome {
         SliceOutcome::Requeue(process) => {
-            local_processes.insert(pid, process);
+            store_runnable_process(shared, process);
             queue.push(pid);
         }
         SliceOutcome::Wait(process) => {
-            local_processes.insert(pid, process);
+            store_runnable_process(shared, process);
             let mut wait_set = lock_or_recover(&shared.wait_set);
             wait_set.waiting.insert(pid, my_index);
         }
         SliceOutcome::Exited => {
             let _removed = shared.process_table.remove(pid);
+            let _removed_body = shared.process_bodies.remove(&pid);
         }
+    }
+}
+
+fn take_runnable_process(shared: &SharedState, pid: u64) -> Option<Process> {
+    let entry = shared.process_bodies.get(&pid)?;
+    let mut slot = lock_or_recover(&entry);
+    slot.take().map(|scheduled| scheduled.0)
+}
+
+fn store_runnable_process(shared: &SharedState, process: Process) {
+    let pid = process.pid();
+    if let Some(entry) = shared.process_bodies.get(&pid) {
+        let mut slot = lock_or_recover(&entry);
+        *slot = Some(ScheduledProcess(process));
+    } else {
+        shared
+            .process_bodies
+            .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
     }
 }
 
