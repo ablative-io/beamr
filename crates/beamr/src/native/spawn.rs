@@ -47,6 +47,18 @@ pub trait SpawnFacility: Send + Sync {
         args: Vec<Term>,
         link_to: Option<u64>,
     ) -> Result<u64, SpawnError>;
+
+    /// Spawn a process from a lambda (FunT entry) by module and lambda index.
+    ///
+    /// The scheduler looks up the module's lambda table to find the entry
+    /// label and starts the child process there. Used by `erlang:spawn/1`
+    /// and `erlang:spawn_link/1` which receive a closure term.
+    fn spawn_lambda(
+        &self,
+        module: Atom,
+        lambda_index: u32,
+        link_to: Option<u64>,
+    ) -> Result<u64, SpawnError>;
 }
 
 /// Record of a spawn request, used by test mocks to verify BIF behavior.

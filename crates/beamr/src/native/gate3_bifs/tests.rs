@@ -260,8 +260,9 @@ fn spawn_1_with_zero_arity_closure() {
     let mut heap = [0u64; 5];
     let fun = write_closure(&mut heap, Atom::OK, 0, 0, &[]).expect("closure");
     assert_eq!(bif_spawn_1(&[fun], &mut ctx), Ok(Term::pid(42)));
-    assert_eq!(f.records().len(), 1);
-    assert_eq!(f.records()[0].link_to, None);
+    let records = f.lambda_records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].link_to, None);
 }
 
 #[test]
@@ -313,7 +314,8 @@ fn spawn_link_1_sets_link_to_parent() {
     let mut heap = [0u64; 5];
     let fun = write_closure(&mut heap, Atom::OK, 0, 0, &[]).expect("closure");
     assert_eq!(bif_spawn_link_1(&[fun], &mut ctx), Ok(Term::pid(42)));
-    assert_eq!(f.records()[0].link_to, Some(3));
+    let records = f.lambda_records();
+    assert_eq!(records[0].link_to, Some(3));
 }
 
 #[test]
@@ -411,9 +413,14 @@ fn sup_ctx(
 
 // ---- Mock spawn facility ----
 
+struct LambdaSpawnRecord {
+    link_to: Option<u64>,
+}
+
 struct MockSpawnFacility {
     next_pid: u64,
     records: Mutex<Vec<SpawnRecord>>,
+    lambda_records: Mutex<Vec<LambdaSpawnRecord>>,
 }
 
 impl MockSpawnFacility {
@@ -421,13 +428,15 @@ impl MockSpawnFacility {
         Self {
             next_pid,
             records: Mutex::new(Vec::new()),
+            lambda_records: Mutex::new(Vec::new()),
         }
     }
-    fn records(&self) -> Vec<SpawnRecord> {
-        self.records
+    fn lambda_records(&self) -> Vec<LambdaSpawnRecord> {
+        self.lambda_records
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .clone()
+            .drain(..)
+            .collect()
     }
 }
 
@@ -448,6 +457,19 @@ impl SpawnFacility for MockSpawnFacility {
                 args,
                 link_to,
             });
+        Ok(self.next_pid)
+    }
+
+    fn spawn_lambda(
+        &self,
+        _module: Atom,
+        _lambda_index: u32,
+        link_to: Option<u64>,
+    ) -> Result<u64, SpawnError> {
+        self.lambda_records
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(LambdaSpawnRecord { link_to });
         Ok(self.next_pid)
     }
 }

@@ -502,18 +502,20 @@ impl SpawnFacility for MockSpawnFacility {
             });
         Ok(self.next_pid)
     }
+
+    fn spawn_lambda(&self, _: Atom, _: u32, _: Option<u64>) -> Result<u64, SpawnError> {
+        Ok(self.next_pid)
+    }
 }
 
 struct FailingSpawnFacility;
 
 impl SpawnFacility for FailingSpawnFacility {
-    fn spawn(
-        &self,
-        _: Atom,
-        _: Atom,
-        _: Vec<Term>,
-        _: Option<u64>,
-    ) -> Result<u64, SpawnError> {
+    fn spawn(&self, _: Atom, _: Atom, _: Vec<Term>, _: Option<u64>) -> Result<u64, SpawnError> {
+        Err(SpawnError::UnresolvedMfa)
+    }
+
+    fn spawn_lambda(&self, _: Atom, _: u32, _: Option<u64>) -> Result<u64, SpawnError> {
         Err(SpawnError::UnresolvedMfa)
     }
 }

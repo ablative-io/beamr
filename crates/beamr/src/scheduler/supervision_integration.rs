@@ -280,6 +280,63 @@ impl SpawnFacility for SchedulerSpawnFacility {
 
         Ok(child_pid)
     }
+
+    fn spawn_lambda(
+        &self,
+        module: Atom,
+        lambda_index: u32,
+        link_to: Option<u64>,
+    ) -> Result<u64, SpawnError> {
+        let loaded = self
+            .shared
+            .module_registry
+            .lookup(module)
+            .ok_or(SpawnError::UnresolvedMfa)?;
+        let lambda = loaded
+            .lambdas
+            .get(lambda_index as usize)
+            .ok_or(SpawnError::UnresolvedMfa)?;
+        let ip = label_ip(&loaded, lambda.label).map_err(|_| SpawnError::UnresolvedMfa)?;
+
+        let child_pid = self
+            .shared
+            .next_pid
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.shared.process_table.spawn_with_pid(child_pid);
+
+        let mut child = super::build_process(super::SpawnRequest {
+            pid: child_pid,
+            module: loaded.name,
+            instruction_pointer: ip,
+            args: Vec::new(),
+        });
+
+        if let Some(parent_pid) = link_to {
+            child.add_link(parent_pid);
+            if let Some(parent_entry) = self.shared.process_bodies.get(&parent_pid) {
+                let mut parent_slot = lock_or_recover(&parent_entry);
+                if let Some(ScheduledProcess(parent)) = parent_slot.as_mut() {
+                    parent.add_link(child_pid);
+                }
+            }
+        }
+
+        self.shared.process_bodies.insert(
+            child_pid,
+            std::sync::Mutex::new(Some(ScheduledProcess(child))),
+        );
+
+        self.shared
+            .spawn_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        {
+            let mut ws = lock_or_recover(&self.shared.wait_set);
+            ws.woken.push((child_pid, 0));
+        }
+        self.shared.wake_condvar.notify_all();
+
+        Ok(child_pid)
+    }
 }
 
 /// Real `LinkFacility` backed by the scheduler's shared state.

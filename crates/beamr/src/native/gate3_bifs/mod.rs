@@ -193,20 +193,12 @@ fn spawn_from_fun(args: &[Term], context: &mut ProcessContext, link: bool) -> Re
     };
     let closure = crate::term::boxed::Closure::new(*fun_term).ok_or_else(badarg)?;
 
-    // Must be a zero-arity fun with no captures.
-    if closure.arity() != 0 {
-        return Err(badarg());
-    }
-    if closure.num_free() != 0 {
+    if closure.arity() != 0 || closure.num_free() != 0 {
         return Err(badarg());
     }
 
     let module = closure.module().ok_or_else(badarg)?;
-    // For MFA export closures, the function name atom is resolved from the
-    // module's function table using the function_index. Since we don't have
-    // module access here, we use the function_index as a placeholder atom.
-    // The spawn facility implementation must handle this appropriately.
-    let function = Atom::new(closure.function_index() as u32);
+    let lambda_index = closure.function_index() as u32;
 
     let link_to = if link {
         Some(context.pid().ok_or_else(badarg)?)
@@ -216,7 +208,7 @@ fn spawn_from_fun(args: &[Term], context: &mut ProcessContext, link: bool) -> Re
 
     let facility = context.spawn_facility().ok_or_else(badarg)?;
     let new_pid = facility
-        .spawn(module, function, Vec::new(), link_to)
+        .spawn_lambda(module, lambda_index, link_to)
         .map_err(|_| badarg())?;
     Term::try_pid(new_pid).ok_or_else(badarg)
 }
