@@ -4,19 +4,21 @@
 //! live in [`core`]; later opcode families can add sibling modules without
 //! changing the execution loop.
 
+pub mod closures;
 pub mod core;
 pub mod guards;
 
 use crate::error::ExecError;
 use crate::interpreter::InstructionOutcome;
 use crate::loader::Instruction;
-use crate::module::Module;
+use crate::module::{Module, ModuleRegistry};
 use crate::process::Process;
 
 /// Dispatch one already-fetched instruction.
 pub fn dispatch(
     process: &mut Process,
     module: &Module,
+    registry: Option<&ModuleRegistry>,
     instruction: &Instruction,
     next_ip: usize,
 ) -> Result<InstructionOutcome, ExecError> {
@@ -107,6 +109,17 @@ pub fn dispatch(
         }
         Instruction::Jump { target } => guards::jump(module, target),
         Instruction::Bif { op, operands } => guards::bif(process, module, *op, operands),
+        Instruction::MapOp { op, operands } => closures::map_op(process, module, *op, operands),
+        Instruction::MakeFun { operands } => closures::make_fun(process, module, operands),
+        Instruction::CallFun { arity } => closures::call_fun(process, module, arity, next_ip),
+        Instruction::Apply { arity } => {
+            let registry = registry.ok_or(ExecError::InvalidOperand("apply registry"))?;
+            closures::apply(process, registry, arity, next_ip, module.name)
+        }
+        Instruction::ApplyLast { arity, deallocate } => {
+            let registry = registry.ok_or(ExecError::InvalidOperand("apply registry"))?;
+            closures::apply_last(process, registry, arity, deallocate, next_ip)
+        }
         Instruction::Generic { opcode, .. } => Err(ExecError::UnknownOpcode { opcode: *opcode }),
         other => Err(ExecError::UnsupportedOpcode {
             name: instruction_name(other),

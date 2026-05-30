@@ -264,7 +264,7 @@ fn push_y_frame(
     Ok(InstructionOutcome::Continue)
 }
 
-fn deallocate_frame(process: &mut Process, words: &Operand) -> Result<(), ExecError> {
+pub(crate) fn deallocate_frame(process: &mut Process, words: &Operand) -> Result<(), ExecError> {
     let _words = operand_u16(words, "deallocate words")?;
     let _ = process.stack_mut().pop_frame().map_err(ExecError::from)?;
     Ok(())
@@ -284,7 +284,7 @@ fn jump_with_reduction(
     )
 }
 
-fn jump_position_with_reduction(
+pub(crate) fn jump_position_with_reduction(
     process: &mut Process,
     target: CodePosition,
 ) -> Result<InstructionOutcome, ExecError> {
@@ -407,7 +407,7 @@ fn u16_from_u32(value: u32, context: &'static str) -> Result<u16, ExecError> {
     u16::try_from(value).map_err(|_| ExecError::InvalidOperand(context))
 }
 
-fn heap_slice<'a>(ptr: *mut u64, words: usize) -> &'a mut [u64] {
+pub(crate) fn heap_slice<'a>(ptr: *mut u64, words: usize) -> &'a mut [u64] {
     // SAFETY: `Heap::alloc(words)` returned a non-overlapping allocation with
     // exactly `words` contiguous machine words that remain owned by the process
     // heap. The slice is used immediately to initialise the new object.
