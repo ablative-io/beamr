@@ -90,7 +90,8 @@
         "C103",
         "C104",
         "C105",
-        "C110"
+        "C110",
+        "C111"
       ],
       "stories": [
         "S13"
@@ -120,13 +121,12 @@
     },
     {
       "id": "R5",
-      "title": "Process spawn via scheduler",
-      "spec": "Scheduler::spawn(module: Atom, function: Atom, arity: u8, args: &[Term]) SHALL create a new Process, set its entry point to the module:function/arity code pointer, load args into X registers, assign a PID from the process table, and push it onto a run queue (round-robin across threads for initial placement). It SHALL return the PID.",
+      "title": "Message arrival wakes waiting process",
+      "spec": "WHEN a message is delivered to a process in the Waiting state THE SYSTEM SHALL move it back to a run queue so the scheduler picks it up. The wake-up SHALL be triggered by the mailbox send path (B-011) notifying the scheduler. It SHALL NOT busy-poll \u2014 the transition is event-driven.",
       "acceptance": [
-        "spawn returns a valid PID",
-        "The spawned process eventually executes (observable via side effects or BIF calls)",
-        "Args are loaded into X registers 0..N-1",
-        "Multiple spawns distribute across run queues"
+        "A Waiting process moves to a run queue when a message is delivered to its mailbox",
+        "The wake-up is event-driven, not polled",
+        "A Running or Yielded process receiving a message is not affected (already schedulable)"
       ],
       "files": {
         "modify": [
