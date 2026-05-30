@@ -450,6 +450,20 @@ pub(crate) fn operand_usize(operand: &Operand, context: &'static str) -> Result<
         Operand::Integer(value) => {
             usize::try_from(*value).map_err(|_| ExecError::InvalidOperand(context))
         }
+        Operand::Allocation(entries) => {
+            use crate::loader::decode::compact::Allocation;
+            let mut total: usize = 0;
+            for entry in entries {
+                let words = match entry {
+                    Allocation::Words(n) => *n as usize,
+                    Allocation::Floats(n) => (*n as usize) * 2,
+                    Allocation::Funs(n) => (*n as usize) * 6,
+                    Allocation::Unknown { .. } => 0,
+                };
+                total = total.saturating_add(words);
+            }
+            Ok(total)
+        }
         _ => Err(ExecError::InvalidOperand(context)),
     }
 }
