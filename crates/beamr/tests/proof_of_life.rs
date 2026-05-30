@@ -291,47 +291,129 @@ fn proof_8_proof_beam_gleam_114_fixture_loads_with_two_byte_compact_encoding() {
     assert!(!module.exports.is_empty());
 }
 
-#[test]
-fn proof_9_compile_gleam_load_beam_execute_get_42() {
-    let atoms = AtomTable::new();
-    let mut bifs = BifRegistryImpl::new();
-    register_gate1_bifs(&mut bifs, &atoms).expect("register BIFs");
-
+fn load_proof_module(atoms: &AtomTable, bifs: &BifRegistryImpl) -> Module {
     let bytes = include_bytes!("fixtures/proof.beam");
-    let parsed = beamr::loader::load_beam_chunks(bytes, &atoms).expect("proof.beam loads");
-
-    let answer = atoms.intern("answer");
-    let export = parsed.exports.iter().find(|e| e.function == answer && e.arity == 0);
-    assert!(export.is_some(), "proof module exports answer/0");
-    let entry_label = export.unwrap().label;
-
-    let module = Module {
+    let parsed = beamr::loader::load_beam_chunks(bytes, atoms).expect("proof.beam loads");
+    let mut resolved = Vec::new();
+    for imp in &parsed.imports {
+        let native = bifs.lookup(imp.module, imp.function, imp.arity);
+        if let Some(entry) = native {
+            resolved.push(beamr::module::ResolvedImport {
+                module: imp.module,
+                function: imp.function,
+                arity: imp.arity,
+                target: beamr::module::ResolvedImportTarget::Native(entry),
+            });
+        }
+    }
+    Module {
         name: parsed.name,
         exports: parsed.exports.iter().map(|e| ((e.function, e.arity), e.label)).collect(),
         code: parsed.instructions,
         literals: parsed.literals,
-        resolved_imports: Vec::new(),
+        resolved_imports: resolved,
         lambdas: parsed.lambdas,
         string_table: parsed.string_table,
         line_info: parsed.line_info,
-    };
+    }
+}
 
-    let mut process = Process::new(1, 256);
-
-    // Find the instruction index for the entry label
+fn call_gleam_function(
+    module: &Module,
+    atoms: &AtomTable,
+    name: &str,
+    args: &[Term],
+) -> Result<Term, String> {
+    let func = atoms.intern(name);
+    let arity = args.len() as u8;
+    let export = module.exports.get(&(func, arity))
+        .ok_or_else(|| format!("{name}/{arity} not exported"))?;
     let entry_ip = module.code.iter().position(|instr| {
-        matches!(instr, Instruction::Label { label } if *label == entry_label)
-    }).expect("entry label exists in code");
+        matches!(instr, Instruction::Label { label } if *label == *export)
+    }).ok_or_else(|| format!("label {export} not found in code"))?;
 
-    process.set_x_reg(0, Term::NIL);
+    let mut process = Process::new(1, 4096);
+    for (i, arg) in args.iter().enumerate() {
+        process.set_x_reg(i as u8, *arg);
+    }
     process.set_code_position(Some(beamr::process::CodePosition {
         module: module.name,
         instruction_pointer: entry_ip,
     }));
 
-    let result = run(&mut process, &module);
-    assert_eq!(result, Ok(ExecutionResult::Exited(ExitReason::Normal)),
-        "proof:answer/0 should exit normally");
-    assert_eq!(process.x_reg(0), Term::small_int(42),
-        "proof:answer/0 should return 42");
+    match run(&mut process, module) {
+        Ok(ExecutionResult::Exited(ExitReason::Normal)) => Ok(process.x_reg(0)),
+        Ok(other) => Err(format!("unexpected result: {other:?}")),
+        Err(e) => Err(format!("execution error: {e:?}")),
+    }
+}
+
+#[test]
+fn proof_9_gleam_answer_returns_42() {
+    let atoms = AtomTable::new();
+    let mut bifs = BifRegistryImpl::new();
+    register_gate1_bifs(&mut bifs, &atoms).expect("register BIFs");
+    let module = load_proof_module(&atoms, &bifs);
+
+    let result = call_gleam_function(&module, &atoms, "answer", &[]).expect("answer/0 runs");
+    assert_eq!(result, Term::small_int(42));
+}
+
+#[test]
+fn proof_10_gleam_add_computes_17_plus_25() {
+    let atoms = AtomTable::new();
+    let mut bifs = BifRegistryImpl::new();
+    register_gate1_bifs(&mut bifs, &atoms).expect("register BIFs");
+    let module = load_proof_module(&atoms, &bifs);
+
+    let result = call_gleam_function(
+        &module, &atoms, "add", &[Term::small_int(17), Term::small_int(25)]
+    ).expect("add/2 runs");
+    assert_eq!(result, Term::small_int(42));
+}
+
+#[test]
+fn proof_11_gleam_pipeline_transforms_input() {
+    let atoms = AtomTable::new();
+    let mut bifs = BifRegistryImpl::new();
+    register_gate1_bifs(&mut bifs, &atoms).expect("register BIFs");
+    let module = load_proof_module(&atoms, &bifs);
+
+    // run_pipeline(5) → doubled=10, added=20, squared=400
+    let result = call_gleam_function(
+        &module, &atoms, "run_pipeline", &[Term::small_int(5)]
+    ).expect("run_pipeline/1 runs");
+    assert_eq!(result, Term::small_int(400));
+}
+
+#[test]
+fn proof_12_gleam_factorial_computes_recursively() {
+    let atoms = AtomTable::new();
+    let mut bifs = BifRegistryImpl::new();
+    register_gate1_bifs(&mut bifs, &atoms).expect("register BIFs");
+    let module = load_proof_module(&atoms, &bifs);
+
+    // factorial(0) = 1, factorial(5) = 120, factorial(10) = 3628800
+    let f0 = call_gleam_function(&module, &atoms, "factorial", &[Term::small_int(0)]);
+    let f5 = call_gleam_function(&module, &atoms, "factorial", &[Term::small_int(5)]);
+    let f10 = call_gleam_function(&module, &atoms, "factorial", &[Term::small_int(10)]);
+    assert_eq!(f0.expect("factorial(0)"), Term::small_int(1));
+    assert_eq!(f5.expect("factorial(5)"), Term::small_int(120));
+    assert_eq!(f10.expect("factorial(10)"), Term::small_int(3628800));
+}
+
+#[test]
+fn proof_13_gleam_fibonacci_computes_recursively() {
+    let atoms = AtomTable::new();
+    let mut bifs = BifRegistryImpl::new();
+    register_gate1_bifs(&mut bifs, &atoms).expect("register BIFs");
+    let module = load_proof_module(&atoms, &bifs);
+
+    // fib(0)=0, fib(1)=1, fib(10)=55
+    let f0 = call_gleam_function(&module, &atoms, "fibonacci", &[Term::small_int(0)]);
+    let f1 = call_gleam_function(&module, &atoms, "fibonacci", &[Term::small_int(1)]);
+    let f10 = call_gleam_function(&module, &atoms, "fibonacci", &[Term::small_int(10)]);
+    assert_eq!(f0.expect("fib(0)"), Term::small_int(0));
+    assert_eq!(f1.expect("fib(1)"), Term::small_int(1));
+    assert_eq!(f10.expect("fib(10)"), Term::small_int(55));
 }
