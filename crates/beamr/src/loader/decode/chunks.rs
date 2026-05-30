@@ -128,7 +128,6 @@ pub fn decode_lambda_chunk(bytes: &[u8], atoms: &[Atom]) -> Result<Vec<LambdaEnt
         let _index = cursor.read_u32()?;
         let num_free = cursor.read_u32()?;
         let _old_uniq = cursor.read_u32()?;
-        let _old_index = cursor.read_u32()?;
         lambdas.push(LambdaEntry {
             function,
             arity,
