@@ -1,0 +1,89 @@
+{
+  "id": "B-019",
+  "cluster": "beamr",
+  "title": "Implement scheduler priority queues and dirty scheduler pool",
+  "depends_on": ["B-012", "B-008"],
+  "blocked_by": [],
+  "checklist": ["C108", "C109", "C112", "C113"],
+  "stories": ["S11", "S13"],
+  "purpose": "The core scheduler (B-012) delivers the basic thread pool, run queues, and work stealing. This brief adds the two remaining scheduler features: priority queues (high and max priority processes are scheduled before normal) and the dirty scheduler pool (a separate thread pool for long-running native calls that would otherwise block normal scheduler threads and break the fairness promise).",
+  "task": "Extend the scheduler in crates/beamr/src/scheduler/ with priority queues and the dirty scheduler pool. Each worker thread gets three queues: max, high, and normal priority — dequeuing checks max first, then high, then normal. The dirty pool is a separate set of OS threads that handle native calls marked as dirty (via B-008's NativeEntry.is_dirty flag). When the interpreter hits a dirty native call, the process migrates to the dirty pool for the duration; the normal worker thread is freed immediately.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Priority queue support",
+      "spec": "Each scheduler worker SHALL maintain three queues: max priority, high priority, and normal priority. WHEN selecting the next process to run THE SYSTEM SHALL dequeue from max first, then high, then normal. Process priority SHALL be settable at spawn time and changeable at runtime. It SHALL NOT starve normal-priority processes indefinitely — if max/high queues are always occupied, normal processes must still make progress (fairness within a bounded window).",
+      "acceptance": [
+        "A max-priority process is dequeued before a high-priority process",
+        "A high-priority process is dequeued before a normal-priority process",
+        "With only normal-priority processes, scheduling behaves identically to B-012",
+        "A normal-priority process is not starved if high-priority processes are present (runs within 10 scheduling rounds)"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/scheduler/run_queue.rs", "crates/beamr/src/scheduler/mod.rs"]
+      },
+      "checklist": ["C108", "C109"],
+      "stories": ["S13"]
+    },
+    {
+      "id": "R2",
+      "title": "Dirty scheduler thread pool",
+      "spec": "beamr::scheduler::dirty SHALL define a DirtyPool — a separate pool of OS threads dedicated to long-running native calls. WHEN the interpreter encounters a native call with is_dirty=true THE SYSTEM SHALL migrate the calling process to the dirty pool, freeing the normal worker thread immediately. WHEN the dirty call completes THE SYSTEM SHALL return the process to a normal run queue. It SHALL NOT run dirty calls on normal scheduler threads.",
+      "acceptance": [
+        "A dirty native call executes on a dirty pool thread, not a normal scheduler thread",
+        "The normal worker thread is freed immediately when a process enters the dirty pool",
+        "After the dirty call completes, the process is placed back on a normal run queue",
+        "The dirty pool has a configurable number of threads (default: number of CPU cores)"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/scheduler/dirty.rs", "crates/beamr/src/scheduler/mod.rs"]
+      },
+      "checklist": ["C112", "C113"],
+      "stories": ["S11"]
+    },
+    {
+      "id": "R3",
+      "title": "Dirty dispatch integration",
+      "spec": "WHEN the interpreter resolves a native call THE SYSTEM SHALL check NativeEntry.is_dirty (from B-008). IF dirty THE SYSTEM SHALL yield the process with a DirtyCall status, and the scheduler SHALL dispatch it to the dirty pool. After completion, the process resumes on a normal thread with the native call's result in the appropriate register. It SHALL NOT block the calling process on the normal thread while waiting for the dirty call.",
+      "acceptance": [
+        "An interpreter call to a dirty-flagged BIF yields the process with DirtyCall status",
+        "The scheduler picks up DirtyCall processes and sends them to the dirty pool",
+        "After dirty completion, the result is in the expected register and the process resumes normally",
+        "Normal scheduler threads are never blocked by dirty calls"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/scheduler/dirty.rs", "crates/beamr/src/interpreter/opcodes.rs"]
+      },
+      "checklist": ["C112", "C113"],
+      "stories": ["S11"]
+    },
+    {
+      "id": "R4",
+      "title": "Tests for priority and dirty scheduling",
+      "spec": "WHEN priority queues and dirty scheduling are tested THE SYSTEM SHALL include tests for: priority ordering (max > high > normal), normal-priority starvation prevention, dirty call round-trip (dispatch → execute → return), and concurrent dirty calls.",
+      "acceptance": [
+        "A test spawns max, high, and normal processes and verifies scheduling order",
+        "A test verifies normal processes make progress alongside high-priority processes",
+        "A test dispatches a dirty call and verifies the result returns correctly",
+        "cargo test -p beamr scheduler passes with all tests green"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/scheduler/dirty.rs", "crates/beamr/src/scheduler/run_queue.rs"]
+      },
+      "checklist": ["C108", "C109", "C112", "C113"],
+      "stories": []
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT modify the core scheduler loop or work-stealing logic from B-012",
+    "SHALL NOT implement process priority inheritance or priority inversion prevention",
+    "SHALL NOT implement the reduction boundary hook — that's B-020 scope"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo clippy --workspace -- -D warnings passes",
+    "cargo test -p beamr scheduler passes with all tests green",
+    "Code inspection: dirty calls never execute on normal scheduler threads",
+    "Code inspection: priority dequeue order is max → high → normal"
+  ]
+}

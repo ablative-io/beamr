@@ -1,0 +1,127 @@
+{
+  "id": "B-020",
+  "cluster": "beamr",
+  "title": "Implement reduction boundary hook and timer wheel",
+  "depends_on": ["B-012", "B-010"],
+  "blocked_by": [],
+  "checklist": ["C158", "C159", "C160", "C161", "C162", "C163", "C164", "C165", "C166", "C167", "C168", "C169", "C170"],
+  "stories": ["S7", "S10", "S30"],
+  "purpose": "The reduction boundary hook is the bit that's uniquely ours — the seam between actions where Meridian's diagnostics pipeline can inspect and intervene. The timer wheel provides efficient timeout management for receive-after, send_after, and deadline enforcement. Together they close the last two component gaps in the beamr runtime.",
+  "task": "Implement the reduction boundary hook in crates/beamr/src/hook.rs and the timer wheel in crates/beamr/src/timer.rs. The hook fires at every process yield point (reduction exhaustion or blocking receive). It receives process metadata and returns continue or suspend. The timer wheel provides O(1) insertion and cancellation for timeouts — used by wait_timeout, send_after, start_timer, and cancel_timer. Timer BIFs are registered in the native function registry.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Hook callback registration",
+      "spec": "beamr::hook SHALL define a configurable hook callback that fires at process yield points. The hook SHALL be set per VM instance via a registration function. The hook callback SHALL be changeable at runtime. WHEN no hook is registered THE SYSTEM SHALL skip hook invocation entirely — the hook registration slot is None and the yield path incurs no overhead.",
+      "acceptance": [
+        "Hook::register(callback) sets the hook for the VM instance",
+        "Hook::unregister() removes the hook (slot becomes None)",
+        "With no hook registered, the yield path does not call any function",
+        "The hook can be changed at runtime without stopping the VM"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/hook.rs"]
+      },
+      "checklist": ["C158", "C161", "C162"],
+      "stories": ["S10"]
+    },
+    {
+      "id": "R2",
+      "title": "Hook invocation at yield points",
+      "spec": "WHEN a hook is registered and a process yields (reduction budget exhausted or blocking on receive) THE SYSTEM SHALL invoke the hook with the process PID, its current module/function/arity, and the reduction count consumed. The hook SHALL return either Continue (process resumes normally) or Suspend (process is held until explicitly resumed). It SHALL NOT modify the process's registers, heap, or mailbox — it is read-only inspection plus a continue/suspend decision.",
+      "acceptance": [
+        "The hook fires when a process's reduction budget is exhausted",
+        "The hook fires when a process blocks on receive",
+        "The hook receives: pid, module atom, function atom, arity, reductions consumed",
+        "Hook returning Continue allows the process to resume",
+        "Hook returning Suspend holds the process (not placed on run queue)",
+        "The hook cannot modify the process's registers, heap, or mailbox"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/hook.rs", "crates/beamr/src/scheduler/mod.rs"]
+      },
+      "checklist": ["C159", "C160", "C163"],
+      "stories": ["S10"]
+    },
+    {
+      "id": "R3",
+      "title": "Timer wheel data structure",
+      "spec": "beamr::timer SHALL implement a timer wheel with O(1) insertion and O(1) cancellation. The wheel SHALL support millisecond-granularity timeouts. Each timer entry stores: target PID, message to deliver, expiry time, and a unique timer reference for cancellation. Expired timers SHALL be processed on each scheduler tick. It SHALL NOT use a sorted list or priority queue — the wheel structure is required for O(1) operations.",
+      "acceptance": [
+        "Timer insertion is O(1) (constant-time regardless of active timer count)",
+        "Timer cancellation by reference is O(1)",
+        "Expired timers are detected and processed on scheduler tick",
+        "Timer resolution is millisecond-granularity or better",
+        "The timer wheel handles 10,000 concurrent timers without degradation"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/timer.rs"]
+      },
+      "checklist": ["C164", "C170"],
+      "stories": []
+    },
+    {
+      "id": "R4",
+      "title": "Receive timeout integration",
+      "spec": "WHEN the interpreter executes wait_timeout THE SYSTEM SHALL register a timer in the wheel. IF the timer expires before a matching message arrives THE SYSTEM SHALL wake the process and resume at the timeout label. IF a matching message arrives first THE SYSTEM SHALL cancel the timer automatically. It SHALL NOT leave orphan timers — every wait_timeout timer is either fired or cancelled.",
+      "acceptance": [
+        "wait_timeout registers a timer; timeout fires if no message arrives",
+        "A message arriving before timeout cancels the timer",
+        "No orphan timers remain after a receive completes (by message or timeout)",
+        "The process resumes at the timeout label on expiry"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/timer.rs", "crates/beamr/src/interpreter/opcodes.rs"]
+      },
+      "checklist": ["C165", "C166"],
+      "stories": ["S7"]
+    },
+    {
+      "id": "R5",
+      "title": "Timer BIFs",
+      "spec": "THE SYSTEM SHALL implement erlang:send_after/3 (sends a message after a delay), erlang:start_timer/3 (sends {timeout, Ref, Msg} after a delay), and erlang:cancel_timer/1 (cancels a pending timer and returns remaining time or false). These SHALL be registered as BIFs in the native registry. It SHALL NOT implement timer BIFs that block the calling process — all are asynchronous.",
+      "acceptance": [
+        "erlang:send_after(100, Pid, hello) delivers atom(hello) to Pid after ~100ms",
+        "erlang:start_timer(100, Pid, hello) delivers {timeout, Ref, hello} to Pid after ~100ms",
+        "erlang:cancel_timer(Ref) returns remaining milliseconds if timer is pending",
+        "erlang:cancel_timer(Ref) returns false if timer already fired",
+        "All three are registered as BIFs via the native registry"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/timer.rs", "crates/beamr/src/native/bifs.rs"]
+      },
+      "checklist": ["C167", "C168", "C169"],
+      "stories": []
+    },
+    {
+      "id": "R6",
+      "title": "Hook and timer tests",
+      "spec": "WHEN the hook and timer are tested THE SYSTEM SHALL include tests for: hook registration/unregistration, hook firing at yield, hook suspend/continue, timer insertion/expiry/cancellation, receive timeout integration, and timer BIF round-trips.",
+      "acceptance": [
+        "A test registers a hook that records every yield — verifies it fires at each yield point with correct metadata",
+        "A test verifies suspend holds the process and explicit resume restarts it",
+        "A test verifies timer expiry delivers the message after the delay",
+        "A test verifies cancel_timer prevents delivery",
+        "cargo test -p beamr hook passes; cargo test -p beamr timer passes"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/hook.rs", "crates/beamr/src/timer.rs"]
+      },
+      "checklist": ["C158", "C164", "C165"],
+      "stories": ["S30"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement hook-based diagnostics logic — the hook is a registration point; what Meridian does with it is beamr-meridian scope",
+    "SHALL NOT implement periodic/recurring timers — only one-shot timers for now",
+    "SHALL NOT implement erlang:monotonic_time or system clock BIFs — raw Instant::now is sufficient"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo clippy --workspace -- -D warnings passes",
+    "cargo test -p beamr hook passes with all tests green",
+    "cargo test -p beamr timer passes with all tests green",
+    "Code inspection: no hook is registered → yield path skips invocation (no function pointer call)",
+    "Code inspection: timer insertion and cancellation are O(1) (no sorted data structure)"
+  ]
+}

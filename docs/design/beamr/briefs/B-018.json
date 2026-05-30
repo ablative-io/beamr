@@ -1,0 +1,153 @@
+{
+  "id": "B-018",
+  "cluster": "beamr",
+  "title": "Implement supervision — links, monitors, and exit signals",
+  "depends_on": ["B-010", "B-011", "B-012"],
+  "blocked_by": [],
+  "checklist": ["C56", "C133", "C134", "C135", "C136", "C137", "C138", "C139", "C140", "C141", "C142", "C143", "C144"],
+  "stories": ["S2", "S6", "S29"],
+  "purpose": "Supervision is the highest-value-per-line component. Once beamr provides links, monitors, exit signals, and the trap-exit flag correctly, supervision trees are just Gleam library code — the VM doesn't need to know about supervisors at all. This brief delivers the four primitives that make the system self-healing: bidirectional links (shared fate), unidirectional monitors (observation), exit signals (death notification), and trap_exit (converting death into a message).",
+  "task": "Implement supervision primitives in crates/beamr/src/supervision/. link(A, B) creates a bidirectional bond — each process's link set contains the other. When a process exits, exit signals propagate along links: non-normal reasons kill linked processes (unless they trap exits, in which case the signal becomes a message). monitor(Pid) registers a unidirectional watcher — the monitored process's death sends a DOWN message. The kill signal is untrappable. Normal exits don't propagate. Linking/monitoring an already-dead process delivers the signal immediately.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Bidirectional links",
+      "spec": "beamr::supervision::link SHALL create a bidirectional link between two processes. Both processes' link sets SHALL contain the other's PID. link(A, B) and link(B, A) SHALL be equivalent. It SHALL NOT create duplicate links — linking already-linked processes is a no-op.",
+      "acceptance": [
+        "link(A, B) adds B to A's links and A to B's links",
+        "After link(A, B), both A.links.contains(B) and B.links.contains(A)",
+        "link(A, B) called twice does not create duplicates",
+        "link(A, A) is a no-op (cannot link to self)"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/supervision/link.rs"]
+      },
+      "checklist": ["C133"],
+      "stories": ["S6"]
+    },
+    {
+      "id": "R2",
+      "title": "Exit signal propagation along links",
+      "spec": "WHEN a process exits THE SYSTEM SHALL send an exit signal with the exit reason to all linked processes. IF the reason is not 'normal' THE SYSTEM SHALL terminate the linked process with the same reason (unless it traps exits). IF the reason is 'normal' THE SYSTEM SHALL NOT terminate linked processes. It SHALL NOT skip any linked process — all links are visited.",
+      "acceptance": [
+        "Process A exits with reason 'crash'; linked process B receives the exit signal and exits with 'crash'",
+        "Process A exits with reason 'normal'; linked process B is NOT terminated",
+        "Process A linked to B and C: both B and C receive exit signals when A dies",
+        "Exit signals propagate transitively: A→B→C, A dies, B dies, C dies"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/supervision/link.rs"]
+      },
+      "checklist": ["C134", "C135", "C136"],
+      "stories": ["S2"]
+    },
+    {
+      "id": "R3",
+      "title": "Trap exit flag",
+      "spec": "WHEN a process has trap_exit=true THE SYSTEM SHALL convert incoming exit signals into {'EXIT', Pid, Reason} messages delivered to the process's mailbox instead of terminating it. The process receives the message and can handle it (this is how supervisors work). It SHALL NOT trap the 'kill' signal — kill is always fatal.",
+      "acceptance": [
+        "Process B with trap_exit=true receives {'EXIT', A_pid, crash} as a mailbox message when A dies",
+        "Process B with trap_exit=false exits when A dies with a non-normal reason",
+        "Process B with trap_exit=true still dies when sent a 'kill' signal"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/supervision/link.rs", "crates/beamr/src/process/mod.rs"]
+      },
+      "checklist": ["C137"],
+      "stories": ["S6"]
+    },
+    {
+      "id": "R4",
+      "title": "Kill signal — untrappable termination",
+      "spec": "WHEN a process receives an exit signal with reason 'kill' THE SYSTEM SHALL terminate it unconditionally, even if trap_exit is true. The terminated process SHALL propagate exit reason 'killed' (not 'kill') to its own links. It SHALL NOT allow any process to survive a kill signal.",
+      "acceptance": [
+        "A process with trap_exit=true receiving kill signal is terminated",
+        "The killed process propagates reason 'killed' (not 'kill') to its links",
+        "Links of the killed process that trap exits receive {'EXIT', Pid, killed}"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/supervision/link.rs"]
+      },
+      "checklist": ["C138", "C139"],
+      "stories": []
+    },
+    {
+      "id": "R5",
+      "title": "Monitors — unidirectional observation",
+      "spec": "beamr::supervision::monitor SHALL register a unidirectional monitor. monitor(Watcher, Target) returns a unique Reference. WHEN the target exits THE SYSTEM SHALL send a {'DOWN', Ref, process, Pid, Reason} message to the watcher. The watcher is NOT terminated — monitors are observation-only. demonitor(Ref) SHALL remove the monitor; no DOWN message is sent after demonitor.",
+      "acceptance": [
+        "monitor(A, B) returns a unique Reference",
+        "When B exits, A receives {'DOWN', Ref, process, B_pid, Reason} in its mailbox",
+        "A is NOT terminated when B exits (monitors are non-fatal)",
+        "demonitor(Ref) prevents the DOWN message from being sent"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/supervision/monitor.rs"]
+      },
+      "checklist": ["C140", "C141"],
+      "stories": ["S6"]
+    },
+    {
+      "id": "R6",
+      "title": "Unlink and already-dead edge cases",
+      "spec": "unlink(A, B) SHALL remove the bidirectional link — no exit signal after unlink. Monitoring an already-exited process SHALL immediately send a DOWN message. Linking to an already-exited process SHALL immediately send an exit signal. It SHALL NOT silently swallow these edge cases — the caller must observe the death.",
+      "acceptance": [
+        "unlink(A, B) removes B from A's links and A from B's links",
+        "After unlink, A's death does not affect B",
+        "monitor(A, dead_process) immediately delivers {'DOWN', Ref, process, Pid, Reason}",
+        "link(A, dead_process) immediately delivers an exit signal to A"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/supervision/link.rs", "crates/beamr/src/supervision/monitor.rs"]
+      },
+      "checklist": ["C142", "C143", "C144"],
+      "stories": []
+    },
+    {
+      "id": "R7",
+      "title": "Normal exit propagation for process lifecycle",
+      "spec": "WHEN a process exits with reason 'normal' THE SYSTEM SHALL deallocate its heap and remove it from the process table (completing the C55 split from B-010). Normal exits SHALL propagate along links but SHALL NOT cause linked processes to exit. It SHALL NOT leak heap memory or leave stale entries in the scheduler.",
+      "acceptance": [
+        "A normally-exiting process's heap is deallocated",
+        "A normally-exiting process is removed from the process table",
+        "Linked processes are not terminated by a normal exit",
+        "No stale PID entries remain in the scheduler's wait set or run queues"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/supervision/link.rs", "crates/beamr/src/process/mod.rs"]
+      },
+      "checklist": ["C56"],
+      "stories": []
+    },
+    {
+      "id": "R8",
+      "title": "Multi-level link chain and supervision tests",
+      "spec": "WHEN supervision primitives are tested THE SYSTEM SHALL include tests for: simple link + exit, trap_exit handling, kill signal, monitor + DOWN message, demonitor, unlink, already-dead edge cases, and multi-level cascading failures (A→B→C chain). Tests SHALL verify that exit signals propagate correctly through supervision trees.",
+      "acceptance": [
+        "A test verifies A→B→C cascade: A dies, B dies (linked), C dies (linked to B)",
+        "A test verifies trap_exit converts signal to message",
+        "A test verifies kill bypasses trap_exit",
+        "A test verifies monitor on dead process sends immediate DOWN",
+        "cargo test -p beamr supervision passes with all tests green"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/supervision/link.rs", "crates/beamr/src/supervision/monitor.rs"]
+      },
+      "checklist": ["C133", "C134", "C137", "C140", "C143", "C144"],
+      "stories": ["S29"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement supervisor behaviours (one_for_one, etc.) — those are Gleam library code that runs on top of these primitives",
+    "SHALL NOT implement named process registration — that's a separate concern",
+    "SHALL NOT implement process groups or application controllers — out of scope"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo clippy --workspace -- -D warnings passes",
+    "cargo test -p beamr supervision passes with all tests green",
+    "Code inspection: kill signal bypasses trap_exit unconditionally",
+    "Code inspection: killed propagates 'killed' not 'kill' to links",
+    "Code inspection: monitor/link on dead process delivers signal immediately"
+  ]
+}

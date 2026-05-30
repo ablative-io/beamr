@@ -1,0 +1,156 @@
+{
+  "id": "B-017",
+  "cluster": "beamr",
+  "title": "Implement per-process generational copying garbage collector",
+  "depends_on": ["B-005", "B-006", "B-010"],
+  "blocked_by": [],
+  "checklist": ["C115", "C116", "C117", "C118", "C119", "C120", "C121", "C122", "C123", "C124"],
+  "stories": ["S19", "S24"],
+  "purpose": "The compiled bytecode assumes a garbage collector exists — some instructions exist specifically to prepare the heap for one. Run real Gleam for any length of time without GC and it falls through where the safety net should be. This is the scariest component because its failures are silent: a bug doesn't crash loudly, it quietly corrupts a term. The defence is relentless property-testing. This brief delivers the per-process generational copying collector.",
+  "task": "Implement the garbage collector in crates/beamr/src/gc/. The GC operates on a single process's Heap — no global pause, no stop-the-world. Two modes: minor GC (copy live objects from young generation to old) and major GC (copy all live objects to fresh space). The root set is the process's X registers, Y registers (stack frames), and mailbox terms. The collector walks the root set, copies reachable terms to new space, updates all references, and reclaims the old space. Heap sizing follows a Fibonacci-like growth sequence; shrinking happens after major GC if utilization is low.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Per-process isolation guarantee",
+      "spec": "GC SHALL operate on a single process's heap. WHILE one process is being collected THE SYSTEM SHALL NOT pause, block, or affect any other process. The GC SHALL take a mutable reference to the target process only. It SHALL NOT hold any global lock during collection.",
+      "acceptance": [
+        "GC on process A does not modify process B's heap or registers",
+        "No global mutex is held during collection",
+        "Two processes can be GC'd concurrently on different scheduler threads"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/gc/mod.rs"]
+      },
+      "checklist": ["C115"],
+      "stories": ["S19"]
+    },
+    {
+      "id": "R2",
+      "title": "Generational heap structure",
+      "spec": "The process heap SHALL be split into a young generation (nursery) and an old generation. New allocations go to the nursery. Surviving objects are promoted to old. The nursery SHALL be collected frequently (minor GC); the old generation rarely (major GC). It SHALL NOT mix young and old objects in the same memory region.",
+      "acceptance": [
+        "Heap has distinct young and old regions",
+        "New allocations go to the young region",
+        "After minor GC, surviving young objects are in the old region",
+        "Old region is not touched during minor GC"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/gc/mod.rs", "crates/beamr/src/process/heap.rs"]
+      },
+      "checklist": ["C116"],
+      "stories": []
+    },
+    {
+      "id": "R3",
+      "title": "Minor GC — nursery collection",
+      "spec": "WHEN a minor GC is triggered THE SYSTEM SHALL walk the root set, copy all live objects from the young generation to the old generation, and reclaim the young space. Objects already in the old generation SHALL NOT be moved. Forwarding pointers SHALL mark already-copied objects to avoid duplication. It SHALL NOT leave dangling references — every pointer in the root set is updated.",
+      "acceptance": [
+        "After minor GC, all reachable young objects are in old space",
+        "Unreachable young objects are not copied (young space reclaimed)",
+        "No forwarding pointer loops (each object copied exactly once)",
+        "Root set references point to the new locations in old space"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/gc/minor.rs"]
+      },
+      "checklist": ["C117"],
+      "stories": []
+    },
+    {
+      "id": "R4",
+      "title": "Major GC — full compaction",
+      "spec": "WHEN a major GC is triggered THE SYSTEM SHALL copy all live objects (young and old) to fresh space and reclaim both old regions. This is a full compaction that defragments memory. It SHALL be triggered when the old generation is full or when a minor GC cannot free enough space. It SHALL NOT be triggered on every allocation — only when the old generation exceeds its capacity.",
+      "acceptance": [
+        "After major GC, all live objects are in contiguous fresh space",
+        "Both young and old regions are reclaimed",
+        "Heap utilization after major GC reflects only live data",
+        "Major GC is not triggered unless old space is full or minor GC insufficient"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/gc/major.rs"]
+      },
+      "checklist": ["C118"],
+      "stories": []
+    },
+    {
+      "id": "R5",
+      "title": "GC trigger and root set walking",
+      "spec": "GC SHALL be triggered when the process's heap cannot satisfy an allocation request (HeapFull from B-010). The root set SHALL include: all live X registers, all Y registers in all stack frames, and all terms in the mailbox. The collector SHALL walk each root, recursively copying reachable boxed terms. It SHALL NOT miss roots — a missed root produces a dangling pointer and silent corruption.",
+      "acceptance": [
+        "GC is triggered by HeapFull from Heap::alloc",
+        "A term in X register 5 survives collection unchanged",
+        "A term in Y register 2 of stack frame 3 survives collection unchanged",
+        "A term in the mailbox survives collection unchanged",
+        "An unreachable term (not in any root) is reclaimed"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/gc/mod.rs"]
+      },
+      "checklist": ["C119", "C120"],
+      "stories": []
+    },
+    {
+      "id": "R6",
+      "title": "Reference updating after copy",
+      "spec": "AFTER copying live objects THE SYSTEM SHALL update all term references (in registers, stack, mailbox) to point to the new locations. Boxed terms that contain other boxed terms (tuples with tuple elements, lists of lists) SHALL have their internal references updated recursively. It SHALL NOT leave any reference pointing to old space after collection completes.",
+      "acceptance": [
+        "A tuple containing a nested tuple: both references updated after GC",
+        "A list of 100 elements: all cons cell references updated",
+        "No pointer in any root set points to reclaimed space after GC",
+        "After GC, all previously reachable terms are still reachable with identical values"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/gc/minor.rs", "crates/beamr/src/gc/major.rs"]
+      },
+      "checklist": ["C121", "C122"],
+      "stories": []
+    },
+    {
+      "id": "R7",
+      "title": "Heap growth and shrink policy",
+      "spec": "Heap capacity SHALL grow on demand following a Fibonacci-like size sequence (233, 377, 610, 987, ...). After a major GC THE SYSTEM SHALL shrink the heap if utilization is below a threshold (e.g. 25% of capacity). It SHALL NOT shrink below the initial heap size. Growth SHALL happen before allocation fails, not after.",
+      "acceptance": [
+        "Heap grows from 233 to 377 words when the first size is exhausted after GC",
+        "Heap shrinks after major GC if utilization < 25%",
+        "Heap does not shrink below initial size (233 words)",
+        "Growth sequence follows Fibonacci-like pattern"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/process/heap.rs", "crates/beamr/src/gc/mod.rs"]
+      },
+      "checklist": ["C123", "C124"],
+      "stories": []
+    },
+    {
+      "id": "R8",
+      "title": "Property tests and correctness validation",
+      "spec": "WHEN the GC is tested THE SYSTEM SHALL include property tests that: allocate random term graphs, trigger GC, and verify all reachable terms survive unchanged. Tests SHALL cover: minor GC, major GC, nested boxed terms, cons cell chains (B-006 GC breadcrumb), and mixed immediate/boxed root sets. It SHALL NOT rely solely on handwritten cases — property testing is the primary defence against silent corruption.",
+      "acceptance": [
+        "Property test: random term allocation + GC + verify all reachable terms unchanged (100+ iterations)",
+        "Test: cons cell chain of 1000 elements survives minor GC",
+        "Test: nested tuple 10 levels deep survives major GC",
+        "Test: GC with mixed X-reg, Y-reg, and mailbox roots preserves all",
+        "cargo test -p beamr gc passes with all tests green"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/gc/mod.rs", "crates/beamr/src/gc/minor.rs", "crates/beamr/src/gc/major.rs"]
+      },
+      "checklist": ["C121", "C122"],
+      "stories": ["S24"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement concurrent or incremental GC — collection is stop-the-process, not stop-the-world",
+    "SHALL NOT implement reference-counted binaries — all binaries are heap-copied for now",
+    "SHALL NOT implement process dictionary roots — process dictionary is out of scope",
+    "SHALL NOT modify term representation — use the tagging and boxed layouts from B-005/B-006 as-is"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo clippy --workspace -- -D warnings passes",
+    "cargo test -p beamr gc passes with all tests green",
+    "Property tests run 100+ iterations without failure",
+    "Code inspection: no global lock held during collection",
+    "Code inspection: cons cells handled as 2-word tag-identified values (per B-006 R3 breadcrumb)"
+  ]
+}

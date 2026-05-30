@@ -1,18 +1,33 @@
 {
   "id": "B-016",
   "cluster": "beamr",
-  "title": "Implement interpreter — binary construction and matching opcodes",
-  "depends_on": ["B-010", "B-006", "B-013"],
+  "title": "Implement interpreter \u2014 binary construction and matching opcodes",
+  "depends_on": [
+    "B-010",
+    "B-006",
+    "B-013",
+    "B-021"
+  ],
   "blocked_by": [],
-  "checklist": ["C92", "C93", "C94", "C95", "C96", "C97"],
-  "stories": ["S1", "S20"],
-  "purpose": "Gleam's string type is a binary. Every string literal, every string operation, and every binary protocol handler compiles to binary construction and matching instructions. These are among the trickiest BEAM opcodes — the encoding uses bit-level addressing and match contexts that track position through a binary. Without them, the interpreter cannot handle any Gleam code that touches strings or binary data.",
+  "checklist": [
+    "C92",
+    "C93",
+    "C94",
+    "C95",
+    "C96",
+    "C97"
+  ],
+  "stories": [
+    "S1",
+    "S20"
+  ],
+  "purpose": "Gleam's string type is a binary. Every string literal, every string operation, and every binary protocol handler compiles to binary construction and matching instructions. These are among the trickiest BEAM opcodes \u2014 the encoding uses bit-level addressing and match contexts that track position through a binary. Without them, the interpreter cannot handle any Gleam code that touches strings or binary data.",
   "task": "Implement binary construction and matching opcodes in crates/beamr/src/interpreter/opcodes.rs. Binary construction: bs_init2 initializes a binary builder on the heap, bs_put_integer and bs_put_binary append segments. Binary matching: bs_start_match2 creates a match context from a binary term, bs_get_integer2 and bs_get_binary2 extract segments advancing the position, bs_match_string matches a literal byte sequence, bs_test_tail2 verifies no remaining bytes. All operations work through a BinaryBuilder and MatchContext that track bit-level position.",
   "requirements": [
     {
       "id": "R1",
-      "title": "Binary builder initialization — bs_init2",
-      "spec": "WHEN the interpreter executes bs_init2 THE SYSTEM SHALL allocate a binary construction context on the process heap with the specified size hint. The context SHALL track: write position (in bits), allocated capacity, and a pointer to the data region. IF heap space is insufficient THE SYSTEM SHALL trigger GC via the fail mechanism. It SHALL NOT pre-fill the buffer — only allocate.",
+      "title": "Binary builder initialization \u2014 bs_init2",
+      "spec": "WHEN the interpreter executes bs_init2 THE SYSTEM SHALL allocate a binary construction context on the process heap with the specified size hint. The context SHALL track: write position (in bits), allocated capacity, and a pointer to the data region. IF heap space is insufficient THE SYSTEM SHALL trigger GC via the fail mechanism. It SHALL NOT pre-fill the buffer \u2014 only allocate.",
       "acceptance": [
         "bs_init2 with size 10 allocates a binary builder on the heap",
         "The builder starts with write position 0",
@@ -20,14 +35,18 @@
         "Insufficient heap space branches to fail label (GC opportunity)"
       ],
       "files": {
-        "modify": ["crates/beamr/src/interpreter/opcodes.rs"]
+        "modify": [
+          "crates/beamr/src/interpreter/opcodes/binary.rs"
+        ]
       },
-      "checklist": ["C92"],
+      "checklist": [
+        "C92"
+      ],
       "stories": []
     },
     {
       "id": "R2",
-      "title": "Binary segment appending — bs_put_integer, bs_put_binary",
+      "title": "Binary segment appending \u2014 bs_put_integer, bs_put_binary",
       "spec": "WHEN the interpreter executes bs_put_integer THE SYSTEM SHALL append an integer value as a binary segment with the specified bit size and endianness. bs_put_binary SHALL append a binary term's bytes to the builder. Both SHALL advance the write position. IF the segment doesn't fit THE SYSTEM SHALL raise a badarg. It SHALL NOT allow writing past the allocated capacity.",
       "acceptance": [
         "bs_put_integer with value 65, size 8, big-endian appends byte 0x41",
@@ -36,29 +55,37 @@
         "Writing past capacity raises badarg"
       ],
       "files": {
-        "modify": ["crates/beamr/src/interpreter/opcodes.rs"]
+        "modify": [
+          "crates/beamr/src/interpreter/opcodes/binary.rs"
+        ]
       },
-      "checklist": ["C93"],
+      "checklist": [
+        "C93"
+      ],
       "stories": []
     },
     {
       "id": "R3",
-      "title": "Match context initialization — bs_start_match2",
-      "spec": "WHEN the interpreter executes bs_start_match2 THE SYSTEM SHALL create a match context from a binary term, storing: a pointer to the binary data, the total bit size, and the current read position (initially 0). The match context SHALL be stored in a register. IF the operand is not a binary THE SYSTEM SHALL branch to the fail label. It SHALL NOT copy the binary data — the match context references the original.",
+      "title": "Match context initialization \u2014 bs_start_match2",
+      "spec": "WHEN the interpreter executes bs_start_match2 THE SYSTEM SHALL create a match context from a binary term, storing: a pointer to the binary data, the total bit size, and the current read position (initially 0). The match context SHALL be stored in a register. IF the operand is not a binary THE SYSTEM SHALL branch to the fail label. It SHALL NOT copy the binary data \u2014 the match context references the original.",
       "acceptance": [
         "bs_start_match2 on a 5-byte binary creates a context with position 0 and size 40 bits",
         "bs_start_match2 on a non-binary term branches to fail label",
         "The match context references the original binary data (no copy)"
       ],
       "files": {
-        "modify": ["crates/beamr/src/interpreter/opcodes.rs"]
+        "modify": [
+          "crates/beamr/src/interpreter/opcodes/binary.rs"
+        ]
       },
-      "checklist": ["C94"],
+      "checklist": [
+        "C94"
+      ],
       "stories": []
     },
     {
       "id": "R4",
-      "title": "Segment extraction — bs_get_integer2, bs_get_binary2",
+      "title": "Segment extraction \u2014 bs_get_integer2, bs_get_binary2",
       "spec": "WHEN the interpreter executes bs_get_integer2 THE SYSTEM SHALL extract an integer from the match context with the specified bit size and endianness, advancing the position. bs_get_binary2 SHALL extract a sub-binary. IF there are not enough bits remaining THE SYSTEM SHALL branch to the fail label. It SHALL NOT modify the source binary.",
       "acceptance": [
         "bs_get_integer2 with size 8 from context at position 0 of [0x41, 0x42] returns 65 (0x41)",
@@ -67,14 +94,20 @@
         "Extracting past the end of the binary branches to fail label"
       ],
       "files": {
-        "modify": ["crates/beamr/src/interpreter/opcodes.rs"]
+        "modify": [
+          "crates/beamr/src/interpreter/opcodes/binary.rs"
+        ]
       },
-      "checklist": ["C95"],
-      "stories": ["S1"]
+      "checklist": [
+        "C95"
+      ],
+      "stories": [
+        "S1"
+      ]
     },
     {
       "id": "R5",
-      "title": "Literal matching and tail check — bs_match_string, bs_test_tail2",
+      "title": "Literal matching and tail check \u2014 bs_match_string, bs_test_tail2",
       "spec": "WHEN the interpreter executes bs_match_string THE SYSTEM SHALL compare the next N bytes in the match context against a literal byte sequence and branch to the fail label if they don't match, advancing the position if they do. bs_test_tail2 SHALL verify that exactly N bits remain in the context (typically 0 for exhaustive matching). It SHALL NOT advance the position on a failed match.",
       "acceptance": [
         "bs_match_string matching 'he' against 'hello' at position 0 succeeds and advances by 16 bits",
@@ -83,9 +116,14 @@
         "bs_test_tail2 with 0 bits but data remaining branches to fail label"
       ],
       "files": {
-        "modify": ["crates/beamr/src/interpreter/opcodes.rs"]
+        "modify": [
+          "crates/beamr/src/interpreter/opcodes/binary.rs"
+        ]
       },
-      "checklist": ["C96", "C97"],
+      "checklist": [
+        "C96",
+        "C97"
+      ],
       "stories": []
     },
     {
@@ -99,17 +137,24 @@
         "cargo test -p beamr interpreter passes with all tests green"
       ],
       "files": {
-        "modify": ["crates/beamr/src/interpreter/opcodes.rs"]
+        "modify": [
+          "crates/beamr/src/interpreter/opcodes/binary.rs"
+        ]
       },
-      "checklist": ["C92", "C94"],
-      "stories": ["S20"]
+      "checklist": [
+        "C92",
+        "C94"
+      ],
+      "stories": [
+        "S20"
+      ]
     }
   ],
   "boundaries": [
-    "SHALL NOT implement bit-level operations beyond byte boundaries — Gate 1 needs byte-aligned binaries only",
-    "SHALL NOT implement binary comprehensions — not used by Gleam's core patterns",
-    "SHALL NOT implement sub-binary sharing or reference-counted binaries — all binaries are heap-copied for now (optimization deferred)",
-    "SHALL NOT implement utf8/utf16/utf32 segment types — byte segments only for Gate 1"
+    "SHALL NOT implement bit-level operations beyond byte boundaries \u2014 Gate 1 needs byte-aligned binaries only",
+    "SHALL NOT implement binary comprehensions \u2014 not used by Gleam's core patterns",
+    "SHALL NOT implement sub-binary sharing or reference-counted binaries \u2014 all binaries are heap-copied for now (optimization deferred)",
+    "SHALL NOT implement utf8/utf16/utf32 segment types \u2014 byte segments only for Gate 1"
   ],
   "verification": [
     "cargo check --workspace passes",
