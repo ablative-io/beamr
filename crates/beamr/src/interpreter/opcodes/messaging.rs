@@ -84,9 +84,13 @@ pub fn wait_timeout(
 ) -> Result<InstructionOutcome, ExecError> {
     let continuation = label_position(module, fail)?;
     let milliseconds = timeout_milliseconds(process, timeout)?;
-    process.set_code_position(Some(continuation));
+    let timeout_position = continuation;
+    process.set_code_position(Some(CodePosition {
+        module: module.name,
+        instruction_pointer: next_instruction_pointer(continuation.instruction_pointer)?,
+    }));
     process.set_receive_timeout(Some(ReceiveTimeout {
-        timeout_position: continuation,
+        timeout_position,
         milliseconds,
     }));
     transition_to_waiting(process)?;
@@ -216,6 +220,12 @@ fn label_position(module: &Module, label: &Operand) -> Result<CodePosition, Exec
         module: module.name,
         instruction_pointer: core::label_ip(module, core::operand_label(label)?)?,
     })
+}
+
+fn next_instruction_pointer(instruction_pointer: usize) -> Result<usize, ExecError> {
+    instruction_pointer
+        .checked_add(1)
+        .ok_or(ExecError::InvalidOperand("instruction pointer"))
 }
 
 fn transition_to_waiting(process: &mut Process) -> Result<(), ExecError> {
@@ -490,7 +500,7 @@ mod tests {
 
     #[test]
     fn dispatch_wait_timeout_records_deadline_and_timeout_cleans_receive_state() {
-        let code = module(vec![
+        let timeout_code = module(vec![
             Instruction::WaitTimeout {
                 fail: Operand::Label(10),
                 timeout: Operand::Unsigned(100),
@@ -498,11 +508,24 @@ mod tests {
             Instruction::Label { label: 10 },
             Instruction::Timeout,
             Instruction::Return,
+            Instruction::Label { label: 20 },
+            Instruction::Return,
         ]);
         let mut process = Process::new(1, 32);
 
-        assert_eq!(run(&mut process, &code), Ok(ExecutionResult::Waiting));
+        assert_eq!(
+            run(&mut process, &timeout_code),
+            Ok(ExecutionResult::Waiting)
+        );
         assert_eq!(process.status(), ProcessStatus::Waiting);
+        assert_eq!(
+            process.code_position(),
+            Some(CodePosition {
+                module: Atom::OK,
+                instruction_pointer: 2,
+            }),
+            "a message wakeup resumes at the normal continuation after the wait timeout label"
+        );
         assert_eq!(
             process.receive_timeout(),
             Some(ReceiveTimeout {
@@ -523,10 +546,33 @@ mod tests {
                 .map(|timeout| timeout.timeout_position),
         );
         assert_eq!(
-            run(&mut process, &code),
+            run(&mut process, &timeout_code),
             Ok(ExecutionResult::Exited(ExitReason::Normal))
         );
         assert_eq!(process.receive_timeout(), None);
+
+        let message_code = module(vec![
+            Instruction::WaitTimeout {
+                fail: Operand::Label(20),
+                timeout: Operand::Unsigned(100),
+            },
+            Instruction::Return,
+            Instruction::Label { label: 20 },
+            Instruction::Timeout,
+            Instruction::Return,
+        ]);
+        let mut process = Process::new(2, 32);
+        assert_eq!(
+            run(&mut process, &message_code),
+            Ok(ExecutionResult::Waiting)
+        );
+        process
+            .transition_to(ProcessStatus::Running)
+            .expect("message arrival requeues process");
+        assert_eq!(
+            run(&mut process, &message_code),
+            Ok(ExecutionResult::Exited(ExitReason::Normal))
+        );
     }
 
     #[test]
