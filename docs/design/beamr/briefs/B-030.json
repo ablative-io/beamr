@@ -1,0 +1,58 @@
+{
+  "id": "B-030",
+  "cluster": "beamr",
+  "title": "gleam_erlang_ffi — selector system",
+  "depends_on": ["B-024", "B-028b"],
+  "blocked_by": [],
+  "checklist": ["C83", "C127", "C150"],
+  "stories": ["S5", "S7"],
+  "purpose": "gleam_erlang's process module wraps selective receive with a typed selector abstraction. This is the foundation of gleam_otp's actor message loop.",
+  "task": "Implement selector system as native Rust BIFs under gleam_erlang_ffi MFAs.",
+  "boundaries": [
+    "SHALL NOT implement non-selector gleam_erlang_ffi functions (B-031)",
+    "SHALL NOT implement ETS or persistent_term",
+    "SHALL NOT modify the mailbox implementation"
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "new_selector/0 and basic structure",
+      "spec": "new_selector/0 returns empty list. Selector is a list of {Tag, Handler} tuples.",
+      "acceptance": ["new_selector() returns NIL", "Selector is a standard BEAM list"],
+      "files": {
+        "create": ["crates/beamr/src/native/selector_ffi.rs"],
+        "modify": ["crates/beamr/src/native/mod.rs"]
+      },
+      "checklist": ["C150"], "stories": ["S5"]
+    },
+    {
+      "id": "R2",
+      "title": "insert/map/merge/remove selector handlers",
+      "spec": "insert_selector_handler/3 prepends entry, map_selector/2 wraps handlers, merge_selector/2 concatenates, remove_selector_handler/2 removes by tag.",
+      "acceptance": [
+        "insert adds handler", "map transforms outputs",
+        "merge combines selectors", "remove removes by tag",
+        "Operations compose correctly"
+      ],
+      "files": { "modify": ["crates/beamr/src/native/selector_ffi.rs"] },
+      "checklist": ["C150"], "stories": ["S5"]
+    },
+    {
+      "id": "R3",
+      "title": "select/1 and select/2",
+      "spec": "select/1 scans mailbox against selector handlers. First match consumes message and returns handler result. No match suspends. select/2 adds timeout.",
+      "acceptance": [
+        "Matching message returns handler result",
+        "No match suspends process",
+        "Timeout returns {error, nil}",
+        "Non-matching messages stay in mailbox",
+        "First matching handler wins"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/native/selector_ffi.rs"],
+        "create": ["crates/beamr/src/native/select.rs"]
+      },
+      "checklist": ["C83", "C127"], "stories": ["S5", "S7"]
+    }
+  ]
+}

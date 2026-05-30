@@ -1,0 +1,61 @@
+{
+  "id": "B-032",
+  "cluster": "beamr",
+  "title": "gleam_otp supervisor support — gleam_otp_external + end-to-end test",
+  "depends_on": ["B-030", "B-031"],
+  "blocked_by": [],
+  "checklist": ["C150"],
+  "stories": ["S6", "S8"],
+  "purpose": "Implement gleam_otp_external stubs, fill remaining BIF gaps, and prove supervision works end-to-end with a Gleam supervisor + worker test.",
+  "task": "Stub gleam_otp_external, fill BIF gaps, write end-to-end supervisor test.",
+  "boundaries": [
+    "SHALL NOT implement full OTP supervisor module",
+    "SHALL NOT implement OTP application controllers",
+    "SHALL NOT implement hot code upgrade"
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "gleam_otp_external stubs",
+      "spec": "application_stopped/0 returns ok. supervisor:start_link/2 returns {ok, self()}.",
+      "acceptance": [
+        "application_stopped() returns ok",
+        "supervisor:start_link/2 returns {ok, Pid}",
+        "No unresolved imports for gleam_otp modules"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/native/otp_stubs.rs"],
+        "modify": ["crates/beamr/src/native/mod.rs", "crates/beamr-cli/src/main.rs"]
+      },
+      "checklist": ["C150"], "stories": ["S8"]
+    },
+    {
+      "id": "R2",
+      "title": "Remaining BIF gaps",
+      "spec": "Implement erlang:++/2, length/1, pid_to_list/1, get/0, and any other BIFs discovered during integration.",
+      "acceptance": [
+        "All gleam_otp BIFs execute correctly",
+        "No unresolved imports",
+        "Tests cover each new BIF"
+      ],
+      "files": { "modify": ["crates/beamr/src/native/gate3_bifs/mod.rs"] },
+      "checklist": ["C150"], "stories": ["S8"]
+    },
+    {
+      "id": "R3",
+      "title": "End-to-end supervisor integration test",
+      "spec": "Compile a Gleam supervisor+worker, load all modules, start supervisor, verify worker runs, crash worker, verify restart.",
+      "acceptance": [
+        "Supervisor starts successfully",
+        "Worker processes messages",
+        "Crash triggers restart",
+        "Restarted worker handles messages",
+        "Runs on beamr scheduler"
+      ],
+      "files": {
+        "create": ["crates/beamr/tests/supervisor_e2e.rs", "crates/beamr/tests/fixtures/otp_e2e/"]
+      },
+      "checklist": ["C150"], "stories": ["S6"]
+    }
+  ]
+}

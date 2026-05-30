@@ -1,0 +1,42 @@
+{
+  "id": "B-031",
+  "cluster": "beamr",
+  "title": "gleam_erlang_ffi — process utilities",
+  "depends_on": ["B-027", "B-030"],
+  "blocked_by": [],
+  "checklist": ["C150"],
+  "stories": ["S2", "S6"],
+  "purpose": "gleam_erlang_ffi process utilities are thin wrappers around existing BIFs. Implement as native Rust under gleam_erlang_ffi MFAs.",
+  "task": "Implement trap_exits, link, demonitor, sleep, flush_messages, register/unregister_process, process_named, pid_from_dynamic.",
+  "boundaries": [
+    "SHALL NOT implement application_start",
+    "SHALL NOT implement node/cluster operations",
+    "SHALL NOT implement OS environment functions"
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Process flag and link wrappers",
+      "spec": "trap_exits/1, link/1, demonitor/1 delegate to existing facilities.",
+      "acceptance": ["trap_exits enables trap_exit", "link establishes link", "demonitor removes monitor", "All return nil"],
+      "files": { "modify": ["crates/beamr/src/native/selector_ffi.rs"] },
+      "checklist": ["C150"], "stories": ["S6"]
+    },
+    {
+      "id": "R2",
+      "title": "Sleep, flush, and registry wrappers",
+      "spec": "sleep/1, sleep_forever/0, flush_messages/0, register_process/2, unregister_process/1, process_named/1.",
+      "acceptance": ["sleep suspends", "flush clears mailbox", "register/unregister manage names", "process_named returns result tuple"],
+      "files": { "modify": ["crates/beamr/src/native/selector_ffi.rs"] },
+      "checklist": ["C150"], "stories": ["S2"]
+    },
+    {
+      "id": "R3",
+      "title": "pid_from_dynamic/1 and registration",
+      "spec": "pid_from_dynamic checks term type. All functions registered under gleam_erlang_ffi.",
+      "acceptance": ["pid_from_dynamic(Pid) returns {ok, Pid}", "pid_from_dynamic(non_pid) returns error", "All registered", "Wired from CLI"],
+      "files": { "modify": ["crates/beamr/src/native/selector_ffi.rs", "crates/beamr-cli/src/main.rs"] },
+      "checklist": ["C150"], "stories": ["S2"]
+    }
+  ]
+}
