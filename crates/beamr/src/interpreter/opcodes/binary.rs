@@ -76,6 +76,16 @@ fn bs_start_match(
     let Some(binary) = Binary::new(source) else {
         return jump_label(module, fail);
     };
+    let total_bits = binary
+        .len()
+        .checked_mul(u8::BITS as usize)
+        .ok_or(ExecError::Badarg)?;
+    if process.heap().available() < MATCH_CONTEXT_WORDS {
+        return Err(ExecError::GcNeeded {
+            requested: MATCH_CONTEXT_WORDS,
+            available: process.heap().available(),
+        });
+    }
 
     let ptr = process
         .heap_mut()
@@ -84,7 +94,7 @@ fn bs_start_match(
     let heap = heap_slice(ptr, MATCH_CONTEXT_WORDS);
     heap[0] = boxed_header(BoxedTag::MatchContext, MATCH_CONTEXT_WORDS - 1);
     heap[1] = 0;
-    heap[2] = (binary.len() * u8::BITS as usize) as u64;
+    heap[2] = total_bits as u64;
     heap[3] = source.raw();
     core::write_term(process, destination, Term::boxed_ptr(heap.as_ptr()))?;
     Ok(InstructionOutcome::Continue)
@@ -138,7 +148,9 @@ fn bs_get_binary(
     }
 
     let bytes = context.slice(size_bits).ok_or(ExecError::Badarg)?;
-    let words = 2 + packed_word_count(bytes.len());
+    let words = 2_usize
+        .checked_add(packed_word_count(bytes.len()))
+        .ok_or(ExecError::Badarg)?;
     if process.heap().available() < words {
         return Err(ExecError::GcNeeded {
             requested: words,
@@ -251,7 +263,10 @@ pub(crate) fn bs_put_binary(
     let source = core::read_term(process, source)?;
     let binary = Binary::new(source).ok_or(ExecError::Badarg)?;
     let bytes = binary.as_bytes();
-    let size_bits = bytes.len() * u8::BITS as usize;
+    let size_bits = bytes
+        .len()
+        .checked_mul(u8::BITS as usize)
+        .ok_or(ExecError::Badarg)?;
     let builder = BinaryBuilder::new(builder).ok_or(ExecError::Badarg)?;
     let start = builder.write_position_bits();
     if !start.is_multiple_of(u8::BITS as usize) || !builder.can_append(size_bits) {
@@ -272,7 +287,15 @@ pub(crate) fn finalize_builder(process: &mut Process, builder: Term) -> Result<T
     }
     let byte_len = builder.write_position_bits() / u8::BITS as usize;
     let bytes = builder.bytes(byte_len).ok_or(ExecError::Badarg)?;
-    let words = 2 + packed_word_count(byte_len);
+    let words = 2_usize
+        .checked_add(packed_word_count(byte_len))
+        .ok_or(ExecError::Badarg)?;
+    if process.heap().available() < words {
+        return Err(ExecError::GcNeeded {
+            requested: words,
+            available: process.heap().available(),
+        });
+    }
     let ptr = process.heap_mut().alloc(words).map_err(ExecError::from)?;
     let heap = heap_slice(ptr, words);
     write_binary(heap, bytes).ok_or(ExecError::Badarg)
@@ -349,10 +372,12 @@ fn segment_bits(size: &Operand, unit: &Operand) -> Result<usize, ExecError> {
 }
 
 fn encode_integer(value: i64, byte_count: usize, endian: Endian) -> Result<Vec<u8>, ExecError> {
-    if byte_count > std::mem::size_of::<i64>() {
+    if byte_count == 0 || byte_count > std::mem::size_of::<i64>() {
         return Err(ExecError::Badarg);
     }
-    let bits = byte_count * u8::BITS as usize;
+    let bits = byte_count
+        .checked_mul(u8::BITS as usize)
+        .ok_or(ExecError::Badarg)?;
     if bits < i64::BITS as usize && (value < 0 || (value as u64) >= (1_u64 << bits)) {
         return Err(ExecError::Badarg);
     }

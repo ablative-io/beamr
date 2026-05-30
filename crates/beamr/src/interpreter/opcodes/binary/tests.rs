@@ -85,6 +85,13 @@ fn interpreter_binary_builder_appends_integer_and_binary_segments() {
         &Operand::Atom(None),
     )
     .expect("put integer");
+    assert_eq!(
+        BinaryBuilder::new(builder)
+            .expect("builder context")
+            .bytes(1)
+            .expect("first byte"),
+        &[0x41]
+    );
     let source = binary_term(&mut process, &[66, 67]);
     process.set_x_reg(1, source);
     bs_put_binary(&mut process, builder, &Operand::X(1)).expect("put binary");
@@ -134,7 +141,7 @@ fn interpreter_binary_builder_rejects_writes_past_capacity() {
 fn interpreter_binary_match_extracts_fields_and_tail() {
     let mut process = Process::new(1, 64);
     let module = module(vec![Instruction::Label { label: 9 }]);
-    let source = binary_term(&mut process, &[65, 66, 67, 68]);
+    let source = binary_term(&mut process, &[65, 66, 67, 68, 69]);
     process.set_x_reg(0, source);
 
     binary_op(
@@ -150,11 +157,14 @@ fn interpreter_binary_match_extracts_fields_and_tail() {
             .position_bits(),
         0
     );
+    let context = MatchContext::new(process.x_reg(1)).expect("match context");
+    assert_eq!(context.total_bits(), 40);
     assert_eq!(
-        MatchContext::new(process.x_reg(1))
-            .expect("match context")
-            .total_bits(),
-        32
+        context.source().expect("source binary").as_bytes().as_ptr(),
+        Binary::new(source)
+            .expect("original binary")
+            .as_bytes()
+            .as_ptr()
     );
 
     get_integer_to_x(&mut process, &module, 2).expect("get first integer");
@@ -166,7 +176,7 @@ fn interpreter_binary_match_extracts_fields_and_tail() {
         &[
             Operand::Label(9),
             Operand::X(1),
-            Operand::Unsigned(16),
+            Operand::Unsigned(24),
             Operand::Unsigned(1),
             Operand::Atom(None),
             Operand::X(4),
@@ -178,11 +188,11 @@ fn interpreter_binary_match_extracts_fields_and_tail() {
     assert_eq!(process.x_reg(3).as_small_int(), Some(66));
     assert_eq!(
         Binary::new(process.x_reg(4)).expect("rest").as_bytes(),
-        &[67, 68]
+        &[67, 68, 69]
     );
     assert_eq!(
         Binary::new(process.x_reg(0)).expect("source").as_bytes(),
-        &[65, 66, 67, 68]
+        &[65, 66, 67, 68, 69]
     );
     assert_eq!(
         binary_op(

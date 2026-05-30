@@ -38,7 +38,8 @@ impl BinaryBuilder {
     pub(crate) fn can_append(self, bits: usize) -> bool {
         self.write_position_bits()
             .checked_add(bits)
-            .is_some_and(|end| end <= self.capacity_bytes() * u8::BITS as usize)
+            .zip(self.capacity_bytes().checked_mul(u8::BITS as usize))
+            .is_some_and(|(end, capacity_bits)| end <= capacity_bits)
     }
 
     pub(crate) fn write_bytes(self, start: usize, bytes: &[u8]) {
@@ -112,7 +113,7 @@ impl MatchContext {
         bytes.get(start..end)
     }
 
-    fn source(self) -> Option<Binary> {
+    pub(crate) fn source(self) -> Option<Binary> {
         Binary::new(Term::from_raw(read_word(self.ptr, 3)))
     }
 }
