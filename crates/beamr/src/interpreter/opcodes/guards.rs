@@ -10,6 +10,7 @@ use crate::loader::decode::{BifOp, ComparisonOp, TypeTestOp};
 use crate::module::{Module, ResolvedImportTarget};
 use crate::native::ProcessContext;
 use crate::process::{CodePosition, Process};
+use crate::scheduler::dirty::{DirtyCall, DirtyContinuation};
 use crate::term::boxed::{Closure, Cons, Float, Map, Reference, Tuple};
 use crate::term::{Term, binary::Binary, compare};
 
@@ -149,6 +150,17 @@ pub fn bif(
     let mut args = Vec::with_capacity(parsed.args.len());
     for arg in parsed.args {
         args.push(core::read_term(process, arg)?);
+    }
+
+    if entry.is_dirty {
+        return Ok(InstructionOutcome::DirtyCall(DirtyCall::new(
+            entry,
+            args,
+            DirtyContinuation::Bif {
+                destination: parsed.destination.clone(),
+                fail_ip: core::label_ip(module, core::operand_label(parsed.fail)?)?,
+            },
+        )));
     }
 
     let mut context = ProcessContext::new();

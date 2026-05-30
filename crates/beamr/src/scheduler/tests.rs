@@ -38,6 +38,7 @@ fn scheduler_creates_requested_thread_count_and_names() {
     let registry = Arc::new(ModuleRegistry::new());
     let scheduler = Scheduler::new(
         SchedulerConfig {
+            dirty_thread_count: Some(1),
             thread_count: Some(4),
         },
         registry,
@@ -75,6 +76,7 @@ fn shutdown_is_idempotent() {
     let registry = Arc::new(ModuleRegistry::new());
     let scheduler = Scheduler::new(
         SchedulerConfig {
+            dirty_thread_count: Some(1),
             thread_count: Some(2),
         },
         registry,
@@ -94,6 +96,7 @@ fn single_process_runs_to_completion_and_is_removed() {
     let module = registry.insert(module);
     let scheduler = Scheduler::new(
         SchedulerConfig {
+            dirty_thread_count: Some(1),
             thread_count: Some(1),
         },
         Arc::clone(&registry),
@@ -127,6 +130,7 @@ fn exported_spawn_starts_at_entry_function_with_args() {
     registry.insert(module);
     let scheduler = Scheduler::new(
         SchedulerConfig {
+            dirty_thread_count: Some(1),
             thread_count: Some(1),
         },
         Arc::clone(&registry),
@@ -163,6 +167,7 @@ fn yielded_process_is_rescheduled() {
     let module = registry.insert(module);
     let scheduler = Scheduler::new(
         SchedulerConfig {
+            dirty_thread_count: Some(1),
             thread_count: Some(1),
         },
         Arc::clone(&registry),
@@ -184,6 +189,7 @@ fn multiple_processes_fairly_complete() {
     let module = registry.insert(test_module(module_name, vec![Instruction::Return]));
     let scheduler = Scheduler::new(
         SchedulerConfig {
+            dirty_thread_count: Some(1),
             thread_count: Some(2),
         },
         Arc::clone(&registry),
@@ -204,6 +210,7 @@ fn mailbox_send_wakes_waiting_process_event_driven() {
     let registry = Arc::new(ModuleRegistry::new());
     let scheduler = Scheduler::new(
         SchedulerConfig {
+            dirty_thread_count: Some(1),
             thread_count: Some(1),
         },
         registry,
@@ -259,6 +266,7 @@ fn idle_threads_park_instead_of_spinning() {
     let registry = Arc::new(ModuleRegistry::new());
     let scheduler = Scheduler::new(
         SchedulerConfig {
+            dirty_thread_count: Some(1),
             thread_count: Some(2),
         },
         registry,

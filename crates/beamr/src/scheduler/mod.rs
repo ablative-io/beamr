@@ -12,21 +12,22 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
-use crossbeam_deque::Stealer;
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 
 use crate::atom::Atom;
 use crate::error::ExecError;
+use crate::interpreter::opcodes::core;
 use crate::interpreter::{self, ExecutionResult};
 use crate::loader::Instruction;
 use crate::module::{Module, ModuleRegistry};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::registry::ProcessTable;
 use crate::process::{CodePosition, ExitReason, Process, ProcessStatus};
+use crate::scheduler::dirty::{DirtyCallResult, DirtyContinuation, DirtyJob, DirtyPool};
 use crate::term::Term;
 
-use run_queue::RunQueue;
+use run_queue::{ProcessPriority, RunQueue, RunQueueStealers};
 
 /// Default number of reductions per scheduler time slice.
 pub const DEFAULT_REDUCTION_BUDGET: u32 = crate::process::DEFAULT_REDUCTION_BUDGET;
@@ -36,6 +37,8 @@ pub const DEFAULT_REDUCTION_BUDGET: u32 = crate::process::DEFAULT_REDUCTION_BUDG
 pub struct SchedulerConfig {
     /// Number of scheduler threads. Defaults to `available_parallelism()`.
     pub thread_count: Option<usize>,
+    /// Number of dirty scheduler threads. Defaults to `available_parallelism()`.
+    pub dirty_thread_count: Option<usize>,
 }
 
 struct SharedState {
@@ -48,6 +51,7 @@ struct SharedState {
     wait_set: Mutex<WaitSet>,
     wake_condvar: Condvar,
     process_bodies: DashMap<u64, Mutex<Option<ScheduledProcess>>>,
+    dirty_pool: DirtyPool,
     #[cfg(test)]
     idle_parks: AtomicUsize,
 }
@@ -63,6 +67,7 @@ struct SpawnRequest {
     module: Atom,
     instruction_pointer: usize,
     args: Vec<Term>,
+    priority: ProcessPriority,
 }
 
 struct ScheduledProcess(Process);
@@ -90,6 +95,7 @@ impl Scheduler {
         module_registry: Arc<ModuleRegistry>,
     ) -> Result<Self, String> {
         let thread_count = configured_thread_count(config.thread_count);
+        let dirty_pool = DirtyPool::new(configured_thread_count(config.dirty_thread_count))?;
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
@@ -100,6 +106,7 @@ impl Scheduler {
             wait_set: Mutex::new(WaitSet::default()),
             wake_condvar: Condvar::new(),
             process_bodies: DashMap::new(),
+            dirty_pool,
             #[cfg(test)]
             idle_parks: AtomicUsize::new(0),
         });
@@ -108,7 +115,7 @@ impl Scheduler {
             .map(|_| Arc::new(SegQueue::new()))
             .collect();
         let barrier = Arc::new(std::sync::Barrier::new(thread_count + 1));
-        let stealers_ready: Arc<Mutex<Option<Vec<Stealer<u64>>>>> = Arc::new(Mutex::new(None));
+        let stealers_ready: Arc<Mutex<Option<Vec<RunQueueStealers>>>> = Arc::new(Mutex::new(None));
         let mut stealer_receivers = Vec::with_capacity(thread_count);
         let mut threads = Vec::with_capacity(thread_count);
         let mut worker_names = Vec::with_capacity(thread_count);
@@ -175,7 +182,29 @@ impl Scheduler {
             .module_registry
             .lookup_mfa(entry_module, entry_function, arity)?;
         let instruction_pointer = label_ip(&entry.module, entry.label)?;
-        Ok(self.enqueue_spawn(entry.module.name, instruction_pointer, args))
+        Ok(self.enqueue_spawn(
+            entry.module.name,
+            instruction_pointer,
+            args,
+            ProcessPriority::Normal,
+        ))
+    }
+
+    /// Spawn a process at an exported module/function/arity entrypoint with priority.
+    pub fn spawn_with_priority(
+        &self,
+        entry_module: Atom,
+        entry_function: Atom,
+        args: Vec<Term>,
+        priority: ProcessPriority,
+    ) -> Result<u64, ExecError> {
+        let arity = u8::try_from(args.len()).map_err(|_| ExecError::Badarg)?;
+        let entry = self
+            .shared
+            .module_registry
+            .lookup_mfa(entry_module, entry_function, arity)?;
+        let instruction_pointer = label_ip(&entry.module, entry.label)?;
+        Ok(self.enqueue_spawn(entry.module.name, instruction_pointer, args, priority))
     }
 
     /// Spawn a process at the beginning of a module.
@@ -183,10 +212,25 @@ impl Scheduler {
     /// This compatibility helper is used by existing loader/interpreter tests
     /// that build synthetic modules without export tables.
     pub fn spawn_process(&self, module: &Arc<Module>) -> u64 {
-        self.enqueue_spawn(module.name, 0, Vec::new())
+        self.spawn_process_with_priority(module, ProcessPriority::Normal)
     }
 
-    fn enqueue_spawn(&self, module: Atom, instruction_pointer: usize, args: Vec<Term>) -> u64 {
+    /// Spawn a process at the beginning of a module with priority.
+    pub fn spawn_process_with_priority(
+        &self,
+        module: &Arc<Module>,
+        priority: ProcessPriority,
+    ) -> u64 {
+        self.enqueue_spawn(module.name, 0, Vec::new(), priority)
+    }
+
+    fn enqueue_spawn(
+        &self,
+        module: Atom,
+        instruction_pointer: usize,
+        args: Vec<Term>,
+        priority: ProcessPriority,
+    ) -> u64 {
         let pid = self.shared.next_pid.fetch_add(1, Ordering::Relaxed);
         self.shared.process_table.spawn_with_pid(pid);
         let index =
@@ -196,6 +240,7 @@ impl Scheduler {
             module,
             instruction_pointer,
             args,
+            priority,
         });
         self.shared.wake_condvar.notify_all();
         pid
@@ -272,7 +317,7 @@ fn scheduler_loop(
     shared: &SharedState,
     queue: &RunQueue,
     my_index: usize,
-    stealers: &[Stealer<u64>],
+    stealers: &[RunQueueStealers],
     inject: &SegQueue<SpawnRequest>,
 ) {
     let mut last_victim = my_index;
@@ -283,6 +328,7 @@ fn scheduler_loop(
         }
 
         drain_injected(shared, queue, inject);
+        drain_dirty_completions(shared, queue);
         drain_woken(shared, queue, my_index);
 
         let pid = match queue.pop() {
@@ -314,16 +360,59 @@ fn scheduler_loop(
 fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<SpawnRequest>) {
     while let Some(request) = inject.pop() {
         let pid = request.pid;
+        let priority = request.priority;
         let process = build_process(request);
         shared
             .process_bodies
             .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
-        queue.push(pid);
+        queue.push_with_priority(pid, priority);
+    }
+}
+
+fn drain_dirty_completions(shared: &SharedState, queue: &RunQueue) {
+    for completion in shared.dirty_pool.drain_completions() {
+        let pid = completion.pid;
+        if shared.process_table.get(pid).is_none() {
+            continue;
+        }
+        let (mut process, result) = completion.into_parts();
+        if apply_dirty_result(&mut process, result).is_ok() {
+            let priority = process.priority();
+            store_runnable_process(shared, process);
+            queue.push_with_priority(pid, priority);
+        } else {
+            let _removed = shared.process_table.remove(pid);
+            let _removed_body = shared.process_bodies.remove(&pid);
+        }
+    }
+}
+
+fn apply_dirty_result(process: &mut Process, result: DirtyCallResult) -> Result<(), ExecError> {
+    match (result.result, result.continuation) {
+        (Ok(term), DirtyContinuation::X0) => {
+            process.set_x_reg(0, term);
+            Ok(())
+        }
+        (Ok(term), DirtyContinuation::Bif { destination, .. }) => {
+            core::write_term(process, &destination, term)
+        }
+        (Err(_), DirtyContinuation::Bif { fail_ip, .. }) => {
+            let Some(position) = process.code_position() else {
+                return Err(ExecError::InvalidOperand("dirty bif code position"));
+            };
+            process.set_code_position(Some(CodePosition {
+                module: position.module,
+                instruction_pointer: fail_ip,
+            }));
+            Ok(())
+        }
+        (Err(_), DirtyContinuation::X0) => Err(ExecError::Badarg),
     }
 }
 
 fn build_process(request: SpawnRequest) -> Process {
     let mut process = Process::new(request.pid, DEFAULT_HEAP_SIZE);
+    process.set_priority(request.priority);
     process.set_code_position(Some(CodePosition {
         module: request.module,
         instruction_pointer: request.instruction_pointer,
@@ -339,6 +428,7 @@ fn build_process(request: SpawnRequest) -> Process {
 enum SliceOutcome {
     Requeue(Process),
     Wait(Process),
+    Dirty(Process, crate::scheduler::dirty::DirtyCall),
     Exited,
 }
 
@@ -354,13 +444,17 @@ fn run_process(shared: &SharedState, queue: &RunQueue, pid: u64, my_index: usize
     let outcome = execute_slice(shared, &mut process);
     match outcome {
         SliceOutcome::Requeue(process) => {
+            let priority = process.priority();
             store_runnable_process(shared, process);
-            queue.push(pid);
+            queue.push_with_priority(pid, priority);
         }
         SliceOutcome::Wait(process) => {
             store_runnable_process(shared, process);
             let mut wait_set = lock_or_recover(&shared.wait_set);
             wait_set.waiting.insert(pid, my_index);
+        }
+        SliceOutcome::Dirty(process, call) => {
+            shared.dirty_pool.submit(DirtyJob::new(process, call));
         }
         SliceOutcome::Exited => {
             let _removed = shared.process_table.remove(pid);
@@ -385,6 +479,17 @@ fn store_runnable_process(shared: &SharedState, process: Process) {
             .process_bodies
             .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
     }
+}
+
+fn queued_process_priority(shared: &SharedState, pid: u64) -> ProcessPriority {
+    shared
+        .process_bodies
+        .get(&pid)
+        .and_then(|entry| {
+            let slot = lock_or_recover(&entry);
+            slot.as_ref().map(|scheduled| scheduled.0.priority())
+        })
+        .unwrap_or_default()
 }
 
 fn execute_slice(shared: &SharedState, process: &mut Process) -> SliceOutcome {
@@ -416,6 +521,10 @@ fn execute_slice(shared: &SharedState, process: &mut Process) -> SliceOutcome {
         Ok(ExecutionResult::Waiting) => {
             let _transitioned = process.transition_to(ProcessStatus::Waiting);
             SliceOutcome::Wait(take_process(process))
+        }
+        Ok(ExecutionResult::DirtyCall(call)) => {
+            let _transitioned = process.transition_to(ProcessStatus::Yielded);
+            SliceOutcome::Dirty(take_process(process), call)
         }
         Ok(ExecutionResult::Exited(reason)) => exit_process(process, reason),
         Err(_error) => exit_process(process, ExitReason::Error),
@@ -456,7 +565,8 @@ fn drain_woken(shared: &SharedState, queue: &RunQueue, my_index: usize) {
 
     for pid in woken {
         if shared.process_table.get(pid).is_some() {
-            queue.push(pid);
+            let priority = queued_process_priority(shared, pid);
+            queue.push_with_priority(pid, priority);
         }
     }
 }

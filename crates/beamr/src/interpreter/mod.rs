@@ -9,20 +9,36 @@ pub mod pattern;
 use crate::error::ExecError;
 use crate::module::{Module, ModuleRegistry};
 use crate::process::{CodePosition, ExitReason, Process};
+use crate::scheduler::dirty::DirtyCall;
 
 /// Result of running a process until it yields, waits, exits, or faults.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum ExecutionResult {
     /// Reduction budget exhausted; scheduler should reset and requeue.
     Yielded,
     /// Process blocked waiting for a receive-family opcode.
     Waiting,
+    /// Process entered the dirty scheduler for a native call.
+    DirtyCall(DirtyCall),
     /// Process terminated with an exit reason.
     Exited(ExitReason),
 }
 
+impl PartialEq for ExecutionResult {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Yielded, Self::Yielded) | (Self::Waiting, Self::Waiting) => true,
+            (Self::Exited(left), Self::Exited(right)) => left == right,
+            (Self::DirtyCall(_), Self::DirtyCall(_)) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for ExecutionResult {}
+
 /// Control-flow outcome from one atomically completed instruction.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum InstructionOutcome {
     /// Continue at the sequential next instruction.
     Continue,
@@ -32,9 +48,27 @@ pub enum InstructionOutcome {
     Yield,
     /// Block waiting for a message.
     Waiting,
+    /// Dispatch a dirty native call to the dirty scheduler.
+    DirtyCall(DirtyCall),
     /// Exit the process.
     Exit(ExitReason),
 }
+
+impl PartialEq for InstructionOutcome {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Continue, Self::Continue)
+            | (Self::Yield, Self::Yield)
+            | (Self::Waiting, Self::Waiting) => true,
+            (Self::Jump(left), Self::Jump(right)) => left == right,
+            (Self::Exit(left), Self::Exit(right)) => left == right,
+            (Self::DirtyCall(_), Self::DirtyCall(_)) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for InstructionOutcome {}
 
 /// Execute `process` against `module` until a scheduler boundary or exit.
 pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, ExecError> {
@@ -88,6 +122,13 @@ fn run_loop(
             InstructionOutcome::Jump(target) => process.set_code_position(Some(target)),
             InstructionOutcome::Yield => return Ok(ExecutionResult::Yielded),
             InstructionOutcome::Waiting => return Ok(ExecutionResult::Waiting),
+            InstructionOutcome::DirtyCall(call) => {
+                process.set_code_position(Some(CodePosition {
+                    module: module.name,
+                    instruction_pointer: next_ip,
+                }));
+                return Ok(ExecutionResult::DirtyCall(call));
+            }
             InstructionOutcome::Exit(reason) => {
                 process.set_code_position(None);
                 return Ok(ExecutionResult::Exited(reason));

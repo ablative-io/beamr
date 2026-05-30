@@ -17,6 +17,7 @@ use crate::atom::Atom;
 use crate::mailbox::Mailbox;
 use crate::process::heap::Heap;
 use crate::process::stack::Stack;
+use crate::scheduler::run_queue::ProcessPriority;
 use crate::term::Term;
 
 /// Default number of reductions assigned to a fresh process time slice.
@@ -151,6 +152,7 @@ impl std::error::Error for ProcessError {}
 pub struct Process {
     pid: u64,
     status: ProcessStatus,
+    priority: ProcessPriority,
     heap: Heap,
     stack: Stack,
     mailbox: Mailbox,
@@ -177,6 +179,7 @@ impl Process {
         Self {
             pid,
             status: ProcessStatus::New,
+            priority: ProcessPriority::Normal,
             heap: Heap::new(heap_size),
             stack: Stack::new(),
             mailbox: Mailbox::new(),
@@ -206,6 +209,17 @@ impl Process {
     #[must_use]
     pub const fn status(&self) -> ProcessStatus {
         self.status
+    }
+
+    /// Current scheduler priority.
+    #[must_use]
+    pub const fn priority(&self) -> ProcessPriority {
+        self.priority
+    }
+
+    /// Set the scheduler priority used on the next enqueue/requeue.
+    pub const fn set_priority(&mut self, priority: ProcessPriority) {
+        self.priority = priority;
     }
 
     /// Transition this process to `next` if the lifecycle graph allows it.

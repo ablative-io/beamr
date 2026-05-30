@@ -7,6 +7,7 @@ use crate::loader::decode::compact::Operand;
 use crate::module::{Module, ResolvedImportTarget};
 use crate::native::ProcessContext;
 use crate::process::{CodePosition, ExitReason, Process};
+use crate::scheduler::dirty::{DirtyCall, DirtyContinuation};
 use crate::term::Term;
 use crate::term::boxed::{Tuple, write_cons, write_tuple};
 
@@ -239,10 +240,17 @@ fn call_external_target(
             for register in 0..arity {
                 args.push(process.x_reg(register));
             }
+            charge_reduction(process)?;
+            if entry.is_dirty {
+                return Ok(InstructionOutcome::DirtyCall(DirtyCall::new(
+                    entry,
+                    args,
+                    DirtyContinuation::X0,
+                )));
+            }
             let mut context = ProcessContext::new();
             let result = (entry.function)(&args, &mut context).map_err(|_| ExecError::Badarg)?;
             process.set_x_reg(0, result);
-            charge_reduction(process)?;
             Ok(InstructionOutcome::Continue)
         }
     }

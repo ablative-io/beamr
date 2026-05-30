@@ -4,6 +4,7 @@
 //! live in [`core`]; later opcode families can add sibling modules without
 //! changing the execution loop.
 
+pub mod binary;
 pub mod core;
 pub mod guards;
 pub mod messaging;
@@ -124,6 +125,7 @@ pub fn dispatch_with_receiver(
         }
         Instruction::Jump { target } => guards::jump(module, target),
         Instruction::Bif { op, operands } => guards::bif(process, module, *op, operands),
+        Instruction::BinaryOp { op, operands } => binary::binary_op(process, module, *op, operands),
         Instruction::Send => messaging::send(process, receiver),
         Instruction::LoopRec { fail, destination } => {
             messaging::loop_rec(process, module, fail, destination)
