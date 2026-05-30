@@ -109,6 +109,7 @@ fn make_shared_state() -> Arc<SharedState> {
         wake_condvar: std::sync::Condvar::new(),
         process_bodies: DashMap::new(),
         exit_tombstones: DashMap::new(),
+        exit_results: DashMap::new(),
         link_set: std::sync::Mutex::new(LinkSet::new()),
         monitor_set: std::sync::Mutex::new(MonitorSet::new()),
         hook: crate::hook::Hook::new(),

@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::{env, fmt};
 
 use beamr::atom::{Atom, AtomTable};
 use beamr::error::{ExecError, LoadError};
-use beamr::interpreter::{self, ExecutionResult};
-use beamr::loader::{Instruction, UnresolvedImportReport, load_module};
-use beamr::module::{Module, ModuleRegistry};
+use beamr::loader::{UnresolvedImportReport, load_module};
+use beamr::module::ModuleRegistry;
 use beamr::native::{
     BifRegistryImpl, NativeRegistrationError, bifs::register_gate1_bifs,
     process_bifs::register_gate2_bifs,
@@ -16,9 +16,8 @@ use beamr::native::{
     gleam_ffi::register_gleam_ffi_bifs,
     otp_stubs::{register_otp_stubs, init_otp_atoms},
 };
-use beamr::process::heap::DEFAULT_HEAP_SIZE;
-use beamr::process::registry::ProcessTable;
-use beamr::process::{CodePosition, ExitReason, Process};
+use beamr::process::ExitReason;
+use beamr::scheduler::{Scheduler, SchedulerConfig};
 use beamr::term::{Tag, Term};
 
 const USAGE: &str = "Usage:\n  beamr <file.beam> [--entry module:function/arity] [--dir <path>]... [-- <arg>...]\n  beamr <file.beam> [module:function/arity] [--dir <path>]... [-- <arg>...]\n  beamr imports <file.beam>\n  beamr --help|-h\n  beamr --version|-V";
@@ -285,33 +284,25 @@ fn run_module(
     }
 
     let args = parse_runtime_args(runtime_args, &atom_table)?;
-    let code_pointer = module_registry
-        .lookup_mfa(module_atom, function_atom, arity)
-        .map_err(CliError::Exec)?;
-    let instruction_pointer =
-        label_ip(&code_pointer.module, code_pointer.label).map_err(CliError::Exec)?;
-    let process_table = ProcessTable::new();
-    let pid = process_table.spawn();
-    let mut process = Process::new(pid, DEFAULT_HEAP_SIZE);
-    process.set_code_position(Some(CodePosition {
-        module: code_pointer.module.name,
-        instruction_pointer,
-    }));
-    for (index, arg) in args.into_iter().enumerate() {
-        let register = u8::try_from(index).map_err(|_| CliError::Exec(ExecError::Badarg))?;
-        process.set_x_reg(register, arg);
-    }
+    let registry = Arc::new(module_registry);
+    let scheduler = Scheduler::new(
+        SchedulerConfig { thread_count: Some(1) },
+        Arc::clone(&registry),
+    )
+    .map_err(|msg| CliError::Exec(ExecError::InvalidOperand(Box::leak(msg.into_boxed_str()))))?;
 
-    match interpreter::run_with_registry(&mut process, &code_pointer.module, &module_registry)
-        .map_err(CliError::Exec)?
-    {
-        ExecutionResult::Exited(ExitReason::Normal) => Ok(CliSuccess::Stdout(format!(
+    let pid = scheduler
+        .spawn(module_atom, function_atom, args)
+        .map_err(CliError::Exec)?;
+    let (reason, result) = scheduler.run_until_exit(pid);
+    scheduler.shutdown();
+
+    match reason {
+        ExitReason::Normal => Ok(CliSuccess::Stdout(format!(
             "{}\n",
-            format_term(process.x_reg(0), &atom_table)
+            format_term(result, &atom_table)
         ))),
-        ExecutionResult::Exited(reason) => Err(CliError::ProcessExit(reason)),
-        ExecutionResult::Yielded => Err(CliError::ProcessDidNotComplete("yielded")),
-        ExecutionResult::Waiting => Err(CliError::ProcessDidNotComplete("waiting")),
+        other => Err(CliError::ProcessExit(other)),
     }
 }
 
@@ -401,14 +392,6 @@ fn parse_runtime_arg(arg: &str, atom_table: &AtomTable) -> Result<Term, CliError
         }
         Err(_) => Ok(Term::atom(atom_table.intern(arg))),
     }
-}
-
-fn label_ip(module: &Module, label: u32) -> Result<usize, ExecError> {
-    module
-        .code
-        .iter()
-        .position(|instruction| matches!(instruction, Instruction::Label { label: seen } if *seen == label))
-        .ok_or(ExecError::InvalidLabel { label })
 }
 
 fn format_import_report(report: &UnresolvedImportReport, atom_table: &AtomTable) -> String {

@@ -55,6 +55,7 @@ struct SharedState {
     wake_condvar: Condvar,
     process_bodies: DashMap<u64, Mutex<Option<ScheduledProcess>>>,
     exit_tombstones: DashMap<u64, ExitReason>,
+    exit_results: DashMap<u64, Term>,
     link_set: Mutex<LinkSet>,
     monitor_set: Mutex<MonitorSet>,
     hook: Hook,
@@ -109,6 +110,7 @@ impl Scheduler {
             wake_condvar: Condvar::new(),
             process_bodies: DashMap::new(),
             exit_tombstones: DashMap::new(),
+            exit_results: DashMap::new(),
             link_set: Mutex::new(LinkSet::new()),
             monitor_set: Mutex::new(MonitorSet::new()),
             hook: Hook::new(),
@@ -210,6 +212,24 @@ impl Scheduler {
         }
     }
 
+    /// Block until the given process exits, returning its exit reason and
+    /// the value in x(0) at the time of exit.
+    pub fn run_until_exit(&self, pid: u64) -> (ExitReason, Term) {
+        loop {
+            if let Some(entry) = self.shared.exit_tombstones.get(&pid) {
+                let reason = *entry;
+                let result = self.shared.exit_results
+                    .remove(&pid)
+                    .map(|(_, term)| term)
+                    .unwrap_or(Term::NIL);
+                return (reason, result);
+            }
+            let guard = lock_or_recover(&self.shared.wait_set);
+            let timeout = std::time::Duration::from_millis(10);
+            let _ = self.shared.wake_condvar.wait_timeout(guard, timeout);
+        }
+    }
+
     /// Access the live process table.
     #[must_use]
     pub fn process_table(&self) -> &ProcessTable { &self.shared.process_table }
@@ -293,7 +313,7 @@ enum SliceOutcome {
     Requeue(Process),
     Wait(Process),
     Suspended(Process),
-    Exited(ExitReason),
+    Exited(ExitReason, Term),
 }
 
 fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64, my_index: usize) {
@@ -316,7 +336,8 @@ fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64, my_index: 
             let mut ws = lock_or_recover(&shared.wait_set);
             ws.waiting.insert(pid, my_index);
         }
-        SliceOutcome::Exited(reason) => {
+        SliceOutcome::Exited(reason, result) => {
+            shared.exit_results.insert(pid, result);
             cleanup_exited_process(shared, pid, reason);
         }
     }
@@ -344,10 +365,10 @@ fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutco
         ProcessStatus::New | ProcessStatus::Yielded
             | ProcessStatus::Waiting | ProcessStatus::Suspended
     ) {
-        return SliceOutcome::Exited(exit_reason_from_status(process.status()));
+        return SliceOutcome::Exited(exit_reason_from_status(process.status()), process.x_reg(0));
     }
     if process.transition_to(ProcessStatus::Running).is_err() {
-        return SliceOutcome::Exited(exit_reason_from_status(process.status()));
+        return SliceOutcome::Exited(exit_reason_from_status(process.status()), process.x_reg(0));
     }
     process.reset_reductions(DEFAULT_REDUCTION_BUDGET);
     let module_atom = match process.code_position() {
@@ -384,8 +405,9 @@ fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutco
 }
 
 fn exit_process(process: &mut Process, reason: ExitReason) -> SliceOutcome {
+    let result = process.x_reg(0);
     process.terminate(reason);
-    SliceOutcome::Exited(reason)
+    SliceOutcome::Exited(reason, result)
 }
 
 fn exit_reason_from_status(status: ProcessStatus) -> ExitReason {
