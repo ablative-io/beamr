@@ -141,11 +141,22 @@ impl DirtyPool {
         for index in 0..thread_count {
             let state_for_thread = Arc::clone(&state);
             let name = format!("beamr-dirty-{index}");
-            let handle = std::thread::Builder::new()
+            match std::thread::Builder::new()
                 .name(name.clone())
                 .spawn(move || dirty_loop(&state_for_thread))
-                .map_err(|error| format!("failed to spawn {name}: {error}"))?;
-            threads.push(handle);
+            {
+                Ok(handle) => threads.push(handle),
+                Err(error) => {
+                    state.shutdown.store(true, Ordering::Release);
+                    state.wake.notify_all();
+                    for handle in threads {
+                        if let Err(payload) = handle.join() {
+                            std::panic::resume_unwind(payload);
+                        }
+                    }
+                    return Err(format!("failed to spawn {name}: {error}"));
+                }
+            }
         }
         Ok(Self {
             state,
