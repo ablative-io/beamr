@@ -246,6 +246,8 @@ fn select_pairs<'a>(
         .map(|chunk| Ok((&chunk[0], &chunk[1]))))
 }
 
+static BIF0_NO_FAIL: Operand = Operand::Label(0);
+
 struct ParsedBif<'a> {
     fail: &'a Operand,
     import: &'a Operand,
@@ -266,7 +268,21 @@ fn parse_bif_operands(op: BifOp, operands: &[Operand]) -> Result<ParsedBif<'_>, 
     let gc_len = 4 + arity;
 
     match op {
-        BifOp::Bif0 | BifOp::Bif1 | BifOp::Bif2 => {
+        BifOp::Bif0 => {
+            // bif0 has no fail label: [import, destination]
+            if operands.len() != 2 {
+                return Err(ExecError::InvalidOperand("bif0 operands"));
+            }
+            Ok(ParsedBif {
+                fail: &BIF0_NO_FAIL,
+                import: &operands[0],
+                args: &[],
+                destination: &operands[1],
+                heap_need: None,
+                expected_arity: 0,
+            })
+        }
+        BifOp::Bif1 | BifOp::Bif2 => {
             if operands.len() != non_gc_len {
                 return Err(ExecError::InvalidOperand("bif operands"));
             }
