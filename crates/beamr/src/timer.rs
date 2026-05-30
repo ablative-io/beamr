@@ -63,6 +63,7 @@ pub struct TimerWheel {
     entries: HashMap<TimerRef, TimerEntry>,
     next_ref: u64,
     start: Instant,
+    current_tick: u128,
 }
 
 impl TimerWheel {
@@ -82,6 +83,7 @@ impl TimerWheel {
             entries: HashMap::new(),
             next_ref: 1,
             start: Instant::now(),
+            current_tick: 0,
         }
     }
 
@@ -117,6 +119,7 @@ impl TimerWheel {
     ) -> TimerRef {
         if now < self.start {
             self.start = now;
+            self.current_tick = 0;
         }
         let expires_at = now.checked_add(delay).unwrap_or(now);
         let bucket = self.bucket_for(expires_at);
@@ -166,27 +169,14 @@ impl TimerWheel {
     /// Process timers expired at `now`.
     pub fn tick_at(&mut self, now: Instant) -> Vec<ExpiredTimer> {
         let mut expired = Vec::new();
-        for bucket_index in 0..self.buckets.len() {
-            let mut slot = 0;
-            while slot < self.buckets[bucket_index].len() {
-                let reference = self.buckets[bucket_index][slot];
-                let Some(entry) = self.entries.get(&reference) else {
-                    self.swap_remove_bucket_slot(bucket_index, slot);
-                    continue;
-                };
-                if entry.expires_at <= now {
-                    if let Some(entry) = self.remove_entry(reference) {
-                        expired.push(ExpiredTimer {
-                            reference,
-                            target_pid: entry.target_pid,
-                            message: entry.message,
-                            expires_at: entry.expires_at,
-                        });
-                    }
-                } else {
-                    slot += 1;
-                }
-            }
+        let target_tick = self.tick_for(now);
+        if target_tick < self.current_tick {
+            return expired;
+        }
+        while self.current_tick <= target_tick {
+            let bucket_index = (self.current_tick % self.buckets.len() as u128) as usize;
+            self.expire_bucket(bucket_index, now, &mut expired);
+            self.current_tick = self.current_tick.saturating_add(1);
         }
         expired
     }
@@ -216,8 +206,39 @@ impl TimerWheel {
     }
 
     fn bucket_for(&self, expires_at: Instant) -> usize {
-        let elapsed_ms = expires_at.saturating_duration_since(self.start).as_millis();
-        (elapsed_ms % self.buckets.len() as u128) as usize
+        (self.tick_for(expires_at) % self.buckets.len() as u128) as usize
+    }
+
+    fn tick_for(&self, instant: Instant) -> u128 {
+        instant.saturating_duration_since(self.start).as_millis()
+    }
+
+    fn expire_bucket(
+        &mut self,
+        bucket_index: usize,
+        now: Instant,
+        expired: &mut Vec<ExpiredTimer>,
+    ) {
+        let mut slot = 0;
+        while slot < self.buckets[bucket_index].len() {
+            let reference = self.buckets[bucket_index][slot];
+            let Some(entry) = self.entries.get(&reference) else {
+                self.swap_remove_bucket_slot(bucket_index, slot);
+                continue;
+            };
+            if entry.expires_at <= now {
+                if let Some(entry) = self.remove_entry(reference) {
+                    expired.push(ExpiredTimer {
+                        reference,
+                        target_pid: entry.target_pid,
+                        message: entry.message,
+                        expires_at: entry.expires_at,
+                    });
+                }
+            } else {
+                slot += 1;
+            }
+        }
     }
 
     fn remove_entry(&mut self, reference: TimerRef) -> Option<TimerEntry> {
@@ -264,7 +285,8 @@ mod tests {
     fn timer_schedule_and_tick_expire_due_timers() {
         let start = Instant::now();
         let mut wheel = TimerWheel::with_bucket_count(8);
-        let reference = wheel.schedule_at(start, Duration::from_millis(10), 12, Term::atom(Atom::OK));
+        let reference =
+            wheel.schedule_at(start, Duration::from_millis(10), 12, Term::atom(Atom::OK));
 
         assert!(wheel.tick_at(start + Duration::from_millis(9)).is_empty());
         let expired = wheel.tick_at(start + Duration::from_millis(10));
@@ -297,7 +319,10 @@ mod tests {
         let reference = wheel.schedule_at(start, Duration::from_millis(1), 1, Term::small_int(1));
 
         assert_eq!(wheel.tick_at(start + Duration::from_millis(1)).len(), 1);
-        assert_eq!(wheel.cancel_at(reference, start + Duration::from_millis(1)), None);
+        assert_eq!(
+            wheel.cancel_at(reference, start + Duration::from_millis(1)),
+            None
+        );
     }
 
     #[test]
@@ -307,7 +332,7 @@ mod tests {
         for index in 0..10_000 {
             wheel.schedule_at(
                 start,
-                Duration::from_millis((index % 100) as u64),
+                Duration::from_millis(index % 100),
                 index,
                 Term::small_int(index as i64),
             );
