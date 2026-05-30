@@ -1,0 +1,233 @@
+{
+  "id": "B-010",
+  "cluster": "beamr",
+  "title": "Implement process struct, heap, stack, and lifecycle",
+  "depends_on": [
+    "B-005",
+    "B-006"
+  ],
+  "blocked_by": [],
+  "checklist": [
+    "C49",
+    "C50",
+    "C51",
+    "C52",
+    "C53",
+    "C54",
+    "C55",
+    "C57"
+  ],
+  "stories": [
+    "S2",
+    "S12",
+    "S19"
+  ],
+  "purpose": "Processes are the unit of execution and isolation. Nothing runs without them \u2014 the scheduler needs something to schedule, the interpreter needs somewhere to store registers, and message passing needs independent address spaces. This brief delivers the Process struct (heap, stack, registers, status, reduction counter), the per-process heap allocator (bump allocator for young generation), the call stack (frames with return address, saved registers, Y-register slots), and the process lifecycle (new, running, waiting, exited). It does NOT deliver the scheduler or mailbox \u2014 those are separate briefs that build on top of this one.",
+  "task": "Implement the Process struct and related types in crates/beamr/src/process/. The Process owns a Heap (bump allocator over a Vec<u64>), a Stack (Vec<StackFrame> with Y-register storage), X-registers (fixed array of Term), a reduction counter, a status enum, a PID, and link/monitor sets (empty shells for now \u2014 supervision brief fills them). The Heap provides alloc(words) returning a pointer for boxed term construction. The Stack provides push_frame/pop_frame for call/return. Process::new(pid, heap_size) creates a fresh process. Process state transitions: New \u2192 Running \u2192 Yielded/Waiting/Exited.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Process struct definition",
+      "spec": "beamr::process SHALL define a Process struct containing: pid (u64), status (ProcessStatus enum), heap (Heap), stack (Stack), x_regs ([Term; 256] \u2014 X registers), y_regs accessible via current stack frame, reduction_counter (u32), current module + instruction pointer (code position), links (HashSet<u64> \u2014 PIDs), monitors (Vec<Monitor> \u2014 empty for now), trap_exit (bool). Process SHALL NOT be Send or Sync \u2014 it is owned by exactly one scheduler thread at a time.",
+      "acceptance": [
+        "Process is a public struct in beamr::process",
+        "Process::new(pid, heap_size) creates a process with the given PID and heap capacity",
+        "Process has 256 X registers initialized to Term::NIL",
+        "Process is NOT Send or Sync (compile error if moved across threads)",
+        "Process.pid returns the process ID",
+        "Process.status() returns ProcessStatus::New for a fresh process"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/process/mod.rs"
+        ]
+      },
+      "checklist": [
+        "C49",
+        "C50"
+      ],
+      "stories": [
+        "S2"
+      ]
+    },
+    {
+      "id": "R2",
+      "title": "ProcessStatus enum and transitions",
+      "spec": "beamr::process SHALL define a ProcessStatus enum with variants: New, Running, Yielded, Waiting, Exited(ExitReason). Transitions SHALL be enforced: New\u2192Running, Running\u2192Yielded, Running\u2192Waiting, Running\u2192Exited, Yielded\u2192Running, Waiting\u2192Running. Invalid transitions SHALL return an error. ExitReason SHALL be an enum: Normal, Kill, Error (placeholder \u2014 will carry Term when terms land).",
+      "acceptance": [
+        "ProcessStatus has variants: New, Running, Yielded, Waiting, Exited(ExitReason)",
+        "A fresh process starts as New",
+        "Transition New\u2192Running succeeds",
+        "Transition New\u2192Exited fails (must go through Running)",
+        "Transition Running\u2192Yielded succeeds",
+        "Transition Exited\u2192anything fails (terminal state)"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/process/mod.rs"
+        ]
+      },
+      "checklist": [
+        "C52"
+      ],
+      "stories": []
+    },
+    {
+      "id": "R3",
+      "title": "Per-process heap \u2014 bump allocator",
+      "spec": "beamr::process::heap SHALL define a Heap struct backed by a Vec<u64>. Heap::alloc(words: usize) SHALL return a *mut u64 pointing to the allocated region, advancing the bump pointer. WHEN the heap is full THE SYSTEM SHALL return Err(HeapFull) \u2014 the caller (interpreter) triggers GC. The heap SHALL track: capacity, used words, and high-water mark. Heap::new(capacity) creates a heap with the given word capacity. The heap SHALL NOT grow automatically \u2014 GC is responsible for managing space.",
+      "acceptance": [
+        "Heap::new(1024) creates a heap with capacity for 1024 words",
+        "Heap::alloc(3) returns a valid pointer and advances used by 3",
+        "Heap::alloc when full returns Err(HeapFull)",
+        "Heap::used() returns the number of words allocated",
+        "Heap::capacity() returns the total word capacity",
+        "Multiple alloc calls return non-overlapping regions"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/process/heap.rs"
+        ]
+      },
+      "checklist": [
+        "C50"
+      ],
+      "stories": [
+        "S19"
+      ]
+    },
+    {
+      "id": "R4",
+      "title": "Call stack with frames",
+      "spec": "beamr::process::stack SHALL define a Stack struct containing a Vec<StackFrame>. Each StackFrame stores: return module (Atom), return instruction pointer (usize), number of Y-register slots (u16), and the Y-register values (Vec<Term>). Stack::push_frame(module, ip, y_slots) creates a new frame. Stack::pop_frame() removes the top frame and returns the saved return point. Stack::current_frame() returns a reference to the top frame. Stack::y_reg(n) accesses the nth Y register in the current frame. Stack overflow (configurable limit, default 10_000 frames) SHALL return Err(StackOverflow).",
+      "acceptance": [
+        "Stack::new() creates an empty stack",
+        "push_frame + pop_frame round-trips the return address correctly",
+        "Y registers in a frame are initialized to Term::NIL",
+        "Writing y_reg(0) in frame N does not affect y_reg(0) in frame N-1",
+        "Pushing beyond the frame limit returns Err(StackOverflow)",
+        "pop_frame on an empty stack returns Err (not panic)"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/process/stack.rs"
+        ]
+      },
+      "checklist": [
+        "C54"
+      ],
+      "stories": []
+    },
+    {
+      "id": "R5",
+      "title": "X-register array",
+      "spec": "The Process SHALL provide X-register access via x_reg(n: u8) -> Term and set_x_reg(n: u8, value: Term). X registers are a flat [Term; 256] array on the Process struct. All 256 registers are initialized to Term::NIL on process creation. Out-of-bounds access is impossible because the index is u8 (max 255).",
+      "acceptance": [
+        "Process x_reg(0) returns Term::NIL on a fresh process",
+        "set_x_reg(0, term) followed by x_reg(0) returns that term",
+        "All 256 registers are independently addressable",
+        "Register operations do not allocate or panic"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/process/mod.rs"
+        ]
+      },
+      "checklist": [
+        "C53"
+      ],
+      "stories": []
+    },
+    {
+      "id": "R6",
+      "title": "Reduction counter",
+      "spec": "The Process SHALL have a reduction counter (u32) initialized to a configurable budget (default 4000). Process::decrement_reductions(n: u32) subtracts n from the counter. Process::reductions_exhausted() returns true when the counter reaches 0. Process::reset_reductions(budget: u32) resets the counter for the next time slice. The interpreter calls decrement on every call/return opcode.",
+      "acceptance": [
+        "A fresh process has reduction_counter == 4000 (default)",
+        "decrement_reductions(1) reduces counter by 1",
+        "reductions_exhausted() returns true when counter == 0",
+        "reset_reductions(4000) restores the counter",
+        "decrement_reductions saturates at 0 (does not wrap)"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/process/mod.rs"
+        ]
+      },
+      "checklist": [
+        "C49"
+      ],
+      "stories": [
+        "S12"
+      ]
+    },
+    {
+      "id": "R7",
+      "title": "Process table",
+      "spec": "beamr::process::registry SHALL define a ProcessTable that maps PID (u64) to process ownership handles. ProcessTable::spawn() assigns the next PID and returns it. ProcessTable::get(pid) returns a reference. The table SHALL support concurrent access from scheduler threads (it lives outside any single process). PID assignment SHALL be monotonically increasing and never reused within a single VM run. NOTE: C55 is split \u2014 this brief delivers heap deallocation and removal from process table on exit; exit signal propagation to linked processes is deferred to the supervision brief (B-020).",
+      "acceptance": [
+        "ProcessTable::new() creates an empty table",
+        "spawn() returns sequential PIDs starting from 0",
+        "get(pid) returns Some for a spawned process",
+        "get(nonexistent_pid) returns None",
+        "PIDs are never reused (two spawns produce different PIDs)"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/process/registry.rs"
+        ]
+      },
+      "checklist": [
+        "C51",
+        "C55",
+        "C57"
+      ],
+      "stories": []
+    },
+    {
+      "id": "R8",
+      "title": "Unit tests for process, heap, and stack",
+      "spec": "WHEN the process module is tested THE SYSTEM SHALL include tests for: process creation, status transitions (valid and invalid), heap allocation and exhaustion, stack push/pop/overflow, X-register access, reduction counter behaviour, and process table PID assignment.",
+      "acceptance": [
+        "cargo test -p beamr process passes with all tests green",
+        "Tests cover: fresh process state, valid transitions, invalid transitions, heap alloc round-trip, heap full error, stack push/pop, stack overflow, Y-register isolation, X-register access, reduction counting, PID assignment"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/process/mod.rs",
+          "crates/beamr/src/process/heap.rs",
+          "crates/beamr/src/process/stack.rs",
+          "crates/beamr/src/process/registry.rs"
+        ]
+      },
+      "checklist": [
+        "C49",
+        "C50",
+        "C51",
+        "C52",
+        "C53",
+        "C54",
+        "C55",
+        "C57"
+      ],
+      "stories": []
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement the scheduler or scheduling logic \u2014 the process yields, the scheduler decides what to do with it (scheduler brief scope)",
+    "SHALL NOT implement the mailbox \u2014 message storage and selective receive are a separate brief",
+    "SHALL NOT implement GC \u2014 the heap reports HeapFull, GC is triggered by the interpreter/scheduler",
+    "SHALL NOT implement process spawning from bytecode (spawn opcode) \u2014 that's interpreter + scheduler coordination",
+    "SHALL NOT implement link/monitor propagation logic \u2014 only the empty container sets on the Process struct",
+    "SHALL NOT implement process dictionary \u2014 out of scope per DESIGN.md non-goals"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo clippy --workspace -- -D warnings passes",
+    "cargo test -p beamr process passes with all tests green",
+    "Code inspection: Process is NOT Send or Sync",
+    "Code inspection: Heap does not grow (no Vec::push, no realloc on alloc)",
+    "Code inspection: no unwrap/panic outside #[cfg(test)]",
+    "Code inspection: stack pop on empty returns Err, not panic"
+  ]
+}
