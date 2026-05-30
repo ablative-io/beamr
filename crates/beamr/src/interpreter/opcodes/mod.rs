@@ -111,7 +111,9 @@ pub fn dispatch(
         Instruction::Bif { op, operands } => guards::bif(process, module, *op, operands),
         Instruction::MapOp { op, operands } => closures::map_op(process, module, *op, operands),
         Instruction::MakeFun { operands } => closures::make_fun(process, module, operands),
-        Instruction::CallFun { arity } => closures::call_fun(process, module, arity, next_ip),
+        Instruction::CallFun { arity } => {
+            closures::call_fun(process, module, registry, arity, next_ip)
+        }
         Instruction::Apply { arity } => {
             let registry = registry.ok_or(ExecError::InvalidOperand("apply registry"))?;
             closures::apply(process, registry, arity, next_ip, module.name)

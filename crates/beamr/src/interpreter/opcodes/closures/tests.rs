@@ -89,12 +89,52 @@ fn call_fun_restores_captured_variables_and_jumps_to_lambda_label() {
     process.set_x_reg(0, Term::small_int(11));
     process.set_x_reg(1, fun);
 
-    let outcome =
-        call_fun(&mut process, &module, &Operand::Unsigned(1), 99).expect("call_fun succeeds");
+    let outcome = call_fun(&mut process, &module, None, &Operand::Unsigned(1), 99)
+        .expect("call_fun succeeds");
 
     assert_eq!(jump_ip(outcome), 1);
     assert_eq!(process.x_reg(1), Term::small_int(7));
     assert_eq!(process.stack().len(), 1);
+}
+
+#[test]
+fn call_fun_resolves_closure_module_through_registry() {
+    let atoms = AtomTable::new();
+    let target_atom = atoms.intern("closure_target");
+    let caller_atom = atoms.intern("closure_caller");
+    let mut target = module(
+        target_atom,
+        vec![Instruction::Return, Instruction::Label { label: 10 }],
+    );
+    target.lambdas.push(LambdaEntry {
+        function: Atom::OK,
+        arity: 0,
+        label: 10,
+        num_free: 0,
+    });
+    let registry = ModuleRegistry::new();
+    let target = registry.insert(target);
+    let caller = module(caller_atom, Vec::new());
+    let mut process = Process::new(1, 16);
+    let ptr = process.heap_mut().alloc(5).expect("heap allocation");
+    let fun =
+        write_closure(core::heap_slice(ptr, 5), target.name, 0, 0, &[]).expect("closure write");
+    process.set_x_reg(0, fun);
+
+    let outcome = call_fun(
+        &mut process,
+        &caller,
+        Some(&registry),
+        &Operand::Unsigned(0),
+        99,
+    )
+    .expect("call_fun succeeds");
+
+    let InstructionOutcome::Jump(position) = outcome else {
+        panic!("expected jump, got {outcome:?}");
+    };
+    assert_eq!(position.module, target.name);
+    assert_eq!(position.instruction_pointer, 1);
 }
 
 #[test]
@@ -109,7 +149,7 @@ fn call_fun_reports_badfun_and_badarity() {
     let mut process = Process::new(1, 16);
     process.set_x_reg(1, Term::small_int(42));
     assert_eq!(
-        call_fun(&mut process, &module, &Operand::Unsigned(1), 1),
+        call_fun(&mut process, &module, None, &Operand::Unsigned(1), 1),
         Err(ExecError::Badfun {
             term: Term::small_int(42)
         })
@@ -121,7 +161,7 @@ fn call_fun_reports_badfun_and_badarity() {
     process.set_x_reg(0, Term::small_int(10));
     process.set_x_reg(1, fun);
     assert_eq!(
-        call_fun(&mut process, &module, &Operand::Unsigned(1), 1),
+        call_fun(&mut process, &module, None, &Operand::Unsigned(1), 1),
         Err(ExecError::Badarity {
             fun,
             args: vec![Term::small_int(10)],

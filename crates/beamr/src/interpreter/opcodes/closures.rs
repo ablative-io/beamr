@@ -51,6 +51,7 @@ pub fn make_fun(
 pub fn call_fun(
     process: &mut Process,
     module: &Module,
+    registry: Option<&ModuleRegistry>,
     arity: &Operand,
     return_ip: usize,
 ) -> Result<InstructionOutcome, ExecError> {
@@ -82,9 +83,26 @@ pub fn call_fun(
         process.set_x_reg(register, value);
     }
 
+    let target_module_name = closure
+        .module()
+        .ok_or(ExecError::InvalidOperand("closure module"))?;
+    let loaded_target_module = if target_module_name == module.name {
+        None
+    } else {
+        Some(
+            registry
+                .and_then(|registry| registry.lookup(target_module_name))
+                .ok_or(ExecError::Undef {
+                    module: target_module_name,
+                    function: Atom::UNDEFINED,
+                    arity,
+                })?,
+        )
+    };
+    let target_module = loaded_target_module.as_deref().unwrap_or(module);
     let function_index = usize::try_from(closure.function_index())
         .map_err(|_| ExecError::InvalidOperand("closure function index"))?;
-    let lambda = module
+    let lambda = target_module
         .lambdas
         .get(function_index)
         .ok_or(ExecError::InvalidOperand("closure function index"))?;
@@ -93,8 +111,8 @@ pub fn call_fun(
         .push_frame(module.name, return_ip, 0)
         .map_err(ExecError::from)?;
     let target = CodePosition {
-        module: closure.module().unwrap_or(module.name),
-        instruction_pointer: core::label_ip(module, lambda.label)?,
+        module: target_module_name,
+        instruction_pointer: core::label_ip(target_module, lambda.label)?,
     };
     core::jump_position_with_reduction(process, target)
 }
