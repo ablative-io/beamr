@@ -7,3 +7,10 @@ target/
 .claude/projects/
 .benchmark/
 .yggdrasil-worktrees/
+.norn/
+.run/
+
+# Sensitive — bob's team internal only, never push to shared repo
+docs/REBUILD-PLAYBOOK.md
+docs/architecture/00-weakspot-analysis.md
+docs/architecture/*-weakspot-*.md
