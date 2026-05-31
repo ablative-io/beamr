@@ -2,12 +2,14 @@ use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, ProcessContext};
 use crate::term::Term;
 use crate::term::binary::{self, Binary};
-use crate::term::boxed::write_cons;
+use crate::term::boxed::{Cons, Tuple, write_cons};
+use std::sync::Arc;
 
 use super::{
-    bif_characters_to_binary, bif_characters_to_list, bif_debug_options, bif_identity,
-    bif_logger_warning, register_stdlib_stubs,
+    bif_binary_part, bif_characters_to_binary, bif_characters_to_list, bif_debug_options,
+    bif_identity, bif_logger_warning, register_stdlib_stubs,
 };
+use super::{gleam_stdlib_ffi, string_bifs};
 
 fn context() -> ProcessContext {
     ProcessContext::new()
@@ -15,6 +17,28 @@ fn context() -> ProcessContext {
 
 fn badarg() -> Term {
     Term::atom(Atom::BADARG)
+}
+
+fn binary(bytes: &[u8]) -> Term {
+    let data_words = binary::packed_word_count(bytes.len());
+    let heap: &mut [u64] = Box::leak(vec![0u64; 2 + data_words].into_boxed_slice());
+    binary::write_binary(heap, bytes).expect("binary heap sized correctly")
+}
+
+fn assert_binary(term: Term, expected: &[u8]) {
+    let binary = Binary::new(term).expect("binary term");
+    assert_eq!(binary.as_bytes(), expected);
+}
+
+fn atom_context() -> ProcessContext {
+    let table = Arc::new(AtomTable::with_common_atoms());
+    table.intern("both");
+    table.intern("all");
+    table.intern("leading");
+    table.intern("trailing");
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(table));
+    ctx
 }
 
 // ---- gleam_stdlib:identity/1 ----
@@ -121,10 +145,7 @@ fn logger_warning_returns_ok_for_atom_format() {
 fn logger_warning_rejects_wrong_arity() {
     let mut ctx = context();
     assert_eq!(bif_logger_warning(&[], &mut ctx), Err(badarg()));
-    assert_eq!(
-        bif_logger_warning(&[Term::NIL], &mut ctx),
-        Err(badarg())
-    );
+    assert_eq!(bif_logger_warning(&[Term::NIL], &mut ctx), Err(badarg()));
 }
 
 // ---- unicode:characters_to_binary/1 ----
@@ -182,10 +203,7 @@ fn characters_to_binary_rejects_list_with_invalid_code_point() {
     // List containing an atom (not a valid code point).
     let mut cell = [0u64; 2];
     let list = write_cons(&mut cell, Term::atom(Atom::OK), Term::NIL).unwrap();
-    assert_eq!(
-        bif_characters_to_binary(&[list], &mut ctx),
-        Err(badarg())
-    );
+    assert_eq!(bif_characters_to_binary(&[list], &mut ctx), Err(badarg()));
 }
 
 // ---- unicode:characters_to_list/1 ----
@@ -244,6 +262,191 @@ fn characters_to_list_rejects_non_binary() {
 fn characters_to_list_rejects_wrong_arity() {
     let mut ctx = context();
     assert_eq!(bif_characters_to_list(&[], &mut ctx), Err(badarg()));
+}
+
+// ---- B-033 Gleam stdlib stubs ----
+
+#[test]
+fn gleam_stdlib_string_functions_handle_binary_cases() {
+    let mut ctx = context();
+    assert_binary(
+        gleam_stdlib_ffi::bif_string_replace(
+            &[binary(b"hello"), binary(b"l"), binary(b"L")],
+            &mut ctx,
+        )
+        .expect("replace"),
+        b"heLLo",
+    );
+    assert_eq!(
+        gleam_stdlib_ffi::bif_contains_string(&[binary(b"hello"), binary(b"ell")], &mut ctx),
+        Ok(Term::atom(Atom::TRUE))
+    );
+    assert_eq!(
+        gleam_stdlib_ffi::bif_string_starts_with(&[binary(b"hello"), binary(b"he")], &mut ctx),
+        Ok(Term::atom(Atom::TRUE))
+    );
+    assert_eq!(
+        gleam_stdlib_ffi::bif_string_ends_with(&[binary(b"hello"), binary(b"lo")], &mut ctx),
+        Ok(Term::atom(Atom::TRUE))
+    );
+    assert_binary(
+        gleam_stdlib_ffi::bif_slice(
+            &[binary(b"hello"), Term::small_int(1), Term::small_int(3)],
+            &mut ctx,
+        )
+        .expect("slice"),
+        b"ell",
+    );
+    assert_binary(
+        gleam_stdlib_ffi::bif_crop_string(&[binary(b"hello"), Term::small_int(2)], &mut ctx)
+            .expect("crop"),
+        b"he",
+    );
+}
+
+#[test]
+fn gleam_stdlib_other_functions_handle_binary_cases() {
+    let mut ctx = atom_context();
+    assert_eq!(
+        gleam_stdlib_ffi::bif_less_than(&[Term::small_int(1), Term::small_int(2)], &mut ctx),
+        Ok(Term::atom(Atom::TRUE))
+    );
+    assert_binary(
+        gleam_stdlib_ffi::bif_iodata_append(&[binary(b"hello "), binary(b"world")], &mut ctx)
+            .expect("append"),
+        b"hello world",
+    );
+    assert_binary(
+        gleam_stdlib_ffi::bif_utf_codepoint_list_to_string(
+            &[write_cons(
+                Box::leak(Box::new([0u64; 2])),
+                Term::small_int(65),
+                Term::NIL,
+            )
+            .expect("list")],
+            &mut ctx,
+        )
+        .expect("codepoints"),
+        b"A",
+    );
+    assert_binary(
+        gleam_stdlib_ffi::bif_inspect(&[binary(b"hello")], &mut ctx).expect("inspect"),
+        b"hello",
+    );
+
+    let prefix =
+        gleam_stdlib_ffi::bif_string_remove_prefix(&[binary(b"foobar"), binary(b"foo")], &mut ctx)
+            .expect("prefix");
+    let tuple = Tuple::new(prefix).expect("ok tuple");
+    assert_eq!(tuple.get(0), Some(Term::atom(Atom::OK)));
+    assert_binary(tuple.get(1).expect("rest"), b"bar");
+
+    let pop = gleam_stdlib_ffi::bif_string_pop_grapheme(&[binary(b"hi")], &mut ctx).expect("pop");
+    let tuple = Tuple::new(pop).expect("pop tuple");
+    assert_eq!(tuple.get(0), Some(Term::atom(Atom::OK)));
+    assert_binary(tuple.get(1).expect("head"), b"h");
+    assert_binary(tuple.get(2).expect("rest"), b"i");
+
+    assert_eq!(
+        gleam_stdlib_ffi::bif_string_remove_suffix(&[binary(b"foobar"), binary(b"baz")], &mut ctx),
+        Ok(Term::atom(Atom::ERROR))
+    );
+    assert_eq!(
+        gleam_stdlib_ffi::bif_contains_string(&[Term::small_int(1), binary(b"x")], &mut ctx),
+        Err(badarg())
+    );
+}
+
+// ---- B-033 string module stubs ----
+
+#[test]
+fn string_bifs_handle_binary_cases() {
+    let mut ctx = atom_context();
+    assert_eq!(
+        string_bifs::bif_length(&[binary(b"hello")], &mut ctx),
+        Ok(Term::small_int(5))
+    );
+    assert_binary(
+        string_bifs::bif_reverse(&[binary(b"abc")], &mut ctx).expect("reverse"),
+        b"cba",
+    );
+    assert_binary(
+        string_bifs::bif_lowercase(&[binary(b"HELLO")], &mut ctx).expect("lowercase"),
+        b"hello",
+    );
+    assert_binary(
+        string_bifs::bif_uppercase(&[binary(b"hello")], &mut ctx).expect("uppercase"),
+        b"HELLO",
+    );
+    assert_binary(
+        string_bifs::bif_trim(
+            &[
+                binary(b" hi "),
+                Term::atom(ctx.atom_table().unwrap().lookup("both").unwrap()),
+            ],
+            &mut ctx,
+        )
+        .expect("trim"),
+        b"hi",
+    );
+    assert_eq!(
+        string_bifs::bif_equal(&[binary(b"a"), binary(b"a")], &mut ctx),
+        Ok(Term::atom(Atom::TRUE))
+    );
+    assert_eq!(
+        string_bifs::bif_is_empty(&[binary(b"")], &mut ctx),
+        Ok(Term::atom(Atom::TRUE))
+    );
+}
+
+#[test]
+fn string_split_returns_list_of_binaries_and_rejects_invalid_input() {
+    let mut ctx = atom_context();
+    let all = Term::atom(ctx.atom_table().unwrap().lookup("all").unwrap());
+    let result =
+        string_bifs::bif_split(&[binary(b"a-b-c"), binary(b"-"), all], &mut ctx).expect("split");
+    let first = Cons::new(result).expect("first");
+    assert_binary(first.head(), b"a");
+    let second = Cons::new(first.tail()).expect("second");
+    assert_binary(second.head(), b"b");
+    let third = Cons::new(second.tail()).expect("third");
+    assert_binary(third.head(), b"c");
+    assert_eq!(third.tail(), Term::NIL);
+
+    assert_eq!(
+        string_bifs::bif_split(&[binary(b"abc"), binary(b""), all], &mut ctx),
+        Err(badarg())
+    );
+}
+
+// ---- B-033 binary module stubs ----
+
+#[test]
+fn binary_part_extracts_slices_and_rejects_out_of_bounds() {
+    let mut ctx = context();
+    assert_binary(
+        bif_binary_part(
+            &[binary(b"hello"), Term::small_int(1), Term::small_int(3)],
+            &mut ctx,
+        )
+        .expect("part"),
+        b"ell",
+    );
+    assert_binary(
+        bif_binary_part(
+            &[binary(b"hello"), Term::small_int(5), Term::small_int(0)],
+            &mut ctx,
+        )
+        .expect("empty at end"),
+        b"",
+    );
+    assert_eq!(
+        bif_binary_part(
+            &[binary(b"hello"), Term::small_int(4), Term::small_int(2)],
+            &mut ctx
+        ),
+        Err(badarg())
+    );
 }
 
 // ---- Registration ----

@@ -6,8 +6,9 @@ use crate::native::supervision::{
 };
 use crate::native::{BifRegistryImpl, ProcessContext};
 use crate::process::ExitReason;
-use crate::term::boxed::{write_closure, write_tuple};
 use crate::term::Term;
+use crate::term::binary;
+use crate::term::boxed::{write_closure, write_tuple};
 use std::sync::{Arc, Mutex};
 
 fn context() -> ProcessContext {
@@ -23,7 +24,11 @@ fn badarg() -> Term {
 #[test]
 fn element_returns_first_element() {
     let mut ctx = context();
-    let elements = [Term::small_int(10), Term::small_int(20), Term::small_int(30)];
+    let elements = [
+        Term::small_int(10),
+        Term::small_int(20),
+        Term::small_int(30),
+    ];
     let mut heap = [0u64; 4];
     let tuple = write_tuple(&mut heap, &elements).expect("tuple");
     assert_eq!(
@@ -35,7 +40,11 @@ fn element_returns_first_element() {
 #[test]
 fn element_returns_last_element() {
     let mut ctx = context();
-    let elements = [Term::small_int(10), Term::small_int(20), Term::small_int(30)];
+    let elements = [
+        Term::small_int(10),
+        Term::small_int(20),
+        Term::small_int(30),
+    ];
     let mut heap = [0u64; 4];
     let tuple = write_tuple(&mut heap, &elements).expect("tuple");
     assert_eq!(
@@ -100,10 +109,7 @@ fn element_badarg_non_integer_index() {
 #[test]
 fn element_badarg_wrong_arity() {
     let mut ctx = context();
-    assert_eq!(
-        bif_element(&[Term::small_int(1)], &mut ctx),
-        Err(badarg())
-    );
+    assert_eq!(bif_element(&[Term::small_int(1)], &mut ctx), Err(badarg()));
 }
 
 // ---- erlang:send/2 ----
@@ -112,10 +118,7 @@ fn element_badarg_wrong_arity() {
 fn send_returns_message() {
     let mut ctx = context();
     let message = Term::atom(Atom::OK);
-    assert_eq!(
-        bif_send(&[Term::pid(1), message], &mut ctx),
-        Ok(message)
-    );
+    assert_eq!(bif_send(&[Term::pid(1), message], &mut ctx), Ok(message));
 }
 
 #[test]
@@ -190,10 +193,7 @@ fn make_ref_returns_unique_values() {
 #[test]
 fn make_ref_badarg_wrong_arity() {
     let mut ctx = context();
-    assert_eq!(
-        bif_make_ref(&[Term::small_int(1)], &mut ctx),
-        Err(badarg())
-    );
+    assert_eq!(bif_make_ref(&[Term::small_int(1)], &mut ctx), Err(badarg()));
 }
 
 // ---- erlang:is_process_alive/1 ----
@@ -285,10 +285,7 @@ fn spawn_1_badarg_with_captures() {
 #[test]
 fn spawn_1_badarg_non_closure() {
     let (_, mut ctx) = spawn_ctx(42, 1);
-    assert_eq!(
-        bif_spawn_1(&[Term::small_int(42)], &mut ctx),
-        Err(badarg())
-    );
+    assert_eq!(bif_spawn_1(&[Term::small_int(42)], &mut ctx), Err(badarg()));
 }
 
 #[test]
@@ -328,6 +325,42 @@ fn spawn_link_1_badarg_without_pid() {
     assert_eq!(bif_spawn_link_1(&[fun], &mut ctx), Err(badarg()));
 }
 
+// ---- erlang:byte_size/1 and erlang:iolist_size/1 ----
+
+#[test]
+fn byte_size_returns_binary_length() {
+    let mut ctx = context();
+    let mut heap = [0u64; 3];
+    let bin = binary::write_binary(&mut heap, b"hello").expect("binary");
+    assert_eq!(bif_byte_size(&[bin], &mut ctx), Ok(Term::small_int(5)));
+}
+
+#[test]
+fn byte_size_rejects_non_binary() {
+    let mut ctx = context();
+    assert_eq!(
+        bif_byte_size(&[Term::small_int(5)], &mut ctx),
+        Err(badarg())
+    );
+}
+
+#[test]
+fn iolist_size_returns_binary_length() {
+    let mut ctx = context();
+    let mut heap = [0u64; 3];
+    let bin = binary::write_binary(&mut heap, b"hello").expect("binary");
+    assert_eq!(bif_iolist_size(&[bin], &mut ctx), Ok(Term::small_int(5)));
+}
+
+#[test]
+fn iolist_size_rejects_complex_iolist_stub() {
+    let mut ctx = context();
+    let mut cell = [0u64; 2];
+    let list =
+        crate::term::boxed::write_cons(&mut cell, Term::small_int(65), Term::NIL).expect("list");
+    assert_eq!(bif_iolist_size(&[list], &mut ctx), Err(badarg()));
+}
+
 // ---- Registration ----
 
 #[test]
@@ -356,6 +389,9 @@ fn register_gate3_bifs_registers_all() {
         ("whereis", 1),
         // demonitor/2 (R3)
         ("demonitor", 2),
+        // Gleam stdlib support (B-033)
+        ("byte_size", 1),
+        ("iolist_size", 1),
     ] {
         assert!(
             reg.lookup(erlang, at.intern(name), arity).is_some(),
@@ -493,11 +529,7 @@ impl MockSupervisionFacility {
 }
 
 impl SupervisionFacility for MockSupervisionFacility {
-    fn monitor(
-        &self,
-        caller_pid: u64,
-        target_pid: u64,
-    ) -> Result<MonitorResult, SupervisionError> {
+    fn monitor(&self, caller_pid: u64, target_pid: u64) -> Result<MonitorResult, SupervisionError> {
         if !self.target_alive {
             return Err(SupervisionError::NoProc);
         }
@@ -531,14 +563,13 @@ impl SupervisionFacility for MockSupervisionFacility {
         target_pid: u64,
         reason: ExitReason,
     ) -> Result<(), SupervisionError> {
-        self.records
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(SupervisionRecord::ExitSignal {
+        self.records.lock().unwrap_or_else(|e| e.into_inner()).push(
+            SupervisionRecord::ExitSignal {
                 caller_pid,
                 target_pid,
                 reason,
-            });
+            },
+        );
         Ok(())
     }
 }

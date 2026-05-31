@@ -35,9 +35,10 @@ pub struct LineInfo {
     pub line: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     Integer(i64),
+    Float(f64),
     BigInteger(Vec<u8>),
     Atom(Atom),
     Binary(Vec<u8>),
@@ -257,6 +258,12 @@ fn decode_external_term(
 ) -> Result<Literal, LoadError> {
     let tag = cursor.read_u8()?;
     match tag {
+        70 => {
+            let bytes = cursor.read_bytes(8)?;
+            Ok(Literal::Float(f64::from_bits(u64::from_be_bytes([
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            ]))))
+        }
         97 => Ok(Literal::Integer(i64::from(cursor.read_u8()?))),
         98 => Ok(Literal::Integer(i64::from(cursor.read_i32()?))),
         100 | 118 => {
@@ -458,5 +465,39 @@ impl<'a> Cursor<'a> {
     fn read_i32(&mut self) -> Result<i32, LoadError> {
         let bytes = self.read_bytes(4)?;
         Ok(i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_literal_chunk_decodes_new_float_ext() {
+        let atom_table = AtomTable::with_common_atoms();
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&0u32.to_be_bytes());
+        bytes.extend_from_slice(&1u32.to_be_bytes());
+        bytes.extend_from_slice(&10u32.to_be_bytes());
+        bytes.push(131);
+        bytes.push(70);
+        bytes.extend_from_slice(&1.5f64.to_bits().to_be_bytes());
+
+        let literals = decode_literal_chunk(&bytes, &atom_table).expect("literal chunk");
+        assert_eq!(literals, vec![Literal::Float(1.5)]);
+    }
+
+    #[test]
+    fn decode_literal_chunk_rejects_truncated_new_float_ext() {
+        let atom_table = AtomTable::with_common_atoms();
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&0u32.to_be_bytes());
+        bytes.extend_from_slice(&1u32.to_be_bytes());
+        bytes.extend_from_slice(&9u32.to_be_bytes());
+        bytes.push(131);
+        bytes.push(70);
+        bytes.extend_from_slice(&1.5f64.to_bits().to_be_bytes()[..7]);
+
+        assert!(decode_literal_chunk(&bytes, &atom_table).is_err());
     }
 }

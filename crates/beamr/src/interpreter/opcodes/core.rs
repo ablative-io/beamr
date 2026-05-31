@@ -238,21 +238,24 @@ fn call_external_target(
         return Err(ExecError::InvalidOperand("external call arity mismatch"));
     }
     match resolved.target {
-        ResolvedImportTarget::Code { module: target_module, label } => {
+        ResolvedImportTarget::Code {
+            module: target_module,
+            label,
+        } => {
             if save_return {
                 process
                     .stack_mut()
                     .push_frame(module.name, return_ip, 0)
                     .map_err(ExecError::from)?;
             }
-            let target_mod = ctx
-                .registry
-                .and_then(|r| r.lookup(target_module))
-                .ok_or(ExecError::Undef {
-                    module: target_module,
-                    function: crate::atom::Atom::UNDEFINED,
-                    arity,
-                })?;
+            let target_mod =
+                ctx.registry
+                    .and_then(|r| r.lookup(target_module))
+                    .ok_or(ExecError::Undef {
+                        module: target_module,
+                        function: crate::atom::Atom::UNDEFINED,
+                        arity,
+                    })?;
             let target = CodePosition {
                 module: target_module,
                 instruction_pointer: label_ip(&target_mod, label)?,
@@ -417,6 +420,10 @@ pub(crate) fn write_term(
 fn literal_term(literal: &Literal) -> Result<Term, ExecError> {
     match literal {
         Literal::Integer(value) => Term::try_small_int(*value).ok_or(ExecError::Badarg),
+        Literal::Float(value) => {
+            let heap = Box::leak(Box::new([0u64; 2]));
+            crate::term::boxed::write_float(heap, *value).ok_or(ExecError::Badarg)
+        }
         Literal::Atom(atom) => Ok(Term::atom(*atom)),
         Literal::Nil => Ok(Term::NIL),
         _ => Err(ExecError::UnsupportedLiteral),
@@ -492,4 +499,3 @@ pub(crate) fn heap_slice<'a>(ptr: *mut u64, words: usize) -> &'a mut [u64] {
     // heap. The slice is used immediately to initialise the new object.
     unsafe { std::slice::from_raw_parts_mut(ptr, words) }
 }
-

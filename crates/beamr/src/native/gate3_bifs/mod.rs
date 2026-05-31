@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, NativeFn, NativeRegistrationError, ProcessContext};
 use crate::term::Term;
+use crate::term::binary::Binary;
 use crate::term::boxed::{Cons, Tuple};
 
 pub use registry_bifs::{bif_register, bif_unregister, bif_whereis};
@@ -46,6 +47,8 @@ const GATE3_BIFS: &[Gate3Bif] = &[
     // OTP support BIFs (B-032)
     ("get", 0, bif_get),
     ("pid_to_list", 1, bif_pid_to_list),
+    ("byte_size", 1, bif_byte_size),
+    ("iolist_size", 1, bif_iolist_size),
     ("++", 2, bif_list_append),
     ("not", 1, bif_not),
     ("/=", 2, bif_not_equal),
@@ -303,6 +306,35 @@ pub fn bif_pid_to_list(args: &[Term], _context: &mut ProcessContext) -> Result<T
         tail = crate::term::boxed::write_cons(cell, int_term, tail).ok_or_else(badarg)?;
     }
     Ok(tail)
+}
+
+/// erlang:byte_size/1 — returns the byte length of a binary.
+pub fn bif_byte_size(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let _ = context;
+    let [binary_term] = args else {
+        return Err(badarg());
+    };
+    binary_size(*binary_term)
+}
+
+/// erlang:iolist_size/1 — returns the byte length of a binary iolist stub.
+///
+/// This stub intentionally accepts binaries only; proper nested iolists are
+/// outside B-033 scope and return `badarg`.
+pub fn bif_iolist_size(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let _ = context;
+    let [binary_term] = args else {
+        return Err(badarg());
+    };
+    binary_size(*binary_term)
+}
+
+fn binary_size(term: Term) -> Result<Term, Term> {
+    let binary = Binary::new(term).ok_or_else(badarg)?;
+    i64::try_from(binary.len())
+        .ok()
+        .and_then(Term::try_small_int)
+        .ok_or_else(badarg)
 }
 
 /// erlang:++/2 — appends two proper lists.

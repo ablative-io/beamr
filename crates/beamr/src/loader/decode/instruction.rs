@@ -1,6 +1,6 @@
 use super::compact::Operand;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Label {
         label: u32,

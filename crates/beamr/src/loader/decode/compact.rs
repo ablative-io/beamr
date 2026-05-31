@@ -3,7 +3,7 @@ use crate::error::LoadError;
 
 use super::Literal;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Operand {
     Integer(i64),
     Unsigned(u64),

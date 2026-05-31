@@ -9,6 +9,8 @@
 //! `collection_bifs` submodule to keep each file under 500 lines.
 
 pub mod collection_bifs;
+pub mod gleam_stdlib_ffi;
+pub mod string_bifs;
 
 use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, NativeFn, NativeRegistrationError, ProcessContext};
@@ -20,6 +22,18 @@ use collection_bifs::{
     bif_lists_reverse, bif_maps_from_list, bif_maps_map, bif_maps_merge, bif_maps_remove,
     bif_timer_sleep,
 };
+use gleam_stdlib_ffi::{
+    bif_contains_string, bif_crop_string, bif_inspect, bif_iodata_append, bif_less_than, bif_slice,
+    bif_string_ends_with, bif_string_pop_grapheme, bif_string_remove_prefix,
+    bif_string_remove_suffix, bif_string_replace, bif_string_starts_with,
+    bif_utf_codepoint_list_to_string,
+};
+use string_bifs::{
+    bif_equal as bif_string_equal, bif_is_empty as bif_string_is_empty,
+    bif_length as bif_string_length, bif_lowercase as bif_string_lowercase,
+    bif_reverse as bif_string_reverse, bif_split as bif_string_split, bif_trim as bif_string_trim,
+    bif_uppercase as bif_string_uppercase,
+};
 
 /// A stub BIF entry: (module_name, function_name, arity, implementation).
 type StubBif = (&'static str, &'static str, u8, NativeFn);
@@ -27,9 +41,61 @@ type StubBif = (&'static str, &'static str, u8, NativeFn);
 const STDLIB_STUBS: &[StubBif] = &[
     ("logger", "warning", 2, bif_logger_warning),
     ("unicode", "characters_to_list", 1, bif_characters_to_list),
-    ("unicode", "characters_to_binary", 1, bif_characters_to_binary),
+    (
+        "unicode",
+        "characters_to_binary",
+        1,
+        bif_characters_to_binary,
+    ),
     ("sys", "debug_options", 1, bif_debug_options),
     ("gleam_stdlib", "identity", 1, bif_identity),
+    ("gleam_stdlib", "string_replace", 3, bif_string_replace),
+    ("gleam_stdlib", "less_than", 2, bif_less_than),
+    ("gleam_stdlib", "slice", 3, bif_slice),
+    ("gleam_stdlib", "crop_string", 2, bif_crop_string),
+    ("gleam_stdlib", "contains_string", 2, bif_contains_string),
+    (
+        "gleam_stdlib",
+        "string_starts_with",
+        2,
+        bif_string_starts_with,
+    ),
+    ("gleam_stdlib", "string_ends_with", 2, bif_string_ends_with),
+    (
+        "gleam_stdlib",
+        "string_pop_grapheme",
+        1,
+        bif_string_pop_grapheme,
+    ),
+    (
+        "gleam_stdlib",
+        "utf_codepoint_list_to_string",
+        1,
+        bif_utf_codepoint_list_to_string,
+    ),
+    ("gleam_stdlib", "inspect", 1, bif_inspect),
+    (
+        "gleam_stdlib",
+        "string_remove_prefix",
+        2,
+        bif_string_remove_prefix,
+    ),
+    (
+        "gleam_stdlib",
+        "string_remove_suffix",
+        2,
+        bif_string_remove_suffix,
+    ),
+    ("gleam_stdlib", "iodata_append", 2, bif_iodata_append),
+    ("string", "length", 1, bif_string_length),
+    ("string", "reverse", 1, bif_string_reverse),
+    ("string", "lowercase", 1, bif_string_lowercase),
+    ("string", "uppercase", 1, bif_string_uppercase),
+    ("string", "trim", 2, bif_string_trim),
+    ("string", "split", 3, bif_string_split),
+    ("string", "equal", 2, bif_string_equal),
+    ("string", "is_empty", 1, bif_string_is_empty),
+    ("binary", "part", 3, bif_binary_part),
     // Non-higher-order collection BIFs (B-028a):
     ("maps", "from_list", 1, bif_maps_from_list),
     ("maps", "merge", 2, bif_maps_merge),
@@ -137,10 +203,7 @@ pub fn bif_characters_to_binary(
 ///
 /// Accepts a binary and returns a list of integer code points. Since BIFs
 /// lack heap access, cons cells are allocated via leaked boxes.
-pub fn bif_characters_to_list(
-    args: &[Term],
-    _context: &mut ProcessContext,
-) -> Result<Term, Term> {
+pub fn bif_characters_to_list(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
     let [input] = args else {
         return Err(badarg());
     };
@@ -165,6 +228,29 @@ pub fn bif_characters_to_list(
     }
 
     Ok(tail)
+}
+
+/// binary:part/3 — extracts a sub-binary by offset and length.
+pub fn bif_binary_part(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let _ = context;
+    let [binary_term, offset_term, length_term] = args else {
+        return Err(badarg());
+    };
+    let binary = Binary::new(*binary_term).ok_or_else(badarg)?;
+    let offset = offset_term
+        .as_small_int()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(badarg)?;
+    let length = length_term
+        .as_small_int()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(badarg)?;
+    let end = offset.checked_add(length).ok_or_else(badarg)?;
+    let bytes = binary.as_bytes();
+    if end > bytes.len() {
+        return Err(badarg());
+    }
+    Ok(make_leaked_binary(&bytes[offset..end]))
 }
 
 /// sys:debug_options/1 — no-op stub returning empty list.
