@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use crate::atom::AtomTable;
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
+use crate::io::{IoSink, NullSink};
 use crate::term::Term;
 use crate::timer::{TimerRef, TimerWheel};
 
@@ -65,6 +66,8 @@ pub struct ProcessContext {
     supervision_facility: Option<Arc<dyn SupervisionFacility>>,
     registry_facility: Option<Arc<dyn RegistryFacility>>,
     select_facility: Option<Arc<dyn SelectFacility>>,
+    io_sink: Arc<dyn IoSink>,
+    shutdown_requested: bool,
     trampoline: Option<TrampolineRequest>,
     suspend: Option<SuspendRequest>,
 }
@@ -92,6 +95,8 @@ impl fmt::Debug for ProcessContext {
                 "select_facility",
                 &self.select_facility.as_ref().map(|_| ".."),
             )
+            .field("io_sink", &"..")
+            .field("shutdown_requested", &self.shutdown_requested)
             .field("trampoline", &self.trampoline)
             .field("suspend", &self.suspend)
             .finish()
@@ -117,8 +122,10 @@ impl ProcessContext {
             supervision_facility: None,
             registry_facility: None,
             select_facility: None,
+            io_sink: Arc::new(NullSink),
             trampoline: None,
             suspend: None,
+            shutdown_requested: false,
         }
     }
 
@@ -134,8 +141,10 @@ impl ProcessContext {
             supervision_facility: None,
             registry_facility: None,
             select_facility: None,
+            io_sink: Arc::new(NullSink),
             trampoline: None,
             suspend: None,
+            shutdown_requested: false,
         }
     }
 
@@ -266,6 +275,29 @@ impl ProcessContext {
     /// Set the select facility for mailbox scanning BIFs.
     pub fn set_select_facility(&mut self, facility: Option<Arc<dyn SelectFacility>>) {
         self.select_facility = facility;
+    }
+
+    /// Return the configured output sink for `io` module BIFs.
+    #[must_use]
+    pub fn io_sink(&self) -> &dyn IoSink {
+        self.io_sink.as_ref()
+    }
+
+    /// Set the output sink for `io` module BIFs.
+    pub fn set_io_sink(&mut self, sink: Arc<dyn IoSink>) {
+        self.io_sink = sink;
+    }
+
+    /// Request runtime shutdown after the current BIF returns.
+    pub fn request_shutdown(&mut self) {
+        self.shutdown_requested = true;
+    }
+
+    /// Take and clear the shutdown request flag.
+    pub fn take_shutdown_request(&mut self) -> bool {
+        let requested = self.shutdown_requested;
+        self.shutdown_requested = false;
+        requested
     }
 
     // --- Trampoline ---

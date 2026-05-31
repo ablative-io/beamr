@@ -22,6 +22,7 @@ use crate::atom::Atom;
 use crate::error::ExecError;
 use crate::hook::{Hook, HookDecision};
 use crate::interpreter::{self, ExecutionResult};
+use crate::io::{IoSink, NullSink};
 use crate::loader::Instruction;
 use crate::module::{Module, ModuleRegistry};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
@@ -60,6 +61,7 @@ struct SharedState {
     monitor_set: Mutex<MonitorSet>,
     hook: Hook,
     timers: Arc<Mutex<TimerWheel>>,
+    output_sink: Mutex<Arc<dyn IoSink>>,
     #[cfg(test)]
     idle_parks: AtomicUsize,
 }
@@ -115,6 +117,7 @@ impl Scheduler {
             monitor_set: Mutex::new(MonitorSet::new()),
             hook: Hook::new(),
             timers: Arc::new(Mutex::new(TimerWheel::new())),
+            output_sink: Mutex::new(Arc::new(NullSink)),
             #[cfg(test)]
             idle_parks: AtomicUsize::new(0),
         });
@@ -281,6 +284,11 @@ impl Scheduler {
     #[must_use]
     pub fn timers(&self) -> &Arc<Mutex<TimerWheel>> {
         &self.shared.timers
+    }
+
+    /// Configure the output sink used by `io` module BIFs.
+    pub fn set_output_sink(&self, sink: Arc<dyn IoSink>) {
+        *lock_or_recover(&self.shared.output_sink) = sink;
     }
 
     #[cfg(test)]

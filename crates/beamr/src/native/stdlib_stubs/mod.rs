@@ -10,10 +10,12 @@
 
 pub mod bitwise_bifs;
 pub mod collection_bifs;
+pub mod encoding_bifs;
 pub mod gleam_stdlib_ffi;
 pub mod math_bifs;
 pub mod lists_bifs;
 pub mod maps_bifs;
+pub mod io_bifs;
 pub mod string_bifs;
 pub mod type_conversion_bifs;
 
@@ -28,6 +30,9 @@ use bitwise_bifs::{bif_band, bif_bnot, bif_bor, bif_bsl, bif_bsr, bif_bxor};
 use collection_bifs::{
     bif_lists_reverse, bif_maps_from_list, bif_maps_map, bif_maps_merge, bif_maps_remove,
     bif_timer_sleep,
+};
+use encoding_bifs::{
+    bif_base64_decode, bif_base64_encode, bif_binary_decode_hex, bif_binary_encode_hex,
 };
 use gleam_stdlib_ffi::{
     bif_contains_string, bif_crop_string, bif_inspect, bif_iodata_append, bif_less_than, bif_slice,
@@ -44,11 +49,16 @@ use maps_bifs::{
     bif_maps_filter, bif_maps_find, bif_maps_fold, bif_maps_keys, bif_maps_merge_with,
     bif_maps_put, bif_maps_to_list, bif_maps_update_with, bif_maps_values, bif_maps_with,
     bif_maps_without,
+use io_bifs::{
+    bif_io_format_3, bif_io_lib_format_2, bif_io_put_chars_1, bif_io_put_chars_2, bif_io_setopts_2,
 };
 use string_bifs::{
-    bif_equal as bif_string_equal, bif_is_empty as bif_string_is_empty,
-    bif_length as bif_string_length, bif_lowercase as bif_string_lowercase,
-    bif_reverse as bif_string_reverse, bif_split as bif_string_split, bif_trim as bif_string_trim,
+    bif_equal as bif_string_equal, bif_find as bif_string_find,
+    bif_is_empty as bif_string_is_empty, bif_length as bif_string_length,
+    bif_lowercase as bif_string_lowercase, bif_next_grapheme as bif_string_next_grapheme,
+    bif_pad as bif_string_pad, bif_replace as bif_string_replace4,
+    bif_reverse as bif_string_reverse, bif_slice as bif_string_slice,
+    bif_split as bif_string_split, bif_trim as bif_string_trim,
     bif_uppercase as bif_string_uppercase,
 };
 use type_conversion_bifs::{
@@ -149,9 +159,24 @@ const STDLIB_STUBS: &[StubBif] = &[
     ("string", "uppercase", 1, bif_string_uppercase),
     ("string", "trim", 2, bif_string_trim),
     ("string", "split", 3, bif_string_split),
+    ("string", "find", 2, bif_string_find),
+    ("string", "next_grapheme", 1, bif_string_next_grapheme),
+    ("string", "pad", 4, bif_string_pad),
+    ("string", "replace", 4, bif_string_replace4),
+    ("string", "slice", 3, bif_string_slice),
     ("string", "equal", 2, bif_string_equal),
     ("string", "is_empty", 1, bif_string_is_empty),
     ("binary", "part", 3, bif_binary_part),
+    ("binary", "encode_hex", 1, bif_binary_encode_hex),
+    ("binary", "decode_hex", 1, bif_binary_decode_hex),
+    ("base64", "encode", 2, bif_base64_encode),
+    ("base64", "decode", 1, bif_base64_decode),
+    ("io", "put_chars", 1, bif_io_put_chars_1),
+    ("io", "put_chars", 2, bif_io_put_chars_2),
+    ("io", "format", 3, bif_io_format_3),
+    ("io", "setopts", 2, bif_io_setopts_2),
+    ("io_lib", "format", 2, bif_io_lib_format_2),
+    ("init", "stop", 1, bif_init_stop),
     // Non-higher-order collection BIFs (B-028a):
     ("maps", "from_list", 1, bif_maps_from_list),
     ("maps", "merge", 2, bif_maps_merge),
@@ -335,6 +360,14 @@ pub fn bif_rand_uniform(args: &[Term], context: &mut ProcessContext) -> Result<T
     let value = rand::rng().random_range(0.0..1.0);
     let heap = Box::leak(Box::new([0u64; 2]));
     crate::term::boxed::write_float(heap, value).ok_or_else(badarg)
+/// init:stop/1 — request runtime shutdown and return `ok`.
+pub fn bif_init_stop(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [exit_code] = args else {
+        return Err(badarg());
+    };
+    let _code = exit_code.as_small_int().ok_or_else(badarg)?;
+    context.request_shutdown();
+    Ok(Term::atom(Atom::OK))
 }
 
 /// sys:debug_options/1 — no-op stub returning empty list.

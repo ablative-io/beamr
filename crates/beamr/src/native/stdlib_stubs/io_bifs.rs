@@ -1,0 +1,185 @@
+//! I/O native stubs for `io` and `io_lib` modules.
+
+use crate::atom::Atom;
+use crate::native::ProcessContext;
+use crate::term::Term;
+use crate::term::binary::Binary;
+use crate::term::boxed::{Cons, Tuple};
+
+pub fn bif_io_put_chars_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [chars] = args else {
+        return Err(badarg());
+    };
+    write_iodata(*chars, context)?;
+    Ok(Term::atom(Atom::OK))
+}
+
+pub fn bif_io_put_chars_2(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [_device, chars] = args else {
+        return Err(badarg());
+    };
+    write_iodata(*chars, context)?;
+    Ok(Term::atom(Atom::OK))
+}
+
+pub fn bif_io_format_3(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [_device, format, arguments] = args else {
+        return Err(badarg());
+    };
+    let bytes = format_bytes(*format, *arguments, context)?;
+    context.io_sink().write(&bytes);
+    Ok(Term::atom(Atom::OK))
+}
+
+pub fn bif_io_setopts_2(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let _ = context;
+    let [_device, _options] = args else {
+        return Err(badarg());
+    };
+    Ok(Term::atom(Atom::OK))
+}
+
+pub fn bif_io_lib_format_2(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [format, arguments] = args else {
+        return Err(badarg());
+    };
+    let bytes = format_bytes(*format, *arguments, context)?;
+    make_binary(&bytes)
+}
+
+fn format_bytes(format: Term, arguments: Term, context: &ProcessContext) -> Result<Vec<u8>, Term> {
+    let format = iodata_bytes(format)?;
+    let arguments = list_terms(arguments)?;
+    let mut out = Vec::with_capacity(format.len());
+    let mut arg_index = 0usize;
+    let mut index = 0usize;
+    while index < format.len() {
+        if format[index] != b'~' {
+            out.push(format[index]);
+            index += 1;
+            continue;
+        }
+        index += 1;
+        let Some(&directive) = format.get(index) else {
+            return Err(badarg());
+        };
+        match directive {
+            b's' => {
+                let arg = next_arg(&arguments, &mut arg_index)?;
+                out.extend_from_slice(binary_bytes(arg)?);
+            }
+            b'p' | b'w' => {
+                let arg = next_arg(&arguments, &mut arg_index)?;
+                out.extend_from_slice(render_term(arg, context).as_bytes());
+            }
+            b'n' => out.push(b'\n'),
+            b'~' => out.push(b'~'),
+            _ => return Err(badarg()),
+        }
+        index += 1;
+    }
+    if arg_index != arguments.len() {
+        return Err(badarg());
+    }
+    Ok(out)
+}
+
+fn next_arg(arguments: &[Term], index: &mut usize) -> Result<Term, Term> {
+    let term = arguments.get(*index).copied().ok_or_else(badarg)?;
+    *index += 1;
+    Ok(term)
+}
+
+fn write_iodata(term: Term, context: &ProcessContext) -> Result<(), Term> {
+    let bytes = iodata_bytes(term)?;
+    context.io_sink().write(&bytes);
+    Ok(())
+}
+
+fn iodata_bytes(term: Term) -> Result<Vec<u8>, Term> {
+    let mut bytes = Vec::new();
+    collect_iodata(term, &mut bytes)?;
+    Ok(bytes)
+}
+
+fn collect_iodata(term: Term, out: &mut Vec<u8>) -> Result<(), Term> {
+    if term.is_nil() {
+        return Ok(());
+    }
+    if let Some(binary) = Binary::new(term) {
+        out.extend_from_slice(binary.as_bytes());
+        return Ok(());
+    }
+    if let Some(byte) = term
+        .as_small_int()
+        .and_then(|value| u8::try_from(value).ok())
+    {
+        out.push(byte);
+        return Ok(());
+    }
+    let cons = Cons::new(term).ok_or_else(badarg)?;
+    collect_iodata(cons.head(), out)?;
+    collect_iodata(cons.tail(), out)
+}
+
+fn list_terms(term: Term) -> Result<Vec<Term>, Term> {
+    let mut terms = Vec::new();
+    let mut current = term;
+    loop {
+        if current.is_nil() {
+            return Ok(terms);
+        }
+        let cons = Cons::new(current).ok_or_else(badarg)?;
+        terms.push(cons.head());
+        current = cons.tail();
+    }
+}
+
+fn render_term(term: Term, context: &ProcessContext) -> String {
+    if let Some(integer) = term.as_small_int() {
+        return integer.to_string();
+    }
+    if let Some(atom) = term.as_atom() {
+        return context
+            .atom_table()
+            .and_then(|table| table.resolve(atom))
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("Atom({atom:?})"));
+    }
+    if term.is_nil() {
+        return "[]".to_owned();
+    }
+    if let Some(pid) = term.as_pid() {
+        return format!("<0.{pid}.0>");
+    }
+    if let Some(binary) = Binary::new(term) {
+        return match std::str::from_utf8(binary.as_bytes()) {
+            Ok(text) => format!("<<\"{text}\">>"),
+            Err(_) => format!("<<{} bytes>>", binary.len()),
+        };
+    }
+    if let Some(tuple) = Tuple::new(term) {
+        let mut elements = Vec::with_capacity(tuple.arity());
+        for index in 0..tuple.arity() {
+            if let Some(element) = tuple.get(index) {
+                elements.push(render_term(element, context));
+            }
+        }
+        return format!("{{{}}}", elements.join(", "));
+    }
+    format!("{term:?}")
+}
+
+fn binary_bytes(term: Term) -> Result<&'static [u8], Term> {
+    Binary::new(term).map(Binary::as_bytes).ok_or_else(badarg)
+}
+
+fn make_binary(bytes: &[u8]) -> Result<Term, Term> {
+    let data_words = crate::term::binary::packed_word_count(bytes.len());
+    let heap: &mut [u64] = Box::leak(vec![0u64; 2 + data_words].into_boxed_slice());
+    crate::term::binary::write_binary(heap, bytes).ok_or_else(badarg)
+}
+
+fn badarg() -> Term {
+    Term::atom(Atom::BADARG)
+}

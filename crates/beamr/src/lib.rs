@@ -8,6 +8,7 @@ pub mod error;
 pub mod gc;
 pub mod hook;
 pub mod interpreter;
+pub mod io;
 pub mod loader;
 pub mod mailbox;
 pub mod module;

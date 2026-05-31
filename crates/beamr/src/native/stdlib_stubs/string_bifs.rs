@@ -4,7 +4,7 @@ use crate::atom::Atom;
 use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::binary::Binary;
-use crate::term::boxed::write_cons;
+use crate::term::boxed::{write_cons, write_tuple};
 
 pub fn bif_length(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let _ = context;
@@ -101,6 +101,102 @@ pub fn bif_split(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     make_list(&terms)
 }
 
+pub fn bif_find(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [input, pattern] = args else {
+        return Err(badarg());
+    };
+    let input = binary_bytes(*input)?;
+    let pattern = binary_bytes(*pattern)?;
+    if let Some(index) = find_bytes(input, pattern) {
+        make_binary(&input[index..])
+    } else {
+        atom_term("nomatch", context)
+    }
+}
+
+pub fn bif_next_grapheme(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let _ = context;
+    let [input] = args else {
+        return Err(badarg());
+    };
+    let bytes = binary_bytes(*input)?;
+    if bytes.is_empty() {
+        return Ok(Term::atom(Atom::ERROR));
+    }
+
+    let first_len = std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|text| text.chars().next().map(char::len_utf8))
+        .unwrap_or(1);
+    let head = make_binary(&bytes[..first_len])?;
+    let rest = make_binary(&bytes[first_len..])?;
+    ok_tuple2(head, rest)
+}
+
+pub fn bif_pad(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [input, length, direction, pad] = args else {
+        return Err(badarg());
+    };
+    let input = binary_bytes(*input)?;
+    let target_len = non_negative_usize(*length)?;
+    let direction = atom_name(*direction, context)?;
+    let pad = binary_bytes(*pad)?;
+    if pad.is_empty() {
+        return Err(badarg());
+    }
+    if input.len() >= target_len {
+        return make_binary(input);
+    }
+
+    let needed = target_len - input.len();
+    let (leading, trailing) = match direction {
+        "leading" => (needed, 0),
+        "trailing" => (0, needed),
+        "both" => (needed / 2, needed - (needed / 2)),
+        _ => return Err(badarg()),
+    };
+    let mut out = Vec::with_capacity(target_len);
+    append_pad(&mut out, pad, leading);
+    out.extend_from_slice(input);
+    append_pad(&mut out, pad, trailing);
+    make_binary(&out)
+}
+
+pub fn bif_replace(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [input, pattern, replacement, where_atom] = args else {
+        return Err(badarg());
+    };
+    let input = binary_bytes(*input)?;
+    let pattern = binary_bytes(*pattern)?;
+    let replacement = binary_bytes(*replacement)?;
+    if pattern.is_empty() {
+        return Err(badarg());
+    }
+    let where_name = atom_name(*where_atom, context)?;
+    let out = match where_name {
+        "all" => replace_all(input, pattern, replacement),
+        "leading" => replace_once(input, pattern, replacement, false),
+        "trailing" => replace_once(input, pattern, replacement, true),
+        _ => return Err(badarg()),
+    };
+    make_binary(&out)
+}
+
+pub fn bif_slice(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let _ = context;
+    let [input, offset, length] = args else {
+        return Err(badarg());
+    };
+    let bytes = binary_bytes(*input)?;
+    let offset = non_negative_usize(*offset)?;
+    let length = non_negative_usize(*length)?;
+    let end = offset.checked_add(length).ok_or_else(badarg)?;
+    if end > bytes.len() {
+        return Err(badarg());
+    }
+    make_binary(&bytes[offset..end])
+}
+
 pub fn bif_equal(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let _ = context;
     let [left, right] = args else {
@@ -143,15 +239,68 @@ fn split_once<'a>(input: &'a [u8], pattern: &[u8], trailing: bool) -> Vec<&'a [u
 }
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
     haystack
         .windows(needle.len())
         .position(|window| window == needle)
 }
 
 fn rfind_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(haystack.len());
+    }
     haystack
         .windows(needle.len())
         .rposition(|window| window == needle)
+}
+
+fn replace_all(input: &[u8], pattern: &[u8], replacement: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(input.len());
+    let mut index = 0;
+    while let Some(relative) = find_bytes(&input[index..], pattern) {
+        let match_start = index + relative;
+        out.extend_from_slice(&input[index..match_start]);
+        out.extend_from_slice(replacement);
+        index = match_start + pattern.len();
+    }
+    out.extend_from_slice(&input[index..]);
+    out
+}
+
+fn replace_once(input: &[u8], pattern: &[u8], replacement: &[u8], trailing: bool) -> Vec<u8> {
+    let found = if trailing {
+        rfind_bytes(input, pattern)
+    } else {
+        find_bytes(input, pattern)
+    };
+    if let Some(index) = found {
+        let mut out = Vec::with_capacity(input.len() - pattern.len() + replacement.len());
+        out.extend_from_slice(&input[..index]);
+        out.extend_from_slice(replacement);
+        out.extend_from_slice(&input[index + pattern.len()..]);
+        out
+    } else {
+        input.to_vec()
+    }
+}
+
+fn append_pad(out: &mut Vec<u8>, pad: &[u8], count: usize) {
+    for index in 0..count {
+        out.push(pad[index % pad.len()]);
+    }
+}
+
+fn non_negative_usize(term: Term) -> Result<usize, Term> {
+    term.as_small_int()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(badarg)
+}
+
+fn atom_term(name: &str, context: &mut ProcessContext) -> Result<Term, Term> {
+    let table = context.atom_table().ok_or_else(badarg)?;
+    Ok(Term::atom(table.intern(name)))
 }
 
 fn atom_name(term: Term, context: &ProcessContext) -> Result<&str, Term> {
@@ -193,6 +342,11 @@ fn make_list(elements: &[Term]) -> Result<Term, Term> {
         tail = write_cons(cell, *element, tail).ok_or_else(badarg)?;
     }
     Ok(tail)
+}
+
+fn ok_tuple2(first: Term, second: Term) -> Result<Term, Term> {
+    let heap = Box::leak(Box::new([0u64; 4]));
+    write_tuple(heap, &[Term::atom(Atom::OK), first, second]).ok_or_else(badarg)
 }
 
 fn badarg() -> Term {

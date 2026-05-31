@@ -209,6 +209,7 @@ pub(super) fn build_native_services(
         spawn_facility: Some(spawn),
         link_facility: Some(link),
         supervision_facility: Some(supervision),
+        io_sink: Some(Arc::clone(&lock_or_recover(&shared.output_sink))),
     }
 }
 
