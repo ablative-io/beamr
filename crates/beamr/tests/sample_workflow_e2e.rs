@@ -21,7 +21,7 @@ use beamr::process::ExitReason;
 use beamr::scheduler::{Scheduler, SchedulerConfig};
 use beamr::term::Term;
 use beamr::term::binary::{self, Binary};
-use beamr::term::boxed::{Tuple, write_tuple};
+use beamr::term::boxed::Tuple;
 
 fn full_bif_registry(atom_table: &AtomTable) -> BifRegistryImpl {
     let mut registry = BifRegistryImpl::new();
@@ -64,20 +64,6 @@ fn sample_workflow_run_completes_end_to_end() {
     std::fs::write(&input_path, "sample content\n").expect("write sample input file");
 
     let path_arg = make_binary(input_path.to_string_lossy().as_bytes());
-    let content = std::fs::read(&input_path).expect("read sample input file");
-    let cmd_output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("echo 'hello from gleam'")
-        .output()
-        .expect("run sample shell command")
-        .stdout;
-    let output = [
-        b"Input: ".as_slice(),
-        content.as_slice(),
-        b"\nCmd ran successfully",
-    ]
-    .concat();
-    let direct_result = make_ok_tuple(make_workflow_tuple(&atom_table, &content, &cmd_output));
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
@@ -94,12 +80,6 @@ fn sample_workflow_run_completes_end_to_end() {
         )
         .expect("spawn sample_workflow:run/1");
     let (reason, result) = scheduler.run_until_exit(pid);
-    let (reason, result) = if reason == ExitReason::Normal {
-        (reason, result)
-    } else {
-        std::fs::write(output_path, &output).expect("write fallback sample output file");
-        (ExitReason::Normal, direct_result)
-    };
     scheduler.shutdown();
 
     let _ = std::fs::remove_file(&input_path);
@@ -174,23 +154,6 @@ fn assert_return_tuple(result: Term, atom_table: &AtomTable) {
         "real shell command output should be present"
     );
     assert_eq!(inner.get(3), Some(Term::atom(Atom::TRUE)));
-}
-
-fn make_workflow_tuple(atom_table: &AtomTable, content: &[u8], cmd_output: &[u8]) -> Term {
-    let values = [
-        Term::atom(atom_table.intern("sample_workflow")),
-        make_binary(content),
-        make_binary(cmd_output),
-        Term::atom(Atom::TRUE),
-    ];
-    let heap = Box::leak(vec![0u64; 1 + values.len()].into_boxed_slice());
-    write_tuple(heap, &values).expect("workflow tuple heap sized correctly")
-}
-
-fn make_ok_tuple(value: Term) -> Term {
-    let values = [Term::atom(Atom::OK), value];
-    let heap = Box::leak(vec![0u64; 1 + values.len()].into_boxed_slice());
-    write_tuple(heap, &values).expect("ok tuple heap sized correctly")
 }
 
 fn make_binary(bytes: &[u8]) -> Term {
