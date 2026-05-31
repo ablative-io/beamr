@@ -286,6 +286,9 @@ fn call_external_target(
                 context.set_spawn_facility(svc.spawn_facility.clone());
                 context.set_link_facility(svc.link_facility.clone());
                 context.set_supervision_facility(svc.supervision_facility.clone());
+                if let Some(sink) = &svc.io_sink {
+                    context.set_io_sink(Arc::clone(sink));
+                }
             }
 
             // Provide mailbox access for select BIFs.
@@ -297,6 +300,7 @@ fn call_external_target(
             );
 
             let result = (entry.function)(&args, &mut context).map_err(|_| ExecError::Badarg)?;
+            let shutdown_requested = context.take_shutdown_request();
 
             // Handle mailbox removal if the select facility recorded one.
             if let Some(snapshot) = snapshot {
@@ -315,6 +319,9 @@ fn call_external_target(
             }
 
             process.set_x_reg(0, result);
+            if shutdown_requested {
+                return Ok(InstructionOutcome::Exit(crate::process::ExitReason::Normal));
+            }
             charge_reduction(process)?;
             Ok(InstructionOutcome::Continue)
         }

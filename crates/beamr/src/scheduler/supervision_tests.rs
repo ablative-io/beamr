@@ -113,6 +113,7 @@ fn make_shared_state() -> Arc<SharedState> {
         monitor_set: std::sync::Mutex::new(MonitorSet::new()),
         hook: crate::hook::Hook::new(),
         timers: Arc::new(std::sync::Mutex::new(crate::timer::TimerWheel::new())),
+        output_sink: std::sync::Mutex::new(Arc::new(crate::io::NullSink)),
         idle_parks: AtomicUsize::new(0),
     })
 }

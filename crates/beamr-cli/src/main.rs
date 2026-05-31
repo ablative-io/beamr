@@ -5,6 +5,7 @@ use std::{env, fmt};
 
 use beamr::atom::{Atom, AtomTable};
 use beamr::error::{ExecError, LoadError};
+use beamr::io::StdoutSink;
 use beamr::loader::{UnresolvedImportReport, load_module};
 use beamr::module::ModuleRegistry;
 use beamr::native::{
@@ -80,7 +81,6 @@ enum CliError {
     },
     InvalidTerm(String),
     ProcessExit(ExitReason),
-    ProcessDidNotComplete(&'static str),
     MissingDirValue(String),
 }
 
@@ -294,6 +294,7 @@ fn run_module(
         Arc::clone(&registry),
     )
     .map_err(|msg| CliError::Exec(ExecError::InvalidOperand(Box::leak(msg.into_boxed_str()))))?;
+    scheduler.set_output_sink(Arc::new(StdoutSink));
 
     let pid = scheduler
         .spawn(module_atom, function_atom, args)
@@ -475,7 +476,6 @@ impl CliError {
             | Self::ArityMismatch { .. }
             | Self::InvalidTerm(_)
             | Self::ProcessExit(_)
-            | Self::ProcessDidNotComplete(_)
             | Self::MissingDirValue(_) => 1,
         }
     }
@@ -515,9 +515,6 @@ impl fmt::Display for CliError {
             ),
             Self::InvalidTerm(term) => write!(formatter, "invalid term literal '{term}'"),
             Self::ProcessExit(reason) => write!(formatter, "process exited with {reason:?}"),
-            Self::ProcessDidNotComplete(state) => {
-                write!(formatter, "process did not complete: {state}")
-            }
             Self::MissingDirValue(message) => formatter.write_str(message),
         }
     }

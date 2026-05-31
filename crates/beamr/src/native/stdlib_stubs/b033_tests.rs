@@ -5,7 +5,10 @@ use crate::term::binary::{self, Binary};
 use crate::term::boxed::{Cons, Tuple, write_cons};
 use std::sync::Arc;
 
-use super::{bif_binary_part, gleam_stdlib_ffi, register_stdlib_stubs, string_bifs};
+use super::{
+    bif_binary_part, bif_init_stop, encoding_bifs, gleam_stdlib_ffi, io_bifs,
+    register_stdlib_stubs, string_bifs,
+};
 
 fn badarg() -> Term {
     Term::atom(Atom::BADARG)
@@ -24,7 +27,7 @@ fn assert_binary(term: Term, expected: &[u8]) {
 
 fn atom_context() -> ProcessContext {
     let table = Arc::new(AtomTable::with_common_atoms());
-    for name in ["both", "all", "leading", "trailing"] {
+    for name in ["both", "all", "leading", "trailing", "standard", "nomatch"] {
         table.intern(name);
     }
     let mut ctx = ProcessContext::new();
@@ -277,6 +280,60 @@ fn string_module_each_stub_has_success_and_badarg_coverage() {
         string_bifs::bif_is_empty(&[Term::small_int(1)], &mut ctx),
         Err(badarg())
     );
+
+    assert_binary(
+        string_bifs::bif_find(&[binary(b"hello world"), binary(b"world")], &mut ctx)
+            .expect("find suffix"),
+        b"world",
+    );
+    assert_eq!(
+        string_bifs::bif_find(&[binary(b"hello"), binary(b"xyz")], &mut ctx),
+        Ok(atom(&ctx, "nomatch"))
+    );
+
+    assert_binary(
+        string_bifs::bif_pad(
+            &[
+                binary(b"hi"),
+                Term::small_int(5),
+                atom(&ctx, "trailing"),
+                binary(b" "),
+            ],
+            &mut ctx,
+        )
+        .expect("pad trailing"),
+        b"hi   ",
+    );
+
+    assert_binary(
+        string_bifs::bif_replace(
+            &[
+                binary(b"aaa"),
+                binary(b"a"),
+                binary(b"b"),
+                atom(&ctx, "all"),
+            ],
+            &mut ctx,
+        )
+        .expect("replace all"),
+        b"bbb",
+    );
+
+    assert_binary(
+        string_bifs::bif_slice(
+            &[binary(b"hello"), Term::small_int(1), Term::small_int(3)],
+            &mut ctx,
+        )
+        .expect("slice"),
+        b"ell",
+    );
+
+    let grapheme = string_bifs::bif_next_grapheme(&[binary("éx".as_bytes())], &mut ctx)
+        .expect("next grapheme");
+    let tuple = Tuple::new(grapheme).expect("grapheme tuple");
+    assert_eq!(tuple.get(0), Some(Term::atom(Atom::OK)));
+    assert_binary(tuple.get(1).unwrap(), "é".as_bytes());
+    assert_binary(tuple.get(2).unwrap(), b"x");
 }
 
 #[test]
@@ -315,6 +372,94 @@ fn binary_part_covers_normal_empty_and_invalid_edges() {
 }
 
 #[test]
+fn encoding_bifs_cover_exact_acceptance_and_round_trips() {
+    let mut ctx = atom_context();
+
+    assert_binary(
+        encoding_bifs::bif_binary_encode_hex(&[binary(b"hello")], &mut ctx).expect("encode hex"),
+        b"68656C6C6F",
+    );
+    assert_binary(
+        encoding_bifs::bif_binary_decode_hex(&[binary(b"48454C4C4F")], &mut ctx)
+            .expect("decode hex"),
+        b"HELLO",
+    );
+    let hex = encoding_bifs::bif_binary_encode_hex(&[binary(b"roundtrip")], &mut ctx)
+        .expect("hex encode");
+    assert_binary(
+        encoding_bifs::bif_binary_decode_hex(&[hex], &mut ctx).expect("hex decode"),
+        b"roundtrip",
+    );
+
+    assert_binary(
+        encoding_bifs::bif_base64_encode(&[binary(b"hello"), atom(&ctx, "standard")], &mut ctx)
+            .expect("base64 encode"),
+        b"aGVsbG8=",
+    );
+    assert_binary(
+        encoding_bifs::bif_base64_decode(&[binary(b"aGVsbG8=")], &mut ctx).expect("base64 decode"),
+        b"hello",
+    );
+    let encoded = encoding_bifs::bif_base64_encode(
+        &[binary(b"many bytes"), atom(&ctx, "standard")],
+        &mut ctx,
+    )
+    .expect("base64 roundtrip encode");
+    assert_binary(
+        encoding_bifs::bif_base64_decode(&[encoded], &mut ctx).expect("base64 roundtrip decode"),
+        b"many bytes",
+    );
+}
+
+#[test]
+fn b039_io_and_init_bifs_cover_sink_formatter_and_stop() {
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct RecordingSink(Mutex<Vec<u8>>);
+
+    impl crate::io::IoSink for RecordingSink {
+        fn write(&self, bytes: &[u8]) {
+            self.0.lock().expect("sink lock").extend_from_slice(bytes);
+        }
+    }
+
+    let sink = Arc::new(RecordingSink::default());
+    let mut ctx = atom_context();
+    ctx.set_io_sink(sink.clone());
+
+    assert_eq!(
+        io_bifs::bif_io_put_chars_1(&[binary(b"hello")], &mut ctx),
+        Ok(Term::atom(Atom::OK))
+    );
+    assert_eq!(&*sink.0.lock().expect("sink lock"), b"hello");
+
+    assert_binary(
+        io_bifs::bif_io_lib_format_2(
+            &[
+                binary(b"~s ~s"),
+                list(&[binary(b"hello"), binary(b"world")]),
+            ],
+            &mut ctx,
+        )
+        .expect("io_lib format"),
+        b"hello world",
+    );
+
+    let mut null_ctx = atom_context();
+    assert_eq!(
+        io_bifs::bif_io_put_chars_1(&[binary(b"discarded")], &mut null_ctx),
+        Ok(Term::atom(Atom::OK))
+    );
+
+    assert_eq!(
+        bif_init_stop(&[Term::small_int(0)], &mut ctx),
+        Ok(Term::atom(Atom::OK))
+    );
+    assert!(ctx.take_shutdown_request());
+}
+
+#[test]
 fn b033_registry_entries_are_wired_to_function_pointers() {
     let atom_table = AtomTable::new();
     let mut registry = BifRegistryImpl::new();
@@ -340,9 +485,24 @@ fn b033_registry_entries_are_wired_to_function_pointers() {
         ("string", "uppercase", 1),
         ("string", "trim", 2),
         ("string", "split", 3),
+        ("string", "find", 2),
+        ("string", "next_grapheme", 1),
+        ("string", "pad", 4),
+        ("string", "replace", 4),
+        ("string", "slice", 3),
         ("string", "equal", 2),
         ("string", "is_empty", 1),
         ("binary", "part", 3),
+        ("binary", "encode_hex", 1),
+        ("binary", "decode_hex", 1),
+        ("base64", "encode", 2),
+        ("base64", "decode", 1),
+        ("io", "put_chars", 1),
+        ("io", "put_chars", 2),
+        ("io", "format", 3),
+        ("io", "setopts", 2),
+        ("io_lib", "format", 2),
+        ("init", "stop", 1),
     ];
 
     for (module_name, function_name, arity) in expected {
