@@ -12,6 +12,8 @@ pub mod bitwise_bifs;
 pub mod collection_bifs;
 pub mod gleam_stdlib_ffi;
 pub mod math_bifs;
+pub mod lists_bifs;
+pub mod maps_bifs;
 pub mod string_bifs;
 pub mod type_conversion_bifs;
 
@@ -34,6 +36,15 @@ use gleam_stdlib_ffi::{
     bif_utf_codepoint_list_to_string,
 };
 use math_bifs::{bif_ceil, bif_exp, bif_floor, bif_log, bif_pow};
+use lists_bifs::{
+    bif_lists_append_1, bif_lists_append_2, bif_lists_join, bif_lists_map, bif_lists_reverse_2,
+    bif_lists_seq,
+};
+use maps_bifs::{
+    bif_maps_filter, bif_maps_find, bif_maps_fold, bif_maps_keys, bif_maps_merge_with,
+    bif_maps_put, bif_maps_to_list, bif_maps_update_with, bif_maps_values, bif_maps_with,
+    bif_maps_without,
+};
 use string_bifs::{
     bif_equal as bif_string_equal, bif_is_empty as bif_string_is_empty,
     bif_length as bif_string_length, bif_lowercase as bif_string_lowercase,
@@ -148,7 +159,24 @@ const STDLIB_STUBS: &[StubBif] = &[
     // maps:map/2 is a stub — requires interpreter re-entry for closures.
     // The real implementation needs compiled BEAM bytecode; see B-028b.
     ("maps", "map", 2, bif_maps_map),
+    ("maps", "put", 3, bif_maps_put),
+    ("maps", "find", 2, bif_maps_find),
+    ("maps", "keys", 1, bif_maps_keys),
+    ("maps", "values", 1, bif_maps_values),
+    ("maps", "to_list", 1, bif_maps_to_list),
+    ("maps", "fold", 3, bif_maps_fold),
+    ("maps", "filter", 2, bif_maps_filter),
+    ("maps", "merge_with", 3, bif_maps_merge_with),
+    ("maps", "update_with", 4, bif_maps_update_with),
+    ("maps", "with", 2, bif_maps_with),
+    ("maps", "without", 2, bif_maps_without),
     ("lists", "reverse", 1, bif_lists_reverse),
+    ("lists", "append", 1, bif_lists_append_1),
+    ("lists", "append", 2, bif_lists_append_2),
+    ("lists", "join", 2, bif_lists_join),
+    ("lists", "map", 2, bif_lists_map),
+    ("lists", "reverse", 2, bif_lists_reverse_2),
+    ("lists", "seq", 2, bif_lists_seq),
     ("timer", "sleep", 1, bif_timer_sleep),
 ];
 
@@ -351,6 +379,7 @@ fn badarg() -> Term {
 mod b033_tests;
 #[cfg(test)]
 mod bitwise_bifs_tests;
+mod b038_tests;
 #[cfg(test)]
 mod collection_bifs_tests;
 #[cfg(test)]
