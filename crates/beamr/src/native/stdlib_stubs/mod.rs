@@ -8,16 +8,21 @@
 //! Non-higher-order collection BIFs (maps, lists, timer) are in the
 //! `collection_bifs` submodule to keep each file under 500 lines.
 
+pub mod bitwise_bifs;
 pub mod collection_bifs;
 pub mod gleam_stdlib_ffi;
+pub mod math_bifs;
 pub mod string_bifs;
+pub mod type_conversion_bifs;
 
 use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, NativeFn, NativeRegistrationError, ProcessContext};
 use crate::term::Term;
 use crate::term::binary::Binary;
 use crate::term::boxed::Cons;
+use rand::RngExt;
 
+use bitwise_bifs::{bif_band, bif_bnot, bif_bor, bif_bsl, bif_bsr, bif_bxor};
 use collection_bifs::{
     bif_lists_reverse, bif_maps_from_list, bif_maps_map, bif_maps_merge, bif_maps_remove,
     bif_timer_sleep,
@@ -28,17 +33,57 @@ use gleam_stdlib_ffi::{
     bif_string_remove_suffix, bif_string_replace, bif_string_starts_with,
     bif_utf_codepoint_list_to_string,
 };
+use math_bifs::{bif_ceil, bif_exp, bif_floor, bif_log, bif_pow};
 use string_bifs::{
     bif_equal as bif_string_equal, bif_is_empty as bif_string_is_empty,
     bif_length as bif_string_length, bif_lowercase as bif_string_lowercase,
     bif_reverse as bif_string_reverse, bif_split as bif_string_split, bif_trim as bif_string_trim,
     bif_uppercase as bif_string_uppercase,
 };
+use type_conversion_bifs::{
+    bif_atom_to_binary, bif_binary_to_float, bif_binary_to_integer, bif_binary_to_integer_radix,
+    bif_float, bif_integer_to_binary, bif_integer_to_binary_radix, bif_integer_to_list,
+    bif_iolist_to_binary, bif_list_to_bitstring, bif_list_to_tuple, bif_tuple_to_list,
+};
 
 /// A stub BIF entry: (module_name, function_name, arity, implementation).
 type StubBif = (&'static str, &'static str, u8, NativeFn);
 
 const STDLIB_STUBS: &[StubBif] = &[
+    ("erlang", "atom_to_binary", 1, bif_atom_to_binary),
+    ("erlang", "binary_to_float", 1, bif_binary_to_float),
+    ("erlang", "binary_to_integer", 1, bif_binary_to_integer),
+    (
+        "erlang",
+        "binary_to_integer",
+        2,
+        bif_binary_to_integer_radix,
+    ),
+    ("erlang", "float", 1, bif_float),
+    ("erlang", "integer_to_binary", 1, bif_integer_to_binary),
+    (
+        "erlang",
+        "integer_to_binary",
+        2,
+        bif_integer_to_binary_radix,
+    ),
+    ("erlang", "integer_to_list", 1, bif_integer_to_list),
+    ("erlang", "iolist_to_binary", 1, bif_iolist_to_binary),
+    ("erlang", "list_to_bitstring", 1, bif_list_to_bitstring),
+    ("erlang", "list_to_tuple", 1, bif_list_to_tuple),
+    ("erlang", "tuple_to_list", 1, bif_tuple_to_list),
+    ("erlang", "band", 2, bif_band),
+    ("erlang", "bnot", 1, bif_bnot),
+    ("erlang", "bor", 2, bif_bor),
+    ("erlang", "bsl", 2, bif_bsl),
+    ("erlang", "bsr", 2, bif_bsr),
+    ("erlang", "bxor", 2, bif_bxor),
+    ("math", "ceil", 1, bif_ceil),
+    ("math", "floor", 1, bif_floor),
+    ("math", "exp", 1, bif_exp),
+    ("math", "log", 1, bif_log),
+    ("math", "pow", 2, bif_pow),
+    ("rand", "uniform", 0, bif_rand_uniform),
     ("logger", "warning", 2, bif_logger_warning),
     ("unicode", "characters_to_list", 1, bif_characters_to_list),
     (
@@ -253,6 +298,17 @@ pub fn bif_binary_part(args: &[Term], context: &mut ProcessContext) -> Result<Te
     Ok(make_leaked_binary(&bytes[offset..end]))
 }
 
+/// rand:uniform/0 — returns a random float in [0.0, 1.0).
+pub fn bif_rand_uniform(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let _ = context;
+    if !args.is_empty() {
+        return Err(badarg());
+    }
+    let value = rand::rng().random_range(0.0..1.0);
+    let heap = Box::leak(Box::new([0u64; 2]));
+    crate::term::boxed::write_float(heap, value).ok_or_else(badarg)
+}
+
 /// sys:debug_options/1 — no-op stub returning empty list.
 ///
 /// Accepts any list argument and returns `[]`.
@@ -294,6 +350,14 @@ fn badarg() -> Term {
 #[cfg(test)]
 mod b033_tests;
 #[cfg(test)]
+mod bitwise_bifs_tests;
+#[cfg(test)]
 mod collection_bifs_tests;
 #[cfg(test)]
+mod math_bifs_tests;
+#[cfg(test)]
+mod rand_bifs_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod type_conversion_bifs_tests;

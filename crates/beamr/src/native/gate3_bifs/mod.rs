@@ -5,6 +5,7 @@
 //! can execute. They follow the same registration pattern as Gate 1
 //! (arithmetic) and Gate 2 (process lifecycle).
 
+mod additional;
 mod registry_bifs;
 mod type_conversion;
 
@@ -16,6 +17,10 @@ use crate::term::Term;
 use crate::term::binary::Binary;
 use crate::term::boxed::{Cons, Tuple};
 
+pub use additional::{
+    bif_binary_part, bif_bit_size, bif_is_bitstring, bif_is_map_key, bif_map_size, bif_round,
+    bif_trunc, bif_unary_minus,
+};
 pub use registry_bifs::{bif_register, bif_unregister, bif_whereis};
 pub use type_conversion::{
     bif_atom_to_binary, bif_binary_to_existing_atom, bif_binary_to_list, bif_list_to_binary,
@@ -53,6 +58,14 @@ const GATE3_BIFS: &[Gate3Bif] = &[
     ("not", 1, bif_not),
     ("/=", 2, bif_not_equal),
     ("length", 1, bif_length),
+    ("round", 1, bif_round),
+    ("trunc", 1, bif_trunc),
+    ("is_bitstring", 1, bif_is_bitstring),
+    ("is_map_key", 2, bif_is_map_key),
+    ("map_size", 1, bif_map_size),
+    ("binary_part", 3, bif_binary_part),
+    ("bit_size", 1, bif_bit_size),
+    ("-", 1, bif_unary_minus),
 ];
 
 /// Global monotonic counter for make_ref/0.
@@ -426,6 +439,10 @@ fn bool_term(value: bool) -> Term {
 fn badarg() -> Term {
     Term::atom(Atom::BADARG)
 }
+
+#[cfg(test)]
+#[path = "additional_tests.rs"]
+mod additional_tests;
 
 #[cfg(test)]
 mod tests;

@@ -392,6 +392,15 @@ fn register_gate3_bifs_registers_all() {
         // Gleam stdlib support (B-033)
         ("byte_size", 1),
         ("iolist_size", 1),
+        // Additional erlang BIFs (B-037)
+        ("round", 1),
+        ("trunc", 1),
+        ("is_bitstring", 1),
+        ("is_map_key", 2),
+        ("map_size", 1),
+        ("binary_part", 3),
+        ("bit_size", 1),
+        ("-", 1),
     ] {
         assert!(
             reg.lookup(erlang, at.intern(name), arity).is_some(),
