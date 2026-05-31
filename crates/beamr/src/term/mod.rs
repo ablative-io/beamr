@@ -8,6 +8,8 @@
 pub mod binary;
 pub mod boxed;
 pub mod compare;
+#[cfg(feature = "json")]
+pub mod json;
 
 use crate::atom::Atom;
 
