@@ -7,3 +7,4 @@ target/
 .claude/projects/
 .benchmark/
 .yggdrasil-worktrees/
+erl_crash.dump
