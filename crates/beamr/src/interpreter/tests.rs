@@ -1,10 +1,10 @@
-use super::{ExecutionResult, run};
+use super::{ExecutionResult, run, run_with_registry};
 use crate::atom::{Atom, AtomTable};
 use crate::error::ExecError;
 use crate::loader::decode::BinaryOp;
 use crate::loader::decode::compact::Operand;
 use crate::loader::{Instruction, Literal};
-use crate::module::{Module, ResolvedImport, ResolvedImportTarget};
+use crate::module::{Module, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use crate::native::{NativeEntry, ProcessContext};
 use crate::process::{CodePosition, ExitReason, Process};
 use crate::term::binary::{Binary, packed_word_count, write_binary};
@@ -278,6 +278,131 @@ fn call_ext_invokes_registered_native_and_tail_call_deallocates() {
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
     assert_eq!(process.stack().len(), 0);
+}
+
+fn exported_value_module(
+    module_atom: Atom,
+    function_atom: Atom,
+    label: u32,
+    padding: usize,
+    value: i64,
+) -> Module {
+    let mut code = Vec::new();
+    for _ in 0..padding {
+        code.push(Instruction::Move {
+            source: Operand::Integer(-1),
+            destination: Operand::X(1),
+        });
+    }
+    code.push(Instruction::Label { label });
+    code.push(Instruction::Move {
+        source: Operand::Integer(value),
+        destination: Operand::X(0),
+    });
+    code.push(Instruction::Return);
+
+    let mut module = module(module_atom, code);
+    module.exports.insert((function_atom, 0), label);
+    module
+}
+
+fn call_ext_caller(
+    caller_atom: Atom,
+    target_module: Atom,
+    function_atom: Atom,
+    target: ResolvedImportTarget,
+) -> Module {
+    let mut caller = module(
+        caller_atom,
+        vec![
+            Instruction::CallExt {
+                arity: Operand::Unsigned(0),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Return,
+        ],
+    );
+    caller.resolved_imports.push(ResolvedImport {
+        module: target_module,
+        function: function_atom,
+        arity: 0,
+        target,
+    });
+    caller
+}
+
+#[test]
+fn call_ext_code_target_uses_latest_export_ip_after_reload() {
+    let atoms = AtomTable::new();
+    let caller_atom = atoms.intern("caller");
+    let target_atom = atoms.intern("target");
+    let foo_atom = atoms.intern("foo");
+    let registry = ModuleRegistry::new();
+
+    registry.insert(exported_value_module(target_atom, foo_atom, 5, 0, 1));
+    let caller = registry.insert(call_ext_caller(
+        caller_atom,
+        target_atom,
+        foo_atom,
+        ResolvedImportTarget::Code {
+            module: target_atom,
+            label: 5,
+        },
+    ));
+    let mut first_process = Process::new(1, 32);
+
+    assert_eq!(
+        run_with_registry(&mut first_process, &caller, &registry),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(first_process.x_reg(0), Term::small_int(1));
+
+    registry.insert(exported_value_module(target_atom, foo_atom, 12, 4, 2));
+    let mut second_process = Process::new(2, 32);
+
+    assert_eq!(
+        run_with_registry(&mut second_process, &caller, &registry),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(second_process.x_reg(0), Term::small_int(2));
+}
+
+#[test]
+fn call_ext_deferred_target_resolves_when_module_loads_later() {
+    let atoms = AtomTable::new();
+    let caller_atom = atoms.intern("caller");
+    let target_atom = atoms.intern("target");
+    let foo_atom = atoms.intern("foo");
+    let registry = ModuleRegistry::new();
+    let caller = registry.insert(call_ext_caller(
+        caller_atom,
+        target_atom,
+        foo_atom,
+        ResolvedImportTarget::Deferred {
+            module: target_atom,
+            function: foo_atom,
+            arity: 0,
+        },
+    ));
+
+    let mut missing_process = Process::new(1, 32);
+    assert!(matches!(
+        run_with_registry(&mut missing_process, &caller, &registry),
+        Err(ExecError::Undef {
+            module,
+            function,
+            arity: 0,
+        }) if module == target_atom && function == foo_atom
+    ));
+
+    registry.insert(exported_value_module(target_atom, foo_atom, 12, 3, 7));
+    let mut loaded_process = Process::new(2, 32);
+
+    assert_eq!(
+        run_with_registry(&mut loaded_process, &caller, &registry),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(loaded_process.x_reg(0), Term::small_int(7));
 }
 
 fn add(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
