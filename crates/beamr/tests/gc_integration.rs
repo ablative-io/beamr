@@ -13,9 +13,22 @@ use beamr::{
 };
 
 fn module(code: Vec<Instruction>) -> Module {
+    let label_index = code
+        .iter()
+        .enumerate()
+        .filter_map(|(i, instr)| {
+            if let Instruction::Label { label } = instr {
+                Some((*label, i))
+            } else {
+                None
+            }
+        })
+        .collect();
     Module {
         name: Atom::OK,
+        generation: 0,
         exports: HashMap::new(),
+        label_index,
         code,
         literals: Vec::new(),
         resolved_imports: Vec::new(),

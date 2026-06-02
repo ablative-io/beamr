@@ -18,9 +18,22 @@ use beamr::term::boxed::{Cons, Tuple};
 use std::collections::HashMap;
 
 fn module(name: beamr::atom::Atom, code: Vec<Instruction>) -> Module {
+    let label_index = code
+        .iter()
+        .enumerate()
+        .filter_map(|(i, instr)| {
+            if let Instruction::Label { label } = instr {
+                Some((*label, i))
+            } else {
+                None
+            }
+        })
+        .collect();
     Module {
         name,
+        generation: 0,
         exports: HashMap::new(),
+        label_index,
         code,
         literals: Vec::new(),
         resolved_imports: Vec::new(),
@@ -399,13 +412,28 @@ fn load_proof_module(atoms: &AtomTable, bifs: &BifRegistryImpl) -> Module {
             });
         }
     }
+    let exports: HashMap<_, _> = parsed
+        .exports
+        .iter()
+        .map(|e| ((e.function, e.arity), e.label))
+        .collect();
+    let label_index = parsed
+        .instructions
+        .iter()
+        .enumerate()
+        .filter_map(|(i, instr)| {
+            if let Instruction::Label { label } = instr {
+                Some((*label, i))
+            } else {
+                None
+            }
+        })
+        .collect();
     Module {
         name: parsed.name,
-        exports: parsed
-            .exports
-            .iter()
-            .map(|e| ((e.function, e.arity), e.label))
-            .collect(),
+        generation: 0,
+        exports,
+        label_index,
         code: parsed.instructions,
         literals: parsed.literals,
         resolved_imports: resolved,
