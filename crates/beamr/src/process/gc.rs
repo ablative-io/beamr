@@ -48,7 +48,7 @@ pub(crate) fn root_set(process: &mut Process, live_x: usize) -> RootSet {
 mod tests {
     use crate::{
         atom::Atom,
-        gc::tests::{Snapshot, alloc_tuple, snapshot},
+        gc::tests::{Snapshot, alloc_tuple, module_pin, snapshot},
         process::{Exception, Process},
         term::Term,
     };
@@ -77,7 +77,7 @@ mod tests {
         let stacktrace = alloc_tuple(&mut process, &[Term::small_int(14)]);
         process
             .stack_mut()
-            .push_frame(Atom::OK, 0, 2)
+            .push_frame(Atom::OK, 0, module_pin(Atom::OK), 2)
             .expect("frame fits");
         process.stack_mut().set_y_reg(0, y0).expect("Y0 exists");
         process.stack_mut().set_y_reg(1, y1).expect("Y1 exists");

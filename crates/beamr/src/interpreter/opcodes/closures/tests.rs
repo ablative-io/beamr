@@ -5,6 +5,7 @@ use crate::loader::{Instruction, LambdaEntry};
 use crate::module::ModuleRegistry;
 use crate::process::ExitReason;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 fn module(name: Atom, code: Vec<Instruction>) -> Module {
     let label_index = code
@@ -167,6 +168,7 @@ fn apply_uses_registry_exports_and_rejects_missing_or_private_targets() {
     registry.insert(target);
     let caller = module(Atom::OK, Vec::new());
     let mut process = Process::new(1, 16);
+    process.set_current_module(Arc::new(caller.clone()));
     process.set_x_reg(0, Term::small_int(1));
     process.set_x_reg(1, Term::small_int(2));
     process.set_x_reg(2, Term::atom(module_atom));
@@ -203,7 +205,7 @@ fn apply_last_deallocates_current_frame_before_jump() {
     let mut process = Process::new(1, 16);
     process
         .stack_mut()
-        .push_frame(Atom::OK, 123, 0)
+        .push_frame(Atom::OK, 123, Arc::new(module(Atom::OK, Vec::new())), 0)
         .expect("frame push");
     process.set_x_reg(0, Term::atom(module_atom));
     process.set_x_reg(1, Term::atom(add_atom));

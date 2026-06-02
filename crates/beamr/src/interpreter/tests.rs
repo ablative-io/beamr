@@ -1,16 +1,17 @@
-use super::{ExecutionResult, run};
+use super::{ExecutionResult, run, run_with_registry};
 use crate::atom::{Atom, AtomTable};
 use crate::error::ExecError;
 use crate::loader::decode::BinaryOp;
 use crate::loader::decode::compact::Operand;
 use crate::loader::{Instruction, Literal};
-use crate::module::{Module, ResolvedImport, ResolvedImportTarget};
+use crate::module::{Module, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use crate::native::{NativeEntry, ProcessContext};
 use crate::process::{CodePosition, ExitReason, Process};
 use crate::term::binary::{Binary, packed_word_count, write_binary};
 use crate::term::boxed::{Cons, Tuple};
 use crate::term::{Term, compare};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 fn module(name: Atom, code: Vec<Instruction>) -> Module {
     let label_index = code
@@ -107,6 +108,107 @@ fn tight_call_loop_yields_at_reduction_budget_and_resumes() {
     );
     process.reset_reductions(1);
     assert_eq!(run(&mut process, &module), Ok(ExecutionResult::Yielded));
+}
+
+#[test]
+fn intra_module_calls_continue_on_pinned_version_after_reload() {
+    let registry = ModuleRegistry::new();
+    let module_v1 = registry.insert(module(
+        Atom::OK,
+        vec![
+            Instruction::CallOnly {
+                arity: Operand::Unsigned(0),
+                label: Operand::Label(2),
+            },
+            Instruction::Label { label: 2 },
+            Instruction::Move {
+                source: Operand::Integer(11),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+    ));
+    let _module_v2 = registry.insert(module(
+        Atom::OK,
+        vec![
+            Instruction::Label { label: 2 },
+            Instruction::Move {
+                source: Operand::Integer(22),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+    ));
+    let mut process = Process::new(1, 32);
+    process.set_current_module(Arc::clone(&module_v1));
+
+    assert_eq!(
+        run_with_registry(&mut process, &module_v1, &registry),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(process.x_reg(0), Term::small_int(11));
+}
+
+#[test]
+fn external_return_restores_caller_version_and_qualified_self_call_upgrades() {
+    let registry = ModuleRegistry::new();
+    let import_b = ResolvedImport {
+        module: Atom::ERROR,
+        function: Atom::OK,
+        arity: 0,
+        target: ResolvedImportTarget::Code {
+            module: Atom::ERROR,
+            label: 1,
+        },
+    };
+    let import_self = ResolvedImport {
+        module: Atom::OK,
+        function: Atom::OK,
+        arity: 0,
+        target: ResolvedImportTarget::Code {
+            module: Atom::OK,
+            label: 9,
+        },
+    };
+    let mut a_v1_data = module(
+        Atom::OK,
+        vec![
+            Instruction::CallExt {
+                arity: Operand::Unsigned(0),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::CallExtOnly {
+                arity: Operand::Unsigned(0),
+                import: Operand::Unsigned(1),
+            },
+        ],
+    );
+    a_v1_data.resolved_imports.push(import_b);
+    a_v1_data.resolved_imports.push(import_self);
+    let a_v1 = registry.insert(a_v1_data);
+    let _b_v1 = registry.insert(module(
+        Atom::ERROR,
+        vec![Instruction::Label { label: 1 }, Instruction::Return],
+    ));
+    let _a_v2 = registry.insert(module(
+        Atom::OK,
+        vec![
+            Instruction::Label { label: 9 },
+            Instruction::Move {
+                source: Operand::Integer(2),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+    ));
+    let mut process = Process::new(1, 32);
+    process.set_current_module(Arc::clone(&a_v1));
+
+    assert_eq!(
+        run_with_registry(&mut process, &a_v1, &registry),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(process.x_reg(0), Term::small_int(2));
 }
 
 #[test]

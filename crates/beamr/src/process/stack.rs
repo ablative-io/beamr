@@ -6,36 +6,57 @@
 //! growth in recursive functions.
 
 use std::fmt;
+use std::sync::Arc;
 
 use crate::atom::Atom;
+use crate::module::Module;
 use crate::term::Term;
 
 /// Default maximum call-stack depth in frames.
 pub const DEFAULT_STACK_FRAME_LIMIT: usize = 10_000;
 
 /// Saved return location for a stack frame.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ReturnPoint {
     /// Module to return to.
     pub module: Atom,
     /// Instruction pointer to resume at in `module`.
     pub ip: usize,
+    /// Pinned module version to resume after returning.
+    pub module_version: Arc<Module>,
 }
 
+impl PartialEq for ReturnPoint {
+    fn eq(&self, other: &Self) -> bool {
+        self.module == other.module
+            && self.ip == other.ip
+            && Arc::ptr_eq(&self.module_version, &other.module_version)
+    }
+}
+
+impl Eq for ReturnPoint {}
+
 /// One call-stack frame with its own Y-register slots.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct StackFrame {
     return_module: Atom,
     return_ip: usize,
+    pinned_module: Arc<Module>,
     y_slots: u16,
     y_regs: Vec<Term>,
 }
 
 impl StackFrame {
-    fn new(return_module: Atom, return_ip: usize, y_slots: u16) -> Self {
+    fn new(
+        return_module: Atom,
+        return_ip: usize,
+        pinned_module: Arc<Module>,
+        y_slots: u16,
+    ) -> Self {
         Self {
             return_module,
             return_ip,
+            pinned_module,
             y_slots,
             y_regs: vec![Term::NIL; usize::from(y_slots)],
         }
@@ -51,6 +72,12 @@ impl StackFrame {
     #[must_use]
     pub const fn return_ip(&self) -> usize {
         self.return_ip
+    }
+
+    /// Pinned module version saved by this frame.
+    #[must_use]
+    pub const fn pinned_module(&self) -> &Arc<Module> {
+        &self.pinned_module
     }
 
     /// Number of Y-register slots owned by this frame.
@@ -90,6 +117,18 @@ impl StackFrame {
         Ok(())
     }
 }
+
+impl PartialEq for StackFrame {
+    fn eq(&self, other: &Self) -> bool {
+        self.return_module == other.return_module
+            && self.return_ip == other.return_ip
+            && Arc::ptr_eq(&self.pinned_module, &other.pinned_module)
+            && self.y_slots == other.y_slots
+            && self.y_regs == other.y_regs
+    }
+}
+
+impl Eq for StackFrame {}
 
 /// Stack operation errors.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -141,15 +180,22 @@ impl Stack {
         }
     }
 
-    /// Push a frame saving `module:ip` and allocating `y_slots` Y-registers.
-    pub fn push_frame(&mut self, module: Atom, ip: usize, y_slots: u16) -> Result<(), StackError> {
+    /// Push a frame saving `module:ip`, pinning the caller module version, and allocating `y_slots` Y-registers.
+    pub fn push_frame(
+        &mut self,
+        module: Atom,
+        ip: usize,
+        pinned_module: Arc<Module>,
+        y_slots: u16,
+    ) -> Result<(), StackError> {
         if self.frames.len() >= self.frame_limit {
             return Err(StackError::StackOverflow {
                 limit: self.frame_limit,
             });
         }
 
-        self.frames.push(StackFrame::new(module, ip, y_slots));
+        self.frames
+            .push(StackFrame::new(module, ip, pinned_module, y_slots));
         Ok(())
     }
 
@@ -162,6 +208,7 @@ impl Stack {
         Ok(ReturnPoint {
             module: frame.return_module,
             ip: frame.return_ip,
+            module_version: frame.pinned_module,
         })
     }
 
@@ -223,8 +270,32 @@ impl Default for Stack {
 #[cfg(test)]
 mod tests {
     use super::{ReturnPoint, Stack, StackError};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
     use crate::atom::Atom;
+    use crate::loader::Instruction;
+    use crate::module::{Module, ModuleRegistry, PurgeError};
     use crate::term::Term;
+
+    fn test_module(name: Atom) -> Module {
+        Module {
+            name,
+            generation: 0,
+            exports: HashMap::new(),
+            label_index: HashMap::from([(1, 0)]),
+            code: vec![Instruction::Label { label: 1 }],
+            literals: Vec::new(),
+            resolved_imports: Vec::new(),
+            lambdas: Vec::new(),
+            string_table: Vec::new(),
+            line_info: Vec::new(),
+        }
+    }
+
+    fn module_arc(name: Atom) -> Arc<Module> {
+        Arc::new(test_module(name))
+    }
 
     #[test]
     fn new_stack_is_empty() {
@@ -237,9 +308,10 @@ mod tests {
     #[test]
     fn push_and_pop_round_trips_return_point() {
         let mut stack = Stack::new();
+        let module_version = module_arc(Atom::OK);
 
         stack
-            .push_frame(Atom::OK, 42, 2)
+            .push_frame(Atom::OK, 42, Arc::clone(&module_version), 2)
             .expect("frame should fit on empty stack");
         let return_point = stack.pop_frame().expect("frame should pop");
 
@@ -248,6 +320,7 @@ mod tests {
             ReturnPoint {
                 module: Atom::OK,
                 ip: 42,
+                module_version,
             }
         );
         assert!(stack.is_empty());
@@ -258,7 +331,7 @@ mod tests {
         let mut stack = Stack::new();
 
         stack
-            .push_frame(Atom::OK, 0, 2)
+            .push_frame(Atom::OK, 0, module_arc(Atom::OK), 2)
             .expect("frame should fit on empty stack");
 
         assert_eq!(stack.y_reg(0), Ok(Term::NIL));
@@ -270,13 +343,13 @@ mod tests {
         let mut stack = Stack::new();
 
         stack
-            .push_frame(Atom::OK, 0, 1)
+            .push_frame(Atom::OK, 0, module_arc(Atom::OK), 1)
             .expect("first frame should fit");
         stack
             .set_y_reg(0, Term::small_int(10))
             .expect("Y0 exists in first frame");
         stack
-            .push_frame(Atom::ERROR, 1, 1)
+            .push_frame(Atom::ERROR, 1, module_arc(Atom::ERROR), 1)
             .expect("second frame should fit");
         stack
             .set_y_reg(0, Term::small_int(20))
@@ -292,10 +365,10 @@ mod tests {
         let mut stack = Stack::with_frame_limit(1);
 
         stack
-            .push_frame(Atom::OK, 0, 0)
+            .push_frame(Atom::OK, 0, module_arc(Atom::OK), 0)
             .expect("first frame should fit");
         let error = stack
-            .push_frame(Atom::OK, 1, 0)
+            .push_frame(Atom::OK, 1, module_arc(Atom::OK), 0)
             .expect_err("second frame should exceed custom limit");
 
         assert_eq!(error, StackError::StackOverflow { limit: 1 });
@@ -313,12 +386,61 @@ mod tests {
         let mut stack = Stack::new();
 
         stack
-            .push_frame(Atom::OK, 0, 1)
+            .push_frame(Atom::OK, 0, module_arc(Atom::OK), 1)
             .expect("frame should fit on empty stack");
 
         assert_eq!(
             stack.y_reg(1),
             Err(StackError::YRegisterOutOfBounds { index: 1, slots: 1 })
         );
+    }
+
+    #[test]
+    fn frames_pin_old_module_versions_across_reload_and_purge() {
+        let registry = ModuleRegistry::new();
+        let a_v1 = registry.insert(test_module(Atom::OK));
+        let b_v1 = registry.insert(test_module(Atom::ERROR));
+        let c_v1 = registry.insert(test_module(Atom::UNDEFINED));
+        let mut stack = Stack::new();
+
+        stack
+            .push_frame(Atom::OK, 10, Arc::clone(&a_v1), 0)
+            .expect("A frame should fit");
+        stack
+            .push_frame(Atom::ERROR, 20, Arc::clone(&b_v1), 0)
+            .expect("B frame should fit");
+        stack
+            .push_frame(Atom::UNDEFINED, 30, Arc::clone(&c_v1), 0)
+            .expect("C frame should fit");
+
+        let _a_v2 = registry.insert(test_module(Atom::OK));
+        let _b_v2 = registry.insert(test_module(Atom::ERROR));
+
+        assert!(matches!(
+            registry.purge_old(Atom::OK),
+            Err(PurgeError::StillReferenced {
+                module: Atom::OK,
+                ..
+            })
+        ));
+        assert!(matches!(
+            registry.purge_old(Atom::ERROR),
+            Err(PurgeError::StillReferenced {
+                module: Atom::ERROR,
+                ..
+            })
+        ));
+
+        let c_return = stack.pop_frame().expect("C frame should pop");
+        assert_eq!(c_return.module, Atom::UNDEFINED);
+        assert!(Arc::ptr_eq(&c_return.module_version, &c_v1));
+
+        let b_return = stack.pop_frame().expect("B frame should pop");
+        assert_eq!(b_return.module, Atom::ERROR);
+        assert!(Arc::ptr_eq(&b_return.module_version, &b_v1));
+
+        let a_return = stack.pop_frame().expect("A frame should pop");
+        assert_eq!(a_return.module, Atom::OK);
+        assert!(Arc::ptr_eq(&a_return.module_version, &a_v1));
     }
 }

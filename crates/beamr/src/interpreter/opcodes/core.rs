@@ -63,9 +63,10 @@ pub fn call(
 ) -> Result<InstructionOutcome, ExecError> {
     let _arity = operand_u8(arity, "call arity")?;
     if save_return {
+        let caller_module = current_module_pin(process, module);
         process
             .stack_mut()
-            .push_frame(module.name, return_ip, 0)
+            .push_frame(module.name, return_ip, caller_module, 0)
             .map_err(ExecError::from)?;
     }
     let target = label_ip(module, operand_label(label)?)?;
@@ -114,6 +115,7 @@ pub fn return_(process: &mut Process) -> Result<InstructionOutcome, ExecError> {
         return Ok(InstructionOutcome::Exit(ExitReason::Normal));
     }
     let return_point = process.stack_mut().pop_frame().map_err(ExecError::from)?;
+    process.set_current_module(Arc::clone(&return_point.module_version));
     Ok(InstructionOutcome::Jump(CodePosition {
         module: return_point.module,
         instruction_pointer: return_point.ip,
@@ -248,9 +250,10 @@ fn call_external_target(
             label,
         } => {
             if save_return {
+                let caller_module = current_module_pin(process, module);
                 process
                     .stack_mut()
-                    .push_frame(module.name, return_ip, 0)
+                    .push_frame(module.name, return_ip, caller_module, 0)
                     .map_err(ExecError::from)?;
             }
             let target_mod =
@@ -265,6 +268,7 @@ fn call_external_target(
                 module: target_module,
                 instruction_pointer: label_ip(&target_mod, label)?,
             };
+            process.set_current_module(Arc::clone(&target_mod));
             jump_position_with_reduction(process, target)
         }
         ResolvedImportTarget::Native(entry) => {
@@ -352,9 +356,10 @@ fn push_y_frame(
     let return_ip = process
         .code_position()
         .map_or(0, |position| position.instruction_pointer);
+    let caller_module = current_module_pin(process, module);
     process
         .stack_mut()
-        .push_frame(module.name, return_ip, slots)
+        .push_frame(module.name, return_ip, caller_module, slots)
         .map_err(ExecError::from)?;
     Ok(InstructionOutcome::Continue)
 }
@@ -363,6 +368,13 @@ pub(crate) fn deallocate_frame(process: &mut Process, words: &Operand) -> Result
     let _words = operand_u16(words, "deallocate words")?;
     let _ = process.stack_mut().pop_frame().map_err(ExecError::from)?;
     Ok(())
+}
+
+pub(crate) fn current_module_pin(process: &Process, module: &Module) -> Arc<Module> {
+    process
+        .current_module()
+        .filter(|current| current.name == module.name)
+        .map_or_else(|| Arc::new(module.clone()), Arc::clone)
 }
 
 fn jump_with_reduction(

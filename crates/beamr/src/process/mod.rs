@@ -13,9 +13,11 @@ use std::collections::HashSet;
 use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::atom::Atom;
 use crate::mailbox::Mailbox;
+use crate::module::Module;
 use crate::native::NativeContinuation;
 use crate::process::heap::Heap;
 use crate::process::stack::Stack;
@@ -218,6 +220,7 @@ pub struct Process {
     native_continuation: Option<NativeContinuation>,
     reduction_counter: u32,
     code_position: Option<CodePosition>,
+    current_module: Option<Arc<Module>>,
     current_mfa: Option<(Atom, Atom, u8)>,
     links: HashSet<u64>,
     monitors: Vec<Monitor>,
@@ -245,6 +248,7 @@ impl Process {
             native_continuation: None,
             reduction_counter: DEFAULT_REDUCTION_BUDGET,
             code_position: None,
+            current_module: None,
             current_mfa: None,
             links: HashSet::new(),
             monitors: Vec::new(),
@@ -513,6 +517,22 @@ impl Process {
         self.code_position = code_position;
     }
 
+    /// Current pinned module version, if one has been assigned.
+    #[must_use]
+    pub fn current_module(&self) -> Option<&Arc<Module>> {
+        self.current_module.as_ref()
+    }
+
+    /// Set the currently executing module version.
+    pub fn set_current_module(&mut self, module: Arc<Module>) {
+        self.current_module = Some(module);
+    }
+
+    /// Clear the currently executing module version.
+    pub fn clear_current_module(&mut self) {
+        self.current_module = None;
+    }
+
     /// Current module/function/arity metadata from the most recent func_info.
     #[must_use]
     pub const fn current_mfa(&self) -> Option<(Atom, Atom, u8)> {
@@ -601,13 +621,18 @@ impl Process {
         self.x_regs = [Term::NIL; 256];
         self.reduction_counter = 0;
         self.code_position = None;
+        self.current_module = None;
         self.current_mfa = None;
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_REDUCTION_BUDGET, ExitReason, Process, ProcessError, ProcessStatus};
+    use super::{
+        CodePosition, DEFAULT_REDUCTION_BUDGET, ExitReason, Process, ProcessError, ProcessStatus,
+    };
+    use crate::atom::Atom;
+    use crate::gc::tests::module_pin;
     use crate::term::Term;
 
     #[test]
@@ -621,10 +646,26 @@ mod tests {
         assert!(process.mailbox().is_empty());
         assert_eq!(process.reduction_counter(), DEFAULT_REDUCTION_BUDGET);
         assert_eq!(process.code_position(), None);
+        assert!(process.current_module().is_none());
         assert!(process.links().is_empty());
         assert!(process.monitors().is_empty());
         assert!(!process.trap_exit());
         assert_eq!(process.group_leader(), None);
+    }
+
+    #[test]
+    fn terminate_clears_current_module_pin() {
+        let mut process = Process::new(0, 233);
+        process.set_code_position(Some(CodePosition {
+            module: Atom::OK,
+            instruction_pointer: 0,
+        }));
+        process.set_current_module(module_pin(Atom::OK));
+
+        process.terminate(ExitReason::Normal);
+
+        assert!(process.current_module().is_none());
+        assert_eq!(process.code_position(), None);
     }
 
     #[test]

@@ -97,9 +97,10 @@ pub fn handle_trampoline(
         .code_position()
         .map_or(0, |pos| pos.instruction_pointer);
     if trampoline.continuation.is_none() || !process.has_native_continuation() {
+        let caller_module = super::core::current_module_pin(process, module);
         process
             .stack_mut()
-            .push_frame(module.name, return_ip, 0)
+            .push_frame(module.name, return_ip, caller_module, 0)
             .map_err(ExecError::from)?;
     }
     process.set_native_continuation(trampoline.continuation);

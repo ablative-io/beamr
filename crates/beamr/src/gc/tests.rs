@@ -1,8 +1,13 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use proptest::prelude::*;
 
 use super::*;
 use crate::{
     atom::Atom,
+    loader::Instruction,
+    module::Module,
     term::boxed::{Cons, Tuple, write_cons, write_tuple},
 };
 
@@ -14,6 +19,21 @@ pub(crate) enum Snapshot {
     Tuple(Vec<Snapshot>),
     List(Vec<Snapshot>),
     Other,
+}
+
+pub(crate) fn module_pin(name: Atom) -> Arc<Module> {
+    Arc::new(Module {
+        name,
+        generation: 0,
+        exports: HashMap::new(),
+        label_index: HashMap::from([(1, 0)]),
+        code: vec![Instruction::Label { label: 1 }],
+        literals: Vec::new(),
+        resolved_imports: Vec::new(),
+        lambdas: Vec::new(),
+        string_table: Vec::new(),
+        line_info: Vec::new(),
+    })
 }
 
 pub(crate) fn alloc_tuple(process: &mut Process, elements: &[Term]) -> Term {
@@ -159,7 +179,7 @@ fn mixed_x_y_and_mailbox_roots_survive_minor_gc() {
     process.set_x_reg(5, x_term);
     process
         .stack_mut()
-        .push_frame(Atom::OK, 0, 3)
+        .push_frame(Atom::OK, 0, module_pin(Atom::OK), 3)
         .expect("frame fits");
     process.stack_mut().set_y_reg(2, y_term).expect("Y2 exists");
     process.mailbox_mut().push_owned_for_test(mail_term);
@@ -237,7 +257,10 @@ proptest! {
             terms.push(next);
         }
         process.set_x_reg(0, terms[terms.len() - 1]);
-        process.stack_mut().push_frame(Atom::OK, 0, 2).expect("frame fits");
+        process
+            .stack_mut()
+            .push_frame(Atom::OK, 0, module_pin(Atom::OK), 2)
+            .expect("frame fits");
         process.stack_mut().set_y_reg(0, terms[terms.len() / 2]).expect("Y0 exists");
         process.mailbox_mut().push_owned_for_test(terms[terms.len() / 3]);
         let expected_x = snapshot(process.x_reg(0));

@@ -1,17 +1,24 @@
 use std::collections::HashMap as StdHashMap;
 use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    Arc, Condvar, Mutex,
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
+
+use dashmap::DashMap;
 
 use super::*;
 use crate::atom::AtomTable;
-use crate::hook::HookDecision;
+use crate::hook::{Hook, HookDecision};
+use crate::io::NullSink;
 use crate::loader::Instruction;
 use crate::loader::decode::compact::Operand;
 use crate::mailbox::Mailbox;
 use crate::process::heap::Heap;
+use crate::process::registry::ProcessTable;
+use crate::supervision::link::LinkSet;
+use crate::supervision::monitor::MonitorSet;
 use crate::term::boxed;
+use crate::timer::TimerWheel;
 
 fn test_module(name: Atom, code: Vec<Instruction>) -> Module {
     let label_index = code
@@ -275,6 +282,60 @@ fn exported_spawn_starts_at_entry_function_with_args() {
 
     wait_until(2_000, || scheduler.process_table().get(pid).is_none());
     scheduler.shutdown();
+}
+
+#[test]
+fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("slice_pin");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module_v1 = registry.insert(test_module(
+        module_name,
+        vec![
+            Instruction::Label { label: 1 },
+            Instruction::CallOnly {
+                arity: Operand::Unsigned(0),
+                label: Operand::Label(1),
+            },
+        ],
+    ));
+    let shared = Arc::new(SharedState {
+        shutdown: AtomicBool::new(false),
+        process_table: ProcessTable::new(),
+        module_registry: Arc::clone(&registry),
+        spawn_counter: AtomicUsize::new(0),
+        thread_count: 1,
+        next_pid: AtomicU64::new(0),
+        wait_set: Mutex::new(WaitSet::default()),
+        wake_condvar: Condvar::new(),
+        process_bodies: DashMap::new(),
+        exit_tombstones: DashMap::new(),
+        exit_results: DashMap::new(),
+        async_results: DashMap::new(),
+        link_set: Mutex::new(LinkSet::new()),
+        monitor_set: Mutex::new(MonitorSet::new()),
+        hook: Hook::new(),
+        timers: Arc::new(Mutex::new(TimerWheel::new())),
+        output_sink: Mutex::new(Arc::new(NullSink)),
+        idle_parks: AtomicUsize::new(0),
+    });
+    let mut process = Process::new(1, DEFAULT_HEAP_SIZE);
+    process.set_code_position(Some(CodePosition {
+        module: module_name,
+        instruction_pointer: 0,
+    }));
+    process.set_current_module(Arc::clone(&module_v1));
+
+    let _module_v2 = registry.insert(test_module(module_name, vec![Instruction::Return]));
+
+    let SliceOutcome::Requeue(resumed) = execute_slice(&shared, &mut process) else {
+        panic!("pinned loop should yield again instead of using reloaded return-only module");
+    };
+    assert!(
+        resumed
+            .current_module()
+            .is_some_and(|current| Arc::ptr_eq(current, &module_v1))
+    );
 }
 
 #[test]

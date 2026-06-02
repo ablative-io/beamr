@@ -114,6 +114,28 @@ pub fn run_with_native_services(
     run_loop(process, initial_module, Some(registry), services)
 }
 
+fn current_module_for_position(
+    process: &mut Process,
+    position: CodePosition,
+    initial_module: &Module,
+    registry: Option<&ModuleRegistry>,
+) -> Result<Arc<Module>, ExecError> {
+    if let Some(current) = process.current_module()
+        && current.name == position.module
+    {
+        return Ok(Arc::clone(current));
+    }
+
+    let module = registry
+        .and_then(|registry| registry.lookup(position.module))
+        .or_else(|| {
+            (initial_module.name == position.module).then(|| Arc::new(initial_module.clone()))
+        })
+        .ok_or(ExecError::InvalidOperand("code position module"))?;
+    process.set_current_module(Arc::clone(&module));
+    Ok(module)
+}
+
 fn run_loop(
     process: &mut Process,
     initial_module: &Module,
@@ -131,11 +153,8 @@ fn run_loop(
         let position = process
             .code_position()
             .ok_or(ExecError::InvalidOperand("code position"))?;
-        let module_guard = registry.and_then(|registry| registry.lookup(position.module));
-        let module = module_guard.as_deref().unwrap_or(initial_module);
-        if module.name != position.module {
-            return Err(ExecError::InvalidOperand("code position module"));
-        }
+        let module_arc = current_module_for_position(process, position, initial_module, registry)?;
+        let module = module_arc.as_ref();
         let instruction = module
             .code
             .get(position.instruction_pointer)
@@ -163,6 +182,7 @@ fn run_loop(
             InstructionOutcome::Waiting => return Ok(ExecutionResult::Waiting),
             InstructionOutcome::Exit(reason) => {
                 process.set_code_position(None);
+                process.clear_current_module();
                 return Ok(ExecutionResult::Exited(reason));
             }
         }

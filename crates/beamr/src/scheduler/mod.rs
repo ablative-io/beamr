@@ -75,6 +75,7 @@ struct WaitSet {
 struct SpawnRequest {
     pid: u64,
     module: Atom,
+    module_version: Arc<Module>,
     instruction_pointer: usize,
     args: Vec<Term>,
 }
@@ -189,22 +190,28 @@ impl Scheduler {
             .module_registry
             .lookup_mfa(entry_module, entry_function, arity)?;
         let instruction_pointer = entry.module.label_ip(entry.label)?;
-        Ok(self.enqueue_spawn(entry.module.name, instruction_pointer, args))
+        Ok(self.enqueue_spawn(entry.module, instruction_pointer, args))
     }
 
     /// Spawn a process at the beginning of a module.
     pub fn spawn_process(&self, module: &Arc<Module>) -> u64 {
-        self.enqueue_spawn(module.name, 0, Vec::new())
+        self.enqueue_spawn(Arc::clone(module), 0, Vec::new())
     }
 
-    fn enqueue_spawn(&self, module: Atom, instruction_pointer: usize, args: Vec<Term>) -> u64 {
+    fn enqueue_spawn(
+        &self,
+        module_version: Arc<Module>,
+        instruction_pointer: usize,
+        args: Vec<Term>,
+    ) -> u64 {
         let pid = self.shared.next_pid.fetch_add(1, Ordering::Relaxed);
         self.shared.process_table.spawn_with_pid(pid);
         let index =
             self.shared.spawn_counter.fetch_add(1, Ordering::Relaxed) % self.shared.thread_count;
         self.inject_queues[index].push(SpawnRequest {
             pid,
-            module,
+            module: module_version.name,
+            module_version,
             instruction_pointer,
             args,
         });
@@ -393,6 +400,7 @@ fn build_process(request: SpawnRequest) -> Process {
         module: request.module,
         instruction_pointer: request.instruction_pointer,
     }));
+    process.set_current_module(request.module_version);
     for (index, arg) in request.args.into_iter().enumerate().take(256) {
         if let Ok(register) = u8::try_from(index) {
             process.set_x_reg(register, arg);
@@ -485,8 +493,16 @@ fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutco
         Some(position) => position.module,
         None => return exit_process(process, ExitReason::Normal),
     };
-    let Some(module) = shared.module_registry.lookup(module_atom) else {
-        return exit_process(process, ExitReason::Error);
+    let module = if let Some(current) = process.current_module()
+        && current.name == module_atom
+    {
+        Arc::clone(current)
+    } else {
+        let Some(module) = shared.module_registry.lookup(module_atom) else {
+            return exit_process(process, ExitReason::Error);
+        };
+        process.set_current_module(Arc::clone(&module));
+        module
     };
     let services = supervision_integration::build_native_services(shared);
     let result =

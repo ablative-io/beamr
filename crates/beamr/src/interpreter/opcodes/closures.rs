@@ -1,5 +1,7 @@
 //! Closure, dynamic dispatch, and flatmap opcode handlers.
 
+use std::sync::Arc;
+
 use crate::atom::Atom;
 use crate::error::ExecError;
 use crate::interpreter::InstructionOutcome;
@@ -92,9 +94,10 @@ pub fn call_fun(
         .lambdas
         .get(function_index)
         .ok_or(ExecError::InvalidOperand("closure function index"))?;
+    let caller_module = core::current_module_pin(process, module);
     process
         .stack_mut()
-        .push_frame(module.name, return_ip, 0)
+        .push_frame(module.name, return_ip, caller_module, 0)
         .map_err(ExecError::from)?;
     let target = CodePosition {
         module: target_module_atom,
@@ -184,11 +187,22 @@ fn apply_common(
         core::deallocate_frame(process, words)?;
     }
     if let Some(return_module) = save_return_module {
+        let return_module_version = process
+            .current_module()
+            .filter(|current| current.name == return_module)
+            .cloned()
+            .or_else(|| registry.lookup(return_module))
+            .ok_or(ExecError::Undef {
+                module: return_module,
+                function: Atom::UNDEFINED,
+                arity,
+            })?;
         process
             .stack_mut()
-            .push_frame(return_module, return_ip, 0)
+            .push_frame(return_module, return_ip, return_module_version, 0)
             .map_err(ExecError::from)?;
     }
+    process.set_current_module(Arc::clone(&pointer.module));
     core::jump_position_with_reduction(
         process,
         CodePosition {
