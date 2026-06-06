@@ -61,6 +61,7 @@ pub(super) struct SharedState {
     process_bodies: DashMap<u64, Mutex<Option<ScheduledProcess>>>,
     exit_tombstones: DashMap<u64, ExitReason>,
     exit_results: DashMap<u64, Term>,
+    exit_errors: DashMap<u64, ExecError>,
     async_results: DashMap<u64, Term>,
     link_set: Mutex<LinkSet>,
     monitor_set: Mutex<MonitorSet>,
@@ -153,6 +154,7 @@ impl Scheduler {
             process_bodies: DashMap::new(),
             exit_tombstones: DashMap::new(),
             exit_results: DashMap::new(),
+            exit_errors: DashMap::new(),
             async_results: DashMap::new(),
             link_set: Mutex::new(LinkSet::new()),
             monitor_set: Mutex::new(MonitorSet::new()),
@@ -522,6 +524,15 @@ impl Scheduler {
         }
     }
 
+    /// Retrieve the execution error that caused a process to exit, if any.
+    ///
+    /// Returns `Some` when the process exited due to an interpreter or BIF
+    /// error (`ExitReason::Error`). The error is removed from the store on
+    /// retrieval — call this at most once per PID after `run_until_exit`.
+    pub fn take_exit_error(&self, pid: u64) -> Option<ExecError> {
+        self.shared.exit_errors.remove(&pid).map(|(_, e)| e)
+    }
+
     /// Wake a suspended process with a result term.
     ///
     /// The process will resume execution with `result` in x(0) and the
@@ -821,7 +832,11 @@ fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutco
             SliceOutcome::Wait(take_process(process))
         }
         Ok(ExecutionResult::Exited(reason)) => exit_process(process, reason),
-        Err(_error) => exit_process(process, ExitReason::Error),
+        Err(error) => {
+            let pid = process.pid();
+            shared.exit_errors.insert(pid, error);
+            exit_process(process, ExitReason::Error)
+        }
     }
 }
 
