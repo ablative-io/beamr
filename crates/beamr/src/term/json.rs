@@ -360,20 +360,11 @@ fn object_to_map_term(
     object: &JsonObject<String, Value>,
     context: &mut ProcessContext,
 ) -> Result<Term, JsonTermError> {
-    let entries = {
-        let atom_table = context
-            .atom_table()
-            .ok_or(JsonTermError::MissingAtomTable)?;
-        let mut entries = Vec::with_capacity(object.len());
-        for (key, value) in object {
-            entries.push((Term::atom(atom_table.intern(key)), value));
-        }
-        entries
-    };
-
-    let mut pairs = Vec::with_capacity(entries.len());
-    for (key, value) in entries {
-        pairs.push((key, value_to_term(value, context)?));
+    let mut pairs = Vec::with_capacity(object.len());
+    for (key, value) in object {
+        let key_term = string_to_binary_term(key)?;
+        let value_term = value_to_term(value, context)?;
+        pairs.push((key_term, value_term));
     }
     pairs.sort_by_key(|(key, _)| *key);
 
@@ -557,14 +548,13 @@ mod tests {
     }
 
     #[test]
-    fn value_to_term_converts_objects_to_atom_keyed_maps() {
-        let (table, mut context) = context();
+    fn value_to_term_converts_objects_to_binary_keyed_maps() {
+        let (_table, mut context) = context();
         let term = value_to_term(&json!({"key": "value"}), &mut context).expect("object to map");
         let map = Map::new(term).expect("map accessor");
-        let key = Term::atom(table.lookup("key").expect("key atom interned"));
-
-        assert_eq!(map.key(0), Some(key));
-        assert_eq!(term_to_value(term, &table), Ok(json!({"key": "value"})));
+        let key = map.key(0).expect("first key");
+        let key_binary = Binary::new(key).expect("key is a binary");
+        assert_eq!(key_binary.as_bytes(), b"key");
     }
 
     #[test]
@@ -588,13 +578,20 @@ mod tests {
     }
 
     #[test]
-    fn value_to_term_requires_atom_table_for_objects() {
+    fn value_to_term_requires_atom_table_for_null() {
         let mut context = ProcessContext::new();
 
         assert_eq!(
-            value_to_term(&json!({"key": "value"}), &mut context),
+            value_to_term(&Value::Null, &mut context),
             Err(JsonTermError::MissingAtomTable)
         );
+    }
+
+    #[test]
+    fn value_to_term_objects_work_without_atom_table() {
+        let mut context = ProcessContext::new();
+        let term = value_to_term(&json!({"key": "value"}), &mut context);
+        assert!(term.is_ok());
     }
 
     #[test]
