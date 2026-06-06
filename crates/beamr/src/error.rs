@@ -7,6 +7,8 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::namespace::NamespaceId;
+
 /// Failures that can occur while loading and validating BEAM bytecode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoadError {
@@ -21,6 +23,8 @@ pub enum LoadError {
     /// A second old code version would be created before the existing old
     /// version was purged.
     OldCodeStillRunning,
+    /// The requested module namespace does not exist.
+    UnknownNamespace { namespace: NamespaceId },
 }
 
 impl fmt::Display for LoadError {
@@ -36,6 +40,9 @@ impl fmt::Display for LoadError {
             }
             Self::OldCodeStillRunning => formatter
                 .write_str("old code is still running and must be purged before loading again"),
+            Self::UnknownNamespace { namespace } => {
+                write!(formatter, "unknown module namespace {:?}", namespace)
+            }
         }
     }
 }

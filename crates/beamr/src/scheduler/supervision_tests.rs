@@ -97,10 +97,16 @@ fn add_monitor(shared: &SharedState, watcher_pid: u64, target_pid: u64) -> u64 {
 }
 
 fn make_shared_state() -> Arc<SharedState> {
+    let module_registry = Arc::new(ModuleRegistry::new());
+    let namespace_store = DashMap::new();
+    namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
+
     Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
-        module_registry: Arc::new(ModuleRegistry::new()),
+        module_registry,
+        namespace_store,
+        next_namespace_id: AtomicU64::new(1),
         spawn_counter: AtomicUsize::new(0),
         thread_count: 1,
         next_pid: AtomicU64::new(100),

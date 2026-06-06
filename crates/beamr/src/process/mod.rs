@@ -18,6 +18,7 @@ use std::sync::Arc;
 use crate::atom::Atom;
 use crate::mailbox::Mailbox;
 use crate::module::Module;
+use crate::namespace::NamespaceId;
 use crate::native::NativeContinuation;
 use crate::process::heap::Heap;
 use crate::process::stack::Stack;
@@ -219,6 +220,7 @@ pub struct Process {
     x_regs: [Term; 1024],
     native_continuation: Option<NativeContinuation>,
     reduction_counter: u32,
+    namespace_id: NamespaceId,
     code_position: Option<CodePosition>,
     current_module: Option<Arc<Module>>,
     current_mfa: Option<(Atom, Atom, u8)>,
@@ -247,6 +249,7 @@ impl Process {
             x_regs: [Term::NIL; 1024],
             native_continuation: None,
             reduction_counter: DEFAULT_REDUCTION_BUDGET,
+            namespace_id: NamespaceId::DEFAULT,
             code_position: None,
             current_module: None,
             current_mfa: None,
@@ -506,6 +509,17 @@ impl Process {
         self.reduction_counter = budget;
     }
 
+    /// Namespace whose module registry this process executes against.
+    #[must_use]
+    pub const fn namespace_id(&self) -> NamespaceId {
+        self.namespace_id
+    }
+
+    /// Set the namespace whose module registry this process executes against.
+    pub const fn set_namespace_id(&mut self, namespace_id: NamespaceId) {
+        self.namespace_id = namespace_id;
+    }
+
     /// Current code position, if one has been assigned.
     #[must_use]
     pub const fn code_position(&self) -> Option<CodePosition> {
@@ -645,6 +659,7 @@ mod tests {
     };
     use crate::atom::Atom;
     use crate::gc::tests::module_pin;
+    use crate::namespace::NamespaceId;
     use crate::term::Term;
 
     #[test]
@@ -657,6 +672,7 @@ mod tests {
         assert!(process.stack().is_empty());
         assert!(process.mailbox().is_empty());
         assert_eq!(process.reduction_counter(), DEFAULT_REDUCTION_BUDGET);
+        assert_eq!(process.namespace_id(), NamespaceId::DEFAULT);
         assert_eq!(process.code_position(), None);
         assert!(process.current_module().is_none());
         assert!(process.links().is_empty());

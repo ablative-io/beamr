@@ -1,1 +1,1 @@
-Harden hot code loading on_load and BIF naming
+feat(beamr): add scheduler namespace registries

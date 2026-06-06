@@ -12,6 +12,7 @@ pub mod io;
 pub mod loader;
 pub mod mailbox;
 pub mod module;
+pub mod namespace;
 pub mod native;
 pub mod process;
 pub mod scheduler;

@@ -303,6 +303,12 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
         module_registry: Arc::clone(&registry),
+        namespace_store: {
+            let store = DashMap::new();
+            store.insert(NamespaceId::DEFAULT, Arc::clone(&registry));
+            store
+        },
+        next_namespace_id: AtomicU64::new(1),
         spawn_counter: AtomicUsize::new(0),
         thread_count: 1,
         next_pid: AtomicU64::new(0),

@@ -254,6 +254,7 @@ impl SpawnFacility for SchedulerSpawnFacility {
             module_version: Arc::clone(&entry.module),
             instruction_pointer: ip,
             args,
+            namespace_id: crate::namespace::NamespaceId::DEFAULT,
         });
 
         if let Some(parent_pid) = link_to {
@@ -321,6 +322,7 @@ impl SpawnFacility for SchedulerSpawnFacility {
             module_version: Arc::clone(&loaded),
             instruction_pointer: ip,
             args: Vec::new(),
+            namespace_id: crate::namespace::NamespaceId::DEFAULT,
         });
 
         if let Some(parent_pid) = link_to {

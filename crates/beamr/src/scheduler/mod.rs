@@ -26,6 +26,7 @@ use crate::io::{IoSink, NullSink};
 use crate::loader::{self, Instruction};
 use crate::module::PurgeError;
 use crate::module::{Module, ModuleRegistry};
+use crate::namespace::NamespaceId;
 use crate::native::{BifRegistryImpl, CodeManagementFacility};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::registry::ProcessTable;
@@ -51,6 +52,8 @@ pub(super) struct SharedState {
     shutdown: AtomicBool,
     process_table: ProcessTable,
     module_registry: Arc<ModuleRegistry>,
+    namespace_store: DashMap<NamespaceId, Arc<ModuleRegistry>>,
+    next_namespace_id: AtomicU64,
     atom_table: Arc<AtomTable>,
     bif_registry: Arc<BifRegistryImpl>,
     spawn_counter: AtomicUsize,
@@ -85,6 +88,7 @@ struct SpawnRequest {
     module_version: Arc<Module>,
     instruction_pointer: usize,
     args: Vec<Term>,
+    namespace_id: NamespaceId,
 }
 
 struct ScheduledProcess(Process);
@@ -141,10 +145,14 @@ impl Scheduler {
         bif_registry: Arc<BifRegistryImpl>,
     ) -> Result<Self, String> {
         let thread_count = configured_thread_count(config.thread_count);
+        let namespace_store = DashMap::new();
+        namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
             module_registry,
+            namespace_store,
+            next_namespace_id: AtomicU64::new(1),
             atom_table,
             bif_registry,
             spawn_counter: AtomicUsize::new(0),
@@ -222,17 +230,75 @@ impl Scheduler {
 
     /// Hot-load a BEAM module, running on_load before committing when required.
     pub fn hot_load_module(&self, bytes: &[u8]) -> Result<HotLoadResult, LoadError> {
-        hot_load_module_shared(&self.shared, bytes)
+        self.hot_load_module_in(NamespaceId::DEFAULT, bytes)
+    }
+
+    /// Create a new module namespace with an empty registry.
+    #[must_use]
+    pub fn create_namespace(&self) -> NamespaceId {
+        let id = NamespaceId(
+            self.shared
+                .next_namespace_id
+                .fetch_add(1, Ordering::Relaxed),
+        );
+        debug_assert_ne!(id, NamespaceId::DEFAULT);
+        self.shared
+            .namespace_store
+            .insert(id, Arc::new(ModuleRegistry::new()));
+        id
+    }
+
+    /// Load a BEAM module into a specific namespace.
+    pub fn load_module_in(
+        &self,
+        namespace: NamespaceId,
+        bytes: &[u8],
+    ) -> Result<HotLoadResult, LoadError> {
+        self.hot_load_module_in(namespace, bytes)
+    }
+
+    /// Hot-load a BEAM module into a specific namespace.
+    pub fn hot_load_module_in(
+        &self,
+        namespace: NamespaceId,
+        bytes: &[u8],
+    ) -> Result<HotLoadResult, LoadError> {
+        let registry = namespace_registry_for_load(&self.shared, namespace)?;
+        hot_load_module_in_shared(&self.shared, namespace, &registry, bytes)
     }
 
     /// Safely purge retained old code when no process still references it.
     pub fn purge_module(&self, name: Atom) -> Result<PurgeResult, PurgeError> {
-        purge_module_shared(&self.shared, name)
+        self.purge_module_in(NamespaceId::DEFAULT, name)
     }
 
     /// Kill processes pinned to old code, then purge the retained old version.
     pub fn force_purge_module(&self, name: Atom) -> Result<PurgeResult, PurgeError> {
-        force_purge_module_shared(&self.shared, name)
+        self.force_purge_module_in(NamespaceId::DEFAULT, name)
+    }
+
+    /// Safely purge retained old code in a specific namespace.
+    pub fn purge_module_in(
+        &self,
+        namespace: NamespaceId,
+        name: Atom,
+    ) -> Result<PurgeResult, PurgeError> {
+        let Some(registry) = namespace_registry(&self.shared, namespace) else {
+            return Err(PurgeError::NoOldVersion { module: name });
+        };
+        purge_module_in_shared(&self.shared, namespace, &registry, name)
+    }
+
+    /// Kill processes in a namespace pinned to old code, then purge that namespace's old version.
+    pub fn force_purge_module_in(
+        &self,
+        namespace: NamespaceId,
+        name: Atom,
+    ) -> Result<PurgeResult, PurgeError> {
+        let Some(registry) = namespace_registry(&self.shared, namespace) else {
+            return Err(PurgeError::NoOldVersion { module: name });
+        };
+        force_purge_module_in_shared(&self.shared, namespace, &registry, name)
     }
 
     /// Remove every version of a module from the registry.
@@ -260,13 +326,7 @@ impl Scheduler {
         entry_function: Atom,
         args: Vec<Term>,
     ) -> Result<u64, ExecError> {
-        let arity = u8::try_from(args.len()).map_err(|_| ExecError::Badarg)?;
-        let entry = self
-            .shared
-            .module_registry
-            .lookup_mfa(entry_module, entry_function, arity)?;
-        let instruction_pointer = entry.module.label_ip(entry.label)?;
-        Ok(self.enqueue_spawn(entry.module, instruction_pointer, args))
+        self.spawn_in(NamespaceId::DEFAULT, entry_module, entry_function, args)
     }
 
     /// Spawn a process at the beginning of a module.
@@ -281,13 +341,78 @@ impl Scheduler {
         entry_function: Atom,
         args: Vec<Term>,
     ) -> Result<u64, ExecError> {
+        self.spawn_in_trap_exit(NamespaceId::DEFAULT, entry_module, entry_function, args)
+    }
+
+    /// Spawn a process in a namespace at an exported module/function/arity entrypoint.
+    pub fn spawn_in(
+        &self,
+        namespace: NamespaceId,
+        entry_module: Atom,
+        entry_function: Atom,
+        args: Vec<Term>,
+    ) -> Result<u64, ExecError> {
         let arity = u8::try_from(args.len()).map_err(|_| ExecError::Badarg)?;
-        let entry = self
-            .shared
-            .module_registry
-            .lookup_mfa(entry_module, entry_function, arity)?;
+        let registry = namespace_registry(&self.shared, namespace).ok_or(ExecError::Undef {
+            module: entry_module,
+            function: entry_function,
+            arity,
+        })?;
+        self.spawn_in_registry(
+            namespace,
+            &registry,
+            entry_module,
+            entry_function,
+            arity,
+            args,
+            false,
+        )
+    }
+
+    /// Spawn a process in a namespace with trap-exit set before it is made runnable.
+    pub fn spawn_in_trap_exit(
+        &self,
+        namespace: NamespaceId,
+        entry_module: Atom,
+        entry_function: Atom,
+        args: Vec<Term>,
+    ) -> Result<u64, ExecError> {
+        let arity = u8::try_from(args.len()).map_err(|_| ExecError::Badarg)?;
+        let registry = namespace_registry(&self.shared, namespace).ok_or(ExecError::Undef {
+            module: entry_module,
+            function: entry_function,
+            arity,
+        })?;
+        self.spawn_in_registry(
+            namespace,
+            &registry,
+            entry_module,
+            entry_function,
+            arity,
+            args,
+            true,
+        )
+    }
+
+    fn spawn_in_registry(
+        &self,
+        namespace: NamespaceId,
+        registry: &Arc<ModuleRegistry>,
+        entry_module: Atom,
+        entry_function: Atom,
+        arity: u8,
+        args: Vec<Term>,
+        trap_exit: bool,
+    ) -> Result<u64, ExecError> {
+        let entry = registry.lookup_mfa(entry_module, entry_function, arity)?;
         let instruction_pointer = entry.module.label_ip(entry.label)?;
-        Ok(self.enqueue_spawn_with_trap_exit(entry.module, instruction_pointer, args, true))
+        Ok(self.enqueue_spawn_with_trap_exit(
+            entry.module,
+            instruction_pointer,
+            args,
+            trap_exit,
+            namespace,
+        ))
     }
 
     /// Set a live process's trap-exit flag, returning the previous value.
@@ -374,7 +499,13 @@ impl Scheduler {
         instruction_pointer: usize,
         args: Vec<Term>,
     ) -> u64 {
-        self.enqueue_spawn_with_trap_exit(module_version, instruction_pointer, args, false)
+        self.enqueue_spawn_with_trap_exit(
+            module_version,
+            instruction_pointer,
+            args,
+            false,
+            NamespaceId::DEFAULT,
+        )
     }
 
     fn enqueue_spawn_with_trap_exit(
@@ -383,6 +514,7 @@ impl Scheduler {
         instruction_pointer: usize,
         args: Vec<Term>,
         trap_exit: bool,
+        namespace_id: NamespaceId,
     ) -> u64 {
         let pid = self.shared.next_pid.fetch_add(1, Ordering::Relaxed);
         self.shared.process_table.spawn_with_pid(pid);
@@ -394,6 +526,7 @@ impl Scheduler {
                 module: module_version.name,
                 module_version,
                 instruction_pointer,
+                namespace_id,
                 args,
             });
             process.set_trap_exit(true);
@@ -410,6 +543,7 @@ impl Scheduler {
             module: module_version.name,
             module_version,
             instruction_pointer,
+            namespace_id,
             args,
         });
         self.shared.wake_condvar.notify_all();
@@ -701,6 +835,7 @@ fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<Spaw
 
 fn build_process(request: SpawnRequest) -> Process {
     let mut process = Process::new(request.pid, DEFAULT_HEAP_SIZE);
+    process.set_namespace_id(request.namespace_id);
     process.set_code_position(Some(CodePosition {
         module: request.module,
         instruction_pointer: request.instruction_pointer,
@@ -801,6 +936,9 @@ fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutco
         Some(position) => position.module,
         None => return exit_process(shared, process, ExitReason::Normal),
     };
+    let Some(registry) = namespace_registry(shared, process.namespace_id()) else {
+        return exit_process(shared, process, ExitReason::Error);
+    };
     let module = if let Some(current) = process.current_module()
         && current.name == module_atom
         && current
@@ -814,15 +952,14 @@ fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutco
     {
         Arc::clone(current)
     } else {
-        let Some(module) = shared.module_registry.lookup(module_atom) else {
+        let Some(module) = registry.lookup(module_atom) else {
             return exit_process(shared, process, ExitReason::Error);
         };
         process.set_current_module(Arc::clone(&module));
         module
     };
     let services = supervision_integration::build_native_services(shared);
-    let result =
-        interpreter::run_with_native_services(process, &module, &shared.module_registry, &services);
+    let result = interpreter::run_with_native_services(process, &module, &registry, &services);
     let reductions = DEFAULT_REDUCTION_BUDGET.saturating_sub(process.reduction_counter());
     if matches!(
         result,
@@ -851,11 +988,7 @@ fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutco
     }
 }
 
-fn exit_process(
-    shared: &SharedState,
-    process: &mut Process,
-    reason: ExitReason,
-) -> SliceOutcome {
+fn exit_process(shared: &SharedState, process: &mut Process, reason: ExitReason) -> SliceOutcome {
     let pid = process.pid();
     let result = process.x_reg(0);
     if let Some(exception) = process.current_exception() {
@@ -872,24 +1005,47 @@ fn exit_reason_from_status(status: ProcessStatus) -> ExitReason {
     }
 }
 
+fn namespace_registry(shared: &SharedState, namespace: NamespaceId) -> Option<Arc<ModuleRegistry>> {
+    shared
+        .namespace_store
+        .get(&namespace)
+        .map(|entry| Arc::clone(entry.value()))
+}
+
+fn namespace_registry_for_load(
+    shared: &SharedState,
+    namespace: NamespaceId,
+) -> Result<Arc<ModuleRegistry>, LoadError> {
+    namespace_registry(shared, namespace).ok_or(LoadError::UnknownNamespace { namespace })
+}
+
 fn hot_load_module_shared(
     shared: &Arc<SharedState>,
+    bytes: &[u8],
+) -> Result<HotLoadResult, LoadError> {
+    hot_load_module_in_shared(shared, NamespaceId::DEFAULT, &shared.module_registry, bytes)
+}
+
+fn hot_load_module_in_shared(
+    shared: &Arc<SharedState>,
+    namespace: NamespaceId,
+    registry: &Arc<ModuleRegistry>,
     bytes: &[u8],
 ) -> Result<HotLoadResult, LoadError> {
     let (staged, _report) = loader::prepare_module(
         bytes,
         &shared.atom_table,
-        &shared.module_registry,
+        registry,
         shared.bif_registry.as_ref(),
     )?;
     let module_name = staged.name;
-    if shared.module_registry.lookup_old(module_name).is_some() {
+    if registry.lookup_old(module_name).is_some() {
         return Err(LoadError::OldCodeStillRunning);
     }
-    let had_old_version = shared.module_registry.lookup(module_name).is_some();
+    let had_old_version = registry.lookup(module_name).is_some();
     let on_load_ip = find_on_load_ip(&staged);
     if let Some(ip) = on_load_ip {
-        let outcome = run_on_load(shared, &staged, ip);
+        let outcome = run_on_load(shared, namespace, registry, &staged, ip);
         if outcome != ExitReason::Normal {
             return Ok(HotLoadResult {
                 module_name,
@@ -900,7 +1056,7 @@ fn hot_load_module_shared(
             });
         }
     }
-    let committed = shared.module_registry.insert(staged);
+    let committed = registry.insert(staged);
     Ok(HotLoadResult {
         module_name,
         generation: committed.generation(),
@@ -917,7 +1073,13 @@ fn find_on_load_ip(module: &Module) -> Option<usize> {
         .position(|instruction| matches!(instruction, Instruction::OnLoad))
 }
 
-fn run_on_load(shared: &Arc<SharedState>, module: &Module, ip: usize) -> ExitReason {
+fn run_on_load(
+    shared: &Arc<SharedState>,
+    namespace: NamespaceId,
+    registry: &Arc<ModuleRegistry>,
+    module: &Module,
+    ip: usize,
+) -> ExitReason {
     let Some(entry_ip) = ip
         .checked_add(1)
         .filter(|entry_ip| *entry_ip < module.code.len())
@@ -925,6 +1087,7 @@ fn run_on_load(shared: &Arc<SharedState>, module: &Module, ip: usize) -> ExitRea
         return ExitReason::Error;
     };
     let mut process = Process::new(u64::MAX, DEFAULT_HEAP_SIZE);
+    process.set_namespace_id(namespace);
     process.set_code_position(Some(CodePosition {
         module: module.name,
         instruction_pointer: entry_ip,
@@ -933,12 +1096,7 @@ fn run_on_load(shared: &Arc<SharedState>, module: &Module, ip: usize) -> ExitRea
     loop {
         process.reset_reductions(DEFAULT_REDUCTION_BUDGET);
         let services = supervision_integration::build_native_services(shared);
-        match interpreter::run_with_native_services(
-            &mut process,
-            module,
-            &shared.module_registry,
-            &services,
-        ) {
+        match interpreter::run_with_native_services(&mut process, module, registry, &services) {
             Ok(ExecutionResult::Exited(reason)) => return reason,
             Ok(ExecutionResult::Yielded) => continue,
             Ok(ExecutionResult::Waiting) | Err(_) => return ExitReason::Error,
@@ -947,8 +1105,17 @@ fn run_on_load(shared: &Arc<SharedState>, module: &Module, ip: usize) -> ExitRea
 }
 
 fn purge_module_shared(shared: &Arc<SharedState>, name: Atom) -> Result<PurgeResult, PurgeError> {
-    if let Some(old) = shared.module_registry.lookup_old(name) {
-        let references = process_references_to_module(shared, &old);
+    purge_module_in_shared(shared, NamespaceId::DEFAULT, &shared.module_registry, name)
+}
+
+fn purge_module_in_shared(
+    shared: &Arc<SharedState>,
+    namespace: NamespaceId,
+    registry: &Arc<ModuleRegistry>,
+    name: Atom,
+) -> Result<PurgeResult, PurgeError> {
+    if let Some(old) = registry.lookup_old(name) {
+        let references = process_references_to_module_in(shared, namespace, &old);
         if references != 0 {
             return Err(PurgeError::StillReferenced {
                 module: name,
@@ -956,7 +1123,7 @@ fn purge_module_shared(shared: &Arc<SharedState>, name: Atom) -> Result<PurgeRes
             });
         }
     }
-    shared.module_registry.purge_old(name)?;
+    registry.purge_old(name)?;
     Ok(PurgeResult {
         module_name: name,
         processes_killed: 0,
@@ -967,16 +1134,24 @@ fn force_purge_module_shared(
     shared: &Arc<SharedState>,
     name: Atom,
 ) -> Result<PurgeResult, PurgeError> {
-    let old = shared
-        .module_registry
+    force_purge_module_in_shared(shared, NamespaceId::DEFAULT, &shared.module_registry, name)
+}
+
+fn force_purge_module_in_shared(
+    shared: &Arc<SharedState>,
+    namespace: NamespaceId,
+    registry: &Arc<ModuleRegistry>,
+    name: Atom,
+) -> Result<PurgeResult, PurgeError> {
+    let old = registry
         .lookup_old(name)
         .ok_or(PurgeError::NoOldVersion { module: name })?;
-    let victims = old_code_pids(shared, &old);
+    let victims = old_code_pids_in(shared, namespace, &old);
     let processes_killed = victims.len();
     for pid in victims {
         cleanup_exited_process(shared, pid, ExitReason::Killed);
     }
-    shared.module_registry.force_remove_old(name)?;
+    registry.force_remove_old(name)?;
     Ok(PurgeResult {
         module_name: name,
         processes_killed,
@@ -985,6 +1160,14 @@ fn force_purge_module_shared(
 
 fn process_references_to_module(shared: &SharedState, module: &Arc<Module>) -> usize {
     old_code_pids(shared, module).len()
+}
+
+fn process_references_to_module_in(
+    shared: &SharedState,
+    namespace: NamespaceId,
+    module: &Arc<Module>,
+) -> usize {
+    old_code_pids_in(shared, namespace, module).len()
 }
 
 fn old_code_pids(shared: &SharedState, module: &Arc<Module>) -> Vec<u64> {
@@ -998,6 +1181,21 @@ fn old_code_pids(shared: &SharedState, module: &Arc<Module>) -> Vec<u64> {
         .collect()
 }
 
+fn old_code_pids_in(
+    shared: &SharedState,
+    namespace: NamespaceId,
+    module: &Arc<Module>,
+) -> Vec<u64> {
+    shared
+        .process_bodies
+        .iter()
+        .filter_map(|entry| {
+            let pid = *entry.key();
+            process_references_old_code_in(shared, pid, namespace, module).then_some(pid)
+        })
+        .collect()
+}
+
 fn process_references_old_code(shared: &SharedState, pid: u64, module: &Arc<Module>) -> bool {
     let Some(entry) = shared.process_bodies.get(&pid) else {
         return false;
@@ -1005,6 +1203,21 @@ fn process_references_old_code(shared: &SharedState, pid: u64, module: &Arc<Modu
     let slot = lock_or_recover(&entry);
     slot.as_ref()
         .is_some_and(|scheduled| scheduled.0.references_module(module))
+}
+
+fn process_references_old_code_in(
+    shared: &SharedState,
+    pid: u64,
+    namespace: NamespaceId,
+    module: &Arc<Module>,
+) -> bool {
+    let Some(entry) = shared.process_bodies.get(&pid) else {
+        return false;
+    };
+    let slot = lock_or_recover(&entry);
+    slot.as_ref().is_some_and(|scheduled| {
+        scheduled.0.namespace_id() == namespace && scheduled.0.references_module(module)
+    })
 }
 
 fn cleanup_exited_process(shared: &SharedState, pid: u64, reason: ExitReason) {
