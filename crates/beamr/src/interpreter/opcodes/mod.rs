@@ -260,10 +260,10 @@ fn dispatch_common(
             closures::call_fun(process, module, arity, next_ip, ctx.registry)
         }
         Instruction::CallFun2 {
-            function,
+            function: _tag,
             arity,
-            destination,
-        } => closures::call_fun2(process, function, arity, destination),
+            destination: func,
+        } => closures::call_fun2(process, module, func, arity, next_ip, ctx.registry),
         Instruction::Apply { arity } => {
             let registry = ctx
                 .registry

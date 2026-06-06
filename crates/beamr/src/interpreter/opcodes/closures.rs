@@ -162,19 +162,45 @@ pub(crate) fn resolve_closure_target(
 
 pub fn call_fun2(
     process: &mut Process,
-    function: &Operand,
+    module: &Module,
+    func: &Operand,
     arity: &Operand,
-    destination: &Operand,
+    return_ip: usize,
+    registry: Option<&ModuleRegistry>,
 ) -> Result<InstructionOutcome, ExecError> {
-    let fun = core::read_term(process, function)?;
     let arity = operand_u8(arity, "call_fun2 arity")?;
-    let closure = Closure::new(fun).ok_or(ExecError::Badfun { term: fun })?;
+    let fun_term = core::read_term(process, func)?;
+    let closure = Closure::new(fun_term).ok_or(ExecError::Badfun { term: fun_term })?;
     if closure.arity() != arity {
         let args = collect_args(process, arity);
-        return Err(ExecError::Badarity { fun, args });
+        return Err(ExecError::Badarity {
+            fun: fun_term,
+            args,
+        });
     }
-    core::write_term(process, destination, fun)?;
-    Ok(InstructionOutcome::Continue)
+
+    let free_count = closure.num_free();
+    for index in 0..free_count {
+        let value = closure
+            .free_var(index)
+            .ok_or(ExecError::InvalidOperand("closure free variable"))?;
+        let register = u16::try_from(usize::from(arity) + index)
+            .map_err(|_| ExecError::InvalidOperand("X register"))?;
+        process.set_x_reg(register, value);
+    }
+
+    let resolved = resolve_closure_target(closure, module, registry, fun_term)?;
+    let caller_module = core::current_module_pin(process, module);
+    process
+        .stack_mut()
+        .push_frame(module.name, return_ip, caller_module, 0)
+        .map_err(ExecError::from)?;
+    let target = CodePosition {
+        module: resolved.module_name,
+        instruction_pointer: core::label_ip(resolved.module.as_ref(), resolved.label)?,
+    };
+    process.set_current_module(resolved.module);
+    core::jump_position_with_reduction(process, target)
 }
 
 pub fn apply(
