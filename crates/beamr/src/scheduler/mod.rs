@@ -286,6 +286,7 @@ impl Scheduler {
         let Some(registry) = namespace_registry(&self.shared, namespace) else {
             return Err(PurgeError::NoOldVersion { module: name });
         };
+        drain_pending_spawns(&self.shared, &self.inject_queues);
         purge_module_in_shared(&self.shared, namespace, &registry, name)
     }
 
@@ -298,6 +299,7 @@ impl Scheduler {
         let Some(registry) = namespace_registry(&self.shared, namespace) else {
             return Err(PurgeError::NoOldVersion { module: name });
         };
+        drain_pending_spawns(&self.shared, &self.inject_queues);
         force_purge_module_in_shared(&self.shared, namespace, &registry, name)
     }
 
@@ -803,13 +805,33 @@ fn scheduler_loop(
 
 fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<SpawnRequest>) {
     while let Some(request) = inject.pop() {
-        let pid = request.pid;
-        let process = build_process(request);
-        shared
-            .process_bodies
-            .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
+        let pid = materialize_spawn_request(shared, request);
         queue.push(pid);
     }
+}
+
+fn drain_pending_spawns(shared: &SharedState, inject_queues: &[Arc<SegQueue<SpawnRequest>>]) {
+    let mut woken = Vec::new();
+    for (index, inject) in inject_queues.iter().enumerate() {
+        while let Some(request) = inject.pop() {
+            let pid = materialize_spawn_request(shared, request);
+            woken.push((pid, index));
+        }
+    }
+    if !woken.is_empty() {
+        let mut wait_set = lock_or_recover(&shared.wait_set);
+        wait_set.woken.extend(woken);
+        shared.wake_condvar.notify_all();
+    }
+}
+
+fn materialize_spawn_request(shared: &SharedState, request: SpawnRequest) -> u64 {
+    let pid = request.pid;
+    let process = build_process(request);
+    shared
+        .process_bodies
+        .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
+    pid
 }
 
 fn build_process(request: SpawnRequest) -> Process {

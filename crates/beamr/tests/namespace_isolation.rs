@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use beamr::atom::AtomTable;
+use beamr::error::{ExecError, LoadError};
 use beamr::module::ModuleRegistry;
+use beamr::namespace::NamespaceId;
 use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
 use beamr::process::ExitReason;
@@ -44,6 +46,9 @@ fn namespaces_load_same_module_name_independently() {
     let (scheduler, default_registry) = scheduler(Arc::clone(&atoms));
     let ns1 = scheduler.create_namespace();
     let ns2 = scheduler.create_namespace();
+    assert_ne!(ns1, ns2);
+    assert_ne!(ns1, NamespaceId::DEFAULT);
+    assert_ne!(ns2, NamespaceId::DEFAULT);
 
     let loaded1 = scheduler
         .load_module_in(ns1, &fixture("counter_v1.beam"))
@@ -122,6 +127,32 @@ fn namespace_hot_load_does_not_affect_other_namespace() {
 
     assert_eq!(result1, Term::small_int(2));
     assert_eq!(result2, Term::small_int(1));
+    scheduler.shutdown();
+}
+
+#[test]
+fn missing_namespace_errors_are_explicit_for_load_and_undef_for_spawn() {
+    let atoms = Arc::new(AtomTable::with_common_atoms());
+    let counter = atoms.intern("counter");
+    let version = atoms.intern("version");
+    let (scheduler, _registry) = scheduler(Arc::clone(&atoms));
+    let missing = NamespaceId(9_999);
+
+    let load = scheduler.load_module_in(missing, &fixture("counter_v1.beam"));
+    assert_eq!(
+        load,
+        Err(LoadError::UnknownNamespace { namespace: missing })
+    );
+
+    let spawn = scheduler.spawn_in(missing, counter, version, Vec::new());
+    assert_eq!(
+        spawn,
+        Err(ExecError::Undef {
+            module: counter,
+            function: version,
+            arity: 0,
+        })
+    );
     scheduler.shutdown();
 }
 

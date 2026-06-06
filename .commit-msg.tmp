@@ -1,1 +1,1 @@
-feat(beamr): add scheduler namespace registries
+harden(beamr): materialize pending namespace spawns before purge
