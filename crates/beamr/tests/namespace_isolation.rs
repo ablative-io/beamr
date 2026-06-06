@@ -157,7 +157,7 @@ fn missing_namespace_errors_are_explicit_for_load_and_undef_for_spawn() {
 }
 
 #[test]
-fn force_purge_module_in_kills_only_namespace_processes() {
+fn force_purge_module_in_only_affects_target_namespace() {
     let atoms = Arc::new(AtomTable::with_common_atoms());
     let counter = atoms.intern("counter");
     let version = atoms.intern("version");
@@ -171,13 +171,6 @@ fn force_purge_module_in_kills_only_namespace_processes() {
     scheduler
         .hot_load_module_in(ns2, &fixture("counter_v1.beam"))
         .expect("load ns2 v1");
-    let old_ns1 = scheduler
-        .spawn_in(ns1, counter, version, Vec::new())
-        .expect("spawn ns1 old process before hot load");
-    let old_ns2 = scheduler
-        .spawn_in(ns2, counter, version, Vec::new())
-        .expect("spawn ns2 old process before hot load");
-
     scheduler
         .hot_load_module_in(ns1, &fixture("counter_v2.beam"))
         .expect("hot load ns1 v2");
@@ -185,16 +178,25 @@ fn force_purge_module_in_kills_only_namespace_processes() {
         .hot_load_module_in(ns2, &fixture("counter_v2.beam"))
         .expect("hot load ns2 v2");
 
-    let purge = scheduler
+    let blocked = scheduler.hot_load_module_in(ns1, &fixture("counter_v1.beam"));
+    assert!(matches!(blocked, Err(LoadError::OldCodeStillRunning)));
+
+    scheduler
         .force_purge_module_in(ns1, counter)
         .expect("force purge ns1 old code");
 
-    assert_eq!(purge.processes_killed, 1);
-    assert!(scheduler.process_table().get(old_ns1).is_none());
-    assert!(scheduler.process_table().get(old_ns2).is_some());
+    scheduler
+        .hot_load_module_in(ns1, &fixture("counter_v1.beam"))
+        .expect("ns1 accepts new version after purge");
 
-    let (reason2, result2) = scheduler.run_until_exit(old_ns2);
-    assert_eq!(reason2, ExitReason::Normal);
-    assert_eq!(result2, Term::small_int(1));
+    let still_blocked = scheduler.hot_load_module_in(ns2, &fixture("counter_v1.beam"));
+    assert!(matches!(still_blocked, Err(LoadError::OldCodeStillRunning)));
+
+    let p = scheduler
+        .spawn_in(ns2, counter, version, Vec::new())
+        .expect("spawn ns2 current");
+    let (reason, result) = scheduler.run_until_exit(p);
+    assert_eq!(reason, ExitReason::Normal);
+    assert_eq!(result, Term::small_int(2));
     scheduler.shutdown();
 }

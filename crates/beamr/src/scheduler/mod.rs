@@ -303,6 +303,11 @@ impl Scheduler {
         force_purge_module_in_shared(&self.shared, namespace, &registry, name)
     }
 
+    /// Look up the current module version in a namespace's registry.
+    pub fn lookup_module_in(&self, namespace: NamespaceId, name: Atom) -> Option<Arc<Module>> {
+        namespace_registry(&self.shared, namespace)?.lookup(name)
+    }
+
     /// Remove every version of a module from the registry.
     pub fn delete_module(&self, name: Atom) -> bool {
         self.shared.module_registry.delete_module(name)
@@ -545,6 +550,24 @@ impl Scheduler {
         self.shared.process_table.spawn_with_pid(pid);
         let mut process = Process::new(pid, DEFAULT_HEAP_SIZE);
         process.set_trap_exit(trap_exit);
+        self.shared
+            .process_bodies
+            .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
+        pid
+    }
+
+    /// Spawn an inert process pinned to a module in a namespace for policy tests.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn spawn_test_process_in(
+        &self,
+        namespace: NamespaceId,
+        module: Arc<Module>,
+    ) -> u64 {
+        let pid = self.shared.next_pid.fetch_add(1, Ordering::Relaxed);
+        self.shared.process_table.spawn_with_pid(pid);
+        let mut process = Process::new(pid, DEFAULT_HEAP_SIZE);
+        process.set_namespace_id(namespace);
+        process.set_current_module(module);
         self.shared
             .process_bodies
             .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
