@@ -1,1 +1,1 @@
-feat(beamr): add process priority scheduling
+fix(beamr): wire priority helpers through scheduler spawns

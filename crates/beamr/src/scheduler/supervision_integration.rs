@@ -11,7 +11,7 @@ use crate::namespace::NamespaceId;
 use crate::native::links::{LinkError, LinkFacility};
 use crate::native::spawn::{SpawnError, SpawnFacility, SpawnMonitorResult};
 use crate::native::supervision::{MonitorResult, SupervisionError, SupervisionFacility};
-use crate::process::{ExitReason, ProcessStatus};
+use crate::process::{ExitReason, Priority, ProcessStatus};
 use crate::supervision::link;
 use crate::supervision::monitor;
 use crate::term::Term;
@@ -412,6 +412,8 @@ impl SpawnFacility for SchedulerSpawnFacility {
             args,
             namespace_id,
             group_leader,
+            priority: Priority::Normal,
+            priority: Priority::Normal,
         });
 
         if let Some(parent_pid) = link_to {
@@ -486,6 +488,8 @@ impl SpawnFacility for SchedulerSpawnFacility {
             args: Vec::new(),
             namespace_id,
             group_leader,
+            priority: Priority::Normal,
+            priority: Priority::Normal,
         });
 
         if let Some(parent_pid) = link_to {

@@ -177,19 +177,19 @@ fn drain_woken(shared: &SharedState, queue: &RunQueue, my_index: usize) {
     for pid in woken {
         if shared.process_table.get(pid).is_some() {
             queue.push_with_priority(pid, priority_for_pid(shared, pid).unwrap_or_default());
-
-            pub(in crate::scheduler) fn priority_for_pid(
-                shared: &SharedState,
-                pid: u64,
-            ) -> Option<crate::process::Priority> {
-                let entry = shared.process_bodies.get(&pid)?;
-                match &*lock_or_recover(&entry) {
-                    super::ProcessSlot::Present(scheduled) => Some(scheduled.0.priority()),
-                    super::ProcessSlot::Executing(metadata) => Some(metadata.priority),
-                    super::ProcessSlot::Absent => None,
-                }
-            }
         }
+    }
+}
+
+pub(in crate::scheduler) fn priority_for_pid(
+    shared: &SharedState,
+    pid: u64,
+) -> Option<crate::process::Priority> {
+    let entry = shared.process_bodies.get(&pid)?;
+    match &*lock_or_recover(&entry) {
+        super::ProcessSlot::Present(scheduled) => Some(scheduled.0.priority()),
+        super::ProcessSlot::Executing(metadata) => Some(metadata.priority),
+        super::ProcessSlot::Absent => None,
     }
 }
 
