@@ -1,1 +1,1 @@
-feat(beamr): promote large binaries to ProcBin
+Harden binary threshold promotion by accepting ProcBin inputs across stdlib binary consumers
