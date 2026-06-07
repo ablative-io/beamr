@@ -431,7 +431,9 @@ fn remove_link_from_slot(shared: &SharedState, pid: u64, linked_pid: u64) {
     if let Some(entry) = shared.process_bodies.get(&pid) {
         let mut slot = lock_or_recover(&entry);
         match &mut *slot {
-            ProcessSlot::Present(ScheduledProcess(process)) => process.remove_link(linked_pid),
+            ProcessSlot::Present(ScheduledProcess(process)) => {
+                process.remove_link(linked_pid);
+            }
             ProcessSlot::Executing(metadata) => metadata.remove_link(linked_pid),
             ProcessSlot::Absent => {}
         }
