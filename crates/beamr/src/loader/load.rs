@@ -724,6 +724,7 @@ fn find_chunk<'a>(chunks: &'a [([u8; 4], &'a [u8])], tag: &[u8; 4]) -> Option<&'
 mod tests {
     use crate::atom::{Atom, AtomTable};
     use crate::error::LoadError;
+    use crate::loader::decode::compact::Operand;
     use crate::loader::load_beam_chunks;
     use crate::module::{Module, ModuleRegistry, ResolvedImportTarget};
     use crate::native::{
@@ -732,7 +733,7 @@ mod tests {
     };
     use crate::term::Term;
 
-    use super::{UnresolvedImportEntry, UnresolvedImportReport, load_module};
+    use super::{ParsedModule, UnresolvedImportEntry, UnresolvedImportReport, load_module};
 
     struct EmptyBifs;
 
@@ -810,6 +811,81 @@ mod tests {
         }
         assert!(!report.deferred_imports().is_empty());
         assert!(report.is_empty());
+    }
+
+    #[test]
+    fn module_from_parsed_builds_function_and_line_lookup_tables() {
+        let atoms = AtomTable::new();
+        let module_name = atoms.intern("lookup_sample");
+        let exported = atoms.intern("exported");
+        let private = atoms.intern("private");
+        let later = atoms.intern("later");
+
+        let parsed = ParsedModule {
+            name: module_name,
+            atoms: Vec::new(),
+            instructions: vec![
+                crate::loader::Instruction::FuncInfo {
+                    module: Operand::Atom(Some(module_name)),
+                    function: Operand::Atom(Some(exported)),
+                    arity: Operand::Unsigned(1),
+                },
+                crate::loader::Instruction::Label { label: 1 },
+                crate::loader::Instruction::Line {
+                    index: Operand::Unsigned(0),
+                },
+                crate::loader::Instruction::Return,
+                crate::loader::Instruction::FuncInfo {
+                    module: Operand::Atom(Some(module_name)),
+                    function: Operand::Atom(Some(private)),
+                    arity: Operand::Unsigned(2),
+                },
+                crate::loader::Instruction::Line {
+                    index: Operand::Unsigned(1),
+                },
+                crate::loader::Instruction::Return,
+                crate::loader::Instruction::FuncInfo {
+                    module: Operand::Atom(Some(module_name)),
+                    function: Operand::Atom(Some(later)),
+                    arity: Operand::Unsigned(0),
+                },
+                crate::loader::Instruction::Line {
+                    index: Operand::Unsigned(2),
+                },
+                crate::loader::Instruction::Return,
+            ],
+            imports: Vec::new(),
+            exports: vec![
+                crate::loader::ExportEntry {
+                    function: exported,
+                    arity: 1,
+                    label: 1,
+                },
+                crate::loader::ExportEntry {
+                    function: later,
+                    arity: 0,
+                    label: 3,
+                },
+            ],
+            lambdas: Vec::new(),
+            literals: Vec::new(),
+            string_table: Vec::new(),
+            line_info: vec![
+                crate::loader::LineInfo { file: 0, line: 10 },
+                crate::loader::LineInfo { file: 0, line: 20 },
+                crate::loader::LineInfo { file: 0, line: 30 },
+            ],
+        };
+
+        let module = super::module_from_parsed(parsed, Vec::new(), &atoms).expect("module builds");
+
+        assert_eq!(module.function_at_ip(1), Some((exported, 1)));
+        assert_eq!(module.function_at_ip(6), Some((private, 2)));
+        assert_eq!(module.function_at_ip(9), Some((later, 0)));
+        assert_eq!(module.line_at_ip(1), None);
+        assert_eq!(module.line_at_ip(3), Some(10));
+        assert_eq!(module.line_at_ip(6), Some(20));
+        assert_eq!(module.line_at_ip(9), Some(30));
     }
 
     #[test]

@@ -709,6 +709,24 @@ mod tests {
     }
 
     #[test]
+    fn try_and_catch_end_clear_raw_stacktrace() {
+        for clear in [try_end, catch_end] {
+            let mut process = Process::new(1, 32);
+            process.set_raw_stacktrace(vec![RawStackEntry {
+                module: Arc::new(module(Vec::new())),
+                ip: 0,
+                mfa: None,
+            }]);
+
+            assert_eq!(
+                clear(&mut process, &Operand::X(0)),
+                Ok(InstructionOutcome::Continue)
+            );
+            assert!(process.raw_stacktrace().is_empty());
+        }
+    }
+
+    #[test]
     fn raw_stacktrace_captures_current_context_and_return_frames() {
         let mut process = Process::new(1, 64);
         let module = Arc::new(module(Vec::new()));
@@ -757,6 +775,24 @@ mod tests {
             Ok(InstructionOutcome::Continue)
         );
         assert_eq!(process.x_reg(0), Term::NIL);
+    }
+
+    #[test]
+    fn build_stacktrace_returns_heap_full_when_allocation_fails() {
+        let mut process = Process::new(1, 4);
+        let mut module = module(Vec::new());
+        module.line_info = vec![LineInfo { file: 0, line: 123 }];
+        module.line_table = vec![(0, 0)];
+        process.set_raw_stacktrace(vec![RawStackEntry {
+            module: Arc::new(module),
+            ip: 0,
+            mfa: Some((Atom::OK, Atom::BADARG, 1)),
+        }]);
+
+        assert!(matches!(
+            build_stacktrace(&mut process),
+            Err(ExecError::HeapFull { .. })
+        ));
     }
 
     #[test]

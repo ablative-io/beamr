@@ -687,6 +687,7 @@ impl Process {
         self.mailbox = Mailbox::new();
         self.handlers.clear();
         self.current_exception = None;
+        self.raw_stacktrace.clear();
         self.receive_timeout = None;
         self.receive_timer_ref = None;
         self.x_regs = [Term::NIL; 1024];
