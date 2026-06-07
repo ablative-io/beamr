@@ -518,6 +518,35 @@ fn call_ext_unresolved_target_returns_undef() {
 }
 
 #[test]
+fn call_ext_denial_stub_target_returns_mfa_rich_undef() {
+    let atoms = AtomTable::new();
+    let caller_atom = atoms.intern("caller");
+    let target_atom = atoms.intern("meridian_ffi");
+    let run_cmd_atom = atoms.intern("run_cmd");
+    let registry = ModuleRegistry::new();
+    let caller = registry.insert(call_ext_caller(
+        caller_atom,
+        target_atom,
+        run_cmd_atom,
+        ResolvedImportTarget::Native(NativeEntry {
+            function: crate::native::denial_stub,
+            is_dirty: false,
+            capability: Capability::ExternalIo,
+        }),
+    ));
+    let mut process = Process::new(1, 32);
+
+    assert!(matches!(
+        run_with_registry(&mut process, &caller, &registry),
+        Err(ExecError::Undef {
+            module,
+            function,
+            arity: 0,
+        }) if module == target_atom && function == run_cmd_atom
+    ));
+}
+
+#[test]
 fn call_ext_code_target_uses_latest_export_ip_after_reload() {
     let atoms = AtomTable::new();
     let caller_atom = atoms.intern("caller");

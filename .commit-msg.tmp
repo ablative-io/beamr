@@ -1,1 +1,1 @@
-feat(beamr): enforce capability policy for native imports
+review: harden capability import policy implementation

@@ -7,7 +7,7 @@ use crate::atom::{Atom, AtomTable};
 use crate::error::LoadError;
 use crate::module::{Module, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use crate::native::{
-    BifRegistry, Capability, CapabilityPolicy, LeastAuthorityPolicy, NativeEntry, denial_stub,
+    AllCapabilitiesPolicy, BifRegistry, Capability, CapabilityPolicy, NativeEntry, denial_stub,
 };
 
 use super::decode::{
@@ -356,6 +356,10 @@ pub fn load_beam_chunks(bytes: &[u8], atom_table: &AtomTable) -> Result<ParsedMo
 }
 
 /// Parses, resolves, validates, registers, and returns a BEAM module.
+///
+/// This compatibility wrapper grants all native capabilities, matching the
+/// pre-policy loader behavior for existing embedders. Use
+/// [`load_module_with_policy`] to opt into deny-by-default loading.
 pub fn load_module(
     bytes: &[u8],
     atom_table: &AtomTable,
@@ -387,6 +391,10 @@ pub fn load_module_with_policy(
 }
 
 /// Parses, resolves, and validates a BEAM module without registering it.
+///
+/// This compatibility wrapper grants all native capabilities, matching the
+/// pre-policy loader behavior for existing embedders. Use
+/// [`prepare_module_with_policy`] to opt into deny-by-default loading.
 pub fn prepare_module(
     bytes: &[u8],
     atom_table: &AtomTable,
@@ -398,7 +406,7 @@ pub fn prepare_module(
         atom_table,
         module_registry,
         bif_registry,
-        &LeastAuthorityPolicy,
+        &AllCapabilitiesPolicy,
     )
 }
 
@@ -635,7 +643,8 @@ mod tests {
     use crate::loader::load_beam_chunks;
     use crate::module::{Module, ModuleRegistry, ResolvedImportTarget};
     use crate::native::{
-        AllCapabilitiesPolicy, BifRegistry, Capability, NativeEntry, ProcessContext,
+        AllCapabilitiesPolicy, BifRegistry, Capability, LeastAuthorityPolicy, NativeEntry,
+        ProcessContext,
     };
     use crate::term::Term;
 
@@ -653,6 +662,7 @@ mod tests {
         module: Atom,
         function: Atom,
         arity: u8,
+        capability: Capability,
     }
 
     impl BifRegistry for OneBif {
@@ -661,7 +671,7 @@ mod tests {
                 NativeEntry {
                     function: native_ok,
                     is_dirty: false,
-                    capability: Capability::Pure,
+                    capability: self.capability,
                 },
             )
         }
@@ -762,6 +772,30 @@ mod tests {
     }
 
     #[test]
+    fn load_module_defaults_to_all_capabilities_for_compatibility() {
+        let atoms = AtomTable::new();
+        let erlang = atoms.intern("erlang");
+        let now = atoms.intern("now");
+        let registry = ModuleRegistry::new();
+        let bytes = include_bytes!("../../tests/fixtures/hello.beam");
+
+        let (_module, report) = load_module(
+            bytes,
+            &atoms,
+            &registry,
+            &OneBif {
+                module: erlang,
+                function: now,
+                arity: 0,
+                capability: Capability::ExternalIo,
+            },
+        )
+        .expect("fixture loads with default all-capabilities policy");
+
+        assert!(!report.has_denied());
+    }
+
+    #[test]
     fn resolved_bif_import_points_to_native_entry() {
         let atoms = AtomTable::new();
         let erlang = atoms.intern("erlang");
@@ -783,6 +817,7 @@ mod tests {
                 module: erlang,
                 function: now,
                 arity: 0,
+                capability: Capability::Pure,
             },
             &AllCapabilitiesPolicy,
         );
@@ -836,7 +871,7 @@ mod tests {
                 module: erlang,
                 function: now,
             },
-            &crate::native::LeastAuthorityPolicy,
+            &LeastAuthorityPolicy,
         );
 
         assert!(report.has_denied());
