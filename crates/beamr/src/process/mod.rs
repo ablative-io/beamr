@@ -82,9 +82,22 @@ pub enum Register {
     Y(u16),
 }
 
+/// Kind of exception handler installed on a process.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum HandlerKind {
+    /// BEAM `try` handler exposing class/reason/stacktrace through `try_case`.
+    Try,
+    /// BEAM `catch` handler wrapping the raised value in catch-compatible form.
+    Catch,
+}
+
 /// A try/catch handler installed by BEAM try-family opcodes.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct ExceptionHandler {
+    /// Whether this handler was installed by `try` or `catch`.
+    pub kind: HandlerKind,
+    /// Stack depth to restore before transferring control to this handler.
+    pub stack_depth: usize,
     /// Label/IP to jump to when an exception is raised.
     pub catch_position: CodePosition,
     /// Destination register supplied by the decoded try/catch instruction.

@@ -7,6 +7,7 @@
 pub mod binary;
 pub mod closures;
 pub mod core;
+pub mod exceptions;
 pub mod guards;
 pub mod messaging;
 pub mod trampoline;
@@ -249,17 +250,21 @@ fn dispatch_common(
         }
         Instruction::Timeout => messaging::timeout(process),
         Instruction::Try { destination, label } => {
-            messaging::try_(process, module, destination, label)
+            exceptions::try_(process, module, destination, label)
         }
-        Instruction::TryEnd { source } => messaging::try_end(process, source),
-        Instruction::TryCase { source } => messaging::try_case(process, source),
-        Instruction::TryCaseEnd { source } => messaging::try_case_end(process, module, source),
+        Instruction::TryEnd { source } => exceptions::try_end(process, source),
+        Instruction::TryCase { source } => exceptions::try_case(process, source),
+        Instruction::TryCaseEnd { source } => exceptions::try_case_end(process, module, source),
+        Instruction::Catch { destination, label } => {
+            exceptions::catch_(process, module, destination, label)
+        }
+        Instruction::CatchEnd { source } => exceptions::catch_end(process, source),
         Instruction::Raise { stacktrace, reason } => {
-            messaging::raise(process, module, stacktrace, reason)
+            exceptions::raise(process, module, stacktrace, reason)
         }
-        Instruction::Badmatch { value } => messaging::badmatch(process, module, value),
-        Instruction::CaseEnd { value } => messaging::case_end(process, module, value),
-        Instruction::IfEnd => messaging::if_end(process),
+        Instruction::Badmatch { value } => exceptions::badmatch(process, module, value),
+        Instruction::CaseEnd { value } => exceptions::case_end(process, module, value),
+        Instruction::IfEnd => exceptions::if_end(process),
         Instruction::Line { .. }
         | Instruction::Generic {
             name: "executable_line",
