@@ -1,1 +1,1 @@
-chore(beamr): add Box::leak audit gates
+review: harden B-052 leak audit gates

@@ -42,7 +42,7 @@ fn scan_file(path: &Path, violations: &mut Vec<String>) {
         return;
     };
 
-    let mut cfg_test_depth: Option<usize> = None;
+    let mut cfg_test_parent_depth: Option<usize> = None;
     let mut pending_cfg_test = false;
     let mut brace_depth = 0usize;
 
@@ -52,19 +52,23 @@ fn scan_file(path: &Path, violations: &mut Vec<String>) {
             pending_cfg_test = true;
         }
 
-        if line.contains("Box::leak") && cfg_test_depth.is_none() && !pending_cfg_test {
+        let allowed_by_cfg_test = cfg_test_parent_depth.is_some() || pending_cfg_test;
+        if line.contains("Box::leak") && !allowed_by_cfg_test {
             violations.push(format!("{}:{}:{}", path.display(), line_index + 1, trimmed));
         }
 
         let opens = line.chars().filter(|ch| *ch == '{').count();
         let closes = line.chars().filter(|ch| *ch == '}').count();
-        if pending_cfg_test && opens > 0 {
-            cfg_test_depth = Some(brace_depth + opens - closes);
-            pending_cfg_test = false;
-        }
+        let parent_depth = brace_depth;
         brace_depth = brace_depth.saturating_add(opens).saturating_sub(closes);
-        if cfg_test_depth.is_some_and(|depth| brace_depth < depth) {
-            cfg_test_depth = None;
+
+        if pending_cfg_test && opens > closes {
+            cfg_test_parent_depth = Some(parent_depth);
+        }
+        pending_cfg_test = pending_cfg_test && opens == 0;
+
+        if cfg_test_parent_depth.is_some_and(|depth| brace_depth <= depth) {
+            cfg_test_parent_depth = None;
         }
     }
 }

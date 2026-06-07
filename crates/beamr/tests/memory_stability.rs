@@ -1,4 +1,10 @@
-use beamr::{gc::collect_major, native::ProcessContext, process::Process, term::Term};
+use beamr::{
+    gc::collect_major,
+    mailbox::selective::receive,
+    native::ProcessContext,
+    process::{ExitReason, Process, ProcessStatus},
+    term::Term,
+};
 
 const ITERATIONS: usize = 10_000;
 
@@ -7,17 +13,33 @@ fn bif_and_literal_heavy_workload_does_not_grow_monotonically() {
     let mut process = Process::new(52, 65_536);
     process.heap_mut().set_max_capacity(262_144);
 
+    process
+        .transition_to(ProcessStatus::Running)
+        .expect("process should enter running state for stability workload");
+
     for index in 0..ITERATIONS {
         let random_like_bif_value = synthetic_rand_uniform(&mut process, index);
         let literal = materialise_literal(&mut process, b"literal-heavy-payload");
         let tuple = materialise_tuple(&mut process, random_like_bif_value, literal);
         let list = materialise_list(&mut process, &[tuple, literal, random_like_bif_value]);
 
-        // Simulate send-to-self traffic without retaining O(N) mailbox roots: enqueue the
-        // message-shaped value in X0 for the duration of the iteration, then consume it.
-        process.set_x_reg(0, list);
-        process.set_x_reg(0, Term::NIL);
+        // Exercise real self-send traffic without retaining O(N) mailbox roots:
+        // copy into this process's own heap, drain the arrival queue, then consume
+        // the selected message during the same iteration.
+        let sender = process.mailbox().sender();
+        sender
+            .send(list, process.heap_mut())
+            .expect("self-send should copy the transient message into the receiver heap");
+        assert_eq!(
+            receive(process.mailbox_mut(), |message| message == list),
+            Some(list)
+        );
     }
+
+    process
+        .transition_to(ProcessStatus::Exited(ExitReason::Normal))
+        .expect("process should exit normally after stability workload");
+    assert_eq!(process.status(), ProcessStatus::Exited(ExitReason::Normal));
 
     for register in process.x_regs_mut().iter_mut() {
         *register = Term::NIL;
