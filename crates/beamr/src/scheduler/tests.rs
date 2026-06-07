@@ -315,8 +315,6 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         wait_set: Mutex::new(WaitSet::default()),
         wake_condvar: Condvar::new(),
         process_bodies: DashMap::new(),
-        process_namespaces: DashMap::new(),
-        pending_links: DashMap::new(),
         exit_tombstones: DashMap::new(),
         exit_results: DashMap::new(),
         exit_errors: DashMap::new(),
@@ -347,6 +345,103 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         resumed
             .current_module()
             .is_some_and(|current| Arc::ptr_eq(current, &module_v1))
+    );
+}
+
+#[test]
+fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("spawn_link_child");
+    let function = atoms.intern("main");
+    let registry = Arc::new(ModuleRegistry::new());
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+        },
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    let namespace = scheduler.create_namespace();
+    let namespace_registry = scheduler
+        .shared
+        .namespace_store
+        .get(&namespace)
+        .map(|entry| Arc::clone(&entry))
+        .unwrap_or_else(|| panic!("namespace registry exists"));
+    let mut module = test_module(module_name, vec![Instruction::Label { label: 7 }]);
+    module.exports.insert((function, 0), 7);
+    let module = namespace_registry.insert(module);
+    scheduler.shutdown();
+    let parent = scheduler.spawn_test_process_in(namespace, Arc::clone(&module));
+
+    let process = take_runnable_process(&scheduler.shared, parent)
+        .unwrap_or_else(|| panic!("parent body taken"));
+
+    let child = scheduler
+        .spawn_link(parent, module_name, function, Vec::new())
+        .unwrap_or_else(|error| panic!("spawn_link succeeds with executing parent: {error:?}"));
+
+    assert_eq!(scheduler.process_namespace(parent), Some(namespace));
+    assert_eq!(scheduler.process_namespace(child), Some(namespace));
+    assert!(process_links_contain(&scheduler.shared, parent, child));
+    store_runnable_process(&scheduler.shared, process);
+    assert!(scheduler.is_linked(parent, child));
+}
+
+#[test]
+fn tombstone_after_wait_store_prevents_wait_parking() {
+    let shared = Arc::new(SharedState {
+        shutdown: AtomicBool::new(false),
+        process_table: ProcessTable::new(),
+        module_registry: Arc::new(ModuleRegistry::new()),
+        namespace_store: {
+            let registry = Arc::new(ModuleRegistry::new());
+            let store = DashMap::new();
+            store.insert(NamespaceId::DEFAULT, registry);
+            store
+        },
+        next_namespace_id: AtomicU64::new(1),
+        spawn_counter: AtomicUsize::new(0),
+        thread_count: 1,
+        next_pid: AtomicU64::new(0),
+        wait_set: Mutex::new(WaitSet::default()),
+        wake_condvar: Condvar::new(),
+        process_bodies: DashMap::new(),
+        exit_tombstones: DashMap::new(),
+        exit_results: DashMap::new(),
+        exit_errors: DashMap::new(),
+        exit_exceptions: DashMap::new(),
+        async_results: DashMap::new(),
+        link_set: Mutex::new(LinkSet::new()),
+        monitor_set: Mutex::new(MonitorSet::new()),
+        hook: Hook::new(),
+        timers: Arc::new(Mutex::new(TimerWheel::new())),
+        output_sink: Mutex::new(Arc::new(NullSink)),
+        atom_table: Arc::new(crate::atom::AtomTable::new()),
+        bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),
+        idle_parks: AtomicUsize::new(0),
+    });
+    let pid = 1;
+    shared.process_table.spawn_with_pid(pid);
+    let process = Process::new(pid, DEFAULT_HEAP_SIZE);
+    shared.process_bodies.insert(
+        pid,
+        Mutex::new(ProcessSlot::Executing(ProcessMetadata {
+            namespace_id: NamespaceId::DEFAULT,
+            links: Vec::new(),
+            trap_exit: false,
+            pending_exit_messages: Vec::new(),
+        })),
+    );
+    shared.exit_tombstones.insert(pid, ExitReason::Error);
+
+    store_runnable_process(&shared, process);
+    assert!(cleanup_if_tombstoned_after_store(&shared, pid));
+
+    let ws = lock_or_recover(&shared.wait_set);
+    assert!(
+        !ws.waiting.contains_key(&pid),
+        "tombstoned process must not be parked after store-back"
     );
 }
 

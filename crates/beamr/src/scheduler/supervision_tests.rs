@@ -26,9 +26,10 @@ fn insert_process_in(shared: &SharedState, pid: u64, namespace: NamespaceId) -> 
     process
         .transition_to(ProcessStatus::Running)
         .unwrap_or_else(|error| panic!("process {pid} starts: {error}"));
-    shared
-        .process_bodies
-        .insert(pid, std::sync::Mutex::new(Some(ScheduledProcess(process))));
+    shared.process_bodies.insert(
+        pid,
+        std::sync::Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
+    );
     pid
 }
 
@@ -36,7 +37,9 @@ fn insert_process_in(shared: &SharedState, pid: u64, namespace: NamespaceId) -> 
 fn read_mailbox_tuple(shared: &SharedState, pid: u64) -> Option<Vec<Term>> {
     let entry = shared.process_bodies.get(&pid)?;
     let mut slot = lock_or_recover(&entry);
-    let process = &mut slot.as_mut()?.0;
+    let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot else {
+        return None;
+    };
     process.mailbox_mut().drain_arrival();
     let msg = process.mailbox().front_for_test()?;
     let tuple = Tuple::new(msg)?;
@@ -56,13 +59,13 @@ fn is_alive(shared: &SharedState, pid: u64) -> bool {
 fn add_link(shared: &SharedState, a: u64, b: u64) {
     if let Some(entry) = shared.process_bodies.get(&a) {
         let mut slot = lock_or_recover(&entry);
-        if let Some(ScheduledProcess(p)) = slot.as_mut() {
+        if let ProcessSlot::Present(ScheduledProcess(p)) = &mut *slot {
             p.add_link(b);
         }
     }
     if let Some(entry) = shared.process_bodies.get(&b) {
         let mut slot = lock_or_recover(&entry);
-        if let Some(ScheduledProcess(p)) = slot.as_mut() {
+        if let ProcessSlot::Present(ScheduledProcess(p)) = &mut *slot {
             p.add_link(a);
         }
     }
@@ -72,7 +75,7 @@ fn add_link(shared: &SharedState, a: u64, b: u64) {
 fn set_trap_exit(shared: &SharedState, pid: u64, value: bool) {
     if let Some(entry) = shared.process_bodies.get(&pid) {
         let mut slot = lock_or_recover(&entry);
-        if let Some(ScheduledProcess(p)) = slot.as_mut() {
+        if let ProcessSlot::Present(ScheduledProcess(p)) = &mut *slot {
             p.set_trap_exit(value);
         }
     }
@@ -88,18 +91,42 @@ fn add_monitor(shared: &SharedState, watcher_pid: u64, target_pid: u64) -> u64 {
 
     if let Some(entry) = shared.process_bodies.get(&watcher_pid) {
         let mut slot = lock_or_recover(&entry);
-        if let Some(ScheduledProcess(p)) = slot.as_mut() {
+        if let ProcessSlot::Present(ScheduledProcess(p)) = &mut *slot {
             p.add_monitor(monitor);
         }
     }
     if let Some(entry) = shared.process_bodies.get(&target_pid) {
         let mut slot = lock_or_recover(&entry);
-        if let Some(ScheduledProcess(p)) = slot.as_mut() {
+        if let ProcessSlot::Present(ScheduledProcess(p)) = &mut *slot {
             p.add_monitor(monitor);
         }
     }
 
     reference
+}
+
+fn make_executing(shared: &SharedState, pid: u64) -> Process {
+    let entry = shared
+        .process_bodies
+        .get(&pid)
+        .unwrap_or_else(|| panic!("process {pid} exists"));
+    let mut slot = lock_or_recover(&entry);
+    match std::mem::take(&mut *slot) {
+        ProcessSlot::Present(ScheduledProcess(process)) => {
+            let metadata = ProcessMetadata {
+                namespace_id: process.namespace_id(),
+                links: process.links().iter().copied().collect(),
+                trap_exit: process.trap_exit(),
+                pending_exit_messages: Vec::new(),
+            };
+            *slot = ProcessSlot::Executing(metadata);
+            process
+        }
+        other => {
+            *slot = other;
+            panic!("process {pid} is present before executing transition");
+        }
+    }
 }
 
 fn make_shared_state() -> Arc<SharedState> {
@@ -119,8 +146,6 @@ fn make_shared_state() -> Arc<SharedState> {
         wait_set: std::sync::Mutex::new(WaitSet::default()),
         wake_condvar: std::sync::Condvar::new(),
         process_bodies: DashMap::new(),
-        process_namespaces: DashMap::new(),
-        pending_links: DashMap::new(),
         exit_tombstones: DashMap::new(),
         exit_results: DashMap::new(),
         exit_errors: DashMap::new(),
@@ -357,24 +382,85 @@ fn cross_namespace_monitor_delivers_down_message() {
 }
 
 #[test]
-fn exit_signal_tombstones_process_whose_body_is_taken() {
+fn exit_signal_tombstones_executing_non_trapping_process() {
     let shared = make_shared_state();
     let parent = insert_process(&shared, 1);
     let child = insert_process(&shared, 2);
     add_link(&shared, parent, child);
 
-    // Simulate the scheduler taking the child's body for execution.
-    {
-        let entry = shared.process_bodies.get(&child).unwrap();
-        let mut slot = lock_or_recover(&entry);
-        let _taken = slot.take();
-    }
+    let process = make_executing(&shared, child);
 
-    // Parent dies — exit signal propagates to the child whose body is absent.
     cleanup_exited_process(&shared, parent, ExitReason::Error);
 
     assert!(
         shared.exit_tombstones.contains_key(&child),
-        "child should have a tombstone even though its body was taken"
+        "executing child should receive a tombstone"
     );
+    store_runnable_process(&shared, process);
+    assert!(cleanup_if_tombstoned_after_store(&shared, child));
+    assert!(
+        !is_alive(&shared, child),
+        "tombstoned child should be cleaned"
+    );
+}
+
+#[test]
+fn exit_signal_queues_message_for_executing_trapping_process() {
+    let shared = make_shared_state();
+    let parent = insert_process(&shared, 1);
+    let child = insert_process(&shared, 2);
+    add_link(&shared, parent, child);
+    set_trap_exit(&shared, child, true);
+
+    let process = make_executing(&shared, child);
+
+    cleanup_exited_process(&shared, parent, ExitReason::Error);
+
+    assert!(
+        !shared.exit_tombstones.contains_key(&child),
+        "trapping child should not be tombstoned"
+    );
+    store_runnable_process(&shared, process);
+    let msg = read_mailbox_tuple(&shared, child)
+        .unwrap_or_else(|| panic!("pending EXIT message delivered on store-back"));
+    assert_eq!(msg[0], Term::atom(Atom::EXIT));
+    assert_eq!(msg[1], Term::pid(parent));
+    assert_eq!(msg[2], Term::atom(Atom::ERROR));
+}
+
+#[test]
+fn take_links_from_reads_executing_sentinel_links() {
+    let shared = make_shared_state();
+    let source = insert_process(&shared, 1);
+    let linked = insert_process(&shared, 2);
+    add_link(&shared, source, linked);
+
+    let _process = make_executing(&shared, source);
+
+    let links = supervision_integration::take_links_from(&shared, source);
+    assert_eq!(links, vec![linked]);
+}
+
+#[test]
+fn sentinel_links_merge_into_body_on_store_back() {
+    let shared = make_shared_state();
+    let pid = insert_process(&shared, 1);
+    let linked = insert_process(&shared, 2);
+    let process = make_executing(&shared, pid);
+
+    {
+        let entry = shared
+            .process_bodies
+            .get(&pid)
+            .unwrap_or_else(|| panic!("process exists"));
+        let mut slot = lock_or_recover(&entry);
+        let ProcessSlot::Executing(metadata) = &mut *slot else {
+            panic!("slot is executing");
+        };
+        metadata.add_link(linked, pid);
+    }
+
+    store_runnable_process(&shared, process);
+
+    assert!(process_links_contain(&shared, pid, linked));
 }

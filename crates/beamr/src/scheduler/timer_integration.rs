@@ -11,7 +11,7 @@ use crate::process::{Process, ProcessStatus};
 use crate::term::Term;
 use crate::timer::TimerRef;
 
-use super::{ScheduledProcess, SharedState, lock_or_recover};
+use super::{ProcessSlot, ScheduledProcess, SharedState, lock_or_recover};
 
 /// Invoke the reduction-boundary hook if one is registered.
 pub(super) fn invoke_hook(
@@ -107,13 +107,16 @@ fn read_process_field<T>(
 ) -> Option<T> {
     let entry = shared.process_bodies.get(&pid)?;
     let slot = lock_or_recover(&entry);
-    slot.as_ref().map(|ScheduledProcess(p)| f(p))
+    match &*slot {
+        ProcessSlot::Present(ScheduledProcess(p)) => Some(f(p)),
+        ProcessSlot::Executing(_) | ProcessSlot::Absent => None,
+    }
 }
 
 fn mutate_process(shared: &SharedState, pid: u64, f: impl FnOnce(&mut Process)) {
     if let Some(entry) = shared.process_bodies.get(&pid) {
         let mut slot = lock_or_recover(&entry);
-        if let Some(ScheduledProcess(process)) = slot.as_mut() {
+        if let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot {
             f(process);
         }
     }
@@ -126,5 +129,8 @@ fn mutate_process_result<T>(
 ) -> Option<T> {
     let entry = shared.process_bodies.get(&pid)?;
     let mut slot = lock_or_recover(&entry);
-    slot.as_mut().map(|ScheduledProcess(process)| f(process))
+    match &mut *slot {
+        ProcessSlot::Present(ScheduledProcess(process)) => Some(f(process)),
+        ProcessSlot::Executing(_) | ProcessSlot::Absent => None,
+    }
 }
