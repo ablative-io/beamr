@@ -162,6 +162,24 @@ impl AtomTable {
     pub fn resolve(&self, atom: Atom) -> Option<&str> {
         self.by_index.get(&atom.index()).map(|entry| *entry)
     }
+
+    /// Return the number of atoms currently interned in this table.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.by_name.len()
+    }
+
+    /// Return whether this table currently contains no atoms.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.by_name.is_empty()
+    }
+
+    /// Return the maximum atom count representable by this table.
+    #[must_use]
+    pub const fn limit(&self) -> usize {
+        u32::MAX as usize
+    }
 }
 
 impl Default for AtomTable {

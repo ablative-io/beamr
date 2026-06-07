@@ -74,6 +74,27 @@ pub(super) struct SharedState {
     #[cfg(test)]
     idle_parks: AtomicUsize,
 }
+
+impl SharedState {
+    /// Return the number of alive processes tracked by the scheduler.
+    #[must_use]
+    pub(super) fn process_count(&self) -> usize {
+        self.process_table.len()
+    }
+
+    /// Return the configured number of normal scheduler threads.
+    #[must_use]
+    pub(super) fn scheduler_count(&self) -> usize {
+        self.thread_count
+    }
+
+    /// Return the current number of interned atoms.
+    #[must_use]
+    pub(super) fn atom_count(&self) -> usize {
+        self.atom_table.len()
+    }
+}
+
 #[derive(Default)]
 struct WaitSet {
     waiting: std::collections::HashMap<u64, usize>,
@@ -266,7 +287,23 @@ impl Scheduler {
     }
     #[must_use]
     pub fn thread_count(&self) -> usize {
-        self.shared.thread_count
+        self.shared.scheduler_count()
+    }
+    #[must_use]
+    pub fn process_count(&self) -> usize {
+        self.shared.process_count()
+    }
+    #[must_use]
+    pub fn scheduler_count(&self) -> usize {
+        self.shared.scheduler_count()
+    }
+    #[must_use]
+    pub fn atom_count(&self) -> usize {
+        self.shared.atom_count()
+    }
+    #[must_use]
+    pub fn atom_limit(&self) -> usize {
+        self.shared.atom_table.limit()
     }
     #[must_use]
     pub fn worker_names(&self) -> &[String] {

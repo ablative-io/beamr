@@ -31,6 +31,7 @@ fn bif_and_literal_heavy_workload_does_not_grow_monotonically() {
         io_sink: None,
         code_management_facility: None,
         process_info_facility: None,
+        system_info_facility: None,
     };
     let mut process = Process::new(1, 512);
     process.reset_reductions(500_000);
@@ -120,15 +121,13 @@ fn workload_module(atom_table: &AtomTable) -> Module {
         code,
         literals,
         constant_pool,
-        resolved_imports: vec![
-            native_import(
-                rand,
-                uniform,
-                0,
-                beamr::native::stdlib_stubs::bif_rand_uniform,
-                Capability::Entropy,
-            ),
-        ],
+        resolved_imports: vec![native_import(
+            rand,
+            uniform,
+            0,
+            beamr::native::stdlib_stubs::bif_rand_uniform,
+            Capability::Entropy,
+        )],
         lambdas: Vec::new(),
         string_table: Vec::new(),
         line_info: Vec::new(),

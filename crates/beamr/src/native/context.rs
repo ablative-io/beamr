@@ -26,6 +26,7 @@ use super::registry::RegistryFacility;
 use super::select::SelectFacility;
 use super::spawn::SpawnFacility;
 use super::supervision::SupervisionFacility;
+use super::system_info_bifs::SystemInfoFacility;
 
 /// Minimal process-facing context exposed to native code.
 ///
@@ -91,6 +92,7 @@ pub struct ProcessContext<'process> {
     process_info_facility: Option<Arc<dyn ProcessInfoFacility>>,
     registry_facility: Option<Arc<dyn RegistryFacility>>,
     select_facility: Option<Arc<dyn SelectFacility>>,
+    system_info_facility: Option<Arc<dyn SystemInfoFacility>>,
     io_sink: Arc<dyn IoSink>,
     exception_class: ExceptionClass,
     exception_stacktrace: Term,
@@ -132,6 +134,10 @@ impl fmt::Debug for ProcessContext<'_> {
                 "select_facility",
                 &self.select_facility.as_ref().map(|_| ".."),
             )
+            .field(
+                "system_info_facility",
+                &self.system_info_facility.as_ref().map(|_| ".."),
+            )
             .field("io_sink", &"..")
             .field("exception_class", &self.exception_class)
             .field("shutdown_requested", &self.shutdown_requested)
@@ -166,6 +172,7 @@ impl<'process> ProcessContext<'process> {
             process_info_facility: None,
             registry_facility: None,
             select_facility: None,
+            system_info_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -191,6 +198,7 @@ impl<'process> ProcessContext<'process> {
             process_info_facility: None,
             registry_facility: None,
             select_facility: None,
+            system_info_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -423,6 +431,19 @@ impl<'process> ProcessContext<'process> {
     /// Set the select facility for mailbox scanning BIFs.
     pub fn set_select_facility(&mut self, facility: Option<Arc<dyn SelectFacility>>) {
         self.select_facility = facility;
+    }
+
+    // --- System info facility ---
+
+    /// Return the system-info facility, if one has been configured.
+    #[must_use]
+    pub fn system_info_facility(&self) -> Option<&dyn SystemInfoFacility> {
+        self.system_info_facility.as_deref()
+    }
+
+    /// Set the system-info facility for VM introspection BIFs.
+    pub fn set_system_info_facility(&mut self, facility: Option<Arc<dyn SystemInfoFacility>>) {
+        self.system_info_facility = facility;
     }
 
     /// Store a value in the attached process dictionary.

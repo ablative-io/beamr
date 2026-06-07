@@ -59,6 +59,7 @@ pub fn register_gate1_bifs(
     crate::native::etf_bifs::register_etf_bifs(registry, atom_table)?;
     crate::native::exception_bifs::register_exception_bifs(registry, atom_table)?;
     crate::native::process_info_bifs::register_process_info_bifs(registry, atom_table)?;
+    crate::native::system_info_bifs::register_system_info_bifs(registry, atom_table)?;
 
     Ok(())
 }
@@ -697,6 +698,7 @@ mod tests {
             ("raise", 3, Capability::Pure),
             ("process_info", 1, Capability::Pure),
             ("process_info", 2, Capability::Pure),
+            ("system_info", 1, Capability::Pure),
         ] {
             let function = atom_table.intern(name);
             let entry = registry

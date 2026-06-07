@@ -17,6 +17,7 @@ use crate::native::links::LinkFacility;
 use crate::native::process_info_bifs::ProcessInfoFacility;
 use crate::native::spawn::SpawnFacility;
 use crate::native::supervision::SupervisionFacility;
+use crate::native::system_info_bifs::SystemInfoFacility;
 use crate::process::{CodePosition, ExitReason, Process};
 use crate::timer::TimerWheel;
 
@@ -38,6 +39,8 @@ pub struct NativeServices {
     pub io_sink: Option<Arc<dyn IoSink>>,
     /// Code management facility for hot-loading BIFs.
     pub code_management_facility: Option<Arc<dyn CodeManagementFacility>>,
+    /// System-info facility for VM introspection BIFs.
+    pub system_info_facility: Option<Arc<dyn SystemInfoFacility>>,
 }
 
 /// Result of running a process until it yields, waits, exits, or faults.
@@ -81,6 +84,7 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
         process_info_facility: None,
         io_sink: None,
         code_management_facility: None,
+        system_info_facility: None,
     };
     run_loop(process, module, None, &empty)
 }
@@ -100,6 +104,7 @@ pub fn run_with_registry(
         process_info_facility: None,
         io_sink: None,
         code_management_facility: None,
+        system_info_facility: None,
     };
     run_loop(process, initial_module, Some(registry), &empty)
 }
@@ -119,6 +124,7 @@ pub fn run_with_timer_services(
         process_info_facility: None,
         io_sink: None,
         code_management_facility: None,
+        system_info_facility: None,
     };
     run_loop(process, initial_module, None, &services)
 }

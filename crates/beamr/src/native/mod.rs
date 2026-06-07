@@ -25,6 +25,7 @@ pub mod selector_ffi;
 pub mod spawn;
 pub mod stdlib_stubs;
 pub mod supervision;
+pub mod system_info_bifs;
 
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
@@ -51,6 +52,7 @@ pub use registry::RegistryFacility;
 pub use select::SelectFacility;
 pub use spawn::{SpawnFacility, SpawnMonitorResult};
 pub use supervision::SupervisionFacility;
+pub use system_info_bifs::SystemInfoFacility;
 
 /// Registry key for a native module/function/arity tuple.
 pub type NativeKey = (Atom, Atom, u8);
