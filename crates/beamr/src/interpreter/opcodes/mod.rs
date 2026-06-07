@@ -252,6 +252,7 @@ fn dispatch_common(
             messaging::try_(process, module, destination, label)
         }
         Instruction::TryEnd { source } => messaging::try_end(process, source),
+        Instruction::CatchEnd { source } => messaging::catch_end(process, source),
         Instruction::TryCase { source } => messaging::try_case(process, source),
         Instruction::TryCaseEnd { source } => messaging::try_case_end(process, module, source),
         Instruction::Raise { stacktrace, reason } => {
@@ -265,6 +266,7 @@ fn dispatch_common(
             name: "executable_line",
             ..
         } => Ok(InstructionOutcome::Continue),
+        Instruction::BuildStacktrace => messaging::build_stacktrace(process),
         Instruction::BinaryOp { op, operands } => binary::binary_op(process, module, *op, operands),
         Instruction::MapOp { op, operands } => {
             closures::map_op(process, module, *op, operands, ctx.atom_table)

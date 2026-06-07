@@ -78,6 +78,10 @@ pub struct Module {
     pub exports: HashMap<(Atom, u8), u32>,
     /// O(1) index from code label numbers to instruction indices.
     pub label_index: HashMap<u32, usize>,
+    /// Sorted mapping from `func_info` instruction IPs to function names and arities.
+    pub function_table: Vec<(usize, Atom, u8)>,
+    /// Sorted mapping from line instruction IPs to line-info indices.
+    pub line_table: Vec<(usize, usize)>,
     /// Decoded BEAM instructions.
     pub code: Vec<Instruction>,
     /// Decoded literal table.
@@ -130,6 +134,26 @@ impl Module {
             })?;
 
         self.label_ip(label)
+    }
+
+    /// Resolves the function containing `ip` using the nearest preceding `func_info`.
+    #[must_use]
+    pub fn function_at_ip(&self, ip: usize) -> Option<(Atom, u8)> {
+        let index = self
+            .function_table
+            .partition_point(|(entry_ip, _, _)| *entry_ip <= ip);
+        let (_, function, arity) = self.function_table.get(index.checked_sub(1)?)?;
+        Some((*function, *arity))
+    }
+
+    /// Resolves the source line containing `ip` using the nearest preceding line instruction.
+    #[must_use]
+    pub fn line_at_ip(&self, ip: usize) -> Option<u32> {
+        let index = self
+            .line_table
+            .partition_point(|(entry_ip, _)| *entry_ip <= ip);
+        let (_, line_info_index) = self.line_table.get(index.checked_sub(1)?)?;
+        self.line_info.get(*line_info_index).map(|info| info.line)
     }
 }
 
@@ -358,7 +382,7 @@ mod tests {
     use super::{Module, ModuleRegistry, PurgeError};
     use crate::atom::AtomTable;
     use crate::error::ExecError;
-    use crate::loader::LambdaEntry;
+    use crate::loader::{LambdaEntry, LineInfo};
 
     fn label_index(code: &[crate::loader::Instruction]) -> HashMap<u32, usize> {
         code.iter()
@@ -376,6 +400,8 @@ mod tests {
             generation: 0,
             exports: HashMap::new(),
             label_index: HashMap::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             code: Vec::new(),
             literals: Vec::new(),
             constant_pool: crate::constant_pool::ConstantPool::default(),
@@ -384,6 +410,39 @@ mod tests {
             string_table: Vec::new(),
             line_info: Vec::new(),
         }
+    }
+
+    #[test]
+    fn function_at_ip_uses_nearest_preceding_func_info() {
+        let atoms = AtomTable::new();
+        let exported = atoms.intern("exported");
+        let private = atoms.intern("private");
+        let later = atoms.intern("later");
+        let mut module = empty_module(atoms.intern("sample"));
+        module.exports.insert((exported, 1), 1);
+        module.exports.insert((later, 0), 3);
+        module.function_table = vec![(0, exported, 1), (10, private, 2), (20, later, 0)];
+
+        assert_eq!(module.function_at_ip(0), Some((exported, 1)));
+        assert_eq!(module.function_at_ip(12), Some((private, 2)));
+        assert_eq!(module.function_at_ip(19), Some((private, 2)));
+        assert_eq!(module.function_at_ip(20), Some((later, 0)));
+    }
+
+    #[test]
+    fn line_at_ip_uses_nearest_preceding_line_instruction() {
+        let atoms = AtomTable::new();
+        let mut module = empty_module(atoms.intern("sample"));
+        module.line_table = vec![(2, 0), (8, 1), (12, 99)];
+        module.line_info = vec![
+            LineInfo { file: 0, line: 10 },
+            LineInfo { file: 0, line: 20 },
+        ];
+
+        assert_eq!(module.line_at_ip(1), None);
+        assert_eq!(module.line_at_ip(2), Some(10));
+        assert_eq!(module.line_at_ip(11), Some(20));
+        assert_eq!(module.line_at_ip(12), None);
     }
 
     #[test]

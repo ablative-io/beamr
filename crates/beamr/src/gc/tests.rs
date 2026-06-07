@@ -28,6 +28,8 @@ pub(crate) fn module_pin(name: Atom) -> Arc<Module> {
         generation: 0,
         exports: HashMap::new(),
         label_index: HashMap::from([(1, 0)]),
+        function_table: Vec::new(),
+        line_table: Vec::new(),
         code: vec![Instruction::Label { label: 1 }],
         literals: Vec::new(),
         constant_pool: Default::default(),

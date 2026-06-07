@@ -34,6 +34,25 @@ pub struct Monitor {
     target: u64,
 }
 
+/// Raw stacktrace frame captured at the point an exception is raised.
+#[derive(Clone, Debug)]
+pub struct RawStackEntry {
+    /// Pinned module version containing `ip`.
+    pub module: Arc<Module>,
+    /// Instruction pointer in `module`.
+    pub ip: usize,
+    /// Module/function/arity metadata when known from `func_info`.
+    pub mfa: Option<(Atom, Atom, u8)>,
+}
+
+impl PartialEq for RawStackEntry {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.module, &other.module) && self.ip == other.ip && self.mfa == other.mfa
+    }
+}
+
+impl Eq for RawStackEntry {}
+
 impl Monitor {
     /// Create monitor metadata for `watcher` observing `target`.
     #[must_use]
@@ -214,6 +233,7 @@ pub struct Process {
     mailbox: Mailbox,
     handlers: Vec<ExceptionHandler>,
     current_exception: Option<Exception>,
+    raw_stacktrace: Vec<RawStackEntry>,
     receive_timeout: Option<ReceiveTimeout>,
     receive_timer_ref: Option<u64>,
     x_regs: [Term; 1024],
@@ -243,6 +263,7 @@ impl Process {
             mailbox: Mailbox::new(),
             handlers: Vec::new(),
             current_exception: None,
+            raw_stacktrace: Vec::new(),
             receive_timeout: None,
             receive_timer_ref: None,
             x_regs: [Term::NIL; 1024],
@@ -423,6 +444,22 @@ impl Process {
     #[must_use]
     pub const fn current_exception(&self) -> Option<Exception> {
         self.current_exception
+    }
+
+    /// Captured raw stacktrace for the current exception, most recent frame first.
+    #[must_use]
+    pub fn raw_stacktrace(&self) -> &[RawStackEntry] {
+        &self.raw_stacktrace
+    }
+
+    /// Replace the captured raw stacktrace.
+    pub fn set_raw_stacktrace(&mut self, raw_stacktrace: Vec<RawStackEntry>) {
+        self.raw_stacktrace = raw_stacktrace;
+    }
+
+    /// Clear any raw stacktrace after an exception handling scope completes.
+    pub fn clear_raw_stacktrace(&mut self) {
+        self.raw_stacktrace.clear();
     }
 
     /// Record receive timeout state for scheduler/timer integration.

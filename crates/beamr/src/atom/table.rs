@@ -41,6 +41,9 @@ impl Atom {
     pub const UTF8: Self = Self(27);
     pub const LATIN1: Self = Self(28);
     pub const MODULE: Self = Self(29);
+    pub const THROW: Self = Self(30);
+    pub const EXIT_CLASS: Self = Self(31);
+    pub const LINE: Self = Self(32);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -82,6 +85,9 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("utf8", Atom::UTF8),
     ("latin1", Atom::LATIN1),
     ("module", Atom::MODULE),
+    ("throw", Atom::THROW),
+    ("exit_class", Atom::EXIT_CLASS),
+    ("line", Atom::LINE),
 ];
 
 /// Concurrent intern table for atom strings.

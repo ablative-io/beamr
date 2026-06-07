@@ -12,6 +12,7 @@ use crate::native::{
 };
 
 use super::decode::budget::DecodeBudget;
+use super::decode::compact::Operand;
 use super::decode::{
     ExportEntry, ImportEntry, Instruction, LambdaEntry, LineInfo, Literal, decode_atom_chunk,
     decode_code_chunk, decode_export_chunk, decode_import_chunk, decode_lambda_chunk,
@@ -361,6 +362,65 @@ pub fn load_beam_chunks(bytes: &[u8], atom_table: &AtomTable) -> Result<ParsedMo
     })
 }
 
+fn build_function_table(instructions: &[Instruction]) -> Result<Vec<(usize, Atom, u8)>, LoadError> {
+    instructions
+        .iter()
+        .enumerate()
+        .filter_map(|(ip, instruction)| match instruction {
+            Instruction::FuncInfo {
+                function, arity, ..
+            } => Some((ip, function, arity)),
+            _ => None,
+        })
+        .map(|(ip, function, arity)| {
+            Ok((
+                ip,
+                operand_atom(function, "func_info function")?,
+                operand_u8(arity, "func_info arity")?,
+            ))
+        })
+        .collect()
+}
+
+fn build_line_table(instructions: &[Instruction]) -> Result<Vec<(usize, usize)>, LoadError> {
+    instructions
+        .iter()
+        .enumerate()
+        .filter_map(|(ip, instruction)| match instruction {
+            Instruction::Line { index } => Some((ip, index)),
+            _ => None,
+        })
+        .map(|(ip, index)| Ok((ip, operand_usize(index, "line index")?)))
+        .collect()
+}
+
+fn operand_atom(operand: &Operand, context: &'static str) -> Result<Atom, LoadError> {
+    match operand {
+        Operand::Atom(Some(atom)) => Ok(*atom),
+        _ => Err(LoadError::ValidationError(format!(
+            "invalid operand for {context}"
+        ))),
+    }
+}
+
+fn operand_u8(operand: &Operand, context: &'static str) -> Result<u8, LoadError> {
+    u8::try_from(operand_usize(operand, context)?)
+        .map_err(|_| LoadError::ValidationError(format!("invalid operand for {context}")))
+}
+
+fn operand_usize(operand: &Operand, context: &'static str) -> Result<usize, LoadError> {
+    match operand {
+        Operand::Unsigned(value) => usize::try_from(*value),
+        Operand::Integer(value) => usize::try_from(*value),
+        _ => {
+            return Err(LoadError::ValidationError(format!(
+                "invalid operand for {context}"
+            )));
+        }
+    }
+    .map_err(|_| LoadError::ValidationError(format!("invalid operand for {context}")))
+}
+
 /// Parses, resolves, validates, registers, and returns a BEAM module.
 ///
 /// This compatibility wrapper grants all native capabilities, matching the
@@ -556,6 +616,11 @@ fn module_from_parsed(
         })
         .collect();
 
+    let mut function_table = build_function_table(&parsed.instructions)?;
+    function_table.sort_by_key(|(ip, _, _)| *ip);
+    let mut line_table = build_line_table(&parsed.instructions)?;
+    line_table.sort_by_key(|(ip, _)| *ip);
+
     let constant_pool = materialise_literals(&parsed.literals, Some(atom_table))?;
 
     Ok(Module {
@@ -563,6 +628,8 @@ fn module_from_parsed(
         generation: 0,
         exports,
         label_index,
+        function_table,
+        line_table,
         code: parsed.instructions,
         literals: parsed.literals,
         constant_pool,
@@ -756,6 +823,8 @@ mod tests {
             generation: 0,
             exports: std::collections::HashMap::new(),
             label_index: std::collections::HashMap::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             code: Vec::new(),
             literals: Vec::new(),
             constant_pool: Default::default(),
@@ -916,6 +985,8 @@ mod tests {
             generation: 0,
             exports: std::collections::HashMap::new(),
             label_index: std::collections::HashMap::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             code: Vec::new(),
             literals: Vec::new(),
             constant_pool: Default::default(),

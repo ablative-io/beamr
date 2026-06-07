@@ -19,6 +19,8 @@ fn module(code: Vec<Instruction>) -> Module {
         generation: 0,
         exports: HashMap::new(),
         label_index,
+        function_table: Vec::new(),
+        line_table: Vec::new(),
         code,
         literals: Vec::new(),
         constant_pool: Default::default(),
