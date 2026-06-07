@@ -10,6 +10,7 @@ pub mod etf;
 pub mod gc;
 pub mod hook;
 pub mod interpreter;
+#[path = "io/mod.rs"]
 pub mod io;
 pub mod loader;
 pub mod mailbox;

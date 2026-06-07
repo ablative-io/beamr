@@ -1,1 +1,1 @@
-fix(beamr): remove stale flat io module for fd resources
+fix(beamr): disambiguate io module path for fd resources
