@@ -77,7 +77,7 @@ fn workload_module(atom_table: &AtomTable) -> Module {
             destination: Operand::X(1),
         });
         code.push(Instruction::TestHeap {
-            heap_need: Operand::Unsigned(5),
+            heap_need: Operand::Unsigned(6),
             live: Operand::Unsigned(2),
         });
         code.push(Instruction::PutTuple2 {

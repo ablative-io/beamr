@@ -103,14 +103,14 @@ struct CfgTestBlocks {
 impl CfgTestBlocks {
     fn observe_line(&mut self, line: &str) {
         let trimmed = line.trim();
-        if trimmed.starts_with("#[cfg(test)]") || trimmed.starts_with("#[cfg(any(test") {
+        if starts_cfg_test_attribute(trimmed) {
             self.pending_cfg_test = true;
         }
 
         let opens = line.chars().filter(|character| *character == '{').count();
         let closes = line.chars().filter(|character| *character == '}').count();
         if self.pending_cfg_test && opens > 0 {
-            self.active_depths.push(self.brace_depth + opens);
+            self.active_depths.push(self.brace_depth + 1);
             self.pending_cfg_test = false;
         }
 
@@ -121,6 +121,39 @@ impl CfgTestBlocks {
     }
 
     fn in_cfg_test_block(&self) -> bool {
-        !self.active_depths.is_empty()
+        self.pending_cfg_test || !self.active_depths.is_empty()
+    }
+}
+
+fn starts_cfg_test_attribute(line: &str) -> bool {
+    line.starts_with("#[cfg(test)]")
+        || line.starts_with("#[cfg(any(test")
+        || line.starts_with("#[cfg(all(test")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CfgTestBlocks;
+
+    #[test]
+    fn cfg_test_blocks_cover_inline_attribute_items() {
+        let mut blocks = CfgTestBlocks::default();
+        blocks.observe_line("#[cfg(test)] fn helper() -> &'static str {");
+        assert!(blocks.in_cfg_test_block());
+        blocks.observe_line("Box::leak(String::new().into_boxed_str())");
+        assert!(blocks.in_cfg_test_block());
+        blocks.observe_line("}");
+        assert!(!blocks.in_cfg_test_block());
+    }
+
+    #[test]
+    fn cfg_test_blocks_cover_standard_test_modules() {
+        let mut blocks = CfgTestBlocks::default();
+        blocks.observe_line("#[cfg(test)]");
+        assert!(blocks.in_cfg_test_block());
+        blocks.observe_line("mod tests {");
+        assert!(blocks.in_cfg_test_block());
+        blocks.observe_line("}");
+        assert!(!blocks.in_cfg_test_block());
     }
 }

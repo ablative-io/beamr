@@ -1,1 +1,1 @@
-test(beamr): prevent Box::leak regressions
+Harden Box::leak audit gate and memory stability coverage
