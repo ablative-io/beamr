@@ -78,10 +78,10 @@ impl RunQueue {
     /// Pop a process ID from the owner side of the highest-priority available queue.
     #[must_use]
     pub fn pop(&self) -> Option<u64> {
-        if self.non_low_pops_since_low.get() >= self.low_priority_interval {
-            if let Some(pid) = self.pop_low() {
-                return Some(pid);
-            }
+        if self.non_low_pops_since_low.get() >= self.low_priority_interval
+            && let Some(pid) = self.pop_low()
+        {
+            return Some(pid);
         }
 
         for priority in [
