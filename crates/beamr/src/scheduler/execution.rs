@@ -143,6 +143,11 @@ fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<Spaw
 mod core;
 pub(in crate::scheduler) use core::cleanup_exited_process;
 use core::run_process;
+#[cfg(test)]
+pub(in crate::scheduler) use core::{
+    SliceOutcome, cleanup_if_tombstoned_after_store, execute_slice, store_runnable_process,
+    take_runnable_process,
+};
 pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
     timer_integration::cancel_receive_timer(shared, pid);
     let mut wait_set = lock_or_recover(&shared.wait_set);

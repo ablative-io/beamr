@@ -6,7 +6,6 @@ pub mod run_queue;
 mod spawning;
 pub mod steal;
 mod supervision_integration;
-#[cfg(any(test, feature = "test-support"))]
 mod test_helpers;
 mod timer_integration;
 use self::execution::scheduler_loop;

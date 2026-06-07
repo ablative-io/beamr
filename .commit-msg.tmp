@@ -1,1 +1,1 @@
-refactor(scheduler): split scheduler responsibilities into submodules
+harden(scheduler): preserve split test wiring and line caps

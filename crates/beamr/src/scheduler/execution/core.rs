@@ -12,7 +12,7 @@ use crate::scheduler::{
     SharedState, lock_or_recover, namespace_registry, supervision_integration, timer_integration,
 };
 
-enum SliceOutcome {
+pub(in crate::scheduler) enum SliceOutcome {
     Requeue(Process),
     Wait(Process),
     Suspended(Process),
@@ -65,7 +65,10 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
     }
 }
 
-fn take_runnable_process(shared: &SharedState, pid: u64) -> Option<Process> {
+pub(in crate::scheduler) fn take_runnable_process(
+    shared: &SharedState,
+    pid: u64,
+) -> Option<Process> {
     let entry = shared.process_bodies.get(&pid)?;
     let mut slot = lock_or_recover(&entry);
     match std::mem::take(&mut *slot) {
@@ -87,7 +90,7 @@ fn take_runnable_process(shared: &SharedState, pid: u64) -> Option<Process> {
     }
 }
 
-fn store_runnable_process(shared: &SharedState, mut process: Process) {
+pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut process: Process) {
     let pid = process.pid();
     if let Some(entry) = shared.process_bodies.get(&pid) {
         let mut slot = lock_or_recover(&entry);
@@ -112,7 +115,10 @@ fn store_runnable_process(shared: &SharedState, mut process: Process) {
     }
 }
 
-fn cleanup_if_tombstoned_after_store(shared: &SharedState, pid: u64) -> bool {
+pub(in crate::scheduler) fn cleanup_if_tombstoned_after_store(
+    shared: &SharedState,
+    pid: u64,
+) -> bool {
     if let Some(reason) = tombstone_reason(shared, pid) {
         cleanup_exited_process(shared, pid, reason);
         true
@@ -125,7 +131,10 @@ fn tombstone_reason(shared: &SharedState, pid: u64) -> Option<ExitReason> {
     shared.exit_tombstones.get(&pid).map(|reason| *reason)
 }
 
-fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutcome {
+pub(in crate::scheduler) fn execute_slice(
+    shared: &Arc<SharedState>,
+    process: &mut Process,
+) -> SliceOutcome {
     if !matches!(
         process.status(),
         ProcessStatus::New
