@@ -149,6 +149,7 @@ fn make_shared_state() -> Arc<SharedState> {
         next_namespace_id: AtomicU64::new(1),
         spawn_counter: AtomicUsize::new(0),
         thread_count: 1,
+        low_priority_interval: crate::scheduler::run_queue::DEFAULT_LOW_PRIORITY_INTERVAL,
         next_pid: AtomicU64::new(100),
         wait_set: std::sync::Mutex::new(WaitSet::default()),
         wake_condvar: std::sync::Condvar::new(),

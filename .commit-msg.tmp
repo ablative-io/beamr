@@ -1,1 +1,1 @@
-feat(beamr): add process priorities and priority-aware scheduling
+fix(beamr): complete priority scheduler test shared state wiring
