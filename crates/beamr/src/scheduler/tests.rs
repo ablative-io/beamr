@@ -492,7 +492,11 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         Mutex::new(ProcessSlot::Executing(ProcessMetadata {
             namespace_id: NamespaceId::DEFAULT,
             links: Vec::new(),
+            monitors: Vec::new(),
             trap_exit: false,
+            current_mfa: None,
+            heap_size: DEFAULT_HEAP_SIZE,
+            message_queue_len: 0,
             pending_exit_messages: Vec::new(),
         })),
     );
