@@ -1,1 +1,1 @@
-feat(beamr): implement update_record opcode
+Harden B-066 comparison BIF registration and de-duplicate /=
