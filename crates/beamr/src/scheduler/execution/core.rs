@@ -34,21 +34,23 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
     }
     match outcome {
         SliceOutcome::Requeue(process) => {
+            let priority = process.priority();
             store_runnable_process(shared, process);
             if cleanup_if_tombstoned_after_store(shared, pid) {
                 return;
             }
-            queue.push(pid);
+            queue.push_with_priority(pid, priority);
         }
         SliceOutcome::Wait(mut process) => {
             timer_integration::register_receive_timer(shared, &mut process);
+            let priority = process.priority();
             store_runnable_process(shared, process);
             if cleanup_if_tombstoned_after_store(shared, pid) {
                 return;
             }
             if process_has_queued_messages(shared, pid) {
                 timer_integration::cancel_receive_timer(shared, pid);
-                queue.push(pid);
+                queue.push_with_priority(pid, priority);
                 return;
             }
             let mut ws = lock_or_recover(&shared.wait_set);
@@ -84,6 +86,7 @@ pub(in crate::scheduler) fn take_runnable_process(
                 links: process.links().to_vec(),
                 monitors: process.monitors().to_vec(),
                 trap_exit: process.trap_exit(),
+                priority: process.priority(),
                 current_mfa: process.current_mfa(),
                 heap_size: process.heap().total_used(),
                 message_queue_len: process.mailbox().message_count(),

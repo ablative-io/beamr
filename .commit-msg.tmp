@@ -1,1 +1,1 @@
-review(beamr): harden system_info wordsize dispatch
+feat(beamr): add process priority scheduling

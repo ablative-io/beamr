@@ -4,9 +4,7 @@
 //! round-robin order and steal approximately half of a victim's work. A queue
 //! with a single process is never stolen from.
 
-use crossbeam_deque::Stealer;
-
-use crate::scheduler::run_queue::RunQueue;
+use crate::scheduler::run_queue::{PriorityStealers, RunQueue};
 
 /// Result of a steal attempt.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -28,7 +26,7 @@ pub enum StealResult {
 pub fn try_steal(
     my_queue: &RunQueue,
     my_index: usize,
-    stealers: &[Stealer<u64>],
+    stealers: &[PriorityStealers],
     last_victim: usize,
 ) -> (StealResult, usize) {
     let thread_count = stealers.len();

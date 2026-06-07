@@ -3,7 +3,6 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use crossbeam_deque::Stealer;
 use crossbeam_queue::SegQueue;
 
 use crate::error::ExecError;
@@ -11,7 +10,7 @@ use crate::process::ExitReason;
 use crate::term::Term;
 
 use super::{
-    RunQueue, Scheduler, SharedState, SpawnRequest, lock_or_recover,
+    PriorityStealers, RunQueue, Scheduler, SharedState, SpawnRequest, lock_or_recover,
     spawning::materialize_spawn_request, steal, timer_integration,
 };
 
@@ -97,7 +96,7 @@ pub(in crate::scheduler) fn scheduler_loop(
     shared: &Arc<SharedState>,
     queue: &RunQueue,
     my_index: usize,
-    stealers: &[Stealer<u64>],
+    stealers: &[PriorityStealers],
     inject: &SegQueue<SpawnRequest>,
 ) {
     let mut last_victim = my_index;
@@ -138,7 +137,9 @@ pub(in crate::scheduler) fn scheduler_loop(
 fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<SpawnRequest>) {
     while let Some(request) = inject.pop() {
         let pid = materialize_spawn_request(shared, request);
-        queue.push(pid);
+        if let Some(priority) = priority_for_pid(shared, pid) {
+            queue.push_with_priority(pid, priority);
+        }
     }
 }
 
@@ -175,7 +176,19 @@ fn drain_woken(shared: &SharedState, queue: &RunQueue, my_index: usize) {
     };
     for pid in woken {
         if shared.process_table.get(pid).is_some() {
-            queue.push(pid);
+            queue.push_with_priority(pid, priority_for_pid(shared, pid).unwrap_or_default());
+
+            pub(in crate::scheduler) fn priority_for_pid(
+                shared: &SharedState,
+                pid: u64,
+            ) -> Option<crate::process::Priority> {
+                let entry = shared.process_bodies.get(&pid)?;
+                match &*lock_or_recover(&entry) {
+                    super::ProcessSlot::Present(scheduled) => Some(scheduled.0.priority()),
+                    super::ProcessSlot::Executing(metadata) => Some(metadata.priority),
+                    super::ProcessSlot::Absent => None,
+                }
+            }
         }
     }
 }

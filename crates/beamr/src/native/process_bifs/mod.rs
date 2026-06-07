@@ -9,7 +9,7 @@ use crate::native::links::LinkError;
 use crate::native::{
     BifRegistryImpl, Capability, ExceptionClass, NativeFn, NativeRegistrationError, ProcessContext,
 };
-use crate::process::ExitReason;
+use crate::process::{ExitReason, Priority};
 use crate::term::Term;
 use crate::term::boxed::{Closure, Cons};
 
@@ -123,9 +123,44 @@ pub fn bif_process_flag(args: &[Term], context: &mut ProcessContext) -> Result<T
             .set_trap_exit(caller_pid, new_value)
             .map_err(|_| badarg())?;
         Ok(bool_to_atom(old_value))
+    } else if flag == priority_flag_atom(context)? {
+        let new_priority = atom_to_priority(context, *value_term)?;
+        let old_priority = context.set_priority(new_priority)?;
+        Ok(Term::atom(priority_to_atom(context, old_priority)?))
     } else {
         Err(badarg())
     }
+}
+
+fn priority_flag_atom(context: &ProcessContext) -> Result<Atom, Term> {
+    let atom_table = context.atom_table().ok_or_else(badarg)?;
+    Ok(atom_table.intern("priority"))
+}
+
+fn atom_to_priority(context: &ProcessContext, term: Term) -> Result<Priority, Term> {
+    let atom = term.as_atom().ok_or_else(badarg)?;
+    let atom_table = context.atom_table().ok_or_else(badarg)?;
+    if atom == atom_table.intern("low") {
+        Ok(Priority::Low)
+    } else if atom == Atom::NORMAL {
+        Ok(Priority::Normal)
+    } else if atom == atom_table.intern("high") {
+        Ok(Priority::High)
+    } else if atom == atom_table.intern("max") {
+        Ok(Priority::Max)
+    } else {
+        Err(badarg())
+    }
+}
+
+fn priority_to_atom(context: &ProcessContext, priority: Priority) -> Result<Atom, Term> {
+    let atom_table = context.atom_table().ok_or_else(badarg)?;
+    Ok(match priority {
+        Priority::Low => atom_table.intern("low"),
+        Priority::Normal => Atom::NORMAL,
+        Priority::High => atom_table.intern("high"),
+        Priority::Max => atom_table.intern("max"),
+    })
 }
 
 /// erlang:monitor/2 — establish a unidirectional monitor from caller to target.

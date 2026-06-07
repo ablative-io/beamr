@@ -10,7 +10,7 @@ use std::time::Duration;
 use crate::atom::AtomTable;
 use crate::io::{IoSink, NullSink};
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
-use crate::process::Process;
+use crate::process::{Priority, Process};
 use crate::term::Term;
 use crate::term::binary::{packed_word_count, write_binary};
 use crate::term::boxed::{
@@ -478,6 +478,24 @@ impl<'process> ProcessContext<'process> {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         };
         Ok(process.group_leader())
+    }
+
+    /// Return the attached process scheduling priority.
+    pub fn priority(&self) -> Result<Priority, Term> {
+        let Some(process) = self.process.as_ref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.priority())
+    }
+
+    /// Set the attached process scheduling priority and return its old value.
+    pub fn set_priority(&mut self, priority: Priority) -> Result<Priority, Term> {
+        let Some(process) = self.process.as_deref_mut() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        let old_priority = process.priority();
+        process.set_priority(priority);
+        Ok(old_priority)
     }
 
     /// Set the attached process group leader when it matches `pid`.

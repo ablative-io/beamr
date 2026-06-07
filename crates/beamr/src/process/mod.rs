@@ -184,6 +184,20 @@ pub enum ProcessStatus {
     Exited(ExitReason),
 }
 
+/// BEAM process scheduling priority.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
+pub enum Priority {
+    /// Low-priority process.
+    Low,
+    /// Normal process priority.
+    #[default]
+    Normal,
+    /// High-priority process.
+    High,
+    /// Maximum process priority.
+    Max,
+}
+
 /// Process operation errors.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ProcessError {
@@ -241,6 +255,7 @@ impl std::error::Error for ProcessError {}
 pub struct Process {
     pid: u64,
     status: ProcessStatus,
+    priority: Priority,
     heap: Heap,
     stack: Stack,
     mailbox: Mailbox,
@@ -273,6 +288,7 @@ impl Process {
         Self {
             pid,
             status: ProcessStatus::New,
+            priority: Priority::Normal,
             heap: Heap::new(heap_size),
             stack: Stack::new(),
             mailbox: Mailbox::new(),
@@ -315,6 +331,17 @@ impl Process {
     #[must_use]
     pub const fn status(&self) -> ProcessStatus {
         self.status
+    }
+
+    /// Current scheduling priority.
+    #[must_use]
+    pub const fn priority(&self) -> Priority {
+        self.priority
+    }
+
+    /// Set this process's scheduling priority.
+    pub const fn set_priority(&mut self, priority: Priority) {
+        self.priority = priority;
     }
 
     /// Transition this process to `next` if the lifecycle graph allows it.
@@ -830,7 +857,8 @@ impl Process {
 #[cfg(test)]
 mod tests {
     use super::{
-        CodePosition, DEFAULT_REDUCTION_BUDGET, ExitReason, Process, ProcessError, ProcessStatus,
+        CodePosition, DEFAULT_REDUCTION_BUDGET, ExitReason, Priority, Process, ProcessError,
+        ProcessStatus,
     };
     use crate::atom::Atom;
     use crate::gc::tests::module_pin;
@@ -843,6 +871,7 @@ mod tests {
 
         assert_eq!(process.pid(), 7);
         assert_eq!(process.status(), ProcessStatus::New);
+        assert_eq!(process.priority(), Priority::Normal);
         assert_eq!(process.heap().capacity(), 233);
         assert!(process.stack().is_empty());
         assert!(process.mailbox().is_empty());

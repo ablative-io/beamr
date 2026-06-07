@@ -6,13 +6,45 @@ use crate::native::supervision::{
     MonitorResult, SupervisionError, SupervisionFacility, SupervisionRecord,
 };
 use crate::native::{BifRegistryImpl, ExceptionClass, ProcessContext};
-use crate::process::{ExitReason, Process};
+use crate::process::{ExitReason, Priority, Process};
 use crate::term::Term;
 use crate::term::boxed::{Reference, Tuple, write_closure, write_cons};
 use std::sync::{Arc, Mutex};
 
 fn badarg() -> Term {
     Term::atom(Atom::BADARG)
+}
+
+#[test]
+fn process_flag_priority_sets_high_and_returns_old_priority() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let mut process = Process::new(1, 128);
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(atom_table.clone()));
+    ctx.attach_process(&mut process, 0);
+    let priority = atom_table.intern("priority");
+    let high = atom_table.intern("high");
+
+    assert_eq!(
+        bif_process_flag(&[Term::atom(priority), Term::atom(high)], &mut ctx),
+        Ok(Term::atom(Atom::NORMAL)),
+    );
+    assert_eq!(ctx.priority(), Ok(Priority::High));
+}
+
+#[test]
+fn process_flag_priority_rejects_invalid_atom() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let mut process = Process::new(1, 128);
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(atom_table.clone()));
+    ctx.attach_process(&mut process, 0);
+    let priority = atom_table.intern("priority");
+
+    assert_eq!(
+        bif_process_flag(&[Term::atom(priority), Term::atom(Atom::OK)], &mut ctx),
+        Err(badarg()),
+    );
 }
 
 fn attached_spawn_ctx(

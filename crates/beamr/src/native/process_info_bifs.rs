@@ -9,6 +9,7 @@ use crate::atom::{Atom, AtomTable};
 use crate::native::{
     BifRegistryImpl, Capability, NativeFn, NativeRegistrationError, ProcessContext,
 };
+use crate::process::Priority;
 use crate::term::Term;
 
 /// Supported `erlang:process_info/*` item names in deterministic result order.
@@ -19,6 +20,7 @@ const SUPPORTED_ITEMS: &[ProcessInfoItem] = &[
     ProcessInfoItem::RegisteredName,
     ProcessInfoItem::Status,
     ProcessInfoItem::TrapExit,
+    ProcessInfoItem::Priority,
     ProcessInfoItem::Links,
     ProcessInfoItem::Monitors,
 ];
@@ -28,8 +30,18 @@ type ProcessInfoBif = (&'static str, u8, Capability, NativeFn);
 const PROCESS_INFO_BIFS: &[ProcessInfoBif] = &[
     ("process_info", 1, Capability::Pure, bif_process_info_1),
     ("process_info", 2, Capability::Pure, bif_process_info_2),
-    ("group_leader", 0, Capability::ProcessLocal, bif_group_leader_0),
-    ("group_leader", 2, Capability::ProcessLocal, bif_group_leader_2),
+    (
+        "group_leader",
+        0,
+        Capability::ProcessLocal,
+        bif_group_leader_0,
+    ),
+    (
+        "group_leader",
+        2,
+        Capability::ProcessLocal,
+        bif_group_leader_2,
+    ),
 ];
 
 /// Process-info item understood by the scheduler-backed introspection facility.
@@ -47,10 +59,22 @@ pub enum ProcessInfoItem {
     Status,
     /// `trap_exit` → boolean atom.
     TrapExit,
+    /// `priority` → `low | normal | high | max`.
+    Priority,
     /// `links` → list of linked process identifiers.
     Links,
     /// `monitors` → list of monitored process descriptors.
     Monitors,
+}
+
+fn priority_atom(context: &ProcessContext, priority: Priority) -> Result<Atom, Term> {
+    let atom_table = context.atom_table().ok_or_else(badarg)?;
+    Ok(match priority {
+        Priority::Low => atom_table.intern("low"),
+        Priority::Normal => Atom::NORMAL,
+        Priority::High => atom_table.intern("high"),
+        Priority::Max => atom_table.intern("max"),
+    })
 }
 
 impl ProcessInfoItem {
@@ -62,6 +86,7 @@ impl ProcessInfoItem {
             Self::RegisteredName => "registered_name",
             Self::Status => "status",
             Self::TrapExit => "trap_exit",
+            Self::Priority => "priority",
             Self::Links => "links",
             Self::Monitors => "monitors",
         }
@@ -103,6 +128,8 @@ pub enum ProcessInfoValue {
     Status(ProcessInfoStatus),
     /// Trap-exit flag.
     TrapExit(bool),
+    /// Scheduling priority.
+    Priority(Priority),
     /// Linked process identifiers.
     Links(Vec<u64>),
     /// Monitor records attached to the process.
@@ -224,6 +251,7 @@ fn alloc_value(
         ProcessInfoValue::RegisteredName(None) => Ok(Term::NIL),
         ProcessInfoValue::Status(status) => Ok(Term::atom(status_atom(context, status)?)),
         ProcessInfoValue::TrapExit(value) => Ok(bool_to_atom(value)),
+        ProcessInfoValue::Priority(priority) => Ok(Term::atom(priority_atom(context, priority)?)),
         ProcessInfoValue::Links(links) => alloc_pid_list(context, &links),
         ProcessInfoValue::Monitors(monitors) => alloc_monitor_list(context, queried_pid, &monitors),
     }
@@ -236,6 +264,7 @@ fn value_heap_words(queried_pid: u64, value: &ProcessInfoValue) -> usize {
         | ProcessInfoValue::MessageQueueLen(_)
         | ProcessInfoValue::RegisteredName(_)
         | ProcessInfoValue::Status(_)
+        | ProcessInfoValue::Priority(_)
         | ProcessInfoValue::TrapExit(_) => 0,
         ProcessInfoValue::Links(links) => links.len() * 2,
         ProcessInfoValue::Monitors(monitors) => {
@@ -325,7 +354,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
-    use crate::process::Process;
+    use crate::process::{Priority, Process};
     use crate::term::boxed::{Cons, Tuple};
 
     #[derive(Default)]
@@ -366,7 +395,9 @@ mod tests {
 
     fn tuple_elements(term: Term) -> Vec<Term> {
         let tuple = Tuple::new(term).expect("tuple term");
-        (0..tuple.arity()).filter_map(|index| tuple.get(index)).collect()
+        (0..tuple.arity())
+            .filter_map(|index| tuple.get(index))
+            .collect()
     }
 
     fn list_elements(mut term: Term) -> Vec<Term> {
@@ -429,6 +460,11 @@ mod tests {
         );
         facility.insert(
             pid,
+            ProcessInfoItem::Priority,
+            ProcessInfoValue::Priority(Priority::High),
+        );
+        facility.insert(
+            pid,
             ProcessInfoItem::Links,
             ProcessInfoValue::Links(vec![1, 2]),
         );
@@ -448,6 +484,7 @@ mod tests {
             "registered_name",
             "status",
             "trap_exit",
+            "priority",
             "links",
             "monitors",
         ];
@@ -514,6 +551,7 @@ mod tests {
                 ProcessInfoItem::RegisteredName => ProcessInfoValue::RegisteredName(None),
                 ProcessInfoItem::Status => ProcessInfoValue::Status(ProcessInfoStatus::Waiting),
                 ProcessInfoItem::TrapExit => ProcessInfoValue::TrapExit(false),
+                ProcessInfoItem::Priority => ProcessInfoValue::Priority(Priority::Normal),
                 ProcessInfoItem::Links => ProcessInfoValue::Links(Vec::new()),
                 ProcessInfoItem::Monitors => ProcessInfoValue::Monitors(Vec::new()),
             };
@@ -529,5 +567,28 @@ mod tests {
             let tuple = tuple_elements(entry);
             assert_eq!(tuple[0], Term::atom(atom_table.intern(item.name())));
         }
+    }
+
+    #[test]
+    fn process_info_2_returns_priority_atom() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let facility = Arc::new(MockProcessInfoFacility::default());
+        let pid = 21;
+        facility.insert(
+            pid,
+            ProcessInfoItem::Priority,
+            ProcessInfoValue::Priority(Priority::High),
+        );
+        let mut process = Process::new(0, 128);
+        let mut context =
+            context_with_facility(Arc::clone(&atom_table), Arc::clone(&facility), &mut process);
+        let priority = atom_table.intern("priority");
+
+        let result = bif_process_info_2(&[Term::pid(pid), Term::atom(priority)], &mut context)
+            .expect("process_info/2 succeeds");
+        let tuple = tuple_elements(result);
+
+        assert_eq!(tuple[0], Term::atom(priority));
+        assert_eq!(tuple[1], Term::atom(atom_table.intern("high")));
     }
 }

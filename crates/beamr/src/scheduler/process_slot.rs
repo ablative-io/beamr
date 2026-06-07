@@ -1,5 +1,5 @@
 use crate::namespace::NamespaceId;
-use crate::process::{ExitReason, Monitor};
+use crate::process::{ExitReason, Monitor, Priority};
 use crate::term::Term;
 
 use super::ScheduledProcess;
@@ -9,6 +9,7 @@ pub(super) struct ProcessMetadata {
     pub(super) links: Vec<u64>,
     pub(super) monitors: Vec<Monitor>,
     pub(super) trap_exit: bool,
+    pub(super) priority: Priority,
     pub(super) current_mfa: Option<(crate::atom::Atom, crate::atom::Atom, u8)>,
     pub(super) heap_size: usize,
     pub(super) message_queue_len: usize,

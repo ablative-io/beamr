@@ -573,6 +573,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
             links: Vec::new(),
             monitors: Vec::new(),
             trap_exit: false,
+            priority: process.priority(),
             current_mfa: None,
             heap_size: 0,
             message_queue_len: 0,
