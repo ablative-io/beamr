@@ -253,6 +253,8 @@ pub(super) fn build_native_services(
         Arc::new(super::module_management::SchedulerCodeManagementFacility {
             shared: Arc::clone(shared),
         });
+    let system_info: Arc<dyn crate::native::system_info_bifs::SystemInfoFacility> =
+        Arc::clone(shared) as Arc<dyn crate::native::system_info_bifs::SystemInfoFacility>;
     crate::interpreter::NativeServices {
         atom_table: Some(Arc::clone(&shared.atom_table)),
         timers: Some(Arc::clone(&shared.timers)),
@@ -261,6 +263,7 @@ pub(super) fn build_native_services(
         supervision_facility: Some(supervision),
         io_sink: Some(Arc::clone(&lock_or_recover(&shared.output_sink))),
         code_management_facility: Some(code_management),
+        system_info_facility: Some(system_info),
     }
 }
 

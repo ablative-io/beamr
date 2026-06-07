@@ -162,6 +162,12 @@ impl AtomTable {
     pub fn resolve(&self, atom: Atom) -> Option<&str> {
         self.by_index.get(&atom.index()).map(|entry| *entry)
     }
+
+    /// Return the number of currently interned atom names.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.by_name.len()
+    }
 }
 
 impl Default for AtomTable {
@@ -217,6 +223,22 @@ mod tests {
         assert_eq!(table.intern("throw"), Atom::THROW);
         assert_eq!(table.intern("exit"), Atom::EXIT_CLASS);
         assert_eq!(table.intern("ok"), Atom::OK);
+    }
+
+    #[test]
+    fn len_counts_committed_atom_names() {
+        let table = AtomTable::new();
+
+        assert_eq!(table.len(), 0);
+        table.intern("alpha");
+        table.intern("beta");
+        table.intern("alpha");
+
+        assert_eq!(table.len(), 2);
+        assert_eq!(
+            AtomTable::with_common_atoms().len(),
+            super::COMMON_ATOMS.len()
+        );
     }
 
     #[test]

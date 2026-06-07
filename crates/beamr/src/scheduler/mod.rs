@@ -16,6 +16,7 @@ use crate::hook::Hook;
 use crate::io::{IoSink, NullSink};
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
+use crate::native::system_info_bifs::SystemInfoFacility;
 use crate::native::{AllCapabilitiesPolicy, BifRegistryImpl, CapabilityPolicy};
 use crate::process::registry::ProcessTable;
 use crate::process::{ExitReason, Process};
@@ -71,6 +72,35 @@ struct WaitSet {
     woken: Vec<(u64, usize)>,
 }
 pub(super) struct ScheduledProcess(Process);
+
+impl SharedState {
+    pub(super) fn process_count(&self) -> usize {
+        self.process_table.len()
+    }
+
+    pub(super) fn scheduler_count(&self) -> usize {
+        self.thread_count
+    }
+
+    pub(super) fn atom_count(&self) -> usize {
+        self.atom_table.len()
+    }
+}
+
+impl SystemInfoFacility for SharedState {
+    fn process_count(&self) -> usize {
+        self.process_count()
+    }
+
+    fn scheduler_count(&self) -> usize {
+        self.scheduler_count()
+    }
+
+    fn atom_count(&self) -> usize {
+        self.atom_count()
+    }
+}
+
 // SAFETY: Process is not Send at the public API boundary. The scheduler is the
 // sole owner of process execution, storing each body behind a mutex-protected
 // ProcessSlot. Workers take exclusive ownership before executing a time slice.
@@ -241,6 +271,18 @@ impl Scheduler {
     #[must_use]
     pub fn thread_count(&self) -> usize {
         self.shared.thread_count
+    }
+    #[must_use]
+    pub fn process_count(&self) -> usize {
+        self.shared.process_count()
+    }
+    #[must_use]
+    pub fn scheduler_count(&self) -> usize {
+        self.shared.scheduler_count()
+    }
+    #[must_use]
+    pub fn atom_count(&self) -> usize {
+        self.shared.atom_count()
     }
     #[must_use]
     pub fn worker_names(&self) -> &[String] {
