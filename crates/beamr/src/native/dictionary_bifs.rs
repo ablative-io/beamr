@@ -65,6 +65,12 @@ pub fn bif_get_0(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
         return Err(badarg());
     }
 
+    let entry_count = context.dict_len()?;
+    // Reserve while the entries are still rooted by the process dictionary. If
+    // allocation triggered GC after copying boxed terms out of the dictionary,
+    // those local copies would not be rewritten by GC.
+    context.ensure_heap_space(entries_heap_words(entry_count))?;
+
     let entries = context.dict_get_all()?;
     entries_to_list(&entries, context)
 }
@@ -84,6 +90,12 @@ pub fn bif_erase_0(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         return Err(badarg());
     }
 
+    let entry_count = context.dict_len()?;
+    // Preflight before draining so erased boxed keys/values remain rooted if GC
+    // runs to make result space available. Once this succeeds, allocation below
+    // cannot trigger GC and the returned Vec can safely hold copied terms.
+    context.ensure_heap_space(entries_heap_words(entry_count))?;
+
     let entries = context.dict_erase_all()?;
     entries_to_list(&entries, context)
 }
@@ -94,8 +106,22 @@ pub fn bif_get_keys_1(args: &[Term], context: &mut ProcessContext) -> Result<Ter
         return Err(badarg());
     };
 
+    let matching_key_count = context.dict_count_keys_for_value(*value)?;
+    // Preflight while matching keys are still rooted by the dictionary. This
+    // prevents GC from relocating boxed keys after they have been copied into a
+    // temporary Vec that GC does not know how to rewrite.
+    context.ensure_heap_space(list_heap_words(matching_key_count))?;
+
     let keys = context.dict_get_keys(*value)?;
     context.alloc_list(&keys)
+}
+
+const fn entries_heap_words(entry_count: usize) -> usize {
+    entry_count * 5
+}
+
+const fn list_heap_words(element_count: usize) -> usize {
+    element_count * 2
 }
 
 fn entries_to_list(entries: &[(Term, Term)], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -183,6 +209,57 @@ mod tests {
                 (Term::atom(Atom::OK), Term::small_int(1)),
                 (Term::atom(Atom::ERROR), Term::small_int(2)),
             ]
+        );
+    }
+
+    #[test]
+    fn get_0_preflights_heap_space_while_dictionary_roots_boxed_entries() {
+        let mut process = Process::new(1, 8);
+        let key = {
+            let mut context = context(&mut process);
+            context
+                .alloc_tuple(&[Term::small_int(10)])
+                .expect("key allocation")
+        };
+        {
+            let mut context = context(&mut process);
+            let _garbage = context
+                .alloc_tuple(&[Term::small_int(11)])
+                .expect("garbage allocation");
+        }
+        {
+            let mut context = context(&mut process);
+            bif_put(&[key, Term::small_int(1)], &mut context).expect("put boxed key");
+        }
+
+        let list = {
+            let mut context = context(&mut process);
+            bif_get_0(&[], &mut context).expect("get/0 after GC preflight")
+        };
+        let pair = list_terms(list)
+            .into_iter()
+            .map(tuple_pair)
+            .next()
+            .expect("one pair");
+
+        assert_eq!(pair.0.raw(), process.dict_get_all()[0].0.raw());
+    }
+
+    #[test]
+    fn erase_0_reports_allocation_failure_without_clearing_dictionary() {
+        let mut process = Process::new(1, 8);
+        process.heap_mut().set_max_capacity(8);
+        let mut context = context(&mut process);
+
+        bif_put(&[Term::atom(Atom::OK), Term::small_int(1)], &mut context).expect("put ok");
+        bif_put(&[Term::atom(Atom::ERROR), Term::small_int(2)], &mut context).expect("put error");
+        assert_eq!(
+            bif_erase_0(&[], &mut context),
+            Err(Term::atom(Atom::BADARG))
+        );
+        assert_eq!(
+            bif_get_1(&[Term::atom(Atom::OK)], &mut context),
+            Ok(Term::small_int(1))
         );
     }
 

@@ -14,6 +14,7 @@ use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary::{packed_word_count, write_binary};
 use crate::term::boxed::{write_bigint, write_cons, write_float, write_map, write_tuple};
+use crate::term::compare;
 use crate::timer::{TimerRef, TimerWheel};
 
 use super::code_management_bifs::CodeManagementFacility;
@@ -415,6 +416,14 @@ impl<'process> ProcessContext<'process> {
         Ok(process.dict_get_all().to_vec())
     }
 
+    /// Count attached process dictionary entries without copying their terms.
+    pub fn dict_len(&self) -> Result<usize, Term> {
+        let Some(process) = self.process.as_ref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.dict_get_all().len())
+    }
+
     /// Remove a value from the attached process dictionary.
     pub fn dict_erase(&mut self, key: Term) -> Result<Term, Term> {
         let Some(process) = self.process.as_deref_mut() else {
@@ -437,6 +446,18 @@ impl<'process> ProcessContext<'process> {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         };
         Ok(process.dict_get_keys(value))
+    }
+
+    /// Count dictionary keys whose values exactly match `value` without copying terms.
+    pub fn dict_count_keys_for_value(&self, value: Term) -> Result<usize, Term> {
+        let Some(process) = self.process.as_ref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process
+            .dict_get_all()
+            .iter()
+            .filter(|(_, existing_value)| compare::exact_eq(**existing_value, value))
+            .count())
     }
 
     /// Return the configured output sink for `io` module BIFs.

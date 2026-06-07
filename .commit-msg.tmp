@@ -1,1 +1,1 @@
-feat(beamr): add process dictionary BIFs
+Harden process dictionary BIF GC-safety during result construction
