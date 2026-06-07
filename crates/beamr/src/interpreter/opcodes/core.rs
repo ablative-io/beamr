@@ -6,7 +6,6 @@ use crate::error::ExecError;
 use crate::gc::{GcError, ensure_space};
 use crate::interpreter::InstructionOutcome;
 use crate::interpreter::NativeServices;
-use crate::loader::Literal;
 use crate::loader::decode::compact::Operand;
 use crate::module::{Module, ModuleRegistry, ResolvedImportTarget};
 use crate::native::ProcessContext;
@@ -45,10 +44,11 @@ pub fn func_info(
 
 pub fn move_(
     process: &mut Process,
+    module: &Module,
     source: &Operand,
     destination: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let value = read_term(process, source)?;
+    let value = read_term(process, module, source)?;
     write_term(process, destination, value)?;
     Ok(InstructionOutcome::Continue)
 }
@@ -174,12 +174,13 @@ fn gc_error_to_exec(error: GcError) -> ExecError {
 
 pub fn put_list(
     process: &mut Process,
+    module: &Module,
     head: &Operand,
     tail: &Operand,
     destination: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let head = read_term(process, head)?;
-    let tail = read_term(process, tail)?;
+    let head = read_term(process, module, head)?;
+    let tail = read_term(process, module, tail)?;
     let ptr = process.heap_mut().alloc(2).map_err(ExecError::from)?;
     let heap = heap_slice(ptr, 2);
     let term = write_cons(heap, head, tail).ok_or(ExecError::Badarg)?;
@@ -189,6 +190,7 @@ pub fn put_list(
 
 pub fn put_tuple2(
     process: &mut Process,
+    module: &Module,
     destination: &Operand,
     elements: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
@@ -197,7 +199,7 @@ pub fn put_tuple2(
     };
     let mut values = Vec::with_capacity(element_operands.len());
     for operand in element_operands {
-        values.push(read_term(process, operand)?);
+        values.push(read_term(process, module, operand)?);
     }
     let words = values
         .len()
@@ -212,11 +214,12 @@ pub fn put_tuple2(
 
 pub fn get_tuple_element(
     process: &mut Process,
+    module: &Module,
     source: &Operand,
     index: &Operand,
     destination: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let tuple_term = read_term(process, source)?;
+    let tuple_term = read_term(process, module, source)?;
     let tuple = Tuple::new(tuple_term).ok_or(ExecError::Badarg)?;
     let index = operand_usize(index, "tuple index")?;
     let value = tuple.get(index).ok_or(ExecError::Badarg)?;
@@ -453,7 +456,11 @@ pub(crate) fn label_ip(module: &Module, label: u32) -> Result<usize, ExecError> 
     module.label_ip(label)
 }
 
-pub(crate) fn read_term(process: &Process, operand: &Operand) -> Result<Term, ExecError> {
+pub(crate) fn read_term(
+    process: &Process,
+    module: &Module,
+    operand: &Operand,
+) -> Result<Term, ExecError> {
     match operand {
         Operand::Integer(value) => Term::try_small_int(*value).ok_or(ExecError::Badarg),
         Operand::Unsigned(value) => {
@@ -467,8 +474,11 @@ pub(crate) fn read_term(process: &Process, operand: &Operand) -> Result<Term, Ex
             .stack()
             .y_reg(u16_from_u32(*index, "Y register")?)
             .map_err(ExecError::from),
-        Operand::Literal(literal) => literal_term(literal),
-        Operand::TypedRegister { register, .. } => read_term(process, register),
+        Operand::Literal(index) => module
+            .constant_pool
+            .get(index.0)
+            .ok_or(ExecError::InvalidOperand("literal index")),
+        Operand::TypedRegister { register, .. } => read_term(process, module, register),
         _ => Err(ExecError::InvalidOperand("term source")),
     }
 }
@@ -492,74 +502,9 @@ pub(crate) fn write_term(
     }
 }
 
-fn literal_term(literal: &Literal) -> Result<Term, ExecError> {
-    match literal {
-        Literal::Integer(value) => Term::try_small_int(*value).ok_or(ExecError::Badarg),
-        Literal::Float(value) => {
-            let heap = Box::leak(Box::new([0u64; 2]));
-            crate::term::boxed::write_float(heap, *value).ok_or(ExecError::Badarg)
-        }
-        Literal::BigInteger(limbs) => {
-            let limbs = limbs_to_u64(limbs)?;
-            let heap = Box::leak(vec![0u64; 3 + limbs.len()].into_boxed_slice());
-            crate::term::boxed::write_bigint(heap, false, &limbs).ok_or(ExecError::Badarg)
-        }
-        Literal::Atom(atom) => Ok(Term::atom(*atom)),
-        Literal::Binary(bytes) | Literal::String(bytes) => {
-            let data_words = crate::term::binary::packed_word_count(bytes.len());
-            let heap = Box::leak(vec![0u64; 2 + data_words].into_boxed_slice());
-            crate::term::binary::write_binary(heap, bytes).ok_or(ExecError::Badarg)
-        }
-        Literal::Nil => Ok(Term::NIL),
-        Literal::Tuple(elements) => {
-            let mut terms = Vec::with_capacity(elements.len());
-            for element in elements {
-                terms.push(literal_term(element)?);
-            }
-            let heap = Box::leak(vec![0u64; 1 + terms.len()].into_boxed_slice());
-            crate::term::boxed::write_tuple(heap, &terms).ok_or(ExecError::Badarg)
-        }
-        Literal::List(elements, tail) => {
-            let mut result = literal_term(tail)?;
-            for element in elements.iter().rev() {
-                let head = literal_term(element)?;
-                let heap = Box::leak(Box::new([0u64; 2]));
-                result =
-                    crate::term::boxed::write_cons(heap, head, result).ok_or(ExecError::Badarg)?;
-            }
-            Ok(result)
-        }
-        Literal::Map(entries) => {
-            let mut pairs = Vec::with_capacity(entries.len());
-            for (key, value) in entries {
-                pairs.push((literal_term(key)?, literal_term(value)?));
-            }
-            pairs.sort_by(|(left, _), (right, _)| left.cmp(right));
-            let keys: Vec<_> = pairs.iter().map(|(key, _)| *key).collect();
-            let values: Vec<_> = pairs.iter().map(|(_, value)| *value).collect();
-            let heap = Box::leak(vec![0u64; 2 + keys.len() + values.len()].into_boxed_slice());
-            crate::term::boxed::write_map(heap, &keys, &values).ok_or(ExecError::Badarg)
-        }
-    }
-}
-
-fn limbs_to_u64(bytes: &[u8]) -> Result<Vec<u64>, ExecError> {
-    if !bytes.len().is_multiple_of(8) {
-        return Err(ExecError::UnsupportedLiteral);
-    }
-    let mut limbs = Vec::with_capacity(bytes.len() / 8);
-    for chunk in bytes.chunks_exact(8) {
-        let mut limb = [0u8; 8];
-        limb.copy_from_slice(chunk);
-        limbs.push(u64::from_le_bytes(limb));
-    }
-    Ok(limbs)
-}
-
 fn operand_atom(operand: &Operand) -> Result<crate::atom::Atom, ExecError> {
     match operand {
         Operand::Atom(Some(atom)) => Ok(*atom),
-        Operand::Literal(Literal::Atom(atom)) => Ok(*atom),
         _ => Err(ExecError::InvalidOperand("atom")),
     }
 }

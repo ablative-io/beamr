@@ -1,12 +1,14 @@
 use super::{ExecutionResult, run, run_with_registry};
 use crate::atom::{Atom, AtomTable};
+use crate::constant_pool::materialise_literals;
 use crate::error::ExecError;
 use crate::loader::decode::BinaryOp;
-use crate::loader::decode::compact::Operand;
+use crate::loader::decode::compact::{LiteralIndex, Operand};
 use crate::loader::{Instruction, Literal};
 use crate::module::{Module, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use crate::native::{NativeEntry, ProcessContext};
 use crate::process::{CodePosition, ExitReason, Process};
+use crate::term::binary::Binary as TermBinary;
 use crate::term::binary::{Binary, packed_word_count, write_binary};
 use crate::term::boxed::{Cons, Tuple};
 use crate::term::{Term, compare};
@@ -29,6 +31,7 @@ fn module(name: Atom, code: Vec<Instruction>) -> Module {
         label_index,
         code,
         literals: Vec::new(),
+        constant_pool: crate::constant_pool::ConstantPool::default(),
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
@@ -220,7 +223,7 @@ fn func_info_and_move_cover_metadata_register_literals_and_stack() {
     let atoms = AtomTable::new();
     let module_atom = atoms.intern("sample");
     let function_atom = atoms.intern("main");
-    let module = module(
+    let mut module = module(
         module_atom,
         vec![
             Instruction::FuncInfo {
@@ -233,7 +236,7 @@ fn func_info_and_move_cover_metadata_register_literals_and_stack() {
                 live: Operand::Unsigned(0),
             },
             Instruction::Move {
-                source: Operand::Literal(Literal::Integer(7)),
+                source: Operand::Literal(LiteralIndex(0)),
                 destination: Operand::X(0),
             },
             Instruction::Move {
@@ -250,6 +253,8 @@ fn func_info_and_move_cover_metadata_register_literals_and_stack() {
             Instruction::Return,
         ],
     );
+    module.literals = vec![Literal::Integer(7)];
+    module.constant_pool = materialise_literals(&module.literals).expect("literal pool");
     let mut process = Process::new(1, 32);
     let before_heap = process.heap().used();
 
@@ -260,6 +265,37 @@ fn func_info_and_move_cover_metadata_register_literals_and_stack() {
     assert_eq!(process.current_mfa(), Some((module_atom, function_atom, 0)));
     assert_eq!(process.x_reg(1), Term::small_int(7));
     assert_eq!(process.heap().used(), before_heap);
+}
+
+#[test]
+fn repeated_non_immediate_literal_move_reuses_constant_pool_without_heap_growth() {
+    let mut module = module(
+        Atom::OK,
+        vec![Instruction::Move {
+            source: Operand::Literal(LiteralIndex(0)),
+            destination: Operand::X(0),
+        }],
+    );
+    module.literals = vec![Literal::Binary(b"stable".to_vec())];
+    module.constant_pool = materialise_literals(&module.literals).expect("literal pool");
+    let expected = module.constant_pool.get(0).expect("literal term");
+    let expected_ptr = expected.heap_ptr();
+    let mut process = Process::new(1, 32);
+    let before_heap = process.heap().total_used();
+
+    for _ in 0..1024 {
+        crate::interpreter::opcodes::dispatch(&mut process, &module, &module.code[0], 1, None)
+            .expect("literal move succeeds");
+        let moved = process.x_reg(0);
+        assert_eq!(moved.raw(), expected.raw());
+        assert_eq!(moved.heap_ptr(), expected_ptr);
+        assert_eq!(
+            TermBinary::new(moved).map(|binary| binary.as_bytes()),
+            Some(&b"stable"[..])
+        );
+    }
+
+    assert_eq!(process.heap().total_used(), before_heap);
 }
 
 #[test]

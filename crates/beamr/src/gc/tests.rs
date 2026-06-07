@@ -6,7 +6,8 @@ use proptest::prelude::*;
 use super::*;
 use crate::{
     atom::Atom,
-    loader::Instruction,
+    constant_pool::materialise_literals,
+    loader::{Instruction, Literal},
     module::Module,
     term::boxed::{Closure, Cons, Tuple, write_closure, write_cons, write_tuple},
 };
@@ -29,6 +30,7 @@ pub(crate) fn module_pin(name: Atom) -> Arc<Module> {
         label_index: HashMap::from([(1, 0)]),
         code: vec![Instruction::Label { label: 1 }],
         literals: Vec::new(),
+        constant_pool: crate::constant_pool::ConstantPool::default(),
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
@@ -262,6 +264,34 @@ fn exception_roots_are_rewritten_after_minor_gc() {
     assert_eq!(snapshot(exception.stacktrace), expected_stacktrace);
     assert_no_term_pointer_into_young(&process, exception.reason);
     assert_no_term_pointer_into_young(&process, exception.stacktrace);
+}
+
+#[test]
+fn constant_pool_terms_are_not_copied_by_minor_or_major_gc() {
+    let literals = [Literal::Tuple(vec![
+        Literal::List(
+            vec![Literal::Integer(1), Literal::Integer(2)],
+            Box::new(Literal::Nil),
+        ),
+        Literal::Map(vec![(Literal::Atom(Atom::OK), Literal::Integer(3))]),
+    ])];
+    let pool = materialise_literals(&literals).expect("constant pool materialises");
+    let term = pool.get(0).expect("pool term");
+    let ptr = term.heap_ptr().expect("boxed tuple pointer");
+    let mut process = Process::new(1, 32);
+    process.set_x_reg(0, term);
+
+    collect_minor(&mut process).expect("minor GC succeeds");
+    assert_eq!(process.x_reg(0).raw(), term.raw());
+    assert_eq!(process.x_reg(0).heap_ptr(), Some(ptr));
+    assert_eq!(snapshot(process.x_reg(0)), snapshot(term));
+    assert!(!process.heap().contains(ptr));
+
+    collect_major(&mut process).expect("major GC succeeds");
+    assert_eq!(process.x_reg(0).raw(), term.raw());
+    assert_eq!(process.x_reg(0).heap_ptr(), Some(ptr));
+    assert_eq!(snapshot(process.x_reg(0)), snapshot(term));
+    assert!(!process.heap().contains(ptr));
 }
 
 #[test]

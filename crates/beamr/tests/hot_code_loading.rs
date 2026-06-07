@@ -4,13 +4,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use beamr::atom::AtomTable;
+use beamr::constant_pool::materialise_literals;
 use beamr::error::LoadError;
-use beamr::module::ModuleRegistry;
+use beamr::loader::Literal;
+use beamr::module::{Module, ModuleRegistry};
 use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
 use beamr::process::ExitReason;
 use beamr::scheduler::{Scheduler, SchedulerConfig};
 use beamr::term::Term;
+use std::collections::HashMap;
 
 fn fixture(name: &str) -> Vec<u8> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -98,6 +101,56 @@ fn new_processes_use_new_version_and_purge_after_old_process_exits() {
     scheduler.purge_module(counter).expect("safe purge");
     assert!(!scheduler.check_old_code(counter));
     scheduler.shutdown();
+}
+
+#[test]
+fn purged_old_module_releases_last_constant_pool_owner() {
+    let registry = ModuleRegistry::new();
+    let literals = vec![Literal::Binary(b"old literal".to_vec())];
+    let pool = materialise_literals(&literals).expect("literal pool");
+    let old_term = pool.get(0).expect("old literal term");
+    let module = Module {
+        name: beamr::atom::Atom::OK,
+        generation: 0,
+        exports: HashMap::new(),
+        label_index: HashMap::new(),
+        code: Vec::new(),
+        literals,
+        constant_pool: pool,
+        resolved_imports: Vec::new(),
+        lambdas: Vec::new(),
+        string_table: Vec::new(),
+        line_info: Vec::new(),
+    };
+    let old = registry.insert(module);
+    assert_eq!(
+        old.constant_pool.get(0).map(|term| term.raw()),
+        Some(old_term.raw())
+    );
+
+    let replacement = Module {
+        name: beamr::atom::Atom::OK,
+        generation: 0,
+        exports: HashMap::new(),
+        label_index: HashMap::new(),
+        code: Vec::new(),
+        literals: Vec::new(),
+        constant_pool: beamr::constant_pool::ConstantPool::default(),
+        resolved_imports: Vec::new(),
+        lambdas: Vec::new(),
+        string_table: Vec::new(),
+        line_info: Vec::new(),
+    };
+    let current = registry.insert(replacement);
+    assert!(registry.has_old_code(beamr::atom::Atom::OK));
+    assert_eq!(Arc::strong_count(&old), 2);
+
+    drop(old);
+    registry
+        .purge_old(beamr::atom::Atom::OK)
+        .expect("old module purged once unpinned");
+    assert!(!registry.has_old_code(beamr::atom::Atom::OK));
+    assert_eq!(Arc::strong_count(&current), 2);
 }
 
 #[test]

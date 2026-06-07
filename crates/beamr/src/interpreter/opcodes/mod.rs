@@ -135,7 +135,7 @@ fn dispatch_common(
         Instruction::Move {
             source,
             destination,
-        } => core::move_(process, source, destination),
+        } => core::move_(process, module, source, destination),
         Instruction::Call { arity, label } => {
             core::call(process, module, arity, label, next_ip, true)
         }
@@ -191,24 +191,24 @@ fn dispatch_common(
             head,
             tail,
             destination,
-        } => core::put_list(process, head, tail, destination),
+        } => core::put_list(process, module, head, tail, destination),
         Instruction::PutTuple2 {
             destination,
             elements,
-        } => core::put_tuple2(process, destination, elements),
+        } => core::put_tuple2(process, module, destination, elements),
         Instruction::GetTupleElement {
             source,
             index,
             destination,
-        } => core::get_tuple_element(process, source, index, destination),
+        } => core::get_tuple_element(process, module, source, index, destination),
         Instruction::GetHd {
             source,
             destination,
-        } => guards::get_hd(process, source, destination),
+        } => guards::get_hd(process, module, source, destination),
         Instruction::GetTl {
             source,
             destination,
-        } => guards::get_tl(process, source, destination),
+        } => guards::get_tl(process, module, source, destination),
         Instruction::TypeTest { op, fail, value } => {
             guards::type_test(process, module, *op, fail, value)
         }
@@ -245,14 +245,18 @@ fn dispatch_common(
         }
         Instruction::TryEnd { source } => messaging::try_end(process, source),
         Instruction::TryCase { source } => messaging::try_case(process, source),
-        Instruction::TryCaseEnd { source } => messaging::try_case_end(process, source),
-        Instruction::Raise { stacktrace, reason } => messaging::raise(process, stacktrace, reason),
-        Instruction::Badmatch { value } => messaging::badmatch(process, value),
-        Instruction::CaseEnd { value } => messaging::case_end(process, value),
-        Instruction::IfEnd => messaging::if_end(process),
-        Instruction::Line { .. } | Instruction::Generic { name: "executable_line", .. } => {
-            Ok(InstructionOutcome::Continue)
+        Instruction::TryCaseEnd { source } => messaging::try_case_end(process, module, source),
+        Instruction::Raise { stacktrace, reason } => {
+            messaging::raise(process, module, stacktrace, reason)
         }
+        Instruction::Badmatch { value } => messaging::badmatch(process, module, value),
+        Instruction::CaseEnd { value } => messaging::case_end(process, module, value),
+        Instruction::IfEnd => messaging::if_end(process),
+        Instruction::Line { .. }
+        | Instruction::Generic {
+            name: "executable_line",
+            ..
+        } => Ok(InstructionOutcome::Continue),
         Instruction::BinaryOp { op, operands } => binary::binary_op(process, module, *op, operands),
         Instruction::MapOp { op, operands } => closures::map_op(process, module, *op, operands),
         Instruction::MakeFun { operands } => closures::make_fun(process, module, operands),
@@ -284,7 +288,9 @@ fn dispatch_common(
                 }
                 Ok(InstructionOutcome::Continue)
             } else {
-                Err(ExecError::InvalidOperand("init_yregs: expected register list"))
+                Err(ExecError::InvalidOperand(
+                    "init_yregs: expected register list",
+                ))
             }
         }
         Instruction::Generic { opcode, .. } => Err(ExecError::UnknownOpcode { opcode: *opcode }),

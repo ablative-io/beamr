@@ -3,6 +3,9 @@ use crate::error::LoadError;
 
 use super::Literal;
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct LiteralIndex(pub usize);
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operand {
     Integer(i64),
@@ -12,7 +15,7 @@ pub enum Operand {
     Y(u32),
     Label(u32),
     Character(u64),
-    Literal(Literal),
+    Literal(LiteralIndex),
     List(Vec<Operand>),
     FloatRegister(u32),
     Allocation(Vec<Allocation>),
@@ -116,15 +119,14 @@ impl<'a> CompactDecoder<'a> {
                 Ok(Operand::Allocation(entries))
             }
             0 | 4 => {
-                let index = self.read_unsigned_u64()?;
-                let literal = self
-                    .literals
-                    .get(usize_from_u64(index, "literal index")?)
-                    .cloned()
-                    .ok_or_else(|| {
-                        LoadError::DecodeError(format!("literal index {index} out of range"))
-                    })?;
-                Ok(Operand::Literal(literal))
+                let raw_index = self.read_unsigned_u64()?;
+                let index = usize_from_u64(raw_index, "literal index")?;
+                if self.literals.get(index).is_none() {
+                    return Err(LoadError::DecodeError(format!(
+                        "literal index {raw_index} out of range"
+                    )));
+                }
+                Ok(Operand::Literal(LiteralIndex(index)))
             }
             5 => {
                 let register = self.read_operand()?;

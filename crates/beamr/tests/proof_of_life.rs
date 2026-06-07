@@ -5,6 +5,7 @@
 //! files — pure instruction-level proof that the engine works.
 
 use beamr::atom::AtomTable;
+use beamr::constant_pool::materialise_literals;
 use beamr::interpreter::{ExecutionResult, run};
 use beamr::loader::Instruction;
 use beamr::loader::decode::TypeTestOp;
@@ -36,6 +37,7 @@ fn module(name: beamr::atom::Atom, code: Vec<Instruction>) -> Module {
         label_index,
         code,
         literals: Vec::new(),
+        constant_pool: beamr::constant_pool::ConstantPool::default(),
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
@@ -429,6 +431,7 @@ fn load_proof_module(atoms: &AtomTable, bifs: &BifRegistryImpl) -> Module {
             }
         })
         .collect();
+    let constant_pool = materialise_literals(&parsed.literals).expect("literal pool");
     Module {
         name: parsed.name,
         generation: 0,
@@ -436,6 +439,7 @@ fn load_proof_module(atoms: &AtomTable, bifs: &BifRegistryImpl) -> Module {
         label_index,
         code: parsed.instructions,
         literals: parsed.literals,
+        constant_pool,
         resolved_imports: resolved,
         lambdas: parsed.lambdas,
         string_table: parsed.string_table,

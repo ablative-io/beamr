@@ -169,7 +169,7 @@ pub fn call_fun2(
     registry: Option<&ModuleRegistry>,
 ) -> Result<InstructionOutcome, ExecError> {
     let arity = operand_u8(arity, "call_fun2 arity")?;
-    let fun_term = core::read_term(process, func)?;
+    let fun_term = core::read_term(process, module, func)?;
     let closure = Closure::new(fun_term).ok_or(ExecError::Badfun { term: fun_term })?;
     if closure.arity() != arity {
         let args = collect_args(process, arity);
@@ -300,12 +300,12 @@ fn has_map_fields(
     let [fail, source, Operand::List(keys)] = operands else {
         return Err(ExecError::InvalidOperand("has_map_fields operands"));
     };
-    let map_term = core::read_term(process, source)?;
+    let map_term = core::read_term(process, module, source)?;
     let Some(map) = Map::new(map_term) else {
         return jump_label(module, fail);
     };
     for key in keys {
-        let key = core::read_term(process, key)?;
+        let key = core::read_term(process, module, key)?;
         if map.get(key).is_none() {
             return jump_label(module, fail);
         }
@@ -324,14 +324,14 @@ fn get_map_elements(
     if items.len() % 2 != 0 {
         return Err(ExecError::InvalidOperand("get_map_elements pairs"));
     }
-    let map_term = core::read_term(process, source)?;
+    let map_term = core::read_term(process, module, source)?;
     let Some(map) = Map::new(map_term) else {
         return jump_label(module, fail);
     };
 
     let mut extracted = Vec::with_capacity(items.len() / 2);
     for pair in items.chunks_exact(2) {
-        let key = core::read_term(process, &pair[0])?;
+        let key = core::read_term(process, module, &pair[0])?;
         let Some(value) = map.get(key) else {
             return jump_label(module, fail);
         };
@@ -362,7 +362,7 @@ fn put_map(
         return Err(ExecError::InvalidOperand("put_map pairs"));
     }
 
-    let source_term = core::read_term(process, source)?;
+    let source_term = core::read_term(process, module, source)?;
     let Some(source_map) = Map::new(source_term) else {
         return jump_label(module, fail);
     };
@@ -370,8 +370,8 @@ fn put_map(
     let mut updates = Vec::with_capacity(items.len() / 2);
     for pair in items.chunks_exact(2) {
         updates.push((
-            core::read_term(process, &pair[0])?,
-            core::read_term(process, &pair[1])?,
+            core::read_term(process, module, &pair[0])?,
+            core::read_term(process, module, &pair[1])?,
         ));
     }
 
@@ -446,7 +446,9 @@ fn operand_u8(operand: &Operand, context: &'static str) -> Result<u8, ExecError>
 }
 
 fn collect_args(process: &Process, arity: u8) -> Vec<Term> {
-    (0..arity).map(|register| process.x_reg(register.into())).collect()
+    (0..arity)
+        .map(|register| process.x_reg(register.into()))
+        .collect()
 }
 
 #[cfg(test)]
