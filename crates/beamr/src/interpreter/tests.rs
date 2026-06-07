@@ -5,7 +5,7 @@ use crate::loader::decode::BinaryOp;
 use crate::loader::decode::compact::Operand;
 use crate::loader::{Instruction, Literal};
 use crate::module::{Module, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
-use crate::native::{Capability, NativeEntry, ProcessContext};
+use crate::native::{Capability, ExceptionClass, NativeEntry, ProcessContext};
 use crate::process::{CodePosition, ExitReason, Process};
 use crate::term::binary::{Binary, packed_word_count, write_binary};
 use crate::term::boxed::{Cons, Tuple};
@@ -355,6 +355,96 @@ fn add_one(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     Ok(Term::small_int(value + 1))
 }
 
+fn native_error_without_class(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let _ = context;
+    let [reason] = args else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    Err(*reason)
+}
+
+fn native_throw(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [reason] = args else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    context.set_exception_class(ExceptionClass::Throw);
+    Err(*reason)
+}
+
+fn native_exit(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [reason] = args else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    context.set_exception_class(ExceptionClass::Exit);
+    Err(*reason)
+}
+
+fn native_import(function: crate::native::NativeFn) -> ResolvedImport {
+    ResolvedImport {
+        module: Atom::OK,
+        function: Atom::OK,
+        arity: 1,
+        target: ResolvedImportTarget::Native(NativeEntry {
+            function,
+            is_dirty: false,
+            capability: Capability::Pure,
+        }),
+    }
+}
+
+fn try_native_class_module(function: crate::native::NativeFn, expected_class: Atom) -> Module {
+    let mut module = module(
+        Atom::OK,
+        vec![
+            Instruction::Try {
+                destination: Operand::X(3),
+                label: Operand::Label(10),
+            },
+            Instruction::Move {
+                source: Operand::Integer(42),
+                destination: Operand::X(0),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::TryEnd {
+                source: Operand::X(3),
+            },
+            Instruction::Move {
+                source: Operand::Integer(-100),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+            Instruction::Label { label: 10 },
+            Instruction::TryCase {
+                source: Operand::X(3),
+            },
+            Instruction::SelectVal {
+                value: Operand::X(0),
+                fail: Operand::Label(99),
+                list: Operand::List(vec![
+                    Operand::Atom(Some(expected_class)),
+                    Operand::Label(11),
+                ]),
+            },
+            Instruction::Label { label: 11 },
+            Instruction::Move {
+                source: Operand::X(1),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+            Instruction::Label { label: 99 },
+            Instruction::Raise {
+                stacktrace: Operand::X(2),
+                reason: Operand::X(1),
+            },
+        ],
+    );
+    module.resolved_imports.push(native_import(function));
+    module
+}
+
 #[test]
 fn call_ext_invokes_registered_native_and_tail_call_deallocates() {
     let import = ResolvedImport {
@@ -390,6 +480,74 @@ fn call_ext_invokes_registered_native_and_tail_call_deallocates() {
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
     assert_eq!(process.stack().len(), 0);
+}
+
+#[test]
+fn try_catches_throw_class_from_native_err() {
+    let module = try_native_class_module(native_throw, Atom::THROW);
+    let mut process = Process::new(1, 32);
+
+    assert_eq!(
+        run(&mut process, &module),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(process.x_reg(0), Term::small_int(42));
+}
+
+#[test]
+fn try_error_clause_does_not_catch_throw_class_from_native_err() {
+    let module = try_native_class_module(native_throw, Atom::ERROR);
+    let mut process = Process::new(1, 32);
+
+    assert_eq!(
+        run(&mut process, &module),
+        Ok(ExecutionResult::Exited(ExitReason::Error))
+    );
+    let exception = process.current_exception().expect("propagated throw");
+    assert_eq!(exception.class, Term::atom(Atom::THROW));
+    assert_eq!(exception.reason, Term::small_int(42));
+}
+
+#[test]
+fn try_catches_exit_class_from_native_err() {
+    let module = try_native_class_module(native_exit, Atom::EXIT_LOWER);
+    let mut process = Process::new(1, 32);
+
+    assert_eq!(
+        run(&mut process, &module),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(process.x_reg(0), Term::small_int(42));
+}
+
+#[test]
+fn native_err_without_exception_class_uses_error_class() {
+    let mut module = module(
+        Atom::OK,
+        vec![
+            Instruction::Move {
+                source: Operand::Integer(7),
+                destination: Operand::X(0),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Return,
+        ],
+    );
+    module
+        .resolved_imports
+        .push(native_import(native_error_without_class));
+    let mut process = Process::new(1, 32);
+
+    assert_eq!(
+        run(&mut process, &module),
+        Ok(ExecutionResult::Exited(ExitReason::Error))
+    );
+    let exception = process.current_exception().expect("native Err exception");
+    assert_eq!(exception.class, Term::atom(Atom::ERROR));
+    assert_eq!(exception.reason, Term::small_int(7));
 }
 
 fn exported_value_module(

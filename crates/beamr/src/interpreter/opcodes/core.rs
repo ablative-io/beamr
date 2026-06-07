@@ -2,14 +2,14 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::atom::AtomTable;
+use crate::atom::{Atom, AtomTable};
 use crate::error::ExecError;
 use crate::gc::{GcError, ensure_space};
 use crate::interpreter::InstructionOutcome;
 use crate::interpreter::NativeServices;
 use crate::loader::decode::compact::Operand;
 use crate::module::{Module, ModuleRegistry, ResolvedImportTarget};
-use crate::native::ProcessContext;
+use crate::native::{ExceptionClass, ProcessContext};
 use crate::process::{CodePosition, ExitReason, Process};
 use crate::term::Term;
 use crate::term::boxed::{Tuple, write_cons, write_tuple};
@@ -23,6 +23,14 @@ pub struct ExtCallContext<'a> {
     pub services: Option<&'a NativeServices>,
     pub registry: Option<&'a ModuleRegistry>,
     pub atom_table: Option<&'a AtomTable>,
+}
+
+fn exception_class_atom(class: ExceptionClass) -> Atom {
+    match class {
+        ExceptionClass::Error => Atom::ERROR,
+        ExceptionClass::Throw => Atom::THROW,
+        ExceptionClass::Exit => Atom::EXIT_LOWER,
+    }
 }
 
 pub fn label(_label: u32) -> Result<InstructionOutcome, ExecError> {
@@ -366,8 +374,9 @@ fn call_external_target(
             let result = match call_result {
                 Ok(value) => value,
                 Err(reason) => {
+                    let class = context.take_exception_class();
                     let exception = crate::process::Exception {
-                        class: Term::atom(crate::atom::Atom::ERROR),
+                        class: Term::atom(exception_class_atom(class)),
                         reason,
                         stacktrace: Term::NIL,
                     };

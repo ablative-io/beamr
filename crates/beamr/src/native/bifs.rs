@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::atom::{Atom, AtomTable};
 use crate::native::{
-    BifRegistryImpl, Capability, NativeFn, NativeRegistrationError, ProcessContext,
+    BifRegistryImpl, Capability, ExceptionClass, NativeFn, NativeRegistrationError, ProcessContext,
 };
 use crate::term::Term;
 use crate::term::compare;
@@ -29,6 +29,7 @@ const GATE1_BIFS: &[Gate1Bif] = &[
     ("=:=", 2, Capability::Pure, exact_equal),
     ("=/=", 2, Capability::Pure, exact_not_equal),
     ("error", 1, Capability::Pure, error),
+    ("throw", 1, Capability::Pure, throw),
     ("display", 1, Capability::ExternalIo, display),
     ("get_module_info", 1, Capability::Pure, get_module_info_1),
     ("get_module_info", 2, Capability::Pure, get_module_info_2),
@@ -128,6 +129,16 @@ pub fn error(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term>
         return Err(badarg());
     };
 
+    Err(*reason)
+}
+
+/// erlang:throw/1 raises a throw-class exception with the supplied reason.
+pub fn throw(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [reason] = args else {
+        return Err(badarg());
+    };
+
+    context.set_exception_class(ExceptionClass::Throw);
     Err(*reason)
 }
 
@@ -280,10 +291,10 @@ mod tests {
     use super::{
         add, cancel_timer, compare, display, div, error, exact_equal, exact_not_equal,
         greater_equal, less_than, multiply, register_gate1_bifs, rem, send_after, start_timer,
-        subtract,
+        subtract, throw,
     };
     use crate::atom::{Atom, AtomTable};
-    use crate::native::{BifRegistryImpl, ProcessContext};
+    use crate::native::{BifRegistryImpl, ExceptionClass, ProcessContext};
     use crate::process::Process;
     use crate::term::Term;
     use crate::term::boxed::{Tuple, write_cons, write_map, write_tuple};
@@ -525,6 +536,12 @@ mod tests {
             error(&[Term::atom(Atom::BADARG)], &mut context),
             Err(Term::atom(Atom::BADARG))
         );
+        assert_eq!(context.take_exception_class(), ExceptionClass::Error);
+        assert_eq!(
+            throw(&[Term::atom(Atom::OK)], &mut context),
+            Err(Term::atom(Atom::OK))
+        );
+        assert_eq!(context.take_exception_class(), ExceptionClass::Throw);
         assert_eq!(
             display(&[small_int(42)], &mut context),
             Ok(Term::atom(Atom::TRUE))
@@ -537,6 +554,8 @@ mod tests {
         let mut context = context(&mut process);
 
         assert_eq!(error(&[], &mut context), Err(badarg()));
+        assert_eq!(throw(&[], &mut context), Err(badarg()));
+        assert_eq!(context.take_exception_class(), ExceptionClass::Error);
         assert_eq!(display(&[], &mut context), Err(badarg()));
     }
 
@@ -559,6 +578,7 @@ mod tests {
             ("=:=", 2),
             ("=/=", 2),
             ("error", 1),
+            ("throw", 1),
             ("display", 1),
             ("get_module_info", 1),
             ("get_module_info", 2),

@@ -35,7 +35,9 @@ pub use capability::{
     LeastAuthorityPolicy, denial_stub,
 };
 pub use code_management_bifs::CodeManagementFacility;
-pub use context::{NativeContinuation, ProcessContext, SuspendRequest, TrampolineRequest};
+pub use context::{
+    ExceptionClass, NativeContinuation, ProcessContext, SuspendRequest, TrampolineRequest,
+};
 pub use links::LinkFacility;
 pub use registry::RegistryFacility;
 pub use select::SelectFacility;
