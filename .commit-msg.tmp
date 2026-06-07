@@ -1,1 +1,1 @@
-feat(beamr): implement raw_raise and erlang raise bif
+review(beamr): harden raw_raise registration coverage

@@ -821,7 +821,17 @@ fn unknown_opcode_reports_opcode_number() {
 }
 
 #[test]
-fn call_ext_bif_error_preserves_exception_class_and_stacktrace() {
+fn call_ext_erlang_raise_3_preserves_exception_class_and_stacktrace() {
+    let atom_table = AtomTable::with_common_atoms();
+    let registry = crate::native::BifRegistryImpl::new();
+    crate::native::bifs::register_gate1_bifs(&registry, &atom_table)
+        .expect("gate 1 BIF registration includes erlang:raise/3");
+    let erlang = atom_table.intern("erlang");
+    let raise = atom_table.intern("raise");
+    let raise_3 = registry
+        .lookup(erlang, raise, 3)
+        .expect("erlang:raise/3 registered");
+
     let mut module = module(
         Atom::OK,
         vec![
@@ -854,14 +864,10 @@ fn call_ext_bif_error_preserves_exception_class_and_stacktrace() {
         ],
     );
     module.resolved_imports.push(ResolvedImport {
-        module: Atom::OK,
-        function: Atom::OK,
+        module: erlang,
+        function: raise,
         arity: 3,
-        target: ResolvedImportTarget::Native(NativeEntry {
-            function: crate::native::exception_bifs::bif_raise_3,
-            is_dirty: false,
-            capability: Capability::Pure,
-        }),
+        target: ResolvedImportTarget::Native(raise_3),
     });
     let mut process = Process::new(1, 64);
 
