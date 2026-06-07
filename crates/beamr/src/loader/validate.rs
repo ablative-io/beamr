@@ -436,7 +436,6 @@ mod tests {
             }],
             lambdas: Vec::new(),
             literals: Vec::new(),
-            constant_pool: Default::default(),
             string_table: Vec::new(),
             line_info: Vec::new(),
         }

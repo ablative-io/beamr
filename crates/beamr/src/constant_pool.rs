@@ -190,12 +190,12 @@ fn rebase_block_terms(
 }
 
 fn rebase_boxed_block_terms(block: &mut [u64], mappings: &[(*const u64, *const u64, usize)]) {
-    let Some((&header, payload)) = block.split_first_mut() else {
+    let Some((header, payload)) = block.split_first_mut() else {
         return;
     };
-    match BoxedHeader::tag(header) {
+    match BoxedHeader::tag(*header) {
         Some(BoxedTag::Tuple) => {
-            for word in payload.iter_mut().take(BoxedHeader::size(header)) {
+            for word in payload.iter_mut().take(BoxedHeader::size(*header)) {
                 rebase_term_word(word, mappings);
             }
         }

@@ -378,7 +378,7 @@ mod tests {
             label_index: HashMap::new(),
             code: Vec::new(),
             literals: Vec::new(),
-            constant_pool: ConstantPool::default(),
+            constant_pool: crate::constant_pool::ConstantPool::default(),
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),

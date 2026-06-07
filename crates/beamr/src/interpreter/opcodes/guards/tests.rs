@@ -53,9 +53,11 @@ fn add(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
 #[test]
 fn get_hd_and_get_tl_decompose_cons_cells_without_allocating() {
     let mut process = Process::new(1, 16);
+    let module = module(vec![]);
     let before = process.heap().used();
     core::put_list(
         &mut process,
+        &module,
         &Operand::Integer(1),
         &Operand::Integer(2),
         &Operand::X(0),
@@ -63,14 +65,14 @@ fn get_hd_and_get_tl_decompose_cons_cells_without_allocating() {
     .expect("put_list");
     assert_eq!(process.heap().used(), before + 2);
 
-    get_hd(&mut process, &Operand::X(0), &Operand::X(1)).expect("get_hd");
-    get_tl(&mut process, &Operand::X(0), &Operand::X(2)).expect("get_tl");
+    get_hd(&mut process, &module, &Operand::X(0), &Operand::X(1)).expect("get_hd");
+    get_tl(&mut process, &module, &Operand::X(0), &Operand::X(2)).expect("get_tl");
 
     assert_eq!(process.x_reg(1), Term::small_int(1));
     assert_eq!(process.x_reg(2), Term::small_int(2));
     assert_eq!(process.heap().used(), before + 2);
     assert_eq!(
-        get_hd(&mut process, &Operand::Integer(9), &Operand::X(3)),
+        get_hd(&mut process, &module, &Operand::Integer(9), &Operand::X(3)),
         Err(ExecError::Badarg)
     );
 }
