@@ -184,6 +184,19 @@ pub enum ProcessStatus {
     Exited(ExitReason),
 }
 
+/// BEAM process scheduling priority.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Priority {
+    /// Lowest scheduling priority; receives bounded anti-starvation service.
+    Low,
+    /// Default scheduling priority.
+    Normal,
+    /// Higher than normal scheduling priority.
+    High,
+    /// Highest scheduling priority.
+    Max,
+}
+
 /// Process operation errors.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ProcessError {
@@ -262,6 +275,7 @@ pub struct Process {
     monitors: Vec<Monitor>,
     trap_exit: bool,
     group_leader: Option<u64>,
+    priority: Priority,
     not_send_sync: PhantomData<Rc<()>>,
 }
 
@@ -294,6 +308,7 @@ impl Process {
             monitors: Vec::new(),
             trap_exit: false,
             group_leader: None,
+            priority: Priority::Normal,
             not_send_sync: PhantomData,
         }
     }
@@ -795,6 +810,17 @@ impl Process {
         self.group_leader = group_leader;
     }
 
+    /// Process scheduling priority.
+    #[must_use]
+    pub const fn priority(&self) -> Priority {
+        self.priority
+    }
+
+    /// Set process scheduling priority.
+    pub const fn set_priority(&mut self, priority: Priority) {
+        self.priority = priority;
+    }
+
     /// Mark the process exited and release owned runtime state that can keep
     /// heap terms alive after process death.
     pub fn terminate(&mut self, reason: ExitReason) {
@@ -819,7 +845,8 @@ impl Process {
 #[cfg(test)]
 mod tests {
     use super::{
-        CodePosition, DEFAULT_REDUCTION_BUDGET, ExitReason, Process, ProcessError, ProcessStatus,
+        CodePosition, DEFAULT_REDUCTION_BUDGET, ExitReason, Priority, Process, ProcessError,
+        ProcessStatus,
     };
     use crate::atom::Atom;
     use crate::gc::tests::module_pin;
@@ -844,6 +871,7 @@ mod tests {
         assert!(process.monitors().is_empty());
         assert!(!process.trap_exit());
         assert_eq!(process.group_leader(), None);
+        assert_eq!(process.priority(), Priority::Normal);
     }
 
     #[test]

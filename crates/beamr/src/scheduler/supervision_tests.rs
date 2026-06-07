@@ -122,6 +122,7 @@ fn make_executing(shared: &SharedState, pid: u64) -> Process {
                 namespace_id: process.namespace_id(),
                 links: process.links().to_vec(),
                 trap_exit: process.trap_exit(),
+                priority: process.priority(),
                 pending_exit_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);

@@ -9,9 +9,9 @@ use crate::native::links::LinkError;
 use crate::native::{
     BifRegistryImpl, Capability, ExceptionClass, NativeFn, NativeRegistrationError, ProcessContext,
 };
-use crate::process::ExitReason;
+use crate::process::{ExitReason, Priority};
 use crate::term::Term;
-use crate::term::boxed::Cons;
+use crate::term::boxed::{Cons, write_tuple};
 
 type Gate2Bif = (&'static str, u8, Capability, NativeFn);
 
@@ -22,6 +22,7 @@ const GATE2_BIFS: &[Gate2Bif] = &[
     ("link", 1, Capability::Pure, bif_link),
     ("unlink", 1, Capability::Pure, bif_unlink),
     ("process_flag", 2, Capability::Pure, bif_process_flag),
+    ("process_info", 2, Capability::Pure, bif_process_info),
     ("monitor", 2, Capability::Pure, bif_monitor),
     ("demonitor", 1, Capability::Pure, bif_demonitor),
     ("exit", 1, Capability::Pure, bif_exit_1),
@@ -111,9 +112,35 @@ pub fn bif_process_flag(args: &[Term], context: &mut ProcessContext) -> Result<T
             .set_trap_exit(caller_pid, new_value)
             .map_err(|_| badarg())?;
         Ok(bool_to_atom(old_value))
+    } else if flag == Atom::PRIORITY {
+        let new_priority = term_to_priority(*value_term)?;
+        let old_priority = context.set_priority(new_priority).map_err(|_| badarg())?;
+        Ok(priority_to_term(old_priority))
     } else {
         Err(badarg())
     }
+}
+
+/// erlang:process_info/2 — returns selected information for the calling process.
+pub fn bif_process_info(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [pid_term, item_term] = args else {
+        return Err(badarg());
+    };
+    let requested_pid = pid_term.as_pid().ok_or_else(badarg)?;
+    let caller_pid = context.pid().ok_or_else(badarg)?;
+    if requested_pid != caller_pid {
+        return Err(badarg());
+    }
+
+    let item = item_term.as_atom().ok_or_else(badarg)?;
+    if item != Atom::PRIORITY {
+        return Err(badarg());
+    }
+    let priority = context.priority().map_err(|_| badarg())?;
+    let value = priority_to_term(priority);
+    context.alloc_on_process_heap(3, |heap| {
+        write_tuple(heap, &[Term::atom(Atom::PRIORITY), value])
+    })
 }
 
 /// erlang:monitor/2 — establish a unidirectional monitor from caller to target.
@@ -235,6 +262,30 @@ const fn bool_to_atom(value: bool) -> Term {
         Term::atom(Atom::TRUE)
     } else {
         Term::atom(Atom::FALSE)
+    }
+}
+
+fn term_to_priority(term: Term) -> Result<Priority, Term> {
+    let atom = term.as_atom().ok_or_else(badarg)?;
+    match atom {
+        Atom::LOW => Ok(Priority::Low),
+        Atom::NORMAL => Ok(Priority::Normal),
+        Atom::HIGH => Ok(Priority::High),
+        Atom::MAX => Ok(Priority::Max),
+        _ => Err(badarg()),
+    }
+}
+
+const fn priority_to_term(priority: Priority) -> Term {
+    Term::atom(priority_to_atom(priority))
+}
+
+const fn priority_to_atom(priority: Priority) -> Atom {
+    match priority {
+        Priority::Low => Atom::LOW,
+        Priority::Normal => Atom::NORMAL,
+        Priority::High => Atom::HIGH,
+        Priority::Max => Atom::MAX,
     }
 }
 

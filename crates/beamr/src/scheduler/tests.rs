@@ -441,6 +441,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
             namespace_id: NamespaceId::DEFAULT,
             links: Vec::new(),
             trap_exit: false,
+            priority: crate::process::Priority::Normal,
             pending_exit_messages: Vec::new(),
         })),
     );

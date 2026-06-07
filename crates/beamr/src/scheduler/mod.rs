@@ -23,12 +23,11 @@ use crate::supervision::link::LinkSet;
 use crate::supervision::monitor::MonitorSet;
 use crate::term::Term;
 use crate::timer::TimerWheel;
-use crossbeam_deque::Stealer;
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 pub use module_management::{HotLoadResult, PurgeResult};
 use process_slot::{ProcessMetadata, ProcessSlot};
-use run_queue::RunQueue;
+use run_queue::{RunQueue, RunQueueStealer};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
@@ -149,7 +148,7 @@ impl Scheduler {
             .map(|_| Arc::new(SegQueue::new()))
             .collect();
         let barrier = Arc::new(std::sync::Barrier::new(thread_count + 1));
-        let stealers_ready: Arc<Mutex<Option<Vec<Stealer<u64>>>>> = Arc::new(Mutex::new(None));
+        let stealers_ready: Arc<Mutex<Option<Vec<RunQueueStealer>>>> = Arc::new(Mutex::new(None));
         let mut stealer_receivers = Vec::with_capacity(thread_count);
         let mut threads = Vec::with_capacity(thread_count);
         let mut worker_names = Vec::with_capacity(thread_count);

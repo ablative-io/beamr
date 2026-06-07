@@ -44,6 +44,10 @@ impl Atom {
     pub const THROW: Self = Self(30);
     pub const EXIT_CLASS: Self = Self(31);
     pub const LINE: Self = Self(32);
+    pub const PRIORITY: Self = Self(33);
+    pub const LOW: Self = Self(34);
+    pub const HIGH: Self = Self(35);
+    pub const MAX: Self = Self(36);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -88,6 +92,10 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("throw", Atom::THROW),
     ("exit", Atom::EXIT_CLASS),
     ("line", Atom::LINE),
+    ("priority", Atom::PRIORITY),
+    ("low", Atom::LOW),
+    ("high", Atom::HIGH),
+    ("max", Atom::MAX),
 ];
 
 /// Concurrent intern table for atom strings.

@@ -306,6 +306,7 @@ impl SpawnFacility for SchedulerSpawnFacility {
             instruction_pointer: ip,
             args,
             namespace_id,
+            priority: crate::process::Priority::Normal,
         });
 
         if let Some(parent_pid) = link_to {
@@ -368,6 +369,7 @@ impl SpawnFacility for SchedulerSpawnFacility {
             instruction_pointer: ip,
             args: Vec::new(),
             namespace_id,
+            priority: crate::process::Priority::Normal,
         });
 
         if let Some(parent_pid) = link_to {

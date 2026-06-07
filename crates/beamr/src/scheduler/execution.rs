@@ -3,7 +3,6 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use crossbeam_deque::Stealer;
 use crossbeam_queue::SegQueue;
 
 use crate::error::ExecError;
@@ -95,7 +94,7 @@ pub(in crate::scheduler) fn scheduler_loop(
     shared: &Arc<SharedState>,
     queue: &RunQueue,
     my_index: usize,
-    stealers: &[Stealer<u64>],
+    stealers: &[crate::scheduler::run_queue::RunQueueStealer],
     inject: &SegQueue<SpawnRequest>,
 ) {
     let mut last_victim = my_index;
@@ -135,8 +134,9 @@ pub(in crate::scheduler) fn scheduler_loop(
 
 fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<SpawnRequest>) {
     while let Some(request) = inject.pop() {
+        let priority = request.priority;
         let pid = materialize_spawn_request(shared, request);
-        queue.push(pid);
+        queue.push_with_priority(pid, priority);
     }
 }
 
@@ -173,8 +173,24 @@ fn drain_woken(shared: &SharedState, queue: &RunQueue, my_index: usize) {
     };
     for pid in woken {
         if shared.process_table.get(pid).is_some() {
-            queue.push(pid);
+            let priority = process_priority(shared, pid);
+            queue.push_with_priority(pid, priority);
         }
+    }
+}
+
+pub(in crate::scheduler) fn process_priority(
+    shared: &SharedState,
+    pid: u64,
+) -> crate::process::Priority {
+    let Some(entry) = shared.process_bodies.get(&pid) else {
+        return crate::process::Priority::Normal;
+    };
+    let slot = lock_or_recover(&entry);
+    match &*slot {
+        ProcessSlot::Present(scheduled) => scheduled.0.priority(),
+        ProcessSlot::Executing(metadata) => metadata.priority,
+        ProcessSlot::Absent => crate::process::Priority::Normal,
     }
 }
 

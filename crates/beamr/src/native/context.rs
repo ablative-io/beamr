@@ -404,6 +404,43 @@ impl<'process> ProcessContext<'process> {
         self.select_facility = facility;
     }
 
+    /// Return the attached process scheduling priority.
+    pub fn priority(&self) -> Result<crate::process::Priority, Term> {
+        let Some(process) = self.process.as_ref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.priority())
+    }
+
+    /// Set the attached process scheduling priority and return the previous value.
+    pub fn set_priority(
+        &mut self,
+        priority: crate::process::Priority,
+    ) -> Result<crate::process::Priority, Term> {
+        let previous = self.priority()?;
+        let Some(process) = self.process.as_deref_mut() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        process.set_priority(priority);
+        Ok(previous)
+    }
+
+    /// Allocate a term on the attached process heap.
+    pub fn alloc_on_process_heap<F>(&mut self, words: usize, write: F) -> Result<Term, Term>
+    where
+        F: FnOnce(&mut [u64]) -> Option<Term>,
+    {
+        self.ensure_heap_space(words)?;
+        let Some(process) = self.process.as_deref_mut() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        let slice = process
+            .heap_mut()
+            .alloc_slice(words)
+            .map_err(|_| Term::atom(crate::atom::Atom::BADARG))?;
+        write(slice).ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))
+    }
+
     /// Store a value in the attached process dictionary.
     pub fn dict_put(&mut self, key: Term, value: Term) -> Result<Term, Term> {
         let Some(process) = self.process.as_deref_mut() else {

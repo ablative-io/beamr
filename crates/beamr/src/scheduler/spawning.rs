@@ -10,7 +10,7 @@ use crate::error::ExecError;
 use crate::module::Module;
 use crate::namespace::NamespaceId;
 use crate::process::heap::DEFAULT_HEAP_SIZE;
-use crate::process::{CodePosition, Process};
+use crate::process::{CodePosition, Priority, Process};
 use crate::term::Term;
 
 use super::{
@@ -25,6 +25,7 @@ pub(in crate::scheduler) struct SpawnRequest {
     pub(in crate::scheduler) instruction_pointer: usize,
     pub(in crate::scheduler) args: Vec<Term>,
     pub(in crate::scheduler) namespace_id: NamespaceId,
+    pub(in crate::scheduler) priority: Priority,
 }
 
 impl Scheduler {
@@ -53,6 +54,23 @@ impl Scheduler {
         self.spawn_in_trap_exit(NamespaceId::DEFAULT, entry_module, entry_function, args)
     }
 
+    /// Spawn a process with priority set before it is made runnable.
+    pub fn spawn_priority(
+        &self,
+        entry_module: Atom,
+        entry_function: Atom,
+        args: Vec<Term>,
+        priority: Priority,
+    ) -> Result<u64, ExecError> {
+        self.spawn_in_priority(
+            NamespaceId::DEFAULT,
+            entry_module,
+            entry_function,
+            args,
+            priority,
+        )
+    }
+
     /// Spawn a process in a namespace at an exported module/function/arity entrypoint.
     pub fn spawn_in(
         &self,
@@ -75,6 +93,33 @@ impl Scheduler {
             args,
             false,
             namespace,
+        ))
+    }
+
+    /// Spawn a process in a namespace with priority set before it is made runnable.
+    pub fn spawn_in_priority(
+        &self,
+        namespace: NamespaceId,
+        entry_module: Atom,
+        entry_function: Atom,
+        args: Vec<Term>,
+        priority: Priority,
+    ) -> Result<u64, ExecError> {
+        let arity = u8::try_from(args.len()).map_err(|_| ExecError::Badarg)?;
+        let registry = namespace_registry(&self.shared, namespace).ok_or(ExecError::Undef {
+            module: entry_module,
+            function: entry_function,
+            arity,
+        })?;
+        let entry = registry.lookup_mfa(entry_module, entry_function, arity)?;
+        let instruction_pointer = entry.module.label_ip(entry.label)?;
+        Ok(self.enqueue_spawn_with_options(
+            entry.module,
+            instruction_pointer,
+            args,
+            false,
+            namespace,
+            priority,
         ))
     }
 
@@ -149,12 +194,13 @@ impl Scheduler {
         instruction_pointer: usize,
         args: Vec<Term>,
     ) -> u64 {
-        self.enqueue_spawn_with_trap_exit(
+        self.enqueue_spawn_with_options(
             module_version,
             instruction_pointer,
             args,
             false,
             NamespaceId::DEFAULT,
+            Priority::Normal,
         )
     }
 
@@ -166,6 +212,25 @@ impl Scheduler {
         trap_exit: bool,
         namespace_id: NamespaceId,
     ) -> u64 {
+        self.enqueue_spawn_with_options(
+            module_version,
+            instruction_pointer,
+            args,
+            trap_exit,
+            namespace_id,
+            Priority::Normal,
+        )
+    }
+
+    fn enqueue_spawn_with_options(
+        &self,
+        module_version: Arc<Module>,
+        instruction_pointer: usize,
+        args: Vec<Term>,
+        trap_exit: bool,
+        namespace_id: NamespaceId,
+        priority: Priority,
+    ) -> u64 {
         let pid = self.shared.next_pid.fetch_add(1, Ordering::Relaxed);
         self.shared.process_table.spawn_with_pid(pid);
         let index =
@@ -176,6 +241,7 @@ impl Scheduler {
             module_version,
             instruction_pointer,
             namespace_id,
+            priority,
             args,
         };
         if trap_exit {
@@ -227,6 +293,7 @@ pub(super) fn materialize_spawn_request(shared: &SharedState, request: SpawnRequ
 pub(in crate::scheduler) fn build_process(request: SpawnRequest) -> Process {
     let mut process = Process::new(request.pid, DEFAULT_HEAP_SIZE);
     process.set_namespace_id(request.namespace_id);
+    process.set_priority(request.priority);
     process.set_code_position(Some(CodePosition {
         module: request.module,
         instruction_pointer: request.instruction_pointer,
