@@ -9,11 +9,14 @@ use std::collections::VecDeque;
 use crate::{
     gc::{
         ForwardingMap, GcError, GcStats, MAJOR_SHRINK_THRESHOLD, finish_stats, new_stats,
-        object_size, release_all_proc_bins_in_compacted_sources, rewrite_copied_object,
-        term_from_ptr_like,
+        object_size, release_all_proc_bins_in_compacted_sources, retain_proc_bin_arc,
+        rewrite_copied_object, term_from_ptr_like,
     },
     process::{Process, heap::Heap},
-    term::Term,
+    term::{
+        Term,
+        boxed::{BoxedHeader, BoxedTag},
+    },
 };
 
 pub(crate) fn collect(process: &mut Process) -> Result<GcStats, GcError> {
@@ -85,6 +88,9 @@ fn copy_any_term(
     let dst = Heap::alloc_in_region(fresh, words)?;
     Heap::write_words(dst, &copied_words);
     let copied = term_from_ptr_like(term, dst.cast_const());
+    if term.is_boxed() && BoxedHeader::tag(copied_words[0]) == Some(BoxedTag::ProcBin) {
+        retain_proc_bin_arc(dst.cast_const());
+    }
     forwarding.insert(src.addr(), copied);
     work_queue.push_back(copied);
     stats.record_copy(words);

@@ -230,7 +230,7 @@ pub(crate) fn rewrite_copied_object(
             }
         }
         BoxedTag::MatchContext => rewrite_word(ptr, 3, work_queue, &mut copy_term)?,
-        BoxedTag::ProcBin => retain_proc_bin_arc(ptr),
+        BoxedTag::ProcBin => {}
         BoxedTag::Float
         | BoxedTag::BigInt
         | BoxedTag::Reference
@@ -299,7 +299,7 @@ pub(crate) fn release_all_proc_bins_in_compacted_sources(
     process.decrease_virtual_binary_heap(unreachable_bytes);
 }
 
-fn retain_proc_bin_arc(ptr: *const u64) {
+pub(crate) fn retain_proc_bin_arc(ptr: *const u64) {
     let raw = read_raw_word(ptr, 2);
     let arc_ptr = raw as *const Vec<u8>;
     // SAFETY: ProcBin word two stores a raw `Arc<Vec<u8>>` pointer created by
