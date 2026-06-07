@@ -2,6 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use crate::atom::AtomTable;
 use crate::error::ExecError;
 use crate::gc::{GcError, ensure_space};
 use crate::interpreter::InstructionOutcome;
@@ -11,8 +12,8 @@ use crate::loader::decode::compact::Operand;
 use crate::module::{Module, ModuleRegistry, ResolvedImportTarget};
 use crate::native::ProcessContext;
 use crate::process::{CodePosition, ExitReason, Process};
-use crate::term::Term;
 use crate::term::boxed::{Tuple, write_cons, write_tuple};
+use crate::term::{Term, compare};
 use crate::timer::TimerWheel;
 
 use super::trampoline;
@@ -22,6 +23,7 @@ pub struct ExtCallContext<'a> {
     pub timers: Option<&'a Arc<Mutex<TimerWheel>>>,
     pub services: Option<&'a NativeServices>,
     pub registry: Option<&'a ModuleRegistry>,
+    pub atom_table: Option<&'a AtomTable>,
 }
 
 pub fn label(_label: u32) -> Result<InstructionOutcome, ExecError> {
@@ -326,6 +328,7 @@ fn call_external_target(
                 }
             };
             if let Some(svc) = ctx.services {
+                context.set_atom_table(svc.atom_table.clone());
                 context.set_spawn_facility(svc.spawn_facility.clone());
                 context.set_link_facility(svc.link_facility.clone());
                 context.set_supervision_facility(svc.supervision_facility.clone());
@@ -534,7 +537,7 @@ fn literal_term(literal: &Literal) -> Result<Term, ExecError> {
             for (key, value) in entries {
                 pairs.push((literal_term(key)?, literal_term(value)?));
             }
-            pairs.sort_by(|(left, _), (right, _)| left.cmp(right));
+            pairs.sort_by(|(left, _), (right, _)| compare::raw_cmp(*left, *right));
             let keys: Vec<_> = pairs.iter().map(|(key, _)| *key).collect();
             let values: Vec<_> = pairs.iter().map(|(_, value)| *value).collect();
             let heap = Box::leak(vec![0u64; 2 + keys.len() + values.len()].into_boxed_slice());
