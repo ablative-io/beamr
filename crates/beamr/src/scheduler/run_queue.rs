@@ -11,8 +11,8 @@ use crossbeam_deque::{Steal, Stealer, Worker};
 
 use crate::process::Priority;
 
-/// Default maximum number of non-low priority owner pops before a low-priority
-/// item is preferred when one is available.
+/// Default owner-pop scheduling window within which a queued low-priority item
+/// is guaranteed to be preferred once when non-low work is also available.
 pub const DEFAULT_LOW_PRIORITY_INTERVAL: usize = 8;
 
 /// Composite stealer handle for a priority-aware run queue.
@@ -78,7 +78,7 @@ impl RunQueue {
     /// Pop a process ID from the owner side of the highest-priority available queue.
     #[must_use]
     pub fn pop(&self) -> Option<u64> {
-        if self.non_low_pops_since_low.get() >= self.low_priority_interval
+        if self.non_low_pops_since_low.get() + 1 >= self.low_priority_interval
             && let Some(pid) = self.pop_low()
         {
             return Some(pid);
@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn low_priority_makes_progress_amid_high_priority_work() {
+    fn low_priority_makes_progress_within_default_interval_amid_high_priority_work() {
         let queue = RunQueue::new();
         queue.push_with_priority(1, Priority::Low);
         for pid in 2..=20 {
@@ -239,7 +239,7 @@ mod tests {
         }
 
         let mut popped = Vec::new();
-        for _ in 0..=DEFAULT_LOW_PRIORITY_INTERVAL {
+        for _ in 0..DEFAULT_LOW_PRIORITY_INTERVAL {
             if let Some(pid) = queue.pop() {
                 popped.push(pid);
             }
@@ -247,7 +247,7 @@ mod tests {
 
         assert!(
             popped.contains(&1),
-            "low priority pid did not make progress: {popped:?}"
+            "low priority pid did not make progress within {DEFAULT_LOW_PRIORITY_INTERVAL} pops: {popped:?}"
         );
     }
 

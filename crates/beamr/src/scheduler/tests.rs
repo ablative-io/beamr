@@ -14,9 +14,9 @@ use crate::loader::Instruction;
 use crate::loader::decode::compact::Operand;
 use crate::mailbox::Mailbox;
 use crate::module::Module;
-use crate::process::CodePosition;
 use crate::process::heap::{DEFAULT_HEAP_SIZE, Heap};
 use crate::process::registry::ProcessTable;
+use crate::process::{CodePosition, Priority};
 use crate::scheduler::execution::{
     SliceOutcome, cleanup_if_tombstoned_after_store, execute_slice, store_runnable_process,
     take_runnable_process,
@@ -251,6 +251,37 @@ fn single_process_runs_to_completion_and_is_removed() {
     let pid = scheduler.spawn_process(&module);
 
     wait_until(2_000, || scheduler.process_table().get(pid).is_none());
+    scheduler.shutdown();
+}
+
+#[test]
+fn spawn_priority_sets_process_priority_before_scheduling() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("priority_entry_mod");
+    let function = atoms.intern("main");
+    let mut module = test_module(
+        module_name,
+        vec![Instruction::Label { label: 7 }, Instruction::Return],
+    );
+    module.exports.insert((function, 0), 7);
+    let registry = Arc::new(ModuleRegistry::new());
+    registry.insert(module);
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+        },
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+
+    let pid = scheduler
+        .spawn_priority(module_name, function, Vec::new(), Priority::High)
+        .unwrap_or_else(|error| panic!("spawn_priority succeeds: {error}"));
+
+    wait_until(2_000, || {
+        process_priority(&scheduler.shared, pid) == Priority::High
+    });
+    assert_eq!(process_priority(&scheduler.shared, pid), Priority::High);
     scheduler.shutdown();
 }
 

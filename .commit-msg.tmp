@@ -1,1 +1,1 @@
-fix(beamr): satisfy clippy for priority scheduler changes
+fix(beamr): harden priority scheduling window
