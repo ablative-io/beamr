@@ -92,7 +92,7 @@ mod tests {
     }
 
     #[test]
-    fn reserve_writes_current_save_pointer_marker() {
+    fn reserve_writes_current_mailbox_length_marker() {
         let mut process = Process::new(1, 32);
         process
             .mailbox_mut()
@@ -106,16 +106,16 @@ mod tests {
             recv_marker_reserve(&mut process, &Operand::X(0)),
             Ok(InstructionOutcome::Continue)
         );
-        assert_eq!(process.x_reg(0).as_small_int(), Some(1));
+        assert_eq!(process.x_reg(0).as_small_int(), Some(2));
     }
 
     #[test]
-    fn bind_validates_label_and_dispatches() {
-        let module = module(vec![Instruction::Label { label: 7 }]);
+    fn bind_accepts_discriminator_operand_and_dispatches() {
+        let module = module(Vec::new());
         let mut process = Process::new(1, 32);
         let instruction = Instruction::RecvMarkerBind {
             marker: Operand::X(0),
-            label: Operand::Label(7),
+            label: Operand::X(1),
         };
 
         assert_eq!(

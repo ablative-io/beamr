@@ -114,10 +114,10 @@ impl Mailbox {
         self.save_pointer = 0;
     }
 
-    /// Capture the current receive scan position as a marker value.
+    /// Capture the current mailbox length as a marker value.
     pub(crate) fn reserve_marker(&mut self) -> usize {
         self.drain_arrival();
-        self.save_pointer.min(self.scan_list.len())
+        self.scan_list.len()
     }
 
     /// Restore selective-receive scanning to a previously captured marker.

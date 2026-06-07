@@ -1,1 +1,1 @@
-feat(beamr): add recv_marker opcode stubs
+fix(beamr): harden recv_marker mailbox marker semantics
