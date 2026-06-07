@@ -66,6 +66,7 @@ fn scheduler_creates_requested_thread_count_and_names() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(4),
+            ..SchedulerConfig::default()
         },
         registry,
     )
@@ -82,6 +83,34 @@ fn scheduler_creates_requested_thread_count_and_names() {
         ]
     );
 
+    scheduler.shutdown();
+}
+
+#[test]
+fn scheduler_creates_dirty_pools_and_shuts_them_down() {
+    let registry = Arc::new(ModuleRegistry::new());
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            dirty_cpu_threads: Some(2),
+            dirty_io_threads: Some(3),
+        },
+        registry,
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+
+    assert_eq!(scheduler.dirty_cpu().thread_count(), 2);
+    assert_eq!(scheduler.dirty_io().thread_count(), 3);
+    assert_eq!(
+        scheduler.dirty_cpu().thread_names(),
+        &["dirty-cpu-0", "dirty-cpu-1"]
+    );
+    assert_eq!(
+        scheduler.dirty_io().thread_names(),
+        &["dirty-io-0", "dirty-io-1", "dirty-io-2"]
+    );
+
+    scheduler.shutdown();
     scheduler.shutdown();
 }
 
@@ -110,6 +139,7 @@ fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -176,6 +206,7 @@ fn hook_fires_when_process_blocks_on_receive() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -224,6 +255,7 @@ fn shutdown_is_idempotent() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(2),
+            ..SchedulerConfig::default()
         },
         registry,
     )
@@ -243,6 +275,7 @@ fn single_process_runs_to_completion_and_is_removed() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -276,6 +309,7 @@ fn exported_spawn_starts_at_entry_function_with_args() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -309,6 +343,8 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         ],
     ));
     let shared = Arc::new(SharedState {
+        dirty_cpu: DirtyPool::new("dirty-test-cpu", 1),
+        dirty_io: DirtyPool::new("dirty-test-io", 1),
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
         module_registry: Arc::clone(&registry),
@@ -367,6 +403,7 @@ fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -401,6 +438,8 @@ fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
 #[test]
 fn tombstone_after_wait_store_prevents_wait_parking() {
     let shared = Arc::new(SharedState {
+        dirty_cpu: DirtyPool::new("dirty-test-cpu", 1),
+        dirty_io: DirtyPool::new("dirty-test-io", 1),
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
         module_registry: Arc::new(ModuleRegistry::new()),
@@ -475,6 +514,7 @@ fn yielded_process_is_rescheduled() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -496,6 +536,7 @@ fn multiple_processes_fairly_complete() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(2),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -516,6 +557,7 @@ fn mailbox_send_wakes_waiting_process_event_driven() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         registry,
     )
@@ -571,6 +613,7 @@ fn idle_threads_park_instead_of_spinning() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(2),
+            ..SchedulerConfig::default()
         },
         registry,
     )

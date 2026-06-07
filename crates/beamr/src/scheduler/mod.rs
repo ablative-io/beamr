@@ -8,6 +8,7 @@ pub mod steal;
 mod supervision_integration;
 mod test_helpers;
 mod timer_integration;
+use self::dirty::DirtyPool;
 use self::execution::scheduler_loop;
 use self::spawning::SpawnRequest;
 use crate::atom::AtomTable;
@@ -36,8 +37,12 @@ pub const DEFAULT_REDUCTION_BUDGET: u32 = crate::process::DEFAULT_REDUCTION_BUDG
 #[derive(Clone, Debug, Default)]
 pub struct SchedulerConfig {
     pub thread_count: Option<usize>,
+    pub dirty_cpu_threads: Option<usize>,
+    pub dirty_io_threads: Option<usize>,
 }
 pub(super) struct SharedState {
+    dirty_cpu: DirtyPool,
+    dirty_io: DirtyPool,
     shutdown: AtomicBool,
     process_table: ProcessTable,
     module_registry: Arc<ModuleRegistry>,
@@ -115,9 +120,13 @@ impl Scheduler {
         capability_policy: Arc<dyn CapabilityPolicy>,
     ) -> Result<Self, String> {
         let thread_count = configured_thread_count(config.thread_count);
+        let dirty_cpu_count = configured_dirty_cpu_count(config.dirty_cpu_threads);
+        let dirty_io_count = configured_dirty_io_count(config.dirty_io_threads);
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
         let shared = Arc::new(SharedState {
+            dirty_cpu: DirtyPool::new("dirty-cpu", dirty_cpu_count),
+            dirty_io: DirtyPool::new("dirty-io", dirty_io_count),
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
             module_registry,
@@ -247,6 +256,14 @@ impl Scheduler {
         &self.worker_names
     }
     #[must_use]
+    pub fn dirty_cpu(&self) -> &DirtyPool {
+        &self.shared.dirty_cpu
+    }
+    #[must_use]
+    pub fn dirty_io(&self) -> &DirtyPool {
+        &self.shared.dirty_io
+    }
+    #[must_use]
     pub fn hook(&self) -> &Hook {
         &self.shared.hook
     }
@@ -274,6 +291,16 @@ fn configured_thread_count(override_count: Option<usize>) -> usize {
             std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
         })
 }
+fn configured_dirty_cpu_count(override_count: Option<usize>) -> usize {
+    override_count
+        .filter(|count| *count > 0)
+        .unwrap_or_else(num_cpus::get)
+}
+
+fn configured_dirty_io_count(override_count: Option<usize>) -> usize {
+    override_count.filter(|count| *count > 0).unwrap_or(10)
+}
+
 fn process_namespace(shared: &SharedState, pid: u64) -> Option<NamespaceId> {
     let entry = shared.process_bodies.get(&pid)?;
     match &*lock_or_recover(&entry) {

@@ -30,6 +30,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::atom::Atom;
+use crate::scheduler::dirty::DirtySchedulerKind;
 use crate::term::Term;
 
 pub use capability::{
@@ -57,8 +58,8 @@ pub type NativeFn = fn(&[Term], &mut ProcessContext) -> Result<Term, Term>;
 pub struct NativeEntry {
     /// Function implementing the native call.
     pub function: NativeFn,
-    /// Whether the function should eventually run on the dirty scheduler pool.
-    pub is_dirty: bool,
+    /// Dirty scheduler pool for this native, or None for normal scheduler execution.
+    pub dirty_kind: Option<DirtySchedulerKind>,
     /// Capability required to bind this native during import resolution.
     pub capability: Capability,
 }
@@ -114,14 +115,14 @@ impl NativeRegistry {
         function: Atom,
         arity: u8,
         native_function: NativeFn,
-        is_dirty: bool,
+        dirty_kind: Option<DirtySchedulerKind>,
         capability: Capability,
     ) -> Result<(), NativeRegistrationError> {
         match self.entries.entry((module, function, arity)) {
             Entry::Vacant(entry) => {
                 entry.insert(NativeEntry {
                     function: native_function,
-                    is_dirty,
+                    dirty_kind,
                     capability,
                 });
                 Ok(())
@@ -164,7 +165,7 @@ impl BifRegistryImpl {
         capability: Capability,
     ) -> Result<(), NativeRegistrationError> {
         self.registry
-            .register(module, function, arity, native_function, false, capability)
+            .register(module, function, arity, native_function, None, capability)
     }
 
     /// Registers a built-in function that should use dirty scheduling later.
@@ -176,8 +177,14 @@ impl BifRegistryImpl {
         native_function: NativeFn,
         capability: Capability,
     ) -> Result<(), NativeRegistrationError> {
-        self.registry
-            .register(module, function, arity, native_function, true, capability)
+        self.registry.register(
+            module,
+            function,
+            arity,
+            native_function,
+            Some(DirtySchedulerKind::Cpu),
+            capability,
+        )
     }
 
     /// Looks up a built-in function by module/function/arity.
@@ -229,7 +236,7 @@ impl NifRegistry {
         capability: Capability,
     ) -> Result<(), NativeRegistrationError> {
         self.registry
-            .register(module, function, arity, native_function, false, capability)
+            .register(module, function, arity, native_function, None, capability)
     }
 
     /// Registers a host native function that should use dirty scheduling later.
@@ -241,8 +248,14 @@ impl NifRegistry {
         native_function: NativeFn,
         capability: Capability,
     ) -> Result<(), NativeRegistrationError> {
-        self.registry
-            .register(module, function, arity, native_function, true, capability)
+        self.registry.register(
+            module,
+            function,
+            arity,
+            native_function,
+            Some(DirtySchedulerKind::Cpu),
+            capability,
+        )
     }
 
     /// Looks up a host native function by module/function/arity.
@@ -278,6 +291,7 @@ mod tests {
         UnresolvedImport, UnresolvedImportReport, lookup_native,
     };
     use crate::atom::AtomTable;
+    use crate::scheduler::dirty::DirtySchedulerKind;
     use crate::term::Term;
 
     fn forty_two(_args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
@@ -308,7 +322,7 @@ mod tests {
 
         let entry = registry.lookup(erlang, plus, 2).expect("registered BIF");
         assert_eq!(entry.function as usize, forty_two as usize);
-        assert!(!entry.is_dirty);
+        assert_eq!(entry.dirty_kind, None);
         assert_eq!(entry.capability, Capability::Pure);
         assert!(registry.lookup(erlang, unknown, 0).is_none());
     }
@@ -412,12 +426,16 @@ mod tests {
                 .is_ok()
         );
 
-        assert!(!registry.lookup(erlang, plus, 2).expect("plus").is_dirty);
-        assert!(
+        assert_eq!(
+            registry.lookup(erlang, plus, 2).expect("plus").dirty_kind,
+            None
+        );
+        assert_eq!(
             registry
                 .lookup(erlang, display, 1)
                 .expect("display")
-                .is_dirty
+                .dirty_kind,
+            Some(DirtySchedulerKind::Cpu)
         );
         assert_eq!(
             registry

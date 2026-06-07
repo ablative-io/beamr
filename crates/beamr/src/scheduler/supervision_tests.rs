@@ -140,6 +140,8 @@ fn make_shared_state() -> Arc<SharedState> {
     namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
 
     Arc::new(SharedState {
+        dirty_cpu: DirtyPool::new("dirty-test-cpu", 1),
+        dirty_io: DirtyPool::new("dirty-test-io", 1),
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
         module_registry,
