@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::atom::Atom;
 use crate::native::ProcessContext;
+use crate::process::Process;
 use crate::native::registry::{RegistryError, RegistryFacility};
 use crate::term::Term;
 
@@ -12,7 +13,7 @@ fn badarg() -> Term {
     Term::atom(Atom::BADARG)
 }
 
-fn reg_ctx(caller_pid: u64) -> (Arc<MockRegistryFacility>, ProcessContext) {
+fn reg_ctx(caller_pid: u64) -> (Arc<MockRegistryFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockRegistryFacility::new());
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));

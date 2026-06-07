@@ -5,14 +5,17 @@ use crate::native::supervision::{
     MonitorResult, SupervisionError, SupervisionFacility, SupervisionRecord,
 };
 use crate::native::{BifRegistryImpl, ProcessContext};
+use crate::process::Process;
 use crate::process::ExitReason;
 use crate::term::Term;
 use crate::term::binary;
 use crate::term::boxed::{write_closure, write_tuple};
 use std::sync::{Arc, Mutex};
 
-fn context() -> ProcessContext {
-    ProcessContext::new()
+fn context(process: &mut Process) -> ProcessContext<'_> {
+    let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
+    context
 }
 
 fn badarg() -> Term {
@@ -23,7 +26,8 @@ fn badarg() -> Term {
 
 #[test]
 fn element_returns_first_element() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let elements = [
         Term::small_int(10),
         Term::small_int(20),
@@ -39,7 +43,8 @@ fn element_returns_first_element() {
 
 #[test]
 fn element_returns_last_element() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let elements = [
         Term::small_int(10),
         Term::small_int(20),
@@ -55,7 +60,8 @@ fn element_returns_last_element() {
 
 #[test]
 fn element_badarg_index_zero() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 2];
     let tuple = write_tuple(&mut heap, &[Term::small_int(1)]).expect("tuple");
     assert_eq!(
@@ -66,7 +72,8 @@ fn element_badarg_index_zero() {
 
 #[test]
 fn element_badarg_index_out_of_range() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 2];
     let tuple = write_tuple(&mut heap, &[Term::small_int(1)]).expect("tuple");
     assert_eq!(
@@ -77,7 +84,8 @@ fn element_badarg_index_out_of_range() {
 
 #[test]
 fn element_badarg_negative_index() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 2];
     let tuple = write_tuple(&mut heap, &[Term::small_int(1)]).expect("tuple");
     assert_eq!(
@@ -88,7 +96,8 @@ fn element_badarg_negative_index() {
 
 #[test]
 fn element_badarg_non_tuple() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_element(&[Term::small_int(1), Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -97,7 +106,8 @@ fn element_badarg_non_tuple() {
 
 #[test]
 fn element_badarg_non_integer_index() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 2];
     let tuple = write_tuple(&mut heap, &[Term::small_int(1)]).expect("tuple");
     assert_eq!(
@@ -108,7 +118,8 @@ fn element_badarg_non_integer_index() {
 
 #[test]
 fn element_badarg_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_element(&[Term::small_int(1)], &mut ctx), Err(badarg()));
 }
 
@@ -116,14 +127,16 @@ fn element_badarg_wrong_arity() {
 
 #[test]
 fn send_returns_message() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let message = Term::atom(Atom::OK);
     assert_eq!(bif_send(&[Term::pid(1), message], &mut ctx), Ok(message));
 }
 
 #[test]
 fn send_badarg_non_pid() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_send(&[Term::small_int(1), Term::atom(Atom::OK)], &mut ctx),
         Err(badarg())
@@ -132,7 +145,8 @@ fn send_badarg_non_pid() {
 
 #[test]
 fn send_badarg_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_send(&[Term::pid(1)], &mut ctx), Err(badarg()));
 }
 
@@ -140,7 +154,8 @@ fn send_badarg_wrong_arity() {
 
 #[test]
 fn tuple_size_returns_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 4];
     let tuple = write_tuple(
         &mut heap,
@@ -152,7 +167,8 @@ fn tuple_size_returns_arity() {
 
 #[test]
 fn tuple_size_empty_tuple() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 1];
     let tuple = write_tuple(&mut heap, &[]).expect("empty tuple");
     assert_eq!(bif_tuple_size(&[tuple], &mut ctx), Ok(Term::small_int(0)));
@@ -160,7 +176,8 @@ fn tuple_size_empty_tuple() {
 
 #[test]
 fn tuple_size_badarg_non_tuple() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_tuple_size(&[Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -169,7 +186,8 @@ fn tuple_size_badarg_non_tuple() {
 
 #[test]
 fn tuple_size_badarg_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_tuple_size(&[], &mut ctx), Err(badarg()));
 }
 
@@ -177,14 +195,16 @@ fn tuple_size_badarg_wrong_arity() {
 
 #[test]
 fn make_ref_returns_small_int() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let result = bif_make_ref(&[], &mut ctx).expect("make_ref");
     assert!(result.as_small_int().is_some());
 }
 
 #[test]
 fn make_ref_returns_unique_values() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let ref1 = bif_make_ref(&[], &mut ctx).expect("make_ref 1");
     let ref2 = bif_make_ref(&[], &mut ctx).expect("make_ref 2");
     assert_ne!(ref1, ref2);
@@ -192,7 +212,8 @@ fn make_ref_returns_unique_values() {
 
 #[test]
 fn make_ref_badarg_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_make_ref(&[Term::small_int(1)], &mut ctx), Err(badarg()));
 }
 
@@ -248,7 +269,8 @@ fn is_process_alive_badarg_non_pid() {
 
 #[test]
 fn is_process_alive_badarg_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_is_process_alive(&[], &mut ctx), Err(badarg()));
 }
 
@@ -300,7 +322,8 @@ fn spawn_1_badarg_no_facility() {
 
 #[test]
 fn spawn_1_badarg_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_spawn_1(&[], &mut ctx), Err(badarg()));
 }
 
@@ -331,7 +354,8 @@ fn spawn_link_1_badarg_without_pid() {
 
 #[test]
 fn byte_size_returns_binary_length() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 3];
     let bin = binary::write_binary(&mut heap, b"hello").expect("binary");
     assert_eq!(bif_byte_size(&[bin], &mut ctx), Ok(Term::small_int(5)));
@@ -339,7 +363,8 @@ fn byte_size_returns_binary_length() {
 
 #[test]
 fn byte_size_rejects_non_binary() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_byte_size(&[Term::small_int(5)], &mut ctx),
         Err(badarg())
@@ -348,7 +373,8 @@ fn byte_size_rejects_non_binary() {
 
 #[test]
 fn iolist_size_returns_binary_length() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 3];
     let bin = binary::write_binary(&mut heap, b"hello").expect("binary");
     assert_eq!(bif_iolist_size(&[bin], &mut ctx), Ok(Term::small_int(5)));
@@ -356,7 +382,8 @@ fn iolist_size_returns_binary_length() {
 
 #[test]
 fn iolist_size_rejects_complex_iolist_stub() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut cell = [0u64; 2];
     let list =
         crate::term::boxed::write_cons(&mut cell, Term::small_int(65), Term::NIL).expect("list");
@@ -438,7 +465,7 @@ fn all_three_gates_coexist() {
 
 // ---- Helpers ----
 
-fn spawn_ctx(next_pid: u64, caller_pid: u64) -> (Arc<MockSpawnFacility>, ProcessContext) {
+fn spawn_ctx(next_pid: u64, caller_pid: u64) -> (Arc<MockSpawnFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockSpawnFacility::new(next_pid));
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));
@@ -450,7 +477,7 @@ fn sup_ctx(
     next_ref: u64,
     caller_pid: u64,
     alive: bool,
-) -> (Arc<MockSupervisionFacility>, ProcessContext) {
+) -> (Arc<MockSupervisionFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockSupervisionFacility::new(next_ref, alive));
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));

@@ -3,16 +3,18 @@ use std::sync::Mutex;
 
 use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, ProcessContext, stdlib_stubs::register_stdlib_stubs};
+use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary::{self, Binary};
 use crate::term::boxed::{Cons, Float, Map, Tuple, write_float, write_tuple};
 
 use super::gleam_stdlib_ffi2::*;
 
-fn context() -> ProcessContext {
+fn context(process: &mut Process) -> ProcessContext<'_> {
     let table = Arc::new(AtomTable::with_common_atoms());
     let mut context = ProcessContext::new();
     context.set_atom_table(Some(table));
+    context.attach_process(process, 0);
     context
 }
 
@@ -69,7 +71,8 @@ fn assert_error_nil_tuple(term: Term) {
 
 #[test]
 fn classify_dynamic_returns_type_binaries() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
 
     let result = bif_classify_dynamic(&[Term::small_int(42)], &mut context).unwrap();
     assert_eq!(Binary::new(result).unwrap().as_bytes(), b"Int");
@@ -86,7 +89,8 @@ fn classify_dynamic_returns_type_binaries() {
 
 #[test]
 fn is_null_distinguishes_nil_from_other_terms() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
 
     assert_eq!(
         bif_is_null(&[Term::NIL], &mut context),
@@ -100,7 +104,8 @@ fn is_null_distinguishes_nil_from_other_terms() {
 
 #[test]
 fn list_stub_accepts_existing_lists() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let values = list(&[Term::small_int(1), Term::small_int(2)]);
 
     assert_eq!(
@@ -114,7 +119,8 @@ fn list_stub_accepts_existing_lists() {
 
 #[test]
 fn map_get_returns_gleam_result_tuples() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let a = atom(&context, "a");
     let b = atom(&context, "b");
     let map = bif_dict(&[list(&[tuple(&[a, Term::small_int(1)])])], &mut context).expect("map");
@@ -138,7 +144,8 @@ impl crate::io::IoSink for RecordingSink {
 #[test]
 fn print_wrappers_write_to_configured_sink() {
     let sink = Arc::new(RecordingSink::default());
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     context.set_io_sink(sink.clone());
 
     assert_eq!(
@@ -162,7 +169,8 @@ fn print_wrappers_write_to_configured_sink() {
 
 #[test]
 fn dict_converts_pair_list_to_map_with_last_value_winning() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let a = atom(&context, "a");
     let b = atom(&context, "b");
     let pairs = list(&[
@@ -180,7 +188,8 @@ fn dict_converts_pair_list_to_map_with_last_value_winning() {
 
 #[test]
 fn float_converts_int_and_float_to_string_formats_float() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let converted = bif_float(&[Term::small_int(7)], &mut context).expect("float");
     assert_eq!(Float::new(converted).expect("float").value(), 7.0);
 
@@ -190,7 +199,8 @@ fn float_converts_int_and_float_to_string_formats_float() {
 
 #[test]
 fn index_reads_tuple_and_list_with_zero_based_index() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let tuple = tuple(&[Term::small_int(10), Term::small_int(20)]);
     let list = list(&[Term::small_int(30), Term::small_int(40)]);
 
@@ -206,7 +216,8 @@ fn index_reads_tuple_and_list_with_zero_based_index() {
 
 #[test]
 fn int_accepts_small_int_only() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     assert_eq!(
         bif_int(&[Term::small_int(42)], &mut context),
         Ok(Term::small_int(42))
@@ -219,7 +230,8 @@ fn int_accepts_small_int_only() {
 
 #[test]
 fn parse_int_and_int_from_base_string_return_result_tuples() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
 
     let parsed = bif_parse_int(&[binary(b"42")], &mut context).expect("tuple");
     assert_ok_tuple(parsed, Term::small_int(42));
@@ -232,7 +244,8 @@ fn parse_int_and_int_from_base_string_return_result_tuples() {
 
 #[test]
 fn parse_float_returns_result_tuple() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let parsed = bif_parse_float(&[binary(b"2.5")], &mut context).expect("tuple");
     let tuple = Tuple::new(parsed).expect("tuple");
     assert_eq!(tuple.get(0), Some(Term::atom(Atom::OK)));
@@ -248,7 +261,8 @@ fn parse_float_returns_result_tuple() {
 
 #[test]
 fn wrap_list_preserves_lists_and_wraps_non_lists() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let existing = list(&[Term::small_int(1)]);
     assert_eq!(bif_wrap_list(&[existing], &mut context), Ok(existing));
 
@@ -260,7 +274,8 @@ fn wrap_list_preserves_lists_and_wraps_non_lists() {
 
 #[test]
 fn base16_and_base64_wrappers_encode_and_decode() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let standard = atom(&context, "standard");
 
     let hex = bif_base16_encode(&[binary(b"hi")], &mut context).expect("hex");
@@ -276,7 +291,8 @@ fn base16_and_base64_wrappers_encode_and_decode() {
 
 #[test]
 fn bit_array_wrappers_operate_on_byte_aligned_binaries() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
 
     let bit_array = bif_bit_array(&[binary(b"bits")], &mut context).expect("binary");
     assert_binary(bit_array, b"bits");

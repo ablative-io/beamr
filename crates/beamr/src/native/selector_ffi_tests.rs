@@ -1,20 +1,25 @@
 use super::*;
 use crate::native::ProcessContext;
+use crate::process::Process;
 use crate::term::boxed::write_tuple;
 
-fn context() -> ProcessContext {
-    ProcessContext::new()
+fn context(process: &mut Process) -> ProcessContext<'_> {
+    let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
+    context
 }
 
 #[test]
 fn new_selector_returns_nil() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_new_selector(&[], &mut ctx), Ok(Term::NIL));
 }
 
 #[test]
 fn new_selector_rejects_arguments() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_new_selector(&[Term::small_int(1)], &mut ctx),
         Err(badarg())
@@ -23,7 +28,8 @@ fn new_selector_rejects_arguments() {
 
 #[test]
 fn insert_selector_handler_prepends_entry() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let tag = Term::atom(Atom::OK);
     let handler = Term::small_int(42); // placeholder
 
@@ -41,7 +47,8 @@ fn insert_selector_handler_prepends_entry() {
 
 #[test]
 fn merge_selector_concatenates_lists() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
 
     // Build two single-element selectors.
     let sel_a = bif_insert_selector_handler(
@@ -71,7 +78,8 @@ fn merge_selector_concatenates_lists() {
 
 #[test]
 fn remove_selector_handler_filters_by_tag() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
 
     let sel = bif_insert_selector_handler(
         &[Term::NIL, Term::atom(Atom::OK), Term::small_int(1)],
@@ -96,7 +104,8 @@ fn remove_selector_handler_filters_by_tag() {
 
 #[test]
 fn merge_with_empty_selectors() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
 
     // NIL + NIL = NIL
     let result =
@@ -149,14 +158,16 @@ fn message_matches_tag_integer() {
 
 #[test]
 fn select_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_select(&[], &mut ctx), Err(badarg()));
     assert_eq!(bif_select(&[Term::NIL, Term::NIL], &mut ctx), Err(badarg()));
 }
 
 #[test]
 fn select_with_timeout_rejects_negative() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_select_with_timeout(&[Term::NIL, Term::small_int(-1)], &mut ctx),
         Err(badarg())
@@ -207,7 +218,8 @@ fn select_with_facility_finds_matching_message() {
     use crate::native::select::MailboxSnapshot;
     use std::sync::Arc;
 
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
 
     // Build a selector with one handler for tag `ok`.
     let handler = Term::small_int(99); // placeholder for closure
@@ -243,7 +255,8 @@ fn select_with_no_match_requests_suspend() {
     use crate::native::select::MailboxSnapshot;
     use std::sync::Arc;
 
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
 
     // Build a selector that looks for `error` tag.
     let handler = Term::small_int(99);
@@ -275,7 +288,8 @@ fn select_with_timeout_zero_returns_error_nil_on_no_match() {
     use crate::native::select::MailboxSnapshot;
     use std::sync::Arc;
 
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
 
     let handler = Term::small_int(99);
     let selector =
@@ -307,7 +321,8 @@ fn select_first_matching_handler_wins() {
     use crate::native::select::MailboxSnapshot;
     use std::sync::Arc;
 
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
 
     // Build a selector with two handlers for the same tag.
     let handler1 = Term::small_int(1);
@@ -334,7 +349,8 @@ fn select_first_matching_handler_wins() {
 
 #[test]
 fn map_selector_wraps_handlers() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
 
     let handler = Term::small_int(42);
     let map_fun = Term::small_int(99);

@@ -1,12 +1,15 @@
 use crate::atom::Atom;
 use crate::native::ProcessContext;
+use crate::process::Process;
 use crate::term::Term;
 use crate::term::boxed::{Float, write_float};
 
 use super::math_bifs::*;
 
-fn context() -> ProcessContext {
-    ProcessContext::new()
+fn context(process: &mut Process) -> ProcessContext<'_> {
+    let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
+    context
 }
 
 fn badarg() -> Term {
@@ -24,7 +27,8 @@ fn assert_float(term: Term, expected: f64) {
 
 #[test]
 fn math_acceptance_values_match_expected_results() {
-    let mut context = context();
+    let mut process = Process::new(1, 64);
+    let mut context = context(&mut process);
     assert_float(bif_ceil(&[float(3.2)], &mut context).expect("ceil"), 4.0);
     assert_float(bif_floor(&[float(3.7)], &mut context).expect("floor"), 3.0);
     assert_float(
@@ -36,14 +40,16 @@ fn math_acceptance_values_match_expected_results() {
 
 #[test]
 fn exp_returns_boxed_float() {
-    let mut context = context();
+    let mut process = Process::new(1, 64);
+    let mut context = context(&mut process);
     let result = bif_exp(&[float(0.0)], &mut context).expect("exp");
     assert_float(result, 1.0);
 }
 
 #[test]
 fn math_accepts_small_int_numbers() {
-    let mut context = context();
+    let mut process = Process::new(1, 64);
+    let mut context = context(&mut process);
     assert_float(
         bif_ceil(&[Term::small_int(3)], &mut context).expect("ceil"),
         3.0,
@@ -52,7 +58,8 @@ fn math_accepts_small_int_numbers() {
 
 #[test]
 fn math_rejects_invalid_inputs() {
-    let mut context = context();
+    let mut process = Process::new(1, 64);
+    let mut context = context(&mut process);
     assert_eq!(
         bif_ceil(&[Term::atom(Atom::OK)], &mut context),
         Err(badarg())

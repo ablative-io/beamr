@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
 use crate::native::ProcessContext;
+use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary::write_binary;
 use crate::term::boxed::{write_cons, write_map};
@@ -12,10 +13,11 @@ fn badarg() -> Term {
     Term::atom(Atom::BADARG)
 }
 
-fn ctx_with_atoms() -> ProcessContext {
+fn ctx_with_atoms(process: &mut Process) -> ProcessContext<'_> {
     let table = Arc::new(AtomTable::with_common_atoms());
     let mut ctx = ProcessContext::new();
     ctx.set_atom_table(Some(table));
+    ctx.attach_process(process, 0);
     ctx
 }
 
@@ -23,7 +25,8 @@ fn ctx_with_atoms() -> ProcessContext {
 
 #[test]
 fn atom_to_binary_converts_ok_to_binary() {
-    let mut ctx = ctx_with_atoms();
+    let mut process = Process::new(1, 128);
+    let mut ctx = ctx_with_atoms(&mut process);
     let result =
         bif_atom_to_binary(&[Term::atom(Atom::OK), Term::atom(Atom::UTF8)], &mut ctx).unwrap();
     let binary = crate::term::binary::Binary::new(result).expect("should be binary");
@@ -32,7 +35,8 @@ fn atom_to_binary_converts_ok_to_binary() {
 
 #[test]
 fn atom_to_binary_latin1_encoding_works() {
-    let mut ctx = ctx_with_atoms();
+    let mut process = Process::new(1, 128);
+    let mut ctx = ctx_with_atoms(&mut process);
     let result = bif_atom_to_binary(
         &[Term::atom(Atom::ERROR), Term::atom(Atom::LATIN1)],
         &mut ctx,
@@ -44,7 +48,8 @@ fn atom_to_binary_latin1_encoding_works() {
 
 #[test]
 fn atom_to_binary_badarg_invalid_encoding() {
-    let mut ctx = ctx_with_atoms();
+    let mut process = Process::new(1, 128);
+    let mut ctx = ctx_with_atoms(&mut process);
     assert_eq!(
         bif_atom_to_binary(&[Term::atom(Atom::OK), Term::atom(Atom::OK)], &mut ctx),
         Err(badarg())
@@ -53,7 +58,8 @@ fn atom_to_binary_badarg_invalid_encoding() {
 
 #[test]
 fn atom_to_binary_badarg_non_atom() {
-    let mut ctx = ctx_with_atoms();
+    let mut process = Process::new(1, 128);
+    let mut ctx = ctx_with_atoms(&mut process);
     assert_eq!(
         bif_atom_to_binary(&[Term::small_int(42), Term::atom(Atom::UTF8)], &mut ctx),
         Err(badarg())
@@ -62,7 +68,9 @@ fn atom_to_binary_badarg_non_atom() {
 
 #[test]
 fn atom_to_binary_badarg_no_atom_table() {
+    let mut no_atom_process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut no_atom_process, 0);
     assert_eq!(
         bif_atom_to_binary(&[Term::atom(Atom::OK), Term::atom(Atom::UTF8)], &mut ctx),
         Err(badarg())
@@ -71,7 +79,8 @@ fn atom_to_binary_badarg_no_atom_table() {
 
 #[test]
 fn atom_to_binary_badarg_wrong_arity() {
-    let mut ctx = ctx_with_atoms();
+    let mut process = Process::new(1, 128);
+    let mut ctx = ctx_with_atoms(&mut process);
     assert_eq!(
         bif_atom_to_binary(&[Term::atom(Atom::OK)], &mut ctx),
         Err(badarg())
@@ -82,7 +91,8 @@ fn atom_to_binary_badarg_wrong_arity() {
 
 #[test]
 fn binary_to_existing_atom_finds_interned_atom() {
-    let mut ctx = ctx_with_atoms();
+    let mut process = Process::new(1, 128);
+    let mut ctx = ctx_with_atoms(&mut process);
     let mut heap = [0u64; 3];
     let bin = write_binary(&mut heap, b"ok").expect("binary");
     let result = bif_binary_to_existing_atom(&[bin], &mut ctx).unwrap();
@@ -91,7 +101,8 @@ fn binary_to_existing_atom_finds_interned_atom() {
 
 #[test]
 fn binary_to_existing_atom_badarg_unknown() {
-    let mut ctx = ctx_with_atoms();
+    let mut process = Process::new(1, 128);
+    let mut ctx = ctx_with_atoms(&mut process);
     let mut heap = [0u64; 5];
     let bin = write_binary(&mut heap, b"nonexistent_atom_xyz").expect("binary");
     assert_eq!(bif_binary_to_existing_atom(&[bin], &mut ctx), Err(badarg()));
@@ -99,7 +110,8 @@ fn binary_to_existing_atom_badarg_unknown() {
 
 #[test]
 fn binary_to_existing_atom_badarg_non_binary() {
-    let mut ctx = ctx_with_atoms();
+    let mut process = Process::new(1, 128);
+    let mut ctx = ctx_with_atoms(&mut process);
     assert_eq!(
         bif_binary_to_existing_atom(&[Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -108,7 +120,9 @@ fn binary_to_existing_atom_badarg_non_binary() {
 
 #[test]
 fn binary_to_existing_atom_badarg_no_atom_table() {
+    let mut no_table_process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut no_table_process, 0);
     let mut heap = [0u64; 3];
     let bin = write_binary(&mut heap, b"ok").expect("binary");
     assert_eq!(bif_binary_to_existing_atom(&[bin], &mut ctx), Err(badarg()));
@@ -118,7 +132,9 @@ fn binary_to_existing_atom_badarg_no_atom_table() {
 
 #[test]
 fn binary_to_list_converts_bytes() {
+    let mut process = Process::new(1, 128);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     let mut heap = [0u64; 3];
     let bin = write_binary(&mut heap, b"hi").expect("binary");
     let result = bif_binary_to_list(&[bin], &mut ctx).unwrap();
@@ -133,7 +149,9 @@ fn binary_to_list_converts_bytes() {
 
 #[test]
 fn binary_to_list_empty_returns_nil() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     let mut heap = [0u64; 2];
     let bin = write_binary(&mut heap, b"").expect("binary");
     assert_eq!(bif_binary_to_list(&[bin], &mut ctx), Ok(Term::NIL));
@@ -141,7 +159,9 @@ fn binary_to_list_empty_returns_nil() {
 
 #[test]
 fn binary_to_list_badarg_non_binary() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     assert_eq!(
         bif_binary_to_list(&[Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -152,7 +172,9 @@ fn binary_to_list_badarg_non_binary() {
 
 #[test]
 fn list_to_binary_converts_byte_list() {
+    let mut process = Process::new(1, 128);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     let mut c2 = [0u64; 2];
     let tail = write_cons(&mut c2, Term::small_int(105), Term::NIL).unwrap();
     let mut c1 = [0u64; 2];
@@ -164,7 +186,9 @@ fn list_to_binary_converts_byte_list() {
 
 #[test]
 fn list_to_binary_empty_list() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     let result = bif_list_to_binary(&[Term::NIL], &mut ctx).unwrap();
     let binary = crate::term::binary::Binary::new(result).expect("binary");
     assert!(binary.is_empty());
@@ -172,7 +196,9 @@ fn list_to_binary_empty_list() {
 
 #[test]
 fn list_to_binary_badarg_value_out_of_range() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     let mut c1 = [0u64; 2];
     let list = write_cons(&mut c1, Term::small_int(256), Term::NIL).unwrap();
     assert_eq!(bif_list_to_binary(&[list], &mut ctx), Err(badarg()));
@@ -180,7 +206,9 @@ fn list_to_binary_badarg_value_out_of_range() {
 
 #[test]
 fn list_to_binary_badarg_negative_value() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     let mut c1 = [0u64; 2];
     let list = write_cons(&mut c1, Term::small_int(-1), Term::NIL).unwrap();
     assert_eq!(bif_list_to_binary(&[list], &mut ctx), Err(badarg()));
@@ -188,7 +216,9 @@ fn list_to_binary_badarg_negative_value() {
 
 #[test]
 fn list_to_binary_badarg_non_list() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     assert_eq!(
         bif_list_to_binary(&[Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -199,7 +229,9 @@ fn list_to_binary_badarg_non_list() {
 
 #[test]
 fn map_get_returns_value() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     let keys = [Term::small_int(1), Term::small_int(2)];
     let values = [Term::atom(Atom::OK), Term::atom(Atom::ERROR)];
     let mut heap = [0u64; 6];
@@ -216,7 +248,9 @@ fn map_get_returns_value() {
 
 #[test]
 fn map_get_badkey_for_missing_key() {
+    let mut process = Process::new(1, 128);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     let keys = [Term::small_int(1)];
     let values = [Term::atom(Atom::OK)];
     let mut heap = [0u64; 4];
@@ -233,7 +267,9 @@ fn map_get_badkey_for_missing_key() {
 
 #[test]
 fn map_get_badarg_non_map() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     assert_eq!(
         bif_map_get(&[Term::small_int(1), Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -242,6 +278,8 @@ fn map_get_badarg_non_map() {
 
 #[test]
 fn map_get_badarg_wrong_arity() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     assert_eq!(bif_map_get(&[Term::small_int(1)], &mut ctx), Err(badarg()));
 }

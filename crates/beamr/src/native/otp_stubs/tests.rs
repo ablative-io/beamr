@@ -3,6 +3,7 @@
 use super::*;
 use crate::atom::AtomTable;
 use crate::native::BifRegistryImpl;
+use crate::process::Process;
 
 #[test]
 fn application_stopped_returns_ok() {
@@ -74,14 +75,18 @@ fn register_otp_stubs_rejects_duplicate_registration() {
 
 #[test]
 fn dynamic_int_returns_ok_for_integers() {
+    let mut process = Process::new(1, 128);
     let mut context = ProcessContext::new();
+    context.attach_process(&mut process, 0);
     let result = gleam_stubs::bif_dynamic_int(&[Term::small_int(42)], &mut context);
     assert!(result.is_ok());
 }
 
 #[test]
 fn dynamic_int_returns_error_for_atoms() {
+    let mut process = Process::new(1, 128);
     let mut context = ProcessContext::new();
+    context.attach_process(&mut process, 0);
     let result = gleam_stubs::bif_dynamic_int(&[Term::atom(Atom::OK)], &mut context);
     assert!(result.is_ok());
 }

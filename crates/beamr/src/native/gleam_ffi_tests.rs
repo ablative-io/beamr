@@ -8,6 +8,7 @@ use crate::native::supervision::{
     MonitorResult, SupervisionError, SupervisionFacility, SupervisionRecord,
 };
 use crate::native::{BifRegistryImpl, ProcessContext};
+use crate::process::Process;
 use crate::process::ExitReason;
 use crate::term::Term;
 use crate::term::boxed::Tuple;
@@ -47,6 +48,7 @@ fn trap_exits_badarg_non_bool() {
 
 #[test]
 fn trap_exits_badarg_no_facility() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(1));
     assert_eq!(
@@ -90,6 +92,7 @@ fn gleam_link_badarg_non_pid() {
 
 #[test]
 fn gleam_link_badarg_no_facility() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(1));
     assert_eq!(bif_gleam_link(&[Term::pid(2)], &mut ctx), Err(badarg()));
@@ -133,6 +136,7 @@ fn gleam_demonitor_badarg_non_integer() {
 
 #[test]
 fn gleam_demonitor_badarg_no_facility() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(1));
     assert_eq!(
@@ -346,7 +350,9 @@ fn process_named_badarg_no_facility() {
 
 #[test]
 fn pid_from_dynamic_returns_ok_for_pid() {
+    let process = Box::leak(Box::new(Process::new(1, 128)));
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(process, 0);
     let pid = Term::pid(42);
     let result = bif_pid_from_dynamic(&[pid], &mut ctx).expect("should succeed");
     let tuple = Tuple::new(result).expect("should be a tuple");
@@ -356,7 +362,9 @@ fn pid_from_dynamic_returns_ok_for_pid() {
 
 #[test]
 fn pid_from_dynamic_returns_error_for_non_pid() {
+    let process = Box::leak(Box::new(Process::new(1, 128)));
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(process, 0);
     let result = bif_pid_from_dynamic(&[Term::small_int(42)], &mut ctx).expect("should succeed");
     let tuple = Tuple::new(result).expect("should be a tuple");
     assert_eq!(tuple.get(0), Some(Term::atom(Atom::ERROR)));
@@ -365,7 +373,9 @@ fn pid_from_dynamic_returns_error_for_non_pid() {
 
 #[test]
 fn pid_from_dynamic_returns_error_for_atom() {
+    let process = Box::leak(Box::new(Process::new(1, 128)));
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(process, 0);
     let result = bif_pid_from_dynamic(&[Term::atom(Atom::OK)], &mut ctx).expect("should succeed");
     let tuple = Tuple::new(result).expect("should be a tuple");
     assert_eq!(tuple.get(0), Some(Term::atom(Atom::ERROR)));
@@ -442,7 +452,7 @@ fn gleam_ffi_coexists_with_selector_bifs() {
 // Mock facilities
 // ---------------------------------------------------------------------------
 
-fn link_ctx(caller_pid: u64) -> (Arc<MockLinkFacility>, ProcessContext) {
+fn link_ctx(caller_pid: u64) -> (Arc<MockLinkFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockLinkFacility::new());
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));
@@ -450,7 +460,7 @@ fn link_ctx(caller_pid: u64) -> (Arc<MockLinkFacility>, ProcessContext) {
     (f, ctx)
 }
 
-fn sup_ctx(next_ref: u64, caller_pid: u64) -> (Arc<MockSupervisionFacility>, ProcessContext) {
+fn sup_ctx(next_ref: u64, caller_pid: u64) -> (Arc<MockSupervisionFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockSupervisionFacility::new(next_ref));
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));
@@ -458,11 +468,13 @@ fn sup_ctx(next_ref: u64, caller_pid: u64) -> (Arc<MockSupervisionFacility>, Pro
     (f, ctx)
 }
 
-fn reg_ctx(caller_pid: u64) -> (Arc<MockRegistryFacility>, ProcessContext) {
+fn reg_ctx(caller_pid: u64) -> (Arc<MockRegistryFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockRegistryFacility::new());
+    let process = Box::leak(Box::new(Process::new(caller_pid, 128)));
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));
     ctx.set_registry_facility(Some(f.clone()));
+    ctx.attach_process(process, 0);
     (f, ctx)
 }
 

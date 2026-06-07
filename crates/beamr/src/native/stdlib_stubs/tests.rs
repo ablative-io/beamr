@@ -1,5 +1,6 @@
 use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, ProcessContext};
+use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary::{self, Binary};
 use crate::term::boxed::{Cons, Tuple, write_cons};
@@ -11,8 +12,10 @@ use super::{
 };
 use super::{gleam_stdlib_ffi, string_bifs};
 
-fn context() -> ProcessContext {
-    ProcessContext::new()
+fn context(process: &mut Process) -> ProcessContext<'_> {
+    let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
+    context
 }
 
 fn badarg() -> Term {
@@ -30,7 +33,7 @@ fn assert_binary(term: Term, expected: &[u8]) {
     assert_eq!(binary.as_bytes(), expected);
 }
 
-fn atom_context() -> ProcessContext {
+fn atom_context(process: &mut Process) -> ProcessContext<'_> {
     let table = Arc::new(AtomTable::with_common_atoms());
     table.intern("both");
     table.intern("all");
@@ -38,6 +41,7 @@ fn atom_context() -> ProcessContext {
     table.intern("trailing");
     let mut ctx = ProcessContext::new();
     ctx.set_atom_table(Some(table));
+    ctx.attach_process(process, 0);
     ctx
 }
 
@@ -45,34 +49,39 @@ fn atom_context() -> ProcessContext {
 
 #[test]
 fn identity_returns_atom_unchanged() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let term = Term::atom(Atom::OK);
     assert_eq!(bif_identity(&[term], &mut ctx), Ok(term));
 }
 
 #[test]
 fn identity_returns_integer_unchanged() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let term = Term::small_int(42);
     assert_eq!(bif_identity(&[term], &mut ctx), Ok(term));
 }
 
 #[test]
 fn identity_returns_nil_unchanged() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_identity(&[Term::NIL], &mut ctx), Ok(Term::NIL));
 }
 
 #[test]
 fn identity_returns_pid_unchanged() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let term = Term::pid(7);
     assert_eq!(bif_identity(&[term], &mut ctx), Ok(term));
 }
 
 #[test]
 fn identity_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_identity(&[], &mut ctx), Err(badarg()));
     assert_eq!(
         bif_identity(&[Term::NIL, Term::NIL], &mut ctx),
@@ -84,13 +93,15 @@ fn identity_rejects_wrong_arity() {
 
 #[test]
 fn debug_options_returns_empty_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_debug_options(&[Term::NIL], &mut ctx), Ok(Term::NIL));
 }
 
 #[test]
 fn debug_options_accepts_non_empty_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let mut cell = [0u64; 2];
     let list = write_cons(&mut cell, Term::small_int(1), Term::NIL).unwrap();
     assert_eq!(bif_debug_options(&[list], &mut ctx), Ok(Term::NIL));
@@ -98,7 +109,8 @@ fn debug_options_accepts_non_empty_list() {
 
 #[test]
 fn debug_options_accepts_any_term() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     // Stub is permissive — any single argument returns [].
     assert_eq!(
         bif_debug_options(&[Term::small_int(42)], &mut ctx),
@@ -108,7 +120,8 @@ fn debug_options_accepts_any_term() {
 
 #[test]
 fn debug_options_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_debug_options(&[], &mut ctx), Err(badarg()));
     assert_eq!(
         bif_debug_options(&[Term::NIL, Term::NIL], &mut ctx),
@@ -120,7 +133,8 @@ fn debug_options_rejects_wrong_arity() {
 
 #[test]
 fn logger_warning_returns_ok_for_binary_format() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 4];
     let format = binary::write_binary(&mut heap, b"test warning").unwrap();
     let args = Term::NIL;
@@ -132,7 +146,8 @@ fn logger_warning_returns_ok_for_binary_format() {
 
 #[test]
 fn logger_warning_returns_ok_for_atom_format() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let format = Term::atom(Atom::ERROR);
     let args = Term::NIL;
     assert_eq!(
@@ -143,7 +158,8 @@ fn logger_warning_returns_ok_for_atom_format() {
 
 #[test]
 fn logger_warning_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_logger_warning(&[], &mut ctx), Err(badarg()));
     assert_eq!(bif_logger_warning(&[Term::NIL], &mut ctx), Err(badarg()));
 }
@@ -152,7 +168,8 @@ fn logger_warning_rejects_wrong_arity() {
 
 #[test]
 fn characters_to_binary_passes_through_binary() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 3];
     let bin = binary::write_binary(&mut heap, b"hello").unwrap();
     let result = bif_characters_to_binary(&[bin], &mut ctx).unwrap();
@@ -162,7 +179,8 @@ fn characters_to_binary_passes_through_binary() {
 
 #[test]
 fn characters_to_binary_converts_empty_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let result = bif_characters_to_binary(&[Term::NIL], &mut ctx).unwrap();
     let bin = Binary::new(result).expect("should be a binary");
     assert!(bin.is_empty());
@@ -170,7 +188,8 @@ fn characters_to_binary_converts_empty_list() {
 
 #[test]
 fn characters_to_binary_converts_integer_code_point_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     // Build list [104, 105] = "hi"
     let mut c2 = [0u64; 2];
     let tail = write_cons(&mut c2, Term::small_int(105), Term::NIL).unwrap();
@@ -184,7 +203,8 @@ fn characters_to_binary_converts_integer_code_point_list() {
 
 #[test]
 fn characters_to_binary_rejects_non_binary_non_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_characters_to_binary(&[Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -193,13 +213,15 @@ fn characters_to_binary_rejects_non_binary_non_list() {
 
 #[test]
 fn characters_to_binary_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_characters_to_binary(&[], &mut ctx), Err(badarg()));
 }
 
 #[test]
 fn characters_to_binary_rejects_list_with_invalid_code_point() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     // List containing an atom (not a valid code point).
     let mut cell = [0u64; 2];
     let list = write_cons(&mut cell, Term::atom(Atom::OK), Term::NIL).unwrap();
@@ -210,7 +232,8 @@ fn characters_to_binary_rejects_list_with_invalid_code_point() {
 
 #[test]
 fn characters_to_list_converts_ascii_binary() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 3];
     let bin = binary::write_binary(&mut heap, b"AB").unwrap();
 
@@ -226,7 +249,8 @@ fn characters_to_list_converts_ascii_binary() {
 
 #[test]
 fn characters_to_list_returns_nil_for_empty_binary() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 2];
     let bin = binary::write_binary(&mut heap, b"").unwrap();
     assert_eq!(bif_characters_to_list(&[bin], &mut ctx), Ok(Term::NIL));
@@ -234,7 +258,8 @@ fn characters_to_list_returns_nil_for_empty_binary() {
 
 #[test]
 fn characters_to_list_handles_multibyte_utf8() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     // UTF-8 for 'e' with accent: U+00E9 = 0xC3 0xA9
     let mut heap = [0u64; 3];
     let bin = binary::write_binary(&mut heap, "é".as_bytes()).unwrap();
@@ -247,7 +272,8 @@ fn characters_to_list_handles_multibyte_utf8() {
 
 #[test]
 fn characters_to_list_rejects_non_binary() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_characters_to_list(&[Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -260,7 +286,8 @@ fn characters_to_list_rejects_non_binary() {
 
 #[test]
 fn characters_to_list_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_characters_to_list(&[], &mut ctx), Err(badarg()));
 }
 
@@ -268,7 +295,8 @@ fn characters_to_list_rejects_wrong_arity() {
 
 #[test]
 fn gleam_stdlib_string_functions_handle_binary_cases() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     assert_binary(
         gleam_stdlib_ffi::bif_string_replace(
             &[binary(b"hello"), binary(b"l"), binary(b"L")],
@@ -306,7 +334,8 @@ fn gleam_stdlib_string_functions_handle_binary_cases() {
 
 #[test]
 fn gleam_stdlib_other_functions_handle_binary_cases() {
-    let mut ctx = atom_context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = atom_context(&mut process);
     assert_eq!(
         gleam_stdlib_ffi::bif_less_than(&[Term::small_int(1), Term::small_int(2)], &mut ctx),
         Ok(Term::atom(Atom::TRUE))
@@ -361,7 +390,8 @@ fn gleam_stdlib_other_functions_handle_binary_cases() {
 
 #[test]
 fn string_bifs_handle_binary_cases() {
-    let mut ctx = atom_context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = atom_context(&mut process);
     assert_eq!(
         string_bifs::bif_length(&[binary(b"hello")], &mut ctx),
         Ok(Term::small_int(5))
@@ -401,7 +431,8 @@ fn string_bifs_handle_binary_cases() {
 
 #[test]
 fn string_split_returns_list_of_binaries_and_rejects_invalid_input() {
-    let mut ctx = atom_context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = atom_context(&mut process);
     let all = Term::atom(ctx.atom_table().unwrap().lookup("all").unwrap());
     let result =
         string_bifs::bif_split(&[binary(b"a-b-c"), binary(b"-"), all], &mut ctx).expect("split");
@@ -423,7 +454,8 @@ fn string_split_returns_list_of_binaries_and_rejects_invalid_input() {
 
 #[test]
 fn binary_part_extracts_slices_and_rejects_out_of_bounds() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 64);
+    let mut ctx = context(&mut process);
     assert_binary(
         bif_binary_part(
             &[binary(b"hello"), Term::small_int(1), Term::small_int(3)],

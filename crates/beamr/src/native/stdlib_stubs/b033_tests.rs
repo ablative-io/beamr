@@ -1,5 +1,6 @@
 use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, ProcessContext};
+use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary::{self, Binary};
 use crate::term::boxed::{Cons, Tuple, write_cons};
@@ -25,13 +26,14 @@ fn assert_binary(term: Term, expected: &[u8]) {
     assert_eq!(binary.as_bytes(), expected);
 }
 
-fn atom_context() -> ProcessContext {
+fn atom_context(process: &mut Process) -> ProcessContext<'_> {
     let table = Arc::new(AtomTable::with_common_atoms());
     for name in ["both", "all", "leading", "trailing", "standard", "nomatch"] {
         table.intern(name);
     }
     let mut ctx = ProcessContext::new();
     ctx.set_atom_table(Some(table));
+    ctx.attach_process(process, 0);
     ctx
 }
 
@@ -49,7 +51,8 @@ fn list(elements: &[Term]) -> Term {
 
 #[test]
 fn gleam_stdlib_each_stub_has_success_and_badarg_coverage() {
-    let mut ctx = atom_context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = atom_context(&mut process);
 
     assert_binary(
         gleam_stdlib_ffi::bif_string_replace(
@@ -199,7 +202,8 @@ fn gleam_stdlib_each_stub_has_success_and_badarg_coverage() {
 
 #[test]
 fn string_module_each_stub_has_success_and_badarg_coverage() {
-    let mut ctx = atom_context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = atom_context(&mut process);
 
     assert_eq!(
         string_bifs::bif_length(&[binary(b"hello")], &mut ctx),
@@ -338,7 +342,9 @@ fn string_module_each_stub_has_success_and_badarg_coverage() {
 
 #[test]
 fn binary_part_covers_normal_empty_and_invalid_edges() {
+    let mut process = Process::new(1, 64);
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
     assert_binary(
         bif_binary_part(
             &[binary(b"hello"), Term::small_int(1), Term::small_int(3)],
@@ -373,7 +379,8 @@ fn binary_part_covers_normal_empty_and_invalid_edges() {
 
 #[test]
 fn encoding_bifs_cover_exact_acceptance_and_round_trips() {
-    let mut ctx = atom_context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = atom_context(&mut process);
 
     assert_binary(
         encoding_bifs::bif_binary_encode_hex(&[binary(b"hello")], &mut ctx).expect("encode hex"),
@@ -425,7 +432,8 @@ fn b039_io_and_init_bifs_cover_sink_formatter_and_stop() {
     }
 
     let sink = Arc::new(RecordingSink::default());
-    let mut ctx = atom_context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = atom_context(&mut process);
     ctx.set_io_sink(sink.clone());
 
     assert_eq!(
@@ -460,7 +468,8 @@ fn b039_io_and_init_bifs_cover_sink_formatter_and_stop() {
         b"iodata-format",
     );
 
-    let mut null_ctx = atom_context();
+    let mut null_process = Process::new(1, 256);
+    let mut null_ctx = atom_context(&mut null_process);
     assert_eq!(
         io_bifs::bif_io_put_chars_1(&[binary(b"discarded")], &mut null_ctx),
         Ok(Term::atom(Atom::OK))

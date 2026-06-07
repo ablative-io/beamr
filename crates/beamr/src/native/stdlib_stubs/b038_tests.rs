@@ -1,5 +1,6 @@
 use crate::atom::{Atom, AtomTable};
 use crate::native::ProcessContext;
+use crate::process::Process;
 use crate::native::stdlib_stubs::lists_bifs::{
     bif_lists_append_1, bif_lists_append_2, bif_lists_join, bif_lists_reverse_2, bif_lists_seq,
 };
@@ -11,9 +12,10 @@ use crate::term::Term;
 use crate::term::boxed::{Cons, Map, Tuple, write_map};
 use crate::term::compare;
 
-fn context() -> ProcessContext {
+fn context(process: &mut Process) -> ProcessContext<'_> {
     let mut context = ProcessContext::new();
     context.set_atom_table(Some(std::sync::Arc::new(AtomTable::with_common_atoms())));
+    context.attach_process(process, 0);
     context
 }
 
@@ -62,7 +64,8 @@ fn assert_map_entries(term: Term, expected: &[(Term, Term)]) {
 
 #[test]
 fn maps_put_inserts_and_replaces_entries() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let empty = map_from_pairs(&[]);
     let inserted = bif_maps_put(&[Term::atom(Atom::OK), Term::small_int(1), empty], &mut ctx)
         .expect("put insert");
@@ -78,7 +81,8 @@ fn maps_put_inserts_and_replaces_entries() {
 
 #[test]
 fn maps_find_returns_ok_tuple_or_error_atom() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let map = map_from_pairs(&[(Term::atom(Atom::OK), Term::small_int(7))]);
     let found = bif_maps_find(&[Term::atom(Atom::OK), map], &mut ctx).expect("find hit");
     let tuple = Tuple::new(found).expect("{ok, value}");
@@ -93,7 +97,8 @@ fn maps_find_returns_ok_tuple_or_error_atom() {
 
 #[test]
 fn maps_keys_values_and_to_list_project_sorted_entries() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let map = map_from_pairs(&[
         (Term::atom(Atom::ERROR), Term::small_int(2)),
         (Term::atom(Atom::OK), Term::small_int(1)),
@@ -119,7 +124,8 @@ fn maps_keys_values_and_to_list_project_sorted_entries() {
 
 #[test]
 fn maps_with_and_without_select_entries_and_validate_keys_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let map = map_from_pairs(&[
         (Term::atom(Atom::OK), Term::small_int(1)),
         (Term::atom(Atom::ERROR), Term::small_int(2)),
@@ -138,7 +144,8 @@ fn maps_with_and_without_select_entries_and_validate_keys_list() {
 
 #[test]
 fn lists_append_flattens_list_of_lists_and_rejects_improper_parts() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let left = list_from_slice(&mut ctx, &[Term::small_int(1), Term::small_int(2)]);
     let right = list_from_slice(&mut ctx, &[Term::small_int(3), Term::small_int(4)]);
     let lists = list_from_slice(&mut ctx, &[left, right]);
@@ -158,7 +165,8 @@ fn lists_append_flattens_list_of_lists_and_rejects_improper_parts() {
 
 #[test]
 fn lists_append_two_preserves_right_tail_and_validates_left_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let left = list_from_slice(&mut ctx, &[Term::small_int(1), Term::small_int(2)]);
     let right = list_from_slice(&mut ctx, &[Term::small_int(3), Term::small_int(4)]);
 
@@ -180,7 +188,8 @@ fn lists_append_two_preserves_right_tail_and_validates_left_list() {
 
 #[test]
 fn lists_join_inserts_separator_and_handles_empty_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let list = list_from_slice(
         &mut ctx,
         &[Term::small_int(1), Term::small_int(2), Term::small_int(3)],
@@ -205,7 +214,8 @@ fn lists_join_inserts_separator_and_handles_empty_list() {
 
 #[test]
 fn lists_reverse_two_prepends_reversed_list_to_tail() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let list = list_from_slice(
         &mut ctx,
         &[Term::small_int(1), Term::small_int(2), Term::small_int(3)],
@@ -231,7 +241,8 @@ fn lists_reverse_two_prepends_reversed_list_to_tail() {
 
 #[test]
 fn lists_seq_builds_inclusive_range_and_empty_descending_range() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 256);
+    let mut ctx = context(&mut process);
     let result =
         bif_lists_seq(&[Term::small_int(1), Term::small_int(5)], &mut ctx).expect("seq ascending");
     assert_eq!(

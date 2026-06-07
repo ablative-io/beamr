@@ -2,20 +2,24 @@ use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
 use crate::native::ProcessContext;
+use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary::{self, Binary};
 use crate::term::boxed::{Cons, Float, Tuple, write_cons, write_float, write_tuple};
 
 use super::type_conversion_bifs::*;
 
-fn context() -> ProcessContext {
-    ProcessContext::new()
+fn context(process: &mut Process) -> ProcessContext<'_> {
+    let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
+    context
 }
 
-fn atom_context() -> ProcessContext {
+fn atom_context(process: &mut Process) -> ProcessContext<'_> {
     let table = Arc::new(AtomTable::with_common_atoms());
     let mut context = ProcessContext::new();
     context.set_atom_table(Some(table));
+    context.attach_process(process, 0);
     context
 }
 
@@ -55,21 +59,24 @@ fn list_to_vec(term: Term) -> Vec<Term> {
 
 #[test]
 fn atom_to_binary_converts_common_atom() {
-    let mut context = atom_context();
+    let mut process = Process::new(1, 128);
+    let mut context = atom_context(&mut process);
     let result = bif_atom_to_binary(&[Term::atom(Atom::OK)], &mut context).expect("ok");
     assert_binary(result, b"ok");
 }
 
 #[test]
 fn binary_to_float_parses_float_text() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     let result = bif_binary_to_float(&[binary(b"3.5")], &mut context).expect("float");
     assert_eq!(Float::new(result).expect("float").value(), 3.5);
 }
 
 #[test]
 fn binary_to_integer_parses_decimal() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     assert_eq!(
         bif_binary_to_integer(&[binary(b"42")], &mut context),
         Ok(Term::small_int(42))
@@ -78,7 +85,8 @@ fn binary_to_integer_parses_decimal() {
 
 #[test]
 fn binary_to_integer_parses_radix() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     assert_eq!(
         bif_binary_to_integer_radix(&[binary(b"FF"), Term::small_int(16)], &mut context),
         Ok(Term::small_int(255))
@@ -87,7 +95,8 @@ fn binary_to_integer_parses_radix() {
 
 #[test]
 fn float_converts_integer_and_preserves_float() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     let converted = bif_float(&[Term::small_int(7)], &mut context).expect("float");
     assert_eq!(Float::new(converted).expect("float").value(), 7.0);
 
@@ -98,14 +107,16 @@ fn float_converts_integer_and_preserves_float() {
 
 #[test]
 fn integer_to_binary_formats_decimal() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     let result = bif_integer_to_binary(&[Term::small_int(42)], &mut context).expect("binary");
     assert_binary(result, b"42");
 }
 
 #[test]
 fn integer_to_binary_formats_radix() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     let result =
         bif_integer_to_binary_radix(&[Term::small_int(255), Term::small_int(16)], &mut context)
             .expect("binary");
@@ -114,7 +125,8 @@ fn integer_to_binary_formats_radix() {
 
 #[test]
 fn integer_to_list_formats_decimal_chars() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     let result = bif_integer_to_list(&[Term::small_int(-42)], &mut context).expect("list");
     assert_eq!(
         list_to_vec(result),
@@ -128,7 +140,8 @@ fn integer_to_list_formats_decimal_chars() {
 
 #[test]
 fn iolist_to_binary_flattens_byte_list_and_binary_chunks() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     let iolist = list(&[Term::small_int(65), binary(b"BC"), Term::small_int(68)]);
     let result = bif_iolist_to_binary(&[iolist], &mut context).expect("binary");
     assert_binary(result, b"ABCD");
@@ -136,7 +149,8 @@ fn iolist_to_binary_flattens_byte_list_and_binary_chunks() {
 
 #[test]
 fn list_to_bitstring_returns_binary() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     let result = bif_list_to_bitstring(
         &[list(&[Term::small_int(1), Term::small_int(2)])],
         &mut context,
@@ -147,7 +161,8 @@ fn list_to_bitstring_returns_binary() {
 
 #[test]
 fn list_to_tuple_converts_values() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     let result = bif_list_to_tuple(
         &[list(&[
             Term::small_int(1),
@@ -166,7 +181,8 @@ fn list_to_tuple_converts_values() {
 
 #[test]
 fn tuple_to_list_converts_values() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     let mut heap = [0u64; 4];
     let tuple = write_tuple(
         &mut heap,
@@ -182,7 +198,8 @@ fn tuple_to_list_converts_values() {
 
 #[test]
 fn type_conversion_rejects_non_matching_types() {
-    let mut context = context();
+    let mut process = Process::new(1, 128);
+    let mut context = context(&mut process);
     assert_eq!(
         bif_binary_to_integer(&[Term::atom(Atom::OK)], &mut context),
         Err(badarg())

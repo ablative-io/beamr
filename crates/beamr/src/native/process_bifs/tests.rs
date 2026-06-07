@@ -6,6 +6,7 @@ use crate::native::supervision::{
     MonitorResult, SupervisionError, SupervisionFacility, SupervisionRecord,
 };
 use crate::native::{BifRegistryImpl, ProcessContext};
+use crate::process::Process;
 use crate::process::ExitReason;
 use crate::term::Term;
 use crate::term::boxed::write_cons;
@@ -472,7 +473,7 @@ fn exit_badarg_unknown_reason_atom() {
 
 // ---- Helpers ----
 
-fn spawn_ctx(next_pid: u64, caller_pid: u64) -> (Arc<MockSpawnFacility>, ProcessContext) {
+fn spawn_ctx(next_pid: u64, caller_pid: u64) -> (Arc<MockSpawnFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockSpawnFacility::new(next_pid));
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));
@@ -480,7 +481,7 @@ fn spawn_ctx(next_pid: u64, caller_pid: u64) -> (Arc<MockSpawnFacility>, Process
     (f, ctx)
 }
 
-fn link_ctx(caller_pid: u64) -> (Arc<MockLinkFacility>, ProcessContext) {
+fn link_ctx(caller_pid: u64) -> (Arc<MockLinkFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockLinkFacility::new());
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));
@@ -488,7 +489,7 @@ fn link_ctx(caller_pid: u64) -> (Arc<MockLinkFacility>, ProcessContext) {
     (f, ctx)
 }
 
-fn sup_ctx(next_ref: u64, caller_pid: u64) -> (Arc<MockSupervisionFacility>, ProcessContext) {
+fn sup_ctx(next_ref: u64, caller_pid: u64) -> (Arc<MockSupervisionFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockSupervisionFacility::new(next_ref));
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));

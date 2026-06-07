@@ -2,16 +2,18 @@ use std::sync::Arc;
 
 use crate::atom::AtomTable;
 use crate::native::{BifRegistryImpl, ProcessContext, stdlib_stubs::register_stdlib_stubs};
+use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary::{self, Binary};
 use crate::term::boxed::Map;
 
 use super::uri_bifs::*;
 
-fn context() -> ProcessContext {
+fn context(process: &mut Process) -> ProcessContext<'_> {
     let table = Arc::new(AtomTable::with_common_atoms());
     let mut context = ProcessContext::new();
     context.set_atom_table(Some(table));
+    context.attach_process(process, 0);
     context
 }
 
@@ -35,7 +37,8 @@ fn assert_binary(term: Term, expected: &[u8]) {
 
 #[test]
 fn percent_encode_and_decode_basic_bytes() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
 
     let encoded = bif_percent_encode(&[binary(b"hello world")], &mut context).expect("encoded");
     assert_binary(encoded, b"hello%20world");
@@ -46,7 +49,8 @@ fn percent_encode_and_decode_basic_bytes() {
 
 #[test]
 fn uri_parse_extracts_basic_fields() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let parsed = bif_uri_string_parse(&[binary(b"https://example.com/path?q=1")], &mut context)
         .expect("uri map");
     let map = Map::new(parsed).expect("map");
@@ -62,7 +66,8 @@ fn uri_parse_extracts_basic_fields() {
 
 #[test]
 fn parse_query_returns_binary_key_value_map() {
-    let mut context = context();
+    let mut process = Process::new(1, 256);
+    let mut context = context(&mut process);
     let parsed = bif_parse_query(&[binary(b"a=1&b=hello")], &mut context).expect("query map");
     let map = Map::new(parsed).expect("map");
 

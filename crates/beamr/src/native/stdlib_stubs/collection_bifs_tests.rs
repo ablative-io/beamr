@@ -2,6 +2,7 @@
 
 use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, ProcessContext};
+use crate::process::Process;
 use crate::term::Term;
 use crate::term::boxed::{Cons, Map, write_cons, write_map, write_tuple};
 
@@ -11,9 +12,10 @@ use super::collection_bifs::{
 };
 use super::register_stdlib_stubs;
 
-fn context() -> ProcessContext {
+fn context(process: &mut Process) -> ProcessContext<'_> {
     let mut context = ProcessContext::new();
     context.set_atom_table(Some(std::sync::Arc::new(AtomTable::with_common_atoms())));
+    context.attach_process(process, 0);
     context
 }
 
@@ -25,7 +27,8 @@ fn badarg() -> Term {
 
 #[test]
 fn maps_from_list_builds_map_from_2tuple_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     // Build [{1, ok}, {2, error}]
     let mut t1_heap = [0u64; 3];
@@ -47,7 +50,8 @@ fn maps_from_list_builds_map_from_2tuple_list() {
 
 #[test]
 fn maps_from_list_empty_list_returns_empty_map() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let result = bif_maps_from_list(&[Term::NIL], &mut ctx).unwrap();
     let map = Map::new(result).expect("should be a map");
     assert_eq!(map.len(), 0);
@@ -55,7 +59,8 @@ fn maps_from_list_empty_list_returns_empty_map() {
 
 #[test]
 fn maps_from_list_duplicate_keys_last_wins() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     // Build [{1, ok}, {1, error}] — last value (error) should win.
     let mut t1_heap = [0u64; 3];
@@ -76,7 +81,8 @@ fn maps_from_list_duplicate_keys_last_wins() {
 
 #[test]
 fn maps_from_list_rejects_non_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_maps_from_list(&[Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -85,7 +91,8 @@ fn maps_from_list_rejects_non_list() {
 
 #[test]
 fn maps_from_list_rejects_list_of_non_tuples() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut cell = [0u64; 2];
     let list = write_cons(&mut cell, Term::small_int(1), Term::NIL).unwrap();
     assert_eq!(bif_maps_from_list(&[list], &mut ctx), Err(badarg()));
@@ -93,7 +100,8 @@ fn maps_from_list_rejects_list_of_non_tuples() {
 
 #[test]
 fn maps_from_list_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_maps_from_list(&[], &mut ctx), Err(badarg()));
     assert_eq!(
         bif_maps_from_list(&[Term::NIL, Term::NIL], &mut ctx),
@@ -105,7 +113,8 @@ fn maps_from_list_rejects_wrong_arity() {
 
 #[test]
 fn maps_merge_combines_two_maps() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     let mut heap1 = [0u64; 4];
     let m1 = write_map(&mut heap1, &[Term::small_int(1)], &[Term::atom(Atom::OK)]).unwrap();
@@ -127,7 +136,8 @@ fn maps_merge_combines_two_maps() {
 
 #[test]
 fn maps_merge_second_overrides_first_on_collision() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     let mut heap1 = [0u64; 4];
     let m1 = write_map(&mut heap1, &[Term::small_int(1)], &[Term::atom(Atom::OK)]).unwrap();
@@ -148,7 +158,8 @@ fn maps_merge_second_overrides_first_on_collision() {
 
 #[test]
 fn maps_merge_empty_maps() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     let mut heap1 = [0u64; 2];
     let m1 = write_map(&mut heap1, &[], &[]).unwrap();
@@ -162,7 +173,8 @@ fn maps_merge_empty_maps() {
 
 #[test]
 fn maps_merge_rejects_non_maps() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let mut heap = [0u64; 4];
     let m = write_map(&mut heap, &[Term::small_int(1)], &[Term::atom(Atom::OK)]).unwrap();
 
@@ -178,7 +190,8 @@ fn maps_merge_rejects_non_maps() {
 
 #[test]
 fn maps_merge_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_maps_merge(&[], &mut ctx), Err(badarg()));
 }
 
@@ -186,7 +199,8 @@ fn maps_merge_rejects_wrong_arity() {
 
 #[test]
 fn maps_remove_removes_existing_key() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     let mut heap = [0u64; 6];
     let m = write_map(
@@ -205,7 +219,8 @@ fn maps_remove_removes_existing_key() {
 
 #[test]
 fn maps_remove_returns_same_structure_if_key_not_present() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     let mut heap = [0u64; 4];
     let m = write_map(&mut heap, &[Term::small_int(1)], &[Term::atom(Atom::OK)]).unwrap();
@@ -218,7 +233,8 @@ fn maps_remove_returns_same_structure_if_key_not_present() {
 
 #[test]
 fn maps_remove_from_single_entry_map_returns_empty() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     let mut heap = [0u64; 4];
     let m = write_map(&mut heap, &[Term::small_int(1)], &[Term::atom(Atom::OK)]).unwrap();
@@ -230,7 +246,8 @@ fn maps_remove_from_single_entry_map_returns_empty() {
 
 #[test]
 fn maps_remove_rejects_non_map() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_maps_remove(&[Term::small_int(1), Term::small_int(2)], &mut ctx),
         Err(badarg())
@@ -239,7 +256,8 @@ fn maps_remove_rejects_non_map() {
 
 #[test]
 fn maps_remove_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_maps_remove(&[], &mut ctx), Err(badarg()));
 }
 
@@ -247,7 +265,8 @@ fn maps_remove_rejects_wrong_arity() {
 
 #[test]
 fn maps_map_stub_returns_badarg() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     let mut heap = [0u64; 4];
     let m = write_map(&mut heap, &[Term::small_int(1)], &[Term::atom(Atom::OK)]).unwrap();
@@ -262,7 +281,8 @@ fn maps_map_stub_returns_badarg() {
 
 #[test]
 fn maps_map_stub_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_maps_map(&[], &mut ctx), Err(badarg()));
     assert_eq!(bif_maps_map(&[Term::NIL], &mut ctx), Err(badarg()));
 }
@@ -271,7 +291,8 @@ fn maps_map_stub_rejects_wrong_arity() {
 
 #[test]
 fn lists_reverse_reverses_proper_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     // Build [1, 2, 3]
     let mut c3 = [0u64; 2];
@@ -295,13 +316,15 @@ fn lists_reverse_reverses_proper_list() {
 
 #[test]
 fn lists_reverse_empty_list_returns_empty() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_lists_reverse(&[Term::NIL], &mut ctx), Ok(Term::NIL));
 }
 
 #[test]
 fn lists_reverse_single_element() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
 
     let mut cell = [0u64; 2];
     let list = write_cons(&mut cell, Term::small_int(42), Term::NIL).unwrap();
@@ -314,7 +337,8 @@ fn lists_reverse_single_element() {
 
 #[test]
 fn lists_reverse_rejects_non_list() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_lists_reverse(&[Term::small_int(42)], &mut ctx),
         Err(badarg())
@@ -323,7 +347,8 @@ fn lists_reverse_rejects_non_list() {
 
 #[test]
 fn lists_reverse_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_lists_reverse(&[], &mut ctx), Err(badarg()));
     assert_eq!(
         bif_lists_reverse(&[Term::NIL, Term::NIL], &mut ctx),
@@ -335,7 +360,8 @@ fn lists_reverse_rejects_wrong_arity() {
 
 #[test]
 fn timer_sleep_returns_ok_for_zero() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_timer_sleep(&[Term::small_int(0)], &mut ctx),
         Ok(Term::atom(Atom::OK))
@@ -344,7 +370,8 @@ fn timer_sleep_returns_ok_for_zero() {
 
 #[test]
 fn timer_sleep_returns_ok_for_small_duration() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     // Sleep 1ms — fast enough for tests.
     assert_eq!(
         bif_timer_sleep(&[Term::small_int(1)], &mut ctx),
@@ -354,7 +381,8 @@ fn timer_sleep_returns_ok_for_small_duration() {
 
 #[test]
 fn timer_sleep_rejects_negative() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_timer_sleep(&[Term::small_int(-1)], &mut ctx),
         Err(badarg())
@@ -363,7 +391,8 @@ fn timer_sleep_rejects_negative() {
 
 #[test]
 fn timer_sleep_rejects_non_integer() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_timer_sleep(&[Term::atom(Atom::OK)], &mut ctx),
         Err(badarg())
@@ -372,7 +401,8 @@ fn timer_sleep_rejects_non_integer() {
 
 #[test]
 fn timer_sleep_rejects_wrong_arity() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_timer_sleep(&[], &mut ctx), Err(badarg()));
 }
 

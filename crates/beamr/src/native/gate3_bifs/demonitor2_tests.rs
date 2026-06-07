@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::atom::Atom;
 use crate::native::ProcessContext;
+use crate::process::Process;
 use crate::native::supervision::{
     MonitorResult, SupervisionError, SupervisionFacility, SupervisionRecord,
 };
@@ -19,7 +20,7 @@ fn sup_ctx(
     next_ref: u64,
     caller_pid: u64,
     alive: bool,
-) -> (Arc<MockSupervisionFacility>, ProcessContext) {
+) -> (Arc<MockSupervisionFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockSupervisionFacility::new(next_ref, alive));
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));

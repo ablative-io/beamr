@@ -22,6 +22,7 @@ use beamr::native::process_bifs::register_gate2_bifs;
 use beamr::native::selector_ffi::register_selector_bifs;
 use beamr::native::stdlib_stubs::register_stdlib_stubs;
 use beamr::term::Term;
+use beamr::process::Process;
 use beamr::term::boxed::Cons;
 
 /// Set up the full BIF registry matching the CLI.
@@ -227,7 +228,9 @@ fn erlang_list_append_concatenates() {
         .lookup(erlang, append, 2)
         .expect("erlang:++/2 should be registered");
 
+    let process = Box::leak(Box::new(Process::new(1, 256)));
     let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
 
     // [] ++ [3] = [3]
     let cell = Box::leak(Box::new([0u64; 2]));
@@ -319,7 +322,9 @@ fn erlang_pid_to_list_formats_correctly() {
         .lookup(erlang, ptl, 1)
         .expect("erlang:pid_to_list/1 should be registered");
 
+    let process = Box::leak(Box::new(Process::new(1, 256)));
     let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
     let pid_term = Term::pid(7);
 
     let result = (entry.function)(&[pid_term], &mut context).expect("pid_to_list should succeed");
@@ -372,7 +377,9 @@ fn gleam_string_inspect_returns_binary() {
         .lookup(module, function, 1)
         .expect("gleam@string:inspect/1 should be registered");
 
+    let process = Box::leak(Box::new(Process::new(1, 256)));
     let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
     let result = (entry.function)(&[Term::small_int(42)], &mut context);
     assert!(result.is_ok(), "inspect should return a binary term");
 }

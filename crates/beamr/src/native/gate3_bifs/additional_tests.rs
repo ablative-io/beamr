@@ -1,12 +1,15 @@
 use super::*;
 use crate::atom::Atom;
 use crate::native::ProcessContext;
+use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary;
 use crate::term::boxed::{Float, write_float, write_map};
 
-fn context() -> ProcessContext {
-    ProcessContext::new()
+fn context(process: &mut Process) -> ProcessContext<'_> {
+    let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
+    context
 }
 
 fn badarg() -> Term {
@@ -25,14 +28,16 @@ fn binary_term(bytes: &[u8]) -> Term {
 
 #[test]
 fn round_and_trunc_convert_floats_to_integers() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_round(&[float(3.7)], &mut ctx), Ok(Term::small_int(4)));
     assert_eq!(bif_trunc(&[float(3.7)], &mut ctx), Ok(Term::small_int(3)));
 }
 
 #[test]
 fn type_and_map_helpers_return_expected_values() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let key = Term::atom(Atom::OK);
     let val = Term::small_int(9);
     let map_heap = Box::leak(vec![0u64; 4].into_boxed_slice());
@@ -59,7 +64,8 @@ fn type_and_map_helpers_return_expected_values() {
 
 #[test]
 fn binary_part_and_bit_size_operate_on_binaries() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     let result = bif_binary_part(
         &[
             binary_term(b"abcdef"),
@@ -81,7 +87,8 @@ fn binary_part_and_bit_size_operate_on_binaries() {
 
 #[test]
 fn unary_minus_negates_integers_and_floats() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(
         bif_unary_minus(&[Term::small_int(5)], &mut ctx),
         Ok(Term::small_int(-5))
@@ -92,7 +99,8 @@ fn unary_minus_negates_integers_and_floats() {
 
 #[test]
 fn additional_bifs_reject_bad_arguments() {
-    let mut ctx = context();
+    let mut process = Process::new(1, 128);
+    let mut ctx = context(&mut process);
     assert_eq!(bif_round(&[Term::atom(Atom::OK)], &mut ctx), Err(badarg()));
     assert_eq!(
         bif_map_size(&[Term::atom(Atom::OK)], &mut ctx),

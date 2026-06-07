@@ -292,9 +292,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    fn context() -> ProcessContext {
+    fn context(process: &mut Process) -> ProcessContext<'_> {
         let mut context = ProcessContext::new();
         context.set_atom_table(Some(Arc::new(AtomTable::with_common_atoms())));
+        context.attach_process(process, 0);
         context
     }
 
@@ -312,7 +313,8 @@ mod tests {
 
     #[test]
     fn arithmetic_bifs_return_small_integer_results() {
-        let mut context = context();
+        let mut process = Process::new(1, 128);
+        let mut context = context(&mut process);
 
         assert_eq!(
             add(&[small_int(3), small_int(4)], &mut context),
@@ -338,7 +340,8 @@ mod tests {
 
     #[test]
     fn arithmetic_bifs_return_badarith_for_invalid_inputs() {
-        let mut context = context();
+        let mut process = Process::new(1, 128);
+        let mut context = context(&mut process);
 
         assert_eq!(
             div(&[small_int(7), small_int(0)], &mut context),
@@ -378,7 +381,8 @@ mod tests {
 
     #[test]
     fn comparison_bifs_return_true_or_false_atoms() {
-        let mut context = context();
+        let mut process = Process::new(1, 128);
+        let mut context = context(&mut process);
 
         assert_eq!(
             less_than(&[small_int(1), small_int(2)], &mut context),
@@ -416,7 +420,8 @@ mod tests {
 
     #[test]
     fn comparison_bifs_return_badarg_only_for_wrong_arity() {
-        let mut context = context();
+        let mut process = Process::new(1, 128);
+        let mut context = context(&mut process);
 
         // Wrong arity is the sole error condition for total-order comparisons.
         assert_eq!(less_than(&[small_int(1)], &mut context), Err(badarg()));
@@ -430,7 +435,8 @@ mod tests {
 
     #[test]
     fn comparison_bifs_use_beam_total_term_order_across_types() {
-        let mut context = context();
+        let mut process = Process::new(1, 128);
+        let mut context = context(&mut process);
 
         // number < atom: `1 < a` is true; `a >= 1` is true.
         assert_eq!(
@@ -476,7 +482,8 @@ mod tests {
     /// disagreed (BIF raised `badarith` where the opcode returned a boolean).
     #[test]
     fn comparison_bifs_agree_with_opcode_compare_cmp() {
-        let mut context = context();
+        let mut process = Process::new(1, 128);
+        let mut context = context(&mut process);
 
         let mut list_heap = [0_u64; 2];
         let list = write_cons(&mut list_heap, small_int(1), Term::NIL).expect("cons");
@@ -511,7 +518,8 @@ mod tests {
 
     #[test]
     fn utility_bifs_exit_or_return_true() {
-        let mut context = context();
+        let mut process = Process::new(1, 128);
+        let mut context = context(&mut process);
 
         assert_eq!(
             error(&[Term::atom(Atom::BADARG)], &mut context),
@@ -525,7 +533,8 @@ mod tests {
 
     #[test]
     fn utility_bifs_return_badarg_for_wrong_arity() {
-        let mut context = context();
+        let mut process = Process::new(1, 128);
+        let mut context = context(&mut process);
 
         assert_eq!(error(&[], &mut context), Err(badarg()));
         assert_eq!(display(&[], &mut context), Err(badarg()));

@@ -1,11 +1,14 @@
 use crate::atom::Atom;
 use crate::native::ProcessContext;
+use crate::process::Process;
 use crate::term::Term;
 
 use super::bitwise_bifs::*;
 
-fn context() -> ProcessContext {
-    ProcessContext::new()
+fn context(process: &mut Process) -> ProcessContext<'_> {
+    let mut context = ProcessContext::new();
+    context.attach_process(process, 0);
+    context
 }
 
 fn badarg() -> Term {
@@ -14,7 +17,8 @@ fn badarg() -> Term {
 
 #[test]
 fn bitwise_acceptance_values_match_erlang() {
-    let mut context = context();
+    let mut process = Process::new(1, 64);
+    let mut context = context(&mut process);
     assert_eq!(
         bif_band(&[Term::small_int(5), Term::small_int(3)], &mut context),
         Ok(Term::small_int(1))
@@ -43,7 +47,8 @@ fn bitwise_acceptance_values_match_erlang() {
 
 #[test]
 fn bitwise_rejects_non_integer_arguments() {
-    let mut context = context();
+    let mut process = Process::new(1, 64);
+    let mut context = context(&mut process);
     assert_eq!(
         bif_band(&[Term::atom(Atom::OK), Term::small_int(1)], &mut context),
         Err(badarg())
