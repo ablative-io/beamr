@@ -19,11 +19,12 @@ pub fn bif_atom_to_binary(args: &[Term], context: &mut ProcessContext) -> Result
     if encoding != Atom::UTF8 && encoding != Atom::LATIN1 {
         return Err(badarg());
     }
-    let table = context.atom_table().ok_or_else(badarg)?;
-    let name = table.resolve(atom).ok_or_else(badarg)?;
-    let bytes = name.as_bytes();
+    let bytes = {
+        let table = context.atom_table().ok_or_else(badarg)?;
+        table.resolve(atom).ok_or_else(badarg)?.as_bytes().to_vec()
+    };
 
-    context.alloc_binary(bytes).map_err(|_| badarg())
+    context.alloc_binary(&bytes).map_err(|_| badarg())
 }
 
 /// erlang:binary_to_existing_atom/1 — looks up a binary string in the atom

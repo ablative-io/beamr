@@ -122,7 +122,7 @@ pub fn bif_lists_reverse(args: &[Term], context: &mut ProcessContext) -> Result<
 /// documented limitation. The real implementation should be loaded from
 /// compiled BEAM bytecode (see `fixtures/stdlib/`) once maps:to_list/1 and
 /// maps:from_list/1 are available within Erlang-level code.
-pub fn bif_maps_map(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_maps_map(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
     let [_fun, _map] = args else {
         return Err(badarg());
     };
@@ -137,7 +137,7 @@ pub fn bif_maps_map(args: &[Term], context: &mut ProcessContext) -> Result<Term,
 /// Returns the atom `ok`. For now this uses `std::thread::sleep` which blocks
 /// the thread. This is acceptable for the single-process CLI path; a future
 /// scheduler integration should yield the process instead.
-pub fn bif_timer_sleep(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_timer_sleep(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
     let [ms_term] = args else {
         return Err(badarg());
     };

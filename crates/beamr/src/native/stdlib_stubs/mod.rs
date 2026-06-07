@@ -352,10 +352,7 @@ pub fn bif_logger_warning(args: &[Term], _context: &mut ProcessContext) -> Resul
 /// If the input is already a binary, returns it unchanged. If it is a list
 /// of integers, converts code points to UTF-8 bytes and returns a binary.
 /// Returns `{error, Binary, Rest}` on failure via badarg for now.
-pub fn bif_characters_to_binary(
-    args: &[Term],
-    context: &mut ProcessContext,
-) -> Result<Term, Term> {
+pub fn bif_characters_to_binary(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [input] = args else {
         return Err(badarg());
     };
@@ -450,7 +447,9 @@ pub fn bif_binary_part(args: &[Term], context: &mut ProcessContext) -> Result<Te
     if end > bytes.len() {
         return Err(badarg());
     }
-    context.alloc_binary(&bytes[offset..end]).map_err(|_| badarg())
+    context
+        .alloc_binary(&bytes[offset..end])
+        .map_err(|_| badarg())
 }
 
 /// rand:uniform/0 — returns a random float in [0.0, 1.0).
@@ -498,15 +497,20 @@ pub fn bif_fun_info(args: &[Term], context: &mut ProcessContext) -> Result<Term,
         return Err(badarg());
     };
     let item_atom = item.as_atom().ok_or_else(badarg)?;
-    let at = context.atom_table().ok_or_else(badarg)?;
-    let item_name = at.resolve(item_atom).unwrap_or("");
-    let value = match item_name {
+    let item_name = context
+        .atom_table()
+        .ok_or_else(badarg)?
+        .resolve(item_atom)
+        .unwrap_or("")
+        .to_owned();
+    let value = match item_name.as_str() {
         "arity" => {
-            let arity = crate::term::boxed::Closure::new(*fun)
-                .map_or(0, |c| i64::from(c.arity()));
+            let arity = crate::term::boxed::Closure::new(*fun).map_or(0, |c| i64::from(c.arity()));
             Term::small_int(arity)
         }
-        "module" | "name" | "type" => context.alloc_binary(item_name.as_bytes()).map_err(|_| badarg())?,
+        "module" | "name" | "type" => context
+            .alloc_binary(item_name.as_bytes())
+            .map_err(|_| badarg())?,
         "env" => Term::NIL,
         _ => Term::atom(Atom::UNDEFINED),
     };
@@ -525,9 +529,10 @@ pub fn bif_fwrite_g(args: &[Term], context: &mut ProcessContext) -> Result<Term,
     } else {
         return Err(badarg());
     };
-    context.alloc_binary(format!("{f}").as_bytes()).map_err(|_| badarg())
+    context
+        .alloc_binary(format!("{f}").as_bytes())
+        .map_err(|_| badarg())
 }
-
 
 fn badarg() -> Term {
     Term::atom(Atom::BADARG)
@@ -558,8 +563,7 @@ fn bif_json_encode(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         return Err(badarg());
     };
     let atom_table = context.atom_table().ok_or_else(badarg)?;
-    let json_value =
-        crate::term::json::term_to_value(*input, atom_table).map_err(|_| badarg())?;
+    let json_value = crate::term::json::term_to_value(*input, atom_table).map_err(|_| badarg())?;
     let json_bytes = serde_json::to_vec(&json_value).map_err(|_| badarg())?;
     context.alloc_binary(&json_bytes).map_err(|_| badarg())
 }

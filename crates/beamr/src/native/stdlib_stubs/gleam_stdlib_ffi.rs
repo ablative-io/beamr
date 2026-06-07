@@ -147,8 +147,9 @@ pub fn bif_inspect(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         return make_binary(context, integer.to_string().as_bytes());
     }
     if let Some(atom) = value.as_atom() {
-        if let Some(table) = context.atom_table()
-            && let Some(name) = table.resolve(atom)
+        if let Some(name) = context
+            .atom_table()
+            .and_then(|table| table.resolve(atom).map(str::to_owned))
         {
             return make_binary(context, name.as_bytes());
         }
@@ -165,7 +166,8 @@ pub fn bif_string_remove_prefix(args: &[Term], context: &mut ProcessContext) -> 
     let input = binary_bytes(*input)?;
     let prefix = binary_bytes(*prefix)?;
     if input.starts_with(prefix) {
-        ok_tuple1(context, make_binary(context, &input[prefix.len()..])?)
+        let value = make_binary(context, &input[prefix.len()..])?;
+        ok_tuple1(context, value)
     } else {
         Ok(Term::atom(Atom::ERROR))
     }
@@ -179,10 +181,8 @@ pub fn bif_string_remove_suffix(args: &[Term], context: &mut ProcessContext) -> 
     let input = binary_bytes(*input)?;
     let suffix = binary_bytes(*suffix)?;
     if input.ends_with(suffix) {
-        ok_tuple1(
-            context,
-            make_binary(context, &input[..input.len() - suffix.len()])?,
-        )
+        let value = make_binary(context, &input[..input.len() - suffix.len()])?;
+        ok_tuple1(context, value)
     } else {
         Ok(Term::atom(Atom::ERROR))
     }

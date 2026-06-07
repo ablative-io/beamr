@@ -41,7 +41,10 @@ pub fn bif_pow(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term
     let [base, exponent] = args else {
         return Err(badarg());
     };
-    make_float(context, number_to_f64(*base)?.powf(number_to_f64(*exponent)?))
+    make_float(
+        context,
+        number_to_f64(*base)?.powf(number_to_f64(*exponent)?),
+    )
 }
 
 fn number_to_f64(term: Term) -> Result<f64, Term> {
@@ -57,7 +60,7 @@ fn number_to_f64(term: Term) -> Result<f64, Term> {
     }
 }
 
-fn make_float(context, value: f64) -> Result<Term, Term> {
+fn make_float(context: &mut ProcessContext, value: f64) -> Result<Term, Term> {
     if !value.is_finite() {
         return Err(badarg());
     }

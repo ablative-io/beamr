@@ -102,11 +102,13 @@ pub fn bif_int_from_base_string(args: &[Term], context: &mut ProcessContext) -> 
 }
 
 pub fn bif_parse_float(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [string] = args else {
         return Err(badarg());
     };
-    let result = parse_float_binary(*string).and_then(make_float);
+    let result = match parse_float_binary(*string) {
+        Ok(value) => make_float(context, value),
+        Err(error) => Err(error),
+    };
     result_tuple(context, result)
 }
 

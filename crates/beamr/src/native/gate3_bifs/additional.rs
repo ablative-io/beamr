@@ -7,7 +7,7 @@ use crate::term::binary::Binary;
 use crate::term::boxed::{Float, Map};
 
 /// erlang:round/1 — rounds a number to the nearest integer.
-pub fn bif_round(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_round(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
     let [value] = args else {
         return Err(badarg());
     };
@@ -18,7 +18,7 @@ pub fn bif_round(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
 }
 
 /// erlang:trunc/1 — truncates a number toward zero.
-pub fn bif_trunc(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_trunc(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
     let [value] = args else {
         return Err(badarg());
     };
