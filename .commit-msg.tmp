@@ -1,1 +1,1 @@
-feat(beamr): materialise literals in module constant pools
+fix(beamr): harden constant pool clone retargeting

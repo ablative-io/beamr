@@ -8,7 +8,9 @@ use crate::error::LoadError;
 use crate::loader::Literal;
 use crate::term::Term;
 use crate::term::binary::{packed_word_count, write_binary};
-use crate::term::boxed::{write_bigint, write_cons, write_float, write_map, write_tuple};
+use crate::term::boxed::{
+    BoxedHeader, BoxedTag, write_bigint, write_cons, write_float, write_map, write_tuple,
+};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum PoolRoot {
@@ -42,10 +44,12 @@ pub struct ConstantPool {
 
 impl Clone for ConstantPool {
     fn clone(&self) -> Self {
-        Self {
+        let mut cloned = Self {
             blocks: self.blocks.clone(),
             roots: self.roots.clone(),
-        }
+        };
+        cloned.retarget_embedded_terms(self);
+        cloned
     }
 }
 
@@ -83,6 +87,25 @@ impl ConstantPool {
     #[must_use]
     pub fn block_count(&self) -> usize {
         self.blocks.len()
+    }
+
+    fn retarget_embedded_terms(&mut self, original: &Self) {
+        for root in &self.roots {
+            let block_index = match root {
+                PoolRoot::Boxed { block, .. } | PoolRoot::List { block, .. } => *block,
+                PoolRoot::Immediate(_) => continue,
+            };
+            let Some(original_block) = original.blocks.get(block_index) else {
+                continue;
+            };
+            let Some(block) = self.blocks.get_mut(block_index) else {
+                continue;
+            };
+            let Some(original_term) = root.term(&original.blocks) else {
+                continue;
+            };
+            retarget_term(original_term, block, original_block);
+        }
     }
 
     fn push_immediate(&mut self, term: Term) {
@@ -141,29 +164,91 @@ fn immediate_term(literal: &Literal) -> Result<Term, LoadError> {
 }
 
 fn root_offset(term: Term, block: &[u64]) -> Result<usize, LoadError> {
-    let Some(ptr) = term.heap_ptr() else {
-        return Err(LoadError::ValidationError(
-            "constant-pool root is not a heap pointer".into(),
-        ));
-    };
+    term_offset_in_block(term, block)
+        .ok_or_else(|| LoadError::ValidationError("constant-pool root points outside block".into()))
+}
+
+fn term_offset_in_block(term: Term, block: &[u64]) -> Option<usize> {
+    let ptr = term.heap_ptr()? as usize;
     let base = block.as_ptr() as usize;
-    let ptr = ptr as usize;
-    let bytes = ptr.checked_sub(base).ok_or_else(|| {
-        LoadError::ValidationError("constant-pool root points before block".into())
-    })?;
+    let bytes = ptr.checked_sub(base)?;
     let word_size = std::mem::size_of::<u64>();
     if !bytes.is_multiple_of(word_size) {
-        return Err(LoadError::ValidationError(
-            "constant-pool root is not word aligned".into(),
-        ));
+        return None;
     }
     let offset = bytes / word_size;
-    if offset >= block.len() {
-        return Err(LoadError::ValidationError(
-            "constant-pool root points outside block".into(),
-        ));
+    (offset < block.len()).then_some(offset)
+}
+
+fn retarget_term(original_term: Term, block: &mut [u64], original_block: &[u64]) {
+    let Some(offset) = term_offset_in_block(original_term, original_block) else {
+        return;
+    };
+    if original_term.is_list() {
+        retarget_cons(block, original_block, offset);
+        return;
     }
-    Ok(offset)
+
+    let Some(header) = original_block.get(offset).copied() else {
+        return;
+    };
+    match BoxedHeader::tag(header) {
+        Some(BoxedTag::Tuple) => retarget_tuple(block, original_block, offset),
+        Some(BoxedTag::Map) => retarget_map(block, original_block, offset),
+        Some(BoxedTag::Float | BoxedTag::BigInt | BoxedTag::Binary) | None => {}
+        Some(BoxedTag::Closure)
+        | Some(BoxedTag::Reference)
+        | Some(BoxedTag::BinaryBuilder)
+        | Some(BoxedTag::MatchContext) => {}
+    }
+}
+
+fn retarget_tuple(block: &mut [u64], original_block: &[u64], offset: usize) {
+    let size = BoxedHeader::size(original_block[offset]);
+    let end = offset
+        .saturating_add(1)
+        .saturating_add(size)
+        .min(block.len());
+    for index in offset.saturating_add(1)..end {
+        retarget_word(block, original_block, index);
+    }
+}
+
+fn retarget_map(block: &mut [u64], original_block: &[u64], offset: usize) {
+    let size = BoxedHeader::size(original_block[offset]);
+    let end = offset
+        .saturating_add(1)
+        .saturating_add(size)
+        .min(block.len());
+    // Payload word 0 stores the map arity; key/value arrays begin at word 1.
+    for index in offset.saturating_add(2)..end {
+        retarget_word(block, original_block, index);
+    }
+}
+
+fn retarget_cons(block: &mut [u64], original_block: &[u64], offset: usize) {
+    retarget_word(block, original_block, offset);
+    retarget_word(block, original_block, offset.saturating_add(1));
+}
+
+fn retarget_word(block: &mut [u64], original_block: &[u64], index: usize) {
+    let cloned_base = block.as_ptr();
+    let Some(term) = block.get(index).copied().map(Term::from_raw) else {
+        return;
+    };
+    let Some(offset) = term_offset_in_block(term, original_block) else {
+        return;
+    };
+    let replacement = if term.is_list() {
+        retarget_cons(block, original_block, offset);
+        Term::list_ptr(cloned_base.wrapping_add(offset))
+    } else {
+        retarget_term(term, block, original_block);
+        Term::boxed_ptr(cloned_base.wrapping_add(offset))
+    };
+    if let Some(word) = block.get_mut(index) {
+        *word = replacement.raw();
+    }
 }
 
 fn materialise_into(
@@ -376,14 +461,21 @@ mod tests {
     #[test]
     fn cloned_pool_rebuilds_terms_to_point_at_cloned_blocks() {
         let pool =
-            materialise_literals(&[Literal::Binary(b"owned".to_vec())]).expect("pool materialises");
+            materialise_literals(&[Literal::Tuple(vec![Literal::Binary(b"owned".to_vec())])])
+                .expect("pool materialises");
         let cloned = pool.clone();
         let original = pool.get(0).expect("original term");
         let copied = cloned.get(0).expect("cloned term");
 
         assert_ne!(original.heap_ptr(), copied.heap_ptr());
+        let original_tuple = Tuple::new(original).expect("original tuple");
+        let copied_tuple = Tuple::new(copied).expect("copied tuple");
+        let original_binary = original_tuple.get(0).expect("original binary");
+        let copied_binary = copied_tuple.get(0).expect("copied binary");
+
+        assert_ne!(original_binary.heap_ptr(), copied_binary.heap_ptr());
         assert_eq!(
-            Binary::new(copied).map(|binary| binary.as_bytes()),
+            Binary::new(copied_binary).map(|binary| binary.as_bytes()),
             Some(&b"owned"[..])
         );
     }
