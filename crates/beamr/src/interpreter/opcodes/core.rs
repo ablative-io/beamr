@@ -482,6 +482,7 @@ fn call_external_target(
                 context.set_link_facility(svc.link_facility.clone());
                 context.set_supervision_facility(svc.supervision_facility.clone());
                 context.set_code_management_facility(svc.code_management_facility.clone());
+                context.set_group_leader_facility(svc.group_leader_facility.clone());
                 if let Some(sink) = &svc.io_sink {
                     context.set_io_sink(Arc::clone(sink));
                 }

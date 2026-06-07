@@ -17,6 +17,7 @@ pub mod links;
 pub mod meridian_ffi;
 pub mod otp_stubs;
 pub mod process_bifs;
+pub mod process_info_bifs;
 pub mod registry;
 pub mod select;
 pub mod selector_ffi;
@@ -41,6 +42,7 @@ pub use context::{
     ExceptionClass, NativeContinuation, ProcessContext, SuspendRequest, TrampolineRequest,
 };
 pub use links::LinkFacility;
+pub use process_info_bifs::GroupLeaderFacility;
 pub use registry::RegistryFacility;
 pub use select::SelectFacility;
 pub use spawn::SpawnFacility;

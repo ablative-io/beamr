@@ -78,6 +78,7 @@ pub(in crate::scheduler) fn take_runnable_process(
                 namespace_id: process.namespace_id(),
                 links: process.links().to_vec(),
                 trap_exit: process.trap_exit(),
+                group_leader: process.group_leader(),
                 pending_exit_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);
@@ -98,6 +99,7 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
             for linked_pid in &metadata.links {
                 process.add_link(*linked_pid);
             }
+            process.set_group_leader(metadata.group_leader);
             for (source_pid, reason) in metadata.pending_exit_messages.drain(..) {
                 crate::supervision::link::enqueue_exit_message_pub(
                     &mut process,

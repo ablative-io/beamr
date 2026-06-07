@@ -19,6 +19,7 @@ use crate::timer::{TimerRef, TimerWheel};
 
 use super::code_management_bifs::CodeManagementFacility;
 use super::links::LinkFacility;
+use super::process_info_bifs::GroupLeaderFacility;
 use super::registry::RegistryFacility;
 use super::select::SelectFacility;
 use super::spawn::SpawnFacility;
@@ -85,6 +86,7 @@ pub struct ProcessContext<'process> {
     link_facility: Option<Arc<dyn LinkFacility>>,
     supervision_facility: Option<Arc<dyn SupervisionFacility>>,
     code_management_facility: Option<Arc<dyn CodeManagementFacility>>,
+    group_leader_facility: Option<Arc<dyn GroupLeaderFacility>>,
     registry_facility: Option<Arc<dyn RegistryFacility>>,
     select_facility: Option<Arc<dyn SelectFacility>>,
     io_sink: Arc<dyn IoSink>,
@@ -115,6 +117,10 @@ impl fmt::Debug for ProcessContext<'_> {
             .field(
                 "code_management_facility",
                 &self.code_management_facility.as_ref().map(|_| ".."),
+            )
+            .field(
+                "group_leader_facility",
+                &self.group_leader_facility.as_ref().map(|_| ".."),
             )
             .field(
                 "registry_facility",
@@ -155,6 +161,7 @@ impl<'process> ProcessContext<'process> {
             link_facility: None,
             supervision_facility: None,
             code_management_facility: None,
+            group_leader_facility: None,
             registry_facility: None,
             select_facility: None,
             io_sink: Arc::new(NullSink),
@@ -179,6 +186,7 @@ impl<'process> ProcessContext<'process> {
             link_facility: None,
             supervision_facility: None,
             code_management_facility: None,
+            group_leader_facility: None,
             registry_facility: None,
             select_facility: None,
             io_sink: Arc::new(NullSink),
@@ -217,6 +225,26 @@ impl<'process> ProcessContext<'process> {
     #[must_use]
     pub fn process_heap(&self) -> Option<&crate::process::heap::Heap> {
         self.process.as_ref().map(|process| process.heap())
+    }
+
+    /// Return the attached calling process group leader.
+    pub fn attached_group_leader(&self) -> Result<Term, Term> {
+        let Some(process) = self.process.as_ref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.group_leader())
+    }
+
+    /// Set the attached process group leader when `target` is the calling pid.
+    pub fn set_attached_group_leader(&mut self, target: u64, group_leader: Term) -> bool {
+        let Some(process) = self.process.as_deref_mut() else {
+            return false;
+        };
+        if process.pid() != target {
+            return false;
+        }
+        process.set_group_leader(group_leader);
+        true
     }
 
     /// Enqueue a message to the attached calling process when `target` is its pid.
@@ -285,6 +313,17 @@ impl<'process> ProcessContext<'process> {
         facility: Option<Arc<dyn CodeManagementFacility>>,
     ) {
         self.code_management_facility = facility;
+    }
+
+    /// Return the group leader facility, if one has been configured.
+    #[must_use]
+    pub fn group_leader_facility(&self) -> Option<&dyn GroupLeaderFacility> {
+        self.group_leader_facility.as_deref()
+    }
+
+    /// Set the group leader facility for process metadata BIFs.
+    pub fn set_group_leader_facility(&mut self, facility: Option<Arc<dyn GroupLeaderFacility>>) {
+        self.group_leader_facility = facility;
     }
 
     /// Return the atom table, if one has been configured.

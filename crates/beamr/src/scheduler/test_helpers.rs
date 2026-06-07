@@ -88,6 +88,22 @@ impl Scheduler {
         Ok(child_pid)
     }
 
+    /// Return a live process's group leader term for host-side assertions.
+    #[must_use]
+    pub fn process_group_leader(&self, target_pid: u64) -> Option<Term> {
+        self.with_process(target_pid, |process| process.group_leader())
+    }
+
+    /// Set a live process's group leader term for host-side setup.
+    #[must_use]
+    pub fn set_process_group_leader(&self, target_pid: u64, group_leader: Term) -> bool {
+        self.with_process(target_pid, |process| {
+            process.set_group_leader(group_leader);
+            true
+        })
+        .unwrap_or(false)
+    }
+
     /// Return true when a term is queued in a live process mailbox.
     #[must_use]
     pub fn has_message(&self, target_pid: u64, expected: Term) -> Option<bool> {

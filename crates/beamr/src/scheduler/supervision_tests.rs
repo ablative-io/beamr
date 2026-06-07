@@ -7,8 +7,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 
 use dashmap::DashMap;
 
+use super::supervision_integration::SchedulerGroupLeaderFacility;
 use super::*;
 use crate::atom::Atom;
+use crate::native::process_info_bifs::GroupLeaderFacility;
 use crate::process::ProcessStatus;
 use crate::process::registry::ProcessTable;
 use crate::scheduler::execution::{
@@ -16,6 +18,7 @@ use crate::scheduler::execution::{
 };
 use crate::supervision::link::LinkSet;
 use crate::supervision::monitor::MonitorSet;
+use crate::term::Term;
 use crate::term::boxed::{self, Tuple};
 
 /// Helper: insert a running process into shared state with the given pid.
@@ -122,6 +125,7 @@ fn make_executing(shared: &SharedState, pid: u64) -> Process {
                 namespace_id: process.namespace_id(),
                 links: process.links().to_vec(),
                 trap_exit: process.trap_exit(),
+                group_leader: process.group_leader(),
                 pending_exit_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);
@@ -166,6 +170,44 @@ fn make_shared_state() -> Arc<SharedState> {
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
     })
+}
+
+#[test]
+fn scheduler_group_leader_facility_reads_and_writes_present_process() {
+    let shared = make_shared_state();
+    let pid = insert_process(&shared, 1);
+    let facility = SchedulerGroupLeaderFacility {
+        shared: Arc::clone(&shared),
+    };
+
+    assert_eq!(facility.group_leader(pid), Some(Term::pid(pid)));
+    assert!(facility.set_group_leader(pid, Term::pid(77)));
+    assert_eq!(facility.group_leader(pid), Some(Term::pid(77)));
+    assert!(!facility.set_group_leader(404, Term::pid(77)));
+}
+
+#[test]
+fn scheduler_group_leader_facility_preserves_executing_metadata_on_store_back() {
+    let shared = make_shared_state();
+    let pid = insert_process(&shared, 1);
+    let process = make_executing(&shared, pid);
+    let facility = SchedulerGroupLeaderFacility {
+        shared: Arc::clone(&shared),
+    };
+
+    assert_eq!(facility.group_leader(pid), Some(Term::pid(pid)));
+    assert!(facility.set_group_leader(pid, Term::pid(77)));
+    store_runnable_process(&shared, process);
+
+    let entry = shared
+        .process_bodies
+        .get(&pid)
+        .unwrap_or_else(|| panic!("process {pid} exists"));
+    let slot = lock_or_recover(&entry);
+    let ProcessSlot::Present(ScheduledProcess(stored)) = &*slot else {
+        panic!("process {pid} is stored back as present");
+    };
+    assert_eq!(stored.group_leader(), Term::pid(77));
 }
 
 #[test]

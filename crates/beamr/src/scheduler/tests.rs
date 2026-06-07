@@ -359,6 +359,41 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
 }
 
 #[test]
+fn spawn_link_inherits_executing_parent_group_leader() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("group_leader_child");
+    let function = atoms.intern("main");
+    let registry = Arc::new(ModuleRegistry::new());
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+        },
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    let mut module = test_module(module_name, vec![Instruction::Label { label: 7 }]);
+    module.exports.insert((function, 0), 7);
+    let module = registry.insert(module);
+    scheduler.shutdown();
+    let parent = scheduler.spawn_test_process_in(NamespaceId::DEFAULT, Arc::clone(&module));
+    assert!(scheduler.set_process_group_leader(parent, Term::pid(77)));
+
+    let process = take_runnable_process(&scheduler.shared, parent)
+        .unwrap_or_else(|| panic!("parent body taken"));
+
+    let child = scheduler
+        .spawn_link(parent, module_name, function, Vec::new())
+        .unwrap_or_else(|error| panic!("spawn_link succeeds with executing parent: {error:?}"));
+
+    assert_eq!(scheduler.process_group_leader(child), Some(Term::pid(77)));
+    assert_ne!(
+        scheduler.process_group_leader(child),
+        Some(Term::pid(child))
+    );
+    store_runnable_process(&scheduler.shared, process);
+}
+
+#[test]
 fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("spawn_link_child");
@@ -441,6 +476,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
             namespace_id: NamespaceId::DEFAULT,
             links: Vec::new(),
             trap_exit: false,
+            group_leader: process.group_leader(),
             pending_exit_messages: Vec::new(),
         })),
     );
