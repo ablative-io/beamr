@@ -207,7 +207,9 @@ fn decode_latin1_atom(
     atom_table: &AtomTable,
 ) -> Result<Term, DecodeError> {
     let bytes = cursor.read_bytes(len)?;
-    let mut name = String::with_capacity(bytes.len());
+    let mut name = String::new();
+    name.try_reserve(bytes.len())
+        .map_err(|_| DecodeError::HeapBudgetExceeded)?;
     for byte in bytes {
         name.push(char::from(*byte));
     }
@@ -222,11 +224,15 @@ fn decode_tuple(
     arity: usize,
 ) -> Result<Term, DecodeError> {
     let words = checked_words(1, arity)?;
+    budget.charge_heap(words)?;
     let mut elements = Vec::new();
+    elements
+        .try_reserve(arity)
+        .map_err(|_| DecodeError::HeapBudgetExceeded)?;
     for _ in 0..arity {
         elements.push(decode_term_inner(cursor, process, atom_table, budget)?);
     }
-    alloc_boxed(process, budget, words, |heap| write_tuple(heap, &elements))
+    alloc_boxed_charged(process, words, |heap| write_tuple(heap, &elements))
 }
 
 fn decode_string(
@@ -237,11 +243,13 @@ fn decode_string(
     let len = cursor.read_u16()? as usize;
     let bytes = cursor.read_bytes(len)?;
     let mut tail = Term::NIL;
-    if bytes.len().checked_mul(2).is_none() {
-        return Err(DecodeError::HeapBudgetExceeded);
-    }
+    let words = bytes
+        .len()
+        .checked_mul(2)
+        .ok_or(DecodeError::HeapBudgetExceeded)?;
+    budget.charge_heap(words)?;
     for byte in bytes.iter().rev().copied() {
-        tail = alloc_boxed(process, budget, 2, |heap| {
+        tail = alloc_boxed_charged(process, 2, |heap| {
             write_cons(heap, Term::small_int(i64::from(byte)), tail)
         })?;
     }
@@ -255,16 +263,18 @@ fn decode_list(
     budget: &mut RuntimeDecodeBudget,
 ) -> Result<Term, DecodeError> {
     let len = cursor.read_u32()? as usize;
-    if len.checked_mul(2).is_none() {
-        return Err(DecodeError::HeapBudgetExceeded);
-    }
+    let words = len.checked_mul(2).ok_or(DecodeError::HeapBudgetExceeded)?;
+    budget.charge_heap(words)?;
     let mut elements = Vec::new();
+    elements
+        .try_reserve(len)
+        .map_err(|_| DecodeError::HeapBudgetExceeded)?;
     for _ in 0..len {
         elements.push(decode_term_inner(cursor, process, atom_table, budget)?);
     }
     let mut tail = decode_term_inner(cursor, process, atom_table, budget)?;
     for element in elements.iter().rev().copied() {
-        tail = alloc_boxed(process, budget, 2, |heap| write_cons(heap, element, tail))?;
+        tail = alloc_boxed_charged(process, 2, |heap| write_cons(heap, element, tail))?;
     }
     Ok(tail)
 }
@@ -299,6 +309,9 @@ fn decode_big(
     }
 
     let mut limbs = Vec::new();
+    limbs
+        .try_reserve(bytes.len().div_ceil(std::mem::size_of::<u64>()))
+        .map_err(|_| DecodeError::HeapBudgetExceeded)?;
     for chunk in bytes.chunks(std::mem::size_of::<u64>()) {
         let mut limb = 0_u64;
         for (index, byte) in chunk.iter().copied().enumerate() {
@@ -350,15 +363,19 @@ fn decode_map(
         2,
         len.checked_mul(2).ok_or(DecodeError::HeapBudgetExceeded)?,
     )?;
+    budget.charge_heap(words)?;
     let mut keys = Vec::new();
     let mut values = Vec::new();
+    keys.try_reserve(len)
+        .map_err(|_| DecodeError::HeapBudgetExceeded)?;
+    values
+        .try_reserve(len)
+        .map_err(|_| DecodeError::HeapBudgetExceeded)?;
     for _ in 0..len {
         keys.push(decode_term_inner(cursor, process, atom_table, budget)?);
         values.push(decode_term_inner(cursor, process, atom_table, budget)?);
     }
-    alloc_boxed(process, budget, words, |heap| {
-        write_map(heap, &keys, &values)
-    })
+    alloc_boxed_charged(process, words, |heap| write_map(heap, &keys, &values))
 }
 
 fn decode_export(
@@ -370,6 +387,12 @@ fn decode_export(
     let module = decode_term_inner(cursor, process, atom_table, budget)?;
     let function = decode_term_inner(cursor, process, atom_table, budget)?;
     let arity = decode_term_inner(cursor, process, atom_table, budget)?;
+    if module.as_atom().is_none() || function.as_atom().is_none() {
+        return Err(DecodeError::InvalidAtom);
+    }
+    if !matches!(arity.as_small_int(), Some(value) if value >= 0) {
+        return Err(DecodeError::InvalidAtom);
+    }
     let elements = [module, function, arity];
     alloc_boxed(process, budget, 1 + elements.len(), |heap| {
         write_tuple(heap, &elements)
@@ -437,6 +460,17 @@ where
     F: FnOnce(&mut [u64]) -> Option<Term>,
 {
     budget.charge_heap(words)?;
+    alloc_boxed_charged(process, words, write)
+}
+
+fn alloc_boxed_charged<F>(
+    process: &mut Process,
+    words: usize,
+    write: F,
+) -> Result<Term, DecodeError>
+where
+    F: FnOnce(&mut [u64]) -> Option<Term>,
+{
     let heap = process
         .heap_mut()
         .alloc_slice(words)
@@ -701,6 +735,46 @@ mod tests {
             ),
             Err(DecodeError::InvalidUtf8)
         );
+    }
+
+    #[test]
+    fn decode_reports_depth_exhaustion_before_allocating_parent_container() {
+        let table = atoms();
+        let mut process = Process::new(1, 1024);
+        let mut bytes = vec![tags::VERSION];
+        for _ in 0..MAX_ETF_DEPTH {
+            bytes.extend_from_slice(&[tags::SMALL_TUPLE_EXT, 1]);
+        }
+        bytes.extend_from_slice(&[tags::SMALL_TUPLE_EXT, 1, tags::NIL_EXT]);
+
+        assert_eq!(
+            decode_term(&bytes, &mut process, &table),
+            Err(DecodeError::DepthExceeded)
+        );
+        assert_eq!(process.heap().young_used(), 0);
+    }
+
+    #[test]
+    fn decode_rejects_export_with_non_atom_components() {
+        let table = atoms();
+        let mut process = Process::new(1, 64);
+        let bytes = [
+            tags::VERSION,
+            tags::EXPORT_EXT,
+            tags::SMALL_INTEGER_EXT,
+            1,
+            tags::SMALL_ATOM_UTF8_EXT,
+            1,
+            b'f',
+            tags::SMALL_INTEGER_EXT,
+            0,
+        ];
+
+        assert_eq!(
+            decode_term(&bytes, &mut process, &table),
+            Err(DecodeError::InvalidAtom)
+        );
+        assert_eq!(process.heap().young_used(), 0);
     }
 
     #[test]

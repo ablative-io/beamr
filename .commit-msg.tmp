@@ -1,1 +1,1 @@
-feat(beamr): decode ETF binaries on process heap
+Harden B-087 ETF runtime decoder budget accounting and edge cases
