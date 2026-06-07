@@ -59,7 +59,9 @@ pub fn system_info(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
     }
 }
 
-fn metrics(context: &ProcessContext) -> Result<&dyn SystemInfoFacility, Term> {
+fn metrics<'context>(
+    context: &'context ProcessContext<'_>,
+) -> Result<&'context dyn SystemInfoFacility, Term> {
     context.system_info_facility().ok_or_else(badarg)
 }
 
