@@ -11,6 +11,7 @@ use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
 use beamr::native::gate3_bifs::register_gate3_bifs;
 use beamr::native::process_bifs::register_gate2_bifs;
+use beamr::native::process_info_bifs::register_process_info_bifs;
 use beamr::process::ExitReason;
 use beamr::scheduler::{Scheduler, SchedulerConfig};
 use beamr::term::Term;
@@ -28,6 +29,7 @@ fn scheduler(atom_table: Arc<AtomTable>) -> (Scheduler, Arc<ModuleRegistry>) {
     let bifs = BifRegistryImpl::new();
     register_gate1_bifs(&bifs, &atom_table).expect("gate1 bifs");
     register_gate2_bifs(&bifs, &atom_table).expect("gate2 bifs");
+    register_process_info_bifs(&bifs, &atom_table).expect("process_info bifs");
     register_gate3_bifs(&bifs, &atom_table).expect("gate3 bifs");
     let registry = Arc::new(ModuleRegistry::new());
     let scheduler = Scheduler::with_code_server(

@@ -19,6 +19,7 @@ use crate::timer::{TimerRef, TimerWheel};
 
 use super::code_management_bifs::CodeManagementFacility;
 use super::links::LinkFacility;
+use super::process_info_bifs::ProcessInfoFacility;
 use super::registry::RegistryFacility;
 use super::select::SelectFacility;
 use super::spawn::SpawnFacility;
@@ -86,6 +87,7 @@ pub struct ProcessContext<'process> {
     supervision_facility: Option<Arc<dyn SupervisionFacility>>,
     code_management_facility: Option<Arc<dyn CodeManagementFacility>>,
     registry_facility: Option<Arc<dyn RegistryFacility>>,
+    process_info_facility: Option<Arc<dyn ProcessInfoFacility>>,
     select_facility: Option<Arc<dyn SelectFacility>>,
     io_sink: Arc<dyn IoSink>,
     exception_class: ExceptionClass,
@@ -119,6 +121,10 @@ impl fmt::Debug for ProcessContext<'_> {
             .field(
                 "registry_facility",
                 &self.registry_facility.as_ref().map(|_| ".."),
+            )
+            .field(
+                "process_info_facility",
+                &self.process_info_facility.as_ref().map(|_| ".."),
             )
             .field(
                 "select_facility",
@@ -156,6 +162,7 @@ impl<'process> ProcessContext<'process> {
             supervision_facility: None,
             code_management_facility: None,
             registry_facility: None,
+            process_info_facility: None,
             select_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
@@ -180,6 +187,7 @@ impl<'process> ProcessContext<'process> {
             supervision_facility: None,
             code_management_facility: None,
             registry_facility: None,
+            process_info_facility: None,
             select_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
@@ -313,6 +321,17 @@ impl<'process> ProcessContext<'process> {
     /// Set the registry facility for process name registry BIFs.
     pub fn set_registry_facility(&mut self, facility: Option<Arc<dyn RegistryFacility>>) {
         self.registry_facility = facility;
+    }
+
+    /// Return the process-info facility, if one has been configured.
+    #[must_use]
+    pub fn process_info_facility(&self) -> Option<&dyn ProcessInfoFacility> {
+        self.process_info_facility.as_deref()
+    }
+
+    /// Set the process-info facility for process introspection BIFs.
+    pub fn set_process_info_facility(&mut self, facility: Option<Arc<dyn ProcessInfoFacility>>) {
+        self.process_info_facility = facility;
     }
 
     /// Schedule a timer via the runtime timer wheel.

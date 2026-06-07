@@ -16,6 +16,7 @@ use beamr::native::{
     meridian_ffi::register_meridian_ffi,
     otp_stubs::{init_otp_atoms, register_otp_stubs},
     process_bifs::register_gate2_bifs,
+    process_info_bifs::register_process_info_bifs,
     selector_ffi::register_selector_bifs,
     stdlib_stubs::register_stdlib_stubs,
 };
@@ -323,11 +324,11 @@ fn load_context(path: &Path, dirs: &[PathBuf]) -> Result<LoadContext, CliError> 
     let bif_registry = BifRegistryImpl::new();
     register_gate1_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_gate2_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
+    register_process_info_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_gate3_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_stdlib_stubs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_selector_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
-    register_gleam_ffi_bifs(&bif_registry, &atom_table)
-        .map_err(CliError::NativeRegistration)?;
+    register_gleam_ffi_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_meridian_ffi(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     init_otp_atoms(&atom_table);
     register_otp_stubs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;

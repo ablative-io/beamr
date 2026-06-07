@@ -8,6 +8,7 @@ use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
 use beamr::native::gate3_bifs::register_gate3_bifs;
 use beamr::native::process_bifs::register_gate2_bifs;
+use beamr::native::process_info_bifs::register_process_info_bifs;
 use beamr::process::{CodePosition, ExitReason, Process};
 use beamr::term::Term;
 
@@ -18,6 +19,7 @@ fn bif_registry(atom_table: &AtomTable) -> BifRegistryImpl {
     let registry = BifRegistryImpl::new();
     register_gate1_bifs(&registry, atom_table).expect("gate1 bifs register");
     register_gate2_bifs(&registry, atom_table).expect("gate2 bifs register");
+    register_process_info_bifs(&registry, atom_table).expect("process_info bifs register");
     register_gate3_bifs(&registry, atom_table).expect("gate3 bifs register");
     registry
 }
@@ -126,4 +128,3 @@ fn compiled_recv_marker_receive_timeout_path_returns_timeout_atom() {
 
     assert_eq!(call(&module, atoms, "await", &[]), Term::atom(timeout));
 }
-

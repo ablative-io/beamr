@@ -44,6 +44,16 @@ impl Atom {
     pub const THROW: Self = Self(30);
     pub const EXIT_CLASS: Self = Self(31);
     pub const LINE: Self = Self(32);
+    pub const CURRENT_FUNCTION: Self = Self(33);
+    pub const HEAP_SIZE: Self = Self(34);
+    pub const MESSAGE_QUEUE_LEN: Self = Self(35);
+    pub const REGISTERED_NAME: Self = Self(36);
+    pub const STATUS: Self = Self(37);
+    pub const LINKS: Self = Self(38);
+    pub const MONITORS: Self = Self(39);
+    pub const RUNNING: Self = Self(40);
+    pub const WAITING: Self = Self(41);
+    pub const SUSPENDED: Self = Self(42);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -88,6 +98,16 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("throw", Atom::THROW),
     ("exit", Atom::EXIT_CLASS),
     ("line", Atom::LINE),
+    ("current_function", Atom::CURRENT_FUNCTION),
+    ("heap_size", Atom::HEAP_SIZE),
+    ("message_queue_len", Atom::MESSAGE_QUEUE_LEN),
+    ("registered_name", Atom::REGISTERED_NAME),
+    ("status", Atom::STATUS),
+    ("links", Atom::LINKS),
+    ("monitors", Atom::MONITORS),
+    ("running", Atom::RUNNING),
+    ("waiting", Atom::WAITING),
+    ("suspended", Atom::SUSPENDED),
 ];
 
 /// Concurrent intern table for atom strings.

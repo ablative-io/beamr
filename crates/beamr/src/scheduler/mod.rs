@@ -16,9 +16,10 @@ use crate::hook::Hook;
 use crate::io::{IoSink, NullSink};
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
+use crate::native::process_info_bifs::{ProcessInfoItem, ProcessInfoSnapshot};
 use crate::native::{AllCapabilitiesPolicy, BifRegistryImpl, CapabilityPolicy};
 use crate::process::registry::ProcessTable;
-use crate::process::{ExitReason, Process};
+use crate::process::{ExitReason, Process, ProcessStatus};
 use crate::supervision::link::LinkSet;
 use crate::supervision::monitor::MonitorSet;
 use crate::term::Term;
@@ -235,6 +236,10 @@ impl Scheduler {
         process_namespace(&self.shared, pid)
     }
     #[must_use]
+    pub fn process_info(&self, pid: u64, item: ProcessInfoItem) -> Option<ProcessInfoSnapshot> {
+        process_info(&self.shared, pid, item)
+    }
+    #[must_use]
     pub fn process_table(&self) -> &ProcessTable {
         &self.shared.process_table
     }
@@ -290,6 +295,65 @@ fn process_trap_exit(shared: &SharedState, pid: u64) -> Option<bool> {
         ProcessSlot::Absent => None,
     }
 }
+fn process_info(
+    shared: &SharedState,
+    pid: u64,
+    item: ProcessInfoItem,
+) -> Option<ProcessInfoSnapshot> {
+    let entry = shared.process_bodies.get(&pid)?;
+    match &*lock_or_recover(&entry) {
+        ProcessSlot::Present(scheduled) => present_process_info(&scheduled.0, item),
+        ProcessSlot::Executing(metadata) => executing_process_info(pid, metadata, item),
+        ProcessSlot::Absent => None,
+    }
+}
+
+fn present_process_info(process: &Process, item: ProcessInfoItem) -> Option<ProcessInfoSnapshot> {
+    let snapshot = match item {
+        ProcessInfoItem::CurrentFunction => {
+            ProcessInfoSnapshot::CurrentFunction(process.current_mfa())
+        }
+        ProcessInfoItem::HeapSize => ProcessInfoSnapshot::HeapSize(process.heap().total_used()),
+        ProcessInfoItem::MessageQueueLen => {
+            ProcessInfoSnapshot::MessageQueueLen(process.mailbox().message_count())
+        }
+        ProcessInfoItem::RegisteredName => ProcessInfoSnapshot::RegisteredName(None),
+        ProcessInfoItem::Status => ProcessInfoSnapshot::Status(process.status()),
+        ProcessInfoItem::TrapExit => ProcessInfoSnapshot::TrapExit(process.trap_exit()),
+        ProcessInfoItem::Links => ProcessInfoSnapshot::Links(process.links().to_vec()),
+        ProcessInfoItem::Monitors => ProcessInfoSnapshot::Monitors {
+            owner_pid: process.pid(),
+            monitors: process.monitors().clone(),
+        },
+    };
+    Some(snapshot)
+}
+
+fn executing_process_info(
+    pid: u64,
+    metadata: &ProcessMetadata,
+    item: ProcessInfoItem,
+) -> Option<ProcessInfoSnapshot> {
+    let snapshot = match item {
+        ProcessInfoItem::CurrentFunction => {
+            ProcessInfoSnapshot::CurrentFunction(metadata.current_mfa)
+        }
+        ProcessInfoItem::HeapSize => ProcessInfoSnapshot::HeapSize(metadata.heap_size),
+        ProcessInfoItem::MessageQueueLen => {
+            ProcessInfoSnapshot::MessageQueueLen(metadata.message_queue_len)
+        }
+        ProcessInfoItem::RegisteredName => ProcessInfoSnapshot::RegisteredName(None),
+        ProcessInfoItem::Status => ProcessInfoSnapshot::Status(ProcessStatus::Running),
+        ProcessInfoItem::TrapExit => ProcessInfoSnapshot::TrapExit(metadata.trap_exit),
+        ProcessInfoItem::Links => ProcessInfoSnapshot::Links(metadata.links.clone()),
+        ProcessInfoItem::Monitors => ProcessInfoSnapshot::Monitors {
+            owner_pid: pid,
+            monitors: metadata.monitors.clone(),
+        },
+    };
+    Some(snapshot)
+}
+
 fn process_links_contain(shared: &SharedState, pid: u64, linked_pid: u64) -> bool {
     let Some(entry) = shared.process_bodies.get(&pid) else {
         return false;

@@ -14,6 +14,7 @@ use crate::loader::Instruction;
 use crate::loader::decode::compact::Operand;
 use crate::mailbox::Mailbox;
 use crate::module::Module;
+use crate::native::process_info_bifs::{ProcessInfoItem, ProcessInfoSnapshot};
 use crate::process::CodePosition;
 use crate::process::heap::{DEFAULT_HEAP_SIZE, Heap};
 use crate::process::registry::ProcessTable;
@@ -396,6 +397,57 @@ fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
     assert!(process_links_contain(&scheduler.shared, parent, child));
     store_runnable_process(&scheduler.shared, process);
     assert!(scheduler.is_linked(parent, child));
+}
+
+#[test]
+fn process_info_reads_current_function_and_running_status_from_executing_slot() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("process_info_exec");
+    let function = atoms.intern("main");
+    let registry = Arc::new(ModuleRegistry::new());
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+        },
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    scheduler.shutdown();
+
+    let mut module = test_module(module_name, vec![Instruction::Label { label: 1 }]);
+    module.exports.insert((function, 0), 1);
+    let module = registry.insert(module);
+    let pid = scheduler.spawn_test_process_in(NamespaceId::DEFAULT, Arc::clone(&module));
+    {
+        let entry = scheduler
+            .shared
+            .process_bodies
+            .get(&pid)
+            .unwrap_or_else(|| panic!("process body exists"));
+        let mut slot = lock_or_recover(&entry);
+        let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot else {
+            panic!("test process is present");
+        };
+        process.set_current_mfa(Some((module_name, function, 0)));
+    }
+
+    let process = take_runnable_process(&scheduler.shared, pid)
+        .unwrap_or_else(|| panic!("process body taken"));
+
+    assert_eq!(
+        scheduler.process_info(pid, ProcessInfoItem::CurrentFunction),
+        Some(ProcessInfoSnapshot::CurrentFunction(Some((
+            module_name,
+            function,
+            0,
+        ))))
+    );
+    assert_eq!(
+        scheduler.process_info(pid, ProcessInfoItem::Status),
+        Some(ProcessInfoSnapshot::Status(ProcessStatus::Running))
+    );
+
+    store_runnable_process(&scheduler.shared, process);
 }
 
 #[test]

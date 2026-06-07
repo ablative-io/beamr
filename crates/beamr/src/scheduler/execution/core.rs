@@ -77,7 +77,11 @@ pub(in crate::scheduler) fn take_runnable_process(
             let metadata = ProcessMetadata {
                 namespace_id: process.namespace_id(),
                 links: process.links().to_vec(),
+                monitors: process.monitors().clone(),
                 trap_exit: process.trap_exit(),
+                current_mfa: process.current_mfa(),
+                heap_size: process.heap().total_used(),
+                message_queue_len: process.mailbox().message_count(),
                 pending_exit_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);

@@ -15,6 +15,7 @@ use beamr::native::gleam_ffi::register_gleam_ffi_bifs;
 use beamr::native::meridian_ffi::register_meridian_ffi;
 use beamr::native::otp_stubs::{init_otp_atoms, register_otp_stubs};
 use beamr::native::process_bifs::register_gate2_bifs;
+use beamr::native::process_info_bifs::register_process_info_bifs;
 use beamr::native::selector_ffi::register_selector_bifs;
 use beamr::native::stdlib_stubs::register_stdlib_stubs;
 use beamr::process::ExitReason;
@@ -26,6 +27,7 @@ fn full_bif_registry(atom_table: &AtomTable) -> BifRegistryImpl {
     let registry = BifRegistryImpl::new();
     register_gate1_bifs(&registry, atom_table).expect("gate1");
     register_gate2_bifs(&registry, atom_table).expect("gate2");
+    register_process_info_bifs(&registry, atom_table).expect("process_info");
     register_gate3_bifs(&registry, atom_table).expect("gate3");
     register_stdlib_stubs(&registry, atom_table).expect("stdlib");
     register_selector_bifs(&registry, atom_table).expect("selector");

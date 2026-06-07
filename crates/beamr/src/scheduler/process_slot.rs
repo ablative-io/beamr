@@ -1,12 +1,17 @@
+use crate::atom::Atom;
 use crate::namespace::NamespaceId;
-use crate::process::ExitReason;
+use crate::process::{ExitReason, Monitor};
 
 use super::ScheduledProcess;
 
 pub(super) struct ProcessMetadata {
     pub(super) namespace_id: NamespaceId,
     pub(super) links: Vec<u64>,
+    pub(super) monitors: Vec<Monitor>,
     pub(super) trap_exit: bool,
+    pub(super) current_mfa: Option<(Atom, Atom, u8)>,
+    pub(super) heap_size: usize,
+    pub(super) message_queue_len: usize,
     pub(super) pending_exit_messages: Vec<(u64, ExitReason)>,
 }
 
