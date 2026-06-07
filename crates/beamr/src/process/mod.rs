@@ -571,7 +571,7 @@ impl Process {
 
     /// Linked process IDs.
     #[must_use]
-    pub const fn links(&self) -> &[u64] {
+    pub fn links(&self) -> &[u64] {
         &self.links
     }
 
