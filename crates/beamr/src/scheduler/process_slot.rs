@@ -22,14 +22,11 @@ impl ProcessMetadata {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
+#[derive(Default)]
 pub(super) enum ProcessSlot {
     Present(ScheduledProcess),
     Executing(ProcessMetadata),
+    #[default]
     Absent,
-}
-
-impl Default for ProcessSlot {
-    fn default() -> Self {
-        Self::Absent
-    }
 }
