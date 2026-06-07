@@ -50,6 +50,7 @@ pub fn register_gate1_bifs(
     }
 
     crate::native::code_management_bifs::register_code_management_bifs(registry, atom_table)?;
+    crate::native::dictionary_bifs::register_dictionary_bifs(registry, atom_table)?;
 
     Ok(())
 }
@@ -570,6 +571,12 @@ mod tests {
             ("delete_module", 1),
             ("check_old_code", 1),
             ("check_process_code", 2),
+            ("put", 2),
+            ("get", 1),
+            ("get", 0),
+            ("erase", 1),
+            ("erase", 0),
+            ("get_keys", 1),
         ] {
             let function = atom_table.intern(name);
             assert!(

@@ -21,7 +21,7 @@ use crate::namespace::NamespaceId;
 use crate::native::NativeContinuation;
 use crate::process::heap::Heap;
 use crate::process::stack::Stack;
-use crate::term::Term;
+use crate::term::{Term, compare};
 
 /// Default number of reductions assigned to a fresh process time slice.
 pub const DEFAULT_REDUCTION_BUDGET: u32 = 4000;
@@ -214,6 +214,7 @@ pub struct Process {
     mailbox: Mailbox,
     handlers: Vec<ExceptionHandler>,
     current_exception: Option<Exception>,
+    dictionary: Vec<(Term, Term)>,
     receive_timeout: Option<ReceiveTimeout>,
     receive_timer_ref: Option<u64>,
     x_regs: [Term; 1024],
@@ -243,6 +244,7 @@ impl Process {
             mailbox: Mailbox::new(),
             handlers: Vec::new(),
             current_exception: None,
+            dictionary: Vec::new(),
             receive_timeout: None,
             receive_timer_ref: None,
             x_regs: [Term::NIL; 1024],
@@ -348,6 +350,10 @@ impl Process {
             .current_exception
             .into_iter()
             .flat_map(|exception| [exception.reason, exception.stacktrace]);
+        let dictionary_roots = self
+            .dictionary
+            .iter()
+            .flat_map(|(key, value)| [*key, *value]);
         self.x_regs
             .iter()
             .take(live_x)
@@ -355,6 +361,7 @@ impl Process {
             .chain(self.mailbox.scan_iter())
             .copied()
             .chain(exception_roots)
+            .chain(dictionary_roots)
             .collect()
     }
 
@@ -395,7 +402,78 @@ impl Process {
             if let Some(value) = roots.get(index).copied() {
                 exception.stacktrace = value;
             }
+            index += 1;
         }
+        for (key, value) in &mut self.dictionary {
+            if let Some(root) = roots.get(index).copied() {
+                *key = root;
+            }
+            index += 1;
+            if let Some(root) = roots.get(index).copied() {
+                *value = root;
+            }
+            index += 1;
+        }
+    }
+
+    /// Insert or replace a process dictionary entry, returning the old value.
+    pub fn dict_put(&mut self, key: Term, value: Term) -> Term {
+        if let Some((_, stored_value)) = self
+            .dictionary
+            .iter_mut()
+            .find(|(stored_key, _)| compare::exact_eq(*stored_key, key))
+        {
+            let old_value = *stored_value;
+            *stored_value = value;
+            old_value
+        } else {
+            self.dictionary.push((key, value));
+            Term::atom(Atom::UNDEFINED)
+        }
+    }
+
+    /// Fetch a process dictionary value by key.
+    #[must_use]
+    pub fn dict_get(&self, key: Term) -> Term {
+        self.dictionary
+            .iter()
+            .find(|(stored_key, _)| compare::exact_eq(*stored_key, key))
+            .map_or(Term::atom(Atom::UNDEFINED), |(_, value)| *value)
+    }
+
+    /// Borrow all process dictionary entries in their current vector order.
+    #[must_use]
+    pub fn dict_get_all(&self) -> &[(Term, Term)] {
+        &self.dictionary
+    }
+
+    /// Remove a process dictionary entry by key, returning the old value.
+    pub fn dict_erase(&mut self, key: Term) -> Term {
+        if let Some(index) = self
+            .dictionary
+            .iter()
+            .position(|(stored_key, _)| compare::exact_eq(*stored_key, key))
+        {
+            let (_, value) = self.dictionary.swap_remove(index);
+            value
+        } else {
+            Term::atom(Atom::UNDEFINED)
+        }
+    }
+
+    /// Remove and return all process dictionary entries.
+    pub fn dict_erase_all(&mut self) -> Vec<(Term, Term)> {
+        std::mem::take(&mut self.dictionary)
+    }
+
+    /// Return all keys whose values are exactly equal to `value`.
+    #[must_use]
+    pub fn dict_get_keys(&self, value: Term) -> Vec<Term> {
+        self.dictionary
+            .iter()
+            .filter(|(_, stored_value)| compare::exact_eq(*stored_value, value))
+            .map(|(key, _)| *key)
+            .collect()
     }
 
     /// Install an exception handler.
@@ -650,6 +728,7 @@ impl Process {
         self.mailbox = Mailbox::new();
         self.handlers.clear();
         self.current_exception = None;
+        self.dictionary.clear();
         self.receive_timeout = None;
         self.receive_timer_ref = None;
         self.x_regs = [Term::NIL; 1024];
@@ -683,6 +762,7 @@ mod tests {
         assert_eq!(process.namespace_id(), NamespaceId::DEFAULT);
         assert_eq!(process.code_position(), None);
         assert!(process.current_module().is_none());
+        assert!(process.dict_get_all().is_empty());
         assert!(process.links().is_empty());
         assert!(process.monitors().is_empty());
         assert!(!process.trap_exit());
@@ -825,5 +905,81 @@ mod tests {
         process.reset_reductions(DEFAULT_REDUCTION_BUDGET);
         assert_eq!(process.reduction_counter(), DEFAULT_REDUCTION_BUDGET);
         assert!(!process.reductions_exhausted());
+    }
+
+    #[test]
+    fn dictionary_put_get_round_trip() {
+        let mut process = Process::new(0, 233);
+        let key = Term::atom(Atom::OK);
+        let value = Term::small_int(42);
+
+        assert_eq!(process.dict_put(key, value), Term::atom(Atom::UNDEFINED));
+        assert_eq!(process.dict_get(key), value);
+        assert_eq!(process.dict_get_all(), &[(key, value)]);
+    }
+
+    #[test]
+    fn dictionary_put_replaces_existing_entry_and_returns_old_value() {
+        let mut process = Process::new(0, 233);
+        let key = Term::atom(Atom::OK);
+        let old_value = Term::small_int(1);
+        let new_value = Term::small_int(2);
+
+        assert_eq!(
+            process.dict_put(key, old_value),
+            Term::atom(Atom::UNDEFINED)
+        );
+        assert_eq!(process.dict_put(key, new_value), old_value);
+        assert_eq!(process.dict_get(key), new_value);
+        assert_eq!(process.dict_get_all(), &[(key, new_value)]);
+    }
+
+    #[test]
+    fn dictionary_get_missing_key_returns_undefined() {
+        let process = Process::new(0, 233);
+
+        assert_eq!(
+            process.dict_get(Term::atom(Atom::OK)),
+            Term::atom(Atom::UNDEFINED)
+        );
+    }
+
+    #[test]
+    fn dictionary_erase_missing_key_returns_undefined() {
+        let mut process = Process::new(0, 233);
+
+        assert_eq!(
+            process.dict_erase(Term::atom(Atom::OK)),
+            Term::atom(Atom::UNDEFINED)
+        );
+    }
+
+    #[test]
+    fn dictionary_erase_removes_entry_and_returns_old_value() {
+        let mut process = Process::new(0, 233);
+        let key = Term::atom(Atom::OK);
+        let value = Term::small_int(9);
+        process.dict_put(key, value);
+
+        assert_eq!(process.dict_erase(key), value);
+        assert_eq!(process.dict_get(key), Term::atom(Atom::UNDEFINED));
+        assert!(process.dict_get_all().is_empty());
+    }
+
+    #[test]
+    fn dictionary_erase_all_drains_entries_and_get_keys_matches_values() {
+        let mut process = Process::new(0, 233);
+        let key_a = Term::atom(Atom::OK);
+        let key_b = Term::atom(Atom::ERROR);
+        let value = Term::small_int(9);
+        process.dict_put(key_a, value);
+        process.dict_put(key_b, value);
+
+        assert_eq!(process.dict_get_keys(value), vec![key_a, key_b]);
+        assert_eq!(
+            process.dict_erase_all(),
+            vec![(key_a, value), (key_b, value)]
+        );
+        assert!(process.dict_get_all().is_empty());
     }
 }

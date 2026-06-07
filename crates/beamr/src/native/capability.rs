@@ -20,6 +20,8 @@ pub enum Capability {
     Clock,
     /// Consumes randomness or cryptographic entropy.
     Entropy,
+    /// Reads or mutates state local to the calling process.
+    ProcessLocal,
     /// Talks to the outside world: shell commands, filesystem, network, or the
     /// process environment.
     ExternalIo,
@@ -114,6 +116,7 @@ mod tests {
         assert!(policy.is_granted(Capability::Pure));
         assert!(!policy.is_granted(Capability::Clock));
         assert!(!policy.is_granted(Capability::Entropy));
+        assert!(!policy.is_granted(Capability::ProcessLocal));
         assert!(!policy.is_granted(Capability::ExternalIo));
     }
 
@@ -123,6 +126,7 @@ mod tests {
         assert!(policy.is_granted(Capability::Pure));
         assert!(policy.is_granted(Capability::Clock));
         assert!(policy.is_granted(Capability::Entropy));
+        assert!(policy.is_granted(Capability::ProcessLocal));
         assert!(policy.is_granted(Capability::ExternalIo));
     }
 
@@ -132,6 +136,7 @@ mod tests {
         assert!(policy.grants(Capability::Pure));
         assert!(policy.grants(Capability::Clock));
         assert!(!policy.grants(Capability::Entropy));
+        assert!(!policy.grants(Capability::ProcessLocal));
         assert!(!policy.grants(Capability::ExternalIo));
     }
 

@@ -362,10 +362,14 @@ fn call_external_target(
             let shutdown_requested = context.take_shutdown_request();
             let suspend = context.take_suspend();
             let trampoline_req = context.take_trampoline();
+            let heap_full_error = context.take_heap_full_error();
             context.detach_process();
             let result = match call_result {
                 Ok(value) => value,
                 Err(reason) => {
+                    if let Some(error) = heap_full_error {
+                        return Err(ExecError::from(error));
+                    }
                     let exception = crate::process::Exception {
                         class: Term::atom(crate::atom::Atom::ERROR),
                         reason,

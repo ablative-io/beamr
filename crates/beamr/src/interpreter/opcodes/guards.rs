@@ -171,7 +171,11 @@ pub fn bif(
             Ok(InstructionOutcome::Continue)
         }
         Err(_) => {
+            let heap_full_error = context.take_heap_full_error();
             context.detach_process();
+            if let Some(error) = heap_full_error {
+                return Err(ExecError::from(error));
+            }
             let label = core::operand_label(parsed.fail)?;
             if label == 0 {
                 return Err(ExecError::Badarg);

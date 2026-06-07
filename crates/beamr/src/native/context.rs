@@ -10,7 +10,7 @@ use std::time::Duration;
 use crate::atom::AtomTable;
 use crate::io::{IoSink, NullSink};
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
-use crate::process::Process;
+use crate::process::{Process, heap::HeapFull};
 use crate::term::Term;
 use crate::term::binary::{packed_word_count, write_binary};
 use crate::term::boxed::{write_bigint, write_cons, write_float, write_map, write_tuple};
@@ -79,6 +79,7 @@ pub struct ProcessContext<'process> {
     shutdown_requested: bool,
     trampoline: Option<TrampolineRequest>,
     suspend: Option<SuspendRequest>,
+    heap_full_error: Option<HeapFull>,
 }
 
 impl fmt::Debug for ProcessContext<'_> {
@@ -114,6 +115,7 @@ impl fmt::Debug for ProcessContext<'_> {
             .field("shutdown_requested", &self.shutdown_requested)
             .field("trampoline", &self.trampoline)
             .field("suspend", &self.suspend)
+            .field("heap_full_error", &self.heap_full_error)
             .finish()
     }
 }
@@ -144,6 +146,7 @@ impl<'process> ProcessContext<'process> {
             trampoline: None,
             suspend: None,
             shutdown_requested: false,
+            heap_full_error: None,
         }
     }
 
@@ -166,6 +169,7 @@ impl<'process> ProcessContext<'process> {
             trampoline: None,
             suspend: None,
             shutdown_requested: false,
+            heap_full_error: None,
         }
     }
 
@@ -198,13 +202,74 @@ impl<'process> ProcessContext<'process> {
         self.process.as_ref().map(|process| process.heap())
     }
 
+    /// Insert or replace an entry in the calling process dictionary.
+    pub fn dict_put(&mut self, key: Term, value: Term) -> Result<Term, Term> {
+        let Some(process) = self.process.as_deref_mut() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.dict_put(key, value))
+    }
+
+    /// Fetch an entry from the calling process dictionary.
+    pub fn dict_get(&self, key: Term) -> Result<Term, Term> {
+        let Some(process) = self.process.as_deref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.dict_get(key))
+    }
+
+    /// Snapshot all entries from the calling process dictionary.
+    pub fn dict_get_all(&self) -> Result<Vec<(Term, Term)>, Term> {
+        let Some(process) = self.process.as_deref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.dict_get_all().to_vec())
+    }
+
+    /// Remove an entry from the calling process dictionary.
+    pub fn dict_erase(&mut self, key: Term) -> Result<Term, Term> {
+        let Some(process) = self.process.as_deref_mut() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.dict_erase(key))
+    }
+
+    /// Remove and return all entries from the calling process dictionary.
+    pub fn dict_erase_all(&mut self) -> Result<Vec<(Term, Term)>, Term> {
+        let Some(process) = self.process.as_deref_mut() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.dict_erase_all())
+    }
+
+    /// Return all process dictionary keys whose values exactly match `value`.
+    pub fn dict_get_keys(&self, value: Term) -> Result<Vec<Term>, Term> {
+        let Some(process) = self.process.as_deref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.dict_get_keys(value))
+    }
+
     /// Ensure the calling process has at least `words` nursery words available.
     pub fn ensure_heap_space(&mut self, words: usize) -> Result<(), Term> {
         let Some(process) = self.process.as_deref_mut() else {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         };
-        crate::gc::ensure_space(process, words, self.live_x)
-            .map_err(|_| Term::atom(crate::atom::Atom::BADARG))
+        match crate::gc::ensure_space(process, words, self.live_x) {
+            Ok(()) => Ok(()),
+            Err(crate::gc::GcError::HeapFull(error)) => {
+                self.heap_full_error = Some(error);
+                Err(Term::atom(crate::atom::Atom::BADARG))
+            }
+            Err(crate::gc::GcError::InvalidObjectHeader(_)) => {
+                Err(Term::atom(crate::atom::Atom::BADARG))
+            }
+        }
+    }
+
+    /// Take a heap-full allocation failure recorded by native allocation helpers.
+    pub fn take_heap_full_error(&mut self) -> Option<HeapFull> {
+        self.heap_full_error.take()
     }
 
     /// Return the spawn facility, if one has been configured.
@@ -457,10 +522,13 @@ impl<'process> ProcessContext<'process> {
         let Some(process) = self.process.as_deref_mut() else {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         };
-        process
-            .heap_mut()
-            .alloc_slice(words)
-            .map_err(|_| Term::atom(crate::atom::Atom::BADARG))
+        match process.heap_mut().alloc_slice(words) {
+            Ok(words) => Ok(words),
+            Err(error) => {
+                self.heap_full_error = Some(error);
+                Err(Term::atom(crate::atom::Atom::BADARG))
+            }
+        }
     }
 
     /// Allocate a tuple on the calling process heap.

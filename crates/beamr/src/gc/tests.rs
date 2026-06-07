@@ -316,6 +316,41 @@ fn exception_roots_are_rewritten_after_minor_gc() {
 }
 
 #[test]
+fn dictionary_heap_roots_are_rewritten_after_minor_gc() {
+    let mut process = Process::new(1, 32);
+    let key = alloc_tuple(&mut process, &[Term::small_int(10)]);
+    let value = alloc_tuple(&mut process, &[Term::small_int(11)]);
+    let expected_key = snapshot(key);
+    let expected_value = snapshot(value);
+
+    assert_eq!(process.dict_put(key, value), Term::atom(Atom::UNDEFINED));
+
+    collect_minor(&mut process).expect("minor GC succeeds");
+
+    let entries = process.dict_get_all();
+    assert_eq!(entries.len(), 1);
+    let (rewritten_key, rewritten_value) = entries[0];
+    assert_eq!(snapshot(rewritten_key), expected_key);
+    assert_eq!(snapshot(rewritten_value), expected_value);
+    assert_eq!(process.dict_get(rewritten_key), rewritten_value);
+    assert_no_term_pointer_into_young(&process, rewritten_key);
+    assert_no_term_pointer_into_young(&process, rewritten_value);
+}
+
+#[test]
+fn dictionary_immediate_roots_survive_minor_gc_unchanged() {
+    let mut process = Process::new(1, 32);
+    let key = Term::atom(Atom::OK);
+    let value = Term::small_int(42);
+    process.dict_put(key, value);
+
+    collect_minor(&mut process).expect("minor GC succeeds");
+
+    assert_eq!(process.dict_get_all(), &[(key, value)]);
+    assert_eq!(process.dict_get(key), value);
+}
+
+#[test]
 fn unreachable_young_terms_are_reclaimed() {
     let mut process = Process::new(1, 32);
     let reachable = alloc_tuple(&mut process, &[Term::small_int(1)]);
