@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn sub_binary_views_inline_binary_parent() {
-        let mut parent_heap = [0_u64; 3];
+        let mut parent_heap = [0_u64; 4];
         let parent =
             write_binary(&mut parent_heap, b"0123456789abcdef").expect("inline binary fits");
         let mut heap = [0_u64; SUB_BINARY_WORDS];
