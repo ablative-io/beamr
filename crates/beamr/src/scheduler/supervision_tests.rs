@@ -245,6 +245,25 @@ fn cleanup_exited_process_does_not_explicitly_close_fd_resources_owned_elsewhere
 }
 
 #[test]
+fn process_terminate_closes_owned_fd_resources_before_heap_reset() {
+    let mut process = Process::new(42, 64);
+    let fd = pipe_read_fd();
+    let ptr = process
+        .heap_mut()
+        .alloc(FD_RESOURCE_WORDS)
+        .expect("fd resource allocation fits");
+    // SAFETY: heap allocation returned the fixed FdResource word count.
+    let words = unsafe { std::slice::from_raw_parts_mut(ptr, FD_RESOURCE_WORDS) };
+    let term =
+        write_fd_resource(words, Arc::new(FdInner::new(fd, 42))).expect("fd resource writer fits");
+    process.set_x_reg(0, term);
+
+    process.terminate(ExitReason::Normal);
+
+    assert!(fd_is_closed(fd));
+}
+
+#[test]
 fn linked_process_dies_on_error_exit() {
     let shared = make_shared_state();
     let a = insert_process(&shared, 1);

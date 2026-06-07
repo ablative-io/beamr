@@ -95,14 +95,16 @@ impl FdInner {
     }
 
     fn begin_close(&self) -> bool {
-        self.state
-            .compare_exchange(
-                FdState::Open as u8,
-                FdState::Closing as u8,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
-            .is_ok()
+        self.fd >= 0
+            && self
+                .state
+                .compare_exchange(
+                    FdState::Open as u8,
+                    FdState::Closing as u8,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_ok()
     }
 
     fn close_fd_synchronously(&self) {
