@@ -1,1 +1,1 @@
-feat(beamr): add process_info introspection BIFs
+fix(beamr): gate binary test helper re-exports
