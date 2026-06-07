@@ -194,6 +194,7 @@ fn dispatch_common(
             core::allocate_zero(process, module, stack_need)
         }
         Instruction::Deallocate { words } => core::deallocate(process, words),
+        Instruction::Trim { words, remaining } => core::trim(process, words, remaining),
         Instruction::TestHeap { heap_need, live } => core::test_heap(process, heap_need, live),
         Instruction::PutList {
             head,

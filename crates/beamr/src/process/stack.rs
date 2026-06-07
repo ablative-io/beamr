@@ -116,6 +116,20 @@ impl StackFrame {
         *slot = value;
         Ok(())
     }
+
+    /// Shrink this frame to `remaining` lowest-numbered Y-register slots.
+    pub fn trim_y_regs(&mut self, remaining: u16) -> Result<(), StackError> {
+        if remaining > self.y_slots {
+            return Err(StackError::YRegisterOutOfBounds {
+                index: remaining,
+                slots: self.y_slots,
+            });
+        }
+
+        self.y_regs.truncate(usize::from(remaining));
+        self.y_slots = remaining;
+        Ok(())
+    }
 }
 
 impl PartialEq for StackFrame {
@@ -230,6 +244,11 @@ impl Stack {
     /// Write a Y-register in the current frame.
     pub fn set_y_reg(&mut self, n: u16, value: Term) -> Result<(), StackError> {
         self.current_frame_mut()?.set_y_reg(n, value)
+    }
+
+    /// Shrink the current frame to `remaining` lowest-numbered Y-register slots.
+    pub fn trim_y_regs(&mut self, remaining: u16) -> Result<(), StackError> {
+        self.current_frame_mut()?.trim_y_regs(remaining)
     }
 
     /// Number of frames on the stack.
@@ -398,6 +417,36 @@ mod tests {
         assert_eq!(
             stack.y_reg(1),
             Err(StackError::YRegisterOutOfBounds { index: 1, slots: 1 })
+        );
+    }
+
+    #[test]
+    fn trim_y_registers_keeps_low_slots_and_updates_slot_count() {
+        let mut stack = Stack::new();
+        let module_version = module_arc(Atom::OK);
+
+        stack
+            .push_frame(Atom::OK, 7, Arc::clone(&module_version), 5)
+            .expect("frame should fit on empty stack");
+        for (index, value) in (0_u16..).zip([10, 20, 30, 40, 50]) {
+            stack
+                .set_y_reg(index, Term::small_int(value))
+                .expect("allocated Y register should exist");
+        }
+
+        stack.trim_y_regs(3).expect("trim within frame slots");
+
+        let frame = stack.current_frame().expect("trim must not pop frame");
+        assert_eq!(frame.y_slots(), 3);
+        assert_eq!(frame.return_module(), Atom::OK);
+        assert_eq!(frame.return_ip(), 7);
+        assert!(Arc::ptr_eq(frame.pinned_module(), &module_version));
+        assert_eq!(stack.y_reg(0), Ok(Term::small_int(10)));
+        assert_eq!(stack.y_reg(1), Ok(Term::small_int(20)));
+        assert_eq!(stack.y_reg(2), Ok(Term::small_int(30)));
+        assert_eq!(
+            stack.y_reg(3),
+            Err(StackError::YRegisterOutOfBounds { index: 3, slots: 3 })
         );
     }
 
