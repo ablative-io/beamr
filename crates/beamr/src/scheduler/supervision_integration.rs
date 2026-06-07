@@ -314,6 +314,7 @@ impl SpawnFacility for SchedulerSpawnFacility {
             instruction_pointer: ip,
             args,
             namespace_id,
+            priority: crate::process::Priority::Normal,
         });
 
         if let Some(parent_pid) = link_to {
@@ -386,6 +387,7 @@ impl SpawnFacility for SchedulerSpawnFacility {
             instruction_pointer: ip,
             args: Vec::new(),
             namespace_id,
+            priority: crate::process::Priority::Normal,
         });
 
         if let Some(parent_pid) = link_to {
@@ -453,6 +455,7 @@ impl SchedulerSpawnFacility {
             instruction_pointer: ip,
             args,
             namespace_id,
+            priority: crate::process::Priority::Normal,
         });
 
         Ok(self.register_monitor_insert_and_wake(caller_pid, child_pid, child))
@@ -489,6 +492,7 @@ impl SchedulerSpawnFacility {
             instruction_pointer: ip,
             args: Vec::new(),
             namespace_id,
+            priority: crate::process::Priority::Normal,
         });
 
         Ok(self.register_monitor_insert_and_wake(caller_pid, child_pid, child))

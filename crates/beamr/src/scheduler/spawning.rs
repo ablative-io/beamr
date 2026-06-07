@@ -10,7 +10,7 @@ use crate::error::ExecError;
 use crate::module::Module;
 use crate::namespace::NamespaceId;
 use crate::process::heap::DEFAULT_HEAP_SIZE;
-use crate::process::{CodePosition, Process};
+use crate::process::{CodePosition, Priority, Process};
 use crate::term::Term;
 
 use super::{
@@ -25,6 +25,7 @@ pub(in crate::scheduler) struct SpawnRequest {
     pub(in crate::scheduler) instruction_pointer: usize,
     pub(in crate::scheduler) args: Vec<Term>,
     pub(in crate::scheduler) namespace_id: NamespaceId,
+    pub(in crate::scheduler) priority: Priority,
 }
 
 impl Scheduler {
@@ -177,6 +178,7 @@ impl Scheduler {
             instruction_pointer,
             namespace_id,
             args,
+            priority: Priority::Normal,
         };
         if trap_exit {
             let mut process = build_process(request);
@@ -203,7 +205,7 @@ pub(in crate::scheduler) fn drain_pending_spawns(
     let mut woken = Vec::new();
     for (index, inject) in inject_queues.iter().enumerate() {
         while let Some(request) = inject.pop() {
-            let pid = materialize_spawn_request(shared, request);
+            let (pid, _) = materialize_spawn_request(shared, request);
             woken.push((pid, index));
         }
     }
@@ -214,14 +216,18 @@ pub(in crate::scheduler) fn drain_pending_spawns(
     }
 }
 
-pub(super) fn materialize_spawn_request(shared: &SharedState, request: SpawnRequest) -> u64 {
+pub(super) fn materialize_spawn_request(
+    shared: &SharedState,
+    request: SpawnRequest,
+) -> (u64, Priority) {
     let pid = request.pid;
+    let priority = request.priority;
     let process = build_process(request);
     shared.process_bodies.insert(
         pid,
         Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
     );
-    pid
+    (pid, priority)
 }
 
 pub(in crate::scheduler) fn build_process(request: SpawnRequest) -> Process {
@@ -232,6 +238,7 @@ pub(in crate::scheduler) fn build_process(request: SpawnRequest) -> Process {
         instruction_pointer: request.instruction_pointer,
     }));
     process.set_current_module(request.module_version);
+    process.set_priority(request.priority);
     for (index, arg) in request.args.into_iter().enumerate().take(1024) {
         if let Ok(register) = u16::try_from(index) {
             process.set_x_reg(register, arg);

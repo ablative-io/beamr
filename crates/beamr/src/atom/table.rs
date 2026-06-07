@@ -44,6 +44,10 @@ impl Atom {
     pub const THROW: Self = Self(30);
     pub const EXIT_CLASS: Self = Self(31);
     pub const LINE: Self = Self(32);
+    pub const PRIORITY: Self = Self(33);
+    pub const LOW: Self = Self(34);
+    pub const HIGH: Self = Self(35);
+    pub const MAX: Self = Self(36);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -88,6 +92,10 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("throw", Atom::THROW),
     ("exit", Atom::EXIT_CLASS),
     ("line", Atom::LINE),
+    ("priority", Atom::PRIORITY),
+    ("low", Atom::LOW),
+    ("high", Atom::HIGH),
+    ("max", Atom::MAX),
 ];
 
 /// Concurrent intern table for atom strings.
@@ -214,8 +222,13 @@ mod tests {
         assert_eq!(table.resolve(Atom::EXIT), Some("EXIT"));
         assert_eq!(table.resolve(Atom::THROW), Some("throw"));
         assert_eq!(table.resolve(Atom::EXIT_CLASS), Some("exit"));
+        assert_eq!(table.resolve(Atom::PRIORITY), Some("priority"));
+        assert_eq!(table.resolve(Atom::LOW), Some("low"));
+        assert_eq!(table.resolve(Atom::HIGH), Some("high"));
+        assert_eq!(table.resolve(Atom::MAX), Some("max"));
         assert_eq!(table.intern("throw"), Atom::THROW);
         assert_eq!(table.intern("exit"), Atom::EXIT_CLASS);
+        assert_eq!(table.intern("priority"), Atom::PRIORITY);
         assert_eq!(table.intern("ok"), Atom::OK);
     }
 

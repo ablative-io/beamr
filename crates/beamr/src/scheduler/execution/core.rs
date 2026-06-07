@@ -34,13 +34,15 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
     }
     match outcome {
         SliceOutcome::Requeue(process) => {
+            let priority = process.priority();
             store_runnable_process(shared, process);
             if cleanup_if_tombstoned_after_store(shared, pid) {
                 return;
             }
-            queue.push(pid);
+            queue.push(pid, priority);
         }
         SliceOutcome::Wait(mut process) => {
+            let priority = process.priority();
             timer_integration::register_receive_timer(shared, &mut process);
             store_runnable_process(shared, process);
             if cleanup_if_tombstoned_after_store(shared, pid) {
@@ -48,7 +50,7 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
             }
             if process_has_queued_messages(shared, pid) {
                 timer_integration::cancel_receive_timer(shared, pid);
-                queue.push(pid);
+                queue.push(pid, priority);
                 return;
             }
             let mut ws = lock_or_recover(&shared.wait_set);

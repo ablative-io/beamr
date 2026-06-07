@@ -10,7 +10,7 @@ use std::time::Duration;
 use crate::atom::AtomTable;
 use crate::io::{IoSink, NullSink};
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
-use crate::process::Process;
+use crate::process::{Priority, Process};
 use crate::term::Term;
 use crate::term::binary::{packed_word_count, write_binary};
 use crate::term::boxed::{
@@ -472,6 +472,22 @@ impl<'process> ProcessContext<'process> {
             .iter()
             .filter(|(_, existing_value)| compare::exact_eq(*existing_value, value))
             .count())
+    }
+
+    /// Return the attached process scheduler priority.
+    pub fn priority(&self) -> Result<Priority, Term> {
+        let Some(process) = self.process.as_ref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.priority())
+    }
+
+    /// Set the attached process scheduler priority, returning the previous priority.
+    pub fn set_priority(&mut self, priority: Priority) -> Result<Priority, Term> {
+        let Some(process) = self.process.as_deref_mut() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.set_priority(priority))
     }
 
     /// Return the configured output sink for `io` module BIFs.

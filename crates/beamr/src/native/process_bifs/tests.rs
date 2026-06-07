@@ -6,7 +6,7 @@ use crate::native::supervision::{
     MonitorResult, SupervisionError, SupervisionFacility, SupervisionRecord,
 };
 use crate::native::{BifRegistryImpl, ExceptionClass, ProcessContext};
-use crate::process::{ExitReason, Process};
+use crate::process::{ExitReason, Priority, Process};
 use crate::term::Term;
 use crate::term::boxed::{Reference, Tuple, write_closure, write_cons};
 use std::sync::{Arc, Mutex};
@@ -385,6 +385,70 @@ fn process_flag_trap_exit_returns_old_value() {
 }
 
 #[test]
+fn process_flag_priority_sets_high_and_returns_old_value() {
+    let mut process = Process::new(1, 16);
+    let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
+
+    assert_eq!(
+        bif_process_flag(
+            &[Term::atom(Atom::PRIORITY), Term::atom(Atom::HIGH)],
+            &mut ctx
+        ),
+        Ok(Term::atom(Atom::NORMAL)),
+    );
+    assert_eq!(ctx.priority(), Ok(Priority::High));
+}
+
+#[test]
+fn process_flag_priority_accepts_all_levels() {
+    let mut process = Process::new(1, 16);
+    let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
+
+    for (atom, expected_old) in [
+        (Atom::MAX, Atom::NORMAL),
+        (Atom::HIGH, Atom::MAX),
+        (Atom::NORMAL, Atom::HIGH),
+        (Atom::LOW, Atom::NORMAL),
+    ] {
+        assert_eq!(
+            bif_process_flag(&[Term::atom(Atom::PRIORITY), Term::atom(atom)], &mut ctx),
+            Ok(Term::atom(expected_old)),
+        );
+    }
+    assert_eq!(ctx.priority(), Ok(Priority::Low));
+}
+
+#[test]
+fn process_flag_priority_rejects_invalid_atom() {
+    let mut process = Process::new(1, 16);
+    let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
+
+    assert_eq!(
+        bif_process_flag(
+            &[Term::atom(Atom::PRIORITY), Term::atom(Atom::OK)],
+            &mut ctx
+        ),
+        Err(badarg()),
+    );
+}
+
+#[test]
+fn process_info_priority_returns_current_priority() {
+    let mut process = Process::new(1, 16);
+    process.set_priority(Priority::High);
+    let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
+
+    assert_eq!(
+        bif_process_info(&[Term::atom(Atom::PRIORITY)], &mut ctx),
+        Ok(Term::atom(Atom::HIGH)),
+    );
+}
+
+#[test]
 fn process_flag_badarg_unknown_flag() {
     let (_, mut ctx) = link_ctx(1);
     assert_eq!(
@@ -446,6 +510,7 @@ fn register_gate2_bifs_registers_all() {
         ("link", 1),
         ("unlink", 1),
         ("process_flag", 2),
+        ("process_info", 1),
         ("monitor", 2),
         ("demonitor", 1),
         ("exit", 1),

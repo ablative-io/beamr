@@ -9,7 +9,7 @@ use crate::native::links::LinkError;
 use crate::native::{
     BifRegistryImpl, Capability, ExceptionClass, NativeFn, NativeRegistrationError, ProcessContext,
 };
-use crate::process::ExitReason;
+use crate::process::{ExitReason, Priority};
 use crate::term::Term;
 use crate::term::boxed::{Closure, Cons};
 
@@ -24,6 +24,7 @@ const GATE2_BIFS: &[Gate2Bif] = &[
     ("link", 1, Capability::Pure, bif_link),
     ("unlink", 1, Capability::Pure, bif_unlink),
     ("process_flag", 2, Capability::Pure, bif_process_flag),
+    ("process_info", 1, Capability::Pure, bif_process_info),
     ("monitor", 2, Capability::Pure, bif_monitor),
     ("demonitor", 1, Capability::Pure, bif_demonitor),
     ("exit", 1, Capability::Pure, bif_exit_1),
@@ -123,9 +124,25 @@ pub fn bif_process_flag(args: &[Term], context: &mut ProcessContext) -> Result<T
             .set_trap_exit(caller_pid, new_value)
             .map_err(|_| badarg())?;
         Ok(bool_to_atom(old_value))
+    } else if flag == Atom::PRIORITY {
+        let new_priority = atom_to_priority(*value_term).ok_or_else(badarg)?;
+        let old_priority = context.set_priority(new_priority).map_err(|_| badarg())?;
+        Ok(priority_to_atom(old_priority))
     } else {
         Err(badarg())
     }
+}
+
+/// erlang:process_info/1 — returns narrowly supported information for the calling process.
+pub fn bif_process_info(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [item_term] = args else {
+        return Err(badarg());
+    };
+    let item = item_term.as_atom().ok_or_else(badarg)?;
+    if item != Atom::PRIORITY {
+        return Err(badarg());
+    }
+    Ok(priority_to_atom(context.priority().map_err(|_| badarg())?))
 }
 
 /// erlang:monitor/2 — establish a unidirectional monitor from caller to target.
@@ -290,6 +307,26 @@ const fn bool_to_atom(value: bool) -> Term {
         Term::atom(Atom::TRUE)
     } else {
         Term::atom(Atom::FALSE)
+    }
+}
+
+fn atom_to_priority(term: Term) -> Option<Priority> {
+    let atom = term.as_atom()?;
+    match atom {
+        Atom::LOW => Some(Priority::Low),
+        Atom::NORMAL => Some(Priority::Normal),
+        Atom::HIGH => Some(Priority::High),
+        Atom::MAX => Some(Priority::Max),
+        _ => None,
+    }
+}
+
+const fn priority_to_atom(priority: Priority) -> Term {
+    match priority {
+        Priority::Low => Term::atom(Atom::LOW),
+        Priority::Normal => Term::atom(Atom::NORMAL),
+        Priority::High => Term::atom(Atom::HIGH),
+        Priority::Max => Term::atom(Atom::MAX),
     }
 }
 

@@ -4,9 +4,7 @@
 //! round-robin order and steal approximately half of a victim's work. A queue
 //! with a single process is never stolen from.
 
-use crossbeam_deque::Stealer;
-
-use crate::scheduler::run_queue::RunQueue;
+use crate::scheduler::run_queue::{PriorityStealer, RunQueue};
 
 /// Result of a steal attempt.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -28,7 +26,7 @@ pub enum StealResult {
 pub fn try_steal(
     my_queue: &RunQueue,
     my_index: usize,
-    stealers: &[Stealer<u64>],
+    stealers: &[PriorityStealer],
     last_victim: usize,
 ) -> (StealResult, usize) {
     let thread_count = stealers.len();
@@ -65,13 +63,14 @@ fn next_victim(current: usize, my_index: usize, thread_count: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{StealResult, try_steal};
+    use crate::process::Priority;
     use crate::scheduler::run_queue::RunQueue;
 
     #[test]
     fn empty_thread_steals_from_thread_with_processes() {
         let queues: Vec<_> = (0..4).map(|_| RunQueue::new()).collect();
         for pid in 0..10 {
-            queues[2].push(pid);
+            queues[2].push(pid, Priority::Normal);
         }
         let stealers: Vec<_> = queues.iter().map(RunQueue::stealer).collect();
 
@@ -93,7 +92,7 @@ mod tests {
     #[test]
     fn queue_with_one_process_is_not_stolen_from() {
         let queues: Vec<_> = (0..2).map(|_| RunQueue::new()).collect();
-        queues[1].push(99);
+        queues[1].push(99, Priority::Normal);
         let stealers: Vec<_> = queues.iter().map(RunQueue::stealer).collect();
 
         let (result, _) = try_steal(&queues[0], 0, &stealers, 0);
@@ -106,7 +105,7 @@ mod tests {
     fn round_robin_victim_selection_visits_all_threads_before_repeating() {
         let queues: Vec<_> = (0..4).map(|_| RunQueue::new()).collect();
         for pid in 0..10 {
-            queues[3].push(pid);
+            queues[3].push(pid, Priority::Normal);
         }
         let stealers: Vec<_> = queues.iter().map(RunQueue::stealer).collect();
 
@@ -121,7 +120,7 @@ mod tests {
         assert_eq!(next, 3);
 
         for pid in 100..110 {
-            queues[1].push(pid);
+            queues[1].push(pid, Priority::Normal);
         }
         let (result, _) = try_steal(&queues[0], 0, &stealers, next);
         assert!(matches!(

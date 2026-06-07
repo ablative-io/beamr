@@ -23,12 +23,11 @@ use crate::supervision::link::LinkSet;
 use crate::supervision::monitor::MonitorSet;
 use crate::term::Term;
 use crate::timer::TimerWheel;
-use crossbeam_deque::Stealer;
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 pub use module_management::{HotLoadResult, PurgeResult};
 use process_slot::{ProcessMetadata, ProcessSlot};
-use run_queue::RunQueue;
+use run_queue::{PriorityStealer, RunQueue};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
@@ -36,6 +35,7 @@ pub const DEFAULT_REDUCTION_BUDGET: u32 = crate::process::DEFAULT_REDUCTION_BUDG
 #[derive(Clone, Debug, Default)]
 pub struct SchedulerConfig {
     pub thread_count: Option<usize>,
+    pub low_priority_interval: Option<usize>,
 }
 pub(super) struct SharedState {
     shutdown: AtomicBool,
@@ -48,6 +48,7 @@ pub(super) struct SharedState {
     capability_policy: Arc<dyn CapabilityPolicy>,
     spawn_counter: AtomicUsize,
     thread_count: usize,
+    low_priority_interval: usize,
     next_pid: AtomicU64,
     wait_set: Mutex<WaitSet>,
     wake_condvar: Condvar,
@@ -115,6 +116,9 @@ impl Scheduler {
         capability_policy: Arc<dyn CapabilityPolicy>,
     ) -> Result<Self, String> {
         let thread_count = configured_thread_count(config.thread_count);
+        let low_priority_interval = config
+            .low_priority_interval
+            .unwrap_or(run_queue::DEFAULT_LOW_PRIORITY_INTERVAL);
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
         let shared = Arc::new(SharedState {
@@ -128,6 +132,7 @@ impl Scheduler {
             capability_policy,
             spawn_counter: AtomicUsize::new(0),
             thread_count,
+            low_priority_interval,
             next_pid: AtomicU64::new(0),
             wait_set: Mutex::new(WaitSet::default()),
             wake_condvar: Condvar::new(),
@@ -149,7 +154,7 @@ impl Scheduler {
             .map(|_| Arc::new(SegQueue::new()))
             .collect();
         let barrier = Arc::new(std::sync::Barrier::new(thread_count + 1));
-        let stealers_ready: Arc<Mutex<Option<Vec<Stealer<u64>>>>> = Arc::new(Mutex::new(None));
+        let stealers_ready: Arc<Mutex<Option<Vec<PriorityStealer>>>> = Arc::new(Mutex::new(None));
         let mut stealer_receivers = Vec::with_capacity(thread_count);
         let mut threads = Vec::with_capacity(thread_count);
         let mut worker_names = Vec::with_capacity(thread_count);
@@ -165,7 +170,9 @@ impl Scheduler {
             let handle = std::thread::Builder::new()
                 .name(thread_name.clone())
                 .spawn(move || {
-                    let queue = RunQueue::new();
+                    let queue = RunQueue::with_low_priority_interval(
+                        shared_for_thread.low_priority_interval,
+                    );
                     if tx.send(queue.stealer()).is_err() {
                         return;
                     }

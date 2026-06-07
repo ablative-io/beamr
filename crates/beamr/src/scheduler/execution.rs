@@ -3,7 +3,6 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use crossbeam_deque::Stealer;
 use crossbeam_queue::SegQueue;
 
 use crate::error::ExecError;
@@ -11,7 +10,7 @@ use crate::process::ExitReason;
 use crate::term::Term;
 
 use super::{
-    RunQueue, Scheduler, SharedState, SpawnRequest, lock_or_recover,
+    RunQueue, Scheduler, SharedState, SpawnRequest, lock_or_recover, run_queue::PriorityStealer,
     spawning::materialize_spawn_request, steal, timer_integration,
 };
 
@@ -95,7 +94,7 @@ pub(in crate::scheduler) fn scheduler_loop(
     shared: &Arc<SharedState>,
     queue: &RunQueue,
     my_index: usize,
-    stealers: &[Stealer<u64>],
+    stealers: &[PriorityStealer],
     inject: &SegQueue<SpawnRequest>,
 ) {
     let mut last_victim = my_index;
@@ -135,8 +134,8 @@ pub(in crate::scheduler) fn scheduler_loop(
 
 fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<SpawnRequest>) {
     while let Some(request) = inject.pop() {
-        let pid = materialize_spawn_request(shared, request);
-        queue.push(pid);
+        let (pid, priority) = materialize_spawn_request(shared, request);
+        queue.push(pid, priority);
     }
 }
 
@@ -173,7 +172,23 @@ fn drain_woken(shared: &SharedState, queue: &RunQueue, my_index: usize) {
     };
     for pid in woken {
         if shared.process_table.get(pid).is_some() {
-            queue.push(pid);
+            queue.push(pid, process_priority(shared, pid));
+        }
+    }
+}
+
+pub(in crate::scheduler) fn process_priority(
+    shared: &SharedState,
+    pid: u64,
+) -> crate::process::Priority {
+    let Some(entry) = shared.process_bodies.get(&pid) else {
+        return crate::process::Priority::Normal;
+    };
+    let slot = lock_or_recover(&entry);
+    match &*slot {
+        crate::scheduler::ProcessSlot::Present(scheduled) => scheduled.0.priority(),
+        crate::scheduler::ProcessSlot::Executing(_) | crate::scheduler::ProcessSlot::Absent => {
+            crate::process::Priority::Normal
         }
     }
 }
