@@ -464,17 +464,49 @@ impl ProcessContext {
         Ok(heap_slice(ptr, words))
     }
 
+    fn ensure_heap_space_with_roots(
+        &mut self,
+        words: usize,
+        roots: &[Term],
+    ) -> Result<Vec<Term>, Term> {
+        let live_x = self.live_x;
+        let process = self.process_mut()?;
+        let start = process.push_native_roots(roots);
+        let result = crate::gc::ensure_space(process, words, live_x)
+            .map_err(gc_error_to_term)
+            .map(|()| process.native_roots_from(start).to_vec());
+        process.truncate_native_roots(start);
+        result
+    }
+
+    fn alloc_words_after_ensure(&mut self, words: usize) -> Result<&mut [u64], Term> {
+        let ptr = self
+            .process_mut()?
+            .heap_mut()
+            .alloc(words)
+            .map_err(|_| Term::atom(Atom::ERROR))?;
+        Ok(heap_slice(ptr, words))
+    }
+
     /// Allocate a tuple on the calling process heap.
     pub fn alloc_tuple(&mut self, elements: &[Term]) -> Result<Term, Term> {
-        let words = 1 + elements.len();
-        let heap = self.alloc_words(words)?;
-        crate::term::boxed::write_tuple(heap, elements).ok_or_else(|| Term::atom(Atom::BADARG))
+        let words = elements
+            .len()
+            .checked_add(1)
+            .ok_or_else(|| Term::atom(Atom::BADARG))?;
+        let elements = self.ensure_heap_space_with_roots(words, elements)?;
+        let heap = self.alloc_words_after_ensure(words)?;
+        crate::term::boxed::write_tuple(heap, &elements).ok_or_else(|| Term::atom(Atom::BADARG))
     }
 
     /// Allocate a cons cell on the calling process heap.
     pub fn alloc_cons(&mut self, head: Term, tail: Term) -> Result<Term, Term> {
-        let heap = self.alloc_words(2)?;
-        crate::term::boxed::write_cons(heap, head, tail).ok_or_else(|| Term::atom(Atom::BADARG))
+        let roots = self.ensure_heap_space_with_roots(2, &[head, tail])?;
+        let [head, tail] = roots.as_slice() else {
+            return Err(Term::atom(Atom::BADARG));
+        };
+        let heap = self.alloc_words_after_ensure(2)?;
+        crate::term::boxed::write_cons(heap, *head, *tail).ok_or_else(|| Term::atom(Atom::BADARG))
     }
 
     /// Allocate a float on the calling process heap.
@@ -485,16 +517,23 @@ impl ProcessContext {
 
     /// Allocate an inline binary on the calling process heap.
     pub fn alloc_binary(&mut self, bytes: &[u8]) -> Result<Term, Term> {
-        let words = 2 + packed_word_count(bytes.len());
+        let bytes = bytes.to_vec();
+        let words = packed_word_count(bytes.len())
+            .checked_add(2)
+            .ok_or_else(|| Term::atom(Atom::BADARG))?;
         let heap = self.alloc_words(words)?;
-        crate::term::binary::write_binary(heap, bytes).ok_or_else(|| Term::atom(Atom::BADARG))
+        crate::term::binary::write_binary(heap, &bytes).ok_or_else(|| Term::atom(Atom::BADARG))
     }
 
     /// Allocate a big integer on the calling process heap.
     pub fn alloc_bigint(&mut self, negative: bool, limbs: &[u64]) -> Result<Term, Term> {
-        let words = 3 + limbs.len();
+        let limbs = limbs.to_vec();
+        let words = limbs
+            .len()
+            .checked_add(3)
+            .ok_or_else(|| Term::atom(Atom::BADARG))?;
         let heap = self.alloc_words(words)?;
-        crate::term::boxed::write_bigint(heap, negative, limbs)
+        crate::term::boxed::write_bigint(heap, negative, &limbs)
             .ok_or_else(|| Term::atom(Atom::BADARG))
     }
 
@@ -512,15 +551,18 @@ impl ProcessContext {
             .len()
             .checked_mul(2)
             .ok_or_else(|| Term::atom(Atom::BADARG))?;
-        self.ensure_heap_space(words)?;
-        let mut result = tail;
+        let roots = elements
+            .iter()
+            .copied()
+            .chain(std::iter::once(tail))
+            .collect::<Vec<_>>();
+        let rewritten = self.ensure_heap_space_with_roots(words, &roots)?;
+        let (tail, elements) = rewritten
+            .split_last()
+            .ok_or_else(|| Term::atom(Atom::BADARG))?;
+        let mut result = *tail;
         for element in elements.iter().rev().copied() {
-            let ptr = self
-                .process_mut()?
-                .heap_mut()
-                .alloc(2)
-                .map_err(|_| Term::atom(Atom::ERROR))?;
-            let heap = heap_slice(ptr, 2);
+            let heap = self.alloc_words_after_ensure(2)?;
             result = crate::term::boxed::write_cons(heap, element, result)
                 .ok_or_else(|| Term::atom(Atom::BADARG))?;
         }
@@ -529,14 +571,31 @@ impl ProcessContext {
 
     /// Allocate a flatmap on the calling process heap.
     pub fn alloc_map(&mut self, keys: &[Term], values: &[Term]) -> Result<Term, Term> {
-        let words = 2 + keys.len() + values.len();
-        let heap = self.alloc_words(words)?;
+        if keys.len() != values.len() {
+            return Err(Term::atom(Atom::BADARG));
+        }
+        let words = keys
+            .len()
+            .checked_add(values.len())
+            .and_then(|words| words.checked_add(2))
+            .ok_or_else(|| Term::atom(Atom::BADARG))?;
+        let roots = keys
+            .iter()
+            .copied()
+            .chain(values.iter().copied())
+            .collect::<Vec<_>>();
+        let rewritten = self.ensure_heap_space_with_roots(words, &roots)?;
+        let (keys, values) = rewritten.split_at(keys.len());
+        let heap = self.alloc_words_after_ensure(words)?;
         crate::term::boxed::write_map(heap, keys, values).ok_or_else(|| Term::atom(Atom::BADARG))
     }
 
     /// Allocate an inline binary and a tuple wrapping it in one no-GC batch.
     pub fn alloc_binary_tuple(&mut self, tag: Atom, bytes: &[u8]) -> Result<Term, Term> {
-        let binary_words = 2 + packed_word_count(bytes.len());
+        let bytes = bytes.to_vec();
+        let binary_words = packed_word_count(bytes.len())
+            .checked_add(2)
+            .ok_or_else(|| Term::atom(Atom::BADARG))?;
         let total_words = binary_words
             .checked_add(3)
             .ok_or_else(|| Term::atom(Atom::BADARG))?;
@@ -547,7 +606,7 @@ impl ProcessContext {
             .alloc(binary_words)
             .map_err(|_| Term::atom(Atom::ERROR))?;
         let binary_heap = heap_slice(binary_ptr, binary_words);
-        let binary = crate::term::binary::write_binary(binary_heap, bytes)
+        let binary = crate::term::binary::write_binary(binary_heap, &bytes)
             .ok_or_else(|| Term::atom(Atom::BADARG))?;
         let tuple_ptr = self
             .process_mut()?

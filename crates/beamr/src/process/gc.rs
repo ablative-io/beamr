@@ -14,7 +14,7 @@ pub(crate) struct RootSet {
 
 impl RootSet {
     /// Build a root snapshot containing the first `live_x` X registers, all
-    /// Y-registers, queued mailbox messages, and the current exception payload.
+    /// Y-registers, queued mailbox messages, native temporaries, and the current exception payload.
     pub(crate) fn snapshot(process: &mut Process, live_x: usize) -> Self {
         Self {
             live_x,

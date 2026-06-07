@@ -139,6 +139,10 @@ pub fn ensure_space(process: &mut Process, words: usize, live_x: usize) -> Resul
         return Ok(());
     }
 
+    // A successful minor collection can still leave the nursery short when all
+    // young data remains live. Try full compaction before growing the nursery.
+    collect_major(process)?;
+
     while process.heap().available() < words {
         process.heap_mut().grow_to_next_capacity_with_max()?;
     }

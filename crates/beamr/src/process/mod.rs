@@ -218,6 +218,7 @@ pub struct Process {
     receive_timeout: Option<ReceiveTimeout>,
     receive_timer_ref: Option<u64>,
     x_regs: [Term; 1024],
+    native_roots: Vec<Term>,
     native_continuation: Option<NativeContinuation>,
     reduction_counter: u32,
     namespace_id: NamespaceId,
@@ -247,6 +248,7 @@ impl Process {
             receive_timeout: None,
             receive_timer_ref: None,
             x_regs: [Term::NIL; 1024],
+            native_roots: Vec::new(),
             native_continuation: None,
             reduction_counter: DEFAULT_REDUCTION_BUDGET,
             namespace_id: NamespaceId::DEFAULT,
@@ -355,6 +357,7 @@ impl Process {
             .chain(self.stack.y_regs())
             .chain(self.mailbox.scan_iter())
             .copied()
+            .chain(self.native_roots.iter().copied())
             .chain(exception_roots)
             .collect()
     }
@@ -388,6 +391,12 @@ impl Process {
             }
             index += 1;
         }
+        for root in &mut self.native_roots {
+            if let Some(value) = roots.get(index).copied() {
+                *root = value;
+            }
+            index += 1;
+        }
         if let Some(exception) = &mut self.current_exception {
             if let Some(value) = roots.get(index).copied() {
                 exception.reason = value;
@@ -397,6 +406,23 @@ impl Process {
                 exception.stacktrace = value;
             }
         }
+    }
+
+    /// Push native-call temporary roots and return their starting index.
+    pub(crate) fn push_native_roots(&mut self, roots: &[Term]) -> usize {
+        let start = self.native_roots.len();
+        self.native_roots.extend_from_slice(roots);
+        start
+    }
+
+    /// Return rewritten native-call temporary roots from `start` onward.
+    pub(crate) fn native_roots_from(&self, start: usize) -> &[Term] {
+        &self.native_roots[start..]
+    }
+
+    /// Remove native-call temporary roots back to `len`.
+    pub(crate) fn truncate_native_roots(&mut self, len: usize) {
+        self.native_roots.truncate(len);
     }
 
     /// Install an exception handler.
