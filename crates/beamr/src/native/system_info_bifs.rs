@@ -23,6 +23,11 @@ pub trait SystemInfoFacility: Send + Sync {
 
     /// Number of currently interned atoms.
     fn atom_count(&self) -> usize;
+
+    /// Maximum number of live processes supported by the VM.
+    fn process_limit(&self) -> usize {
+        PROCESS_LIMIT
+    }
 }
 
 /// Registers `erlang:system_info/1`.
@@ -44,16 +49,17 @@ pub fn system_info(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
     let atom = item.as_atom().ok_or_else(badarg)?;
     let atom_table = context.atom_table().ok_or_else(badarg)?;
     let name = atom_table.resolve(atom).ok_or_else(badarg)?;
+    let metrics = metrics(context)?;
 
     match name {
-        "schedulers" => integer_term(metrics(context)?.scheduler_count()),
-        "process_count" => integer_term(metrics(context)?.process_count()),
-        "process_limit" => integer_term(PROCESS_LIMIT),
+        "schedulers" => integer_term(metrics.scheduler_count()),
+        "process_count" => integer_term(metrics.process_count()),
+        "process_limit" => integer_term(metrics.process_limit()),
         "wordsize" => Ok(Term::small_int(WORDSIZE_BYTES)),
         "otp_release" => context.alloc_binary(OTP_RELEASE),
         "version" => context.alloc_binary(env!("CARGO_PKG_VERSION").as_bytes()),
         "system_architecture" => context.alloc_binary(system_architecture().as_bytes()),
-        "atom_count" => integer_term(metrics(context)?.atom_count()),
+        "atom_count" => integer_term(metrics.atom_count()),
         "atom_limit" => integer_term(ATOM_LIMIT),
         _ => Err(badarg()),
     }
@@ -184,6 +190,18 @@ mod tests {
             system_info(&[Term::small_int(1), Term::small_int(2)], &mut context),
             Err(badarg())
         );
+    }
+
+    #[test]
+    fn missing_metrics_facility_returns_badarg_for_all_items() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let item = Term::atom(atom_table.intern("wordsize"));
+        let mut process = Process::new(0, 256);
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(atom_table));
+        context.attach_process(&mut process, 1);
+
+        assert_eq!(system_info(&[item], &mut context), Err(badarg()));
     }
 
     #[test]

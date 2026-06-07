@@ -36,8 +36,12 @@ use std::thread::JoinHandle;
 pub const DEFAULT_REDUCTION_BUDGET: u32 = crate::process::DEFAULT_REDUCTION_BUDGET;
 #[derive(Clone, Debug, Default)]
 pub struct SchedulerConfig {
+    /// Number of normal scheduler threads. Defaults to host parallelism.
     pub thread_count: Option<usize>,
+    /// Maximum number of live processes reported by VM introspection.
+    pub process_limit: Option<usize>,
 }
+pub const DEFAULT_PROCESS_LIMIT: usize = 262_144;
 pub(super) struct SharedState {
     shutdown: AtomicBool,
     process_table: ProcessTable,
@@ -49,6 +53,7 @@ pub(super) struct SharedState {
     capability_policy: Arc<dyn CapabilityPolicy>,
     spawn_counter: AtomicUsize,
     thread_count: usize,
+    process_limit: usize,
     next_pid: AtomicU64,
     wait_set: Mutex<WaitSet>,
     wake_condvar: Condvar,
@@ -85,6 +90,10 @@ impl SharedState {
     pub(super) fn atom_count(&self) -> usize {
         self.atom_table.len()
     }
+
+    pub(super) fn process_limit(&self) -> usize {
+        self.process_limit
+    }
 }
 
 impl SystemInfoFacility for SharedState {
@@ -98,6 +107,10 @@ impl SystemInfoFacility for SharedState {
 
     fn atom_count(&self) -> usize {
         self.atom_count()
+    }
+
+    fn process_limit(&self) -> usize {
+        self.process_limit()
     }
 }
 
@@ -145,6 +158,7 @@ impl Scheduler {
         capability_policy: Arc<dyn CapabilityPolicy>,
     ) -> Result<Self, String> {
         let thread_count = configured_thread_count(config.thread_count);
+        let process_limit = config.process_limit.unwrap_or(DEFAULT_PROCESS_LIMIT);
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
         let shared = Arc::new(SharedState {
@@ -158,6 +172,7 @@ impl Scheduler {
             capability_policy,
             spawn_counter: AtomicUsize::new(0),
             thread_count,
+            process_limit,
             next_pid: AtomicU64::new(0),
             wait_set: Mutex::new(WaitSet::default()),
             wake_condvar: Condvar::new(),
@@ -283,6 +298,10 @@ impl Scheduler {
     #[must_use]
     pub fn atom_count(&self) -> usize {
         self.shared.atom_count()
+    }
+    #[must_use]
+    pub fn process_limit(&self) -> usize {
+        self.shared.process_limit()
     }
     #[must_use]
     pub fn worker_names(&self) -> &[String] {

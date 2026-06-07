@@ -1,1 +1,1 @@
-feat(beamr): add erlang system_info bif
+review: harden system_info metrics facility and scheduler process limit

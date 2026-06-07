@@ -66,6 +66,7 @@ fn scheduler_creates_requested_thread_count_and_names() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(4),
+            ..SchedulerConfig::default()
         },
         registry,
     )
@@ -92,6 +93,8 @@ fn scheduler_metric_accessors_report_current_counts() {
     let scheduler = Scheduler::with_code_server(
         SchedulerConfig {
             thread_count: Some(2),
+            process_limit: Some(512),
+            ..SchedulerConfig::default()
         },
         registry,
         Arc::clone(&atom_table),
@@ -102,6 +105,7 @@ fn scheduler_metric_accessors_report_current_counts() {
     let initial_atom_count = atom_table.len();
     assert_eq!(scheduler.scheduler_count(), 2);
     assert_eq!(scheduler.thread_count(), scheduler.scheduler_count());
+    assert_eq!(scheduler.process_limit(), 512);
     assert_eq!(scheduler.process_count(), 0);
     assert_eq!(scheduler.atom_count(), initial_atom_count);
 
@@ -139,6 +143,7 @@ fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -205,6 +210,7 @@ fn hook_fires_when_process_blocks_on_receive() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -253,6 +259,7 @@ fn shutdown_is_idempotent() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(2),
+            ..SchedulerConfig::default()
         },
         registry,
     )
@@ -272,6 +279,7 @@ fn single_process_runs_to_completion_and_is_removed() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -305,6 +313,7 @@ fn exported_spawn_starts_at_entry_function_with_args() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -396,6 +405,7 @@ fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -504,6 +514,7 @@ fn yielded_process_is_rescheduled() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -525,6 +536,7 @@ fn multiple_processes_fairly_complete() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(2),
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -545,6 +557,7 @@ fn mailbox_send_wakes_waiting_process_event_driven() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            ..SchedulerConfig::default()
         },
         registry,
     )
@@ -600,6 +613,7 @@ fn idle_threads_park_instead_of_spinning() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(2),
+            ..SchedulerConfig::default()
         },
         registry,
     )
