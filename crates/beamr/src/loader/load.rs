@@ -13,9 +13,9 @@ use crate::native::{
 
 use super::decode::budget::DecodeBudget;
 use super::decode::{
-    ExportEntry, ImportEntry, Instruction, LambdaEntry, LineInfo, Literal, decode_atom_chunk,
-    decode_code_chunk, decode_export_chunk, decode_import_chunk, decode_lambda_chunk,
-    decode_line_chunk, decode_literal_chunk, decode_string_chunk,
+    ExportEntry, ImportEntry, Instruction, LambdaEntry, LineInfo, Literal, Operand,
+    decode_atom_chunk, decode_code_chunk, decode_export_chunk, decode_import_chunk,
+    decode_lambda_chunk, decode_line_chunk, decode_literal_chunk, decode_string_chunk,
 };
 use super::parser::parse_beam_chunks;
 use super::validate::validate_module;
@@ -556,6 +556,27 @@ fn module_from_parsed(
         })
         .collect();
 
+    let function_table = parsed
+        .instructions
+        .iter()
+        .enumerate()
+        .filter_map(|(ip, instruction)| match instruction {
+            Instruction::FuncInfo {
+                function, arity, ..
+            } => Some((ip, operand_atom(function)?, operand_u8(arity)?)),
+            _ => None,
+        })
+        .collect();
+    let line_table = parsed
+        .instructions
+        .iter()
+        .enumerate()
+        .filter_map(|(ip, instruction)| match instruction {
+            Instruction::Line { index } => Some((ip, operand_usize(index)?)),
+            _ => None,
+        })
+        .collect();
+
     let constant_pool = materialise_literals(&parsed.literals, Some(atom_table))?;
 
     Ok(Module {
@@ -564,6 +585,8 @@ fn module_from_parsed(
         exports,
         label_index,
         code: parsed.instructions,
+        function_table,
+        line_table,
         literals: parsed.literals,
         constant_pool,
         resolved_imports,
@@ -571,6 +594,26 @@ fn module_from_parsed(
         string_table: parsed.string_table,
         line_info: parsed.line_info,
     })
+}
+
+fn operand_atom(operand: &Operand) -> Option<Atom> {
+    match operand {
+        Operand::Atom(Some(atom)) => Some(*atom),
+        _ => None,
+    }
+}
+
+fn operand_usize(operand: &Operand) -> Option<usize> {
+    match operand {
+        Operand::Unsigned(value) => usize::try_from(*value).ok(),
+        Operand::Integer(value) => usize::try_from(*value).ok(),
+        _ => None,
+    }
+}
+
+fn operand_u8(operand: &Operand) -> Option<u8> {
+    let value = operand_usize(operand)?;
+    u8::try_from(value).ok()
 }
 
 fn assign_lambda_unique_ids(
@@ -657,7 +700,9 @@ fn find_chunk<'a>(chunks: &'a [([u8; 4], &'a [u8])], tag: &[u8; 4]) -> Option<&'
 mod tests {
     use crate::atom::{Atom, AtomTable};
     use crate::error::LoadError;
+    use crate::loader::decode::Operand;
     use crate::loader::load_beam_chunks;
+    use crate::loader::{ExportEntry, Instruction, LineInfo};
     use crate::module::{Module, ModuleRegistry, ResolvedImportTarget};
     use crate::native::{
         AllCapabilitiesPolicy, BifRegistry, Capability, LeastAuthorityPolicy, NativeEntry,
@@ -665,7 +710,7 @@ mod tests {
     };
     use crate::term::Term;
 
-    use super::{UnresolvedImportEntry, UnresolvedImportReport, load_module};
+    use super::{ParsedModule, UnresolvedImportEntry, UnresolvedImportReport, load_module};
 
     struct EmptyBifs;
 
@@ -696,6 +741,81 @@ mod tests {
 
     fn native_ok(_args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
         Ok(Term::small_int(0))
+    }
+
+    fn empty_parsed(name: Atom) -> ParsedModule {
+        ParsedModule {
+            name,
+            atoms: Vec::new(),
+            instructions: Vec::new(),
+            imports: Vec::new(),
+            exports: Vec::new(),
+            lambdas: Vec::new(),
+            literals: Vec::new(),
+            string_table: Vec::new(),
+            line_info: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn module_from_parsed_builds_function_and_line_tables() {
+        let atoms = AtomTable::new();
+        let module_atom = atoms.intern("sample");
+        let exported = atoms.intern("exported");
+        let private = atoms.intern("private");
+        let parsed = ParsedModule {
+            exports: vec![
+                ExportEntry {
+                    function: exported,
+                    arity: 0,
+                    label: 1,
+                },
+                ExportEntry {
+                    function: atoms.intern("also_exported"),
+                    arity: 2,
+                    label: 2,
+                },
+            ],
+            instructions: vec![
+                Instruction::FuncInfo {
+                    module: Operand::Atom(Some(module_atom)),
+                    function: Operand::Atom(Some(exported)),
+                    arity: Operand::Unsigned(0),
+                },
+                Instruction::Line {
+                    index: Operand::Unsigned(0),
+                },
+                Instruction::Return,
+                Instruction::FuncInfo {
+                    module: Operand::Atom(Some(module_atom)),
+                    function: Operand::Atom(Some(private)),
+                    arity: Operand::Unsigned(1),
+                },
+                Instruction::Line {
+                    index: Operand::Unsigned(1),
+                },
+                Instruction::Return,
+            ],
+            line_info: vec![
+                LineInfo { file: 0, line: 11 },
+                LineInfo { file: 0, line: 22 },
+            ],
+            ..empty_parsed(module_atom)
+        };
+
+        let module = super::module_from_parsed(parsed, Vec::new(), &atoms).expect("module builds");
+
+        assert_eq!(
+            module.function_table,
+            vec![(0, exported, 0), (3, private, 1)]
+        );
+        assert_eq!(module.function_at_ip(2), Some((exported, 0)));
+        assert_eq!(module.function_at_ip(3), Some((private, 1)));
+        assert_eq!(module.function_at_ip(4), Some((private, 1)));
+        assert_eq!(module.line_table, vec![(1, 0), (4, 1)]);
+        assert_eq!(module.line_at_ip(0), None);
+        assert_eq!(module.line_at_ip(1), Some(11));
+        assert_eq!(module.line_at_ip(5), Some(22));
     }
 
     #[test]
@@ -762,6 +882,8 @@ mod tests {
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             line_info: Vec::new(),
         };
         target.exports.insert((function, 0), 42);
@@ -922,6 +1044,8 @@ mod tests {
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             line_info: Vec::new(),
         });
         let mut parsed =

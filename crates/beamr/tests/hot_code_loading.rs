@@ -37,6 +37,8 @@ fn literal_module(name: beamr::atom::Atom, literals: Vec<Literal>) -> Module {
         lambdas: Vec::new(),
         string_table: Vec::new(),
         line_info: Vec::new(),
+        function_table: Vec::new(),
+        line_table: Vec::new(),
     }
 }
 

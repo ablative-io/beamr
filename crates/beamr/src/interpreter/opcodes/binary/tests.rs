@@ -25,6 +25,8 @@ fn module(code: Vec<Instruction>) -> Module {
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
+        function_table: Vec::new(),
+        line_table: Vec::new(),
         line_info: Vec::new(),
     }
 }

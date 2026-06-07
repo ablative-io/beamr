@@ -80,6 +80,10 @@ pub struct Module {
     pub label_index: HashMap<u32, usize>,
     /// Decoded BEAM instructions.
     pub code: Vec<Instruction>,
+    /// Sorted func_info table: instruction pointer, function atom, arity.
+    pub function_table: Vec<(usize, Atom, u8)>,
+    /// Sorted line table: instruction pointer, line-info index.
+    pub line_table: Vec<(usize, usize)>,
     /// Decoded literal table.
     pub literals: Vec<Literal>,
     /// Pre-materialised literal terms backed by module-owned storage.
@@ -130,6 +134,28 @@ impl Module {
             })?;
 
         self.label_ip(label)
+    }
+
+    /// Resolves the function containing `ip` from the last preceding `func_info`.
+    #[must_use]
+    pub fn function_at_ip(&self, ip: usize) -> Option<(Atom, u8)> {
+        let index = self
+            .function_table
+            .binary_search_by_key(&ip, |(entry_ip, _, _)| *entry_ip)
+            .map_or_else(|insertion| insertion.checked_sub(1), Some)?;
+        let (_, function, arity) = self.function_table.get(index).copied()?;
+        Some((function, arity))
+    }
+
+    /// Resolves the source line containing `ip` from the last preceding line marker.
+    #[must_use]
+    pub fn line_at_ip(&self, ip: usize) -> Option<u32> {
+        let index = self
+            .line_table
+            .binary_search_by_key(&ip, |(entry_ip, _)| *entry_ip)
+            .map_or_else(|insertion| insertion.checked_sub(1), Some)?;
+        let (_, line_info_index) = self.line_table.get(index).copied()?;
+        self.line_info.get(line_info_index).map(|info| info.line)
     }
 }
 
@@ -358,7 +384,7 @@ mod tests {
     use super::{Module, ModuleRegistry, PurgeError};
     use crate::atom::AtomTable;
     use crate::error::ExecError;
-    use crate::loader::LambdaEntry;
+    use crate::loader::{LambdaEntry, LineInfo};
 
     fn label_index(code: &[crate::loader::Instruction]) -> HashMap<u32, usize> {
         code.iter()
@@ -382,8 +408,48 @@ mod tests {
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             line_info: Vec::new(),
         }
+    }
+
+    #[test]
+    fn function_at_ip_resolves_last_preceding_func_info() {
+        let mut module = empty_module(crate::atom::Atom::MODULE);
+        module.function_table = vec![
+            (1, crate::atom::Atom::OK, 0),
+            (5, crate::atom::Atom::BADARG, 1),
+            (9, crate::atom::Atom::FLUSH, 2),
+        ];
+
+        assert_eq!(module.function_at_ip(0), None);
+        assert_eq!(module.function_at_ip(1), Some((crate::atom::Atom::OK, 0)));
+        assert_eq!(module.function_at_ip(4), Some((crate::atom::Atom::OK, 0)));
+        assert_eq!(
+            module.function_at_ip(5),
+            Some((crate::atom::Atom::BADARG, 1))
+        );
+        assert_eq!(
+            module.function_at_ip(12),
+            Some((crate::atom::Atom::FLUSH, 2))
+        );
+    }
+
+    #[test]
+    fn line_at_ip_resolves_last_preceding_line_marker() {
+        let mut module = empty_module(crate::atom::Atom::MODULE);
+        module.line_info = vec![
+            LineInfo { file: 0, line: 10 },
+            LineInfo { file: 0, line: 20 },
+        ];
+        module.line_table = vec![(2, 0), (6, 1), (10, 99)];
+
+        assert_eq!(module.line_at_ip(1), None);
+        assert_eq!(module.line_at_ip(2), Some(10));
+        assert_eq!(module.line_at_ip(5), Some(10));
+        assert_eq!(module.line_at_ip(6), Some(20));
+        assert_eq!(module.line_at_ip(10), None);
     }
 
     #[test]

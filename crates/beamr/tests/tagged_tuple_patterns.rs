@@ -81,6 +81,8 @@ fn decoded_is_tagged_tuple_handler_checks_tuple_arity_and_first_atom() {
         lambdas: Vec::new(),
         string_table: Vec::new(),
         line_info: Vec::new(),
+        function_table: Vec::new(),
+        line_table: Vec::new(),
     };
     let mut ok_words = [0_u64; 3];
     let mut error_words = [0_u64; 3];

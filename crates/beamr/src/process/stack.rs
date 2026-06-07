@@ -279,6 +279,11 @@ impl Stack {
         self.frames.iter().map(StackFrame::pinned_module)
     }
 
+    /// Iterator over call frames from newest to oldest.
+    pub fn frames_from_top(&self) -> impl Iterator<Item = &StackFrame> {
+        self.frames.iter().rev()
+    }
+
     /// Iterator over every Y-register in every stack frame.
     pub(crate) fn y_regs(&self) -> impl Iterator<Item = &Term> {
         self.frames.iter().flat_map(StackFrame::y_regs)
@@ -319,6 +324,8 @@ mod tests {
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             line_info: Vec::new(),
         }
     }
