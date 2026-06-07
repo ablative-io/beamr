@@ -21,7 +21,7 @@ use crate::namespace::NamespaceId;
 use crate::native::NativeContinuation;
 use crate::process::heap::Heap;
 use crate::process::stack::Stack;
-use crate::term::{Term, compare};
+use crate::term::{Term, boxed::BoxedTag, compare};
 
 /// Default number of reductions assigned to a fresh process time slice.
 pub const DEFAULT_REDUCTION_BUDGET: u32 = 4000;
@@ -854,8 +854,9 @@ impl Process {
     /// Mark the process exited and release owned runtime state that can keep
     /// heap terms alive after process death.
     pub fn terminate(&mut self, reason: ExitReason) {
+        self.close_owned_fd_resources();
         self.status = ProcessStatus::Exited(reason);
-        crate::gc::release_all_proc_bins(self);
+        crate::gc::release_all_refcounted_resources(self);
         self.virtual_binary_heap = 0;
         self.heap = Heap::new(1);
         self.stack = Stack::new();
@@ -871,6 +872,15 @@ impl Process {
         self.code_position = None;
         self.current_module = None;
         self.current_mfa = None;
+    }
+
+    fn close_owned_fd_resources(&mut self) {
+        let owner_pid = self.pid;
+        self.heap().visit_boxed_objects(|ptr, tag, _words| {
+            if tag == BoxedTag::FdResource {
+                crate::io::resource::close_owned_resource_at(ptr, owner_pid);
+            }
+        });
     }
 }
 
