@@ -19,7 +19,7 @@ impl BinaryRef {
     }
 
     /// Returns binary bytes without copying the backing storage.
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &'static [u8] {
         match self {
             Self::Inline(binary) => binary.as_bytes(),
             Self::Refc(proc_bin) => proc_bin.as_bytes(),

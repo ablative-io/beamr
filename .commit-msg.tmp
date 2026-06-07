@@ -1,1 +1,1 @@
-feat(beamr): add shared binary and ProcBin accessors
+fix(beamr): expose static binary ref byte borrow
