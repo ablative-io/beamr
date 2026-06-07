@@ -78,6 +78,13 @@ fn process_exit_signal(
     };
     let mut slot = lock_or_recover(&entry);
     let Some(ScheduledProcess(target)) = slot.as_mut() else {
+        // Process body is taken by a scheduler thread for execution.
+        // Record a tombstone so the scheduler discards the process
+        // after the current slice and propagates exit to its links.
+        if reason == ExitReason::Kill || reason != ExitReason::Normal {
+            let propagated_reason = link::terminal_reason(reason);
+            shared.exit_tombstones.insert(target_pid, propagated_reason);
+        }
         return Vec::new();
     };
 

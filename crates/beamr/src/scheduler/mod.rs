@@ -906,6 +906,13 @@ fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64, my_index: 
     };
     let outcome = execute_slice(shared, &mut process);
     if shared.exit_tombstones.contains_key(&pid) {
+        let reason = shared
+            .exit_tombstones
+            .get(&pid)
+            .map(|r| *r)
+            .unwrap_or(ExitReason::Killed);
+        store_runnable_process(shared, process);
+        cleanup_exited_process(shared, pid, reason);
         return;
     }
     match outcome {

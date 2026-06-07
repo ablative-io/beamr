@@ -353,3 +353,26 @@ fn cross_namespace_monitor_delivers_down_message() {
     assert_eq!(msg[3].as_pid(), Some(target));
     assert_eq!(msg[4], Term::atom(Atom::ERROR));
 }
+
+#[test]
+fn exit_signal_tombstones_process_whose_body_is_taken() {
+    let shared = make_shared_state();
+    let parent = insert_process(&shared, 1);
+    let child = insert_process(&shared, 2);
+    add_link(&shared, parent, child);
+
+    // Simulate the scheduler taking the child's body for execution.
+    {
+        let entry = shared.process_bodies.get(&child).unwrap();
+        let mut slot = lock_or_recover(&entry);
+        let _taken = slot.take();
+    }
+
+    // Parent dies — exit signal propagates to the child whose body is absent.
+    cleanup_exited_process(&shared, parent, ExitReason::Error);
+
+    assert!(
+        shared.exit_tombstones.contains_key(&child),
+        "child should have a tombstone even though its body was taken"
+    );
+}
