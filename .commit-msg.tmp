@@ -1,1 +1,1 @@
-feat(beamr): add BIF exception classes and throw exit support
+harden(beamr): finalize is_tagged_tuple guard review

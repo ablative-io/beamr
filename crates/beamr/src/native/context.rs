@@ -7,7 +7,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::atom::{Atom, AtomTable};
+use crate::atom::AtomTable;
 use crate::io::{IoSink, NullSink};
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
 use crate::process::Process;
