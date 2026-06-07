@@ -9,8 +9,8 @@ use crate::interpreter::{self, ExecutionResult};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{CodePosition, ExitReason, Process, ProcessStatus};
 use crate::term::Term;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 impl Scheduler {
     pub fn wake_notifier(&self, pid: u64) -> impl Fn() + Send + Sync + 'static {
         let shared = Arc::clone(&self.shared);
@@ -268,7 +268,7 @@ fn exit_reason_from_status(status: ProcessStatus) -> ExitReason {
         _ => ExitReason::Error,
     }
 }
-pub(super) fn cleanup_exited_process(shared: &SharedState, pid: u64, reason: ExitReason) {
+pub(crate) fn cleanup_exited_process(shared: &SharedState, pid: u64, reason: ExitReason) {
     shared.exit_tombstones.insert(pid, reason);
     supervision_integration::propagate_exit(shared, pid, reason);
     let _removed = shared.process_table.remove(pid);
@@ -280,7 +280,7 @@ pub(super) fn cleanup_exited_process(shared: &SharedState, pid: u64, reason: Exi
 fn take_process(process: &mut Process) -> Process {
     std::mem::replace(process, Process::new(u64::MAX, DEFAULT_HEAP_SIZE))
 }
-pub(super) fn wake_process(shared: &SharedState, pid: u64) {
+pub(crate) fn wake_process(shared: &SharedState, pid: u64) {
     timer_integration::cancel_receive_timer(shared, pid);
     let mut wait_set = lock_or_recover(&shared.wait_set);
     if let Some(scheduler_index) = wait_set.waiting.remove(&pid) {

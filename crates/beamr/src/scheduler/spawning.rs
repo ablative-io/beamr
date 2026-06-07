@@ -205,7 +205,7 @@ fn materialize_spawn_request(shared: &SharedState, request: SpawnRequest) -> u64
     );
     pid
 }
-fn build_process(request: SpawnRequest) -> Process {
+pub(crate) fn build_process(request: SpawnRequest) -> Process {
     let mut process = Process::new(request.pid, DEFAULT_HEAP_SIZE);
     process.set_namespace_id(request.namespace_id);
     process.set_code_position(Some(CodePosition {

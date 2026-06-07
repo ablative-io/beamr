@@ -89,7 +89,7 @@ impl Scheduler {
         process_references_old_code(&self.shared, pid, &old)
     }
 }
-pub(super) struct SchedulerCodeManagementFacility {
+pub(crate) struct SchedulerCodeManagementFacility {
     pub(super) shared: Arc<SharedState>,
 }
 impl CodeManagementFacility for SchedulerCodeManagementFacility {

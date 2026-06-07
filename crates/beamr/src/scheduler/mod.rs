@@ -16,8 +16,8 @@ use crate::io::{IoSink, NullSink};
 use crate::module::{Module, ModuleRegistry};
 use crate::namespace::NamespaceId;
 use crate::native::{AllCapabilitiesPolicy, BifRegistryImpl, CapabilityPolicy};
-use crate::process::ExitReason;
 use crate::process::registry::ProcessTable;
+use crate::process::{ExitReason, Process};
 use crate::supervision::link::LinkSet;
 use crate::supervision::monitor::MonitorSet;
 use crate::term::Term;
@@ -30,6 +30,7 @@ pub(super) use module_management::SchedulerCodeManagementFacility;
 pub use module_management::{HotLoadResult, PurgeResult};
 use process_slot::{ProcessMetadata, ProcessSlot};
 use run_queue::RunQueue;
+pub(super) use spawning::build_process;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
@@ -80,9 +81,6 @@ pub(super) struct SpawnRequest {
     pub(super) namespace_id: NamespaceId,
 }
 pub(super) struct ScheduledProcess(Process);
-// SAFETY: Process is not Send at the public API boundary. The scheduler is the
-// sole owner of process execution, storing each body behind a mutex-protected
-// ProcessSlot. Workers take exclusive ownership before executing a time slice.
 unsafe impl Send for ScheduledProcess {}
 pub struct Scheduler {
     shared: Arc<SharedState>,
