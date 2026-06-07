@@ -46,6 +46,11 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
             if cleanup_if_tombstoned_after_store(shared, pid) {
                 return;
             }
+            if process_has_queued_messages(shared, pid) {
+                timer_integration::cancel_receive_timer(shared, pid);
+                queue.push(pid);
+                return;
+            }
             let mut ws = lock_or_recover(&shared.wait_set);
             ws.waiting.insert(pid, my_index);
         }
@@ -157,6 +162,17 @@ pub(in crate::scheduler) fn cleanup_if_tombstoned_after_store(
 
 fn tombstone_reason(shared: &SharedState, pid: u64) -> Option<ExitReason> {
     shared.exit_tombstones.get(&pid).map(|reason| *reason)
+}
+
+fn process_has_queued_messages(shared: &SharedState, pid: u64) -> bool {
+    let Some(entry) = shared.process_bodies.get(&pid) else {
+        return false;
+    };
+    let slot = lock_or_recover(&entry);
+    match &*slot {
+        ProcessSlot::Present(ScheduledProcess(process)) => !process.mailbox().is_empty(),
+        ProcessSlot::Executing(_) | ProcessSlot::Absent => false,
+    }
 }
 
 pub(in crate::scheduler) fn execute_slice(

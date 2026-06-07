@@ -309,6 +309,28 @@ fn monitor_delivers_down_message_on_exit() {
 }
 
 #[test]
+fn monitor_down_for_executing_watcher_is_delivered_on_store_back() {
+    let shared = make_shared_state();
+    let watcher = insert_process(&shared, 1);
+    let target = insert_process(&shared, 2);
+    let reference = add_monitor(&shared, watcher, target);
+    let process = make_executing(&shared, watcher);
+
+    cleanup_exited_process(&shared, target, ExitReason::Error);
+    store_runnable_process(&shared, process);
+
+    let msg = read_mailbox_tuple(&shared, watcher)
+        .unwrap_or_else(|| panic!("executing watcher receives pending DOWN"));
+    assert_eq!(msg.len(), 5, "DOWN message should be a 5-tuple");
+    assert_eq!(msg[0], Term::atom(Atom::DOWN));
+    let ref_term = boxed::Reference::new(msg[1]).unwrap_or_else(|| panic!("reference in DOWN"));
+    assert_eq!(ref_term.id(), reference);
+    assert_eq!(msg[2], Term::atom(Atom::PROCESS));
+    assert_eq!(msg[3].as_pid(), Some(target));
+    assert_eq!(msg[4], Term::atom(Atom::ERROR));
+}
+
+#[test]
 fn cascade_link_exit_propagates_through_chain() {
     let shared = make_shared_state();
     let a = insert_process(&shared, 1);

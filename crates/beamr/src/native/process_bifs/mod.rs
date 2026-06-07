@@ -1,5 +1,5 @@
-//! Process lifecycle BIFs — self, spawn, spawn_link, link, unlink,
-//! process_flag, monitor, demonitor, exit.
+//! Process lifecycle BIFs — self, spawn, spawn_link, spawn_monitor, link,
+//! unlink, process_flag, monitor, demonitor, exit.
 //!
 //! Registered as Gate 2 BIFs alongside the Gate 1 arithmetic, comparison, and
 //! utility functions.

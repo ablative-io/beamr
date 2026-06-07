@@ -1,1 +1,1 @@
-feat(beamr): add atomic spawn_monitor BIFs
+review(beamr): harden spawn_monitor DOWN delivery
