@@ -23,9 +23,9 @@ pub(crate) fn select_val(
     fail: &Operand,
     list: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let value = core::read_term(process, value)?;
+    let value = core::read_term(process, module, value)?;
     for [candidate, label] in select_pairs(list)? {
-        let candidate = core::read_term(process, candidate)?;
+        let candidate = core::read_term(process, module, candidate)?;
         if compare::exact_eq(value, candidate) {
             return super::opcodes::guards::jump(module, label);
         }
@@ -40,7 +40,7 @@ pub(crate) fn select_tuple_arity(
     fail: &Operand,
     list: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let value = core::read_term(process, value)?;
+    let value = core::read_term(process, module, value)?;
     let Some(tuple) = Tuple::new(value) else {
         return super::opcodes::guards::jump(module, fail);
     };
@@ -94,6 +94,7 @@ mod tests {
             label_index,
             code,
             literals: Vec::new(),
+            constant_pool: Default::default(),
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),

@@ -4,6 +4,7 @@ use std::hash::Hasher;
 use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
+use crate::constant_pool::materialise_literals;
 use crate::error::LoadError;
 use crate::module::{Module, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use crate::native::{
@@ -427,7 +428,11 @@ pub fn prepare_module_with_policy(
     let (resolved_by_index, report) =
         resolve_imports(&parsed, module_registry, bif_registry, capability_policy);
     validate_module(&parsed, &resolved_by_index)?;
-    let module = module_from_parsed(parsed, resolved_by_index.into_iter().flatten().collect());
+    let module = module_from_parsed(
+        parsed,
+        resolved_by_index.into_iter().flatten().collect(),
+        atom_table,
+    )?;
     Ok((module, report))
 }
 
@@ -531,7 +536,11 @@ pub fn resolve_imports(
     (resolved, report)
 }
 
-fn module_from_parsed(parsed: ParsedModule, resolved_imports: Vec<ResolvedImport>) -> Module {
+fn module_from_parsed(
+    parsed: ParsedModule,
+    resolved_imports: Vec<ResolvedImport>,
+    atom_table: &AtomTable,
+) -> Result<Module, LoadError> {
     let exports = parsed
         .exports
         .into_iter()
@@ -547,18 +556,21 @@ fn module_from_parsed(parsed: ParsedModule, resolved_imports: Vec<ResolvedImport
         })
         .collect();
 
-    Module {
+    let constant_pool = materialise_literals(&parsed.literals, Some(atom_table))?;
+
+    Ok(Module {
         name: parsed.name,
         generation: 0,
         exports,
         label_index,
         code: parsed.instructions,
         literals: parsed.literals,
+        constant_pool,
         resolved_imports,
         lambdas: parsed.lambdas,
         string_table: parsed.string_table,
         line_info: parsed.line_info,
-    }
+    })
 }
 
 fn assign_lambda_unique_ids(
@@ -746,6 +758,7 @@ mod tests {
             label_index: std::collections::HashMap::new(),
             code: Vec::new(),
             literals: Vec::new(),
+            constant_pool: Default::default(),
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
@@ -905,6 +918,7 @@ mod tests {
             label_index: std::collections::HashMap::new(),
             code: Vec::new(),
             literals: Vec::new(),
+            constant_pool: Default::default(),
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),

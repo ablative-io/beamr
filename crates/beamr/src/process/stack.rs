@@ -291,6 +291,7 @@ mod tests {
             label_index: HashMap::from([(1, 0)]),
             code: vec![Instruction::Label { label: 1 }],
             literals: Vec::new(),
+            constant_pool: Default::default(),
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),

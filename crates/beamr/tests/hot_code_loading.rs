@@ -1,11 +1,14 @@
 //! End-to-end hot code loading lifecycle tests.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use beamr::atom::AtomTable;
+use beamr::constant_pool::materialise_literals;
 use beamr::error::LoadError;
-use beamr::module::ModuleRegistry;
+use beamr::loader::{Instruction, Literal};
+use beamr::module::{Module, ModuleRegistry};
 use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
 use beamr::process::ExitReason;
@@ -19,6 +22,22 @@ fn fixture(name: &str) -> Vec<u8> {
         .join("hot_code")
         .join(name);
     std::fs::read(&path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+}
+
+fn literal_module(name: beamr::atom::Atom, literals: Vec<Literal>) -> Module {
+    Module {
+        name,
+        generation: 0,
+        exports: HashMap::new(),
+        label_index: HashMap::new(),
+        code: vec![Instruction::Return],
+        constant_pool: materialise_literals(&literals, None).expect("constant pool materialises"),
+        literals,
+        resolved_imports: Vec::new(),
+        lambdas: Vec::new(),
+        string_table: Vec::new(),
+        line_info: Vec::new(),
+    }
 }
 
 fn scheduler(atom_table: Arc<AtomTable>) -> (Scheduler, Arc<ModuleRegistry>) {
@@ -35,6 +54,39 @@ fn scheduler(atom_table: Arc<AtomTable>) -> (Scheduler, Arc<ModuleRegistry>) {
     )
     .expect("scheduler starts");
     (scheduler, registry)
+}
+
+#[test]
+fn purging_last_arc_drops_module_owned_constant_pool() {
+    let atoms = AtomTable::with_common_atoms();
+    let module_name = atoms.intern("literal_lifecycle");
+    let registry = ModuleRegistry::new();
+    let first = registry.insert(literal_module(
+        module_name,
+        vec![Literal::Tuple(vec![
+            Literal::Float(1.25),
+            Literal::Binary(b"bin".to_vec()),
+        ])],
+    ));
+    assert_eq!(Arc::strong_count(&first), 2);
+    assert!(first.constant_pool.get(0).expect("literal").is_boxed());
+    let weak = Arc::downgrade(&first);
+
+    let second = registry.insert(literal_module(
+        module_name,
+        vec![Literal::List(
+            vec![Literal::Integer(2)],
+            Box::new(Literal::Nil),
+        )],
+    ));
+    assert_eq!(second.generation(), 2);
+    assert!(registry.has_old_code(module_name));
+    drop(first);
+
+    registry
+        .purge_old(module_name)
+        .expect("old module unreferenced");
+    assert!(weak.upgrade().is_none());
 }
 
 #[test]

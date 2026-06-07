@@ -14,6 +14,7 @@ use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
 
 use crate::atom::Atom;
+use crate::constant_pool::ConstantPool;
 use crate::error::ExecError;
 use crate::loader::{Instruction, LambdaEntry, LineInfo, Literal};
 use crate::native::NativeEntry;
@@ -81,6 +82,8 @@ pub struct Module {
     pub code: Vec<Instruction>,
     /// Decoded literal table.
     pub literals: Vec<Literal>,
+    /// Pre-materialised literal terms backed by module-owned storage.
+    pub constant_pool: ConstantPool,
     /// Import table entries that resolved to callable targets.
     pub resolved_imports: Vec<ResolvedImport>,
     /// Decoded lambda table entries.
@@ -375,6 +378,7 @@ mod tests {
             label_index: HashMap::new(),
             code: Vec::new(),
             literals: Vec::new(),
+            constant_pool: ConstantPool::default(),
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),

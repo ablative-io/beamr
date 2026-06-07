@@ -17,20 +17,22 @@ use super::core;
 
 pub fn get_hd(
     process: &mut Process,
+    module: &Module,
     source: &Operand,
     destination: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let cons = Cons::new(core::read_term(process, source)?).ok_or(ExecError::Badarg)?;
+    let cons = Cons::new(core::read_term(process, module, source)?).ok_or(ExecError::Badarg)?;
     core::write_term(process, destination, cons.head())?;
     Ok(InstructionOutcome::Continue)
 }
 
 pub fn get_tl(
     process: &mut Process,
+    module: &Module,
     source: &Operand,
     destination: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let cons = Cons::new(core::read_term(process, source)?).ok_or(ExecError::Badarg)?;
+    let cons = Cons::new(core::read_term(process, module, source)?).ok_or(ExecError::Badarg)?;
     core::write_term(process, destination, cons.tail())?;
     Ok(InstructionOutcome::Continue)
 }
@@ -42,7 +44,7 @@ pub fn type_test(
     fail: &Operand,
     value: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let (value, arity) = function_test_value_and_arity(process, op, value)?;
+    let (value, arity) = function_test_value_and_arity(process, module, op, value)?;
     branch_if_false(module, fail, matches_type(op, value, arity)?)
 }
 
@@ -55,8 +57,8 @@ pub fn comparison(
     right: &Operand,
     atom_table: Option<&AtomTable>,
 ) -> Result<InstructionOutcome, ExecError> {
-    let left = core::read_term(process, left)?;
-    let right = core::read_term(process, right)?;
+    let left = core::read_term(process, module, left)?;
+    let right = core::read_term(process, module, right)?;
     let order = || {
         atom_table.map_or_else(
             || compare::raw_cmp(left, right),
@@ -81,7 +83,7 @@ pub fn test_arity(
     tuple: &Operand,
     arity: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let tuple = core::read_term(process, tuple)?;
+    let tuple = core::read_term(process, module, tuple)?;
     let expected = core::operand_usize(arity, "tuple arity")?;
     let passed = Tuple::new(tuple).is_some_and(|tuple| tuple.arity() == expected);
     branch_if_false(module, fail, passed)
@@ -94,10 +96,10 @@ pub fn select_val(
     fail: &Operand,
     list: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let value = core::read_term(process, value)?;
+    let value = core::read_term(process, module, value)?;
     for pair in select_pairs(list, "select_val list")? {
         let (candidate, label) = pair?;
-        if compare::exact_eq(value, core::read_term(process, candidate)?) {
+        if compare::exact_eq(value, core::read_term(process, module, candidate)?) {
             return jump_label(module, label);
         }
     }
@@ -111,7 +113,7 @@ pub fn select_tuple_arity(
     fail: &Operand,
     list: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let arity = Tuple::new(core::read_term(process, value)?).map(Tuple::arity);
+    let arity = Tuple::new(core::read_term(process, module, value)?).map(Tuple::arity);
     if let Some(arity) = arity {
         for pair in select_pairs(list, "select_tuple_arity list")? {
             let (candidate, label) = pair?;
@@ -156,7 +158,7 @@ pub fn bif(
 
     let mut args = Vec::with_capacity(parsed.args.len());
     for arg in parsed.args {
-        args.push(core::read_term(process, arg)?);
+        args.push(core::read_term(process, module, arg)?);
     }
 
     let mut context = ProcessContext::new();
@@ -178,6 +180,7 @@ pub fn bif(
 
 fn function_test_value_and_arity(
     process: &Process,
+    module: &Module,
     op: TypeTestOp,
     value: &Operand,
 ) -> Result<(Term, Option<usize>), ExecError> {
@@ -189,11 +192,11 @@ fn function_test_value_and_arity(
             return Err(ExecError::InvalidOperand("is_function2 operands"));
         };
         Ok((
-            core::read_term(process, function)?,
+            core::read_term(process, module, function)?,
             Some(core::operand_usize(arity, "is_function2 arity")?),
         ))
     } else {
-        Ok((core::read_term(process, value)?, None))
+        Ok((core::read_term(process, module, value)?, None))
     }
 }
 

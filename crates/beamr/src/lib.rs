@@ -4,6 +4,7 @@
 //! and executes it with preemptive scheduling, per-process isolation,
 //! supervision primitives, and a native function interface.
 pub mod atom;
+pub mod constant_pool;
 pub mod error;
 pub mod gc;
 pub mod hook;

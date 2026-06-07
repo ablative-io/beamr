@@ -22,7 +22,9 @@ pub fn binary_op(
     operands: &[Operand],
 ) -> Result<InstructionOutcome, ExecError> {
     match op {
-        BinaryOp::BsInitWritable | BinaryOp::BsCreateBin => bs_init_or_create(process, operands),
+        BinaryOp::BsInitWritable | BinaryOp::BsCreateBin => {
+            bs_init_or_create(process, module, operands)
+        }
         BinaryOp::BsStartMatch3 | BinaryOp::BsStartMatch4 => {
             bs_start_match(process, module, operands)
         }
@@ -38,6 +40,7 @@ pub fn binary_op(
 
 fn bs_init_or_create(
     process: &mut Process,
+    module: &Module,
     operands: &[Operand],
 ) -> Result<InstructionOutcome, ExecError> {
     match operands {
@@ -51,7 +54,7 @@ fn bs_init_or_create(
             let capacity = core::operand_usize(size, "binary builder size")?;
             let builder = allocate_builder(process, capacity)?;
             for segment in segments {
-                append_create_bin_segment(process, builder, segment)?;
+                append_create_bin_segment(process, module, builder, segment)?;
             }
             let binary = finalize_builder(process, builder)?;
             core::write_term(process, destination, binary)?;
@@ -71,7 +74,7 @@ fn bs_start_match(
         [fail, source, _live, destination] => (fail, source, destination),
         _ => return Err(ExecError::InvalidOperand("bs_start_match operands")),
     };
-    let source = core::read_term(process, source)?;
+    let source = core::read_term(process, module, source)?;
     let Some(binary) = Binary::new(source) else {
         return jump_label(module, fail);
     };
@@ -98,7 +101,7 @@ fn bs_get_integer(
         parse_get_operands(operands, "bs_get_integer2")?;
     let size_bits = segment_bits(size, unit)?;
     let segment_flags = SegmentFlags::from_flags(flags);
-    let context_term = core::read_term(process, context)?;
+    let context_term = core::read_term(process, module, context)?;
     let context = MatchContext::new(context_term).ok_or(ExecError::Badarg)?;
     if !size_bits.is_multiple_of(u8::BITS as usize)
         || !context.position_bits().is_multiple_of(u8::BITS as usize)
@@ -125,7 +128,7 @@ fn bs_get_binary(
     let (fail, context, size, unit, _flags, destination) =
         parse_get_operands(operands, "bs_get_binary2")?;
     let size_bits = segment_bits(size, unit)?;
-    let context_term = core::read_term(process, context)?;
+    let context_term = core::read_term(process, module, context)?;
     let context = MatchContext::new(context_term).ok_or(ExecError::Badarg)?;
     if !size_bits.is_multiple_of(u8::BITS as usize)
         || !context.position_bits().is_multiple_of(u8::BITS as usize)
@@ -166,7 +169,7 @@ fn bs_match_string(
         return Err(ExecError::Badarg);
     }
     let expected = literal_bytes(module, literal, bit_len / u8::BITS as usize)?;
-    let context_term = core::read_term(process, context)?;
+    let context_term = core::read_term(process, module, context)?;
     let context = MatchContext::new(context_term).ok_or(ExecError::Badarg)?;
     if !context.position_bits().is_multiple_of(u8::BITS as usize) || !context.has_bits(bit_len) {
         return jump_label(module, fail);
@@ -189,7 +192,7 @@ fn bs_test_tail(
         _ => return Err(ExecError::InvalidOperand("bs_test_tail2 operands")),
     };
     let expected = core::operand_usize(expected, "bs_test_tail2 remaining bits")?;
-    let context_term = core::read_term(process, context)?;
+    let context_term = core::read_term(process, module, context)?;
     let context = MatchContext::new(context_term).ok_or(ExecError::Badarg)?;
     if context.remaining_bits() == expected {
         Ok(InstructionOutcome::Continue)
@@ -200,6 +203,7 @@ fn bs_test_tail(
 
 fn append_create_bin_segment(
     process: &mut Process,
+    module: &Module,
     builder: Term,
     segment: &Operand,
 ) -> Result<(), ExecError> {
@@ -208,22 +212,23 @@ fn append_create_bin_segment(
     };
     match fields.as_slice() {
         [Operand::Atom(None), value, size, unit, flags] => {
-            bs_put_integer(process, builder, value, size, unit, flags)
+            bs_put_integer(process, module, builder, value, size, unit, flags)
         }
-        [Operand::Atom(None), source] => bs_put_binary(process, builder, source),
+        [Operand::Atom(None), source] => bs_put_binary(process, module, builder, source),
         _ => Err(ExecError::InvalidOperand("bs_create_bin segment")),
     }
 }
 
 pub(crate) fn bs_put_integer(
     process: &mut Process,
+    module: &Module,
     builder: Term,
     value: &Operand,
     size: &Operand,
     unit: &Operand,
     flags: &Operand,
 ) -> Result<(), ExecError> {
-    let value = core::read_term(process, value)?;
+    let value = core::read_term(process, module, value)?;
     let value = value.as_small_int().ok_or(ExecError::Badarg)?;
     let size_bits = segment_bits(size, unit)?;
     let endian = Endian::from_flags(flags);
@@ -244,10 +249,11 @@ pub(crate) fn bs_put_integer(
 
 pub(crate) fn bs_put_binary(
     process: &mut Process,
+    module: &Module,
     builder: Term,
     source: &Operand,
 ) -> Result<(), ExecError> {
-    let source = core::read_term(process, source)?;
+    let source = core::read_term(process, module, source)?;
     let binary = Binary::new(source).ok_or(ExecError::Badarg)?;
     let bytes = binary.as_bytes();
     let size_bits = bytes.len() * u8::BITS as usize;
@@ -538,10 +544,13 @@ fn literal_bytes<'a>(
     byte_len: usize,
 ) -> Result<&'a [u8], ExecError> {
     match operand {
-        Operand::Literal(Literal::Binary(bytes) | Literal::String(bytes)) => bytes
-            .get(..byte_len)
-            .filter(|bytes| bytes.len() == byte_len)
-            .ok_or(ExecError::Badarg),
+        Operand::Literal(index) => match module.literals.get(*index) {
+            Some(Literal::Binary(bytes) | Literal::String(bytes)) => bytes
+                .get(..byte_len)
+                .filter(|bytes| bytes.len() == byte_len)
+                .ok_or(ExecError::Badarg),
+            _ => Err(ExecError::Badarg),
+        },
         offset => {
             let offset = core::operand_usize(offset, "string table offset")?;
             module
