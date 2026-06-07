@@ -1,1 +1,1 @@
-feat(beamr): add group leader process metadata BIFs
+fix(beamr): classify group leader BIFs as process-local

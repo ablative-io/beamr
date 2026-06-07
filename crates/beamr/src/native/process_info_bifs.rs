@@ -21,8 +21,18 @@ pub trait GroupLeaderFacility: Send + Sync {
 type ProcessInfoBif = (&'static str, u8, Capability, NativeFn);
 
 const PROCESS_INFO_BIFS: &[ProcessInfoBif] = &[
-    ("group_leader", 0, Capability::Pure, bif_group_leader_0),
-    ("group_leader", 2, Capability::Pure, bif_group_leader_2),
+    (
+        "group_leader",
+        0,
+        Capability::ProcessLocal,
+        bif_group_leader_0,
+    ),
+    (
+        "group_leader",
+        2,
+        Capability::ProcessLocal,
+        bif_group_leader_2,
+    ),
 ];
 
 /// Registers process metadata BIFs under the `erlang` module.

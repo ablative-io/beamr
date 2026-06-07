@@ -692,6 +692,8 @@ mod tests {
             ("erase", 1, Capability::ProcessLocal),
             ("erase", 0, Capability::ProcessLocal),
             ("get_keys", 1, Capability::ProcessLocal),
+            ("group_leader", 0, Capability::ProcessLocal),
+            ("group_leader", 2, Capability::ProcessLocal),
             ("raise", 3, Capability::Pure),
         ] {
             let function = atom_table.intern(name);
