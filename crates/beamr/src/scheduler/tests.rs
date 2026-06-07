@@ -66,6 +66,7 @@ fn scheduler_creates_requested_thread_count_and_names() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(4),
+            low_priority_interval: None,
         },
         registry,
     )
@@ -110,6 +111,7 @@ fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            low_priority_interval: None,
         },
         Arc::clone(&registry),
     )
@@ -176,6 +178,7 @@ fn hook_fires_when_process_blocks_on_receive() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            low_priority_interval: None,
         },
         Arc::clone(&registry),
     )
@@ -224,6 +227,7 @@ fn shutdown_is_idempotent() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(2),
+            low_priority_interval: None,
         },
         registry,
     )
@@ -243,6 +247,7 @@ fn single_process_runs_to_completion_and_is_removed() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            low_priority_interval: None,
         },
         Arc::clone(&registry),
     )
@@ -276,6 +281,7 @@ fn exported_spawn_starts_at_entry_function_with_args() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            low_priority_interval: None,
         },
         Arc::clone(&registry),
     )
@@ -320,6 +326,7 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         next_namespace_id: AtomicU64::new(1),
         spawn_counter: AtomicUsize::new(0),
         thread_count: 1,
+        low_priority_interval: crate::scheduler::run_queue::DEFAULT_LOW_PRIORITY_INTERVAL,
         next_pid: AtomicU64::new(0),
         wait_set: Mutex::new(WaitSet::default()),
         wake_condvar: Condvar::new(),
@@ -367,6 +374,7 @@ fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            low_priority_interval: None,
         },
         Arc::clone(&registry),
     )
@@ -413,6 +421,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         next_namespace_id: AtomicU64::new(1),
         spawn_counter: AtomicUsize::new(0),
         thread_count: 1,
+        low_priority_interval: crate::scheduler::run_queue::DEFAULT_LOW_PRIORITY_INTERVAL,
         next_pid: AtomicU64::new(0),
         wait_set: Mutex::new(WaitSet::default()),
         wake_condvar: Condvar::new(),
@@ -477,6 +486,7 @@ fn yielded_process_is_rescheduled() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            low_priority_interval: None,
         },
         Arc::clone(&registry),
     )
@@ -498,6 +508,7 @@ fn multiple_processes_fairly_complete() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(2),
+            low_priority_interval: None,
         },
         Arc::clone(&registry),
     )
@@ -518,6 +529,7 @@ fn mailbox_send_wakes_waiting_process_event_driven() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
+            low_priority_interval: None,
         },
         registry,
     )
@@ -573,6 +585,7 @@ fn idle_threads_park_instead_of_spinning() {
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(2),
+            low_priority_interval: None,
         },
         registry,
     )
