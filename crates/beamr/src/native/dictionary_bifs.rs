@@ -65,6 +65,8 @@ pub fn bif_get_0(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
         return Err(badarg());
     }
 
+    let entry_count = context.dict_entry_count()?;
+    ensure_dictionary_list_space(context, entry_count)?;
     let entries = context.dict_get_all()?;
     dictionary_entries_to_list(entries, context)
 }
@@ -84,6 +86,8 @@ pub fn bif_erase_0(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         return Err(badarg());
     }
 
+    let entry_count = context.dict_entry_count()?;
+    ensure_dictionary_list_space(context, entry_count)?;
     let entries = context.dict_erase_all()?;
     dictionary_entries_to_list(entries, context)
 }
@@ -94,8 +98,25 @@ pub fn bif_get_keys_1(args: &[Term], context: &mut ProcessContext) -> Result<Ter
         return Err(badarg());
     };
 
+    let key_count = context.dict_matching_key_count(*value)?;
+    ensure_key_list_space(context, key_count)?;
     let keys = context.dict_get_keys(*value)?;
     context.alloc_list(&keys)
+}
+
+fn ensure_dictionary_list_space(
+    context: &mut ProcessContext,
+    entry_count: usize,
+) -> Result<(), Term> {
+    let tuple_words = entry_count.checked_mul(3).ok_or_else(badarg)?;
+    let list_words = entry_count.checked_mul(2).ok_or_else(badarg)?;
+    let words = tuple_words.checked_add(list_words).ok_or_else(badarg)?;
+    context.ensure_heap_space(words)
+}
+
+fn ensure_key_list_space(context: &mut ProcessContext, key_count: usize) -> Result<(), Term> {
+    let words = key_count.checked_mul(2).ok_or_else(badarg)?;
+    context.ensure_heap_space(words)
 }
 
 fn dictionary_entries_to_list(
@@ -115,7 +136,10 @@ fn badarg() -> Term {
 
 #[cfg(test)]
 mod tests {
-    use super::{bif_erase_1, bif_get_0, bif_get_1, bif_put, register_dictionary_bifs};
+    use super::{
+        bif_erase_0, bif_erase_1, bif_get_0, bif_get_1, bif_get_keys_1, bif_put,
+        register_dictionary_bifs,
+    };
     use crate::atom::{Atom, AtomTable};
     use crate::native::{BifRegistryImpl, Capability, ProcessContext};
     use crate::process::Process;
@@ -204,5 +228,51 @@ mod tests {
         assert_eq!(first.get(1), Some(value_a));
         assert_eq!(second.get(0), Some(key_b));
         assert_eq!(second.get(1), Some(value_b));
+    }
+
+    #[test]
+    fn bif_erase_0_returns_old_dictionary_and_clears_entries() {
+        let mut process = Process::new(1, 64);
+        let key = Term::atom(Atom::OK);
+        let value = Term::small_int(7);
+        let list = {
+            let mut context = context_with_process(&mut process);
+            bif_put(&[key, value], &mut context).expect("put");
+            bif_erase_0(&[], &mut context).expect("erase/0")
+        };
+
+        let pairs = list_to_vec(list);
+        assert_eq!(pairs.len(), 1);
+        let pair = Tuple::new(pairs[0]).expect("pair tuple");
+        assert_eq!(pair.get(0), Some(key));
+        assert_eq!(pair.get(1), Some(value));
+        assert!(process.dict_get_all().is_empty());
+    }
+
+    #[test]
+    fn bif_get_keys_1_returns_matching_keys() {
+        let mut process = Process::new(1, 64);
+        let mut context = context_with_process(&mut process);
+        let key_a = Term::atom(Atom::OK);
+        let key_b = Term::atom(Atom::ERROR);
+        let value = Term::small_int(7);
+        bif_put(&[key_a, value], &mut context).expect("put a");
+        bif_put(&[key_b, value], &mut context).expect("put b");
+
+        let list = bif_get_keys_1(&[value], &mut context).expect("get_keys/1");
+
+        assert_eq!(list_to_vec(list), vec![key_a, key_b]);
+    }
+
+    #[test]
+    fn heap_full_during_result_construction_is_recorded_for_interpreter_mapping() {
+        let mut process = Process::new(1, 1);
+        let mut context = context_with_process(&mut process);
+        let key = Term::atom(Atom::OK);
+        let value = Term::small_int(7);
+        bif_put(&[key, value], &mut context).expect("put");
+
+        assert_eq!(bif_get_0(&[], &mut context), Err(Term::atom(Atom::BADARG)));
+        assert!(context.take_heap_full_error().is_some());
     }
 }

@@ -1,1 +1,1 @@
-feat(beamr): implement process dictionary BIFs
+Harden process dictionary BIF heap-root safety

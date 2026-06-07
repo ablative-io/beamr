@@ -218,6 +218,14 @@ impl<'process> ProcessContext<'process> {
         Ok(process.dict_get(key))
     }
 
+    /// Return the number of entries currently stored in the calling process dictionary.
+    pub fn dict_entry_count(&self) -> Result<usize, Term> {
+        let Some(process) = self.process.as_deref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.dict_get_all().len())
+    }
+
     /// Snapshot all entries from the calling process dictionary.
     pub fn dict_get_all(&self) -> Result<Vec<(Term, Term)>, Term> {
         let Some(process) = self.process.as_deref() else {
@@ -240,6 +248,14 @@ impl<'process> ProcessContext<'process> {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         };
         Ok(process.dict_erase_all())
+    }
+
+    /// Count process dictionary keys whose values exactly match `value`.
+    pub fn dict_matching_key_count(&self, value: Term) -> Result<usize, Term> {
+        let Some(process) = self.process.as_deref() else {
+            return Err(Term::atom(crate::atom::Atom::BADARG));
+        };
+        Ok(process.dict_get_keys(value).len())
     }
 
     /// Return all process dictionary keys whose values exactly match `value`.
