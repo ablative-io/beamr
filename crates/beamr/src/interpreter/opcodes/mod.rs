@@ -4,7 +4,6 @@
 //! live in [`core`]; later opcode families can add sibling modules without
 //! changing the execution loop.
 
-#[path = "binary/mod.rs"]
 pub mod binary;
 pub mod closures;
 pub mod core;

@@ -352,20 +352,19 @@ fn is_signed_flag(flag: &Operand) -> bool {
     }
 }
 
+type GetOperands<'a> = (
+    &'a Operand,
+    &'a Operand,
+    &'a Operand,
+    &'a Operand,
+    &'a Operand,
+    &'a Operand,
+);
+
 pub(super) fn parse_get_operands<'a>(
     operands: &'a [Operand],
     context: &'static str,
-) -> Result<
-    (
-        &'a Operand,
-        &'a Operand,
-        &'a Operand,
-        &'a Operand,
-        &'a Operand,
-        &'a Operand,
-    ),
-    ExecError,
-> {
+) -> Result<GetOperands<'a>, ExecError> {
     match operands {
         [fail, match_context, _live, size, unit, flags, destination] => {
             Ok((fail, match_context, size, unit, flags, destination))

@@ -1,1 +1,1 @@
-feat(beamr): expand binary match opcode handlers
+fix(beamr): harden binary opcode expansion review findings

@@ -137,13 +137,13 @@ enum BsMatchCommand {
 fn command_tag(operand: &Operand) -> Result<BsMatchCommand, ExecError> {
     match operand {
         Operand::Unsigned(0) | Operand::Integer(0) => Ok(BsMatchCommand::EnsureAtLeast),
-        Operand::Unsigned(1) | Operand::Integer(1) => Ok(BsMatchCommand::Integer),
-        Operand::Unsigned(2) | Operand::Integer(2) => Ok(BsMatchCommand::Binary),
-        Operand::Unsigned(3) | Operand::Integer(3) => Ok(BsMatchCommand::Equal),
-        Operand::Unsigned(4) | Operand::Integer(4) => Ok(BsMatchCommand::Skip),
-        Operand::Unsigned(5) | Operand::Integer(5) => Ok(BsMatchCommand::GetTail),
-        Operand::Unsigned(6) | Operand::Integer(6) => Ok(BsMatchCommand::Float),
-        Operand::Unsigned(7) | Operand::Integer(7) => Ok(BsMatchCommand::EnsureExactly),
+        Operand::Unsigned(1) | Operand::Integer(1) => Ok(BsMatchCommand::EnsureExactly),
+        Operand::Unsigned(2) | Operand::Integer(2) => Ok(BsMatchCommand::Integer),
+        Operand::Unsigned(3) | Operand::Integer(3) => Ok(BsMatchCommand::Float),
+        Operand::Unsigned(4) | Operand::Integer(4) => Ok(BsMatchCommand::Binary),
+        Operand::Unsigned(5) | Operand::Integer(5) => Ok(BsMatchCommand::Equal),
+        Operand::Unsigned(6) | Operand::Integer(6) => Ok(BsMatchCommand::Skip),
+        Operand::Unsigned(7) | Operand::Integer(7) => Ok(BsMatchCommand::GetTail),
         _ => Err(ExecError::InvalidOperand("bs_match command")),
     }
 }
