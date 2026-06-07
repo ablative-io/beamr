@@ -106,6 +106,13 @@ mod tests {
         }
     }
 
+    fn create_test_table(table_type: EtsTableType) -> std::sync::Arc<dyn super::EtsTable> {
+        match create_table(metadata(table_type)) {
+            Ok(table) => table,
+            Err(error) => panic!("{table_type:?} table creation failed: {error}"),
+        }
+    }
+
     fn tuple(words: &mut [u64], key: Atom, value: i64) -> Term {
         let elements = [Term::atom(key), Term::small_int(value)];
         match write_tuple(words, &elements) {
@@ -116,10 +123,7 @@ mod tests {
 
     #[test]
     fn create_table_instantiates_bag_with_duplicate_rejection() {
-        let table = match create_table(metadata(EtsTableType::Bag)) {
-            Ok(table) => table,
-            Err(error) => panic!("bag table creation failed: {error}"),
-        };
+        let table = create_test_table(EtsTableType::Bag);
         let mut tuple_words = [0_u64; 3];
         let item = tuple(&mut tuple_words, Atom::OK, 1);
 
@@ -130,11 +134,25 @@ mod tests {
     }
 
     #[test]
+    fn create_table_instantiates_bag_with_multi_value_lookup() {
+        let table = create_test_table(EtsTableType::Bag);
+        let mut first_words = [0_u64; 3];
+        let mut second_words = [0_u64; 3];
+        let first = tuple(&mut first_words, Atom::OK, 1);
+        let second = tuple(&mut second_words, Atom::OK, 2);
+
+        assert_eq!(table.insert(first), Ok(()));
+        assert_eq!(table.insert(second), Ok(()));
+
+        let values = table.lookup(Term::atom(Atom::OK));
+        assert_eq!(values.len(), 2);
+        assert!(values.contains(&first));
+        assert!(values.contains(&second));
+    }
+
+    #[test]
     fn create_table_instantiates_duplicate_bag_with_multiplicity() {
-        let table = match create_table(metadata(EtsTableType::DuplicateBag)) {
-            Ok(table) => table,
-            Err(error) => panic!("duplicate_bag table creation failed: {error}"),
-        };
+        let table = create_test_table(EtsTableType::DuplicateBag);
         let mut tuple_words = [0_u64; 3];
         let item = tuple(&mut tuple_words, Atom::OK, 1);
 

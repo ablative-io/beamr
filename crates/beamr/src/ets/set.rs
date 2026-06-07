@@ -21,11 +21,14 @@ impl Eq for EtsKey {}
 impl Hash for EtsKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // `Term` equality uses Erlang exact equality and can consider separately
-        // allocated boxed terms equal. Until ETS owns a full structural hash
-        // alongside deep-copy storage, a single bucket preserves the Hash/Eq
-        // contract for all term shapes rather than hashing pointer addresses.
-        let _ = self.0;
-        0_u8.hash(state);
+        // allocated boxed/list terms equal. Until ETS owns a full structural hash
+        // alongside deep-copy storage, never hash boxed/list pointer addresses;
+        // immediate terms can use their raw tagged word without violating Eq/Hash.
+        if self.0.is_boxed() || self.0.is_list() {
+            0_u8.hash(state);
+        } else {
+            self.0.raw().hash(state);
+        }
     }
 }
 
@@ -111,5 +114,20 @@ mod tests {
         assert_eq!(table.insert(second), Ok(()));
 
         assert_eq!(table.lookup(Term::atom(Atom::OK)), vec![second]);
+    }
+
+    #[test]
+    fn set_uses_configured_key_position() {
+        let table = EtsSet::new(EtsTableMetadata {
+            keypos: 2,
+            ..metadata()
+        });
+        let mut tuple_words = [0_u64; 3];
+        let item = tuple(&mut tuple_words, Atom::OK, 1);
+
+        assert_eq!(table.insert(item), Ok(()));
+
+        assert_eq!(table.lookup(Term::small_int(1)), vec![item]);
+        assert!(table.lookup(Term::atom(Atom::OK)).is_empty());
     }
 }

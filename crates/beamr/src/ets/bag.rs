@@ -148,12 +148,16 @@ mod tests {
         }
     }
 
-    fn tuple(words: &mut [u64], key: Atom, value: i64) -> Term {
-        let elements = [Term::atom(key), Term::small_int(value)];
+    fn tuple_with_terms(words: &mut [u64], key: Term, value: Term) -> Term {
+        let elements = [key, value];
         match write_tuple(words, &elements) {
             Some(term) => term,
             None => panic!("test tuple backing storage is too small"),
         }
+    }
+
+    fn tuple(words: &mut [u64], key: Atom, value: i64) -> Term {
+        tuple_with_terms(words, Term::atom(key), Term::small_int(value))
     }
 
     fn assert_contains_once(values: &[Term], expected: Term) {
@@ -218,9 +222,65 @@ mod tests {
     }
 
     #[test]
+    fn delete_key_only_removes_requested_key() {
+        let table = EtsBag::new(metadata(EtsTableType::Bag));
+        let mut first_words = [0_u64; 3];
+        let mut second_words = [0_u64; 3];
+        let first = tuple(&mut first_words, Atom::OK, 1);
+        let second = tuple(&mut second_words, Atom::ERROR, 2);
+
+        assert_eq!(table.insert(first), Ok(()));
+        assert_eq!(table.insert(second), Ok(()));
+
+        assert!(table.delete_key(Term::atom(Atom::OK)));
+
+        assert!(table.lookup(Term::atom(Atom::OK)).is_empty());
+        assert_eq!(table.lookup(Term::atom(Atom::ERROR)), vec![second]);
+    }
+
+    #[test]
     fn non_tuple_insert_returns_badarg() {
         let table = EtsBag::new(metadata(EtsTableType::Bag));
 
         assert_eq!(table.insert(Term::small_int(1)), Err(EtsError::Badarg));
+    }
+
+    #[test]
+    fn out_of_range_key_position_returns_badarg() {
+        let table = EtsBag::new(EtsTableMetadata {
+            keypos: 3,
+            ..metadata(EtsTableType::Bag)
+        });
+        let mut tuple_words = [0_u64; 3];
+        let item = tuple(&mut tuple_words, Atom::OK, 1);
+
+        assert_eq!(table.insert(item), Err(EtsError::Badarg));
+    }
+
+    #[test]
+    fn zero_key_position_returns_badarg() {
+        let table = EtsDuplicateBag::new(EtsTableMetadata {
+            keypos: 0,
+            ..metadata(EtsTableType::DuplicateBag)
+        });
+        let mut tuple_words = [0_u64; 3];
+        let item = tuple(&mut tuple_words, Atom::OK, 1);
+
+        assert_eq!(table.insert(item), Err(EtsError::Badarg));
+    }
+
+    #[test]
+    fn bag_uses_configured_key_position() {
+        let table = EtsBag::new(EtsTableMetadata {
+            keypos: 2,
+            ..metadata(EtsTableType::Bag)
+        });
+        let mut tuple_words = [0_u64; 3];
+        let item = tuple_with_terms(&mut tuple_words, Term::atom(Atom::OK), Term::small_int(42));
+
+        assert_eq!(table.insert(item), Ok(()));
+
+        assert_eq!(table.lookup(Term::small_int(42)), vec![item]);
+        assert!(table.lookup(Term::atom(Atom::OK)).is_empty());
     }
 }

@@ -1,1 +1,1 @@
-feat(beamr): add ETS bag and duplicate_bag tables
+review: harden ETS bag and duplicate_bag coverage
