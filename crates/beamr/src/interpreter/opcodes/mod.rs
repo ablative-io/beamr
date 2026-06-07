@@ -278,6 +278,7 @@ fn dispatch_common(
         Instruction::Badmatch { value } => exceptions::badmatch(process, module, value),
         Instruction::CaseEnd { value } => exceptions::case_end(process, module, value),
         Instruction::IfEnd => exceptions::if_end(process),
+        Instruction::BuildStacktrace => exceptions::build_stacktrace(process),
         Instruction::Line { .. }
         | Instruction::Generic {
             name: "executable_line",
@@ -413,6 +414,8 @@ mod tests {
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             line_info: Vec::new(),
         }
     }

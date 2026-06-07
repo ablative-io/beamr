@@ -231,6 +231,8 @@ mod tests {
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             line_info: Vec::new(),
         }
     }
@@ -292,6 +294,8 @@ mod tests {
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             line_info: Vec::new(),
         };
         let mut process = Process::new(1, 32);

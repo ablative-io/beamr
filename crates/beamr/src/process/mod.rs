@@ -115,6 +115,17 @@ pub struct Exception {
     pub stacktrace: Term,
 }
 
+/// Raw stack frame captured at raise time for later stacktrace construction.
+#[derive(Clone, Debug)]
+pub struct RawStackEntry {
+    /// Pinned module version containing the instruction pointer.
+    pub module: Arc<Module>,
+    /// Instruction pointer within `module`.
+    pub ip: usize,
+    /// Optional module/function/arity metadata from a preceding `func_info`.
+    pub mfa: Option<(Atom, Atom, u8)>,
+}
+
 /// Receive timeout state recorded while a process is waiting.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct ReceiveTimeout {
@@ -231,6 +242,7 @@ pub struct Process {
     receive_timer_ref: Option<u64>,
     x_regs: [Term; 1024],
     native_continuation: Option<NativeContinuation>,
+    raw_stacktrace: Vec<RawStackEntry>,
     reduction_counter: u32,
     namespace_id: NamespaceId,
     code_position: Option<CodePosition>,
@@ -260,6 +272,7 @@ impl Process {
             receive_timer_ref: None,
             x_regs: [Term::NIL; 1024],
             native_continuation: None,
+            raw_stacktrace: Vec::new(),
             reduction_counter: DEFAULT_REDUCTION_BUDGET,
             namespace_id: NamespaceId::DEFAULT,
             code_position: None,
@@ -425,6 +438,22 @@ impl Process {
     #[must_use]
     pub fn exception_handler_count(&self) -> usize {
         self.handlers.len()
+    }
+
+    /// Store the raw stacktrace captured when an exception is raised.
+    pub fn set_raw_stacktrace(&mut self, raw_stacktrace: Vec<RawStackEntry>) {
+        self.raw_stacktrace = raw_stacktrace;
+    }
+
+    /// Clear any raw stacktrace associated with a handled exception.
+    pub fn clear_raw_stacktrace(&mut self) {
+        self.raw_stacktrace.clear();
+    }
+
+    /// Raw stacktrace entries captured at the most recent raise.
+    #[must_use]
+    pub fn raw_stacktrace(&self) -> &[RawStackEntry] {
+        &self.raw_stacktrace
     }
 
     /// Store the current caught exception.

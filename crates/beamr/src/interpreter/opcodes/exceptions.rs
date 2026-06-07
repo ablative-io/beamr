@@ -1,5 +1,7 @@
 //! Exception opcode handlers.
 
+use std::sync::Arc;
+
 use crate::atom::Atom;
 use crate::error::ExecError;
 use crate::interpreter::InstructionOutcome;
@@ -7,10 +9,11 @@ use crate::interpreter::opcodes::core;
 use crate::loader::decode::compact::Operand;
 use crate::module::Module;
 use crate::process::{
-    CodePosition, Exception, ExceptionHandler, ExitReason, HandlerKind, Process, Register,
+    CodePosition, Exception, ExceptionHandler, ExitReason, HandlerKind, Process, RawStackEntry,
+    Register,
 };
 use crate::term::Term;
-use crate::term::boxed::write_tuple;
+use crate::term::boxed::{write_cons, write_tuple};
 
 pub fn try_(
     process: &mut Process,
@@ -34,6 +37,7 @@ pub fn try_end(process: &mut Process, source: &Operand) -> Result<InstructionOut
     let _ = register(source)?;
     let _ = process.pop_exception_handler();
     process.set_current_exception(None);
+    process.clear_raw_stacktrace();
     Ok(InstructionOutcome::Continue)
 }
 
@@ -43,6 +47,7 @@ pub fn catch_end(process: &mut Process, source: &Operand) -> Result<InstructionO
         let _ = process.pop_exception_handler();
     }
     process.set_current_exception(None);
+    process.clear_raw_stacktrace();
     process
         .stack_mut()
         .set_y_reg(destination, Term::NIL)
@@ -147,6 +152,8 @@ pub fn raise_exception(
     process: &mut Process,
     exception: Exception,
 ) -> Result<InstructionOutcome, ExecError> {
+    capture_raw_stacktrace(process);
+
     if let Some(handler) = process.pop_exception_handler() {
         process.stack_mut().truncate(handler.stack_depth);
         process.set_current_exception(Some(exception));
@@ -164,6 +171,31 @@ pub fn raise_exception(
         process.set_current_exception(Some(exception));
         Ok(InstructionOutcome::Exit(ExitReason::Error))
     }
+}
+
+pub fn build_stacktrace(process: &mut Process) -> Result<InstructionOutcome, ExecError> {
+    let raw_stacktrace = process.raw_stacktrace().to_vec();
+    let mut list = Term::NIL;
+
+    for entry in raw_stacktrace.iter().rev() {
+        let (function, arity) = entry
+            .mfa
+            .map(|(_, function, arity)| (function, arity))
+            .or_else(|| entry.module.function_at_ip(entry.ip))
+            .unwrap_or((Atom::UNDEFINED, 0));
+        let info = stacktrace_info(process, entry.module.line_at_ip(entry.ip))?;
+        let frame = four_tuple(
+            process,
+            Term::atom(entry.module.name),
+            Term::atom(function),
+            Term::small_int(i64::from(arity)),
+            info,
+        )?;
+        list = cons(process, frame, list)?;
+    }
+
+    process.set_x_reg(0, list);
+    Ok(InstructionOutcome::Continue)
 }
 
 impl Exception {
@@ -203,6 +235,39 @@ fn catch_value(process: &mut Process, exception: Exception) -> Result<Term, Exec
         let payload = two_tuple(process, exception.reason, exception.stacktrace)?;
         two_tuple(process, Term::atom(Atom::EXIT), payload)
     }
+}
+
+fn capture_raw_stacktrace(process: &mut Process) {
+    let mut raw_stacktrace = Vec::new();
+    if let (Some(module), Some(position)) =
+        (process.current_module().cloned(), process.code_position())
+    {
+        raw_stacktrace.push(RawStackEntry {
+            module,
+            ip: position.instruction_pointer,
+            mfa: process.current_mfa(),
+        });
+    }
+    raw_stacktrace.extend(
+        process
+            .stack()
+            .frames_from_top()
+            .map(|frame| RawStackEntry {
+                module: Arc::clone(frame.pinned_module()),
+                ip: frame.return_ip(),
+                mfa: None,
+            }),
+    );
+    process.set_raw_stacktrace(raw_stacktrace);
+}
+
+fn stacktrace_info(process: &mut Process, line: Option<u32>) -> Result<Term, ExecError> {
+    let Some(line) = line else {
+        return Ok(Term::NIL);
+    };
+    let line_value = Term::small_int(i64::from(line));
+    let tuple = two_tuple(process, Term::atom(Atom::LINE), line_value)?;
+    cons(process, tuple, Term::NIL)
 }
 
 fn label_position(module: &Module, label: &Operand) -> Result<CodePosition, ExecError> {
@@ -258,12 +323,30 @@ fn two_tuple(process: &mut Process, left: Term, right: Term) -> Result<Term, Exe
     write_tuple(words, &[left, right]).ok_or(ExecError::Badarg)
 }
 
+fn four_tuple(
+    process: &mut Process,
+    first: Term,
+    second: Term,
+    third: Term,
+    fourth: Term,
+) -> Result<Term, ExecError> {
+    let ptr = process.heap_mut().alloc(5).map_err(ExecError::from)?;
+    let words = core::heap_slice(ptr, 5);
+    write_tuple(words, &[first, second, third, fourth]).ok_or(ExecError::Badarg)
+}
+
+fn cons(process: &mut Process, head: Term, tail: Term) -> Result<Term, ExecError> {
+    let ptr = process.heap_mut().alloc(2).map_err(ExecError::from)?;
+    let words = core::heap_slice(ptr, 2);
+    write_cons(words, head, tail).ok_or(ExecError::Badarg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::interpreter::opcodes::dispatch;
-    use crate::loader::Instruction;
-    use crate::term::boxed::Tuple;
+    use crate::loader::{Instruction, LineInfo};
+    use crate::term::boxed::{Cons, Tuple};
     use std::collections::HashMap;
     use std::sync::Arc;
 
@@ -287,6 +370,8 @@ mod tests {
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
             line_info: Vec::new(),
         }
     }
@@ -317,6 +402,147 @@ mod tests {
             .push_frame(Atom::OK, 0, Arc::clone(&module_version), 1)
             .expect("frame");
         module_version
+    }
+
+    fn set_current_location(process: &mut Process, module_version: Arc<Module>, ip: usize) {
+        process.set_current_module(module_version);
+        process.set_code_position(Some(CodePosition {
+            module: Atom::OK,
+            instruction_pointer: ip,
+        }));
+        process.set_current_mfa(Some((Atom::OK, Atom::BADARG, 1)));
+    }
+
+    #[test]
+    fn raw_stacktrace_captures_current_and_return_frames_before_unwind() {
+        let code = label20_module();
+        let module_version = Arc::new(code.clone());
+        let mut process = Process::new(1, 64);
+        set_current_location(&mut process, Arc::clone(&module_version), 99);
+        process
+            .stack_mut()
+            .push_frame(Atom::OK, 10, Arc::clone(&module_version), 1)
+            .expect("oldest frame");
+        process
+            .stack_mut()
+            .push_frame(Atom::OK, 20, Arc::clone(&module_version), 1)
+            .expect("middle frame");
+        process
+            .stack_mut()
+            .push_frame(Atom::OK, 30, Arc::clone(&module_version), 1)
+            .expect("newest frame");
+        try_(&mut process, &code, &Operand::X(0), &Operand::Label(20)).expect("try");
+
+        raise_exception(
+            &mut process,
+            exception(Atom::ERROR, Term::atom(Atom::BADARG), Term::NIL),
+        )
+        .expect("caught");
+
+        let raw = process.raw_stacktrace();
+        assert_eq!(raw.len(), 4);
+        assert!(Arc::ptr_eq(&raw[0].module, &module_version));
+        assert_eq!(raw[0].ip, 99);
+        assert_eq!(raw[0].mfa, Some((Atom::OK, Atom::BADARG, 1)));
+        assert_eq!(raw[1].ip, 30);
+        assert_eq!(raw[2].ip, 20);
+        assert_eq!(raw[3].ip, 10);
+        assert!(
+            raw.iter()
+                .all(|entry| Arc::ptr_eq(&entry.module, &module_version))
+        );
+    }
+
+    #[test]
+    fn try_end_and_catch_end_clear_raw_stacktrace() {
+        let code = label20_module();
+        let module_version = Arc::new(code.clone());
+        let mut process = Process::new(1, 64);
+        set_current_location(&mut process, module_version, 7);
+        try_(&mut process, &code, &Operand::X(0), &Operand::Label(20)).expect("try");
+        raise_exception(
+            &mut process,
+            exception(Atom::ERROR, Term::atom(Atom::BADARG), Term::NIL),
+        )
+        .expect("try caught");
+        assert!(!process.raw_stacktrace().is_empty());
+        try_end(&mut process, &Operand::X(0)).expect("try_end");
+        assert!(process.raw_stacktrace().is_empty());
+
+        let module_version = Arc::new(code.clone());
+        set_current_location(&mut process, module_version, 8);
+        process
+            .stack_mut()
+            .push_frame(Atom::OK, 0, Arc::new(code.clone()), 1)
+            .expect("frame for catch_end source");
+        catch_(&mut process, &code, &Operand::Y(0), &Operand::Label(20)).expect("catch");
+        raise_exception(
+            &mut process,
+            exception(Atom::THROW, Term::atom(Atom::BADARG), Term::NIL),
+        )
+        .expect("catch caught");
+        assert!(!process.raw_stacktrace().is_empty());
+        catch_end(&mut process, &Operand::Y(0)).expect("catch_end");
+        assert!(process.raw_stacktrace().is_empty());
+    }
+
+    #[test]
+    fn build_stacktrace_empty_raw_trace_sets_nil() {
+        let mut process = Process::new(1, 16);
+
+        build_stacktrace(&mut process).expect("empty stacktrace builds");
+
+        assert_eq!(process.x_reg(0), Term::NIL);
+    }
+
+    #[test]
+    fn build_stacktrace_resolves_mfa_and_line_info() {
+        let mut code = label20_module();
+        code.function_table = vec![(0, Atom::FLUSH, 2)];
+        code.line_table = vec![(0, 0)];
+        code.line_info = vec![LineInfo { file: 0, line: 123 }];
+        let module_version = Arc::new(code.clone());
+        let mut process = Process::new(1, 64);
+        set_current_location(&mut process, Arc::clone(&module_version), 0);
+        raise_exception(
+            &mut process,
+            exception(Atom::ERROR, Term::atom(Atom::BADARG), Term::NIL),
+        )
+        .expect("uncaught exit captures raw trace");
+
+        build_stacktrace(&mut process).expect("stacktrace builds");
+
+        let cons = Cons::new(process.x_reg(0)).expect("stacktrace cons");
+        assert_eq!(cons.tail(), Term::NIL);
+        let frame = Tuple::new(cons.head()).expect("stacktrace frame tuple");
+        assert_eq!(frame.arity(), 4);
+        assert_eq!(frame.get(0), Some(Term::atom(Atom::OK)));
+        assert_eq!(frame.get(1), Some(Term::atom(Atom::BADARG)));
+        assert_eq!(frame.get(2), Some(Term::small_int(1)));
+        let info = Cons::new(frame.get(3).expect("info list")).expect("line info cons");
+        assert_eq!(info.tail(), Term::NIL);
+        let line = Tuple::new(info.head()).expect("line tuple");
+        assert_eq!(line.get(0), Some(Term::atom(Atom::LINE)));
+        assert_eq!(line.get(1), Some(Term::small_int(123)));
+        assert!(!process.raw_stacktrace().is_empty());
+    }
+
+    #[test]
+    fn build_stacktrace_heap_pressure_returns_heap_full() {
+        let code = label20_module();
+        let module_version = Arc::new(code.clone());
+        let mut process = Process::new(1, 1);
+        set_current_location(&mut process, module_version, 0);
+        raise_exception(
+            &mut process,
+            exception(Atom::ERROR, Term::atom(Atom::BADARG), Term::NIL),
+        )
+        .expect("uncaught exit captures raw trace");
+
+        assert!(matches!(
+            build_stacktrace(&mut process),
+            Err(ExecError::HeapFull { .. })
+        ));
     }
 
     #[test]
