@@ -702,6 +702,7 @@ mod tests {
     use crate::error::LoadError;
     use crate::loader::decode::Operand;
     use crate::loader::load_beam_chunks;
+    use crate::loader::{ExportEntry, Instruction, LineInfo};
     use crate::module::{Module, ModuleRegistry, ResolvedImportTarget};
     use crate::native::{
         AllCapabilitiesPolicy, BifRegistry, Capability, LeastAuthorityPolicy, NativeEntry,

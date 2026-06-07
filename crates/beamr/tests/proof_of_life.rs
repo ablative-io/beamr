@@ -41,6 +41,8 @@ fn module(name: beamr::atom::Atom, code: Vec<Instruction>) -> Module {
         lambdas: Vec::new(),
         string_table: Vec::new(),
         line_info: Vec::new(),
+        function_table: Vec::new(),
+        line_table: Vec::new(),
     }
 }
 
@@ -444,6 +446,8 @@ fn load_proof_module(atoms: &AtomTable, bifs: &BifRegistryImpl) -> Module {
         lambdas: parsed.lambdas,
         string_table: parsed.string_table,
         line_info: parsed.line_info,
+        function_table: Vec::new(),
+        line_table: Vec::new(),
     }
 }
 

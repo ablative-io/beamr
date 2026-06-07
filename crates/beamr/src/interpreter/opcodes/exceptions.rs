@@ -570,9 +570,9 @@ mod tests {
         assert_eq!(frame.get(2), Some(Term::small_int(i64::from(arity))));
         let info = Cons::new(frame.get(3).expect("info list")).expect("line info cons");
         assert_eq!(info.tail(), Term::NIL);
-        let line = Tuple::new(info.head()).expect("line tuple");
-        assert_eq!(line.get(0), Some(Term::atom(Atom::LINE)));
-        assert_eq!(line.get(1), Some(Term::small_int(line)));
+        let line_tuple = Tuple::new(info.head()).expect("line tuple");
+        assert_eq!(line_tuple.get(0), Some(Term::atom(Atom::LINE)));
+        assert_eq!(line_tuple.get(1), Some(Term::small_int(line)));
     }
 
     #[test]
