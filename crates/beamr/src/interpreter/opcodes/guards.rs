@@ -36,7 +36,7 @@ pub fn get_tl(
 }
 
 pub fn type_test(
-    process: &Process,
+    process: &mut Process,
     module: &Module,
     op: TypeTestOp,
     fail: &Operand,
@@ -47,7 +47,7 @@ pub fn type_test(
 }
 
 pub fn comparison(
-    process: &Process,
+    process: &mut Process,
     module: &Module,
     op: ComparisonOp,
     fail: &Operand,
@@ -68,7 +68,7 @@ pub fn comparison(
 }
 
 pub fn test_arity(
-    process: &Process,
+    process: &mut Process,
     module: &Module,
     fail: &Operand,
     tuple: &Operand,
@@ -81,7 +81,7 @@ pub fn test_arity(
 }
 
 pub fn select_val(
-    process: &Process,
+    process: &mut Process,
     module: &Module,
     value: &Operand,
     fail: &Operand,
@@ -98,7 +98,7 @@ pub fn select_val(
 }
 
 pub fn select_tuple_arity(
-    process: &Process,
+    process: &mut Process,
     module: &Module,
     value: &Operand,
     fail: &Operand,
@@ -152,8 +152,7 @@ pub fn bif(
         args.push(core::read_term(process, arg)?);
     }
 
-    let mut context = ProcessContext::new();
-    context.set_pid(Some(process.pid()));
+    let mut context = ProcessContext::with_process_heap(process.pid(), process.heap_mut());
     match (entry.function)(&args, &mut context) {
         Ok(result) => {
             core::write_term(process, parsed.destination, result)?;
@@ -170,7 +169,7 @@ pub fn bif(
 }
 
 fn function_test_value_and_arity(
-    process: &Process,
+    process: &mut Process,
     op: TypeTestOp,
     value: &Operand,
 ) -> Result<(Term, Option<usize>), ExecError> {

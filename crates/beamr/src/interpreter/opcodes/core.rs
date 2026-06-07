@@ -315,15 +315,14 @@ fn call_external_target(
             for register in 0..arity {
                 args.push(process.x_reg(register.into()));
             }
+            let pid = process.pid();
             let mut context = match ctx.timers {
-                Some(timers) => {
-                    ProcessContext::with_timer_services(process.pid(), Arc::clone(timers))
-                }
-                None => {
-                    let mut pctx = ProcessContext::new();
-                    pctx.set_pid(Some(process.pid()));
-                    pctx
-                }
+                Some(timers) => ProcessContext::with_timer_services_and_heap(
+                    pid,
+                    Arc::clone(timers),
+                    process.heap_mut(),
+                ),
+                None => ProcessContext::with_process_heap(pid, process.heap_mut()),
             };
             if let Some(svc) = ctx.services {
                 context.set_spawn_facility(svc.spawn_facility.clone());
@@ -453,7 +452,7 @@ pub(crate) fn label_ip(module: &Module, label: u32) -> Result<usize, ExecError> 
     module.label_ip(label)
 }
 
-pub(crate) fn read_term(process: &Process, operand: &Operand) -> Result<Term, ExecError> {
+pub(crate) fn read_term(process: &mut Process, operand: &Operand) -> Result<Term, ExecError> {
     match operand {
         Operand::Integer(value) => Term::try_small_int(*value).ok_or(ExecError::Badarg),
         Operand::Unsigned(value) => {
@@ -467,7 +466,7 @@ pub(crate) fn read_term(process: &Process, operand: &Operand) -> Result<Term, Ex
             .stack()
             .y_reg(u16_from_u32(*index, "Y register")?)
             .map_err(ExecError::from),
-        Operand::Literal(literal) => literal_term(literal),
+        Operand::Literal(literal) => literal_term(process, literal),
         Operand::TypedRegister { register, .. } => read_term(process, register),
         _ => Err(ExecError::InvalidOperand("term source")),
     }
@@ -492,53 +491,60 @@ pub(crate) fn write_term(
     }
 }
 
-fn literal_term(literal: &Literal) -> Result<Term, ExecError> {
+fn literal_term(process: &mut Process, literal: &Literal) -> Result<Term, ExecError> {
+    let mut context = ProcessContext::with_process_heap(process.pid(), process.heap_mut());
+    literal_term_with_context(&mut context, literal)
+}
+
+fn literal_term_with_context(
+    context: &mut ProcessContext,
+    literal: &Literal,
+) -> Result<Term, ExecError> {
     match literal {
         Literal::Integer(value) => Term::try_small_int(*value).ok_or(ExecError::Badarg),
-        Literal::Float(value) => {
-            let heap = Box::leak(Box::new([0u64; 2]));
-            crate::term::boxed::write_float(heap, *value).ok_or(ExecError::Badarg)
-        }
+        Literal::Float(value) => context.alloc_float(*value).map_err(|_| ExecError::Badarg),
         Literal::BigInteger(limbs) => {
             let limbs = limbs_to_u64(limbs)?;
-            let heap = Box::leak(vec![0u64; 3 + limbs.len()].into_boxed_slice());
-            crate::term::boxed::write_bigint(heap, false, &limbs).ok_or(ExecError::Badarg)
+            context
+                .alloc_bigint(false, &limbs)
+                .map_err(|_| ExecError::Badarg)
         }
         Literal::Atom(atom) => Ok(Term::atom(*atom)),
         Literal::Binary(bytes) | Literal::String(bytes) => {
-            let data_words = crate::term::binary::packed_word_count(bytes.len());
-            let heap = Box::leak(vec![0u64; 2 + data_words].into_boxed_slice());
-            crate::term::binary::write_binary(heap, bytes).ok_or(ExecError::Badarg)
+            context.alloc_binary(bytes).map_err(|_| ExecError::Badarg)
         }
         Literal::Nil => Ok(Term::NIL),
         Literal::Tuple(elements) => {
             let mut terms = Vec::with_capacity(elements.len());
             for element in elements {
-                terms.push(literal_term(element)?);
+                terms.push(literal_term_with_context(context, element)?);
             }
-            let heap = Box::leak(vec![0u64; 1 + terms.len()].into_boxed_slice());
-            crate::term::boxed::write_tuple(heap, &terms).ok_or(ExecError::Badarg)
+            context.alloc_tuple(&terms).map_err(|_| ExecError::Badarg)
         }
         Literal::List(elements, tail) => {
-            let mut result = literal_term(tail)?;
+            let mut result = literal_term_with_context(context, tail)?;
             for element in elements.iter().rev() {
-                let head = literal_term(element)?;
-                let heap = Box::leak(Box::new([0u64; 2]));
-                result =
-                    crate::term::boxed::write_cons(heap, head, result).ok_or(ExecError::Badarg)?;
+                let head = literal_term_with_context(context, element)?;
+                result = context
+                    .alloc_cons(head, result)
+                    .map_err(|_| ExecError::Badarg)?;
             }
             Ok(result)
         }
         Literal::Map(entries) => {
             let mut pairs = Vec::with_capacity(entries.len());
             for (key, value) in entries {
-                pairs.push((literal_term(key)?, literal_term(value)?));
+                pairs.push((
+                    literal_term_with_context(context, key)?,
+                    literal_term_with_context(context, value)?,
+                ));
             }
             pairs.sort_by(|(left, _), (right, _)| left.cmp(right));
             let keys: Vec<_> = pairs.iter().map(|(key, _)| *key).collect();
             let values: Vec<_> = pairs.iter().map(|(_, value)| *value).collect();
-            let heap = Box::leak(vec![0u64; 2 + keys.len() + values.len()].into_boxed_slice());
-            crate::term::boxed::write_map(heap, &keys, &values).ok_or(ExecError::Badarg)
+            context
+                .alloc_map(&keys, &values)
+                .map_err(|_| ExecError::Badarg)
         }
     }
 }

@@ -91,7 +91,7 @@ fn type_tests_fall_through_or_jump_to_fail_label() {
 
     assert_eq!(
         type_test(
-            &process,
+            &mut process,
             &module,
             TypeTestOp::IsInteger,
             &Operand::Label(7),
@@ -102,7 +102,7 @@ fn type_tests_fall_through_or_jump_to_fail_label() {
     assert_eq!(
         jump_ip(
             type_test(
-                &process,
+                &mut process,
                 &module,
                 TypeTestOp::IsInteger,
                 &Operand::Label(7),
@@ -114,7 +114,7 @@ fn type_tests_fall_through_or_jump_to_fail_label() {
     );
     assert_eq!(
         type_test(
-            &process,
+            &mut process,
             &module,
             TypeTestOp::IsAtom,
             &Operand::Label(7),
@@ -124,7 +124,7 @@ fn type_tests_fall_through_or_jump_to_fail_label() {
     );
     assert_eq!(
         type_test(
-            &process,
+            &mut process,
             &module,
             TypeTestOp::IsTuple,
             &Operand::Label(7),
@@ -134,7 +134,7 @@ fn type_tests_fall_through_or_jump_to_fail_label() {
     );
     assert_eq!(
         type_test(
-            &process,
+            &mut process,
             &module,
             TypeTestOp::IsNil,
             &Operand::Label(7),
@@ -144,7 +144,7 @@ fn type_tests_fall_through_or_jump_to_fail_label() {
     );
     assert_eq!(
         type_test(
-            &process,
+            &mut process,
             &module,
             TypeTestOp::IsBoolean,
             &Operand::Label(7),
@@ -154,7 +154,7 @@ fn type_tests_fall_through_or_jump_to_fail_label() {
     );
     assert_eq!(
         type_test(
-            &process,
+            &mut process,
             &module,
             TypeTestOp::IsFunction2,
             &Operand::Label(7),
@@ -165,7 +165,7 @@ fn type_tests_fall_through_or_jump_to_fail_label() {
     assert_eq!(
         jump_ip(
             type_test(
-                &process,
+                &mut process,
                 &module,
                 TypeTestOp::IsFunction2,
                 &Operand::Label(7),
@@ -189,7 +189,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
 
     assert_eq!(
         comparison(
-            &process,
+            &mut process,
             &module,
             ComparisonOp::EqExact,
             &Operand::Label(7),
@@ -201,7 +201,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
     assert_eq!(
         jump_ip(
             comparison(
-                &process,
+                &mut process,
                 &module,
                 ComparisonOp::EqExact,
                 &Operand::Label(7),
@@ -215,7 +215,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
     assert_eq!(
         jump_ip(
             comparison(
-                &process,
+                &mut process,
                 &module,
                 ComparisonOp::EqExact,
                 &Operand::Label(7),
@@ -228,7 +228,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
     );
     assert_eq!(
         comparison(
-            &process,
+            &mut process,
             &module,
             ComparisonOp::NeExact,
             &Operand::Label(7),
@@ -240,7 +240,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
     assert_eq!(
         jump_ip(
             comparison(
-                &process,
+                &mut process,
                 &module,
                 ComparisonOp::NeExact,
                 &Operand::Label(7),
@@ -253,7 +253,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
     );
     assert_eq!(
         comparison(
-            &process,
+            &mut process,
             &module,
             ComparisonOp::Lt,
             &Operand::Label(7),
@@ -265,7 +265,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
     assert_eq!(
         jump_ip(
             comparison(
-                &process,
+                &mut process,
                 &module,
                 ComparisonOp::Lt,
                 &Operand::Label(7),
@@ -278,7 +278,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
     );
     assert_eq!(
         comparison(
-            &process,
+            &mut process,
             &module,
             ComparisonOp::Ge,
             &Operand::Label(7),
@@ -290,7 +290,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
     assert_eq!(
         jump_ip(
             comparison(
-                &process,
+                &mut process,
                 &module,
                 ComparisonOp::Ge,
                 &Operand::Label(7),
@@ -303,7 +303,7 @@ fn exact_and_ordering_comparisons_branch_with_beam_semantics() {
     );
     assert_eq!(
         comparison(
-            &process,
+            &mut process,
             &module,
             ComparisonOp::Lt,
             &Operand::Label(7),
@@ -346,7 +346,7 @@ fn select_val_and_select_tuple_arity_jump_to_matching_or_fail_labels() {
     assert_eq!(
         jump_ip(
             select_val(
-                &process,
+                &mut process,
                 &module,
                 &Operand::X(0),
                 &Operand::Label(9),
@@ -359,7 +359,7 @@ fn select_val_and_select_tuple_arity_jump_to_matching_or_fail_labels() {
     assert_eq!(
         jump_ip(
             select_val(
-                &process,
+                &mut process,
                 &module,
                 &Operand::X(1),
                 &Operand::Label(9),
@@ -372,7 +372,7 @@ fn select_val_and_select_tuple_arity_jump_to_matching_or_fail_labels() {
     assert_eq!(
         jump_ip(
             select_val(
-                &process,
+                &mut process,
                 &module,
                 &Operand::X(2),
                 &Operand::Label(9),
@@ -385,7 +385,7 @@ fn select_val_and_select_tuple_arity_jump_to_matching_or_fail_labels() {
     assert_eq!(
         jump_ip(
             select_tuple_arity(
-                &process,
+                &mut process,
                 &module,
                 &Operand::X(3),
                 &Operand::Label(9),
@@ -398,7 +398,7 @@ fn select_val_and_select_tuple_arity_jump_to_matching_or_fail_labels() {
     assert_eq!(
         jump_ip(
             select_tuple_arity(
-                &process,
+                &mut process,
                 &module,
                 &Operand::Integer(4),
                 &Operand::Label(9),

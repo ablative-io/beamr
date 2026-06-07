@@ -239,7 +239,7 @@ fn transition_to_waiting(process: &mut Process) -> Result<(), ExecError> {
         .map_err(|_| ExecError::Badarg)
 }
 
-fn timeout_milliseconds(process: &Process, operand: &Operand) -> Result<u64, ExecError> {
+fn timeout_milliseconds(process: &mut Process, operand: &Operand) -> Result<u64, ExecError> {
     match operand {
         Operand::Unsigned(value) => Ok(*value),
         Operand::Integer(value) => u64::try_from(*value).map_err(|_| ExecError::Badarg),
@@ -262,7 +262,6 @@ fn register(operand: &Operand) -> Result<Register, ExecError> {
         _ => Err(ExecError::InvalidOperand("register")),
     }
 }
-
 
 fn write_register(
     process: &mut Process,

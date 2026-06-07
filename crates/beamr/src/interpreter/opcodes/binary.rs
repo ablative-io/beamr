@@ -180,7 +180,7 @@ fn bs_match_string(
 }
 
 fn bs_test_tail(
-    process: &Process,
+    process: &mut Process,
     module: &Module,
     operands: &[Operand],
 ) -> Result<InstructionOutcome, ExecError> {

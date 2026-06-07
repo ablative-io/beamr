@@ -17,7 +17,7 @@ use crate::term::boxed::Tuple;
 use crate::term::compare;
 
 pub(crate) fn select_val(
-    process: &Process,
+    process: &mut Process,
     module: &Module,
     value: &Operand,
     fail: &Operand,
@@ -34,7 +34,7 @@ pub(crate) fn select_val(
 }
 
 pub(crate) fn select_tuple_arity(
-    process: &Process,
+    process: &mut Process,
     module: &Module,
     value: &Operand,
     fail: &Operand,
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn select_val_jumps_to_exact_value_match_or_fail() {
         let module = module();
-        let process = Process::new(1, 8);
+        let mut process = Process::new(1, 8);
         let list = Operand::List(vec![
             Operand::Atom(Some(Atom::OK)),
             Operand::Label(1),
@@ -122,7 +122,7 @@ mod tests {
         assert_eq!(
             jump_ip(
                 select_val(
-                    &process,
+                    &mut process,
                     &module,
                     &Operand::Atom(Some(Atom::OK)),
                     &Operand::Label(3),
@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(
             jump_ip(
                 select_val(
-                    &process,
+                    &mut process,
                     &module,
                     &Operand::Atom(Some(Atom::ERROR)),
                     &Operand::Label(3),
@@ -148,7 +148,7 @@ mod tests {
         assert_eq!(
             jump_ip(
                 select_val(
-                    &process,
+                    &mut process,
                     &module,
                     &Operand::Atom(Some(Atom::UNDEFINED)),
                     &Operand::Label(3),
@@ -180,15 +180,21 @@ mod tests {
 
         assert_eq!(
             jump_ip(
-                select_tuple_arity(&process, &module, &Operand::X(0), &Operand::Label(3), &list)
-                    .expect("select tuple arity")
+                select_tuple_arity(
+                    &mut process,
+                    &module,
+                    &Operand::X(0),
+                    &Operand::Label(3),
+                    &list
+                )
+                .expect("select tuple arity")
             ),
             0
         );
         assert_eq!(
             jump_ip(
                 select_tuple_arity(
-                    &process,
+                    &mut process,
                     &module,
                     &Operand::Integer(4),
                     &Operand::Label(3),
