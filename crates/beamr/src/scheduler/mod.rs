@@ -5,6 +5,7 @@
 //! plus lock-free queues.
 
 pub mod dirty;
+mod process_slot;
 pub mod run_queue;
 pub mod steal;
 mod supervision_integration;
@@ -38,6 +39,7 @@ use crate::supervision::monitor::MonitorSet;
 use crate::term::Term;
 use crate::timer::TimerWheel;
 
+use process_slot::{ProcessMetadata, ProcessSlot};
 use run_queue::RunQueue;
 
 /// Default number of reductions per scheduler time slice.
@@ -64,9 +66,7 @@ pub(super) struct SharedState {
     next_pid: AtomicU64,
     wait_set: Mutex<WaitSet>,
     wake_condvar: Condvar,
-    process_bodies: DashMap<u64, Mutex<Option<ScheduledProcess>>>,
-    process_namespaces: DashMap<u64, NamespaceId>,
-    pending_links: DashMap<u64, Vec<u64>>,
+    process_bodies: DashMap<u64, Mutex<ProcessSlot>>,
     exit_tombstones: DashMap<u64, ExitReason>,
     exit_results: DashMap<u64, Term>,
     exit_errors: DashMap<u64, ExecError>,
@@ -96,11 +96,11 @@ struct SpawnRequest {
     namespace_id: NamespaceId,
 }
 
-struct ScheduledProcess(Process);
+pub(super) struct ScheduledProcess(Process);
 
 // SAFETY: Process is not Send at the public API boundary. The scheduler is the
 // sole owner of process execution, storing each body behind a mutex-protected
-// Option. Workers take exclusive ownership before executing a time slice.
+// ProcessSlot. Workers take exclusive ownership before executing a time slice.
 unsafe impl Send for ScheduledProcess {}
 
 /// Work-stealing scheduler with N OS threads.
@@ -184,8 +184,6 @@ impl Scheduler {
             wait_set: Mutex::new(WaitSet::default()),
             wake_condvar: Condvar::new(),
             process_bodies: DashMap::new(),
-            process_namespaces: DashMap::new(),
-            pending_links: DashMap::new(),
             exit_tombstones: DashMap::new(),
             exit_results: DashMap::new(),
             exit_errors: DashMap::new(),
@@ -441,17 +439,14 @@ impl Scheduler {
     /// Return true when a live process currently traps exits.
     #[must_use]
     pub fn trap_exit(&self, pid: u64) -> Option<bool> {
-        self.with_process(pid, |process| process.trap_exit())
+        process_trap_exit(&self.shared, pid)
     }
 
     /// Return true when `left` and `right` have a bidirectional live-process link.
     #[must_use]
     pub fn is_linked(&self, left: u64, right: u64) -> bool {
-        self.with_process(left, |process| process.links().contains(&right))
-            .unwrap_or(false)
-            && self
-                .with_process(right, |process| process.links().contains(&left))
-                .unwrap_or(false)
+        process_links_contain(&self.shared, left, right)
+            && process_links_contain(&self.shared, right, left)
     }
 
     /// Spawn a process and link it to `parent_pid`.
@@ -463,8 +458,7 @@ impl Scheduler {
         args: Vec<Term>,
     ) -> Result<u64, ExecError> {
         let parent_namespace = self
-            .with_process(parent_pid, |process| process.namespace_id())
-            .or_else(|| self.shared.process_namespaces.get(&parent_pid).map(|r| *r))
+            .process_namespace(parent_pid)
             .ok_or(ExecError::Badarg)?;
         let facility = supervision_integration::SchedulerSpawnFacility {
             shared: Arc::clone(&self.shared),
@@ -535,7 +529,6 @@ impl Scheduler {
     ) -> u64 {
         let pid = self.shared.next_pid.fetch_add(1, Ordering::Relaxed);
         self.shared.process_table.spawn_with_pid(pid);
-        self.shared.process_namespaces.insert(pid, namespace_id);
         let index =
             self.shared.spawn_counter.fetch_add(1, Ordering::Relaxed) % self.shared.thread_count;
         if trap_exit {
@@ -548,9 +541,10 @@ impl Scheduler {
                 args,
             });
             process.set_trap_exit(true);
-            self.shared
-                .process_bodies
-                .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
+            self.shared.process_bodies.insert(
+                pid,
+                Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
+            );
             let mut wait_set = lock_or_recover(&self.shared.wait_set);
             wait_set.woken.push((pid, index));
             self.shared.wake_condvar.notify_all();
@@ -571,8 +565,10 @@ impl Scheduler {
     fn with_process<T>(&self, pid: u64, f: impl FnOnce(&mut Process) -> T) -> Option<T> {
         let entry = self.shared.process_bodies.get(&pid)?;
         let mut slot = lock_or_recover(&entry);
-        let scheduled = slot.as_mut()?;
-        Some(f(&mut scheduled.0))
+        match &mut *slot {
+            ProcessSlot::Present(scheduled) => Some(f(&mut scheduled.0)),
+            ProcessSlot::Executing(_) | ProcessSlot::Absent => None,
+        }
     }
 
     /// Spawn an inert process without module code for host-side policy tests.
@@ -582,9 +578,10 @@ impl Scheduler {
         self.shared.process_table.spawn_with_pid(pid);
         let mut process = Process::new(pid, DEFAULT_HEAP_SIZE);
         process.set_trap_exit(trap_exit);
-        self.shared
-            .process_bodies
-            .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
+        self.shared.process_bodies.insert(
+            pid,
+            Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
+        );
         pid
     }
 
@@ -595,9 +592,10 @@ impl Scheduler {
         let mut process = Process::new(pid, DEFAULT_HEAP_SIZE);
         process.set_namespace_id(namespace);
         process.set_current_module(module);
-        self.shared
-            .process_bodies
-            .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
+        self.shared.process_bodies.insert(
+            pid,
+            Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
+        );
         pid
     }
 
@@ -611,7 +609,7 @@ impl Scheduler {
             return Err(crate::native::links::LinkError::NoProc);
         };
         let mut parent_slot = lock_or_recover(&parent_entry);
-        let Some(ScheduledProcess(parent)) = parent_slot.as_mut() else {
+        let ProcessSlot::Present(ScheduledProcess(parent)) = &mut *parent_slot else {
             return Err(crate::native::links::LinkError::NoProc);
         };
         let child_pid = self.shared.next_pid.fetch_add(1, Ordering::Relaxed);
@@ -619,16 +617,17 @@ impl Scheduler {
         let mut child = Process::new(child_pid, DEFAULT_HEAP_SIZE);
         child.add_link(parent_pid);
         parent.add_link(child_pid);
-        self.shared
-            .process_bodies
-            .insert(child_pid, Mutex::new(Some(ScheduledProcess(child))));
+        self.shared.process_bodies.insert(
+            child_pid,
+            Mutex::new(ProcessSlot::Present(ScheduledProcess(child))),
+        );
         Ok(child_pid)
     }
 
     /// Return the namespace assigned to a live process.
     #[must_use]
     pub fn process_namespace(&self, pid: u64) -> Option<NamespaceId> {
-        self.with_process(pid, |process| process.namespace_id())
+        process_namespace(&self.shared, pid)
     }
 
     /// Return true when a term is queued in a live process mailbox.
@@ -895,9 +894,10 @@ fn drain_pending_spawns(shared: &SharedState, inject_queues: &[Arc<SegQueue<Spaw
 fn materialize_spawn_request(shared: &SharedState, request: SpawnRequest) -> u64 {
     let pid = request.pid;
     let process = build_process(request);
-    shared
-        .process_bodies
-        .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
+    shared.process_bodies.insert(
+        pid,
+        Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
+    );
     pid
 }
 
@@ -932,13 +932,7 @@ fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64, my_index: 
         return;
     };
     let outcome = execute_slice(shared, &mut process);
-    apply_pending_links(shared, &mut process);
-    if shared.exit_tombstones.contains_key(&pid) {
-        let reason = shared
-            .exit_tombstones
-            .get(&pid)
-            .map(|r| *r)
-            .unwrap_or(ExitReason::Killed);
+    if let Some(reason) = tombstone_reason(shared, pid) {
         store_runnable_process(shared, process);
         cleanup_exited_process(shared, pid, reason);
         return;
@@ -946,16 +940,25 @@ fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64, my_index: 
     match outcome {
         SliceOutcome::Requeue(process) => {
             store_runnable_process(shared, process);
+            if cleanup_if_tombstoned_after_store(shared, pid) {
+                return;
+            }
             queue.push(pid);
         }
         SliceOutcome::Wait(mut process) => {
             timer_integration::register_receive_timer(shared, &mut process);
             store_runnable_process(shared, process);
+            if cleanup_if_tombstoned_after_store(shared, pid) {
+                return;
+            }
             let mut ws = lock_or_recover(&shared.wait_set);
             ws.waiting.insert(pid, my_index);
         }
         SliceOutcome::Suspended(process) => {
             store_runnable_process(shared, process);
+            if cleanup_if_tombstoned_after_store(shared, pid) {
+                return;
+            }
             let mut ws = lock_or_recover(&shared.wait_set);
             ws.waiting.insert(pid, my_index);
         }
@@ -967,29 +970,95 @@ fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64, my_index: 
     }
 }
 
-fn apply_pending_links(shared: &SharedState, process: &mut Process) {
-    if let Some((_, children)) = shared.pending_links.remove(&process.pid()) {
-        for child_pid in children {
-            process.add_link(child_pid);
+fn take_runnable_process(shared: &SharedState, pid: u64) -> Option<Process> {
+    let entry = shared.process_bodies.get(&pid)?;
+    let mut slot = lock_or_recover(&entry);
+    match std::mem::take(&mut *slot) {
+        ProcessSlot::Present(scheduled) => {
+            let process = scheduled.0;
+            let metadata = ProcessMetadata {
+                namespace_id: process.namespace_id(),
+                links: process.links().iter().copied().collect(),
+                trap_exit: process.trap_exit(),
+                pending_exit_messages: Vec::new(),
+            };
+            *slot = ProcessSlot::Executing(metadata);
+            Some(process)
+        }
+        other => {
+            *slot = other;
+            None
         }
     }
 }
 
-fn take_runnable_process(shared: &SharedState, pid: u64) -> Option<Process> {
-    let entry = shared.process_bodies.get(&pid)?;
-    let mut slot = lock_or_recover(&entry);
-    slot.take().map(|scheduled| scheduled.0)
-}
-
-fn store_runnable_process(shared: &SharedState, process: Process) {
+fn store_runnable_process(shared: &SharedState, mut process: Process) {
     let pid = process.pid();
     if let Some(entry) = shared.process_bodies.get(&pid) {
         let mut slot = lock_or_recover(&entry);
-        *slot = Some(ScheduledProcess(process));
+        if let ProcessSlot::Executing(metadata) = &mut *slot {
+            for linked_pid in &metadata.links {
+                process.add_link(*linked_pid);
+            }
+            for (source_pid, reason) in metadata.pending_exit_messages.drain(..) {
+                crate::supervision::link::enqueue_exit_message_pub(
+                    &mut process,
+                    source_pid,
+                    reason,
+                );
+            }
+        }
+        *slot = ProcessSlot::Present(ScheduledProcess(process));
     } else {
-        shared
-            .process_bodies
-            .insert(pid, Mutex::new(Some(ScheduledProcess(process))));
+        shared.process_bodies.insert(
+            pid,
+            Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
+        );
+    }
+}
+
+fn cleanup_if_tombstoned_after_store(shared: &SharedState, pid: u64) -> bool {
+    if let Some(reason) = tombstone_reason(shared, pid) {
+        cleanup_exited_process(shared, pid, reason);
+        true
+    } else {
+        false
+    }
+}
+
+fn tombstone_reason(shared: &SharedState, pid: u64) -> Option<ExitReason> {
+    shared.exit_tombstones.get(&pid).map(|reason| *reason)
+}
+
+fn process_namespace(shared: &SharedState, pid: u64) -> Option<NamespaceId> {
+    let entry = shared.process_bodies.get(&pid)?;
+    let slot = lock_or_recover(&entry);
+    match &*slot {
+        ProcessSlot::Present(scheduled) => Some(scheduled.0.namespace_id()),
+        ProcessSlot::Executing(metadata) => Some(metadata.namespace_id),
+        ProcessSlot::Absent => None,
+    }
+}
+
+fn process_trap_exit(shared: &SharedState, pid: u64) -> Option<bool> {
+    let entry = shared.process_bodies.get(&pid)?;
+    let slot = lock_or_recover(&entry);
+    match &*slot {
+        ProcessSlot::Present(scheduled) => Some(scheduled.0.trap_exit()),
+        ProcessSlot::Executing(metadata) => Some(metadata.trap_exit),
+        ProcessSlot::Absent => None,
+    }
+}
+
+fn process_links_contain(shared: &SharedState, pid: u64, linked_pid: u64) -> bool {
+    let Some(entry) = shared.process_bodies.get(&pid) else {
+        return false;
+    };
+    let slot = lock_or_recover(&entry);
+    match &*slot {
+        ProcessSlot::Present(scheduled) => scheduled.0.links().contains(&linked_pid),
+        ProcessSlot::Executing(metadata) => metadata.links.contains(&linked_pid),
+        ProcessSlot::Absent => false,
     }
 }
 
@@ -1264,8 +1333,10 @@ fn process_references_old_code(shared: &SharedState, pid: u64, module: &Arc<Modu
         return false;
     };
     let slot = lock_or_recover(&entry);
-    slot.as_ref()
-        .is_some_and(|scheduled| scheduled.0.references_module(module))
+    match &*slot {
+        ProcessSlot::Present(scheduled) => scheduled.0.references_module(module),
+        ProcessSlot::Executing(_) | ProcessSlot::Absent => false,
+    }
 }
 
 fn process_references_old_code_in(
@@ -1278,9 +1349,12 @@ fn process_references_old_code_in(
         return false;
     };
     let slot = lock_or_recover(&entry);
-    slot.as_ref().is_some_and(|scheduled| {
-        scheduled.0.namespace_id() == namespace && scheduled.0.references_module(module)
-    })
+    match &*slot {
+        ProcessSlot::Present(scheduled) => {
+            scheduled.0.namespace_id() == namespace && scheduled.0.references_module(module)
+        }
+        ProcessSlot::Executing(_) | ProcessSlot::Absent => false,
+    }
 }
 
 fn cleanup_exited_process(shared: &SharedState, pid: u64, reason: ExitReason) {
@@ -1288,8 +1362,6 @@ fn cleanup_exited_process(shared: &SharedState, pid: u64, reason: ExitReason) {
     supervision_integration::propagate_exit(shared, pid, reason);
     let _removed = shared.process_table.remove(pid);
     let _removed_body = shared.process_bodies.remove(&pid);
-    let _removed_ns = shared.process_namespaces.remove(&pid);
-    let _removed_pending = shared.pending_links.remove(&pid);
     let mut wait_set = lock_or_recover(&shared.wait_set);
     wait_set.waiting.remove(&pid);
     wait_set.woken.retain(|(woken_pid, _)| *woken_pid != pid);

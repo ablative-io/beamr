@@ -17,8 +17,8 @@ use crate::supervision::monitor;
 use crate::term::Term;
 
 use super::{
-    ScheduledProcess, SharedState, cleanup_exited_process, lock_or_recover, namespace_registry,
-    wake_process,
+    ProcessSlot, ScheduledProcess, SharedState, cleanup_exited_process, lock_or_recover,
+    namespace_registry, wake_process,
 };
 
 /// Propagate exit signals through links and deliver DOWN messages through
@@ -53,12 +53,16 @@ pub(super) fn propagate_exit(shared: &SharedState, pid: u64, reason: ExitReason)
 }
 
 /// Take the link set from an exiting process. The process body may already
-/// have been removed (or may not exist in process_bodies), so handle None.
-fn take_links_from(shared: &SharedState, pid: u64) -> Vec<u64> {
+/// have been removed, absent, or executing, so handle each slot explicitly.
+pub(super) fn take_links_from(shared: &SharedState, pid: u64) -> Vec<u64> {
     if let Some(entry) = shared.process_bodies.get(&pid) {
         let mut slot = lock_or_recover(&entry);
-        if let Some(ScheduledProcess(process)) = slot.as_mut() {
-            return process.take_links();
+        match &mut *slot {
+            ProcessSlot::Present(ScheduledProcess(process)) => {
+                return process.take_links();
+            }
+            ProcessSlot::Executing(metadata) => return metadata.links.clone(),
+            ProcessSlot::Absent => {}
         }
     }
     Vec::new()
@@ -76,83 +80,116 @@ fn process_exit_signal(
         return Vec::new();
     };
     let mut slot = lock_or_recover(&entry);
-    let Some(ScheduledProcess(target)) = slot.as_mut() else {
-        // Process body is taken by a scheduler thread for execution.
-        // Record a tombstone so the scheduler discards the process
-        // after the current slice and propagates exit to its links.
-        if reason == ExitReason::Kill || reason != ExitReason::Normal {
-            let propagated_reason = link::terminal_reason(reason);
-            shared.exit_tombstones.insert(target_pid, propagated_reason);
+    match &mut *slot {
+        ProcessSlot::Present(ScheduledProcess(target)) => {
+            // Already exited? Nothing to do.
+            if matches!(target.status(), ProcessStatus::Exited(_)) {
+                return Vec::new();
+            }
+
+            // Remove the reverse link.
+            target.remove_link(source_pid);
+
+            let should_die =
+                reason == ExitReason::Kill || (reason != ExitReason::Normal && !target.trap_exit());
+
+            if should_die {
+                // Kill signal bypasses trap_exit and propagates as 'killed'.
+                let propagated_reason = link::terminal_reason(reason);
+                if reason == ExitReason::Kill {
+                    target.set_trap_exit(false);
+                }
+
+                // Collect this process's links for cascade before terminating.
+                let cascade_links: Vec<u64> = target
+                    .take_links()
+                    .into_iter()
+                    .filter(|linked_pid| *linked_pid != source_pid)
+                    .collect();
+
+                target.terminate(propagated_reason);
+
+                // Record tombstone.
+                shared.exit_tombstones.insert(target_pid, propagated_reason);
+                {
+                    let mut ls = lock_or_recover(&shared.link_set);
+                    ls.process_exited_tombstone(target_pid, propagated_reason);
+                }
+
+                // Deliver DOWN messages for monitors on the cascaded process.
+                // Must drop the slot lock first to avoid deadlock.
+                drop(slot);
+                drop(entry);
+                deliver_down_messages(shared, target_pid, propagated_reason);
+
+                // Remove from process table and wait set.
+                let _removed = shared.process_table.remove(target_pid);
+                {
+                    let mut wait_set = lock_or_recover(&shared.wait_set);
+                    wait_set.waiting.remove(&target_pid);
+                    wait_set.woken.retain(|(wp, _)| *wp != target_pid);
+                }
+
+                cascade_links
+                    .into_iter()
+                    .map(|linked_pid| (target_pid, linked_pid, propagated_reason))
+                    .collect()
+            } else if target.trap_exit() {
+                // Process traps exits: deliver {EXIT, SourcePid, Reason} as message.
+                link::enqueue_exit_message_pub(target, source_pid, reason);
+
+                // Wake the process if it was waiting for a message.
+                let target_pid_copy = target_pid;
+                drop(slot);
+                drop(entry);
+                wake_process(shared, target_pid_copy);
+
+                Vec::new()
+            } else {
+                // Normal exit to non-trapping process: no action needed.
+                Vec::new()
+            }
         }
-        return Vec::new();
-    };
+        ProcessSlot::Executing(metadata) => {
+            metadata.remove_link(source_pid);
+            let should_die =
+                reason == ExitReason::Kill || (reason != ExitReason::Normal && !metadata.trap_exit);
 
-    // Already exited? Nothing to do.
-    if matches!(target.status(), ProcessStatus::Exited(_)) {
-        return Vec::new();
-    }
+            if should_die {
+                let propagated_reason = link::terminal_reason(reason);
+                if reason == ExitReason::Kill {
+                    metadata.trap_exit = false;
+                }
+                let cascade_links: Vec<u64> = metadata
+                    .links
+                    .iter()
+                    .copied()
+                    .filter(|linked_pid| *linked_pid != source_pid)
+                    .collect();
+                shared.exit_tombstones.insert(target_pid, propagated_reason);
+                {
+                    let mut ls = lock_or_recover(&shared.link_set);
+                    ls.process_exited_tombstone(target_pid, propagated_reason);
+                }
+                drop(slot);
+                drop(entry);
+                deliver_down_messages(shared, target_pid, propagated_reason);
 
-    // Remove the reverse link.
-    target.remove_link(source_pid);
-
-    let should_die =
-        reason == ExitReason::Kill || (reason != ExitReason::Normal && !target.trap_exit());
-
-    if should_die {
-        // Kill signal bypasses trap_exit and propagates as 'killed'.
-        let propagated_reason = link::terminal_reason(reason);
-        if reason == ExitReason::Kill {
-            target.set_trap_exit(false);
+                cascade_links
+                    .into_iter()
+                    .map(|linked_pid| (target_pid, linked_pid, propagated_reason))
+                    .collect()
+            } else if reason != ExitReason::Normal && metadata.trap_exit {
+                metadata.pending_exit_messages.push((source_pid, reason));
+                drop(slot);
+                drop(entry);
+                wake_process(shared, target_pid);
+                Vec::new()
+            } else {
+                Vec::new()
+            }
         }
-
-        // Collect this process's links for cascade before terminating.
-        let cascade_links: Vec<u64> = target
-            .take_links()
-            .into_iter()
-            .filter(|linked_pid| *linked_pid != source_pid)
-            .collect();
-
-        target.terminate(propagated_reason);
-
-        // Record tombstone.
-        shared.exit_tombstones.insert(target_pid, propagated_reason);
-        {
-            let mut ls = lock_or_recover(&shared.link_set);
-            ls.process_exited_tombstone(target_pid, propagated_reason);
-        }
-
-        // Deliver DOWN messages for monitors on the cascaded process.
-        // Must drop the slot lock first to avoid deadlock.
-        drop(slot);
-        drop(entry);
-        deliver_down_messages(shared, target_pid, propagated_reason);
-
-        // Remove from process table and wait set.
-        let _removed = shared.process_table.remove(target_pid);
-        {
-            let mut wait_set = lock_or_recover(&shared.wait_set);
-            wait_set.waiting.remove(&target_pid);
-            wait_set.woken.retain(|(wp, _)| *wp != target_pid);
-        }
-
-        cascade_links
-            .into_iter()
-            .map(|linked_pid| (target_pid, linked_pid, propagated_reason))
-            .collect()
-    } else if target.trap_exit() {
-        // Process traps exits: deliver {EXIT, SourcePid, Reason} as message.
-        link::enqueue_exit_message_pub(target, source_pid, reason);
-
-        // Wake the process if it was waiting for a message.
-        let target_pid_copy = target_pid;
-        drop(slot);
-        drop(entry);
-        wake_process(shared, target_pid_copy);
-
-        Vec::new()
-    } else {
-        // Normal exit to non-trapping process: no action needed.
-        Vec::new()
+        ProcessSlot::Absent => Vec::new(),
     }
 }
 
@@ -185,7 +222,7 @@ fn deliver_single_down(
         return false;
     };
     let mut slot = lock_or_recover(&entry);
-    let Some(ScheduledProcess(watcher)) = slot.as_mut() else {
+    let ProcessSlot::Present(ScheduledProcess(watcher)) = &mut *slot else {
         return false;
     };
 
@@ -263,7 +300,6 @@ impl SpawnFacility for SchedulerSpawnFacility {
             .next_pid
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.shared.process_table.spawn_with_pid(child_pid);
-        self.shared.process_namespaces.insert(child_pid, namespace_id);
 
         let mut child = super::build_process(super::SpawnRequest {
             pid: child_pid,
@@ -276,23 +312,12 @@ impl SpawnFacility for SchedulerSpawnFacility {
 
         if let Some(parent_pid) = link_to {
             child.add_link(parent_pid);
-            if let Some(parent_entry) = self.shared.process_bodies.get(&parent_pid) {
-                let mut parent_slot = lock_or_recover(&parent_entry);
-                if let Some(ScheduledProcess(parent)) = parent_slot.as_mut() {
-                    parent.add_link(child_pid);
-                } else {
-                    self.shared
-                        .pending_links
-                        .entry(parent_pid)
-                        .or_default()
-                        .push(child_pid);
-                }
-            }
+            add_link_to_slot(&self.shared, parent_pid, child_pid);
         }
 
         self.shared.process_bodies.insert(
             child_pid,
-            std::sync::Mutex::new(Some(ScheduledProcess(child))),
+            std::sync::Mutex::new(ProcessSlot::Present(ScheduledProcess(child))),
         );
 
         // Enqueue to a scheduler thread's inject queue by notifying.
@@ -337,7 +362,6 @@ impl SpawnFacility for SchedulerSpawnFacility {
             .next_pid
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.shared.process_table.spawn_with_pid(child_pid);
-        self.shared.process_namespaces.insert(child_pid, namespace_id);
 
         let mut child = super::build_process(super::SpawnRequest {
             pid: child_pid,
@@ -350,23 +374,12 @@ impl SpawnFacility for SchedulerSpawnFacility {
 
         if let Some(parent_pid) = link_to {
             child.add_link(parent_pid);
-            if let Some(parent_entry) = self.shared.process_bodies.get(&parent_pid) {
-                let mut parent_slot = lock_or_recover(&parent_entry);
-                if let Some(ScheduledProcess(parent)) = parent_slot.as_mut() {
-                    parent.add_link(child_pid);
-                } else {
-                    self.shared
-                        .pending_links
-                        .entry(parent_pid)
-                        .or_default()
-                        .push(child_pid);
-                }
-            }
+            add_link_to_slot(&self.shared, parent_pid, child_pid);
         }
 
         self.shared.process_bodies.insert(
             child_pid,
-            std::sync::Mutex::new(Some(ScheduledProcess(child))),
+            std::sync::Mutex::new(ProcessSlot::Present(ScheduledProcess(child))),
         );
 
         self.shared
@@ -386,11 +399,44 @@ impl SchedulerSpawnFacility {
     fn caller_namespace(&self, caller_pid: u64) -> NamespaceId {
         if let Some(parent_entry) = self.shared.process_bodies.get(&caller_pid) {
             let parent_slot = lock_or_recover(&parent_entry);
-            if let Some(ScheduledProcess(parent)) = parent_slot.as_ref() {
-                return parent.namespace_id();
+            match &*parent_slot {
+                ProcessSlot::Present(ScheduledProcess(parent)) => return parent.namespace_id(),
+                ProcessSlot::Executing(metadata) => return metadata.namespace_id,
+                ProcessSlot::Absent => {}
             }
         }
         self.namespace_id
+    }
+}
+
+fn add_link_to_slot(shared: &SharedState, pid: u64, linked_pid: u64) -> bool {
+    let Some(entry) = shared.process_bodies.get(&pid) else {
+        return false;
+    };
+    let mut slot = lock_or_recover(&entry);
+    match &mut *slot {
+        ProcessSlot::Present(ScheduledProcess(process)) => {
+            process.add_link(linked_pid);
+            true
+        }
+        ProcessSlot::Executing(metadata) => {
+            metadata.add_link(linked_pid, pid);
+            true
+        }
+        ProcessSlot::Absent => false,
+    }
+}
+
+fn remove_link_from_slot(shared: &SharedState, pid: u64, linked_pid: u64) {
+    if let Some(entry) = shared.process_bodies.get(&pid) {
+        let mut slot = lock_or_recover(&entry);
+        match &mut *slot {
+            ProcessSlot::Present(ScheduledProcess(process)) => {
+                process.remove_link(linked_pid);
+            }
+            ProcessSlot::Executing(metadata) => metadata.remove_link(linked_pid),
+            ProcessSlot::Absent => {}
+        }
     }
 }
 
@@ -416,24 +462,12 @@ impl LinkFacility for SchedulerLinkFacility {
         }
 
         // Add link to caller.
-        if let Some(entry) = self.shared.process_bodies.get(&caller_pid) {
-            let mut slot = lock_or_recover(&entry);
-            if let Some(ScheduledProcess(caller)) = slot.as_mut() {
-                caller.add_link(target_pid);
-            } else {
-                return Err(LinkError::NoCaller);
-            }
-        } else {
+        if !add_link_to_slot(&self.shared, caller_pid, target_pid) {
             return Err(LinkError::NoCaller);
         }
 
         // Add link to target.
-        if let Some(entry) = self.shared.process_bodies.get(&target_pid) {
-            let mut slot = lock_or_recover(&entry);
-            if let Some(ScheduledProcess(target)) = slot.as_mut() {
-                target.add_link(caller_pid);
-            }
-        }
+        add_link_to_slot(&self.shared, target_pid, caller_pid);
 
         Ok(())
     }
@@ -443,19 +477,9 @@ impl LinkFacility for SchedulerLinkFacility {
             return Ok(());
         }
 
-        if let Some(entry) = self.shared.process_bodies.get(&caller_pid) {
-            let mut slot = lock_or_recover(&entry);
-            if let Some(ScheduledProcess(caller)) = slot.as_mut() {
-                caller.remove_link(target_pid);
-            }
-        }
+        remove_link_from_slot(&self.shared, caller_pid, target_pid);
 
-        if let Some(entry) = self.shared.process_bodies.get(&target_pid) {
-            let mut slot = lock_or_recover(&entry);
-            if let Some(ScheduledProcess(target)) = slot.as_mut() {
-                target.remove_link(caller_pid);
-            }
-        }
+        remove_link_from_slot(&self.shared, target_pid, caller_pid);
 
         Ok(())
     }
@@ -465,7 +489,7 @@ impl LinkFacility for SchedulerLinkFacility {
             return Err(LinkError::NoCaller);
         };
         let mut slot = lock_or_recover(&entry);
-        let Some(ScheduledProcess(process)) = slot.as_mut() else {
+        let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot else {
             return Err(LinkError::NoCaller);
         };
         let old = process.trap_exit();
@@ -491,7 +515,7 @@ impl SupervisionFacility for SchedulerSupervisionFacility {
             // Deliver immediate DOWN to caller.
             if let Some(entry) = self.shared.process_bodies.get(&caller_pid) {
                 let mut slot = lock_or_recover(&entry);
-                if let Some(ScheduledProcess(caller)) = slot.as_mut() {
+                if let ProcessSlot::Present(ScheduledProcess(caller)) = &mut *slot {
                     monitor::enqueue_down_message_pub(caller, reference, target_pid, reason);
                 }
             }
@@ -516,7 +540,7 @@ impl SupervisionFacility for SchedulerSupervisionFacility {
         // Add monitor to caller process.
         if let Some(entry) = self.shared.process_bodies.get(&caller_pid) {
             let mut slot = lock_or_recover(&entry);
-            if let Some(ScheduledProcess(p)) = slot.as_mut() {
+            if let ProcessSlot::Present(ScheduledProcess(p)) = &mut *slot {
                 p.add_monitor(mon);
             }
         }
@@ -524,7 +548,7 @@ impl SupervisionFacility for SchedulerSupervisionFacility {
         // Add monitor to target process.
         if let Some(entry) = self.shared.process_bodies.get(&target_pid) {
             let mut slot = lock_or_recover(&entry);
-            if let Some(ScheduledProcess(p)) = slot.as_mut() {
+            if let ProcessSlot::Present(ScheduledProcess(p)) = &mut *slot {
                 p.add_monitor(mon);
             }
         }
@@ -544,13 +568,13 @@ impl SupervisionFacility for SchedulerSupervisionFacility {
             // Remove from both processes.
             if let Some(entry) = self.shared.process_bodies.get(&caller_pid) {
                 let mut slot = lock_or_recover(&entry);
-                if let Some(ScheduledProcess(process)) = slot.as_mut() {
+                if let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot {
                     process.remove_monitor(reference);
                 }
             }
             if let Some(entry) = self.shared.process_bodies.get(&monitor.target()) {
                 let mut slot = lock_or_recover(&entry);
-                if let Some(ScheduledProcess(process)) = slot.as_mut() {
+                if let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot {
                     process.remove_monitor(reference);
                 }
             }
@@ -569,28 +593,50 @@ impl SupervisionFacility for SchedulerSupervisionFacility {
         // Deliver exit signal to target process.
         if let Some(entry) = self.shared.process_bodies.get(&target_pid) {
             let mut slot = lock_or_recover(&entry);
-            if let Some(ScheduledProcess(target)) = slot.as_mut() {
-                if matches!(target.status(), ProcessStatus::Exited(_)) {
-                    return Ok(());
-                }
+            match &mut *slot {
+                ProcessSlot::Present(ScheduledProcess(target)) => {
+                    if matches!(target.status(), ProcessStatus::Exited(_)) {
+                        return Ok(());
+                    }
 
-                let should_die = reason == ExitReason::Kill
-                    || (reason != ExitReason::Normal && !target.trap_exit());
+                    let should_die = reason == ExitReason::Kill
+                        || (reason != ExitReason::Normal && !target.trap_exit());
 
-                if should_die {
-                    let terminal = link::terminal_reason(reason);
-                    target.terminate(terminal);
-                    drop(slot);
-                    drop(entry);
-                    cleanup_exited_process(&self.shared, target_pid, terminal);
-                } else if target.trap_exit() {
-                    link::enqueue_exit_message_pub(target, _caller_pid, reason);
-                    drop(slot);
-                    drop(entry);
-                    wake_process(&self.shared, target_pid);
+                    if should_die {
+                        let terminal = link::terminal_reason(reason);
+                        target.terminate(terminal);
+                        drop(slot);
+                        drop(entry);
+                        cleanup_exited_process(&self.shared, target_pid, terminal);
+                    } else if target.trap_exit() {
+                        link::enqueue_exit_message_pub(target, _caller_pid, reason);
+                        drop(slot);
+                        drop(entry);
+                        wake_process(&self.shared, target_pid);
+                    }
                 }
+                ProcessSlot::Executing(metadata) => {
+                    let should_die = reason == ExitReason::Kill
+                        || (reason != ExitReason::Normal && !metadata.trap_exit);
+                    if should_die {
+                        let terminal = link::terminal_reason(reason);
+                        shared_exit_tombstone(&self.shared, target_pid, terminal);
+                    } else if reason != ExitReason::Normal && metadata.trap_exit {
+                        metadata.pending_exit_messages.push((_caller_pid, reason));
+                        drop(slot);
+                        drop(entry);
+                        wake_process(&self.shared, target_pid);
+                    }
+                }
+                ProcessSlot::Absent => {}
             }
         }
         Ok(())
     }
+}
+
+fn shared_exit_tombstone(shared: &SharedState, pid: u64, reason: ExitReason) {
+    shared.exit_tombstones.insert(pid, reason);
+    let mut ls = lock_or_recover(&shared.link_set);
+    ls.process_exited_tombstone(pid, reason);
 }
