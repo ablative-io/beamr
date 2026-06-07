@@ -503,7 +503,7 @@ fn call_external_target(
                         reason,
                         stacktrace: exception_stacktrace,
                     };
-                    return super::messaging::raise_exception(process, exception);
+                    return super::exceptions::raise_exception(process, exception);
                 }
             };
 

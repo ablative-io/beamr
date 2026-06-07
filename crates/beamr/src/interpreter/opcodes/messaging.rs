@@ -1,17 +1,11 @@
-//! Message passing, receive, and exception opcode handlers.
+//! Message passing and receive opcode handlers.
 
-use crate::atom::Atom;
 use crate::error::ExecError;
 use crate::interpreter::InstructionOutcome;
 use crate::interpreter::opcodes::core;
 use crate::loader::decode::compact::Operand;
 use crate::module::Module;
-use crate::process::{
-    CodePosition, Exception, ExceptionHandler, ExitReason, Process, ProcessStatus, ReceiveTimeout,
-    Register,
-};
-use crate::term::Term;
-use crate::term::boxed::write_tuple;
+use crate::process::{CodePosition, Process, ProcessStatus, ReceiveTimeout};
 
 /// Send x(1) to the process identified by x(0) when the caller supplies a receiver.
 pub fn send(
@@ -105,140 +99,6 @@ pub fn timeout(process: &mut Process) -> Result<InstructionOutcome, ExecError> {
     Ok(InstructionOutcome::Continue)
 }
 
-pub fn try_(
-    process: &mut Process,
-    module: &Module,
-    destination: &Operand,
-    label: &Operand,
-) -> Result<InstructionOutcome, ExecError> {
-    let destination = register(destination)?;
-    let catch_position = label_position(module, label)?;
-    process.push_exception_handler(ExceptionHandler {
-        catch_position,
-        destination,
-    });
-    Ok(InstructionOutcome::Continue)
-}
-
-pub fn try_end(process: &mut Process, source: &Operand) -> Result<InstructionOutcome, ExecError> {
-    let _ = register(source)?;
-    let _ = process.pop_exception_handler();
-    process.set_current_exception(None);
-    Ok(InstructionOutcome::Continue)
-}
-
-pub fn try_case(process: &mut Process, source: &Operand) -> Result<InstructionOutcome, ExecError> {
-    core::write_term(process, source, Term::NIL)?;
-    if let Some(exception) = process.current_exception() {
-        process.set_x_reg(0, exception.class);
-        process.set_x_reg(1, exception.reason);
-        process.set_x_reg(2, exception.stacktrace);
-    }
-    Ok(InstructionOutcome::Continue)
-}
-
-pub fn try_case_end(
-    process: &mut Process,
-    module: &Module,
-    source: &Operand,
-) -> Result<InstructionOutcome, ExecError> {
-    let value = core::read_term(process, module, source)?;
-
-    let reason = two_tuple(process, Term::atom(Atom::BADMATCH), value)?;
-    raise_exception(process, Exception::error(reason, Term::NIL))
-}
-
-pub fn raise(
-    process: &mut Process,
-    module: &Module,
-    stacktrace: &Operand,
-    reason: &Operand,
-) -> Result<InstructionOutcome, ExecError> {
-    let stacktrace = core::read_term(process, module, stacktrace)?;
-    let reason = core::read_term(process, module, reason)?;
-
-    let class = process
-        .current_exception()
-        .map_or(Term::atom(Atom::ERROR), |exception| exception.class);
-    raise_exception(
-        process,
-        Exception {
-            class,
-            reason,
-            stacktrace,
-        },
-    )
-}
-
-pub fn raw_raise(process: &mut Process) -> Result<InstructionOutcome, ExecError> {
-    let class = process.x_reg(0);
-    if !is_exception_class(class) {
-        return Err(ExecError::Badarg);
-    }
-
-    let reason = process.x_reg(1);
-    let stacktrace = process.x_reg(2);
-    raise_exception(
-        process,
-        Exception {
-            class,
-            reason,
-            stacktrace,
-        },
-    )
-}
-
-pub fn badmatch(
-    process: &mut Process,
-    module: &Module,
-    value: &Operand,
-) -> Result<InstructionOutcome, ExecError> {
-    let value = core::read_term(process, module, value)?;
-
-    let reason = two_tuple(process, Term::atom(Atom::BADMATCH), value)?;
-    raise_exception(process, Exception::error(reason, Term::NIL))
-}
-
-pub fn case_end(
-    process: &mut Process,
-    module: &Module,
-    value: &Operand,
-) -> Result<InstructionOutcome, ExecError> {
-    let value = core::read_term(process, module, value)?;
-
-    let reason = two_tuple(process, Term::atom(Atom::CASE_CLAUSE), value)?;
-    raise_exception(process, Exception::error(reason, Term::NIL))
-}
-
-pub fn if_end(process: &mut Process) -> Result<InstructionOutcome, ExecError> {
-    let reason = two_tuple(process, Term::atom(Atom::IF_CLAUSE), Term::NIL)?;
-    raise_exception(process, Exception::error(reason, Term::NIL))
-}
-
-pub fn raise_exception(
-    process: &mut Process,
-    exception: Exception,
-) -> Result<InstructionOutcome, ExecError> {
-    if let Some(handler) = process.pop_exception_handler() {
-        process.set_current_exception(Some(exception));
-        write_register(process, handler.destination, exception.reason)?;
-        Ok(InstructionOutcome::Jump(handler.catch_position))
-    } else {
-        process.set_current_exception(Some(exception));
-        Ok(InstructionOutcome::Exit(ExitReason::Error))
-    }
-}
-
-impl Exception {
-    fn error(reason: Term, stacktrace: Term) -> Self {
-        Self {
-            class: Term::atom(Atom::ERROR),
-            reason,
-            stacktrace,
-        }
-    }
-}
-
 fn jump_to_label(module: &Module, label: &Operand) -> Result<InstructionOutcome, ExecError> {
     label_position(module, label).map(InstructionOutcome::Jump)
 }
@@ -282,48 +142,6 @@ fn timeout_milliseconds(
     }
 }
 
-fn register(operand: &Operand) -> Result<Register, ExecError> {
-    match operand {
-        Operand::X(index) => u16::try_from(*index)
-            .map(Register::X)
-            .map_err(|_| ExecError::InvalidOperand("X register")),
-        Operand::Y(index) => u16::try_from(*index)
-            .map(Register::Y)
-            .map_err(|_| ExecError::InvalidOperand("Y register")),
-        Operand::TypedRegister { register, .. } => self::register(register),
-        _ => Err(ExecError::InvalidOperand("register")),
-    }
-}
-
-fn write_register(
-    process: &mut Process,
-    destination: Register,
-    value: Term,
-) -> Result<(), ExecError> {
-    match destination {
-        Register::X(index) => {
-            process.set_x_reg(index, value);
-            Ok(())
-        }
-        Register::Y(index) => process
-            .stack_mut()
-            .set_y_reg(index, value)
-            .map_err(ExecError::from),
-    }
-}
-
-fn is_exception_class(class: Term) -> bool {
-    class == Term::atom(Atom::ERROR)
-        || class == Term::atom(Atom::THROW)
-        || class == Term::atom(Atom::EXIT_CLASS)
-}
-
-fn two_tuple(process: &mut Process, left: Term, right: Term) -> Result<Term, ExecError> {
-    let ptr = process.heap_mut().alloc(3).map_err(ExecError::from)?;
-    let words = core::heap_slice(ptr, 3);
-    write_tuple(words, &[left, right]).ok_or(ExecError::Badarg)
-}
-
 fn send_error(error: crate::mailbox::SendError) -> ExecError {
     match error {
         crate::mailbox::SendError::HeapFull(error) => ExecError::from(error),
@@ -334,9 +152,11 @@ fn send_error(error: crate::mailbox::SendError) -> ExecError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::atom::Atom;
     use crate::interpreter::{ExecutionResult, run};
     use crate::loader::Instruction;
-    use crate::term::boxed::Tuple;
+    use crate::process::{ExitReason, Process};
+    use crate::term::Term;
     use std::collections::HashMap;
 
     fn module(code: Vec<Instruction>) -> Module {
@@ -616,185 +436,5 @@ mod tests {
             run(&mut process, &message_code),
             Ok(ExecutionResult::Exited(ExitReason::Normal))
         );
-    }
-
-    #[test]
-    fn try_badmatch_captures_class_reason_and_stacktrace() {
-        let code = module(vec![Instruction::Label { label: 20 }]);
-        let mut process = Process::new(1, 32);
-
-        assert_eq!(
-            try_(&mut process, &code, &Operand::X(0), &Operand::Label(20)),
-            Ok(InstructionOutcome::Continue)
-        );
-        assert_eq!(
-            badmatch(&mut process, &code, &Operand::Integer(42)),
-            Ok(InstructionOutcome::Jump(CodePosition {
-                module: Atom::OK,
-                instruction_pointer: 0,
-            }))
-        );
-        assert_eq!(
-            try_case(&mut process, &Operand::X(0)),
-            Ok(InstructionOutcome::Continue)
-        );
-
-        assert_eq!(process.x_reg(0), Term::atom(Atom::ERROR));
-        let reason = Tuple::new(process.x_reg(1)).expect("badmatch reason tuple");
-        assert_eq!(reason.get(0), Some(Term::atom(Atom::BADMATCH)));
-        assert_eq!(reason.get(1), Some(Term::small_int(42)));
-        assert_eq!(process.x_reg(2), Term::NIL);
-    }
-
-    #[test]
-    fn nested_try_uses_inner_handler_first_and_raise_preserves_stacktrace() {
-        let code = module(vec![
-            Instruction::Label { label: 10 },
-            Instruction::Label { label: 20 },
-        ]);
-        let mut process = Process::new(1, 64);
-        try_(&mut process, &code, &Operand::X(10), &Operand::Label(10)).expect("outer try");
-        try_(&mut process, &code, &Operand::X(20), &Operand::Label(20)).expect("inner try");
-
-        assert_eq!(
-            raise(
-                &mut process,
-                &code,
-                &Operand::Integer(777),
-                &Operand::Atom(Some(Atom::BADARG)),
-            ),
-            Ok(InstructionOutcome::Jump(CodePosition {
-                module: Atom::OK,
-                instruction_pointer: 1,
-            }))
-        );
-        try_case(&mut process, &Operand::X(0)).expect("expose exception");
-
-        assert_eq!(process.exception_handler_count(), 1);
-        assert_eq!(process.x_reg(0), Term::atom(Atom::ERROR));
-        assert_eq!(process.x_reg(1), Term::atom(Atom::BADARG));
-        assert_eq!(process.x_reg(2), Term::small_int(777));
-    }
-
-    #[test]
-    fn raw_raise_dispatches_valid_classes_to_handler() {
-        let code = module(vec![Instruction::Label { label: 20 }]);
-
-        for class_atom in [Atom::ERROR, Atom::THROW, Atom::EXIT_CLASS] {
-            let mut process = Process::new(1, 64);
-            try_(&mut process, &code, &Operand::X(0), &Operand::Label(20)).expect("try");
-            let class = Term::atom(class_atom);
-            let reason = Term::atom(Atom::BADARG);
-            let stacktrace = Term::small_int(900);
-            process.set_x_reg(0, class);
-            process.set_x_reg(1, reason);
-            process.set_x_reg(2, stacktrace);
-
-            assert_eq!(
-                raw_raise(&mut process),
-                Ok(InstructionOutcome::Jump(CodePosition {
-                    module: Atom::OK,
-                    instruction_pointer: 0,
-                }))
-            );
-            try_case(&mut process, &Operand::X(0)).expect("expose exception");
-
-            assert_eq!(process.x_reg(0), class);
-            assert_eq!(process.x_reg(1), reason);
-            assert_eq!(process.x_reg(2), stacktrace);
-        }
-    }
-
-    #[test]
-    fn raw_raise_rejects_invalid_class() {
-        let mut process = Process::new(1, 64);
-        process.set_x_reg(0, Term::atom(Atom::OK));
-        process.set_x_reg(1, Term::atom(Atom::BADARG));
-        process.set_x_reg(2, Term::small_int(900));
-
-        assert_eq!(raw_raise(&mut process), Err(ExecError::Badarg));
-    }
-
-    #[test]
-    fn raw_raise_without_handler_exits_process() {
-        let mut process = Process::new(1, 64);
-        let class = Term::atom(Atom::EXIT_CLASS);
-        let reason = Term::atom(Atom::BADARG);
-        let stacktrace = Term::small_int(901);
-        process.set_x_reg(0, class);
-        process.set_x_reg(1, reason);
-        process.set_x_reg(2, stacktrace);
-
-        assert_eq!(
-            raw_raise(&mut process),
-            Ok(InstructionOutcome::Exit(ExitReason::Error))
-        );
-        let exception = process.current_exception().expect("current exception");
-        assert_eq!(exception.class, class);
-        assert_eq!(exception.reason, reason);
-        assert_eq!(exception.stacktrace, stacktrace);
-    }
-
-    #[test]
-    fn dispatch_raw_raise_uses_opcode_handler() {
-        let code = module(vec![Instruction::Label { label: 20 }]);
-        let mut process = Process::new(1, 64);
-        try_(&mut process, &code, &Operand::X(0), &Operand::Label(20)).expect("try");
-        let class = Term::atom(Atom::ERROR);
-        let reason = Term::atom(Atom::BADARG);
-        let stacktrace = Term::small_int(902);
-        process.set_x_reg(0, class);
-        process.set_x_reg(1, reason);
-        process.set_x_reg(2, stacktrace);
-
-        assert_eq!(
-            crate::interpreter::opcodes::dispatch(
-                &mut process,
-                &code,
-                &Instruction::RawRaise,
-                1,
-                None,
-            ),
-            Ok(InstructionOutcome::Jump(CodePosition {
-                module: Atom::OK,
-                instruction_pointer: 0,
-            }))
-        );
-        try_case(&mut process, &Operand::X(0)).expect("expose exception");
-
-        assert_eq!(process.x_reg(0), class);
-        assert_eq!(process.x_reg(1), reason);
-        assert_eq!(process.x_reg(2), stacktrace);
-    }
-
-    #[test]
-    fn case_if_and_try_case_end_build_catchable_error_reasons() {
-        let code = module(vec![Instruction::Label { label: 20 }]);
-        let mut process = Process::new(1, 64);
-        try_(&mut process, &code, &Operand::X(0), &Operand::Label(20)).expect("try");
-        assert_eq!(
-            case_end(&mut process, &code, &Operand::Atom(Some(Atom::OK))),
-            Ok(InstructionOutcome::Jump(CodePosition {
-                module: Atom::OK,
-                instruction_pointer: 0,
-            }))
-        );
-        try_case(&mut process, &Operand::X(0)).expect("expose");
-        let reason = Tuple::new(process.x_reg(1)).expect("case_clause tuple");
-        assert_eq!(reason.get(0), Some(Term::atom(Atom::CASE_CLAUSE)));
-        assert_eq!(reason.get(1), Some(Term::atom(Atom::OK)));
-
-        try_(&mut process, &code, &Operand::X(0), &Operand::Label(20)).expect("try");
-        assert_eq!(
-            if_end(&mut process),
-            Ok(InstructionOutcome::Jump(CodePosition {
-                module: Atom::OK,
-                instruction_pointer: 0,
-            }))
-        );
-        try_case(&mut process, &Operand::X(0)).expect("expose");
-        let reason = Tuple::new(process.x_reg(1)).expect("if_clause tuple");
-        assert_eq!(reason.get(0), Some(Term::atom(Atom::IF_CLAUSE)));
-        assert_eq!(reason.get(1), Some(Term::NIL));
     }
 }

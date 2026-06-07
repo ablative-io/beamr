@@ -257,6 +257,11 @@ impl Stack {
         self.frames.len()
     }
 
+    /// Drop frames above `len`, preserving all lower frames.
+    pub fn truncate(&mut self, len: usize) {
+        self.frames.truncate(len);
+    }
+
     /// Returns true when the stack has no frames.
     #[must_use]
     pub fn is_empty(&self) -> bool {
@@ -383,6 +388,34 @@ mod tests {
         assert_eq!(stack.y_reg(0), Ok(Term::small_int(20)));
         let _ = stack.pop_frame().expect("second frame should pop");
         assert_eq!(stack.y_reg(0), Ok(Term::small_int(10)));
+    }
+
+    #[test]
+    fn truncate_drops_frames_above_depth() {
+        let mut stack = Stack::new();
+
+        stack
+            .push_frame(Atom::OK, 0, module_arc(Atom::OK), 1)
+            .expect("first frame should fit");
+        stack
+            .set_y_reg(0, Term::small_int(10))
+            .expect("Y0 exists in first frame");
+        stack
+            .push_frame(Atom::ERROR, 1, module_arc(Atom::ERROR), 1)
+            .expect("second frame should fit");
+        stack
+            .set_y_reg(0, Term::small_int(20))
+            .expect("Y0 exists in second frame");
+
+        stack.truncate(1);
+
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack.y_reg(0), Ok(Term::small_int(10)));
+
+        stack.truncate(0);
+
+        assert!(stack.is_empty());
+        assert_eq!(stack.y_reg(0), Err(StackError::StackUnderflow));
     }
 
     #[test]
