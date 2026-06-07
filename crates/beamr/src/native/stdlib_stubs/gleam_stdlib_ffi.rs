@@ -7,7 +7,6 @@ use crate::term::binary::Binary;
 use crate::term::boxed::{Cons, write_tuple};
 
 pub fn bif_string_replace(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [input, pattern, replacement] = args else {
         return Err(badarg());
     };
@@ -27,7 +26,7 @@ pub fn bif_string_replace(args: &[Term], context: &mut ProcessContext) -> Result
         index = match_start + pattern.len();
     }
     out.extend_from_slice(&input[index..]);
-    make_binary(&out)
+    context.alloc_binary(&out)
 }
 
 pub fn bif_less_than(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -39,7 +38,6 @@ pub fn bif_less_than(args: &[Term], context: &mut ProcessContext) -> Result<Term
 }
 
 pub fn bif_slice(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [input, offset, length] = args else {
         return Err(badarg());
     };
@@ -50,18 +48,17 @@ pub fn bif_slice(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     if end > bytes.len() {
         return Err(badarg());
     }
-    make_binary(&bytes[offset..end])
+    context.alloc_binary(&bytes[offset..end])
 }
 
 pub fn bif_crop_string(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [input, length] = args else {
         return Err(badarg());
     };
     let bytes = binary_bytes(*input)?;
     let length = non_negative_usize(*length)?;
     let end = length.min(bytes.len());
-    make_binary(&bytes[..end])
+    context.alloc_binary(&bytes[..end])
 }
 
 pub fn bif_contains_string(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -95,7 +92,6 @@ pub fn bif_string_ends_with(args: &[Term], context: &mut ProcessContext) -> Resu
 }
 
 pub fn bif_string_pop_grapheme(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [input] = args else {
         return Err(badarg());
     };
@@ -108,9 +104,9 @@ pub fn bif_string_pop_grapheme(args: &[Term], context: &mut ProcessContext) -> R
         .ok()
         .and_then(|text| text.chars().next().map(char::len_utf8))
         .unwrap_or(1);
-    let head = make_binary(&bytes[..first_len])?;
-    let rest = make_binary(&bytes[first_len..])?;
-    ok_tuple2(head, rest)
+    let head = context.alloc_binary(&bytes[..first_len])?;
+    let rest = context.alloc_binary(&bytes[first_len..])?;
+    ok_tuple2(context, head, rest)
 }
 
 pub fn bif_utf_codepoint_list_to_string(
@@ -125,7 +121,7 @@ pub fn bif_utf_codepoint_list_to_string(
     let mut current = *input;
     loop {
         if current.is_nil() {
-            return make_binary(out.as_bytes());
+            return context.alloc_binary(out.as_bytes());
         }
         let cons = Cons::new(current).ok_or_else(badarg)?;
         let codepoint = cons.head().as_small_int().ok_or_else(badarg)?;
@@ -141,59 +137,62 @@ pub fn bif_inspect(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         return Err(badarg());
     };
     if let Some(binary) = Binary::new(*value) {
-        return make_binary(binary.as_bytes());
+        return context.alloc_binary(binary.as_bytes());
     }
     if let Some(integer) = value.as_small_int() {
-        return make_binary(integer.to_string().as_bytes());
+        return context.alloc_binary(integer.to_string().as_bytes());
     }
     if let Some(atom) = value.as_atom() {
         if let Some(table) = context.atom_table()
             && let Some(name) = table.resolve(atom)
         {
-            return make_binary(name.as_bytes());
+            return context.alloc_binary(name.as_bytes());
         }
-        return make_binary(format!("Atom({atom:?})").as_bytes());
+        return context.alloc_binary(format!("Atom({atom:?})").as_bytes());
     }
-    make_binary(format!("{value:?}").as_bytes())
+    context.alloc_binary(format!("{value:?}").as_bytes())
 }
 
 pub fn bif_string_remove_prefix(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [input, prefix] = args else {
         return Err(badarg());
     };
     let input = binary_bytes(*input)?;
     let prefix = binary_bytes(*prefix)?;
     if input.starts_with(prefix) {
-        ok_tuple1(make_binary(&input[prefix.len()..])?)
+        {
+            let value = context.alloc_binary(&input[prefix.len()..])?;
+            ok_tuple1(context, value)
+        }
     } else {
         Ok(Term::atom(Atom::ERROR))
     }
 }
 
 pub fn bif_string_remove_suffix(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [input, suffix] = args else {
         return Err(badarg());
     };
     let input = binary_bytes(*input)?;
     let suffix = binary_bytes(*suffix)?;
     if input.ends_with(suffix) {
-        ok_tuple1(make_binary(&input[..input.len() - suffix.len()])?)
+        {
+            let value = context.alloc_binary(&input[..input.len() - suffix.len()])?;
+            ok_tuple1(context, value)
+        }
     } else {
         Ok(Term::atom(Atom::ERROR))
     }
 }
 
 pub fn bif_iodata_append(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [left, right] = args else {
         return Err(badarg());
     };
     let mut out = Vec::new();
     collect_iodata(*left, &mut out)?;
     collect_iodata(*right, &mut out)?;
-    make_binary(&out)
+    context.alloc_binary(&out)
 }
 
 fn collect_iodata(term: Term, bytes: &mut Vec<u8>) -> Result<(), Term> {
@@ -239,20 +238,12 @@ fn bool_term(value: bool) -> Term {
     Term::atom(if value { Atom::TRUE } else { Atom::FALSE })
 }
 
-fn ok_tuple1(value: Term) -> Result<Term, Term> {
-    let heap = Box::leak(Box::new([0u64; 3]));
-    write_tuple(heap, &[Term::atom(Atom::OK), value]).ok_or_else(badarg)
+fn ok_tuple1(context: &mut ProcessContext, value: Term) -> Result<Term, Term> {
+    context.alloc_tuple(&[Term::atom(Atom::OK), value])
 }
 
-fn ok_tuple2(first: Term, second: Term) -> Result<Term, Term> {
-    let heap = Box::leak(Box::new([0u64; 4]));
-    write_tuple(heap, &[Term::atom(Atom::OK), first, second]).ok_or_else(badarg)
-}
-
-fn make_binary(bytes: &[u8]) -> Result<Term, Term> {
-    let data_words = crate::term::binary::packed_word_count(bytes.len());
-    let heap: &mut [u64] = Box::leak(vec![0u64; 2 + data_words].into_boxed_slice());
-    crate::term::binary::write_binary(heap, bytes).ok_or_else(badarg)
+fn ok_tuple2(context: &mut ProcessContext, first: Term, second: Term) -> Result<Term, Term> {
+    context.alloc_tuple(&[Term::atom(Atom::OK), first, second])
 }
 
 fn badarg() -> Term {

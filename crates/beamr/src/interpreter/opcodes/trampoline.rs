@@ -127,7 +127,10 @@ pub fn handle_native_continuation(
         .ok_or(ExecError::InvalidOperand("native continuation"))?;
     let closure_result = process.x_reg(0);
     let step = match continuation {
-        NativeContinuation::Maps(state) => resume_maps_continuation(state, closure_result),
+        NativeContinuation::Maps(state) => {
+            let mut context = crate::native::ProcessContext::with_process(process, 1);
+            resume_maps_continuation(&mut context, state, closure_result)
+        }
         NativeContinuation::ListsMap(state) => resume_lists_map(state, closure_result),
         NativeContinuation::GleamResultTry => Ok(ContinuationStep::Done(closure_result)),
     }

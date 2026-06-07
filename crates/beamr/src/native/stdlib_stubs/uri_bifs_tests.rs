@@ -24,7 +24,7 @@ fn atom(context: &ProcessContext, name: &str) -> Term {
 }
 
 fn binary(bytes: &[u8]) -> Term {
-    let heap = Box::leak(vec![0u64; 2 + binary::packed_word_count(bytes.len())].into_boxed_slice());
+    let heap = vec![0u64; 2 + binary::packed_word_count(bytes.len())].leak();
     binary::write_binary(heap, bytes).expect("binary")
 }
 

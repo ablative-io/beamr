@@ -14,12 +14,12 @@ fn badarg() -> Term {
 }
 
 fn float(value: f64) -> Term {
-    let heap = Box::leak(Box::new([0u64; 2]));
+    let heap = vec![0u64; 2].leak();
     write_float(heap, value).expect("float")
 }
 
 fn binary_term(bytes: &[u8]) -> Term {
-    let heap = Box::leak(vec![0u64; 2 + binary::packed_word_count(bytes.len())].into_boxed_slice());
+    let heap = vec![0u64; 2 + binary::packed_word_count(bytes.len())].leak();
     binary::write_binary(heap, bytes).expect("binary")
 }
 
@@ -35,7 +35,7 @@ fn type_and_map_helpers_return_expected_values() {
     let mut ctx = context();
     let key = Term::atom(Atom::OK);
     let val = Term::small_int(9);
-    let map_heap = Box::leak(vec![0u64; 4].into_boxed_slice());
+    let map_heap = vec![0u64; 4].leak();
     let map = write_map(map_heap, &[key], &[val]).expect("map");
 
     assert_eq!(

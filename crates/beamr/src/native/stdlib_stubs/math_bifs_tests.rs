@@ -14,7 +14,7 @@ fn badarg() -> Term {
 }
 
 fn float(value: f64) -> Term {
-    let heap = Box::leak(Box::new([0u64; 2]));
+    let heap = vec![0u64; 2].leak();
     write_float(heap, value).expect("float")
 }
 

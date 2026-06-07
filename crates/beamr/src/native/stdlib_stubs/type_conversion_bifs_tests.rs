@@ -24,14 +24,14 @@ fn badarg() -> Term {
 }
 
 fn binary(bytes: &[u8]) -> Term {
-    let heap = Box::leak(vec![0u64; 2 + binary::packed_word_count(bytes.len())].into_boxed_slice());
+    let heap = vec![0u64; 2 + binary::packed_word_count(bytes.len())].leak();
     binary::write_binary(heap, bytes).expect("binary")
 }
 
 fn list(values: &[Term]) -> Term {
     let mut tail = Term::NIL;
     for value in values.iter().rev() {
-        let heap = Box::leak(Box::new([0u64; 2]));
+        let heap = vec![0u64; 2].leak();
         tail = write_cons(heap, *value, tail).expect("cons");
     }
     tail

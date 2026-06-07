@@ -16,7 +16,7 @@ fn badarg() -> Term {
 
 fn binary(bytes: &[u8]) -> Term {
     let data_words = binary::packed_word_count(bytes.len());
-    let heap: &mut [u64] = Box::leak(vec![0u64; 2 + data_words].into_boxed_slice());
+    let heap: &mut [u64] = vec![0u64; 2 + data_words].leak();
     binary::write_binary(heap, bytes).expect("binary heap sized correctly")
 }
 
@@ -42,7 +42,7 @@ fn atom(ctx: &ProcessContext, name: &str) -> Term {
 fn list(elements: &[Term]) -> Term {
     let mut tail = Term::NIL;
     for element in elements.iter().rev() {
-        tail = write_cons(Box::leak(Box::new([0u64; 2])), *element, tail).expect("cons");
+        tail = write_cons(vec![0u64; 2].leak(), *element, tail).expect("cons");
     }
     tail
 }

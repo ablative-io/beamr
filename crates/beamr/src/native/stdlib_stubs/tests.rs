@@ -21,7 +21,7 @@ fn badarg() -> Term {
 
 fn binary(bytes: &[u8]) -> Term {
     let data_words = binary::packed_word_count(bytes.len());
-    let heap: &mut [u64] = Box::leak(vec![0u64; 2 + data_words].into_boxed_slice());
+    let heap: &mut [u64] = vec![0u64; 2 + data_words].leak();
     binary::write_binary(heap, bytes).expect("binary heap sized correctly")
 }
 
@@ -318,12 +318,7 @@ fn gleam_stdlib_other_functions_handle_binary_cases() {
     );
     assert_binary(
         gleam_stdlib_ffi::bif_utf_codepoint_list_to_string(
-            &[write_cons(
-                Box::leak(Box::new([0u64; 2])),
-                Term::small_int(65),
-                Term::NIL,
-            )
-            .expect("list")],
+            &[write_cons(vec![0u64; 2].leak(), Term::small_int(65), Term::NIL).expect("list")],
             &mut ctx,
         )
         .expect("codepoints"),

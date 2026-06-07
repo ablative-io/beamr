@@ -326,47 +326,52 @@ fn call_external_target(
             for register in 0..arity {
                 args.push(process.x_reg(register.into()));
             }
-            let mut context = match ctx.timers {
-                Some(timers) => {
-                    ProcessContext::with_timer_services(process.pid(), Arc::clone(timers))
-                }
-                None => {
-                    let mut pctx = ProcessContext::new();
-                    pctx.set_pid(Some(process.pid()));
-                    pctx
-                }
-            };
-            if let Some(svc) = ctx.services {
-                context.set_atom_table(svc.atom_table.clone());
-                context.set_spawn_facility(svc.spawn_facility.clone());
-                context.set_link_facility(svc.link_facility.clone());
-                context.set_supervision_facility(svc.supervision_facility.clone());
-                context.set_code_management_facility(svc.code_management_facility.clone());
-                if let Some(sink) = &svc.io_sink {
-                    context.set_io_sink(Arc::clone(sink));
-                }
-            }
-
             // Provide mailbox access for select BIFs.
             let snapshot = trampoline::build_mailbox_snapshot(process);
-            context.set_select_facility(
-                snapshot
-                    .clone()
-                    .map(|s| s as Arc<dyn crate::native::SelectFacility>),
-            );
 
-            let result = match (entry.function)(&args, &mut context) {
-                Ok(value) => value,
-                Err(reason) => {
-                    let exception = crate::process::Exception {
-                        class: Term::atom(crate::atom::Atom::ERROR),
-                        reason,
-                        stacktrace: Term::NIL,
-                    };
-                    return super::messaging::raise_exception(process, exception);
+            let (result, shutdown_requested, suspend, trampoline_req) = {
+                let live_x = usize::from(arity);
+                let mut context = match ctx.timers {
+                    Some(timers) => ProcessContext::with_process_and_timer_services(
+                        process,
+                        live_x,
+                        Arc::clone(timers),
+                    ),
+                    None => ProcessContext::with_process(process, live_x),
+                };
+                if let Some(svc) = ctx.services {
+                    context.set_atom_table(svc.atom_table.clone());
+                    context.set_spawn_facility(svc.spawn_facility.clone());
+                    context.set_link_facility(svc.link_facility.clone());
+                    context.set_supervision_facility(svc.supervision_facility.clone());
+                    context.set_code_management_facility(svc.code_management_facility.clone());
+                    if let Some(sink) = &svc.io_sink {
+                        context.set_io_sink(Arc::clone(sink));
+                    }
                 }
+
+                context.set_select_facility(
+                    snapshot
+                        .clone()
+                        .map(|s| s as Arc<dyn crate::native::SelectFacility>),
+                );
+
+                let result = match (entry.function)(&args, &mut context) {
+                    Ok(value) => value,
+                    Err(reason) => {
+                        let exception = crate::process::Exception {
+                            class: Term::atom(crate::atom::Atom::ERROR),
+                            reason,
+                            stacktrace: Term::NIL,
+                        };
+                        return super::messaging::raise_exception(process, exception);
+                    }
+                };
+                let shutdown_requested = context.take_shutdown_request();
+                let suspend = context.take_suspend();
+                let trampoline_req = context.take_trampoline();
+                (result, shutdown_requested, suspend, trampoline_req)
             };
-            let shutdown_requested = context.take_shutdown_request();
 
             // Handle mailbox removal if the select facility recorded one.
             if let Some(snapshot) = snapshot {
@@ -375,12 +380,12 @@ fn call_external_target(
 
             // Check for suspend request before trampoline (suspend takes priority
             // when no message matched).
-            if let Some(suspend) = context.take_suspend() {
+            if let Some(suspend) = suspend {
                 return trampoline::handle_suspend(process, module, suspend);
             }
 
             // Check for trampoline request from the BIF.
-            if let Some(trampoline_req) = context.take_trampoline() {
+            if let Some(trampoline_req) = trampoline_req {
                 return trampoline::handle_trampoline(
                     process,
                     module,

@@ -48,7 +48,7 @@ fn map_from_pairs(pairs: &[(Term, Term)]) -> Term {
     sorted.sort_by(|(left, _), (right, _)| compare::cmp(*left, *right, &atom_table));
     let keys: Vec<_> = sorted.iter().map(|(key, _)| *key).collect();
     let values: Vec<_> = sorted.iter().map(|(_, value)| *value).collect();
-    let heap: &mut [u64] = Box::leak(vec![0_u64; 2 + pairs.len() * 2].into_boxed_slice());
+    let heap: &mut [u64] = vec![0_u64; 2 + pairs.len() * 2].leak();
     write_map(heap, &keys, &values).expect("test map allocation")
 }
 
