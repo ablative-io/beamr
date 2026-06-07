@@ -7,6 +7,7 @@
 pub mod binary;
 pub mod closures;
 pub mod core;
+pub mod floats;
 pub mod guards;
 pub mod messaging;
 pub mod trampoline;
@@ -265,6 +266,33 @@ fn dispatch_common(
             name: "executable_line",
             ..
         } => Ok(InstructionOutcome::Continue),
+        Instruction::Fmove { source, dest } => floats::fmove(process, module, source, dest),
+        Instruction::Fconv { source, dest } => floats::fconv(process, module, source, dest),
+        Instruction::Fadd {
+            fail,
+            left,
+            right,
+            dest,
+        } => floats::fadd(process, fail, left, right, dest),
+        Instruction::Fsub {
+            fail,
+            left,
+            right,
+            dest,
+        } => floats::fsub(process, fail, left, right, dest),
+        Instruction::Fmul {
+            fail,
+            left,
+            right,
+            dest,
+        } => floats::fmul(process, fail, left, right, dest),
+        Instruction::Fdiv {
+            fail,
+            left,
+            right,
+            dest,
+        } => floats::fdiv(process, fail, left, right, dest),
+        Instruction::Fnegate { fail, source, dest } => floats::fnegate(process, fail, source, dest),
         Instruction::BinaryOp { op, operands } => binary::binary_op(process, module, *op, operands),
         Instruction::MapOp { op, operands } => {
             closures::map_op(process, module, *op, operands, ctx.atom_table)
@@ -334,6 +362,13 @@ fn instruction_name(instruction: &Instruction) -> &'static str {
         Instruction::TryEnd { .. } => "try_end",
         Instruction::TryCase { .. } => "try_case",
         Instruction::TryCaseEnd { .. } => "try_case_end",
+        Instruction::Fmove { .. } => "fmove",
+        Instruction::Fconv { .. } => "fconv",
+        Instruction::Fadd { .. } => "fadd",
+        Instruction::Fsub { .. } => "fsub",
+        Instruction::Fmul { .. } => "fmul",
+        Instruction::Fdiv { .. } => "fdiv",
+        Instruction::Fnegate { .. } => "fnegate",
         Instruction::BinaryOp { .. } => "binary_op",
         Instruction::MapOp { .. } => "map_op",
         Instruction::MakeFun { .. } => "make_fun",

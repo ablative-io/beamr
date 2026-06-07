@@ -153,6 +153,43 @@ pub enum Instruction {
     TryCaseEnd {
         source: Operand,
     },
+    Fmove {
+        source: Operand,
+        dest: Operand,
+    },
+    Fconv {
+        source: Operand,
+        dest: Operand,
+    },
+    Fadd {
+        fail: Operand,
+        left: Operand,
+        right: Operand,
+        dest: Operand,
+    },
+    Fsub {
+        fail: Operand,
+        left: Operand,
+        right: Operand,
+        dest: Operand,
+    },
+    Fmul {
+        fail: Operand,
+        left: Operand,
+        right: Operand,
+        dest: Operand,
+    },
+    Fdiv {
+        fail: Operand,
+        left: Operand,
+        right: Operand,
+        dest: Operand,
+    },
+    Fnegate {
+        fail: Operand,
+        source: Operand,
+        dest: Operand,
+    },
     BinaryOp {
         op: BinaryOp,
         operands: Vec<Operand>,
@@ -306,6 +343,13 @@ pub(crate) fn instruction_opcode(instruction: &Instruction) -> Option<u8> {
         Instruction::CallExt { .. } => Some(7),
         Instruction::CallExtLast { .. } => Some(8),
         Instruction::CallExtOnly { .. } => Some(78),
+        Instruction::Fmove { .. } => Some(96),
+        Instruction::Fconv { .. } => Some(97),
+        Instruction::Fadd { .. } => Some(98),
+        Instruction::Fsub { .. } => Some(99),
+        Instruction::Fmul { .. } => Some(100),
+        Instruction::Fdiv { .. } => Some(101),
+        Instruction::Fnegate { .. } => Some(102),
         Instruction::Generic { opcode, .. } => Some(*opcode),
         _ => None,
     }

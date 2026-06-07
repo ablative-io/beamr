@@ -95,6 +95,10 @@ fn validate_operand(
             instruction_index,
             format!("X register index {index} is out of range"),
         )),
+        Operand::FloatRegister(index) if *index >= 16 => Err(validation_error(
+            instruction_index,
+            format!("float register index {index} is out of range"),
+        )),
         Operand::Y(index) => {
             if *index >= 256 {
                 return Err(validation_error(
@@ -178,6 +182,11 @@ fn validate_control_flow(
         }
         Instruction::TypeTest { fail, .. }
         | Instruction::Comparison { fail, .. }
+        | Instruction::Fadd { fail, .. }
+        | Instruction::Fsub { fail, .. }
+        | Instruction::Fmul { fail, .. }
+        | Instruction::Fdiv { fail, .. }
+        | Instruction::Fnegate { fail, .. }
         | Instruction::TestArity { fail, .. }
         | Instruction::SelectVal { fail, .. }
         | Instruction::SelectTupleArity { fail, .. }
@@ -377,6 +386,34 @@ fn instruction_operands(instruction: &Instruction) -> Vec<&Operand> {
         Instruction::Comparison {
             fail, left, right, ..
         } => vec![fail, left, right],
+        Instruction::Fmove { source, dest } | Instruction::Fconv { source, dest } => {
+            vec![source, dest]
+        }
+        Instruction::Fadd {
+            fail,
+            left,
+            right,
+            dest,
+        }
+        | Instruction::Fsub {
+            fail,
+            left,
+            right,
+            dest,
+        }
+        | Instruction::Fmul {
+            fail,
+            left,
+            right,
+            dest,
+        }
+        | Instruction::Fdiv {
+            fail,
+            left,
+            right,
+            dest,
+        } => vec![fail, left, right, dest],
+        Instruction::Fnegate { fail, source, dest } => vec![fail, source, dest],
         Instruction::TestArity { fail, tuple, arity } => vec![fail, tuple, arity],
         Instruction::SelectVal { value, fail, list }
         | Instruction::SelectTupleArity { value, fail, list } => vec![value, fail, list],

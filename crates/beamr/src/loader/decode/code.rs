@@ -240,40 +240,42 @@ fn decode_instruction(
             arity: operands[0].clone(),
             import: operands[1].clone(),
         },
-        96 => Instruction::Generic {
-            opcode,
-            name: "fmove",
-            operands,
+        96 => Instruction::Fmove {
+            source: operands[0].clone(),
+            dest: operands[1].clone(),
         },
-        97 => Instruction::Generic {
-            opcode,
-            name: "fconv",
-            operands,
+        97 => Instruction::Fconv {
+            source: operands[0].clone(),
+            dest: operands[1].clone(),
         },
-        98 => Instruction::Generic {
-            opcode,
-            name: "fadd",
-            operands,
+        98 => Instruction::Fadd {
+            fail: operands[0].clone(),
+            left: operands[1].clone(),
+            right: operands[2].clone(),
+            dest: operands[3].clone(),
         },
-        99 => Instruction::Generic {
-            opcode,
-            name: "fsub",
-            operands,
+        99 => Instruction::Fsub {
+            fail: operands[0].clone(),
+            left: operands[1].clone(),
+            right: operands[2].clone(),
+            dest: operands[3].clone(),
         },
-        100 => Instruction::Generic {
-            opcode,
-            name: "fmul",
-            operands,
+        100 => Instruction::Fmul {
+            fail: operands[0].clone(),
+            left: operands[1].clone(),
+            right: operands[2].clone(),
+            dest: operands[3].clone(),
         },
-        101 => Instruction::Generic {
-            opcode,
-            name: "fdiv",
-            operands,
+        101 => Instruction::Fdiv {
+            fail: operands[0].clone(),
+            left: operands[1].clone(),
+            right: operands[2].clone(),
+            dest: operands[3].clone(),
         },
-        102 => Instruction::Generic {
-            opcode,
-            name: "fnegate",
-            operands,
+        102 => Instruction::Fnegate {
+            fail: operands[0].clone(),
+            source: operands[1].clone(),
+            dest: operands[2].clone(),
         },
         103 => Instruction::MakeFun { operands },
         104 => Instruction::Try {
@@ -469,4 +471,115 @@ fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, LoadError> {
         .get(offset..offset + 4)
         .ok_or_else(|| LoadError::DecodeError("truncated Code chunk header".into()))?;
     Ok(u32::from_be_bytes([slice[0], slice[1], slice[2], slice[3]]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn small_operand(tag: u8, value: u8) -> u8 {
+        (value << 4) | tag
+    }
+
+    fn float_reg(index: u8) -> [u8; 2] {
+        [small_operand(7, 2), small_operand(0, index)]
+    }
+
+    fn label(index: u8) -> u8 {
+        small_operand(5, index)
+    }
+
+    fn x(index: u8) -> u8 {
+        small_operand(3, index)
+    }
+
+    #[test]
+    fn decodes_float_opcodes_as_dedicated_variants() {
+        let code = [
+            &[96, x(0)][..],
+            &float_reg(0),
+            &[97, x(1)][..],
+            &float_reg(1),
+            &[98, label(2)][..],
+            &float_reg(0),
+            &float_reg(1),
+            &float_reg(2),
+            &[99, label(2)][..],
+            &float_reg(0),
+            &float_reg(1),
+            &float_reg(3),
+            &[100, label(2)][..],
+            &float_reg(0),
+            &float_reg(1),
+            &float_reg(4),
+            &[101, label(2)][..],
+            &float_reg(0),
+            &float_reg(1),
+            &float_reg(5),
+            &[102, label(2)][..],
+            &float_reg(5),
+            &float_reg(6),
+        ]
+        .concat();
+
+        let instructions = decode_instructions(&code, &[], &[]).expect("decode");
+
+        assert_eq!(
+            instructions,
+            vec![
+                Instruction::Fmove {
+                    source: Operand::X(0),
+                    dest: Operand::FloatRegister(0),
+                },
+                Instruction::Fconv {
+                    source: Operand::X(1),
+                    dest: Operand::FloatRegister(1),
+                },
+                Instruction::Fadd {
+                    fail: Operand::Label(2),
+                    left: Operand::FloatRegister(0),
+                    right: Operand::FloatRegister(1),
+                    dest: Operand::FloatRegister(2),
+                },
+                Instruction::Fsub {
+                    fail: Operand::Label(2),
+                    left: Operand::FloatRegister(0),
+                    right: Operand::FloatRegister(1),
+                    dest: Operand::FloatRegister(3),
+                },
+                Instruction::Fmul {
+                    fail: Operand::Label(2),
+                    left: Operand::FloatRegister(0),
+                    right: Operand::FloatRegister(1),
+                    dest: Operand::FloatRegister(4),
+                },
+                Instruction::Fdiv {
+                    fail: Operand::Label(2),
+                    left: Operand::FloatRegister(0),
+                    right: Operand::FloatRegister(1),
+                    dest: Operand::FloatRegister(5),
+                },
+                Instruction::Fnegate {
+                    fail: Operand::Label(2),
+                    source: Operand::FloatRegister(5),
+                    dest: Operand::FloatRegister(6),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn opcode_max_validation_includes_dedicated_float_opcodes() {
+        let mut chunk = Vec::new();
+        chunk.extend_from_slice(&16_u32.to_be_bytes());
+        chunk.extend_from_slice(&0_u32.to_be_bytes());
+        chunk.extend_from_slice(&95_u32.to_be_bytes());
+        chunk.extend_from_slice(&0_u32.to_be_bytes());
+        chunk.extend_from_slice(&0_u32.to_be_bytes());
+        chunk.push(96);
+        chunk.push(x(0));
+        chunk.extend_from_slice(&float_reg(0));
+
+        assert!(decode_code_chunk(&chunk, &[], &[]).is_err());
+    }
 }
