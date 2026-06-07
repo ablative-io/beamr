@@ -19,7 +19,7 @@ use crate::term::boxed::{Cons, Tuple};
 /// Scheduler-facing ETS registry operations used by ETS BIFs.
 pub trait EtsFacility: Send + Sync {
     /// Create a table and return its allocated id.
-    fn create_table(&self, metadata: EtsTableMetadata) -> EtsTableId;
+    fn create_table(&self, metadata: EtsTableMetadata) -> Result<EtsTableId, EtsError>;
     /// Look up a table by numeric id.
     fn lookup_table(&self, id: EtsTableId) -> Option<Arc<dyn EtsTable>>;
     /// Look up a named table by atom.
@@ -31,8 +31,8 @@ pub trait EtsFacility: Send + Sync {
 }
 
 impl EtsFacility for EtsRegistry {
-    fn create_table(&self, metadata: EtsTableMetadata) -> EtsTableId {
-        self.create_table(metadata)
+    fn create_table(&self, metadata: EtsTableMetadata) -> Result<EtsTableId, EtsError> {
+        self.try_create_table(metadata)
     }
 
     fn lookup_table(&self, id: EtsTableId) -> Option<Arc<dyn EtsTable>> {
@@ -114,10 +114,6 @@ pub fn bif_new(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term
     let owner = context.pid().ok_or_else(badarg)?;
     let facility = context.ets_facility().ok_or_else(badarg)?;
 
-    if options.named_table && facility.lookup_table_by_name(name).is_some() {
-        return Err(badarg());
-    }
-
     let metadata = EtsTableMetadata {
         name: options.named_table.then_some(name),
         id: 0,
@@ -126,7 +122,9 @@ pub fn bif_new(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term
         owner,
         keypos: options.keypos,
     };
-    let table_id = facility.create_table(metadata);
+    let table_id = facility
+        .create_table(metadata)
+        .map_err(ets_error_to_badarg)?;
 
     if options.named_table {
         Ok(Term::atom(name))
@@ -168,9 +166,8 @@ pub fn bif_lookup(args: &[Term], context: &mut ProcessContext) -> Result<Term, T
         .check_access(caller, AccessOp::Read)
         .map_err(|_| badarg())?;
 
-    let result_count = table.lookup(*key).len();
-    context.ensure_heap_space(list_heap_words(result_count))?;
     let tuples = table.lookup(*key);
+    context.ensure_heap_space(list_heap_words(tuples.len()))?;
     context.alloc_list(&tuples)
 }
 

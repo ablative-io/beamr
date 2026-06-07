@@ -1,1 +1,1 @@
-feat(beamr): add core ETS BIFs
+Harden ETS named-table creation and lookup path
