@@ -169,6 +169,12 @@ impl AtomTable {
         self.by_name.len()
     }
 
+    /// Return whether this table currently contains no atoms.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.by_name.is_empty()
+    }
+
     /// Return the maximum atom count representable by this table.
     #[must_use]
     pub const fn limit(&self) -> usize {

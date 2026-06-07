@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use beamr::atom::{Atom, AtomTable};
+use beamr::atom::AtomTable;
 use beamr::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
 use beamr::loader::{Instruction, load_beam_chunks, prepare_module};
 use beamr::module::{Module, ModuleRegistry};
@@ -68,6 +68,7 @@ fn call(module: &Module, atoms: Arc<AtomTable>, function: &str, args: &[Term]) -
         supervision_facility: None,
         io_sink: None,
         code_management_facility: None,
+        system_info_facility: None,
     };
 
     assert_eq!(
@@ -126,4 +127,3 @@ fn compiled_recv_marker_receive_timeout_path_returns_timeout_atom() {
 
     assert_eq!(call(&module, atoms, "await", &[]), Term::atom(timeout));
 }
-

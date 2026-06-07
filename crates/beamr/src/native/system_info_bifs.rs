@@ -140,7 +140,13 @@ mod tests {
         bif_system_info(&[Term::atom(item_atom)], &mut context).expect("system_info succeeds")
     }
 
-    fn binary_bytes(term: Term) -> Vec<u8> {
+    fn call_system_info_binary_bytes(item: &str) -> Vec<u8> {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let item_atom = atom_table.intern(item);
+        let mut process = Process::new(1, 128);
+        let mut context = context(&mut process, atom_table);
+        let term =
+            bif_system_info(&[Term::atom(item_atom)], &mut context).expect("system_info succeeds");
         Binary::new(term)
             .expect("system_info item returns binary")
             .as_bytes()
@@ -166,15 +172,15 @@ mod tests {
     #[test]
     fn binary_items_return_expected_bytes() {
         assert_eq!(
-            binary_bytes(call_system_info("otp_release")).as_slice(),
+            call_system_info_binary_bytes("otp_release").as_slice(),
             b"27"
         );
         assert_eq!(
-            binary_bytes(call_system_info("version")).as_slice(),
+            call_system_info_binary_bytes("version").as_slice(),
             env!("CARGO_PKG_VERSION").as_bytes()
         );
         assert_eq!(
-            binary_bytes(call_system_info("system_architecture")).as_slice(),
+            call_system_info_binary_bytes("system_architecture").as_slice(),
             system_architecture().as_bytes()
         );
     }
