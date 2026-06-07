@@ -9,6 +9,7 @@ mod supervision_integration;
 #[cfg(any(test, feature = "test-support"))]
 mod test_helpers;
 mod timer_integration;
+
 use crate::atom::{Atom, AtomTable};
 use crate::error::{ExecError, LoadError};
 use crate::hook::Hook;
@@ -34,11 +35,13 @@ pub(super) use spawning::build_process;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
+
 pub const DEFAULT_REDUCTION_BUDGET: u32 = crate::process::DEFAULT_REDUCTION_BUDGET;
 #[derive(Clone, Debug, Default)]
 pub struct SchedulerConfig {
     pub thread_count: Option<usize>,
 }
+
 pub(super) struct SharedState {
     shutdown: AtomicBool,
     process_table: ProcessTable,
@@ -67,11 +70,13 @@ pub(super) struct SharedState {
     #[cfg(test)]
     idle_parks: AtomicUsize,
 }
+
 #[derive(Default)]
 pub(super) struct WaitSet {
     pub(super) waiting: std::collections::HashMap<u64, usize>,
     pub(super) woken: Vec<(u64, usize)>,
 }
+
 pub(super) struct SpawnRequest {
     pub(super) pid: u64,
     pub(super) module: Atom,
@@ -80,14 +85,18 @@ pub(super) struct SpawnRequest {
     pub(super) args: Vec<Term>,
     pub(super) namespace_id: NamespaceId,
 }
+
 pub(super) struct ScheduledProcess(Process);
+// SAFETY: scheduler workers take exclusive process ownership through ProcessSlot before executing.
 unsafe impl Send for ScheduledProcess {}
+
 pub struct Scheduler {
     shared: Arc<SharedState>,
     threads: Mutex<Vec<JoinHandle<()>>>,
     inject_queues: Vec<Arc<SegQueue<SpawnRequest>>>,
     worker_names: Vec<String>,
 }
+
 impl Scheduler {
     pub fn new(
         config: SchedulerConfig,
@@ -262,11 +271,13 @@ impl Scheduler {
         *lock_or_recover(&self.shared.output_sink) = sink;
     }
 }
+
 impl Drop for Scheduler {
     fn drop(&mut self) {
         self.shutdown();
     }
 }
+
 fn configured_thread_count(override_count: Option<usize>) -> usize {
     override_count
         .filter(|count| *count > 0)
@@ -274,6 +285,7 @@ fn configured_thread_count(override_count: Option<usize>) -> usize {
             std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
         })
 }
+
 fn scheduler_loop(
     shared: &Arc<SharedState>,
     queue: &RunQueue,
@@ -315,6 +327,7 @@ fn scheduler_loop(
         execution::run_process(shared, queue, pid, my_index);
     }
 }
+
 pub(super) fn namespace_registry(
     shared: &SharedState,
     namespace: NamespaceId,
@@ -324,12 +337,14 @@ pub(super) fn namespace_registry(
         .get(&namespace)
         .map(|entry| Arc::clone(entry.value()))
 }
+
 pub(super) fn namespace_registry_for_load(
     shared: &SharedState,
     namespace: NamespaceId,
 ) -> Result<Arc<ModuleRegistry>, LoadError> {
     namespace_registry(shared, namespace).ok_or(LoadError::UnknownNamespace { namespace })
 }
+
 fn process_namespace(shared: &SharedState, pid: u64) -> Option<NamespaceId> {
     let entry = shared.process_bodies.get(&pid)?;
     let slot = lock_or_recover(&entry);
@@ -339,6 +354,7 @@ fn process_namespace(shared: &SharedState, pid: u64) -> Option<NamespaceId> {
         ProcessSlot::Absent => None,
     }
 }
+
 fn process_trap_exit(shared: &SharedState, pid: u64) -> Option<bool> {
     let entry = shared.process_bodies.get(&pid)?;
     let slot = lock_or_recover(&entry);
@@ -348,6 +364,7 @@ fn process_trap_exit(shared: &SharedState, pid: u64) -> Option<bool> {
         ProcessSlot::Absent => None,
     }
 }
+
 fn process_links_contain(shared: &SharedState, pid: u64, linked_pid: u64) -> bool {
     let Some(entry) = shared.process_bodies.get(&pid) else {
         return false;
@@ -359,11 +376,13 @@ fn process_links_contain(shared: &SharedState, pid: u64, linked_pid: u64) -> boo
         ProcessSlot::Absent => false,
     }
 }
+
 fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
+
 #[cfg(test)]
 mod supervision_tests;
 #[cfg(test)]

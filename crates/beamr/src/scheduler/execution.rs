@@ -11,6 +11,7 @@ use crate::process::{CodePosition, ExitReason, Process, ProcessStatus};
 use crate::term::Term;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+
 impl Scheduler {
     pub fn wake_notifier(&self, pid: u64) -> impl Fn() + Send + Sync + 'static {
         let shared = Arc::clone(&self.shared);
@@ -67,12 +68,14 @@ impl Scheduler {
         }
     }
 }
+
 enum SliceOutcome {
     Requeue(Process),
     Wait(Process),
     Suspended(Process),
     Exited(ExitReason, Term),
 }
+
 pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64, my_index: usize) {
     if shared.process_table.get(pid).is_none() {
         return;
@@ -120,19 +123,19 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
         }
     }
 }
+
 fn take_runnable_process(shared: &SharedState, pid: u64) -> Option<Process> {
     let entry = shared.process_bodies.get(&pid)?;
     let mut slot = lock_or_recover(&entry);
     match std::mem::take(&mut *slot) {
         ProcessSlot::Present(scheduled) => {
             let process = scheduled.0;
-            let metadata = ProcessMetadata {
+            *slot = ProcessSlot::Executing(ProcessMetadata {
                 namespace_id: process.namespace_id(),
                 links: process.links().to_vec(),
                 trap_exit: process.trap_exit(),
                 pending_exit_messages: Vec::new(),
-            };
-            *slot = ProcessSlot::Executing(metadata);
+            });
             Some(process)
         }
         other => {
@@ -141,6 +144,7 @@ fn take_runnable_process(shared: &SharedState, pid: u64) -> Option<Process> {
         }
     }
 }
+
 fn store_runnable_process(shared: &SharedState, mut process: Process) {
     let pid = process.pid();
     if let Some(entry) = shared.process_bodies.get(&pid) {
@@ -165,6 +169,7 @@ fn store_runnable_process(shared: &SharedState, mut process: Process) {
         );
     }
 }
+
 fn cleanup_if_tombstoned_after_store(shared: &SharedState, pid: u64) -> bool {
     if let Some(reason) = tombstone_reason(shared, pid) {
         cleanup_exited_process(shared, pid, reason);
@@ -176,6 +181,7 @@ fn cleanup_if_tombstoned_after_store(shared: &SharedState, pid: u64) -> bool {
 fn tombstone_reason(shared: &SharedState, pid: u64) -> Option<ExitReason> {
     shared.exit_tombstones.get(&pid).map(|reason| *reason)
 }
+
 fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutcome {
     if !matches!(
         process.status(),
@@ -253,6 +259,7 @@ fn execute_slice(shared: &Arc<SharedState>, process: &mut Process) -> SliceOutco
         }
     }
 }
+
 fn exit_process(shared: &SharedState, process: &mut Process, reason: ExitReason) -> SliceOutcome {
     let pid = process.pid();
     let result = process.x_reg(0);
@@ -268,6 +275,7 @@ fn exit_reason_from_status(status: ProcessStatus) -> ExitReason {
         _ => ExitReason::Error,
     }
 }
+
 pub(crate) fn cleanup_exited_process(shared: &SharedState, pid: u64, reason: ExitReason) {
     shared.exit_tombstones.insert(pid, reason);
     supervision_integration::propagate_exit(shared, pid, reason);

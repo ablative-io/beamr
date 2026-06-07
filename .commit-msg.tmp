@@ -1,1 +1,1 @@
-refactor(beamr): split scheduler responsibilities into submodules
+refactor(beamr): harden scheduler module split line counts

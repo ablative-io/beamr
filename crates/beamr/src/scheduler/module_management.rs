@@ -13,6 +13,7 @@ use crate::native::CodeManagementFacility;
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{CodePosition, ExitReason, Process};
 use std::sync::Arc;
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct HotLoadResult {
     pub module_name: Atom,
@@ -26,6 +27,7 @@ pub struct PurgeResult {
     pub module_name: Atom,
     pub processes_killed: usize,
 }
+
 impl Scheduler {
     pub fn hot_load_module(&self, bytes: &[u8]) -> Result<HotLoadResult, LoadError> {
         self.hot_load_module_in(NamespaceId::DEFAULT, bytes)
@@ -89,6 +91,7 @@ impl Scheduler {
         process_references_old_code(&self.shared, pid, &old)
     }
 }
+
 pub(crate) struct SchedulerCodeManagementFacility {
     pub(super) shared: Arc<SharedState>,
 }
@@ -112,12 +115,14 @@ impl CodeManagementFacility for SchedulerCodeManagementFacility {
         process_references_old_code(&self.shared, pid, &old)
     }
 }
+
 fn hot_load_module_shared(
     shared: &Arc<SharedState>,
     bytes: &[u8],
 ) -> Result<HotLoadResult, LoadError> {
     hot_load_module_in_shared(shared, NamespaceId::DEFAULT, &shared.module_registry, bytes)
 }
+
 fn hot_load_module_in_shared(
     shared: &Arc<SharedState>,
     namespace: NamespaceId,
@@ -158,12 +163,14 @@ fn hot_load_module_in_shared(
         on_load_succeeded: on_load_ip.is_some(),
     })
 }
+
 fn find_on_load_ip(module: &Module) -> Option<usize> {
     module
         .code
         .iter()
         .position(|instruction| matches!(instruction, Instruction::OnLoad))
 }
+
 fn run_on_load(
     shared: &Arc<SharedState>,
     namespace: NamespaceId,
@@ -194,9 +201,11 @@ fn run_on_load(
         }
     }
 }
+
 fn purge_module_shared(shared: &Arc<SharedState>, name: Atom) -> Result<PurgeResult, PurgeError> {
     purge_module_in_shared(shared, NamespaceId::DEFAULT, &shared.module_registry, name)
 }
+
 fn purge_module_in_shared(
     shared: &Arc<SharedState>,
     namespace: NamespaceId,
@@ -218,6 +227,7 @@ fn purge_module_in_shared(
         processes_killed: 0,
     })
 }
+
 fn force_purge_module_in_shared(
     shared: &Arc<SharedState>,
     namespace: NamespaceId,
@@ -238,6 +248,7 @@ fn force_purge_module_in_shared(
         processes_killed,
     })
 }
+
 fn process_references_to_module_in(
     shared: &SharedState,
     namespace: NamespaceId,
@@ -245,6 +256,7 @@ fn process_references_to_module_in(
 ) -> usize {
     old_code_pids_in(shared, namespace, module).len()
 }
+
 fn old_code_pids_in(
     shared: &SharedState,
     namespace: NamespaceId,
@@ -259,6 +271,7 @@ fn old_code_pids_in(
         })
         .collect()
 }
+
 fn process_references_old_code(shared: &SharedState, pid: u64, module: &Arc<Module>) -> bool {
     let Some(entry) = shared.process_bodies.get(&pid) else {
         return false;
@@ -269,6 +282,7 @@ fn process_references_old_code(shared: &SharedState, pid: u64, module: &Arc<Modu
         ProcessSlot::Executing(_) | ProcessSlot::Absent => false,
     }
 }
+
 fn process_references_old_code_in(
     shared: &SharedState,
     pid: u64,
