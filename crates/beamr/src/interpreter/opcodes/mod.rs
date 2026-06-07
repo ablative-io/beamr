@@ -9,6 +9,7 @@ pub mod closures;
 pub mod core;
 pub mod guards;
 pub mod messaging;
+pub mod recv;
 pub mod trampoline;
 
 use std::sync::{Arc, Mutex};
@@ -248,6 +249,10 @@ fn dispatch_common(
             messaging::wait_timeout(process, module, fail, timeout)
         }
         Instruction::Timeout => messaging::timeout(process),
+        Instruction::RecvMarkerReserve { dest } => recv::recv_marker_reserve(process, dest),
+        Instruction::RecvMarkerBind { marker: _, label } => recv::recv_marker_bind(label),
+        Instruction::RecvMarkerClear { marker } => recv::recv_marker_clear(process, marker),
+        Instruction::RecvMarkerUse { marker } => recv::recv_marker_use(process, module, marker),
         Instruction::Try { destination, label } => {
             messaging::try_(process, module, destination, label)
         }
@@ -328,6 +333,10 @@ fn instruction_name(instruction: &Instruction) -> &'static str {
         Instruction::LoopRecEnd { .. } => "loop_rec_end",
         Instruction::Wait { .. } => "wait",
         Instruction::WaitTimeout { .. } => "wait_timeout",
+        Instruction::RecvMarkerReserve { .. } => "recv_marker_reserve",
+        Instruction::RecvMarkerBind { .. } => "recv_marker_bind",
+        Instruction::RecvMarkerClear { .. } => "recv_marker_clear",
+        Instruction::RecvMarkerUse { .. } => "recv_marker_use",
         Instruction::Catch { .. } => "catch",
         Instruction::CatchEnd { .. } => "catch_end",
         Instruction::Try { .. } => "try",

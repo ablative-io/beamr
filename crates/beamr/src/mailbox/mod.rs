@@ -114,6 +114,18 @@ impl Mailbox {
         self.save_pointer = 0;
     }
 
+    /// Capture the current receive scan position as a marker value.
+    pub(crate) fn reserve_marker(&mut self) -> usize {
+        self.drain_arrival();
+        self.save_pointer.min(self.scan_list.len())
+    }
+
+    /// Restore selective-receive scanning to a previously captured marker.
+    pub(crate) fn set_save_pointer(&mut self, marker: usize) {
+        self.drain_arrival();
+        self.save_pointer = marker.min(self.scan_list.len());
+    }
+
     /// Enqueue a term already owned by this process.
     pub(crate) fn push_owned(&mut self, message: Term) {
         self.scan_list.push_back(message);

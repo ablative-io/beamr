@@ -6,7 +6,15 @@
 //! don't provide the full OTP runtime) but load crashes are not.
 
 use beamr::atom::AtomTable;
-use beamr::loader::load_beam_chunks;
+use beamr::interpreter::{ExecutionResult, run};
+use beamr::loader::{Instruction, load_beam_chunks, prepare_module};
+use beamr::module::ModuleRegistry;
+use beamr::native::BifRegistryImpl;
+use beamr::process::{CodePosition, ExitReason, Process, ProcessStatus};
+use beamr::term::Term;
+use beamr::term::boxed::write_tuple;
+
+const RECV_MARKER_FIXTURE: &[u8] = include_bytes!("fixtures/recv_marker/recv_marker_sample.beam");
 
 /// All five OTP fixture files must load without decode errors.
 /// We use `load_beam_chunks` (parse-only, no import resolution)
@@ -77,4 +85,114 @@ fn gleam_otp_actor_has_export_ext_literals() {
         !parsed.literals.is_empty(),
         "gleam@otp@actor should have literals including EXPORT_EXT terms"
     );
+}
+
+#[test]
+fn recv_marker_fixture_loads_and_decodes_marker_opcodes() {
+    let atom_table = AtomTable::with_common_atoms();
+    let parsed = load_beam_chunks(RECV_MARKER_FIXTURE, &atom_table)
+        .expect("OTP 24+ receive fixture should load without unsupported recv_marker opcodes");
+
+    assert!(
+        parsed
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::RecvMarkerReserve { .. })),
+        "fixture should contain recv_marker_reserve"
+    );
+    assert!(
+        parsed
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::RecvMarkerBind { .. })),
+        "fixture should contain recv_marker_bind"
+    );
+    assert!(
+        parsed
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::RecvMarkerClear { .. })),
+        "fixture should contain recv_marker_clear"
+    );
+    assert!(
+        parsed
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::RecvMarkerUse { .. })),
+        "fixture should contain recv_marker_use"
+    );
+}
+
+#[test]
+fn recv_marker_fixture_receives_message_and_times_out() {
+    let atom_table = AtomTable::with_common_atoms();
+    let module_registry = ModuleRegistry::new();
+    let bif_registry = BifRegistryImpl::new();
+    let (module, unresolved) = prepare_module(
+        RECV_MARKER_FIXTURE,
+        &atom_table,
+        &module_registry,
+        &bif_registry,
+    )
+    .expect("recv_marker fixture should prepare");
+    assert!(!unresolved.imports().is_empty(), "recv_once/0 imports BIFs");
+
+    let marker = Term::small_int(0);
+    let mut receiving = process_at_export(&module, &atom_table, "recv_ref", 1);
+    receiving.set_x_reg(0, marker);
+    let message = tuple_message(&mut receiving, marker, Term::small_int(123));
+    receiving
+        .mailbox()
+        .sender()
+        .send(message, receiving.heap_mut())
+        .expect("test message should enqueue");
+
+    assert_eq!(
+        run(&mut receiving, &module),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(receiving.x_reg(0), Term::small_int(123));
+
+    let mut timing_out = process_at_export(&module, &atom_table, "recv_ref", 1);
+    timing_out.set_x_reg(0, marker);
+    assert_eq!(run(&mut timing_out, &module), Ok(ExecutionResult::Waiting));
+    let timeout = timing_out
+        .receive_timeout()
+        .expect("after 0 should record a receive timeout");
+    timing_out
+        .transition_to(ProcessStatus::Running)
+        .expect("waiting process should resume for timeout");
+    timing_out.set_code_position(Some(timeout.timeout_position));
+
+    assert_eq!(
+        run(&mut timing_out, &module),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(
+        timing_out.x_reg(0),
+        Term::atom(atom_table.intern("timeout"))
+    );
+}
+
+fn process_at_export(
+    module: &beamr::module::Module,
+    atom_table: &AtomTable,
+    function_name: &str,
+    arity: u8,
+) -> Process {
+    let function = atom_table.intern(function_name);
+    let entry_ip = module
+        .export_ip(function, arity)
+        .expect("function should be exported");
+    let mut process = Process::new(1, 4096);
+    process.set_code_position(Some(CodePosition {
+        module: module.name,
+        instruction_pointer: entry_ip,
+    }));
+    process
+}
+
+fn tuple_message(process: &mut Process, reference: Term, payload: Term) -> Term {
+    let words = process.heap_mut().alloc_slice(3).expect("tuple allocation");
+    write_tuple(words, &[reference, payload]).expect("tuple should fit")
 }

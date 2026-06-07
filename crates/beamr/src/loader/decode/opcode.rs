@@ -91,6 +91,8 @@ pub(crate) fn opcode_arity(opcode: u8) -> Result<usize, LoadError> {
         170 => 4,
         171 => 3,
         172 => 1,
+        173 | 175 | 176 => 1,
+        174 => 2,
         177 => 6,
         178 => 3,
         180 => 1,

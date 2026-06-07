@@ -370,6 +370,19 @@ fn decode_instruction(
         172 => Instruction::InitYregs {
             registers: operands[0].clone(),
         },
+        173 => Instruction::RecvMarkerReserve {
+            dest: operands[0].clone(),
+        },
+        174 => Instruction::RecvMarkerBind {
+            marker: operands[0].clone(),
+            label: operands[1].clone(),
+        },
+        175 => Instruction::RecvMarkerClear {
+            marker: operands[0].clone(),
+        },
+        176 => Instruction::RecvMarkerUse {
+            marker: operands[0].clone(),
+        },
         177 => binary_op(BinaryOp::BsCreateBin, operands),
         178 => Instruction::CallFun2 {
             function: operands[0].clone(),
