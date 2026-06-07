@@ -169,7 +169,7 @@ fn encode_boxed(
         return encode_reference(reference, out);
     }
     if let Some(closure) = Closure::new(term) {
-        return encode_closure(closure, atom_table, out);
+        return encode_closure(closure, atom_table, out, depth);
     }
     Err(EncodeError::UnsupportedTerm)
 }
@@ -238,6 +238,9 @@ fn collect_list(term: Term) -> Result<(Vec<Term>, Term), EncodeError> {
     let mut elements = Vec::new();
     let mut current = term;
     while current.is_list() {
+        if elements.len() > MAX_ETF_DEPTH {
+            return Err(EncodeError::TooDeep);
+        }
         let cons = Cons::new(current).ok_or(EncodeError::UnsupportedTerm)?;
         elements.push(cons.head());
         current = cons.tail();
@@ -276,6 +279,7 @@ fn encode_closure(
     closure: Closure,
     atom_table: &AtomTable,
     out: &mut Vec<u8>,
+    depth: usize,
 ) -> Result<(), EncodeError> {
     if closure.num_free() != 0 {
         return Err(EncodeError::UnsupportedTerm);
@@ -286,9 +290,19 @@ fn encode_closure(
 
     out.push(tags::EXPORT_EXT);
     let module = closure.module().ok_or(EncodeError::UnsupportedTerm)?;
-    encode_atom(module, atom_table, out)?;
-    encode_atom(Atom::new(function_index), atom_table, out)?;
-    encode_integer(i64::from(closure.arity()), out)
+    encode_term_inner(Term::atom(module), atom_table, out, depth + 1)?;
+    encode_term_inner(
+        Term::atom(Atom::new(function_index)),
+        atom_table,
+        out,
+        depth + 1,
+    )?;
+    encode_term_inner(
+        Term::small_int(i64::from(closure.arity())),
+        atom_table,
+        out,
+        depth + 1,
+    )
 }
 
 #[cfg(test)]
@@ -478,6 +492,17 @@ mod tests {
         let mut term = Term::NIL;
         for tuple in tuples.iter_mut().rev() {
             term = write_tuple(tuple, &[term]).expect("tuple");
+        }
+
+        assert_eq!(encode_term(term, &atoms()), Err(EncodeError::TooDeep));
+    }
+
+    #[test]
+    fn excessively_deep_cons_chain_returns_too_deep() {
+        let mut cells = vec![[0_u64; 2]; MAX_ETF_DEPTH + 2];
+        let mut term = Term::NIL;
+        for (index, cell) in cells.iter_mut().enumerate().rev() {
+            term = write_cons(cell, Term::small_int(index as i64 + 256), term).expect("cons");
         }
 
         assert_eq!(encode_term(term, &atoms()), Err(EncodeError::TooDeep));

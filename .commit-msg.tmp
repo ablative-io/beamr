@@ -1,1 +1,1 @@
-fix(beamr): satisfy ETF encoder workspace verification
+fix(beamr): harden ETF encoder depth accounting
