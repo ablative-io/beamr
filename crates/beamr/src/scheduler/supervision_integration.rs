@@ -261,6 +261,10 @@ pub(super) fn build_native_services(
         Arc::new(super::module_management::SchedulerCodeManagementFacility {
             shared: Arc::clone(shared),
         });
+    let system_info: Arc<dyn crate::native::SystemInfoFacility> =
+        Arc::new(SchedulerSystemInfoFacility {
+            shared: Arc::clone(shared),
+        });
     crate::interpreter::NativeServices {
         atom_table: Some(Arc::clone(&shared.atom_table)),
         timers: Some(Arc::clone(&shared.timers)),
@@ -269,6 +273,7 @@ pub(super) fn build_native_services(
         supervision_facility: Some(supervision),
         io_sink: Some(Arc::clone(&lock_or_recover(&shared.output_sink))),
         code_management_facility: Some(code_management),
+        system_info_facility: Some(system_info),
     }
 }
 
@@ -278,6 +283,28 @@ pub(super) fn build_native_services(
 pub(super) struct SchedulerSpawnFacility {
     pub(super) shared: Arc<SharedState>,
     pub(super) namespace_id: NamespaceId,
+}
+
+pub(super) struct SchedulerSystemInfoFacility {
+    pub(super) shared: Arc<SharedState>,
+}
+
+impl crate::native::SystemInfoFacility for SchedulerSystemInfoFacility {
+    fn scheduler_count(&self) -> usize {
+        self.shared.scheduler_count()
+    }
+
+    fn process_count(&self) -> usize {
+        self.shared.process_count()
+    }
+
+    fn atom_count(&self) -> usize {
+        self.shared.atom_count()
+    }
+
+    fn atom_limit(&self) -> usize {
+        self.shared.atom_table.limit()
+    }
 }
 
 impl SpawnFacility for SchedulerSpawnFacility {

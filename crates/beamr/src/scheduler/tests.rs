@@ -86,6 +86,41 @@ fn scheduler_creates_requested_thread_count_and_names() {
 }
 
 #[test]
+fn shared_state_metric_accessors_report_scheduler_process_and_atom_counts() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let extra_atom = atom_table.intern("scheduler_metrics_extra");
+    assert!(atom_table.resolve(extra_atom).is_some());
+    let registry = Arc::new(ModuleRegistry::new());
+    let scheduler = Scheduler::with_code_server(
+        SchedulerConfig {
+            thread_count: Some(2),
+        },
+        registry,
+        Arc::clone(&atom_table),
+        Arc::new(BifRegistryImpl::new()),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+
+    assert_eq!(scheduler.scheduler_count(), 2);
+    assert_eq!(scheduler.thread_count(), scheduler.scheduler_count());
+    assert_eq!(scheduler.process_count(), 0);
+    assert_eq!(scheduler.atom_count(), atom_table.len());
+    assert_eq!(scheduler.atom_limit(), atom_table.limit());
+
+    let pid = scheduler
+        .shared
+        .spawn_counter
+        .fetch_add(1, Ordering::Relaxed) as u64;
+    scheduler.process_table().spawn_with_pid(pid);
+    assert_eq!(scheduler.process_count(), 1);
+    let removed = scheduler.process_table().remove(pid);
+    assert!(removed.is_some());
+    assert_eq!(scheduler.process_count(), 0);
+
+    scheduler.shutdown();
+}
+
+#[test]
 fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("hook_loop");
