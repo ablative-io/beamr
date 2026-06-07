@@ -1,1 +1,1 @@
-feat(beamr): implement update_record opcode
+review: harden update_record operand and GC handling

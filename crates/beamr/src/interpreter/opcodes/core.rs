@@ -240,7 +240,8 @@ pub fn update_record(
         .checked_add(1)
         .ok_or(ExecError::InvalidOperand("update_record tuple size"))?;
 
-    ensure_space(process, words, 256).map_err(gc_error_to_exec)?;
+    let live_x = update_record_live_x(&parsed)?;
+    ensure_space(process, words, live_x).map_err(gc_error_to_exec)?;
 
     let source_term = read_term(process, module, parsed.source)?;
     let tuple = Tuple::new(source_term).ok_or(ExecError::Badarg)?;
@@ -287,6 +288,8 @@ fn parse_update_record_operands(
 
     let _hint = operand_atom(&operands[0])?;
     let arity = operand_usize(&operands[1], "update_record arity")?;
+    ensure_update_record_register(&operands[2], "update_record source")?;
+    ensure_update_record_register(&operands[3], "update_record destination")?;
     let pair_operands = update_record_pair_operands(operands)?;
     let update_count = pair_operands.len() / 2;
     let mut updates = Vec::with_capacity(update_count);
@@ -309,7 +312,7 @@ fn update_record_pair_operands(operands: &[Operand]) -> Result<&[Operand], ExecE
     if operands.len() == 5
         && let Operand::List(pairs) = &operands[4]
     {
-        if pairs.len() % 2 == 0 {
+        if pairs.len().is_multiple_of(2) {
             return Ok(pairs);
         }
         return Err(ExecError::InvalidOperand("update_record pairs"));
@@ -319,6 +322,35 @@ fn update_record_pair_operands(operands: &[Operand]) -> Result<&[Operand], ExecE
         return Err(ExecError::InvalidOperand("update_record pairs"));
     }
     Ok(&operands[4..])
+}
+
+fn update_record_live_x(parsed: &UpdateRecordOperands<'_>) -> Result<usize, ExecError> {
+    let mut live_x = update_record_operand_live_x(parsed.source)?;
+    for update in &parsed.updates {
+        live_x = live_x.max(update_record_operand_live_x(update.value)?);
+    }
+    Ok(live_x)
+}
+
+fn update_record_operand_live_x(operand: &Operand) -> Result<usize, ExecError> {
+    match operand {
+        Operand::X(index) => usize::try_from(index.saturating_add(1))
+            .map_err(|_| ExecError::InvalidOperand("update_record live X register")),
+        Operand::Y(_) => Ok(0),
+        Operand::TypedRegister { register, .. } => update_record_operand_live_x(register),
+        _ => Ok(0),
+    }
+}
+
+fn ensure_update_record_register(
+    operand: &Operand,
+    context: &'static str,
+) -> Result<(), ExecError> {
+    match operand {
+        Operand::X(_) | Operand::Y(_) => Ok(()),
+        Operand::TypedRegister { register, .. } => ensure_update_record_register(register, context),
+        _ => Err(ExecError::InvalidOperand(context)),
+    }
 }
 
 fn call_external_target(

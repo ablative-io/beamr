@@ -433,16 +433,22 @@ fn update_record_without_pairs_allocates_identical_copy() {
 fn update_record_rejects_bad_source_and_invalid_operands() {
     let bad_source = module(
         Atom::OK,
-        vec![Instruction::UpdateRecord {
-            operands: vec![
-                Operand::Atom(Some(Atom::OK)),
-                Operand::Unsigned(3),
-                Operand::Integer(1),
-                Operand::X(0),
-                Operand::Unsigned(1),
-                Operand::Integer(2),
-            ],
-        }],
+        vec![
+            Instruction::Move {
+                source: Operand::Integer(1),
+                destination: Operand::X(0),
+            },
+            Instruction::UpdateRecord {
+                operands: vec![
+                    Operand::Atom(Some(Atom::OK)),
+                    Operand::Unsigned(3),
+                    Operand::X(0),
+                    Operand::X(1),
+                    Operand::Unsigned(1),
+                    Operand::Integer(2),
+                ],
+            },
+        ],
     );
     assert_eq!(
         run(&mut Process::new(1, 16), &bad_source),
@@ -465,6 +471,22 @@ fn update_record_rejects_bad_source_and_invalid_operands() {
         run(&mut Process::new(1, 16), &invalid_pairs),
         Err(ExecError::InvalidOperand("update_record pairs"))
     );
+
+    let non_register_source = module(
+        Atom::OK,
+        vec![Instruction::UpdateRecord {
+            operands: vec![
+                Operand::Atom(Some(Atom::OK)),
+                Operand::Unsigned(1),
+                Operand::Integer(1),
+                Operand::X(1),
+            ],
+        }],
+    );
+    assert_eq!(
+        run(&mut Process::new(1, 16), &non_register_source),
+        Err(ExecError::InvalidOperand("update_record source"))
+    );
 }
 
 #[test]
@@ -473,7 +495,7 @@ fn update_record_survives_gc_before_allocation() {
         Atom::OK,
         vec![
             Instruction::PutTuple2 {
-                destination: Operand::X(0),
+                destination: Operand::X(300),
                 elements: Operand::List(vec![
                     Operand::Integer(1),
                     Operand::Integer(2),
@@ -481,17 +503,17 @@ fn update_record_survives_gc_before_allocation() {
                 ]),
             },
             Instruction::PutTuple2 {
-                destination: Operand::X(2),
+                destination: Operand::X(301),
                 elements: Operand::List(vec![Operand::Integer(9), Operand::Integer(8)]),
             },
             Instruction::UpdateRecord {
                 operands: vec![
                     Operand::Atom(Some(Atom::OK)),
                     Operand::Unsigned(3),
-                    Operand::X(0),
+                    Operand::X(300),
                     Operand::X(1),
                     Operand::Unsigned(2),
-                    Operand::X(2),
+                    Operand::X(301),
                 ],
             },
             Instruction::Return,
