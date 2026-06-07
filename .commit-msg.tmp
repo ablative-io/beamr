@@ -1,1 +1,1 @@
-Harden ETF compression/decompression option handling and runtime decoder safety
+review: harden B-085 spawn_opt option coverage

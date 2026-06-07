@@ -1,14 +1,16 @@
 use super::*;
 use crate::atom::{Atom, AtomTable};
 use crate::native::links::{LinkError, LinkFacility, LinkRecord};
-use crate::native::spawn::{SpawnError, SpawnFacility, SpawnMonitorResult, SpawnRecord};
+use crate::native::spawn::{
+    SpawnError, SpawnFacility, SpawnMonitorResult, SpawnOptions, SpawnOptionsResult, SpawnRecord,
+};
 use crate::native::supervision::{
     MonitorResult, SupervisionError, SupervisionFacility, SupervisionRecord,
 };
 use crate::native::{BifRegistryImpl, ExceptionClass, ProcessContext};
 use crate::process::{ExitReason, Priority, Process};
 use crate::term::Term;
-use crate::term::boxed::{Reference, Tuple, write_closure, write_cons};
+use crate::term::boxed::{Reference, Tuple, write_closure, write_cons, write_tuple};
 use std::sync::{Arc, Mutex};
 
 fn badarg() -> Term {
@@ -57,6 +59,7 @@ fn attached_spawn_ctx(
     let mut ctx = ProcessContext::new();
     ctx.attach_process(process, 0);
     ctx.set_pid(Some(caller_pid));
+    ctx.set_atom_table(Some(Arc::new(AtomTable::with_common_atoms())));
     ctx.set_spawn_facility(Some(f.clone()));
     (f, ctx)
 }
@@ -322,6 +325,197 @@ fn spawn_monitor_1_badarg_non_closure() {
     );
 }
 
+// ---- spawn options ----
+
+#[test]
+fn parse_spawn_options_link_monitor_priority() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(atom_table.clone()));
+    let link = atom_table.intern("link");
+    let monitor = atom_table.intern("monitor");
+    let priority = atom_table.intern("priority");
+    let high = atom_table.intern("high");
+    let mut tuple_heap = [0u64; 3];
+    let priority_tuple = write_tuple(&mut tuple_heap, &[Term::atom(priority), Term::atom(high)])
+        .expect("priority tuple");
+    let mut c3 = [0u64; 2];
+    let tail = write_cons(&mut c3, priority_tuple, Term::NIL).expect("tail cons");
+    let mut c2 = [0u64; 2];
+    let tail = write_cons(&mut c2, Term::atom(monitor), tail).expect("monitor cons");
+    let mut c1 = [0u64; 2];
+    let list = write_cons(&mut c1, Term::atom(link), tail).expect("link cons");
+
+    let options = parse_spawn_options(list, &ctx).expect("options parse");
+    assert!(options.link);
+    assert!(options.monitor);
+    assert_eq!(options.priority, Some(Priority::High));
+    assert_eq!(options.min_heap_size, None);
+}
+
+#[test]
+fn parse_spawn_options_min_heap_size() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(atom_table.clone()));
+    let min_heap_size = atom_table.intern("min_heap_size");
+    let mut tuple_heap = [0u64; 3];
+    let heap_tuple = write_tuple(
+        &mut tuple_heap,
+        &[Term::atom(min_heap_size), Term::small_int(512)],
+    )
+    .expect("min_heap_size tuple");
+    let mut cons_heap = [0u64; 2];
+    let list = write_cons(&mut cons_heap, heap_tuple, Term::NIL).expect("options list");
+
+    let options = parse_spawn_options(list, &ctx).expect("options parse");
+    assert_eq!(options.min_heap_size, Some(512));
+}
+
+#[test]
+fn parse_spawn_options_ignores_unknown_atoms_and_tuples() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(atom_table.clone()));
+    let unknown = atom_table.intern("fullsweep_after");
+    let unknown_atom = atom_table.intern("message_queue_data");
+    let mut tuple_heap = [0u64; 3];
+    let unknown_tuple = write_tuple(&mut tuple_heap, &[Term::atom(unknown), Term::small_int(10)])
+        .expect("unknown tuple");
+    let mut c2 = [0u64; 2];
+    let tail = write_cons(&mut c2, unknown_tuple, Term::NIL).expect("tail cons");
+    let mut c1 = [0u64; 2];
+    let list = write_cons(&mut c1, Term::atom(unknown_atom), tail).expect("options list");
+
+    assert_eq!(parse_spawn_options(list, &ctx), Ok(SpawnOptions::default()));
+}
+
+#[test]
+fn parse_spawn_options_rejects_malformed_supported_options() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(atom_table.clone()));
+    let priority = atom_table.intern("priority");
+    let min_heap_size = atom_table.intern("min_heap_size");
+
+    let mut priority_heap = [0u64; 2];
+    let priority_tuple =
+        write_tuple(&mut priority_heap, &[Term::atom(priority)]).expect("malformed priority tuple");
+    let mut priority_list_heap = [0u64; 2];
+    let priority_list = write_cons(&mut priority_list_heap, priority_tuple, Term::NIL)
+        .expect("priority option list");
+    assert_eq!(parse_spawn_options(priority_list, &ctx), Err(badarg()));
+
+    let mut heap_tuple_heap = [0u64; 3];
+    let heap_tuple = write_tuple(
+        &mut heap_tuple_heap,
+        &[Term::atom(min_heap_size), Term::small_int(-1)],
+    )
+    .expect("negative min_heap_size tuple");
+    let mut heap_list_heap = [0u64; 2];
+    let heap_list =
+        write_cons(&mut heap_list_heap, heap_tuple, Term::NIL).expect("heap option list");
+    assert_eq!(parse_spawn_options(heap_list, &ctx), Err(badarg()));
+}
+
+// ---- erlang:spawn_opt/4 ----
+
+#[test]
+fn spawn_opt_4_without_monitor_returns_pid() {
+    let (f, mut ctx) = spawn_ctx(11, 3);
+    let result = bif_spawn_opt_4(
+        &[
+            Term::atom(Atom::OK),
+            Term::atom(Atom::ERROR),
+            Term::NIL,
+            Term::NIL,
+        ],
+        &mut ctx,
+    );
+    assert_eq!(result, Ok(Term::pid(11)));
+    let records = f.options_records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].caller_pid, 3);
+    assert_eq!(records[0].module, Atom::OK);
+    assert_eq!(records[0].function, Atom::ERROR);
+    assert!(records[0].args.is_empty());
+    assert!(!records[0].options.monitor);
+}
+
+#[test]
+fn spawn_opt_4_with_monitor_returns_pid_and_reference() {
+    let mut process = Process::new(3, 128);
+    let (f, mut ctx) = attached_spawn_ctx(12, 44, 3, &mut process);
+    let monitor = ctx.atom_table().expect("atom table").intern("monitor");
+    let mut c1 = [0u64; 2];
+    let options = write_cons(&mut c1, Term::atom(monitor), Term::NIL).expect("options");
+    let result = bif_spawn_opt_4(
+        &[
+            Term::atom(Atom::OK),
+            Term::atom(Atom::ERROR),
+            Term::NIL,
+            options,
+        ],
+        &mut ctx,
+    )
+    .expect("spawn_opt/4 succeeds");
+    assert_spawn_monitor_tuple(result, 12, 44);
+    assert!(f.options_records()[0].options.monitor);
+}
+
+#[test]
+fn spawn_opt_4_records_link_and_priority() {
+    let (f, mut ctx) = spawn_ctx(13, 5);
+    let atom_table = ctx.atom_table().expect("atom table");
+    let link = atom_table.intern("link");
+    let priority = atom_table.intern("priority");
+    let high = atom_table.intern("high");
+    let mut tuple_heap = [0u64; 3];
+    let priority_tuple = write_tuple(&mut tuple_heap, &[Term::atom(priority), Term::atom(high)])
+        .expect("priority tuple");
+    let mut c2 = [0u64; 2];
+    let tail = write_cons(&mut c2, priority_tuple, Term::NIL).expect("tail cons");
+    let mut c1 = [0u64; 2];
+    let options = write_cons(&mut c1, Term::atom(link), tail).expect("options");
+
+    assert_eq!(
+        bif_spawn_opt_4(
+            &[
+                Term::atom(Atom::OK),
+                Term::atom(Atom::ERROR),
+                Term::NIL,
+                options,
+            ],
+            &mut ctx,
+        ),
+        Ok(Term::pid(13)),
+    );
+    let records = f.options_records();
+    assert!(records[0].options.link);
+    assert_eq!(records[0].options.priority, Some(Priority::High));
+}
+
+// ---- erlang:spawn_opt/2 ----
+
+#[test]
+fn spawn_opt_2_with_zero_arity_closure_and_monitor_returns_tuple() {
+    let mut process = Process::new(1, 128);
+    let (f, mut ctx) = attached_spawn_ctx(42, 77, 1, &mut process);
+    let monitor = ctx.atom_table().expect("atom table").intern("monitor");
+    let mut options_heap = [0u64; 2];
+    let options =
+        write_cons(&mut options_heap, Term::atom(monitor), Term::NIL).expect("monitor option list");
+    let mut heap = [0u64; 7];
+    let fun = write_closure(&mut heap, Atom::OK, 0, 0, 1, 0, &[]).expect("closure");
+
+    let result = bif_spawn_opt_2(&[fun, options], &mut ctx).expect("spawn_opt/2 succeeds");
+    assert_spawn_monitor_tuple(result, 42, 77);
+    let records = f.lambda_options_records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].caller_pid, 1);
+    assert!(records[0].options.monitor);
+}
+
 // ---- erlang:link/1 ----
 
 #[test]
@@ -475,6 +669,8 @@ fn register_gate2_bifs_registers_all() {
         ("spawn_link", 3),
         ("spawn_monitor", 1),
         ("spawn_monitor", 3),
+        ("spawn_opt", 2),
+        ("spawn_opt", 4),
         ("link", 1),
         ("unlink", 1),
         ("process_flag", 2),
@@ -667,6 +863,7 @@ fn spawn_ctx(next_pid: u64, caller_pid: u64) -> (Arc<MockSpawnFacility>, Process
     let f = Arc::new(MockSpawnFacility::new(next_pid));
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));
+    ctx.set_atom_table(Some(Arc::new(AtomTable::with_common_atoms())));
     ctx.set_spawn_facility(Some(f.clone()));
     (f, ctx)
 }
@@ -692,8 +889,24 @@ fn sup_ctx(
 
 // ---- Mock spawn facility ----
 
+#[derive(Clone)]
 struct LambdaSpawnRecord {
     caller_pid: u64,
+}
+
+#[derive(Clone)]
+struct SpawnOptionsRecord {
+    caller_pid: u64,
+    module: Atom,
+    function: Atom,
+    args: Vec<Term>,
+    options: SpawnOptions,
+}
+
+#[derive(Clone)]
+struct LambdaOptionsRecord {
+    caller_pid: u64,
+    options: SpawnOptions,
 }
 
 struct MockSpawnFacility {
@@ -702,6 +915,8 @@ struct MockSpawnFacility {
     records: Mutex<Vec<SpawnRecord>>,
     spawn_monitor_records: Mutex<Vec<SpawnRecord>>,
     lambda_monitor_records: Mutex<Vec<LambdaSpawnRecord>>,
+    options_records: Mutex<Vec<SpawnOptionsRecord>>,
+    lambda_options_records: Mutex<Vec<LambdaOptionsRecord>>,
 }
 
 impl MockSpawnFacility {
@@ -716,6 +931,8 @@ impl MockSpawnFacility {
             records: Mutex::new(Vec::new()),
             spawn_monitor_records: Mutex::new(Vec::new()),
             lambda_monitor_records: Mutex::new(Vec::new()),
+            options_records: Mutex::new(Vec::new()),
+            lambda_options_records: Mutex::new(Vec::new()),
         }
     }
 
@@ -739,6 +956,20 @@ impl MockSpawnFacility {
             .unwrap_or_else(|e| e.into_inner())
             .drain(..)
             .collect()
+    }
+
+    fn options_records(&self) -> Vec<SpawnOptionsRecord> {
+        self.options_records
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    fn lambda_options_records(&self) -> Vec<LambdaOptionsRecord> {
+        self.lambda_options_records
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
@@ -806,6 +1037,50 @@ impl SpawnFacility for MockSpawnFacility {
             reference: self.next_reference,
         })
     }
+
+    fn spawn_with_options(
+        &self,
+        caller_pid: u64,
+        module: Atom,
+        function: Atom,
+        args: Vec<Term>,
+        options: SpawnOptions,
+    ) -> Result<SpawnOptionsResult, SpawnError> {
+        self.options_records
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(SpawnOptionsRecord {
+                caller_pid,
+                module,
+                function,
+                args,
+                options,
+            });
+        Ok(SpawnOptionsResult {
+            pid: self.next_pid,
+            reference: options.monitor.then_some(self.next_reference),
+        })
+    }
+
+    fn spawn_lambda_with_options(
+        &self,
+        caller_pid: u64,
+        _module: Atom,
+        _lambda_index: u32,
+        options: SpawnOptions,
+    ) -> Result<SpawnOptionsResult, SpawnError> {
+        self.lambda_options_records
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(LambdaOptionsRecord {
+                caller_pid,
+                options,
+            });
+        Ok(SpawnOptionsResult {
+            pid: self.next_pid,
+            reference: options.monitor.then_some(self.next_reference),
+        })
+    }
 }
 
 struct FailingSpawnFacility;
@@ -842,6 +1117,27 @@ impl SpawnFacility for FailingSpawnFacility {
         _: Atom,
         _: u32,
     ) -> Result<SpawnMonitorResult, SpawnError> {
+        Err(SpawnError::UnresolvedMfa)
+    }
+
+    fn spawn_with_options(
+        &self,
+        _: u64,
+        _: Atom,
+        _: Atom,
+        _: Vec<Term>,
+        _: SpawnOptions,
+    ) -> Result<SpawnOptionsResult, SpawnError> {
+        Err(SpawnError::UnresolvedMfa)
+    }
+
+    fn spawn_lambda_with_options(
+        &self,
+        _: u64,
+        _: Atom,
+        _: u32,
+        _: SpawnOptions,
+    ) -> Result<SpawnOptionsResult, SpawnError> {
         Err(SpawnError::UnresolvedMfa)
     }
 }
