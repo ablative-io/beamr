@@ -1,1 +1,1 @@
-review: harden B-059 catch exception handling
+feat(beamr): add BIF exception classes and throw exit support

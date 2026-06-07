@@ -5,8 +5,7 @@ use crate::native::spawn::{SpawnError, SpawnFacility, SpawnRecord};
 use crate::native::supervision::{
     MonitorResult, SupervisionError, SupervisionFacility, SupervisionRecord,
 };
-use crate::native::{BifRegistryImpl, ProcessContext};
-use crate::process::Process;
+use crate::native::{BifRegistryImpl, ExceptionClass, ProcessContext};
 use crate::process::ExitReason;
 use crate::term::Term;
 use crate::term::boxed::write_cons;
@@ -308,6 +307,7 @@ fn register_gate2_bifs_registers_all() {
         ("process_flag", 2),
         ("monitor", 2),
         ("demonitor", 1),
+        ("exit", 1),
         ("exit", 2),
     ] {
         assert!(
@@ -417,7 +417,24 @@ fn demonitor_badarg_non_integer() {
     );
 }
 
-// ---- erlang:exit/2 ----
+// ---- erlang:exit/1 and erlang:exit/2 ----
+
+#[test]
+fn exit_1_returns_reason_and_sets_exit_class() {
+    let mut ctx = ProcessContext::new();
+    assert_eq!(
+        bif_exit_1(&[Term::atom(Atom::OK)], &mut ctx),
+        Err(Term::atom(Atom::OK))
+    );
+    assert_eq!(ctx.take_exception_class(), ExceptionClass::Exit);
+}
+
+#[test]
+fn exit_1_badarg_wrong_arity_does_not_set_exit_class() {
+    let mut ctx = ProcessContext::new();
+    assert_eq!(bif_exit_1(&[], &mut ctx), Err(badarg()));
+    assert_eq!(ctx.take_exception_class(), ExceptionClass::Error);
+}
 
 #[test]
 fn exit_sends_signal_and_returns_true() {
@@ -489,7 +506,10 @@ fn link_ctx(caller_pid: u64) -> (Arc<MockLinkFacility>, ProcessContext<'static>)
     (f, ctx)
 }
 
-fn sup_ctx(next_ref: u64, caller_pid: u64) -> (Arc<MockSupervisionFacility>, ProcessContext<'static>) {
+fn sup_ctx(
+    next_ref: u64,
+    caller_pid: u64,
+) -> (Arc<MockSupervisionFacility>, ProcessContext<'static>) {
     let f = Arc::new(MockSupervisionFacility::new(next_ref));
     let mut ctx = ProcessContext::new();
     ctx.set_pid(Some(caller_pid));

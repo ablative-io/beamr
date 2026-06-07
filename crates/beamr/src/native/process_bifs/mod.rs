@@ -7,7 +7,7 @@
 use crate::atom::{Atom, AtomTable};
 use crate::native::links::LinkError;
 use crate::native::{
-    BifRegistryImpl, Capability, NativeFn, NativeRegistrationError, ProcessContext,
+    BifRegistryImpl, Capability, ExceptionClass, NativeFn, NativeRegistrationError, ProcessContext,
 };
 use crate::process::ExitReason;
 use crate::term::Term;
@@ -24,6 +24,7 @@ const GATE2_BIFS: &[Gate2Bif] = &[
     ("process_flag", 2, Capability::Pure, bif_process_flag),
     ("monitor", 2, Capability::Pure, bif_monitor),
     ("demonitor", 1, Capability::Pure, bif_demonitor),
+    ("exit", 1, Capability::Pure, bif_exit_1),
     ("exit", 2, Capability::Pure, bif_exit),
 ];
 
@@ -151,6 +152,16 @@ pub fn bif_demonitor(args: &[Term], context: &mut ProcessContext) -> Result<Term
         .demonitor(caller_pid, reference as u64)
         .map_err(|_| badarg())?;
     Ok(Term::atom(Atom::TRUE))
+}
+
+/// erlang:exit/1 — raises an exit-class exception in the calling process.
+pub fn bif_exit_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [reason] = args else {
+        return Err(badarg());
+    };
+
+    context.set_exception_class(ExceptionClass::Exit);
+    Err(*reason)
 }
 
 /// erlang:exit/2 — send an exit signal to a target process.

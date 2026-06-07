@@ -63,6 +63,17 @@ pub struct SuspendRequest {
     pub timeout_ms: Option<u64>,
 }
 
+/// Exception classes that BIFs can request when returning `Err(reason)`.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ExceptionClass {
+    /// Ordinary error exception class.
+    Error,
+    /// Non-local throw exception class.
+    Throw,
+    /// Process exit exception class.
+    Exit,
+}
+
 pub struct ProcessContext<'process> {
     pid: Option<u64>,
     process: Option<&'process mut Process>,
@@ -76,11 +87,11 @@ pub struct ProcessContext<'process> {
     registry_facility: Option<Arc<dyn RegistryFacility>>,
     select_facility: Option<Arc<dyn SelectFacility>>,
     io_sink: Arc<dyn IoSink>,
+    exception_class: ExceptionClass,
+    exception_stacktrace: Term,
     shutdown_requested: bool,
     trampoline: Option<TrampolineRequest>,
     suspend: Option<SuspendRequest>,
-    exception_class: Term,
-    exception_stacktrace: Term,
 }
 
 impl fmt::Debug for ProcessContext<'_> {
@@ -113,6 +124,7 @@ impl fmt::Debug for ProcessContext<'_> {
                 &self.select_facility.as_ref().map(|_| ".."),
             )
             .field("io_sink", &"..")
+            .field("exception_class", &self.exception_class)
             .field("shutdown_requested", &self.shutdown_requested)
             .field("trampoline", &self.trampoline)
             .field("suspend", &self.suspend)
@@ -145,11 +157,11 @@ impl<'process> ProcessContext<'process> {
             registry_facility: None,
             select_facility: None,
             io_sink: Arc::new(NullSink),
+            exception_class: ExceptionClass::Error,
+            exception_stacktrace: Term::NIL,
             trampoline: None,
             suspend: None,
             shutdown_requested: false,
-            exception_class: Term::atom(Atom::ERROR),
-            exception_stacktrace: Term::NIL,
         }
     }
 
@@ -169,11 +181,11 @@ impl<'process> ProcessContext<'process> {
             registry_facility: None,
             select_facility: None,
             io_sink: Arc::new(NullSink),
+            exception_class: ExceptionClass::Error,
+            exception_stacktrace: Term::NIL,
             trampoline: None,
             suspend: None,
             shutdown_requested: false,
-            exception_class: Term::atom(Atom::ERROR),
-            exception_stacktrace: Term::NIL,
         }
     }
 
@@ -402,6 +414,18 @@ impl<'process> ProcessContext<'process> {
         requested
     }
 
+    /// Set the exception class to use if this BIF returns `Err(reason)`.
+    pub fn set_exception_class(&mut self, class: ExceptionClass) {
+        self.exception_class = class;
+    }
+
+    /// Take the requested exception class, resetting subsequent errors to `error`.
+    pub fn take_exception_class(&mut self) -> ExceptionClass {
+        let class = self.exception_class;
+        self.exception_class = ExceptionClass::Error;
+        class
+    }
+
     // --- Trampoline ---
 
     /// Store a trampoline request for the interpreter to execute.
@@ -459,18 +483,6 @@ impl<'process> ProcessContext<'process> {
     }
 
     // --- Exception metadata ---
-
-    /// Set the class to use if the current BIF returns `Err(reason)`.
-    pub fn set_exception_class(&mut self, class: Term) {
-        self.exception_class = class;
-    }
-
-    /// Take the pending exception class, resetting subsequent BIF errors to `error`.
-    pub fn take_exception_class(&mut self) -> Term {
-        let class = self.exception_class;
-        self.exception_class = Term::atom(Atom::ERROR);
-        class
-    }
 
     /// Set the stacktrace to use if the current BIF returns `Err(reason)`.
     pub fn set_exception_stacktrace(&mut self, trace: Term) {
@@ -627,5 +639,15 @@ mod tests {
             context.alloc_tuple(&[Term::atom(Atom::OK)]),
             Err(Term::atom(Atom::BADARG))
         );
+    }
+
+    #[test]
+    fn exception_class_defaults_sets_and_resets_to_error() {
+        let mut context = ProcessContext::new();
+        assert_eq!(context.take_exception_class(), ExceptionClass::Error);
+
+        context.set_exception_class(ExceptionClass::Throw);
+        assert_eq!(context.take_exception_class(), ExceptionClass::Throw);
+        assert_eq!(context.take_exception_class(), ExceptionClass::Error);
     }
 }

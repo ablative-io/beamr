@@ -2,7 +2,7 @@
 
 use crate::atom::{Atom, AtomTable};
 use crate::native::{
-    BifRegistryImpl, Capability, NativeFn, NativeRegistrationError, ProcessContext,
+    BifRegistryImpl, Capability, ExceptionClass, NativeFn, NativeRegistrationError, ProcessContext,
 };
 use crate::term::Term;
 
@@ -31,19 +31,23 @@ pub fn bif_raise_3(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         return Err(badarg());
     };
 
-    if !is_exception_class(*class) {
-        return Err(badarg());
-    }
+    let exception_class = term_to_exception_class(*class).ok_or_else(badarg)?;
 
-    context.set_exception_class(*class);
+    context.set_exception_class(exception_class);
     context.set_exception_stacktrace(*stacktrace);
     Err(*reason)
 }
 
-fn is_exception_class(class: Term) -> bool {
-    class == Term::atom(Atom::ERROR)
-        || class == Term::atom(Atom::THROW)
-        || class == Term::atom(Atom::EXIT_CLASS)
+fn term_to_exception_class(class: Term) -> Option<ExceptionClass> {
+    if class == Term::atom(Atom::ERROR) {
+        Some(ExceptionClass::Error)
+    } else if class == Term::atom(Atom::THROW) {
+        Some(ExceptionClass::Throw)
+    } else if class == Term::atom(Atom::EXIT_CLASS) {
+        Some(ExceptionClass::Exit)
+    } else {
+        None
+    }
 }
 
 fn badarg() -> Term {
@@ -54,7 +58,7 @@ fn badarg() -> Term {
 mod tests {
     use super::{bif_raise_3, register_exception_bifs};
     use crate::atom::{Atom, AtomTable};
-    use crate::native::{BifRegistryImpl, ProcessContext};
+    use crate::native::{BifRegistryImpl, ExceptionClass, ProcessContext};
     use crate::term::Term;
 
     #[test]
@@ -68,7 +72,7 @@ mod tests {
             bif_raise_3(&[class, reason, stacktrace], &mut context),
             Err(reason)
         );
-        assert_eq!(context.take_exception_class(), class);
+        assert_eq!(context.take_exception_class(), ExceptionClass::Throw);
         assert_eq!(context.take_exception_stacktrace(), stacktrace);
     }
 
@@ -87,7 +91,7 @@ mod tests {
             ),
             Err(Term::atom(Atom::BADARG))
         );
-        assert_eq!(context.take_exception_class(), Term::atom(Atom::ERROR));
+        assert_eq!(context.take_exception_class(), ExceptionClass::Error);
         assert_eq!(context.take_exception_stacktrace(), Term::NIL);
     }
 
