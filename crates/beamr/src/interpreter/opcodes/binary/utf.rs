@@ -9,6 +9,8 @@ use super::super::core;
 use super::jump_label;
 use super::matching::{Endian, MatchContext};
 
+type UtfDecoder = fn(MatchContext, Endian) -> Result<Option<(u32, usize)>, ExecError>;
+
 pub(super) fn bs_get_utf8(
     process: &mut Process,
     module: &Module,
@@ -96,7 +98,7 @@ fn utf_get(
     module: &Module,
     operands: &[Operand],
     invalid: &'static str,
-    decoder: fn(MatchContext, Endian) -> Result<Option<(u32, usize)>, ExecError>,
+    decoder: UtfDecoder,
 ) -> Result<InstructionOutcome, ExecError> {
     let (fail, context, flags, destination) = parse_get_operands(operands, invalid)?;
     utf_get_with_endian(process, module, fail, context, flags, destination, decoder)
@@ -107,7 +109,7 @@ fn utf_skip(
     module: &Module,
     operands: &[Operand],
     invalid: &'static str,
-    decoder: fn(MatchContext, Endian) -> Result<Option<(u32, usize)>, ExecError>,
+    decoder: UtfDecoder,
 ) -> Result<InstructionOutcome, ExecError> {
     let (fail, context, flags) = parse_skip_operands(operands, invalid)?;
     utf_skip_with_endian(process, module, fail, context, flags, decoder)
@@ -120,7 +122,7 @@ fn utf_get_with_endian(
     context: &Operand,
     flags: &Operand,
     destination: &Operand,
-    decoder: fn(MatchContext, Endian) -> Result<Option<(u32, usize)>, ExecError>,
+    decoder: UtfDecoder,
 ) -> Result<InstructionOutcome, ExecError> {
     let context = read_context(process, module, context)?;
     match decoder(context, Endian::from_flags(flags))? {
@@ -140,7 +142,7 @@ fn utf_skip_with_endian(
     fail: &Operand,
     context: &Operand,
     flags: &Operand,
-    decoder: fn(MatchContext, Endian) -> Result<Option<(u32, usize)>, ExecError>,
+    decoder: UtfDecoder,
 ) -> Result<InstructionOutcome, ExecError> {
     let context = read_context(process, module, context)?;
     match decoder(context, Endian::from_flags(flags))? {
