@@ -168,6 +168,12 @@ impl AtomTable {
     pub fn len(&self) -> usize {
         self.by_name.len()
     }
+
+    /// Return whether the atom table currently has no interned names.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.by_name.is_empty()
+    }
 }
 
 impl Default for AtomTable {
@@ -230,11 +236,13 @@ mod tests {
         let table = AtomTable::new();
 
         assert_eq!(table.len(), 0);
+        assert!(table.is_empty());
         table.intern("alpha");
         table.intern("beta");
         table.intern("alpha");
 
         assert_eq!(table.len(), 2);
+        assert!(!table.is_empty());
         assert_eq!(
             AtomTable::with_common_atoms().len(),
             super::COMMON_ATOMS.len()
