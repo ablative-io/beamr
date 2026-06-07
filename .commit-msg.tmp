@@ -1,1 +1,1 @@
-feat(beamr): add completion ring backends
+fix(beamr): correct fallback libc type casts

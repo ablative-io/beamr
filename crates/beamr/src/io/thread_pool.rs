@@ -257,7 +257,7 @@ fn fsync_fd(fd: RawFd) -> io::Result<IoResult> {
 fn openat_fd(dir_fd: RawFd, path: &Path, flags: i32, mode: u32) -> io::Result<IoResult> {
     let c_path = path_to_cstring(path)?;
     // SAFETY: `c_path` is NUL-terminated and alive for the duration of the call.
-    let fd = unsafe { libc::openat(dir_fd, c_path.as_ptr(), flags, mode as libc::mode_t) };
+    let fd = unsafe { libc::openat(dir_fd, c_path.as_ptr(), flags, mode as libc::c_uint) };
     if fd < 0 {
         Err(io::Error::last_os_error())
     } else {
@@ -320,12 +320,12 @@ fn path_to_cstring(path: &Path) -> io::Result<CString> {
 fn stat_to_data(stat: libc::stat, mask: u32) -> StatxData {
     StatxData {
         mask,
-        mode: stat.st_mode,
+        mode: u32::from(stat.st_mode),
         size: stat.st_size as u64,
         blocks: stat.st_blocks as u64,
         dev_major: 0,
         dev_minor: 0,
-        inode: stat.st_ino as u64,
+        inode: stat.st_ino,
         nlink: stat.st_nlink as u64,
         uid: stat.st_uid,
         gid: stat.st_gid,
