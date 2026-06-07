@@ -119,15 +119,13 @@ fn workload_module(atom_table: &AtomTable) -> Module {
         code,
         literals,
         constant_pool,
-        resolved_imports: vec![
-            native_import(
-                rand,
-                uniform,
-                0,
-                beamr::native::stdlib_stubs::bif_rand_uniform,
-                Capability::Entropy,
-            ),
-        ],
+        resolved_imports: vec![native_import(
+            rand,
+            uniform,
+            0,
+            beamr::native::stdlib_stubs::bif_rand_uniform,
+            Capability::Entropy,
+        )],
         lambdas: Vec::new(),
         string_table: Vec::new(),
         line_info: Vec::new(),
@@ -149,7 +147,7 @@ fn native_import(
         arity,
         target: ResolvedImportTarget::Native(NativeEntry {
             function: native_function,
-            is_dirty: false,
+            dirty_kind: None,
             capability,
         }),
     }

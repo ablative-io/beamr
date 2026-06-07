@@ -7,9 +7,11 @@
 //! scheduler thread count (per D10).
 
 use std::collections::VecDeque;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
+use crate::atom::Atom;
 use crate::native::{NativeFn, ProcessContext};
 use crate::scheduler::lock_or_recover;
 use crate::term::Term;
@@ -114,6 +116,7 @@ impl DirtyPool {
                     signal_shutdown(&state);
                     join_all(threads);
                     threads = Vec::new();
+                    thread_names.clear();
                     break;
                 }
             }
@@ -133,6 +136,7 @@ impl DirtyPool {
             guard = wait_or_recover(&self.state.not_full, guard);
         }
         if guard.shutdown {
+            let _ = job.result_sender.send(Err(Term::atom(Atom::EXIT)));
             return;
         }
         guard.jobs.push_back(job);
@@ -190,7 +194,10 @@ fn worker_loop(state: &PoolState) {
         };
 
         if let Some(mut job) = job {
-            let result = (job.function)(&job.args, &mut job.context);
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                (job.function)(&job.args, &mut job.context)
+            }))
+            .unwrap_or_else(|_panic| Err(Term::atom(Atom::ERROR)));
             let _ = job.result_sender.send(result);
         }
     }
@@ -207,9 +214,9 @@ fn signal_shutdown(state: &PoolState) {
 
 fn join_all(threads: Vec<JoinHandle<()>>) {
     for handle in threads {
-        if let Err(payload) = handle.join() {
-            std::panic::resume_unwind(payload);
-        }
+        // Worker loops catch native panics before continuing. If a worker still
+        // unwinds, shutdown must remain best-effort and idempotent.
+        let _ = handle.join();
     }
 }
 
