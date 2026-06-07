@@ -44,7 +44,7 @@ pub fn bif_io_lib_format_2(args: &[Term], context: &mut ProcessContext) -> Resul
         return Err(badarg());
     };
     let bytes = format_bytes(*format, *arguments, context)?;
-    make_binary(&bytes)
+    make_binary(context, &bytes)
 }
 
 fn format_bytes(format: Term, arguments: Term, context: &ProcessContext) -> Result<Vec<u8>, Term> {
@@ -174,10 +174,8 @@ fn binary_bytes(term: Term) -> Result<&'static [u8], Term> {
     Binary::new(term).map(Binary::as_bytes).ok_or_else(badarg)
 }
 
-fn make_binary(bytes: &[u8]) -> Result<Term, Term> {
-    let data_words = crate::term::binary::packed_word_count(bytes.len());
-    let heap: &mut [u64] = Box::leak(vec![0u64; 2 + data_words].into_boxed_slice());
-    crate::term::binary::write_binary(heap, bytes).ok_or_else(badarg)
+fn make_binary(context: &mut ProcessContext, bytes: &[u8]) -> Result<Term, Term> {
+    context.alloc_binary(bytes).map_err(|_| badarg())
 }
 
 fn badarg() -> Term {

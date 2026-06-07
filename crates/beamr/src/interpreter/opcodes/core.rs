@@ -325,6 +325,7 @@ fn call_external_target(
                     pctx
                 }
             };
+            context.attach_process_heap(process, usize::from(arity));
             if let Some(svc) = ctx.services {
                 context.set_spawn_facility(svc.spawn_facility.clone());
                 context.set_link_facility(svc.link_facility.clone());
@@ -355,6 +356,9 @@ fn call_external_target(
                 }
             };
             let shutdown_requested = context.take_shutdown_request();
+            let suspend = context.take_suspend();
+            let trampoline_req = context.take_trampoline();
+            drop(context);
 
             // Handle mailbox removal if the select facility recorded one.
             if let Some(snapshot) = snapshot {
@@ -363,12 +367,12 @@ fn call_external_target(
 
             // Check for suspend request before trampoline (suspend takes priority
             // when no message matched).
-            if let Some(suspend) = context.take_suspend() {
+            if let Some(suspend) = suspend {
                 return trampoline::handle_suspend(process, module, suspend);
             }
 
             // Check for trampoline request from the BIF.
-            if let Some(trampoline_req) = context.take_trampoline() {
+            if let Some(trampoline_req) = trampoline_req {
                 return trampoline::handle_trampoline(
                     process,
                     module,

@@ -6,13 +6,13 @@
 use crate::atom::Atom;
 use crate::native::ProcessContext;
 use crate::term::Term;
-use crate::term::boxed::{Cons, Map, Tuple, write_cons, write_map};
+use crate::term::boxed::{Cons, Map, Tuple};
 
 /// maps:from_list/1 — builds a map from a list of `{Key, Value}` 2-tuples.
 ///
 /// Duplicate keys are resolved by last-occurrence-wins (the last tuple in the
 /// list with a given key determines the value), matching OTP semantics.
-pub fn bif_maps_from_list(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_maps_from_list(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [input] = args else {
         return Err(badarg());
     };
@@ -35,11 +35,11 @@ pub fn bif_maps_from_list(args: &[Term], _context: &mut ProcessContext) -> Resul
     let keys: Vec<Term> = entries.iter().map(|(k, _)| *k).collect();
     let values: Vec<Term> = entries.iter().map(|(_, v)| *v).collect();
 
-    make_leaked_map(&keys, &values)
+    context.alloc_map(&keys, &values).map_err(|_| badarg())
 }
 
 /// maps:merge/2 — merges two maps (second overrides first on collision).
-pub fn bif_maps_merge(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_maps_merge(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [map1_term, map2_term] = args else {
         return Err(badarg());
     };
@@ -72,14 +72,14 @@ pub fn bif_maps_merge(args: &[Term], _context: &mut ProcessContext) -> Result<Te
     let keys: Vec<Term> = entries.iter().map(|(k, _)| *k).collect();
     let values: Vec<Term> = entries.iter().map(|(_, v)| *v).collect();
 
-    make_leaked_map(&keys, &values)
+    context.alloc_map(&keys, &values).map_err(|_| badarg())
 }
 
 /// maps:remove/2 — removes a key from a map, returning a new map.
 ///
 /// If the key is not present, returns the same map structure (as a new
 /// allocation for simplicity).
-pub fn bif_maps_remove(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_maps_remove(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [key_term, map_term] = args else {
         return Err(badarg());
     };
@@ -98,11 +98,11 @@ pub fn bif_maps_remove(args: &[Term], _context: &mut ProcessContext) -> Result<T
         }
     }
 
-    make_leaked_map(&keys, &values)
+    context.alloc_map(&keys, &values).map_err(|_| badarg())
 }
 
 /// lists:reverse/1 — reverses a proper list.
-pub fn bif_lists_reverse(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_lists_reverse(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [input] = args else {
         return Err(badarg());
     };
@@ -111,13 +111,8 @@ pub fn bif_lists_reverse(args: &[Term], _context: &mut ProcessContext) -> Result
     let elements = list_to_vec(*input)?;
 
     // Build the reversed list from the end.
-    let mut tail = Term::NIL;
-    for element in elements {
-        let cell = Box::leak(Box::new([0u64; 2]));
-        tail = write_cons(cell, element, tail).ok_or_else(badarg)?;
-    }
-
-    Ok(tail)
+    let reversed: Vec<Term> = elements.into_iter().rev().collect();
+    context.alloc_list(&reversed).map_err(|_| badarg())
 }
 
 /// maps:map/2 — stub for higher-order map transformation.
@@ -127,7 +122,7 @@ pub fn bif_lists_reverse(args: &[Term], _context: &mut ProcessContext) -> Result
 /// documented limitation. The real implementation should be loaded from
 /// compiled BEAM bytecode (see `fixtures/stdlib/`) once maps:to_list/1 and
 /// maps:from_list/1 are available within Erlang-level code.
-pub fn bif_maps_map(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_maps_map(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [_fun, _map] = args else {
         return Err(badarg());
     };
@@ -142,7 +137,7 @@ pub fn bif_maps_map(args: &[Term], _context: &mut ProcessContext) -> Result<Term
 /// Returns the atom `ok`. For now this uses `std::thread::sleep` which blocks
 /// the thread. This is acceptable for the single-process CLI path; a future
 /// scheduler integration should yield the process instead.
-pub fn bif_timer_sleep(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_timer_sleep(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [ms_term] = args else {
         return Err(badarg());
     };
@@ -193,13 +188,6 @@ fn list_to_vec(term: Term) -> Result<Vec<Term>, Term> {
         elements.push(cons.head());
         current = cons.tail();
     }
-}
-
-/// Creates a map term via leaked heap allocation.
-fn make_leaked_map(keys: &[Term], values: &[Term]) -> Result<Term, Term> {
-    let total_words = 2 + keys.len() + values.len();
-    let heap: &mut [u64] = Box::leak(vec![0u64; total_words].into_boxed_slice());
-    write_map(heap, keys, values).ok_or_else(badarg)
 }
 
 fn badarg() -> Term {

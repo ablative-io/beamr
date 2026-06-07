@@ -3,7 +3,7 @@
 use crate::atom::Atom;
 use crate::native::{NativeContinuation, ProcessContext};
 use crate::term::Term;
-use crate::term::boxed::{Closure, Cons, Map, write_map};
+use crate::term::boxed::{Closure, Cons, Map};
 
 #[derive(Clone, Debug)]
 pub enum MapsHofState {
@@ -31,13 +31,12 @@ pub enum MapsHofState {
 }
 
 pub fn bif_maps_put(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [key, value, map_term] = args else {
         return Err(badarg());
     };
     let mut entries = map_entries(*map_term)?;
     set_entry(&mut entries, *key, *value);
-    make_sorted_map(&entries)
+    make_sorted_map(context, &entries)
 }
 
 pub fn bif_maps_find(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -114,7 +113,7 @@ pub fn bif_maps_filter(args: &[Term], context: &mut ProcessContext) -> Result<Te
     ensure_fun_arity(*fun, 2)?;
     let entries = map_entries(*map_term)?;
     if entries.is_empty() {
-        return make_sorted_map(&[]);
+        return make_sorted_map(context, &[]);
     }
     let (key, value) = entries[0];
     context.set_continuation_trampoline(
@@ -151,7 +150,7 @@ pub fn bif_maps_merge_with(args: &[Term], context: &mut ProcessContext) -> Resul
     }
     entries.sort_by(|(left, _), (right, _)| left.cmp(right));
     if collisions.is_empty() {
-        return make_sorted_map(&entries);
+        return make_sorted_map(context, &entries);
     }
     let (key, value1, value2) = collisions[0];
     context.set_continuation_trampoline(
@@ -176,7 +175,7 @@ pub fn bif_maps_update_with(args: &[Term], context: &mut ProcessContext) -> Resu
     let Some(position) = entries.iter().position(|(entry_key, _)| entry_key == key) else {
         let mut with_init = entries;
         with_init.push((*key, *init));
-        return make_sorted_map(&with_init);
+        return make_sorted_map(context, &with_init);
     };
     let (existing_key, existing_value) = entries[position];
     let remaining = entries[position + 1..].to_vec();
@@ -193,7 +192,6 @@ pub fn bif_maps_update_with(args: &[Term], context: &mut ProcessContext) -> Resu
 }
 
 pub fn bif_maps_with(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [keys_term, map_term] = args else {
         return Err(badarg());
     };
@@ -203,11 +201,10 @@ pub fn bif_maps_with(args: &[Term], context: &mut ProcessContext) -> Result<Term
         .into_iter()
         .filter(|(key, _)| keys.iter().any(|wanted| wanted == key))
         .collect();
-    make_sorted_map(&kept)
+    make_sorted_map(context, &kept)
 }
 
 pub fn bif_maps_without(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let _ = context;
     let [keys_term, map_term] = args else {
         return Err(badarg());
     };
@@ -217,12 +214,13 @@ pub fn bif_maps_without(args: &[Term], context: &mut ProcessContext) -> Result<T
         .into_iter()
         .filter(|(key, _)| !keys.iter().any(|removed| removed == key))
         .collect();
-    make_sorted_map(&kept)
+    make_sorted_map(context, &kept)
 }
 
 pub fn resume_maps_continuation(
     state: MapsHofState,
     closure_result: Term,
+    context: &mut ProcessContext,
 ) -> Result<ContinuationStep, Term> {
     match state {
         MapsHofState::Fold {
@@ -266,7 +264,7 @@ pub fn resume_maps_continuation(
                     }),
                 })
             } else {
-                Ok(ContinuationStep::Done(make_sorted_map(&kept)?))
+                Ok(ContinuationStep::Done(make_sorted_map(context, &kept)?))
             }
         }
         MapsHofState::MergeWith {
@@ -292,7 +290,7 @@ pub fn resume_maps_continuation(
                     }),
                 })
             } else {
-                Ok(ContinuationStep::Done(make_sorted_map(&entries)?))
+                Ok(ContinuationStep::Done(make_sorted_map(context, &entries)?))
             }
         }
         MapsHofState::UpdateWith {
@@ -305,7 +303,7 @@ pub fn resume_maps_continuation(
                 return Err(badarg());
             }
             updated.append(&mut remaining);
-            Ok(ContinuationStep::Done(make_sorted_map(&updated)?))
+            Ok(ContinuationStep::Done(make_sorted_map(context, &updated)?))
         }
     }
 }
@@ -359,18 +357,12 @@ fn set_entry(entries: &mut Vec<(Term, Term)>, key: Term, value: Term) {
     }
 }
 
-fn make_sorted_map(entries: &[(Term, Term)]) -> Result<Term, Term> {
+fn make_sorted_map(context: &mut ProcessContext, entries: &[(Term, Term)]) -> Result<Term, Term> {
     let mut sorted = entries.to_vec();
     sorted.sort_by(|(left, _), (right, _)| left.cmp(right));
     let keys: Vec<_> = sorted.iter().map(|(key, _)| *key).collect();
     let values: Vec<_> = sorted.iter().map(|(_, value)| *value).collect();
-    make_leaked_map(&keys, &values)
-}
-
-fn make_leaked_map(keys: &[Term], values: &[Term]) -> Result<Term, Term> {
-    let total_words = 2 + keys.len() + values.len();
-    let heap: &mut [u64] = Box::leak(vec![0u64; total_words].into_boxed_slice());
-    write_map(heap, keys, values).ok_or_else(badarg)
+    context.alloc_map(&keys, &values).map_err(|_| badarg())
 }
 
 fn list_to_vec(term: Term) -> Result<Vec<Term>, Term> {

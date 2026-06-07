@@ -152,9 +152,10 @@ pub fn bif(
         args.push(core::read_term(process, arg)?);
     }
 
-    let mut context = ProcessContext::new();
-    context.set_pid(Some(process.pid()));
-    match (entry.function)(&args, &mut context) {
+    let mut context = ProcessContext::with_process(process, usize::from(parsed.expected_arity));
+    let result = (entry.function)(&args, &mut context);
+    drop(context);
+    match result {
         Ok(result) => {
             core::write_term(process, parsed.destination, result)?;
             Ok(InstructionOutcome::Continue)

@@ -11,7 +11,6 @@ use std::time::Duration;
 use crate::atom::{Atom, AtomTable};
 use crate::native::{BifRegistryImpl, NativeFn, NativeRegistrationError, ProcessContext};
 use crate::term::Term;
-use crate::term::boxed::write_tuple;
 use crate::term::compare;
 use crate::timer::TimerRef;
 
@@ -174,12 +173,9 @@ pub fn start_timer(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
     };
     let delay = duration_from_term(*delay)?;
     let target_pid = pid.as_pid().ok_or_else(badarg)?;
-    let payload = *message;
     let reference = context
-        .schedule_timer_with_reference(delay, target_pid, |reference| {
-            timeout_tuple_term(reference, payload).unwrap_or(payload)
-        })
-        .ok_or_else(badarg)?;
+        .schedule_timeout_timer(delay, target_pid, *message)
+        .ok_or_else(badarg)??;
     timer_ref_term(reference)
 }
 
@@ -245,19 +241,6 @@ fn timer_ref_term(reference: TimerRef) -> Result<Term, Term> {
         .ok_or_else(badarg)
 }
 
-fn timeout_tuple_term(reference: TimerRef, message: Term) -> Result<Term, Term> {
-    let words = Box::leak(Box::new([0_u64; 4]));
-    write_tuple(
-        words,
-        &[
-            Term::atom(Atom::TIMEOUT),
-            timer_ref_term(reference)?,
-            message,
-        ],
-    )
-    .ok_or_else(badarg)
-}
-
 fn bool_term(value: bool) -> Term {
     Term::atom(if value { Atom::TRUE } else { Atom::FALSE })
 }
@@ -279,6 +262,7 @@ mod tests {
     };
     use crate::atom::{Atom, AtomTable};
     use crate::native::{BifRegistryImpl, ProcessContext};
+    use crate::process::Process;
     use crate::term::Term;
     use crate::term::boxed::{Tuple, write_cons, write_map, write_tuple};
     use crate::timer::TimerWheel;
@@ -574,7 +558,9 @@ mod tests {
     #[test]
     fn timer_bifs_schedule_start_and_cancel_round_trips() {
         let timers = Arc::new(Mutex::new(TimerWheel::new()));
+        let mut process = Process::new(7, 64);
         let mut context = ProcessContext::with_timer_services(7, Arc::clone(&timers));
+        context.attach_process_heap(&mut process, 0);
 
         let send_ref = send_after(
             &[small_int(100), Term::pid(9), Term::atom(Atom::OK)],

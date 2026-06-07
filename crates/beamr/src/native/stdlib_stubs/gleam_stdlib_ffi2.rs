@@ -3,19 +3,19 @@
 use crate::atom::Atom;
 use crate::native::ProcessContext;
 use crate::term::Term;
-use crate::term::binary::{Binary, packed_word_count, write_binary};
-use crate::term::boxed::{Closure, Cons, Float, Map, Tuple, write_float, write_map, write_tuple};
+use crate::term::binary::Binary;
+use crate::term::boxed::{Closure, Cons, Float, Map, Tuple};
 
 use super::encoding_bifs::{
     bif_base64_decode as erlang_base64_decode, bif_base64_encode as erlang_base64_encode,
     bif_binary_decode_hex, bif_binary_encode_hex,
 };
 
-pub fn bif_classify_dynamic(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_classify_dynamic(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [value] = args else {
         return Err(badarg());
     };
-    make_binary(classify(*value).as_bytes())
+    make_binary(context, classify(*value).as_bytes())
 }
 
 pub fn bif_dict(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -38,7 +38,7 @@ pub fn bif_dict(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
         );
         current = cons.tail();
     }
-    make_sorted_map(&entries)
+    make_sorted_map(context, &entries)
 }
 
 pub fn bif_float(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -47,7 +47,7 @@ pub fn bif_float(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
         return Err(badarg());
     };
     if let Some(integer) = value.as_small_int() {
-        return make_float(integer as f64);
+        return make_float(context, integer as f64);
     }
     if Float::new(*value).is_some() {
         return Ok(*value);
@@ -61,7 +61,7 @@ pub fn bif_float_to_string(args: &[Term], context: &mut ProcessContext) -> Resul
         return Err(badarg());
     };
     let float = Float::new(*value).ok_or_else(badarg)?;
-    make_binary(float.value().to_string().as_bytes())
+    make_binary(context, float.value().to_string().as_bytes())
 }
 
 pub fn bif_index(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -98,7 +98,7 @@ pub fn bif_int_from_base_string(args: &[Term], context: &mut ProcessContext) -> 
         .and_then(|value| u32::try_from(value).ok())
         .filter(|value| (2..=36).contains(value))
         .ok_or_else(badarg)?;
-    result_tuple(parse_int_with_base(*string, base))
+    result_tuple(context, parse_int_with_base(*string, base))
 }
 
 pub fn bif_parse_float(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -107,7 +107,7 @@ pub fn bif_parse_float(args: &[Term], context: &mut ProcessContext) -> Result<Te
         return Err(badarg());
     };
     let result = parse_float_binary(*string).and_then(make_float);
-    result_tuple(result)
+    result_tuple(context, result)
 }
 
 pub fn bif_parse_int(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -115,7 +115,7 @@ pub fn bif_parse_int(args: &[Term], context: &mut ProcessContext) -> Result<Term
     let [string] = args else {
         return Err(badarg());
     };
-    result_tuple(parse_int_with_base(*string, 10))
+    result_tuple(context, parse_int_with_base(*string, 10))
 }
 
 pub fn bif_is_null(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -246,7 +246,7 @@ pub fn bif_bit_array_concat(args: &[Term], context: &mut ProcessContext) -> Resu
         bytes.extend_from_slice(binary.as_bytes());
         current = cons.tail();
     }
-    make_binary(&bytes)
+    make_binary(context, &bytes)
 }
 
 pub fn bif_bit_array_pad_to_bytes(
@@ -273,7 +273,7 @@ pub fn bif_bit_array_slice(args: &[Term], context: &mut ProcessContext) -> Resul
     if end > bytes.len() {
         return Err(badarg());
     }
-    make_binary(&bytes[offset..end])
+    make_binary(context, &bytes[offset..end])
 }
 
 pub fn bif_bit_array_to_int_and_size(
@@ -339,13 +339,12 @@ fn set_entry(entries: &mut Vec<(Term, Term)>, key: Term, value: Term) {
     }
 }
 
-fn make_sorted_map(entries: &[(Term, Term)]) -> Result<Term, Term> {
+fn make_sorted_map(context: &mut ProcessContext, entries: &[(Term, Term)]) -> Result<Term, Term> {
     let mut sorted = entries.to_vec();
     sorted.sort_by(|(left, _), (right, _)| left.cmp(right));
     let keys: Vec<_> = sorted.iter().map(|(key, _)| *key).collect();
     let values: Vec<_> = sorted.iter().map(|(_, value)| *value).collect();
-    let heap = Box::leak(vec![0u64; 2 + keys.len() + values.len()].into_boxed_slice());
-    write_map(heap, &keys, &values).ok_or_else(badarg)
+    context.alloc_map(&keys, &values).map_err(|_| badarg())
 }
 
 fn list_index(list: Term, index: usize) -> Result<Term, Term> {
@@ -408,13 +407,12 @@ fn render_term(term: Term, context: &ProcessContext) -> String {
     format!("{term:?}")
 }
 
-fn result_tuple(result: Result<Term, Term>) -> Result<Term, Term> {
+fn result_tuple(context: &mut ProcessContext, result: Result<Term, Term>) -> Result<Term, Term> {
     let values = match result {
         Ok(value) => [Term::atom(Atom::OK), value],
         Err(_) => [Term::atom(Atom::ERROR), Term::NIL],
     };
-    let heap = Box::leak(Box::new([0u64; 3]));
-    write_tuple(heap, &values).ok_or_else(badarg)
+    context.alloc_tuple(&values).map_err(|_| badarg())
 }
 
 fn binary_text(binary: Term) -> Result<&'static str, Term> {
@@ -433,17 +431,15 @@ fn non_negative_usize(term: Term) -> Result<usize, Term> {
         .ok_or_else(badarg)
 }
 
-fn make_binary(bytes: &[u8]) -> Result<Term, Term> {
-    let heap = Box::leak(vec![0u64; 2 + packed_word_count(bytes.len())].into_boxed_slice());
-    write_binary(heap, bytes).ok_or_else(badarg)
+fn make_binary(context: &mut ProcessContext, bytes: &[u8]) -> Result<Term, Term> {
+    context.alloc_binary(bytes).map_err(|_| badarg())
 }
 
-fn make_float(value: f64) -> Result<Term, Term> {
+fn make_float(context: &mut ProcessContext, value: f64) -> Result<Term, Term> {
     if !value.is_finite() {
         return Err(badarg());
     }
-    let heap = Box::leak(Box::new([0u64; 2]));
-    write_float(heap, value).ok_or_else(badarg)
+    context.alloc_float(value).map_err(|_| badarg())
 }
 
 fn badarg() -> Term {
