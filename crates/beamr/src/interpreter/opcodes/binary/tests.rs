@@ -3,6 +3,7 @@ use crate::atom::Atom;
 use crate::loader::{Instruction, Literal};
 use crate::module::Module;
 use crate::term::binary::{Binary, write_binary};
+use crate::term::boxed::Float;
 use std::collections::HashMap;
 
 fn module(code: Vec<Instruction>) -> Module {
@@ -34,6 +35,25 @@ fn binary_term(process: &mut Process, bytes: &[u8]) -> Term {
     let ptr = process.heap_mut().alloc(words).expect("test heap fits");
     let heap = heap_slice(ptr, words);
     write_binary(heap, bytes).expect("test binary fits")
+}
+
+fn start_match(process: &mut Process, module: &Module, bytes: &[u8]) {
+    let source = binary_term(process, bytes);
+    process.set_x_reg(0, source);
+    binary_op(
+        process,
+        module,
+        BinaryOp::BsStartMatch3,
+        &[Operand::Label(9), Operand::X(0), Operand::X(1)],
+    )
+    .expect("start match");
+}
+
+fn jump_to_fail() -> InstructionOutcome {
+    InstructionOutcome::Jump(CodePosition {
+        module: Atom::OK,
+        instruction_pointer: 0,
+    })
 }
 
 #[test]
@@ -424,5 +444,413 @@ fn interpreter_binary_start_match_non_binary_branches_to_fail() {
             module: Atom::OK,
             instruction_pointer: 0,
         }))
+    );
+}
+
+#[test]
+fn bs_skip_bits_advances_and_branches_past_end() {
+    let mut process = Process::new(1, 64);
+    let module = module(vec![Instruction::Label { label: 9 }]);
+    start_match(&mut process, &module, &[1, 2, 3, 4]);
+
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsSkipBits2,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(16),
+            Operand::Unsigned(1),
+            Operand::Atom(None),
+        ],
+    )
+    .expect("skip");
+    assert_eq!(
+        MatchContext::new(process.x_reg(1))
+            .expect("match context")
+            .position_bits(),
+        16
+    );
+    assert_eq!(
+        binary_op(
+            &mut process,
+            &module,
+            BinaryOp::BsSkipBits2,
+            &[
+                Operand::Label(9),
+                Operand::X(1),
+                Operand::Unsigned(24),
+                Operand::Unsigned(1),
+                Operand::Atom(None),
+            ],
+        ),
+        Ok(jump_to_fail())
+    );
+}
+
+#[test]
+fn bs_test_unit_accepts_divisible_remainder_and_fails_otherwise() {
+    let mut process = Process::new(1, 64);
+    let module = module(vec![Instruction::Label { label: 9 }]);
+    start_match(&mut process, &module, &[1, 2, 3]);
+    assert_eq!(
+        binary_op(
+            &mut process,
+            &module,
+            BinaryOp::BsTestUnit,
+            &[Operand::Label(9), Operand::X(1), Operand::Unsigned(8)],
+        ),
+        Ok(InstructionOutcome::Continue)
+    );
+
+    let mut process = Process::new(1, 64);
+    start_match(&mut process, &module, &[1, 2, 3, 4]);
+    MatchContext::new(process.x_reg(1))
+        .expect("match context")
+        .set_position_bits(7);
+    assert_eq!(
+        binary_op(
+            &mut process,
+            &module,
+            BinaryOp::BsTestUnit,
+            &[Operand::Label(9), Operand::X(1), Operand::Unsigned(8)],
+        ),
+        Ok(jump_to_fail())
+    );
+}
+
+#[test]
+fn bs_get_float_extracts_64_and_32_bit_values() {
+    let mut process = Process::new(1, 64);
+    let module = module(vec![Instruction::Label { label: 9 }]);
+    start_match(&mut process, &module, &3.14_f64.to_be_bytes());
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetFloat2,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(64),
+            Operand::Unsigned(1),
+            Operand::Atom(None),
+            Operand::X(2),
+        ],
+    )
+    .expect("get f64");
+    assert_eq!(Float::new(process.x_reg(2)).expect("float").value(), 3.14);
+
+    let mut process = Process::new(1, 64);
+    start_match(&mut process, &module, &1.5_f32.to_be_bytes());
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetFloat2,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(32),
+            Operand::Unsigned(1),
+            Operand::Atom(None),
+            Operand::X(2),
+        ],
+    )
+    .expect("get f32");
+    assert_eq!(Float::new(process.x_reg(2)).expect("float").value(), 1.5);
+}
+
+#[test]
+fn bs_get_tail_copies_remaining_bytes_including_empty_tail() {
+    let mut process = Process::new(1, 64);
+    let module = module(vec![Instruction::Label { label: 9 }]);
+    start_match(&mut process, &module, b"abcdefgh");
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsSkipBits2,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(32),
+            Operand::Unsigned(1),
+            Operand::Atom(None),
+        ],
+    )
+    .expect("skip first half");
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetTail,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(0),
+            Operand::X(2),
+        ],
+    )
+    .expect("get tail");
+    assert_eq!(
+        Binary::new(process.x_reg(2)).expect("tail").as_bytes(),
+        b"efgh"
+    );
+
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetTail,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(0),
+            Operand::X(3),
+        ],
+    )
+    .expect("get empty tail");
+    assert_eq!(Binary::new(process.x_reg(3)).expect("tail").as_bytes(), b"");
+}
+
+#[test]
+fn utf_ops_decode_and_reject_invalid_sequences() {
+    let module = module(vec![Instruction::Label { label: 9 }]);
+    for (bytes, expected) in [
+        (&b"A"[..], 0x41),
+        (&[0xc2, 0xa2][..], 0xa2),
+        (&[0xe2, 0x82, 0xac][..], 0x20ac),
+        (&[0xf0, 0x9f, 0x98, 0x80][..], 0x1f600),
+    ] {
+        let mut process = Process::new(1, 64);
+        start_match(&mut process, &module, bytes);
+        binary_op(
+            &mut process,
+            &module,
+            BinaryOp::BsGetUtf8,
+            &[
+                Operand::Label(9),
+                Operand::X(1),
+                Operand::Unsigned(0),
+                Operand::Atom(None),
+                Operand::X(2),
+            ],
+        )
+        .expect("get utf8");
+        assert_eq!(process.x_reg(2).as_small_int(), Some(expected));
+    }
+
+    let mut process = Process::new(1, 64);
+    start_match(&mut process, &module, &[0xc0, 0x80]);
+    assert_eq!(
+        binary_op(
+            &mut process,
+            &module,
+            BinaryOp::BsGetUtf8,
+            &[
+                Operand::Label(9),
+                Operand::X(1),
+                Operand::Unsigned(0),
+                Operand::Atom(None),
+                Operand::X(2),
+            ],
+        ),
+        Ok(jump_to_fail())
+    );
+}
+
+#[test]
+fn utf16_and_utf32_decode_endian_and_reject_invalid_codepoints() {
+    let module = module(vec![Instruction::Label { label: 9 }]);
+    let mut process = Process::new(1, 64);
+    start_match(&mut process, &module, &[0x20, 0xac]);
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetUtf16,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(0),
+            Operand::Atom(None),
+            Operand::X(2),
+        ],
+    )
+    .expect("utf16 be");
+    assert_eq!(process.x_reg(2).as_small_int(), Some(0x20ac));
+
+    let mut process = Process::new(1, 64);
+    start_match(&mut process, &module, &[0xac, 0x20]);
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetUtf16,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(0),
+            Operand::Unsigned(0x02),
+            Operand::X(2),
+        ],
+    )
+    .expect("utf16 le");
+    assert_eq!(process.x_reg(2).as_small_int(), Some(0x20ac));
+
+    let mut process = Process::new(1, 64);
+    start_match(&mut process, &module, &[0x00, 0x10, 0xff, 0xff]);
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetUtf32,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(0),
+            Operand::Atom(None),
+            Operand::X(2),
+        ],
+    )
+    .expect("utf32 valid");
+    assert_eq!(process.x_reg(2).as_small_int(), Some(0x10ffff));
+
+    let mut process = Process::new(1, 64);
+    start_match(&mut process, &module, &[0x00, 0x11, 0x00, 0x00]);
+    assert_eq!(
+        binary_op(
+            &mut process,
+            &module,
+            BinaryOp::BsGetUtf32,
+            &[
+                Operand::Label(9),
+                Operand::X(1),
+                Operand::Unsigned(0),
+                Operand::Atom(None),
+                Operand::X(2),
+            ],
+        ),
+        Ok(jump_to_fail())
+    );
+}
+
+#[test]
+fn bs_get_and_set_position_support_re_reading() {
+    let mut process = Process::new(1, 64);
+    let module = module(vec![Instruction::Label { label: 9 }]);
+    start_match(&mut process, &module, &[65, 66]);
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetPosition,
+        &[Operand::X(1), Operand::X(2), Operand::Unsigned(0)],
+    )
+    .expect("get initial position");
+    assert_eq!(process.x_reg(2).as_small_int(), Some(0));
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsSkipBits2,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(8),
+            Operand::Unsigned(1),
+            Operand::Atom(None),
+        ],
+    )
+    .expect("skip byte");
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetPosition,
+        &[Operand::X(1), Operand::X(2), Operand::Unsigned(0)],
+    )
+    .expect("get moved position");
+    assert_eq!(process.x_reg(2).as_small_int(), Some(8));
+    process.set_x_reg(3, Term::small_int(0));
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsSetPosition,
+        &[Operand::X(1), Operand::X(3)],
+    )
+    .expect("set position");
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsGetInteger2,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::Unsigned(8),
+            Operand::Unsigned(1),
+            Operand::Atom(None),
+            Operand::X(4),
+        ],
+    )
+    .expect("reread first byte");
+    assert_eq!(process.x_reg(4).as_small_int(), Some(65));
+}
+
+#[test]
+fn bs_match_runs_compound_commands_atomically() {
+    let mut process = Process::new(1, 96);
+    let module = module(vec![Instruction::Label { label: 9 }]);
+    start_match(&mut process, &module, b"abcd");
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsMatch,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::List(vec![
+                Operand::Unsigned(1),
+                Operand::Unsigned(0),
+                Operand::Atom(None),
+                Operand::Unsigned(8),
+                Operand::Unsigned(1),
+                Operand::X(2),
+                Operand::Unsigned(4),
+                Operand::Unsigned(8),
+                Operand::Unsigned(2),
+                Operand::Unsigned(0),
+                Operand::Atom(None),
+                Operand::Unsigned(16),
+                Operand::Unsigned(1),
+                Operand::X(3),
+            ]),
+        ],
+    )
+    .expect("compound match");
+    assert_eq!(process.x_reg(2).as_small_int(), Some(97));
+    assert_eq!(
+        Binary::new(process.x_reg(3)).expect("tail").as_bytes(),
+        b"cd"
+    );
+
+    let mut process = Process::new(1, 96);
+    start_match(&mut process, &module, b"abcd");
+    assert_eq!(
+        binary_op(
+            &mut process,
+            &module,
+            BinaryOp::BsMatch,
+            &[
+                Operand::Label(9),
+                Operand::X(1),
+                Operand::List(vec![
+                    Operand::Unsigned(4),
+                    Operand::Unsigned(16),
+                    Operand::Unsigned(3),
+                    Operand::Atom(None),
+                    Operand::Unsigned(16),
+                    Operand::Integer(0xffff),
+                ]),
+            ],
+        ),
+        Ok(jump_to_fail())
+    );
+    assert_eq!(
+        MatchContext::new(process.x_reg(1))
+            .expect("match context")
+            .position_bits(),
+        0
     );
 }
