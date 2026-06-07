@@ -473,22 +473,14 @@ fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, LoadError> {
 
 #[cfg(test)]
 mod tests {
-    use super::decode_instructions;
+    use super::{decode_code_chunk, decode_instructions};
+    use crate::error::LoadError;
     use crate::loader::decode::{Instruction, Operand};
 
     #[test]
     fn opcode_65_decodes_to_get_list() {
-        let instructions = decode_instructions(
-            &[
-                65,   // get_list/3
-                0x03, // X0
-                0x13, // X1
-                0x23, // X2
-            ],
-            &[],
-            &[],
-        )
-        .expect("decode get_list");
+        let instructions =
+            decode_instructions(&get_list_code(), &[], &[]).expect("decode get_list");
 
         assert_eq!(
             instructions,
@@ -498,5 +490,37 @@ mod tests {
                 tail: Operand::X(2),
             }]
         );
+    }
+
+    #[test]
+    fn get_list_counts_toward_code_chunk_opcode_max_validation() {
+        let mut chunk = code_chunk_header(64);
+        chunk.extend_from_slice(&get_list_code());
+
+        assert_eq!(
+            decode_code_chunk(&chunk, &[], &[]),
+            Err(LoadError::DecodeError(
+                "decoded opcode 65 exceeds Code opcode_max 64".into()
+            ))
+        );
+    }
+
+    fn get_list_code() -> [u8; 4] {
+        [
+            65,   // get_list/3
+            0x03, // X0
+            0x13, // X1
+            0x23, // X2
+        ]
+    }
+
+    fn code_chunk_header(opcode_max: u32) -> Vec<u8> {
+        let mut chunk = Vec::new();
+        chunk.extend_from_slice(&16_u32.to_be_bytes());
+        chunk.extend_from_slice(&0_u32.to_be_bytes());
+        chunk.extend_from_slice(&opcode_max.to_be_bytes());
+        chunk.extend_from_slice(&0_u32.to_be_bytes());
+        chunk.extend_from_slice(&0_u32.to_be_bytes());
+        chunk
     }
 }

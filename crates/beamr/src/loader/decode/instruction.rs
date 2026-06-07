@@ -311,6 +311,7 @@ pub(crate) fn instruction_opcode(instruction: &Instruction) -> Option<u8> {
         Instruction::CallExt { .. } => Some(7),
         Instruction::CallExtLast { .. } => Some(8),
         Instruction::CallExtOnly { .. } => Some(78),
+        Instruction::GetList { .. } => Some(65),
         Instruction::Generic { opcode, .. } => Some(*opcode),
         _ => None,
     }

@@ -1,1 +1,1 @@
-feat(beamr): implement get_list opcode decoding and execution
+Harden B-056 get_list opcode validation
