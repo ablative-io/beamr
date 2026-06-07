@@ -13,6 +13,7 @@ use self::execution::scheduler_loop;
 use self::spawning::SpawnRequest;
 use crate::atom::AtomTable;
 use crate::error::ExecError;
+use crate::ets::{EtsTable, EtsTableId, EtsTableMetadata};
 use crate::hook::Hook;
 use crate::io::{IoSink, NullSink};
 use crate::module::ModuleRegistry;
@@ -51,6 +52,9 @@ pub(super) struct SharedState {
     namespace_store: DashMap<NamespaceId, Arc<ModuleRegistry>>,
     next_namespace_id: AtomicU64,
     atom_table: Arc<AtomTable>,
+    ets_tables: DashMap<EtsTableId, Arc<dyn EtsTable>>,
+    ets_named_tables: DashMap<crate::atom::Atom, EtsTableId>,
+    next_ets_table_id: AtomicU64,
     bif_registry: Arc<BifRegistryImpl>,
     capability_policy: Arc<dyn CapabilityPolicy>,
     spawn_counter: AtomicUsize,
@@ -77,6 +81,56 @@ pub(super) struct SharedState {
 }
 
 impl SharedState {
+    pub(super) fn create_table(&self, mut metadata: EtsTableMetadata) -> EtsTableId {
+        let table_id = self.next_ets_table_id.fetch_add(1, Ordering::Relaxed);
+        metadata.id = table_id;
+        let table: Arc<dyn EtsTable> = Arc::new(MetadataOnlyTable { metadata });
+        let name = table.metadata().name;
+        self.ets_tables.insert(table_id, table);
+        if let Some(name) = name {
+            self.ets_named_tables.insert(name, table_id);
+        }
+        table_id
+    }
+
+    pub(super) fn lookup_table(&self, id: EtsTableId) -> Option<Arc<dyn EtsTable>> {
+        self.ets_tables.get(&id).map(|table| Arc::clone(&table))
+    }
+
+    pub(super) fn lookup_table_by_name(&self, name: crate::atom::Atom) -> Option<EtsTableId> {
+        self.ets_named_tables.get(&name).map(|entry| *entry.value())
+    }
+
+    pub(super) fn delete_table(&self, id: EtsTableId) -> bool {
+        let Some((_id, table)) = self.ets_tables.remove(&id) else {
+            return false;
+        };
+        if let Some(name) = table.metadata().name {
+            self.ets_named_tables
+                .remove_if(&name, |_name, indexed_id| *indexed_id == id);
+        }
+        true
+    }
+
+    pub(super) fn delete_tables_owned_by(&self, owner: u64) -> usize {
+        let table_ids = self
+            .ets_tables
+            .iter()
+            .filter_map(|entry| {
+                if entry.value().metadata().owner == owner {
+                    Some(*entry.key())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let deleted = table_ids.len();
+        for table_id in table_ids {
+            let _removed = self.delete_table(table_id);
+        }
+        deleted
+    }
+
     /// Return the number of alive processes tracked by the scheduler.
     #[must_use]
     pub(super) fn process_count(&self) -> usize {
@@ -93,6 +147,32 @@ impl SharedState {
     #[must_use]
     pub(super) fn atom_count(&self) -> usize {
         self.atom_table.len()
+    }
+}
+
+struct MetadataOnlyTable {
+    metadata: EtsTableMetadata,
+}
+
+impl EtsTable for MetadataOnlyTable {
+    fn metadata(&self) -> &EtsTableMetadata {
+        &self.metadata
+    }
+
+    fn insert(&self, _tuple: Term) -> Result<(), crate::ets::EtsError> {
+        Ok(())
+    }
+
+    fn lookup(&self, _key: Term) -> Vec<Term> {
+        Vec::new()
+    }
+
+    fn delete_key(&self, _key: Term) -> bool {
+        false
+    }
+
+    fn tab2list(&self) -> Vec<Term> {
+        Vec::new()
     }
 }
 
@@ -113,6 +193,29 @@ pub struct Scheduler {
     worker_names: Vec<String>,
 }
 impl Scheduler {
+    /// Allocate and register an ETS table owned by a process.
+    ///
+    /// The provided metadata's `id` field is overwritten with the allocated,
+    /// monotonically increasing table ID before the table is inserted.
+    pub fn create_ets_table(&self, metadata: EtsTableMetadata) -> EtsTableId {
+        self.shared.create_table(metadata)
+    }
+
+    /// Look up a registered ETS table by ID.
+    pub fn lookup_ets_table(&self, id: EtsTableId) -> Option<Arc<dyn EtsTable>> {
+        self.shared.lookup_table(id)
+    }
+
+    /// Look up a named ETS table by atom.
+    pub fn lookup_ets_table_by_name(&self, name: crate::atom::Atom) -> Option<EtsTableId> {
+        self.shared.lookup_table_by_name(name)
+    }
+
+    /// Delete a registered ETS table by ID.
+    pub fn delete_ets_table(&self, id: EtsTableId) -> bool {
+        self.shared.delete_table(id)
+    }
+
     pub fn new(
         config: SchedulerConfig,
         module_registry: Arc<ModuleRegistry>,
@@ -170,6 +273,9 @@ impl Scheduler {
             namespace_store,
             next_namespace_id: AtomicU64::new(1),
             atom_table,
+            ets_tables: DashMap::new(),
+            ets_named_tables: DashMap::new(),
+            next_ets_table_id: AtomicU64::new(1),
             bif_registry,
             capability_policy,
             spawn_counter: AtomicUsize::new(0),
