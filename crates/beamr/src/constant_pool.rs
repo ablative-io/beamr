@@ -270,9 +270,11 @@ fn literal_word_count(literal: &Literal) -> Result<usize, LoadError> {
         Literal::Map(entries) => {
             let mut words = 2 + entries.len() * 2;
             for (key, value) in entries {
+                let key_words = literal_word_count(key)?;
+                let value_words = literal_word_count(value)?;
                 words = words
-                    .checked_add(literal_word_count(key)?)
-                    .and_then(|count| count.checked_add(literal_word_count(value)?))
+                    .checked_add(key_words)
+                    .and_then(|count| count.checked_add(value_words))
                     .ok_or_else(|| {
                         LoadError::ValidationError("constant-pool map size overflow".into())
                     })?;
