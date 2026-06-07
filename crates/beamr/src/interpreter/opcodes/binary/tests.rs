@@ -1,6 +1,6 @@
 use super::*;
 use crate::atom::Atom;
-use crate::loader::Instruction;
+use crate::loader::{Instruction, Literal};
 use crate::module::Module;
 use crate::term::binary::{Binary, write_binary};
 use std::collections::HashMap;
@@ -21,6 +21,7 @@ fn module(code: Vec<Instruction>) -> Module {
         label_index,
         code,
         literals: Vec::new(),
+        constant_pool: Default::default(),
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
@@ -88,6 +89,7 @@ fn interpreter_binary_builder_appends_integer_and_binary_segments() {
 
     bs_put_integer(
         &mut process,
+        &module,
         builder,
         &Operand::Integer(65),
         &Operand::Unsigned(8),
@@ -97,7 +99,7 @@ fn interpreter_binary_builder_appends_integer_and_binary_segments() {
     .expect("put integer");
     let source = binary_term(&mut process, &[66, 67]);
     process.set_x_reg(1, source);
-    bs_put_binary(&mut process, builder, &Operand::X(1)).expect("put binary");
+    bs_put_binary(&mut process, &module, builder, &Operand::X(1)).expect("put binary");
 
     let builder_state = BinaryBuilder::new(builder).expect("builder context");
     assert_eq!(builder_state.write_position_bits(), 24);
@@ -124,6 +126,7 @@ fn interpreter_binary_builder_rejects_writes_past_capacity() {
     assert_eq!(
         bs_put_integer(
             &mut process,
+            &module,
             builder,
             &Operand::Integer(0x4142),
             &Operand::Unsigned(16),
@@ -234,7 +237,11 @@ fn interpreter_binary_match_extracts_fields_and_tail() {
 #[test]
 fn interpreter_binary_match_failures_branch_without_advancing() {
     let mut process = Process::new(1, 64);
-    let module = module(vec![Instruction::Label { label: 9 }]);
+    let mut module = module(vec![Instruction::Label { label: 9 }]);
+    let literals = vec![Literal::String(b"he".to_vec())];
+    module.constant_pool =
+        crate::constant_pool::materialise_literals(&literals, None).expect("literal pool");
+    module.literals = literals;
     let source = binary_term(&mut process, b"hello");
     process.set_x_reg(0, source);
 
@@ -255,7 +262,7 @@ fn interpreter_binary_match_failures_branch_without_advancing() {
                 Operand::Label(9),
                 Operand::X(1),
                 Operand::Unsigned(16),
-                Operand::Literal(Literal::String(b"he".to_vec())),
+                Operand::Literal(0),
             ],
         ),
         Ok(InstructionOutcome::Continue)
@@ -275,7 +282,7 @@ fn interpreter_binary_match_failures_branch_without_advancing() {
             Operand::Label(9),
             Operand::X(1),
             Operand::Unsigned(16),
-            Operand::Literal(Literal::String(b"xx".to_vec())),
+            Operand::Literal(0),
         ],
     )
     .expect("failed match branches");

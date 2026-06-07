@@ -6,7 +6,8 @@ use proptest::prelude::*;
 use super::*;
 use crate::{
     atom::Atom,
-    loader::Instruction,
+    constant_pool::materialise_literals,
+    loader::{Instruction, Literal},
     module::Module,
     term::boxed::{Closure, Cons, Tuple, write_closure, write_cons, write_tuple},
 };
@@ -29,6 +30,7 @@ pub(crate) fn module_pin(name: Atom) -> Arc<Module> {
         label_index: HashMap::from([(1, 0)]),
         code: vec![Instruction::Label { label: 1 }],
         literals: Vec::new(),
+        constant_pool: Default::default(),
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
@@ -132,6 +134,55 @@ pub(crate) fn assert_no_term_pointer_into_young(process: &Process, term: Term) {
             }
         }
     }
+}
+
+#[test]
+fn constant_pool_terms_remain_external_roots_across_gc() {
+    let literals = vec![Literal::Tuple(vec![
+        Literal::Integer(1),
+        Literal::Integer(2),
+    ])];
+    let pool = materialise_literals(&literals, None).expect("constant pool");
+    let literal = pool.get(0).expect("literal root");
+    let literal_ptr = literal.heap_ptr();
+    let mut process = Process::new(1, 32);
+    process.set_x_reg(0, literal);
+
+    collect_minor(&mut process).expect("minor GC succeeds");
+    assert_eq!(process.x_reg(0).raw(), literal.raw());
+    assert_eq!(process.x_reg(0).heap_ptr(), literal_ptr);
+
+    collect_major(&mut process).expect("major GC succeeds");
+    assert_eq!(process.x_reg(0).raw(), literal.raw());
+    assert_eq!(process.x_reg(0).heap_ptr(), literal_ptr);
+    assert_eq!(
+        snapshot(process.x_reg(0)),
+        Snapshot::Tuple(vec![Snapshot::Int(1), Snapshot::Int(2)])
+    );
+}
+
+#[test]
+fn constant_pool_terms_nested_in_process_heap_are_not_copied() {
+    let literals = vec![Literal::List(
+        vec![Literal::Integer(7)],
+        Box::new(Literal::Nil),
+    )];
+    let pool = materialise_literals(&literals, None).expect("constant pool");
+    let literal = pool.get(0).expect("literal root");
+    let literal_ptr = literal.heap_ptr();
+    let mut process = Process::new(1, 32);
+    let tuple = alloc_tuple(&mut process, &[literal]);
+    process.set_x_reg(0, tuple);
+
+    collect_minor(&mut process).expect("minor GC succeeds");
+    let tuple = Tuple::new(process.x_reg(0)).expect("tuple after minor");
+    assert_eq!(tuple.get(0).expect("literal field").raw(), literal.raw());
+    assert_eq!(tuple.get(0).expect("literal field").heap_ptr(), literal_ptr);
+
+    collect_major(&mut process).expect("major GC succeeds");
+    let tuple = Tuple::new(process.x_reg(0)).expect("tuple after major");
+    assert_eq!(tuple.get(0).expect("literal field").raw(), literal.raw());
+    assert_eq!(tuple.get(0).expect("literal field").heap_ptr(), literal_ptr);
 }
 
 #[test]

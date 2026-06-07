@@ -84,7 +84,7 @@ pub fn wait_timeout(
     timeout: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
     let continuation = label_position(module, fail)?;
-    let milliseconds = timeout_milliseconds(process, timeout)?;
+    let milliseconds = timeout_milliseconds(process, module, timeout)?;
     let timeout_position = continuation;
     process.set_code_position(Some(CodePosition {
         module: module.name,
@@ -139,9 +139,10 @@ pub fn try_case(process: &mut Process, source: &Operand) -> Result<InstructionOu
 
 pub fn try_case_end(
     process: &mut Process,
+    module: &Module,
     source: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let value = core::read_term(process, source)?;
+    let value = core::read_term(process, module, source)?;
 
     let reason = two_tuple(process, Term::atom(Atom::BADMATCH), value)?;
     raise_exception(process, Exception::error(reason, Term::NIL))
@@ -149,11 +150,12 @@ pub fn try_case_end(
 
 pub fn raise(
     process: &mut Process,
+    module: &Module,
     stacktrace: &Operand,
     reason: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let stacktrace = core::read_term(process, stacktrace)?;
-    let reason = core::read_term(process, reason)?;
+    let stacktrace = core::read_term(process, module, stacktrace)?;
+    let reason = core::read_term(process, module, reason)?;
 
     let class = process
         .current_exception()
@@ -168,15 +170,23 @@ pub fn raise(
     )
 }
 
-pub fn badmatch(process: &mut Process, value: &Operand) -> Result<InstructionOutcome, ExecError> {
-    let value = core::read_term(process, value)?;
+pub fn badmatch(
+    process: &mut Process,
+    module: &Module,
+    value: &Operand,
+) -> Result<InstructionOutcome, ExecError> {
+    let value = core::read_term(process, module, value)?;
 
     let reason = two_tuple(process, Term::atom(Atom::BADMATCH), value)?;
     raise_exception(process, Exception::error(reason, Term::NIL))
 }
 
-pub fn case_end(process: &mut Process, value: &Operand) -> Result<InstructionOutcome, ExecError> {
-    let value = core::read_term(process, value)?;
+pub fn case_end(
+    process: &mut Process,
+    module: &Module,
+    value: &Operand,
+) -> Result<InstructionOutcome, ExecError> {
+    let value = core::read_term(process, module, value)?;
 
     let reason = two_tuple(process, Term::atom(Atom::CASE_CLAUSE), value)?;
     raise_exception(process, Exception::error(reason, Term::NIL))
@@ -239,11 +249,15 @@ fn transition_to_waiting(process: &mut Process) -> Result<(), ExecError> {
         .map_err(|_| ExecError::Badarg)
 }
 
-fn timeout_milliseconds(process: &Process, operand: &Operand) -> Result<u64, ExecError> {
+fn timeout_milliseconds(
+    process: &Process,
+    module: &Module,
+    operand: &Operand,
+) -> Result<u64, ExecError> {
     match operand {
         Operand::Unsigned(value) => Ok(*value),
         Operand::Integer(value) => u64::try_from(*value).map_err(|_| ExecError::Badarg),
-        _ => core::read_term(process, operand)?
+        _ => core::read_term(process, module, operand)?
             .as_small_int()
             .and_then(|value| u64::try_from(value).ok())
             .ok_or(ExecError::Badarg),
@@ -262,7 +276,6 @@ fn register(operand: &Operand) -> Result<Register, ExecError> {
         _ => Err(ExecError::InvalidOperand("register")),
     }
 }
-
 
 fn write_register(
     process: &mut Process,
@@ -318,6 +331,7 @@ mod tests {
             label_index,
             code,
             literals: Vec::new(),
+            constant_pool: Default::default(),
             resolved_imports: Vec::new(),
             lambdas: Vec::new(),
             string_table: Vec::new(),
@@ -590,7 +604,7 @@ mod tests {
             Ok(InstructionOutcome::Continue)
         );
         assert_eq!(
-            badmatch(&mut process, &Operand::Integer(42)),
+            badmatch(&mut process, &code, &Operand::Integer(42)),
             Ok(InstructionOutcome::Jump(CodePosition {
                 module: Atom::OK,
                 instruction_pointer: 0,
@@ -621,6 +635,7 @@ mod tests {
         assert_eq!(
             raise(
                 &mut process,
+                &code,
                 &Operand::Integer(777),
                 &Operand::Atom(Some(Atom::BADARG)),
             ),
@@ -643,7 +658,7 @@ mod tests {
         let mut process = Process::new(1, 64);
         try_(&mut process, &code, &Operand::X(0), &Operand::Label(20)).expect("try");
         assert_eq!(
-            case_end(&mut process, &Operand::Atom(Some(Atom::OK))),
+            case_end(&mut process, &code, &Operand::Atom(Some(Atom::OK))),
             Ok(InstructionOutcome::Jump(CodePosition {
                 module: Atom::OK,
                 instruction_pointer: 0,

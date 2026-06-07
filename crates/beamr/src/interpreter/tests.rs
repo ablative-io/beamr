@@ -29,6 +29,7 @@ fn module(name: Atom, code: Vec<Instruction>) -> Module {
         label_index,
         code,
         literals: Vec::new(),
+        constant_pool: Default::default(),
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
@@ -220,7 +221,8 @@ fn func_info_and_move_cover_metadata_register_literals_and_stack() {
     let atoms = AtomTable::new();
     let module_atom = atoms.intern("sample");
     let function_atom = atoms.intern("main");
-    let module = module(
+    let literals = vec![Literal::Integer(7)];
+    let mut module = module(
         module_atom,
         vec![
             Instruction::FuncInfo {
@@ -233,7 +235,7 @@ fn func_info_and_move_cover_metadata_register_literals_and_stack() {
                 live: Operand::Unsigned(0),
             },
             Instruction::Move {
-                source: Operand::Literal(Literal::Integer(7)),
+                source: Operand::Literal(0),
                 destination: Operand::X(0),
             },
             Instruction::Move {
@@ -250,6 +252,9 @@ fn func_info_and_move_cover_metadata_register_literals_and_stack() {
             Instruction::Return,
         ],
     );
+    module.constant_pool =
+        crate::constant_pool::materialise_literals(&literals, Some(&atoms)).expect("literal pool");
+    module.literals = literals;
     let mut process = Process::new(1, 32);
     let before_heap = process.heap().used();
 

@@ -36,6 +36,7 @@ fn module(name: beamr::atom::Atom, code: Vec<Instruction>) -> Module {
         label_index,
         code,
         literals: Vec::new(),
+        constant_pool: Default::default(),
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
@@ -429,6 +430,8 @@ fn load_proof_module(atoms: &AtomTable, bifs: &BifRegistryImpl) -> Module {
             }
         })
         .collect();
+    let constant_pool = beamr::constant_pool::materialise_literals(&parsed.literals, Some(atoms))
+        .expect("literal pool materialises");
     Module {
         name: parsed.name,
         generation: 0,
@@ -436,6 +439,7 @@ fn load_proof_module(atoms: &AtomTable, bifs: &BifRegistryImpl) -> Module {
         label_index,
         code: parsed.instructions,
         literals: parsed.literals,
+        constant_pool,
         resolved_imports: resolved,
         lambdas: parsed.lambdas,
         string_table: parsed.string_table,
