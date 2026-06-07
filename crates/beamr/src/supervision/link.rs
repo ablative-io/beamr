@@ -6,7 +6,7 @@
 //! arrives as a message instead. Links are symmetric: A linking to
 //! B is the same as B linking to A.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use crate::{
     atom::Atom,
@@ -88,8 +88,8 @@ impl LinkSet {
         processes: &mut [&mut Process],
         reason: ExitReason,
     ) {
-        let mut cascade = self.mark_exited(process, reason, None);
-        while let Some((source_pid, linked_pid, signal_reason)) = cascade.pop() {
+        let mut cascade = VecDeque::from(self.mark_exited(process, reason, None));
+        while let Some((source_pid, linked_pid, signal_reason)) = cascade.pop_front() {
             if let Some(index) = process_index_by_pid(processes, linked_pid) {
                 let linked = &mut processes[index];
                 linked.remove_link(source_pid);
@@ -237,15 +237,25 @@ mod tests {
         link(&mut b, &mut a);
         link(&mut a, &mut b);
 
-        assert!(a.links().contains(&2));
-        assert!(b.links().contains(&1));
-        assert_eq!(a.links().len(), 1);
-        assert_eq!(b.links().len(), 1);
+        assert_eq!(a.links(), &[2]);
+        assert_eq!(b.links(), &[1]);
 
         let mut c = running(3);
-        let c_pid = c.pid();
-        c.add_link(c_pid);
-        assert!(c.links().is_empty());
+        let mut d = running(4);
+        links_in_order(&mut a, &mut [&mut c, &mut d]);
+
+        assert_eq!(a.links(), &[2, 3, 4]);
+        assert_eq!(c.links(), &[1]);
+        assert_eq!(d.links(), &[1]);
+
+        unlink(&mut a, &mut c);
+        assert_eq!(a.links(), &[2, 4]);
+        assert_eq!(c.links(), &[]);
+
+        let mut self_link = running(5);
+        let self_link_pid = self_link.pid();
+        self_link.add_link(self_link_pid);
+        assert!(self_link.links().is_empty());
     }
 
     #[test]
@@ -309,6 +319,69 @@ mod tests {
         assert_eq!(tuple.arity(), 3);
         assert_eq!(tuple.get(0), Some(Term::atom(Atom::EXIT)));
         assert_eq!(tuple.get(1).and_then(Term::as_pid), Some(1));
+        assert_eq!(tuple.get(2), Some(Term::atom(Atom::ERROR)));
+    }
+
+    #[test]
+    fn trapped_exit_signals_follow_link_insertion_order() {
+        let mut links = LinkSet::new();
+        let mut source = running(1);
+        let mut first = running(2);
+        let mut second = running(3);
+        let mut third = running(4);
+        first.set_trap_exit(true);
+        second.set_trap_exit(true);
+        third.set_trap_exit(true);
+        links_in_order(&mut source, &mut [&mut first, &mut second, &mut third]);
+
+        assert_eq!(source.links(), &[2, 3, 4]);
+        links.process_exited(
+            &mut source,
+            &mut [&mut first, &mut second, &mut third],
+            ExitReason::Error,
+        );
+
+        assert_exit_from(&mut first, 1);
+        assert_exit_from(&mut second, 1);
+        assert_exit_from(&mut third, 1);
+    }
+
+    #[test]
+    fn trapped_exit_signals_preserve_order_after_unlink() {
+        let mut links = LinkSet::new();
+        let mut source = running(1);
+        let mut first = running(2);
+        let mut removed = running(3);
+        let mut third = running(4);
+        first.set_trap_exit(true);
+        removed.set_trap_exit(true);
+        third.set_trap_exit(true);
+        links_in_order(&mut source, &mut [&mut first, &mut removed, &mut third]);
+        unlink(&mut source, &mut removed);
+
+        assert_eq!(source.links(), &[2, 4]);
+        links.process_exited(
+            &mut source,
+            &mut [&mut first, &mut removed, &mut third],
+            ExitReason::Error,
+        );
+
+        assert_exit_from(&mut first, 1);
+        assert!(removed.mailbox().is_empty());
+        assert_exit_from(&mut third, 1);
+    }
+
+    fn links_in_order(source: &mut Process, targets: &mut [&mut Process]) {
+        for target in targets {
+            link(source, &mut **target);
+        }
+    }
+
+    fn assert_exit_from(process: &mut Process, source_pid: u64) {
+        let tuple = mailbox_tuple(process);
+        assert_eq!(tuple.arity(), 3);
+        assert_eq!(tuple.get(0), Some(Term::atom(Atom::EXIT)));
+        assert_eq!(tuple.get(1).and_then(Term::as_pid), Some(source_pid));
         assert_eq!(tuple.get(2), Some(Term::atom(Atom::ERROR)));
     }
 
