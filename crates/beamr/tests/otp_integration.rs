@@ -181,7 +181,9 @@ fn erlang_get_returns_empty_list() {
         .lookup(erlang, get, 0)
         .expect("erlang:get/0 should be registered");
 
+    let mut process = Process::new(1, 128);
     let mut context = ProcessContext::new();
+    context.attach_process(&mut process, 0);
     let result = (entry.function)(&[], &mut context);
     assert_eq!(result, Ok(Term::NIL));
 }

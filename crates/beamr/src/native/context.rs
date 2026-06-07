@@ -456,7 +456,7 @@ impl<'process> ProcessContext<'process> {
         Ok(process
             .dict_get_all()
             .iter()
-            .filter(|(_, existing_value)| compare::exact_eq(**existing_value, value))
+            .filter(|(_, existing_value)| compare::exact_eq(*existing_value, value))
             .count())
     }
 
