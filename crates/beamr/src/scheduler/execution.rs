@@ -10,7 +10,7 @@ use crate::process::ExitReason;
 use crate::term::Term;
 
 use super::{
-    RunQueue, Scheduler, SharedState, SpawnRequest, lock_or_recover,
+    ProcessSlot, RunQueue, Scheduler, SharedState, SpawnRequest, lock_or_recover,
     spawning::materialize_spawn_request, steal, timer_integration,
 };
 
