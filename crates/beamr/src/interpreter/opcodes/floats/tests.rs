@@ -79,6 +79,25 @@ fn fmove_boxes_float_register_into_x_register() {
 }
 
 #[test]
+fn fmove_rejects_invalid_term_destination_before_allocating() {
+    let mut process = Process::new(1, 2);
+    let module = module(vec![]);
+    process.set_float_reg(0, 3.14).expect("set fr0");
+    let available_before = process.heap().available();
+
+    assert_eq!(
+        fmove(
+            &mut process,
+            &module,
+            &Operand::FloatRegister(0),
+            &Operand::Integer(0),
+        ),
+        Err(ExecError::InvalidOperand("term destination"))
+    );
+    assert_eq!(process.heap().available(), available_before);
+}
+
+#[test]
 fn fmove_copies_between_float_registers() {
     let mut process = Process::new(1, 16);
     let module = module(vec![]);

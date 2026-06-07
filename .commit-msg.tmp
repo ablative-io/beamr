@@ -1,1 +1,1 @@
-feat(beamr): implement float arithmetic opcodes 96-102
+review: harden float fmove destination validation

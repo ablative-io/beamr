@@ -25,6 +25,7 @@ pub fn fmove(
             write_float_reg(process, dest, value)?;
         }
         (Operand::FloatRegister(_), _) => {
+            validate_term_destination(dest)?;
             let value = read_float_reg(process, source)?;
             let term = boxed_float(process, value)?;
             core::write_term(process, dest, term)?;
@@ -151,6 +152,14 @@ fn write_float_reg(process: &mut Process, operand: &Operand, value: f64) -> Resu
 
 fn float_index(index: u32) -> Result<u16, ExecError> {
     u16::try_from(index).map_err(|_| ExecError::InvalidOperand("float register"))
+}
+
+fn validate_term_destination(destination: &Operand) -> Result<(), ExecError> {
+    match destination {
+        Operand::X(_) | Operand::Y(_) => Ok(()),
+        Operand::TypedRegister { register, .. } => validate_term_destination(register),
+        _ => Err(ExecError::InvalidOperand("term destination")),
+    }
 }
 
 fn process_error_to_exec(error: ProcessError) -> ExecError {
