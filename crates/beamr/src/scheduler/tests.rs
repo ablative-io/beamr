@@ -14,9 +14,10 @@ use crate::loader::Instruction;
 use crate::loader::decode::compact::Operand;
 use crate::mailbox::Mailbox;
 use crate::module::Module;
-use crate::process::CodePosition;
+use crate::native::{SpawnFacility, SpawnOptions};
 use crate::process::heap::{DEFAULT_HEAP_SIZE, Heap};
 use crate::process::registry::ProcessTable;
+use crate::process::{CodePosition, Priority};
 use crate::scheduler::execution::{
     SliceOutcome, cleanup_if_tombstoned_after_store, execute_slice, store_runnable_process,
     take_runnable_process,
@@ -473,6 +474,90 @@ fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
     assert!(process_links_contain(&scheduler.shared, parent, child));
     store_runnable_process(&scheduler.shared, process);
     assert!(scheduler.is_linked(parent, child));
+}
+
+#[test]
+fn spawn_facility_options_apply_link_monitor_priority_and_heap_before_wake() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("spawn_opt_scheduler");
+    let function = atoms.intern("main");
+    let mut module = test_module(module_name, vec![Instruction::Label { label: 7 }]);
+    module.exports.insert((function, 0), 7);
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = registry.insert(module);
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    scheduler.shutdown();
+    let parent = scheduler.spawn_test_process_in(NamespaceId::DEFAULT, Arc::clone(&module));
+    let facility = supervision_integration::SchedulerSpawnFacility {
+        shared: Arc::clone(&scheduler.shared),
+        namespace_id: NamespaceId::DEFAULT,
+    };
+
+    let result = facility
+        .spawn_with_options(
+            parent,
+            module_name,
+            function,
+            Vec::new(),
+            SpawnOptions {
+                link: true,
+                monitor: true,
+                priority: Some(Priority::High),
+                min_heap_size: Some(512),
+            },
+        )
+        .unwrap_or_else(|error| panic!("spawn_with_options succeeds: {error:?}"));
+
+    assert!(scheduler.is_linked(parent, result.pid));
+    let parent_entry = scheduler
+        .shared
+        .process_bodies
+        .get(&parent)
+        .unwrap_or_else(|| panic!("parent body exists"));
+    let parent_slot = lock_or_recover(&parent_entry);
+    let ProcessSlot::Present(ScheduledProcess(parent_process)) = &*parent_slot else {
+        panic!("parent process should be present");
+    };
+    let reference = result.reference.expect("monitor reference");
+    assert!(parent_process.links().contains(&result.pid));
+    assert!(
+        parent_process
+            .monitors()
+            .iter()
+            .any(|monitor| monitor.reference() == reference
+                && monitor.watcher() == parent
+                && monitor.target() == result.pid)
+    );
+    drop(parent_slot);
+    drop(parent_entry);
+
+    let child_entry = scheduler
+        .shared
+        .process_bodies
+        .get(&result.pid)
+        .unwrap_or_else(|| panic!("child body exists"));
+    let child_slot = lock_or_recover(&child_entry);
+    let ProcessSlot::Present(ScheduledProcess(child_process)) = &*child_slot else {
+        panic!("child process should be present");
+    };
+    assert_eq!(child_process.priority(), Priority::High);
+    assert_eq!(child_process.heap().capacity(), 512);
+    assert!(child_process.links().contains(&parent));
+    assert!(
+        child_process
+            .monitors()
+            .iter()
+            .any(|monitor| monitor.reference() == reference
+                && monitor.watcher() == parent
+                && monitor.target() == result.pid)
+    );
 }
 
 #[test]

@@ -1,1 +1,1 @@
-feat(beamr): implement erlang spawn_opt options
+review: harden B-085 spawn_opt option coverage

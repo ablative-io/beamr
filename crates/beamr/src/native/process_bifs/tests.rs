@@ -353,6 +353,71 @@ fn parse_spawn_options_link_monitor_priority() {
     assert_eq!(options.min_heap_size, None);
 }
 
+#[test]
+fn parse_spawn_options_min_heap_size() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(atom_table.clone()));
+    let min_heap_size = atom_table.intern("min_heap_size");
+    let mut tuple_heap = [0u64; 3];
+    let heap_tuple = write_tuple(
+        &mut tuple_heap,
+        &[Term::atom(min_heap_size), Term::small_int(512)],
+    )
+    .expect("min_heap_size tuple");
+    let mut cons_heap = [0u64; 2];
+    let list = write_cons(&mut cons_heap, heap_tuple, Term::NIL).expect("options list");
+
+    let options = parse_spawn_options(list, &ctx).expect("options parse");
+    assert_eq!(options.min_heap_size, Some(512));
+}
+
+#[test]
+fn parse_spawn_options_ignores_unknown_atoms_and_tuples() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(atom_table.clone()));
+    let unknown = atom_table.intern("fullsweep_after");
+    let unknown_atom = atom_table.intern("message_queue_data");
+    let mut tuple_heap = [0u64; 3];
+    let unknown_tuple = write_tuple(&mut tuple_heap, &[Term::atom(unknown), Term::small_int(10)])
+        .expect("unknown tuple");
+    let mut c2 = [0u64; 2];
+    let tail = write_cons(&mut c2, unknown_tuple, Term::NIL).expect("tail cons");
+    let mut c1 = [0u64; 2];
+    let list = write_cons(&mut c1, Term::atom(unknown_atom), tail).expect("options list");
+
+    assert_eq!(parse_spawn_options(list, &ctx), Ok(SpawnOptions::default()));
+}
+
+#[test]
+fn parse_spawn_options_rejects_malformed_supported_options() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(atom_table.clone()));
+    let priority = atom_table.intern("priority");
+    let min_heap_size = atom_table.intern("min_heap_size");
+
+    let mut priority_heap = [0u64; 2];
+    let priority_tuple =
+        write_tuple(&mut priority_heap, &[Term::atom(priority)]).expect("malformed priority tuple");
+    let mut priority_list_heap = [0u64; 2];
+    let priority_list = write_cons(&mut priority_list_heap, priority_tuple, Term::NIL)
+        .expect("priority option list");
+    assert_eq!(parse_spawn_options(priority_list, &ctx), Err(badarg()));
+
+    let mut heap_tuple_heap = [0u64; 3];
+    let heap_tuple = write_tuple(
+        &mut heap_tuple_heap,
+        &[Term::atom(min_heap_size), Term::small_int(-1)],
+    )
+    .expect("negative min_heap_size tuple");
+    let mut heap_list_heap = [0u64; 2];
+    let heap_list =
+        write_cons(&mut heap_list_heap, heap_tuple, Term::NIL).expect("heap option list");
+    assert_eq!(parse_spawn_options(heap_list, &ctx), Err(badarg()));
+}
+
 // ---- erlang:spawn_opt/4 ----
 
 #[test]
