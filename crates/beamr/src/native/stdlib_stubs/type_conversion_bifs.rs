@@ -12,8 +12,8 @@ pub fn bif_atom_to_binary(args: &[Term], context: &mut ProcessContext) -> Result
     };
     let atom = atom_term.as_atom().ok_or_else(badarg)?;
     let table = context.atom_table().ok_or_else(badarg)?;
-    let name = table.resolve(atom).ok_or_else(badarg)?;
-    context.alloc_binary(name.as_bytes())
+    let bytes = table.resolve(atom).ok_or_else(badarg)?.as_bytes().to_vec();
+    context.alloc_binary(&bytes)
 }
 
 pub fn bif_binary_to_float(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {

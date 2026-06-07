@@ -330,12 +330,10 @@ impl<'process> ProcessContext<'process> {
         message: Term,
     ) -> Option<TimerRef> {
         let timers = self.timers.as_ref()?;
-        Some(
-            timers
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .schedule_reserved(reference, delay, target_pid, message),
-        )
+        timers
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .schedule_reserved(reference, delay, target_pid, message)
     }
 
     /// Cancel a timer via the runtime timer wheel.

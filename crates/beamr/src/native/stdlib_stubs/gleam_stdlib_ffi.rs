@@ -4,7 +4,7 @@ use crate::atom::Atom;
 use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::binary::Binary;
-use crate::term::boxed::{Cons, write_tuple};
+use crate::term::boxed::Cons;
 
 pub fn bif_string_replace(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [input, pattern, replacement] = args else {
@@ -146,7 +146,8 @@ pub fn bif_inspect(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         if let Some(table) = context.atom_table()
             && let Some(name) = table.resolve(atom)
         {
-            return context.alloc_binary(name.as_bytes());
+            let bytes = name.as_bytes().to_vec();
+            return context.alloc_binary(&bytes);
         }
         return context.alloc_binary(format!("Atom({atom:?})").as_bytes());
     }

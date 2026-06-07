@@ -854,8 +854,8 @@ pub fn bif_fun_info(args: &[Term], context: &mut ProcessContext) -> Result<Term,
     };
     let item_atom = item.as_atom().ok_or_else(badarg)?;
     let at = context.atom_table().ok_or_else(badarg)?;
-    let item_name = at.resolve(item_atom).unwrap_or("");
-    let value = match item_name {
+    let item_name = at.resolve(item_atom).unwrap_or("").to_owned();
+    let value = match item_name.as_str() {
         "arity" => {
             let arity = crate::term::boxed::Closure::new(*fun).map_or(0, |c| i64::from(c.arity()));
             Term::small_int(arity)
