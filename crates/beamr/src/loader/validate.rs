@@ -546,4 +546,43 @@ mod tests {
         assert!(message.contains("instruction 1"));
         assert!(message.contains("label target 999"));
     }
+
+    #[test]
+    fn float_register_out_of_range_is_validation_error() {
+        let module = parsed(vec![
+            Instruction::Label { label: 1 },
+            Instruction::Fadd {
+                fail: Operand::Label(1),
+                left: Operand::FloatRegister(0),
+                right: Operand::FloatRegister(16),
+                dest: Operand::FloatRegister(2),
+            },
+        ]);
+
+        let message = validate_module(&module, &[])
+            .expect_err("invalid float register")
+            .to_string();
+
+        assert!(message.contains("instruction 1"));
+        assert!(message.contains("float register index 16"));
+    }
+
+    #[test]
+    fn float_fail_label_is_validation_error_when_missing() {
+        let module = parsed(vec![
+            Instruction::Label { label: 1 },
+            Instruction::Fnegate {
+                fail: Operand::Label(999),
+                source: Operand::FloatRegister(0),
+                dest: Operand::FloatRegister(1),
+            },
+        ]);
+
+        let message = validate_module(&module, &[])
+            .expect_err("invalid float fail label")
+            .to_string();
+
+        assert!(message.contains("instruction 1"));
+        assert!(message.contains("label target 999"));
+    }
 }

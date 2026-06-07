@@ -23,7 +23,7 @@ pub fn fmove(
             let value = read_float_register(process, source)?;
             write_float_register(process, dest, value)?;
         }
-        (Operand::FloatRegister(_), _) => {
+        (Operand::FloatRegister(_), _) if is_term_destination(dest) => {
             let value = read_float_register(process, source)?;
             let term = allocate_boxed_float(process, value)?;
             core::write_term(process, dest, term)?;
@@ -116,6 +116,14 @@ fn arithmetic(
     let value = op(left, right)?;
     write_float_register(process, dest, value)?;
     Ok(InstructionOutcome::Continue)
+}
+
+fn is_term_destination(operand: &Operand) -> bool {
+    match operand {
+        Operand::X(_) | Operand::Y(_) => true,
+        Operand::TypedRegister { register, .. } => is_term_destination(register),
+        _ => false,
+    }
 }
 
 fn read_float_register(process: &Process, operand: &Operand) -> Result<f64, ExecError> {
@@ -441,6 +449,25 @@ mod tests {
 
         let float = Float::new(process.x_reg(0)).expect("boxed float after GC allocation");
         assert_eq!(float.value(), 6.25);
+    }
+
+    #[test]
+    fn fmove_to_invalid_term_destination_does_not_allocate() {
+        let module = module();
+        let mut process = Process::new(0, 16);
+        assert_eq!(process.set_float_reg(0, 6.25), Ok(()));
+        let used_before = process.heap().young_used();
+
+        assert_eq!(
+            fmove(
+                &mut process,
+                &module,
+                &Operand::FloatRegister(0),
+                &Operand::Unsigned(0),
+            ),
+            Err(ExecError::InvalidOperand("fmove"))
+        );
+        assert_eq!(process.heap().young_used(), used_before);
     }
 
     #[test]

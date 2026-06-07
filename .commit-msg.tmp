@@ -1,1 +1,1 @@
-feat(beamr): implement float arithmetic opcodes
+harden(beamr): review float arithmetic opcode implementation
