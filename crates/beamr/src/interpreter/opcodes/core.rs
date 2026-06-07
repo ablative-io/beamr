@@ -169,6 +169,31 @@ pub fn deallocate(process: &mut Process, words: &Operand) -> Result<InstructionO
     Ok(InstructionOutcome::Continue)
 }
 
+pub fn trim(
+    process: &mut Process,
+    words: &Operand,
+    remaining: &Operand,
+) -> Result<InstructionOutcome, ExecError> {
+    let words = operand_u16(words, "trim words")?;
+    let remaining = operand_u16(remaining, "trim remaining")?;
+    let expected_slots = words.checked_add(remaining).ok_or(ExecError::Badarg)?;
+    let current_slots = process
+        .stack()
+        .current_frame()
+        .map_err(ExecError::from)?
+        .y_slots();
+
+    if current_slots != expected_slots {
+        return Err(ExecError::Badarg);
+    }
+
+    process
+        .stack_mut()
+        .trim_y_regs(remaining)
+        .map_err(ExecError::from)?;
+    Ok(InstructionOutcome::Continue)
+}
+
 pub fn test_heap(
     process: &mut Process,
     heap_need: &Operand,

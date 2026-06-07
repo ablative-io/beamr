@@ -414,6 +414,156 @@ fn swap_same_register_is_no_op() {
 }
 
 #[test]
+fn trim_preserves_remaining_y_registers_and_deallocate_pops_trimmed_frame() {
+    let module = module(
+        Atom::OK,
+        vec![
+            Instruction::AllocateZero {
+                stack_need: Operand::Unsigned(5),
+                live: Operand::Unsigned(0),
+            },
+            Instruction::Move {
+                source: Operand::Integer(10),
+                destination: Operand::Y(0),
+            },
+            Instruction::Move {
+                source: Operand::Integer(20),
+                destination: Operand::Y(1),
+            },
+            Instruction::Move {
+                source: Operand::Integer(30),
+                destination: Operand::Y(2),
+            },
+            Instruction::Move {
+                source: Operand::Integer(40),
+                destination: Operand::Y(3),
+            },
+            Instruction::Move {
+                source: Operand::Integer(50),
+                destination: Operand::Y(4),
+            },
+            Instruction::Trim {
+                words: Operand::Unsigned(2),
+                remaining: Operand::Unsigned(3),
+            },
+            Instruction::Move {
+                source: Operand::Y(0),
+                destination: Operand::X(0),
+            },
+            Instruction::Move {
+                source: Operand::Y(1),
+                destination: Operand::X(1),
+            },
+            Instruction::Move {
+                source: Operand::Y(2),
+                destination: Operand::X(2),
+            },
+            Instruction::Deallocate {
+                words: Operand::Unsigned(3),
+            },
+            Instruction::Return,
+        ],
+    );
+    let mut process = Process::new(1, 32);
+
+    assert_eq!(
+        run(&mut process, &module),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(process.x_reg(0), Term::small_int(10));
+    assert_eq!(process.x_reg(1), Term::small_int(20));
+    assert_eq!(process.x_reg(2), Term::small_int(30));
+    assert_eq!(process.stack().len(), 0);
+}
+
+#[test]
+fn trim_zero_words_is_noop_when_slot_count_matches() {
+    let module = module(
+        Atom::OK,
+        vec![
+            Instruction::AllocateZero {
+                stack_need: Operand::Unsigned(3),
+                live: Operand::Unsigned(0),
+            },
+            Instruction::Move {
+                source: Operand::Integer(10),
+                destination: Operand::Y(0),
+            },
+            Instruction::Move {
+                source: Operand::Integer(20),
+                destination: Operand::Y(1),
+            },
+            Instruction::Move {
+                source: Operand::Integer(30),
+                destination: Operand::Y(2),
+            },
+            Instruction::Trim {
+                words: Operand::Unsigned(0),
+                remaining: Operand::Unsigned(3),
+            },
+            Instruction::Move {
+                source: Operand::Y(0),
+                destination: Operand::X(0),
+            },
+            Instruction::Move {
+                source: Operand::Y(1),
+                destination: Operand::X(1),
+            },
+            Instruction::Move {
+                source: Operand::Y(2),
+                destination: Operand::X(2),
+            },
+            Instruction::Deallocate {
+                words: Operand::Unsigned(3),
+            },
+            Instruction::Return,
+        ],
+    );
+    let mut process = Process::new(1, 32);
+
+    assert_eq!(
+        run(&mut process, &module),
+        Ok(ExecutionResult::Exited(ExitReason::Normal))
+    );
+    assert_eq!(process.x_reg(0), Term::small_int(10));
+    assert_eq!(process.x_reg(1), Term::small_int(20));
+    assert_eq!(process.x_reg(2), Term::small_int(30));
+}
+
+#[test]
+fn trim_rejects_mismatched_frame_size_and_empty_stack_errors() {
+    let mismatch = module(
+        Atom::OK,
+        vec![
+            Instruction::AllocateZero {
+                stack_need: Operand::Unsigned(5),
+                live: Operand::Unsigned(0),
+            },
+            Instruction::Trim {
+                words: Operand::Unsigned(1),
+                remaining: Operand::Unsigned(3),
+            },
+        ],
+    );
+    assert_eq!(
+        run(&mut Process::new(1, 32), &mismatch),
+        Err(ExecError::Badarg)
+    );
+
+    let empty_stack = module(
+        Atom::OK,
+        vec![Instruction::Trim {
+            words: Operand::Unsigned(0),
+            remaining: Operand::Unsigned(0),
+        }],
+    );
+    assert!(matches!(
+        run(&mut Process::new(1, 32), &empty_stack),
+        Err(ExecError::Stack(_))
+    ));
+}
+
+#[test]
 fn stack_heap_and_data_opcodes_work() {
     let module = module(
         Atom::OK,

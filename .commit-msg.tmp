@@ -1,1 +1,1 @@
-harden(beamr): cover Y-Y swap register execution
+harden trim opcode stack-frame trimming coverage
