@@ -84,7 +84,10 @@ pub fn bif_global_register_name_3(
     let [name_term, pid_term, resolver] = args else {
         return Err(badarg());
     };
-    if Closure::new(*resolver).is_none() {
+    let Some(closure) = Closure::new(*resolver) else {
+        return Err(badarg());
+    };
+    if closure.arity() != 3 {
         return Err(badarg());
     }
     register_name(*name_term, *pid_term, Some(*resolver), context)
@@ -157,7 +160,7 @@ mod tests {
     use crate::distribution::Node;
     use crate::distribution::global::GlobalNameRegistry;
     use crate::native::ProcessContext;
-    use crate::term::boxed::write_external_pid;
+    use crate::term::boxed::{write_closure, write_external_pid};
 
     use super::*;
 
@@ -219,5 +222,51 @@ mod tests {
         assert_eq!(pid.node(), Some(remote));
         assert_eq!(pid.pid_number(), 55);
         assert_eq!(pid.serial(), 1);
+    }
+
+    #[test]
+    fn register_name_3_accepts_and_stores_ternary_resolver() {
+        let atoms = Arc::new(AtomTable::with_common_atoms());
+        let node = Node::new(atoms.intern("a@host"), 0);
+        let registry = Arc::new(GlobalNameRegistry::new(node, atoms.clone()));
+        let name = atoms.intern("resolver_service");
+        let mut closure_heap = [0_u64; 7];
+        let resolver = write_closure(&mut closure_heap, Atom::OK, 0, 3, 1, 0, &[])
+            .expect("ternary resolver closure fits");
+
+        let mut ctx = ProcessContext::new();
+        ctx.set_local_node(Some(node));
+        ctx.set_atom_table(Some(atoms));
+        ctx.set_global_name_facility(Some(registry.clone()));
+
+        assert_eq!(
+            bif_global_register_name_3(&[Term::atom(name), Term::pid(10), resolver], &mut ctx),
+            Ok(Term::atom(Atom::TRUE))
+        );
+        assert_eq!(
+            registry.whereis(name).and_then(|entry| entry.resolver),
+            Some(resolver)
+        );
+    }
+
+    #[test]
+    fn register_name_3_rejects_non_ternary_resolver() {
+        let atoms = Arc::new(AtomTable::with_common_atoms());
+        let node = Node::new(atoms.intern("a@host"), 0);
+        let registry = Arc::new(GlobalNameRegistry::new(node, atoms.clone()));
+        let name = atoms.intern("bad_resolver_service");
+        let mut closure_heap = [0_u64; 7];
+        let resolver = write_closure(&mut closure_heap, Atom::OK, 0, 2, 1, 0, &[])
+            .expect("binary closure fits");
+
+        let mut ctx = ProcessContext::new();
+        ctx.set_local_node(Some(node));
+        ctx.set_atom_table(Some(atoms));
+        ctx.set_global_name_facility(Some(registry));
+
+        assert_eq!(
+            bif_global_register_name_3(&[Term::atom(name), Term::pid(10), resolver], &mut ctx),
+            Err(Term::atom(Atom::BADARG))
+        );
     }
 }

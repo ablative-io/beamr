@@ -9,6 +9,7 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
 
 use crate::atom::{Atom, AtomTable};
 use crate::distribution::Node;
@@ -146,12 +147,9 @@ impl GlobalNameRegistry {
 
     /// Unregister `name` only if it is owned by `pid`.
     pub fn unregister(&self, name: Atom, pid: GlobalPid) -> Result<(), GlobalNameError> {
-        match self.entries.get(&name).map(|entry| *entry) {
-            Some(entry) if entry.pid == pid => {
-                self.entries.remove(&name);
-                Ok(())
-            }
-            _ => Err(GlobalNameError::NotRegistered),
+        match self.entries.remove_if(&name, |_, entry| entry.pid == pid) {
+            Some(_) => Ok(()),
+            None => Err(GlobalNameError::NotRegistered),
         }
     }
 
@@ -206,22 +204,27 @@ impl GlobalNameRegistry {
 
     /// Merge a single entry using deterministic conflict resolution.
     pub fn merge_entry(&self, incoming: GlobalNameEntry) -> GlobalRegistrationOutcome {
-        match self.entries.get(&incoming.name).map(|entry| *entry) {
-            None => {
-                self.entries.insert(incoming.name, incoming);
+        match self.entries.entry(incoming.name) {
+            Entry::Vacant(entry) => {
+                entry.insert(incoming);
                 GlobalRegistrationOutcome::Inserted
             }
-            Some(existing) if existing == incoming => GlobalRegistrationOutcome::Unchanged,
-            Some(existing) if self.entry_wins(incoming, existing) => {
-                self.entries.insert(incoming.name, incoming);
+            Entry::Occupied(mut entry) => {
+                let existing = *entry.get();
+                if existing == incoming {
+                    return GlobalRegistrationOutcome::Unchanged;
+                }
+
+                if !self.entry_wins(incoming, existing) {
+                    let notification = loser_notification(existing, incoming);
+                    self.record_notification(notification);
+                    return GlobalRegistrationOutcome::ExistingWon(notification);
+                }
+
+                entry.insert(incoming);
                 let notification = loser_notification(incoming, existing);
                 self.record_notification(notification);
                 GlobalRegistrationOutcome::NewWon(notification)
-            }
-            Some(existing) => {
-                let notification = loser_notification(existing, incoming);
-                self.record_notification(notification);
-                GlobalRegistrationOutcome::ExistingWon(notification)
             }
         }
     }
@@ -339,6 +342,42 @@ mod tests {
                 if *loser == high_pid && *winner == low_pid
         ));
         assert_eq!(node_z.take_notifications().len(), 1);
+    }
+
+    #[test]
+    fn lower_node_name_wins_when_atom_indexes_differ() {
+        let local_atoms = Arc::new(AtomTable::with_common_atoms());
+        let z_node = local_atoms.intern("z@host");
+        let a_node = local_atoms.intern("a@host");
+        let registry = GlobalNameRegistry::new(Node::new(z_node, 0), local_atoms.clone());
+        let name = local_atoms.intern("index_independent_conflict");
+        let low_pid = GlobalPid::new(a_node, 1, 0);
+        let high_pid = GlobalPid::new(z_node, 2, 0);
+
+        assert!(registry.register(name, high_pid, None).is_ok());
+        let outcomes = registry.merge_snapshot([GlobalNameEntry::new(name, low_pid, None)]);
+
+        assert_eq!(registry.whereis(name).map(|entry| entry.pid), Some(low_pid));
+        assert!(matches!(
+            outcomes.as_slice(),
+            [GlobalRegistrationOutcome::NewWon(GlobalNameNotification { loser, winner, .. })]
+                if *loser == high_pid && *winner == low_pid
+        ));
+    }
+
+    #[test]
+    fn register_returns_conflict_when_caller_loses_existing_registration() {
+        let (atoms, registry) = registry("b@host");
+        let name = atoms.intern("register_conflict");
+        let winner = GlobalPid::new(atoms.intern("a@host"), 1, 0);
+        let loser = GlobalPid::new(atoms.intern("z@host"), 2, 0);
+
+        assert!(registry.register(name, winner, None).is_ok());
+        assert!(matches!(
+            registry.register(name, loser, None),
+            Err(GlobalNameError::Conflict(_))
+        ));
+        assert_eq!(registry.whereis(name).map(|entry| entry.pid), Some(winner));
     }
 
     #[test]

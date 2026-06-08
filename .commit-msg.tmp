@@ -1,1 +1,1 @@
-feat(beamr): add global name registry BIFs
+review(beamr): harden global name registry conflict handling
