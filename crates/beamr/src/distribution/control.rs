@@ -219,7 +219,14 @@ pub trait ControlMessageHandler {
     fn handle_reg_send(&mut self, _tuple: Tuple) {}
 
     /// LINK establishes a cross-node link on the local side.
-    fn handle_link(&mut self, _from: DistributedPid, _to: DistributedPid) {}
+    fn handle_link(
+        &mut self,
+        _from: DistributedPid,
+        _from_term: Term,
+        _to: DistributedPid,
+        _to_term: Term,
+    ) {
+    }
 
     /// UNLINK removes a cross-node link on the local side.
     fn handle_unlink(&mut self, _from: DistributedPid, _to: DistributedPid) {}
@@ -317,10 +324,10 @@ fn dispatch_link<H>(tuple: Tuple, handler: &mut H) -> bool
 where
     H: ControlMessageHandler,
 {
-    let Some((from, to)) = pid_pair(tuple) else {
+    let Some((from, from_term, to, to_term)) = pid_pair_terms(tuple) else {
         return false;
     };
-    handler.handle_link(from, to);
+    handler.handle_link(from, from_term, to, to_term);
     true
 }
 
@@ -354,12 +361,19 @@ where
 }
 
 fn pid_pair(tuple: Tuple) -> Option<(DistributedPid, DistributedPid)> {
+    let (from, _, to, _) = pid_pair_terms(tuple)?;
+    Some((from, to))
+}
+
+fn pid_pair_terms(tuple: Tuple) -> Option<(DistributedPid, Term, DistributedPid, Term)> {
     if tuple.arity() < 3 {
         return None;
     }
-    let from = tuple.get(1).and_then(DistributedPid::from_term)?;
-    let to = tuple.get(2).and_then(DistributedPid::from_term)?;
-    Some((from, to))
+    let from_term = tuple.get(1)?;
+    let to_term = tuple.get(2)?;
+    let from = DistributedPid::from_term(from_term)?;
+    let to = DistributedPid::from_term(to_term)?;
+    Some((from, from_term, to, to_term))
 }
 
 /// Convert currently-supported exit reason atoms into runtime exit reasons.
@@ -461,8 +475,14 @@ impl ControlLifecycleState {
 }
 
 impl ControlMessageHandler for ControlLifecycleState {
-    fn handle_link(&mut self, from: DistributedPid, to: DistributedPid) {
-        self.establish_link(from, to);
+    fn handle_link(
+        &mut self,
+        from: DistributedPid,
+        from_term: Term,
+        to: DistributedPid,
+        to_term: Term,
+    ) {
+        self.establish_link_terms(from, from_term, to, to_term);
     }
 
     fn handle_unlink(&mut self, from: DistributedPid, to: DistributedPid) {
@@ -625,7 +645,13 @@ mod tests {
             self.calls.push(ControlOp::RegSend);
         }
 
-        fn handle_link(&mut self, _from: DistributedPid, _to: DistributedPid) {
+        fn handle_link(
+            &mut self,
+            _from: DistributedPid,
+            _from_term: Term,
+            _to: DistributedPid,
+            _to_term: Term,
+        ) {
             self.calls.push(ControlOp::Link);
         }
 
@@ -829,6 +855,8 @@ mod tests {
         let local_id = DistributedPid::local(1);
         assert!(state.has_link(remote_id, local_id));
         assert!(state.has_link(local_id, remote_id));
+        assert_eq!(state.links()[0].left_term, remote);
+        assert_eq!(state.links()[0].right_term, local);
 
         let mut unlink_heap = [0_u64; 4];
         let unlink_term = tuple(
@@ -879,6 +907,7 @@ mod tests {
         assert_eq!(sink.sent[0].0, Atom::OK);
         assert_eq!(sink.sent[0].1.op, ControlOp::Exit);
         assert_eq!(sink.sent[0].1.from, local);
+        assert_eq!(sink.sent[0].1.to, remote);
         assert_eq!(sink.sent[0].1.reason, Some(ExitReason::Error));
         assert!(!state.has_link(
             DistributedPid::local(7),
