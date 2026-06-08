@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::atom::AtomTable;
-use crate::io::{IoSink, NullSink};
+use crate::io::{IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode};
 use crate::native::ets_bifs::EtsFoldlState;
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
 use crate::process::{Priority, Process};
@@ -100,6 +100,7 @@ pub struct ProcessContext<'process> {
     select_facility: Option<Arc<dyn SelectFacility>>,
     system_info_facility: Option<Arc<dyn SystemInfoFacility>>,
     ets_facility: Option<Arc<dyn EtsFacility>>,
+    io_facility: Option<Arc<dyn IoFacility>>,
     io_sink: Arc<dyn IoSink>,
     exception_class: ExceptionClass,
     exception_stacktrace: Term,
@@ -150,6 +151,7 @@ impl fmt::Debug for ProcessContext<'_> {
                 &self.system_info_facility.as_ref().map(|_| ".."),
             )
             .field("ets_facility", &self.ets_facility.as_ref().map(|_| ".."))
+            .field("io_facility", &self.io_facility.as_ref().map(|_| ".."))
             .field("io_sink", &"..")
             .field("exception_class", &self.exception_class)
             .field("shutdown_requested", &self.shutdown_requested)
@@ -186,6 +188,7 @@ impl<'process> ProcessContext<'process> {
             select_facility: None,
             system_info_facility: None,
             ets_facility: None,
+            io_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -214,6 +217,7 @@ impl<'process> ProcessContext<'process> {
             select_facility: None,
             system_info_facility: None,
             ets_facility: None,
+            io_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -488,6 +492,30 @@ impl<'process> ProcessContext<'process> {
     /// Set the ETS facility for `ets` module BIFs.
     pub fn set_ets_facility(&mut self, facility: Option<Arc<dyn EtsFacility>>) {
         self.ets_facility = facility;
+    }
+
+    // --- I/O facility ---
+
+    /// Return the async I/O facility, if one has been configured.
+    #[must_use]
+    pub fn io_facility(&self) -> Option<&dyn IoFacility> {
+        self.io_facility.as_deref()
+    }
+
+    /// Set the async I/O facility for I/O BIFs.
+    pub fn set_io_facility(&mut self, facility: Option<Arc<dyn IoFacility>>) {
+        self.io_facility = facility;
+    }
+
+    /// Submit an I/O operation for the attached pid and request suspension.
+    pub fn submit_io_and_suspend(&mut self, op: IoOp, mode: ResultMode) -> Result<(), IoError> {
+        let pid = self.pid.ok_or(IoError::MissingPid)?;
+        let Some(facility) = self.io_facility.as_ref() else {
+            return Err(IoError::Unavailable);
+        };
+        facility.submit_and_suspend_for_pid(pid, op, mode)?;
+        self.request_suspend(None);
+        Ok(())
     }
 
     /// Store a value in the attached process dictionary.

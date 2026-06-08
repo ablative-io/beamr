@@ -35,6 +35,12 @@ impl Scheduler {
 
     /// Shut down all worker threads after their current time slice.
     pub fn shutdown(&self) {
+        if let Some(bridge) = lock_or_recover(&self.shared.io_bridge).take() {
+            bridge.shutdown();
+        }
+        if let Some(ring) = &self.shared.io_ring {
+            ring.shutdown();
+        }
         self.shared.dirty_cpu.shutdown();
         self.shared.dirty_io.shutdown();
         self.shared.shutdown.store(true, Ordering::Release);

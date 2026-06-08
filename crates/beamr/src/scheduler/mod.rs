@@ -15,7 +15,11 @@ use crate::atom::AtomTable;
 use crate::error::ExecError;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
 use crate::hook::Hook;
-use crate::io::{IoSink, NullSink};
+use crate::io::{
+    CompletionRing, CompletionRingIoFacility, IoCompletionBridge, IoFacility, IoSink,
+    PendingIoRegistry, RingConfig, create_ring,
+};
+use crate::io::{IoWakeTarget, NullSink};
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
 use crate::native::{
@@ -44,6 +48,7 @@ pub struct SchedulerConfig {
     pub dirty_cpu_threads: Option<usize>,
     pub dirty_io_threads: Option<usize>,
     pub dirty_queue_depth: Option<usize>,
+    pub io: Option<RingConfig>,
 }
 pub(super) struct SharedState {
     shutdown: AtomicBool,
@@ -74,6 +79,10 @@ pub(super) struct SharedState {
     hook: Hook,
     timers: Arc<Mutex<TimerWheel>>,
     output_sink: Mutex<Arc<dyn IoSink>>,
+    io_ring: Option<Arc<dyn CompletionRing>>,
+    io_registry: Option<Arc<PendingIoRegistry>>,
+    io_bridge: Mutex<Option<IoCompletionBridge>>,
+    io_facility: Option<Arc<dyn IoFacility>>,
     #[cfg(test)]
     idle_parks: AtomicUsize,
 }
@@ -208,6 +217,19 @@ impl Scheduler {
                 .unwrap_or(dirty::DEFAULT_DIRTY_IO_THREADS),
             dirty_queue_depth,
         );
+        let io_runtime = config.io.map(|ring_config| {
+            let ring: Arc<dyn CompletionRing> = Arc::from(create_ring(ring_config));
+            let registry = Arc::new(PendingIoRegistry::default());
+            let facility: Arc<dyn IoFacility> = Arc::new(CompletionRingIoFacility::new(
+                Arc::clone(&ring),
+                Arc::clone(&registry),
+            ));
+            (ring, registry, facility)
+        });
+        let (io_ring, io_registry, io_facility) = match io_runtime {
+            Some((ring, registry, facility)) => (Some(ring), Some(registry), Some(facility)),
+            None => (None, None, None),
+        };
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
         let shared = Arc::new(SharedState {
@@ -239,9 +261,18 @@ impl Scheduler {
             hook: Hook::new(),
             timers: Arc::new(Mutex::new(TimerWheel::new())),
             output_sink: Mutex::new(Arc::new(NullSink)),
+            io_ring,
+            io_registry,
+            io_bridge: Mutex::new(None),
+            io_facility,
             #[cfg(test)]
             idle_parks: AtomicUsize::new(0),
         });
+        if let (Some(ring), Some(registry)) = (&shared.io_ring, &shared.io_registry) {
+            let target: Arc<dyn IoWakeTarget> = shared.clone();
+            let bridge = IoCompletionBridge::start(Arc::clone(ring), Arc::clone(registry), target);
+            *lock_or_recover(&shared.io_bridge) = Some(bridge);
+        }
         let inject_queues: Vec<_> = (0..thread_count)
             .map(|_| Arc::new(SegQueue::new()))
             .collect();
@@ -517,6 +548,28 @@ pub(super) fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, 
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
+
+impl IoWakeTarget for SharedState {
+    fn wake_with_io_result(&self, pid: u64, term: Term) {
+        self.async_results.insert(pid, term);
+        execution::wake_process(self, pid);
+    }
+
+    fn send_io_message(&self, pid: u64, term: Term) {
+        let Some(entry) = self.process_bodies.get(&pid) else {
+            return;
+        };
+        let mut slot = lock_or_recover(&entry);
+        if let ProcessSlot::Present(process) = &mut *slot {
+            process.0.mailbox_mut().push_owned(term);
+        } else if let ProcessSlot::Executing(metadata) = &mut *slot {
+            metadata.pending_io_messages.push(term);
+        }
+        drop(slot);
+        execution::wake_process(self, pid);
+    }
+}
+
 #[cfg(test)]
 mod supervision_tests;
 #[cfg(test)]

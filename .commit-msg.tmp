@@ -1,1 +1,1 @@
-fix(ets): harden match spec eval error handling
+Harden async I/O completion bridge and scheduler message delivery

@@ -133,6 +133,7 @@ fn make_executing(shared: &SharedState, pid: u64) -> Process {
                 group_leader: process.group_leader(),
                 pending_exit_messages: Vec::new(),
                 pending_down_messages: Vec::new(),
+                pending_io_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);
             process
@@ -215,6 +216,10 @@ fn make_shared_state() -> Arc<SharedState> {
         hook: crate::hook::Hook::new(),
         timers: Arc::new(std::sync::Mutex::new(crate::timer::TimerWheel::new())),
         output_sink: std::sync::Mutex::new(Arc::new(crate::io::NullSink)),
+        io_ring: None,
+        io_registry: None,
+        io_bridge: std::sync::Mutex::new(None),
+        io_facility: None,
         atom_table: Arc::new(crate::atom::AtomTable::new()),
         ets_registry: Arc::new(crate::ets::EtsRegistry::new()),
         bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),

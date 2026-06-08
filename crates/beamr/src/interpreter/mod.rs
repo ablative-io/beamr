@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::atom::AtomTable;
 use crate::error::ExecError;
-use crate::io::IoSink;
+use crate::io::{IoFacility, IoSink};
 use crate::module::{Module, ModuleRegistry};
 use crate::native::NativeEntry;
 use crate::native::code_management_bifs::CodeManagementFacility;
@@ -50,6 +50,8 @@ pub struct NativeServices {
     pub system_info_facility: Option<Arc<dyn SystemInfoFacility>>,
     /// ETS facility for shared table storage BIFs.
     pub ets_facility: Option<Arc<dyn EtsFacility>>,
+    /// Async I/O facility for process-side ring submissions.
+    pub io_facility: Option<Arc<dyn IoFacility>>,
 }
 
 /// Result of running a process until it yields, waits, exits, or faults.
@@ -114,6 +116,7 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
         code_management_facility: None,
         system_info_facility: None,
         ets_facility: None,
+        io_facility: None,
     };
     run_loop(process, module, None, &empty)
 }
@@ -136,6 +139,7 @@ pub fn run_with_registry(
         code_management_facility: None,
         system_info_facility: None,
         ets_facility: None,
+        io_facility: None,
     };
     run_loop(process, initial_module, Some(registry), &empty)
 }
@@ -158,6 +162,7 @@ pub fn run_with_timer_services(
         code_management_facility: None,
         system_info_facility: None,
         ets_facility: None,
+        io_facility: None,
     };
     run_loop(process, initial_module, None, &services)
 }
