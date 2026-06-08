@@ -12,8 +12,8 @@ use self::dirty::DirtyPool;
 use self::execution::scheduler_loop;
 use self::spawning::SpawnRequest;
 use crate::atom::AtomTable;
-use crate::distribution::{DEFAULT_NODE_NAME, Node};
-use crate::distribution::DistributionConfig;
+use crate::distribution::global::GlobalNameRegistry;
+use crate::distribution::{DEFAULT_NODE_NAME, DistributionConfig, Node};
 
 use crate::error::ExecError;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
@@ -54,7 +54,6 @@ pub struct SchedulerConfig {
     pub node_name: Option<String>,
     pub creation: Option<u32>,
     pub distribution: Option<DistributionConfig>,
-
 }
 pub(super) struct SharedState {
     shutdown: AtomicBool,
@@ -64,6 +63,7 @@ pub(super) struct SharedState {
     next_namespace_id: AtomicU64,
     atom_table: Arc<AtomTable>,
     local_node: Node,
+    global_name_registry: Arc<GlobalNameRegistry>,
     ets_registry: Arc<EtsRegistry>,
     bif_registry: Arc<BifRegistryImpl>,
     capability_policy: Arc<dyn CapabilityPolicy>,
@@ -325,8 +325,12 @@ impl Scheduler {
             module_registry,
             namespace_store,
             next_namespace_id: AtomicU64::new(1),
-            atom_table,
+            atom_table: Arc::clone(&atom_table),
             local_node,
+            global_name_registry: Arc::new(GlobalNameRegistry::new(
+                local_node,
+                Arc::clone(&atom_table),
+            )),
             ets_registry: Arc::new(EtsRegistry::new()),
             bif_registry,
             capability_policy,

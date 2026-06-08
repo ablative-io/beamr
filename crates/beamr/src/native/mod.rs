@@ -10,6 +10,7 @@ pub mod capability;
 pub mod code_management_bifs;
 mod context;
 pub mod dictionary_bifs;
+pub mod distribution_bifs;
 pub mod etf_bifs;
 pub mod ets_bifs;
 pub mod exception_bifs;
@@ -53,6 +54,7 @@ pub use context::{
     ExceptionClass, FileIoCompletion, FileIoContinuation, FileIoFacility, NativeContinuation,
     ProcessContext, SuspendRequest, TcpIoFacility, TrampolineRequest,
 };
+pub use distribution_bifs::GlobalNameFacility;
 pub use ets_bifs::EtsFacility;
 pub use group_leader::GroupLeaderFacility;
 pub use io_message::IoMessageFacility;

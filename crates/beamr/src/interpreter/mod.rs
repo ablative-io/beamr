@@ -22,7 +22,7 @@ use crate::native::process_info_bifs::ProcessInfoFacility;
 use crate::native::spawn::SpawnFacility;
 use crate::native::supervision::SupervisionFacility;
 use crate::native::system_info_bifs::SystemInfoFacility;
-use crate::native::{FileIoFacility, NativeEntry, TcpIoFacility};
+use crate::native::{FileIoFacility, GlobalNameFacility, NativeEntry, TcpIoFacility};
 use crate::process::{CodePosition, ExitReason, Process};
 use crate::scheduler::dirty::DirtySchedulerKind;
 use crate::term::Term;
@@ -46,6 +46,8 @@ pub struct NativeServices {
     pub supervision_facility: Option<Arc<dyn SupervisionFacility>>,
     /// Process information facility for process_info/1,2 BIFs.
     pub process_info_facility: Option<Arc<dyn ProcessInfoFacility>>,
+    /// Global name facility for `global:*_name` BIFs.
+    pub global_name_facility: Option<Arc<dyn GlobalNameFacility>>,
     /// Output sink for `io` module BIFs.
     pub io_sink: Option<Arc<dyn IoSink>>,
     /// Code management facility for hot-loading BIFs.
@@ -123,6 +125,7 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
         group_leader_facility: None,
         supervision_facility: None,
         process_info_facility: None,
+        global_name_facility: None,
         io_sink: None,
         code_management_facility: None,
         system_info_facility: None,
@@ -150,6 +153,7 @@ pub fn run_with_registry(
         group_leader_facility: None,
         supervision_facility: None,
         process_info_facility: None,
+        global_name_facility: None,
         io_sink: None,
         code_management_facility: None,
         system_info_facility: None,
@@ -177,6 +181,7 @@ pub fn run_with_timer_services(
         group_leader_facility: None,
         supervision_facility: None,
         process_info_facility: None,
+        global_name_facility: None,
         io_sink: None,
         code_management_facility: None,
         system_info_facility: None,

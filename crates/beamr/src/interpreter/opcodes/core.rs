@@ -487,6 +487,7 @@ fn call_external_target(
                 context.set_group_leader_facility(svc.group_leader_facility.clone());
                 context.set_supervision_facility(svc.supervision_facility.clone());
                 context.set_process_info_facility(svc.process_info_facility.clone());
+                context.set_global_name_facility(svc.global_name_facility.clone());
                 context.set_code_management_facility(svc.code_management_facility.clone());
                 context.set_system_info_facility(svc.system_info_facility.clone());
                 context.set_ets_facility(svc.ets_facility.clone());

@@ -420,6 +420,7 @@ fn submit_dirty_call(
     context.set_group_leader_facility(services.group_leader_facility);
     context.set_supervision_facility(services.supervision_facility);
     context.set_process_info_facility(services.process_info_facility);
+    context.set_global_name_facility(services.global_name_facility);
     context.set_code_management_facility(services.code_management_facility);
     context.set_system_info_facility(services.system_info_facility);
     if let Some(sink) = services.io_sink {
@@ -490,6 +491,14 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     reason: ExitReason,
 ) {
     shared.exit_tombstones.insert(pid, reason);
+    let _removed_global_names =
+        shared
+            .global_name_registry
+            .remove_pid(crate::distribution::global::GlobalPid::new(
+                shared.local_node.name,
+                pid,
+                0,
+            ));
     let _deleted_tables = shared.transfer_or_delete_tables_owned_by(pid);
     supervision_integration::propagate_exit(shared, pid, reason);
     close_owned_fd_resources_on_exit(shared, pid);

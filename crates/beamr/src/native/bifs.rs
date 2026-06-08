@@ -56,6 +56,7 @@ pub fn register_gate1_bifs(
 
     crate::native::code_management_bifs::register_code_management_bifs(registry, atom_table)?;
     crate::native::dictionary_bifs::register_dictionary_bifs(registry, atom_table)?;
+    crate::native::distribution_bifs::register_distribution_bifs(registry, atom_table)?;
     crate::native::etf_bifs::register_etf_bifs(registry, atom_table)?;
     crate::native::ets_bifs::register_ets_bifs(registry, atom_table)?;
     crate::native::exception_bifs::register_exception_bifs(registry, atom_table)?;

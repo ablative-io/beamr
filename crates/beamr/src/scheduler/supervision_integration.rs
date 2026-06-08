@@ -7,6 +7,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::atom::Atom;
+use crate::distribution::global::GlobalPid;
 use crate::ets::{EtsError, EtsTable, EtsTableId, EtsTableMetadata};
 use crate::io::{CompletionRing, IoOp};
 use crate::namespace::NamespaceId;
@@ -234,7 +235,12 @@ fn process_exit_signal(
                 drop(entry);
                 deliver_down_messages(shared, target_pid, propagated_reason);
 
-                // Remove from process table and wait set.
+                // Remove from process table, global registry, and wait set.
+                let _removed_global_names = shared.global_name_registry.remove_pid(GlobalPid::new(
+                    shared.local_node.name,
+                    target_pid,
+                    0,
+                ));
                 let _removed = shared.process_table.remove(target_pid);
                 {
                     let mut wait_set = lock_or_recover(&shared.wait_set);
@@ -380,6 +386,8 @@ pub(super) fn build_native_services(
         Arc::new(SchedulerProcessInfoFacility {
             shared: Arc::clone(shared),
         });
+    let global_name: Arc<dyn crate::native::GlobalNameFacility> =
+        shared.global_name_registry.clone();
     let code_management: Arc<dyn crate::native::CodeManagementFacility> =
         Arc::new(super::module_management::SchedulerCodeManagementFacility {
             shared: Arc::clone(shared),
@@ -404,6 +412,7 @@ pub(super) fn build_native_services(
         group_leader_facility: Some(group_leader),
         supervision_facility: Some(supervision),
         process_info_facility: Some(process_info),
+        global_name_facility: Some(global_name),
         io_sink: Some(Arc::clone(&lock_or_recover(&shared.output_sink))),
         code_management_facility: Some(code_management),
         system_info_facility: Some(system_info),

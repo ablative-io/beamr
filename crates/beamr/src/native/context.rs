@@ -25,6 +25,7 @@ use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
 use crate::timer::{TimerRef, TimerWheel};
 
 use super::code_management_bifs::CodeManagementFacility;
+use super::distribution_bifs::GlobalNameFacility;
 use super::ets_bifs::EtsFacility;
 use super::group_leader::GroupLeaderFacility;
 use super::io_message::IoMessageFacility;
@@ -193,6 +194,7 @@ pub struct ProcessContext<'process> {
     code_management_facility: Option<Arc<dyn CodeManagementFacility>>,
     process_info_facility: Option<Arc<dyn ProcessInfoFacility>>,
     registry_facility: Option<Arc<dyn RegistryFacility>>,
+    global_name_facility: Option<Arc<dyn GlobalNameFacility>>,
     select_facility: Option<Arc<dyn SelectFacility>>,
     system_info_facility: Option<Arc<dyn SystemInfoFacility>>,
     ets_facility: Option<Arc<dyn EtsFacility>>,
@@ -241,6 +243,10 @@ impl fmt::Debug for ProcessContext<'_> {
             .field(
                 "registry_facility",
                 &self.registry_facility.as_ref().map(|_| ".."),
+            )
+            .field(
+                "global_name_facility",
+                &self.global_name_facility.as_ref().map(|_| ".."),
             )
             .field(
                 "select_facility",
@@ -298,6 +304,7 @@ impl<'process> ProcessContext<'process> {
             code_management_facility: None,
             process_info_facility: None,
             registry_facility: None,
+            global_name_facility: None,
             select_facility: None,
             system_info_facility: None,
             ets_facility: None,
@@ -331,6 +338,7 @@ impl<'process> ProcessContext<'process> {
             code_management_facility: None,
             process_info_facility: None,
             registry_facility: None,
+            global_name_facility: None,
             select_facility: None,
             system_info_facility: None,
             ets_facility: None,
@@ -531,6 +539,17 @@ impl<'process> ProcessContext<'process> {
     /// Set the registry facility for process name registry BIFs.
     pub fn set_registry_facility(&mut self, facility: Option<Arc<dyn RegistryFacility>>) {
         self.registry_facility = facility;
+    }
+
+    /// Return the global name facility, if one has been configured.
+    #[must_use]
+    pub fn global_name_facility(&self) -> Option<&dyn GlobalNameFacility> {
+        self.global_name_facility.as_deref()
+    }
+
+    /// Set the global name facility for distributed process registry BIFs.
+    pub fn set_global_name_facility(&mut self, facility: Option<Arc<dyn GlobalNameFacility>>) {
+        self.global_name_facility = facility;
     }
 
     /// Schedule a timer via the runtime timer wheel.
