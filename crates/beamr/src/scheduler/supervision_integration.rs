@@ -384,6 +384,24 @@ impl FileIoFacility for SchedulerFileIoFacility {
             .map(|(_, result)| result)
     }
 
+    fn take_pending_file_io(&self, pid: u64) -> Option<(u64, FileIoContinuation)> {
+        let op_id = self
+            .shared
+            .file_io_pending
+            .iter()
+            .find(|entry| entry.value().0 == pid)
+            .map(|entry| *entry.key())?;
+        let (_, (_, continuation)) = self.shared.file_io_pending.remove(&op_id)?;
+        self.shared.file_io_abandoned.insert(op_id, ());
+        Some((op_id, continuation))
+    }
+
+    fn abandon_file_io(&self, op_id: u64) {
+        if self.shared.file_io_pending.remove(&op_id).is_some() {
+            self.shared.file_io_abandoned.insert(op_id, ());
+        }
+    }
+
     fn ring(&self) -> &dyn CompletionRing {
         self.shared.file_io_ring.as_ref()
     }

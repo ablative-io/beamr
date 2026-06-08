@@ -99,6 +99,20 @@ impl FileIoFacility for MockFileIoFacility {
             .pop_front()
     }
 
+    fn take_pending_file_io(&self, pid: u64) -> Option<(u64, FileIoContinuation)> {
+        let mut pending = self.pending.lock().expect("pending lock");
+        let index = pending
+            .iter()
+            .position(|(pending_pid, _, _)| *pending_pid == pid)?;
+        let (_, op_id, continuation) = pending.remove(index);
+        Some((op_id, continuation))
+    }
+
+    fn abandon_file_io(&self, op_id: u64) {
+        let mut pending = self.pending.lock().expect("pending lock");
+        pending.retain(|(_, pending_op_id, _)| *pending_op_id != op_id);
+    }
+
     fn ring(&self) -> &dyn CompletionRing {
         &self.ring
     }

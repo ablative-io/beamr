@@ -431,6 +431,7 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
+        file_io_abandoned: DashMap::new(),
         file_io_results: DashMap::new(),
     });
     let mut process = Process::new(1, DEFAULT_HEAP_SIZE);
@@ -700,6 +701,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
+        file_io_abandoned: DashMap::new(),
         file_io_results: DashMap::new(),
     });
     let pid = 1;

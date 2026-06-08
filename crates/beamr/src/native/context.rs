@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use crate::atom::AtomTable;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
-use crate::io::{CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode};
+use crate::io::{
+    CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode,
+};
 use crate::native::ets_bifs::EtsFoldlState;
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
 use crate::process::{Priority, Process};
@@ -65,7 +67,7 @@ pub enum NativeContinuation {
     GleamResultTry,
 }
 
-/// File I/O continuation data used when a suspended file BIF resumes.
+/// File I/O continuation data used when a suspended completion-backed BIF resumes.
 #[derive(Clone, Debug)]
 pub enum FileIoContinuation {
     /// `erlang:open_file/2` completion.
@@ -76,6 +78,20 @@ pub enum FileIoContinuation {
     Read,
     /// `erlang:write_file/2` completion.
     Write { expected_len: usize },
+    /// `erlang:tcp_connect/3` completion.
+    TcpConnect { fd: i32 },
+    /// `erlang:tcp_send/2` completion.
+    TcpSend {
+        fd: Arc<FdInner>,
+        remaining: Vec<u8>,
+    },
+    /// `erlang:tcp_recv/2,3` completion.
+    TcpRecv {
+        fd: Arc<FdInner>,
+        requested_len: usize,
+        accumulated: Vec<u8>,
+        timeout_ms: Option<u64>,
+    },
 }
 
 /// Completion facility used by file BIFs to submit ring work and retrieve resume completions.
@@ -88,6 +104,12 @@ pub trait FileIoFacility: Send + Sync {
 
     /// Take a completion that woke `pid`, if any.
     fn take_file_io_completion(&self, pid: u64) -> Option<FileIoCompletion>;
+
+    /// Take and abandon pending operation state for `pid`, if any.
+    fn take_pending_file_io(&self, pid: u64) -> Option<(u64, FileIoContinuation)>;
+
+    /// Stop tracking a pending operation after the process-side timeout fired.
+    fn abandon_file_io(&self, op_id: u64);
 
     /// Completion ring used by `FdInner::explicit_close`.
     fn ring(&self) -> &dyn CompletionRing;
@@ -584,6 +606,16 @@ impl<'process> ProcessContext<'process> {
         op: IoOp,
         continuation: FileIoContinuation,
     ) -> Result<u64, Term> {
+        self.submit_file_io_with_timeout(op, continuation, None)
+    }
+
+    /// Submit a completion-ring backed operation and suspend with an optional timeout.
+    pub fn submit_file_io_with_timeout(
+        &mut self,
+        op: IoOp,
+        continuation: FileIoContinuation,
+        timeout_ms: Option<u64>,
+    ) -> Result<u64, Term> {
         let pid = self
             .pid
             .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
@@ -592,7 +624,7 @@ impl<'process> ProcessContext<'process> {
             .as_ref()
             .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
         let op_id = facility.submit_file_io(pid, op, continuation);
-        self.request_suspend(None);
+        self.request_suspend(timeout_ms);
         Ok(op_id)
     }
 
@@ -617,6 +649,19 @@ impl<'process> ProcessContext<'process> {
     pub fn take_file_io_completion(&self) -> Option<FileIoCompletion> {
         let pid = self.pid?;
         self.file_io_facility.as_ref()?.take_file_io_completion(pid)
+    }
+
+    /// Take and abandon pending completion-ring state for this process.
+    pub fn take_pending_file_io(&self) -> Option<(u64, FileIoContinuation)> {
+        let pid = self.pid?;
+        self.file_io_facility.as_ref()?.take_pending_file_io(pid)
+    }
+
+    /// Stop tracking a pending completion-ring operation after process timeout.
+    pub fn abandon_file_io(&self, op_id: u64) {
+        if let Some(facility) = &self.file_io_facility {
+            facility.abandon_file_io(op_id);
+        }
     }
 
     /// Return the completion ring backing file I/O resources.

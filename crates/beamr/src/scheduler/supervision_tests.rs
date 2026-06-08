@@ -230,6 +230,7 @@ fn make_shared_state() -> Arc<SharedState> {
         file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
+        file_io_abandoned: DashMap::new(),
         file_io_results: DashMap::new(),
     })
 }

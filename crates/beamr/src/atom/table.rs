@@ -64,6 +64,13 @@ impl Atom {
     pub const APPEND: Self = Self(50);
     pub const CREATE: Self = Self(51);
     pub const TRUNCATE: Self = Self(52);
+    pub const ECONNREFUSED: Self = Self(53);
+    pub const ECONNRESET: Self = Self(54);
+    pub const EADDRINUSE: Self = Self(55);
+    pub const EADDRNOTAVAIL: Self = Self(56);
+    pub const HOST_NOT_FOUND: Self = Self(57);
+    pub const IP: Self = Self(58);
+    pub const PORT: Self = Self(59);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -128,6 +135,13 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("append", Atom::APPEND),
     ("create", Atom::CREATE),
     ("truncate", Atom::TRUNCATE),
+    ("econnrefused", Atom::ECONNREFUSED),
+    ("econnreset", Atom::ECONNRESET),
+    ("eaddrinuse", Atom::EADDRINUSE),
+    ("eaddrnotavail", Atom::EADDRNOTAVAIL),
+    ("host_not_found", Atom::HOST_NOT_FOUND),
+    ("ip", Atom::IP),
+    ("port", Atom::PORT),
 ];
 
 /// Concurrent intern table for atom strings.
