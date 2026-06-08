@@ -1,1 +1,1 @@
-fix(beamr): remove unused inet socket atom field
+harden(beamr): review inet BIF socket surface

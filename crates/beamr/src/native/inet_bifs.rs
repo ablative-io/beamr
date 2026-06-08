@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::io;
+use std::os::fd::RawFd;
 use std::sync::{Mutex, OnceLock};
 
 use rustix::net::SocketAddrV4;
@@ -48,7 +49,9 @@ pub fn inet_setopts(args: &[Term], context: &mut ProcessContext) -> Result<Term,
     let [socket, options] = args else {
         return Err(badarg());
     };
-    let resource = open_resource(*socket, context)?;
+    let Some(resource) = open_resource(*socket)? else {
+        return error_tuple(context, Atom::CLOSED);
+    };
     let socket_atoms = SocketAtoms::from_context(context)?;
 
     let mut tail = *options;
@@ -69,7 +72,9 @@ pub fn inet_getopts(args: &[Term], context: &mut ProcessContext) -> Result<Term,
     let [socket, options] = args else {
         return Err(badarg());
     };
-    let resource = open_resource(*socket, context)?;
+    let Some(resource) = open_resource(*socket)? else {
+        return error_tuple(context, Atom::CLOSED);
+    };
     let socket_atoms = SocketAtoms::from_context(context)?;
 
     let mut values = Vec::new();
@@ -94,7 +99,9 @@ pub fn inet_peername(args: &[Term], context: &mut ProcessContext) -> Result<Term
     let [socket] = args else {
         return Err(badarg());
     };
-    let resource = open_resource(*socket, context)?;
+    let Some(resource) = open_resource(*socket)? else {
+        return error_tuple(context, Atom::CLOSED);
+    };
     match socket_peername(resource.fd()) {
         Ok(addr) => ok_socket_addr_tuple(context, addr),
         Err(reason) => error_tuple(context, reason),
@@ -106,7 +113,9 @@ pub fn inet_sockname(args: &[Term], context: &mut ProcessContext) -> Result<Term
     let [socket] = args else {
         return Err(badarg());
     };
-    let resource = open_resource(*socket, context)?;
+    let Some(resource) = open_resource(*socket)? else {
+        return error_tuple(context, Atom::CLOSED);
+    };
     match socket_sockname(resource.fd()) {
         Ok(addr) => ok_socket_addr_tuple(context, addr),
         Err(reason) => error_tuple(context, reason),
@@ -118,7 +127,9 @@ pub fn inet_port(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     let [socket] = args else {
         return Err(badarg());
     };
-    let resource = open_resource(*socket, context)?;
+    let Some(resource) = open_resource(*socket)? else {
+        return error_tuple(context, Atom::CLOSED);
+    };
     match socket_sockname(resource.fd()) {
         Ok(addr) => {
             let port = small_int(i64::from(addr.port()))?;
@@ -279,25 +290,22 @@ impl ActiveMode {
     }
 }
 
-fn apply_set_option(fd: i32, option: SetOption, atoms: &SocketAtoms) -> Option<Atom> {
-    let socket = match socket_handle(fd) {
-        Ok(socket) => socket,
-        Err(reason) => return Some(reason),
-    };
+fn apply_set_option(fd: RawFd, option: SetOption, atoms: &SocketAtoms) -> Option<Atom> {
+    let socket = socket_handle(fd);
     match option {
-        SetOption::NoDelay(value) => sockopt::set_tcp_nodelay(&socket, value)
+        SetOption::NoDelay(value) => sockopt::set_tcp_nodelay(socket, value)
             .err()
             .map(rustix_error_reason),
-        SetOption::KeepAlive(value) => sockopt::set_socket_keepalive(&socket, value)
+        SetOption::KeepAlive(value) => sockopt::set_socket_keepalive(socket, value)
             .err()
             .map(rustix_error_reason),
-        SetOption::ReuseAddr(value) => sockopt::set_socket_reuseaddr(&socket, value)
+        SetOption::ReuseAddr(value) => sockopt::set_socket_reuseaddr(socket, value)
             .err()
             .map(rustix_error_reason),
-        SetOption::SndBuf(value) => sockopt::set_socket_send_buffer_size(&socket, value)
+        SetOption::SndBuf(value) => sockopt::set_socket_send_buffer_size(socket, value)
             .err()
             .map(rustix_error_reason),
-        SetOption::RecBuf(value) => sockopt::set_socket_recv_buffer_size(&socket, value)
+        SetOption::RecBuf(value) => sockopt::set_socket_recv_buffer_size(socket, value)
             .err()
             .map(rustix_error_reason),
         SetOption::Active(mode) => set_active_mode(fd, mode, atoms),
@@ -305,48 +313,45 @@ fn apply_set_option(fd: i32, option: SetOption, atoms: &SocketAtoms) -> Option<A
 }
 
 fn read_get_option(
-    fd: i32,
+    fd: RawFd,
     option: GetOption,
     atoms: &SocketAtoms,
     context: &mut ProcessContext,
 ) -> Result<Result<Term, Atom>, Term> {
-    let socket = match socket_handle(fd) {
-        Ok(socket) => socket,
-        Err(reason) => return Ok(Err(reason)),
-    };
+    let socket = socket_handle(fd);
     match option {
         GetOption::NoDelay => option_tuple_result(
             context,
             atoms.nodelay,
-            sockopt::tcp_nodelay(&socket)
+            sockopt::tcp_nodelay(socket)
                 .map(bool_term)
                 .map_err(rustix_error_reason),
         ),
         GetOption::KeepAlive => option_tuple_result(
             context,
             atoms.keepalive,
-            sockopt::socket_keepalive(&socket)
+            sockopt::socket_keepalive(socket)
                 .map(bool_term)
                 .map_err(rustix_error_reason),
         ),
         GetOption::ReuseAddr => option_tuple_result(
             context,
             atoms.reuseaddr,
-            sockopt::socket_reuseaddr(&socket)
+            sockopt::socket_reuseaddr(socket)
                 .map(bool_term)
                 .map_err(rustix_error_reason),
         ),
         GetOption::SndBuf => option_tuple_result(
             context,
             atoms.sndbuf,
-            sockopt::socket_send_buffer_size(&socket)
+            sockopt::socket_send_buffer_size(socket)
                 .map_err(rustix_error_reason)
                 .and_then(usize_term),
         ),
         GetOption::RecBuf => option_tuple_result(
             context,
             atoms.recbuf,
-            sockopt::socket_recv_buffer_size(&socket)
+            sockopt::socket_recv_buffer_size(socket)
                 .map_err(rustix_error_reason)
                 .and_then(usize_term),
         ),
@@ -358,14 +363,11 @@ fn read_get_option(
     }
 }
 
-fn socket_handle(fd: i32) -> Result<rustix::fd::OwnedFd, Atom> {
-    let path = format!("/dev/fd/{fd}");
-    rustix::fs::open(
-        path.as_str(),
-        rustix::fs::OFlags::RDWR,
-        rustix::fs::Mode::empty(),
-    )
-    .map_err(rustix_error_reason)
+fn socket_handle(fd: RawFd) -> rustix::fd::BorrowedFd<'static> {
+    // SAFETY: callers validate that `fd` comes from an open `FdResource` before
+    // invoking synchronous socket operations, and the borrowed handle is used
+    // only for the duration of the syscall wrapper rather than stored.
+    unsafe { rustix::fd::BorrowedFd::borrow_raw(fd) }
 }
 
 fn set_active_mode(fd: i32, mode: ActiveMode, _atoms: &SocketAtoms) -> Option<Atom> {
@@ -403,17 +405,17 @@ fn option_tuple_result(
     }
 }
 
-fn socket_peername(fd: i32) -> Result<SocketAddrV4, Atom> {
-    let socket = socket_handle(fd)?;
-    let Some(addr) = rustix::net::getpeername(&socket).map_err(rustix_error_reason)? else {
+fn socket_peername(fd: RawFd) -> Result<SocketAddrV4, Atom> {
+    let socket = socket_handle(fd);
+    let Some(addr) = rustix::net::getpeername(socket).map_err(rustix_error_reason)? else {
         return Err(Atom::ENOTCONN);
     };
     socket_addr_v4(addr)
 }
 
-fn socket_sockname(fd: i32) -> Result<SocketAddrV4, Atom> {
-    let socket = socket_handle(fd)?;
-    let addr = rustix::net::getsockname(&socket).map_err(rustix_error_reason)?;
+fn socket_sockname(fd: RawFd) -> Result<SocketAddrV4, Atom> {
+    let socket = socket_handle(fd);
+    let addr = rustix::net::getsockname(socket).map_err(rustix_error_reason)?;
     socket_addr_v4(addr)
 }
 
@@ -434,13 +436,12 @@ fn ok_socket_addr_tuple(context: &mut ProcessContext, addr: SocketAddrV4) -> Res
     ok_tuple(context, pair)
 }
 
-fn open_resource(socket: Term, context: &mut ProcessContext) -> Result<FdResource, Term> {
+fn open_resource(socket: Term) -> Result<Option<FdResource>, Term> {
     let resource = FdResource::new(socket).ok_or_else(badarg)?;
     if resource.state() != FdState::Open {
-        let closed = error_tuple(context, Atom::CLOSED)?;
-        return Err(closed);
+        return Ok(None);
     }
-    Ok(resource)
+    Ok(Some(resource))
 }
 
 fn finish_close(completion: FileIoCompletion, context: &mut ProcessContext) -> Result<Term, Term> {
@@ -517,7 +518,7 @@ fn badarg() -> Term {
 mod tests {
     use std::collections::VecDeque;
     use std::io;
-    use std::net::{TcpListener, TcpStream};
+    use std::net::{TcpListener, TcpStream, UdpSocket};
     use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
     use std::sync::{Arc, Mutex};
 
@@ -686,6 +687,41 @@ mod tests {
     }
 
     #[test]
+    fn active_mode_round_trip_does_not_disturb_socket_options() {
+        let (client, _server) = tcp_pair();
+        let fd = client.into_raw_fd();
+        let mut process = Process::new(PID, 256);
+        let mut context = context(&mut process, None);
+        let atom_table = context.atom_table().expect("atom table");
+        let nodelay = atom_table.intern("nodelay");
+        let active = atom_table.intern("active");
+        let once = atom_table.intern("once");
+        let resource = fd_resource(&mut context, fd);
+        let nodelay_option = tuple2(&mut context, Term::atom(nodelay), Term::atom(Atom::TRUE));
+        let active_option = tuple2(&mut context, Term::atom(active), Term::atom(once));
+        let set = list(&mut context, &[nodelay_option, active_option]);
+
+        assert_eq!(
+            inet_setopts(&[resource, set], &mut context).expect("setopts result"),
+            Term::atom(Atom::OK)
+        );
+
+        let query = list(&mut context, &[Term::atom(active), Term::atom(nodelay)]);
+        let result = inet_getopts(&[resource, query], &mut context).expect("getopts result");
+        let (tag, values) = result_tuple(result);
+        assert_eq!(tag, Term::atom(Atom::OK));
+        let active_cons = Cons::new(values).expect("active option");
+        let (active_name, active_value) = result_tuple(active_cons.head());
+        assert_eq!(active_name, Term::atom(active));
+        assert_eq!(active_value, Term::atom(once));
+        let nodelay_cons = Cons::new(active_cons.tail()).expect("nodelay option");
+        let (nodelay_name, nodelay_value) = result_tuple(nodelay_cons.head());
+        assert_eq!(nodelay_name, Term::atom(nodelay));
+        assert_eq!(nodelay_value, Term::atom(Atom::TRUE));
+        assert_eq!(nodelay_cons.tail(), Term::NIL);
+    }
+
+    #[test]
     fn peername_and_sockname_return_ipv4_address_port_tuples() {
         let (client, server) = tcp_pair();
         let expected_peer = server.local_addr().expect("server local addr");
@@ -702,18 +738,60 @@ mod tests {
     }
 
     #[test]
-    fn inet_port_returns_bound_port_from_sockname() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
-        let expected_port = listener.local_addr().expect("listener addr").port();
-        let fd = listener.into_raw_fd();
+    fn peername_on_unconnected_udp_returns_enotconn() {
+        let udp = UdpSocket::bind("127.0.0.1:0").expect("bind udp");
+        let fd = udp.into_raw_fd();
         let mut process = Process::new(PID, 128);
         let mut context = context(&mut process, None);
         let resource = fd_resource(&mut context, fd);
 
-        let result = inet_port(&[resource], &mut context).expect("port result");
+        let result = inet_peername(&[resource], &mut context).expect("peername result");
+        let (tag, reason) = result_tuple(result);
+        assert_eq!(tag, Term::atom(Atom::ERROR));
+        assert_eq!(reason, Term::atom(Atom::ENOTCONN));
+    }
+
+    #[test]
+    fn inet_port_returns_bound_port_from_tcp_and_udp_sockname() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let expected_tcp_port = listener.local_addr().expect("listener addr").port();
+        let tcp_fd = listener.into_raw_fd();
+        let udp = UdpSocket::bind("127.0.0.1:0").expect("bind udp");
+        let expected_udp_port = udp.local_addr().expect("udp addr").port();
+        let udp_fd = udp.into_raw_fd();
+        let mut process = Process::new(PID, 128);
+        let mut context = context(&mut process, None);
+        let tcp_resource = fd_resource(&mut context, tcp_fd);
+        let udp_resource = fd_resource(&mut context, udp_fd);
+
+        let result = inet_port(&[tcp_resource], &mut context).expect("tcp port result");
         let (tag, port) = result_tuple(result);
         assert_eq!(tag, Term::atom(Atom::OK));
-        assert_eq!(port.as_small_int(), Some(i64::from(expected_port)));
+        assert_eq!(port.as_small_int(), Some(i64::from(expected_tcp_port)));
+
+        let result = inet_port(&[udp_resource], &mut context).expect("udp port result");
+        let (tag, port) = result_tuple(result);
+        assert_eq!(tag, Term::atom(Atom::OK));
+        assert_eq!(port.as_small_int(), Some(i64::from(expected_udp_port)));
+    }
+
+    #[test]
+    fn closed_resource_returns_error_tuple_for_inet_queries() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let mut process = Process::new(PID, 128);
+        let mut context = context(&mut process, None);
+        let resource = fd_resource(&mut context, listener.into_raw_fd());
+        FdResource::new(resource)
+            .expect("fd resource")
+            .inner()
+            .mark_closed();
+        let nodelay = context.atom_table().expect("atom table").intern("nodelay");
+        let query = list(&mut context, &[Term::atom(nodelay)]);
+
+        let result = inet_getopts(&[resource, query], &mut context).expect("closed getopts");
+        let (tag, reason) = result_tuple(result);
+        assert_eq!(tag, Term::atom(Atom::ERROR));
+        assert_eq!(reason, Term::atom(Atom::CLOSED));
     }
 
     #[test]
