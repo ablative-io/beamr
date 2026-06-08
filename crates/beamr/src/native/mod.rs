@@ -17,6 +17,7 @@ pub mod file_bifs;
 pub mod gate3_bifs;
 pub mod gleam_ffi;
 pub mod group_leader;
+pub mod inet_bifs;
 pub mod links;
 pub mod meridian_ffi;
 pub mod otp_stubs;

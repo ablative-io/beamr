@@ -56,14 +56,15 @@ impl Atom {
     pub const EPIPE: Self = Self(42);
     pub const EAGAIN: Self = Self(43);
     pub const EINVAL: Self = Self(44);
-    pub const UNKNOWN_ERROR: Self = Self(45);
-    pub const CLOSED: Self = Self(46);
-    pub const INCOMPLETE: Self = Self(47);
-    pub const READ: Self = Self(48);
-    pub const WRITE: Self = Self(49);
-    pub const APPEND: Self = Self(50);
-    pub const CREATE: Self = Self(51);
-    pub const TRUNCATE: Self = Self(52);
+    pub const ENOTCONN: Self = Self(45);
+    pub const UNKNOWN_ERROR: Self = Self(46);
+    pub const CLOSED: Self = Self(47);
+    pub const INCOMPLETE: Self = Self(48);
+    pub const READ: Self = Self(49);
+    pub const WRITE: Self = Self(50);
+    pub const APPEND: Self = Self(51);
+    pub const CREATE: Self = Self(52);
+    pub const TRUNCATE: Self = Self(53);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -120,6 +121,7 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("epipe", Atom::EPIPE),
     ("eagain", Atom::EAGAIN),
     ("einval", Atom::EINVAL),
+    ("enotconn", Atom::ENOTCONN),
     ("unknown_error", Atom::UNKNOWN_ERROR),
     ("closed", Atom::CLOSED),
     ("incomplete", Atom::INCOMPLETE),
