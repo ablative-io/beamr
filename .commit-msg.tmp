@@ -1,1 +1,1 @@
-feat(beamr): add TCP connect send and recv BIFs
+Harden B-107 TCP client transfer implementation

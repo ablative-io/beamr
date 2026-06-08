@@ -342,6 +342,15 @@ fn wait_for_connect(fd: RawFd) -> io::Result<IoResult> {
             }
             return Err(error);
         }
+        if rc == 0 {
+            continue;
+        }
+        if poll_fd.revents & libc::POLLNVAL != 0 {
+            return Err(io::Error::from_raw_os_error(libc::EBADF));
+        }
+        if poll_fd.revents & (libc::POLLOUT | libc::POLLERR | libc::POLLHUP) == 0 {
+            continue;
+        }
         let mut error: libc::c_int = 0;
         let mut len = mem::size_of_val(&error) as libc::socklen_t;
         // SAFETY: `error` and `len` are valid output storage for SO_ERROR.

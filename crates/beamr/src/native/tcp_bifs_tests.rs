@@ -567,6 +567,35 @@ fn tcp_recv_zero_length_uses_default_buffer() {
 }
 
 #[test]
+fn tcp_recv_large_exact_length_reads_in_bounded_chunks() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let facility = Arc::new(MockFileIoFacility::default());
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("fd stand-in");
+    let fd = listener.into_raw_fd();
+    let mut process = Process::new(PID, 128);
+    let mut context = context(&mut process, atom_table, Some(Arc::clone(&facility)));
+    let resource = context
+        .alloc_fd_resource(Arc::new(FdInner::new(fd, PID)))
+        .expect("fd resource");
+
+    let result = tcp_recv(
+        &[resource, Term::small_int((64 * 1024 + 1) as i64)],
+        &mut context,
+    )
+    .expect("large recv submit");
+
+    assert_eq!(result, Term::atom(Atom::OK));
+    assert_eq!(
+        facility.submitted(),
+        vec![IoOp::Read {
+            fd,
+            buf_len: 64 * 1024,
+            offset: u64::MAX,
+        }]
+    );
+}
+
+#[test]
 fn tcp_recv_exact_length_accumulates_multiple_reads() {
     let atom_table = Arc::new(AtomTable::with_common_atoms());
     let facility = Arc::new(MockFileIoFacility::default());

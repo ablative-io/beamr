@@ -358,7 +358,7 @@ fn finish_tcp_recv(
                 let binary = context.alloc_binary(&accumulated)?;
                 ok_tuple(context, binary)
             } else {
-                let buf_len = requested_len.saturating_sub(accumulated.len());
+                let buf_len = recv_buf_len(requested_len.saturating_sub(accumulated.len()));
                 context.submit_file_io_with_timeout(
                     IoOp::Read {
                         fd: fd.fd(),
@@ -605,7 +605,7 @@ fn recv_buf_len(requested_len: usize) -> usize {
     if requested_len == 0 {
         DEFAULT_RECV_BUF_LEN
     } else {
-        requested_len
+        requested_len.min(DEFAULT_RECV_BUF_LEN)
     }
 }
 
