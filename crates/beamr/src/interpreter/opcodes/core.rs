@@ -483,6 +483,7 @@ fn call_external_target(
                 context.set_atom_table(svc.atom_table.clone());
                 context.set_local_node(svc.local_node);
                 context.set_spawn_facility(svc.spawn_facility.clone());
+                context.set_remote_spawn_facility(svc.remote_spawn_facility.clone());
                 context.set_link_facility(svc.link_facility.clone());
                 context.set_group_leader_facility(svc.group_leader_facility.clone());
                 context.set_supervision_facility(svc.supervision_facility.clone());

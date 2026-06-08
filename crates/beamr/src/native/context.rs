@@ -159,6 +159,36 @@ pub trait TcpIoFacility: Send + Sync {
     fn submit_active_tcp_read(&self, socket: Arc<FdInner>, buf_len: usize) -> Option<u64>;
 }
 
+/// Facility used by node-qualified spawn BIFs to request process creation on a remote node.
+pub trait RemoteSpawnFacility: Send + Sync {
+    /// Send a SPAWN_REQUEST to `node` and return the SPAWN_REPLY PID components.
+    fn remote_spawn(
+        &self,
+        caller_pid: u64,
+        node: crate::atom::Atom,
+        module: crate::atom::Atom,
+        function: crate::atom::Atom,
+        args: Vec<Term>,
+        options: super::spawn::SpawnOptions,
+    ) -> Result<RemoteSpawnResult, RemoteSpawnError>;
+}
+
+/// Successful remote spawn reply, ready to allocate as an external PID.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct RemoteSpawnResult {
+    pub node: crate::atom::Atom,
+    pub pid_number: u64,
+    pub serial: u64,
+    pub monitor_reference: Option<u64>,
+}
+
+/// Error returned by remote spawn facilities.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum RemoteSpawnError {
+    Unavailable,
+    Failed,
+}
+
 /// Suspend request from a BIF that wants the process to wait.
 ///
 /// Used by `select` when no mailbox message matches any handler.
@@ -187,6 +217,7 @@ pub struct ProcessContext<'process> {
     timers: Option<Arc<Mutex<TimerWheel>>>,
     atom_table: Option<Arc<AtomTable>>,
     spawn_facility: Option<Arc<dyn SpawnFacility>>,
+    remote_spawn_facility: Option<Arc<dyn RemoteSpawnFacility>>,
     link_facility: Option<Arc<dyn LinkFacility>>,
     group_leader_facility: Option<Arc<dyn GroupLeaderFacility>>,
     supervision_facility: Option<Arc<dyn SupervisionFacility>>,
@@ -220,6 +251,10 @@ impl fmt::Debug for ProcessContext<'_> {
             .field(
                 "spawn_facility",
                 &self.spawn_facility.as_ref().map(|_| ".."),
+            )
+            .field(
+                "remote_spawn_facility",
+                &self.remote_spawn_facility.as_ref().map(|_| ".."),
             )
             .field("link_facility", &self.link_facility.as_ref().map(|_| ".."))
             .field(
@@ -292,6 +327,7 @@ impl<'process> ProcessContext<'process> {
             timers: None,
             atom_table: None,
             spawn_facility: None,
+            remote_spawn_facility: None,
             link_facility: None,
             group_leader_facility: None,
             supervision_facility: None,
@@ -325,6 +361,7 @@ impl<'process> ProcessContext<'process> {
             timers: Some(timers),
             atom_table: None,
             spawn_facility: None,
+            remote_spawn_facility: None,
             link_facility: None,
             group_leader_facility: None,
             supervision_facility: None,
@@ -445,6 +482,17 @@ impl<'process> ProcessContext<'process> {
     /// Set the spawn facility for process creation BIFs.
     pub fn set_spawn_facility(&mut self, facility: Option<Arc<dyn SpawnFacility>>) {
         self.spawn_facility = facility;
+    }
+
+    /// Return the remote spawn facility, if one has been configured.
+    #[must_use]
+    pub fn remote_spawn_facility(&self) -> Option<&dyn RemoteSpawnFacility> {
+        self.remote_spawn_facility.as_deref()
+    }
+
+    /// Set the remote spawn facility for node-qualified spawn BIFs.
+    pub fn set_remote_spawn_facility(&mut self, facility: Option<Arc<dyn RemoteSpawnFacility>>) {
+        self.remote_spawn_facility = facility;
     }
 
     /// Return the link facility, if one has been configured.

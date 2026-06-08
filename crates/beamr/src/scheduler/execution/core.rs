@@ -416,6 +416,7 @@ fn submit_dirty_call(
     context.set_atom_table(services.atom_table);
     context.set_local_node(services.local_node);
     context.set_spawn_facility(services.spawn_facility);
+    context.set_remote_spawn_facility(services.remote_spawn_facility);
     context.set_link_facility(services.link_facility);
     context.set_group_leader_facility(services.group_leader_facility);
     context.set_supervision_facility(services.supervision_facility);

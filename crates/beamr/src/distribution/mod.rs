@@ -1,9 +1,10 @@
 //! Distribution identity primitives, node resolution, and connection management.
 
-mod node;
 pub mod atom_cache;
 pub mod connection;
+pub mod control;
 pub mod handshake;
+mod node;
 pub mod resolver;
 
 pub use node::{DEFAULT_NODE_NAME, Node};

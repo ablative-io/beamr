@@ -253,6 +253,21 @@ fn decode_after_tag(
                 .alloc_map(&keys, &values)
                 .map_err(|_| DecodeError::HeapAllocationFailed)
         }
+        tag if tag == tags::PID_EXT || tag == tags::NEW_PID_EXT => {
+            let node = decode_one(cursor, context, atom_table, options, depth + 1, budget)?;
+            let node = node.as_atom().ok_or(DecodeError::UnsupportedTag(tag))?;
+            let id = u64::from(cursor.read_u32()?);
+            let serial = u64::from(cursor.read_u32()?);
+            if tag == tags::NEW_PID_EXT {
+                let _creation = cursor.read_u32()?;
+            } else {
+                let _creation = cursor.read_u8()?;
+            }
+            ensure_heap_words(4, budget)?;
+            context
+                .alloc_external_pid(node, id, serial)
+                .map_err(|_| DecodeError::HeapAllocationFailed)
+        }
         other => Err(DecodeError::UnsupportedTag(other)),
     }
 }
