@@ -317,7 +317,7 @@ impl ConnectionManager {
             .inbound_identifier
             .write()
             .unwrap_or_else(|error| error.into_inner());
-        let identifier = Arc::new(identifier);
+        let identifier: Arc<dyn Fn(SocketAddr) -> Option<Atom> + Send + Sync> = Arc::new(identifier);
         *slot = Some(identifier.clone());
         drop(slot);
         self.identify_pending_inbound(&identifier);
@@ -508,7 +508,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_manager_has_no_connections() {
-        let manager = manager_with_resolver(Arc::new(StaticResolver::new()));
+        let manager = manager_with_resolver(Arc::new(StaticResolver::new(std::collections::HashMap::new())));
         let node = manager.inner.atom_table.intern("missing@127.0.0.1");
 
         assert_eq!(manager.connection_count(), 0);
@@ -529,8 +529,9 @@ mod tests {
             let _accepted = listener.accept().await;
         });
 
-        let resolver = Arc::new(StaticResolver::new());
-        resolver.insert("remote@127.0.0.1", addr);
+        let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::from([
+            ("remote@127.0.0.1".to_string(), addr),
+        ])));
         let manager = manager_with_resolver(resolver);
         let connection = manager
             .connect("remote@127.0.0.1")
@@ -548,7 +549,7 @@ mod tests {
 
     #[tokio::test]
     async fn inbound_connection_waits_for_identification_seam() {
-        let resolver = Arc::new(StaticResolver::new());
+        let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::new()));
         let manager = manager_with_resolver(resolver);
         let accept = manager
             .listen("127.0.0.1:0".parse().unwrap_or_else(|error| {
@@ -585,8 +586,9 @@ mod tests {
         });
         let accepted = tokio::spawn(async move { listener.accept().await });
 
-        let resolver = Arc::new(StaticResolver::new());
-        resolver.insert("remote@127.0.0.1", addr);
+        let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::from([
+            ("remote@127.0.0.1".to_string(), addr),
+        ])));
         let manager = manager_with_resolver(resolver);
         let callback_count = Arc::new(AtomicUsize::new(0));
         let callback_count_for_hook = Arc::clone(&callback_count);
@@ -621,8 +623,9 @@ mod tests {
         });
         let accepted = tokio::spawn(async move { listener.accept().await });
 
-        let resolver = Arc::new(StaticResolver::new());
-        resolver.insert("remote@127.0.0.1", addr);
+        let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::from([
+            ("remote@127.0.0.1".to_string(), addr),
+        ])));
         let manager = manager_with_resolver(resolver);
         let callback_count = Arc::new(AtomicUsize::new(0));
         let callback_count_for_hook = Arc::clone(&callback_count);
