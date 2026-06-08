@@ -1,1 +1,1 @@
-Harden async I/O completion bridge and scheduler message delivery
+feat(beamr): route stdio through group leaders

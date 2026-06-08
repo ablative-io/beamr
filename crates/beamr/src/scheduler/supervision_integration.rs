@@ -54,6 +54,42 @@ pub(super) fn propagate_exit(shared: &SharedState, pid: u64, reason: ExitReason)
     }
 }
 
+pub(super) struct SchedulerIoProtocolFacility {
+    pub(super) shared: Arc<SharedState>,
+}
+
+impl crate::native::IoProtocolFacility for SchedulerIoProtocolFacility {
+    fn send_io_request(&self, target_pid: u64, message: Term) -> bool {
+        let standard_io_pid = self
+            .shared
+            .standard_io_pid
+            .load(std::sync::atomic::Ordering::Acquire);
+        if target_pid == standard_io_pid {
+            return lock_or_recover(&self.shared.standard_io)
+                .as_ref()
+                .is_some_and(|standard_io| standard_io.send(message));
+        }
+        let Some(entry) = self.shared.process_bodies.get(&target_pid) else {
+            return false;
+        };
+        let mut slot = lock_or_recover(&entry);
+        match &mut *slot {
+            ProcessSlot::Present(process) => {
+                let Ok(copied) = crate::mailbox::copy_term_to_heap(message, process.0.heap_mut())
+                else {
+                    return false;
+                };
+                process.0.mailbox_mut().push_owned(copied);
+            }
+            ProcessSlot::Executing(metadata) => metadata.pending_io_messages.push(message),
+            ProcessSlot::Absent => return false,
+        }
+        drop(slot);
+        wake_process(&self.shared, target_pid);
+        true
+    }
+}
+
 /// Real `GroupLeaderFacility` backed by the scheduler's shared state.
 pub(super) struct SchedulerGroupLeaderFacility {
     pub(super) shared: Arc<SharedState>,
@@ -307,6 +343,10 @@ pub(super) fn build_native_services(
         Arc::new(SchedulerGroupLeaderFacility {
             shared: Arc::clone(shared),
         });
+    let io_protocol: Arc<dyn crate::native::IoProtocolFacility> =
+        Arc::new(SchedulerIoProtocolFacility {
+            shared: Arc::clone(shared),
+        });
     let supervision: Arc<dyn crate::native::supervision::SupervisionFacility> =
         Arc::new(SchedulerSupervisionFacility {
             shared: Arc::clone(shared),
@@ -331,6 +371,7 @@ pub(super) fn build_native_services(
         spawn_facility: Some(spawn),
         link_facility: Some(link),
         group_leader_facility: Some(group_leader),
+        io_protocol_facility: Some(io_protocol),
         supervision_facility: Some(supervision),
         process_info_facility: Some(process_info),
         io_sink: Some(Arc::clone(&lock_or_recover(&shared.output_sink))),
@@ -802,10 +843,16 @@ impl SchedulerSpawnFacility {
                 ProcessSlot::Absent => {}
             }
         }
-        match Term::try_pid(caller_pid) {
-            Some(pid_term) => pid_term,
-            None => Term::NIL,
-        }
+        let standard_io_pid = self
+            .shared
+            .standard_io_pid
+            .load(std::sync::atomic::Ordering::Acquire);
+        let fallback_pid = if standard_io_pid == u64::MAX {
+            caller_pid
+        } else {
+            standard_io_pid
+        };
+        Term::try_pid(fallback_pid).unwrap_or(Term::NIL)
     }
 }
 

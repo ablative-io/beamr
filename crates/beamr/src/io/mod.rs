@@ -4,6 +4,7 @@ pub mod bridge;
 pub mod facility;
 pub mod resource;
 pub mod ring;
+pub mod standard_io;
 #[cfg(not(target_os = "linux"))]
 pub mod thread_pool;
 #[cfg(target_os = "linux")]
@@ -14,6 +15,7 @@ use std::io::Write;
 pub use bridge::{IoCompletionBridge, IoWakeTarget, PendingIo, PendingIoRegistry, ResultMode};
 pub use facility::{CompletionRingIoFacility, IoError, IoFacility};
 pub use ring::{CompletionRing, IoCompletion, IoOp, IoResult, StatxData};
+pub use standard_io::{StandardIoProcess, StandardIoReplySender};
 #[cfg(not(target_os = "linux"))]
 pub use thread_pool::ThreadPoolRing;
 #[cfg(target_os = "linux")]

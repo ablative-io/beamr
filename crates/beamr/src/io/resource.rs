@@ -42,6 +42,7 @@ impl FdState {
 pub struct FdInner {
     fd: RawFd,
     owner_pid: u64,
+    close_on_drop: bool,
     state: AtomicU8,
 }
 
@@ -51,6 +52,19 @@ impl FdInner {
         Self {
             fd,
             owner_pid,
+            close_on_drop: true,
+            state: AtomicU8::new(FdState::Open as u8),
+        }
+    }
+
+    /// Creates a lifecycle manager for a borrowed process-standard descriptor.
+    ///
+    /// Borrowed descriptors stay open when the resource is dropped or the owner exits.
+    pub fn borrowed(fd: RawFd, owner_pid: u64) -> Self {
+        Self {
+            fd,
+            owner_pid,
+            close_on_drop: false,
             state: AtomicU8::new(FdState::Open as u8),
         }
     }
@@ -95,7 +109,8 @@ impl FdInner {
     }
 
     fn begin_close(&self) -> bool {
-        self.fd >= 0
+        self.close_on_drop
+            && self.fd >= 0
             && self
                 .state
                 .compare_exchange(

@@ -252,6 +252,10 @@ impl MailboxSender {
     }
 }
 
+pub(crate) fn copy_term_to_heap(term: Term, heap: &mut Heap) -> Result<Term, SendError> {
+    copy_term(term, heap)
+}
+
 fn copy_term(term: Term, heap: &mut Heap) -> Result<Term, SendError> {
     if term.is_list() {
         copy_cons(term, heap)

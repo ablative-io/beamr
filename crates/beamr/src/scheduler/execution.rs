@@ -35,6 +35,7 @@ impl Scheduler {
 
     /// Shut down all worker threads after their current time slice.
     pub fn shutdown(&self) {
+        let _standard_io = lock_or_recover(&self.shared.standard_io).take();
         if let Some(bridge) = lock_or_recover(&self.shared.io_bridge).take() {
             bridge.shutdown();
         }

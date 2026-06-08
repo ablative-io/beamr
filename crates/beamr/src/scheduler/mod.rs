@@ -19,7 +19,7 @@ use crate::io::{
     CompletionRing, CompletionRingIoFacility, IoCompletionBridge, IoFacility, IoSink,
     PendingIoRegistry, RingConfig, create_ring,
 };
-use crate::io::{IoWakeTarget, NullSink};
+use crate::io::{IoWakeTarget, NullSink, StandardIoProcess, StandardIoReplySender};
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
 use crate::native::{
@@ -83,6 +83,8 @@ pub(super) struct SharedState {
     io_registry: Option<Arc<PendingIoRegistry>>,
     io_bridge: Mutex<Option<IoCompletionBridge>>,
     io_facility: Option<Arc<dyn IoFacility>>,
+    standard_io: Mutex<Option<StandardIoProcess>>,
+    standard_io_pid: AtomicU64,
     #[cfg(test)]
     idle_parks: AtomicUsize,
 }
@@ -126,6 +128,13 @@ impl SharedState {
     #[must_use]
     pub(super) fn atom_count(&self) -> usize {
         self.atom_table.len()
+    }
+}
+
+impl StandardIoReplySender for SharedState {
+    fn send_reply(&self, pid: u64, message: Term) -> bool {
+        IoWakeTarget::send_io_message(self, pid, message);
+        true
     }
 }
 
@@ -265,6 +274,8 @@ impl Scheduler {
             io_registry,
             io_bridge: Mutex::new(None),
             io_facility,
+            standard_io: Mutex::new(None),
+            standard_io_pid: AtomicU64::new(u64::MAX),
             #[cfg(test)]
             idle_parks: AtomicUsize::new(0),
         });
@@ -273,6 +284,15 @@ impl Scheduler {
             let bridge = IoCompletionBridge::start(Arc::clone(ring), Arc::clone(registry), target);
             *lock_or_recover(&shared.io_bridge) = Some(bridge);
         }
+        let standard_io_pid = shared.next_pid.fetch_add(1, Ordering::Relaxed);
+        shared.process_table.spawn_with_pid(standard_io_pid);
+        shared
+            .standard_io_pid
+            .store(standard_io_pid, Ordering::Release);
+        let reply_sender: Arc<dyn StandardIoReplySender> = shared.clone();
+        let standard_io =
+            StandardIoProcess::start(standard_io_pid, shared.io_ring.clone(), reply_sender);
+        *lock_or_recover(&shared.standard_io) = Some(standard_io);
         let inject_queues: Vec<_> = (0..thread_count)
             .map(|_| Arc::new(SegQueue::new()))
             .collect();

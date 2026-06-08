@@ -16,6 +16,7 @@ use crate::native::NativeEntry;
 use crate::native::code_management_bifs::CodeManagementFacility;
 use crate::native::ets_bifs::EtsFacility;
 use crate::native::group_leader::GroupLeaderFacility;
+use crate::native::io_protocol::IoProtocolFacility;
 use crate::native::links::LinkFacility;
 use crate::native::process_info_bifs::ProcessInfoFacility;
 use crate::native::spawn::SpawnFacility;
@@ -38,6 +39,8 @@ pub struct NativeServices {
     pub link_facility: Option<Arc<dyn LinkFacility>>,
     /// Group-leader facility for process metadata BIFs.
     pub group_leader_facility: Option<Arc<dyn GroupLeaderFacility>>,
+    /// Standard I/O protocol request delivery facility for `io` BIFs.
+    pub io_protocol_facility: Option<Arc<dyn IoProtocolFacility>>,
     /// Supervision facility for monitor/demonitor/exit BIFs.
     pub supervision_facility: Option<Arc<dyn SupervisionFacility>>,
     /// Process information facility for process_info/1,2 BIFs.
@@ -110,6 +113,7 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
         spawn_facility: None,
         link_facility: None,
         group_leader_facility: None,
+        io_protocol_facility: None,
         supervision_facility: None,
         process_info_facility: None,
         io_sink: None,
@@ -133,6 +137,7 @@ pub fn run_with_registry(
         spawn_facility: None,
         link_facility: None,
         group_leader_facility: None,
+        io_protocol_facility: None,
         supervision_facility: None,
         process_info_facility: None,
         io_sink: None,
@@ -156,6 +161,7 @@ pub fn run_with_timer_services(
         spawn_facility: None,
         link_facility: None,
         group_leader_facility: None,
+        io_protocol_facility: None,
         supervision_facility: None,
         process_info_facility: None,
         io_sink: None,

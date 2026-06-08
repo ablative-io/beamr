@@ -16,6 +16,7 @@ pub mod exception_bifs;
 pub mod gate3_bifs;
 pub mod gleam_ffi;
 pub mod group_leader;
+pub mod io_protocol;
 pub mod links;
 pub mod meridian_ffi;
 pub mod otp_stubs;
@@ -48,6 +49,7 @@ pub use context::{
 };
 pub use ets_bifs::EtsFacility;
 pub use group_leader::GroupLeaderFacility;
+pub use io_protocol::IoProtocolFacility;
 pub use links::LinkFacility;
 pub use process_info_bifs::{
     ProcessInfoFacility, ProcessInfoItem, ProcessInfoStatus, ProcessInfoValue, ProcessMonitorInfo,

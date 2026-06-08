@@ -23,6 +23,7 @@ use crate::timer::{TimerRef, TimerWheel};
 use super::code_management_bifs::CodeManagementFacility;
 use super::ets_bifs::EtsFacility;
 use super::group_leader::GroupLeaderFacility;
+use super::io_protocol::IoProtocolFacility;
 use super::links::LinkFacility;
 use super::process_info_bifs::ProcessInfoFacility;
 use super::registry::RegistryFacility;
@@ -93,6 +94,7 @@ pub struct ProcessContext<'process> {
     spawn_facility: Option<Arc<dyn SpawnFacility>>,
     link_facility: Option<Arc<dyn LinkFacility>>,
     group_leader_facility: Option<Arc<dyn GroupLeaderFacility>>,
+    io_protocol_facility: Option<Arc<dyn IoProtocolFacility>>,
     supervision_facility: Option<Arc<dyn SupervisionFacility>>,
     code_management_facility: Option<Arc<dyn CodeManagementFacility>>,
     process_info_facility: Option<Arc<dyn ProcessInfoFacility>>,
@@ -125,6 +127,10 @@ impl fmt::Debug for ProcessContext<'_> {
             .field(
                 "group_leader_facility",
                 &self.group_leader_facility.as_ref().map(|_| ".."),
+            )
+            .field(
+                "io_protocol_facility",
+                &self.io_protocol_facility.as_ref().map(|_| ".."),
             )
             .field(
                 "supervision_facility",
@@ -181,6 +187,7 @@ impl<'process> ProcessContext<'process> {
             spawn_facility: None,
             link_facility: None,
             group_leader_facility: None,
+            io_protocol_facility: None,
             supervision_facility: None,
             code_management_facility: None,
             process_info_facility: None,
@@ -210,6 +217,7 @@ impl<'process> ProcessContext<'process> {
             spawn_facility: None,
             link_facility: None,
             group_leader_facility: None,
+            io_protocol_facility: None,
             supervision_facility: None,
             code_management_facility: None,
             process_info_facility: None,
@@ -313,6 +321,17 @@ impl<'process> ProcessContext<'process> {
     /// Set the group-leader facility for process metadata BIFs.
     pub fn set_group_leader_facility(&mut self, facility: Option<Arc<dyn GroupLeaderFacility>>) {
         self.group_leader_facility = facility;
+    }
+
+    /// Return the standard I/O protocol facility, if one has been configured.
+    #[must_use]
+    pub fn io_protocol_facility(&self) -> Option<&dyn IoProtocolFacility> {
+        self.io_protocol_facility.as_deref()
+    }
+
+    /// Set the standard I/O protocol facility for `io` BIFs.
+    pub fn set_io_protocol_facility(&mut self, facility: Option<Arc<dyn IoProtocolFacility>>) {
+        self.io_protocol_facility = facility;
     }
 
     /// Return the supervision facility, if one has been configured.

@@ -173,13 +173,19 @@ impl Scheduler {
         self.shared.process_table.spawn_with_pid(pid);
         let index =
             self.shared.spawn_counter.fetch_add(1, Ordering::Relaxed) % self.shared.thread_count;
+        let group_leader_pid = self.shared.standard_io_pid.load(Ordering::Acquire);
+        let group_leader = if group_leader_pid == u64::MAX {
+            Term::pid(pid)
+        } else {
+            Term::pid(group_leader_pid)
+        };
         let request = SpawnRequest {
             pid,
             module: module_version.name,
             module_version,
             instruction_pointer,
             namespace_id,
-            group_leader: Term::pid(pid),
+            group_leader,
             priority: Priority::Normal,
             heap_size: DEFAULT_HEAP_SIZE,
             args,

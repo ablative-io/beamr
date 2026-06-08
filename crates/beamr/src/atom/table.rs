@@ -44,6 +44,14 @@ impl Atom {
     pub const THROW: Self = Self(30);
     pub const EXIT_CLASS: Self = Self(31);
     pub const LINE: Self = Self(32);
+    pub const IO_REQUEST: Self = Self(33);
+    pub const IO_REPLY: Self = Self(34);
+    pub const PUT_CHARS: Self = Self(35);
+    pub const GET_LINE: Self = Self(36);
+    pub const GET_UNTIL: Self = Self(37);
+    pub const UNICODE: Self = Self(38);
+    pub const REQUEST: Self = Self(39);
+    pub const EOF: Self = Self(40);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -88,6 +96,14 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("throw", Atom::THROW),
     ("exit", Atom::EXIT_CLASS),
     ("line", Atom::LINE),
+    ("io_request", Atom::IO_REQUEST),
+    ("io_reply", Atom::IO_REPLY),
+    ("put_chars", Atom::PUT_CHARS),
+    ("get_line", Atom::GET_LINE),
+    ("get_until", Atom::GET_UNTIL),
+    ("unicode", Atom::UNICODE),
+    ("request", Atom::REQUEST),
+    ("eof", Atom::EOF),
 ];
 
 /// Concurrent intern table for atom strings.
