@@ -152,7 +152,8 @@ fn open_udp_socket(
 ) -> Result<Term, Term> {
     let port = parse_port(port_term)?;
     let owner_pid = context.pid().ok_or_else(badarg)?;
-    let fd = create_udp_socket(options.ip, port).map_err(|error| error_reason(error))?;
+    let fd =
+        create_udp_socket(options.ip, port).map_err(|error| Term::atom(error_reason(error)))?;
     let inner = Arc::new(FdInner::new(fd, owner_pid));
     inner.set_mode(options.mode);
     inner.set_controlling_process(owner_pid);

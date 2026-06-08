@@ -1,1 +1,1 @@
-feat(beamr): add UDP socket BIFs over completion ring
+fix(beamr): repair UDP scheduler imports and open error mapping

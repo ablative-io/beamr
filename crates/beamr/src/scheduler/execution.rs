@@ -163,11 +163,12 @@ pub(in crate::scheduler) use core::cleanup_exited_process;
 use core::run_process;
 use std::net::SocketAddr;
 
+use super::process_slot::UdpActiveMessage;
+use super::{ProcessSlot, ScheduledProcess};
 use crate::atom::AtomTable;
 use crate::io::IoResult;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, FdMode, write_fd_resource};
 use crate::process::Process;
-use crate::scheduler::process_slot::{ScheduledProcess, UdpActiveMessage};
 use crate::term::boxed::write_tuple;
 use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
 #[cfg(test)]
