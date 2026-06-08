@@ -1,5 +1,7 @@
 //! Configurable output sinks and resource lifecycle support used by I/O BIFs.
 
+pub mod bridge;
+pub mod facility;
 pub mod resource;
 pub mod ring;
 #[cfg(not(target_os = "linux"))]
@@ -9,6 +11,8 @@ pub mod uring;
 
 use std::io::Write;
 
+pub use bridge::{IoCompletionBridge, IoWakeTarget, PendingIo, PendingIoRegistry, ResultMode};
+pub use facility::{CompletionRingIoFacility, IoError, IoFacility};
 pub use ring::{CompletionRing, IoCompletion, IoOp, IoResult, StatxData};
 #[cfg(not(target_os = "linux"))]
 pub use thread_pool::ThreadPoolRing;

@@ -336,6 +336,7 @@ pub(super) fn build_native_services(
         io_sink: Some(Arc::clone(&lock_or_recover(&shared.output_sink))),
         code_management_facility: Some(code_management),
         system_info_facility: Some(system_info),
+        io_facility: shared.io_facility.clone(),
     }
 }
 
