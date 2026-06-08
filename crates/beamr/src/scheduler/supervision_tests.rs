@@ -136,6 +136,7 @@ fn make_executing(shared: &SharedState, pid: u64) -> Process {
                 pending_exit_messages: Vec::new(),
                 pending_down_messages: Vec::new(),
                 pending_io_messages: Vec::new(),
+                pending_distribution_payloads: Vec::new(),
                 pending_ets_transfer_messages: Vec::new(),
                 pending_udp_messages: Vec::new(),
                 pending_tcp_messages: Vec::new(),
@@ -212,8 +213,12 @@ fn make_shared_state() -> Arc<SharedState> {
     namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
     let atom_table = Arc::new(crate::atom::AtomTable::new());
     let distribution = DistributionConfig::default();
+    let distribution_connections = crate::distribution::connection::ConnectionManager::new(
+        Arc::clone(&atom_table),
+        Arc::clone(&distribution.resolver),
+    );
     let net_kernel = Arc::new(crate::distribution::NetKernel::new(
-        crate::distribution::ConnectionManager::new(
+        crate::distribution::connection::ConnectionManager::new(
             Arc::clone(&atom_table),
             distribution.resolver.clone(),
         ),
@@ -242,6 +247,8 @@ fn make_shared_state() -> Arc<SharedState> {
         monitor_set: std::sync::Mutex::new(MonitorSet::new()),
         hook: crate::hook::Hook::new(),
         distribution,
+        distribution_connections,
+        process_registry: DashMap::new(),
         timers: Arc::new(std::sync::Mutex::new(crate::timer::TimerWheel::new())),
         output_sink: std::sync::Mutex::new(Arc::new(crate::io::NullSink)),
         io_ring: None,

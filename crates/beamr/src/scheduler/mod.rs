@@ -13,7 +13,8 @@ use self::execution::scheduler_loop;
 use self::spawning::SpawnRequest;
 use crate::atom::AtomTable;
 use crate::distribution::DistributionConfig;
-use crate::distribution::{ConnectionManager, DEFAULT_NODE_NAME, NetKernel, Node};
+use crate::distribution::connection::ConnectionManager;
+use crate::distribution::{DEFAULT_NODE_NAME, NetKernel, Node};
 
 use crate::error::ExecError;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
@@ -90,6 +91,8 @@ pub(super) struct SharedState {
     monitor_set: Mutex<MonitorSet>,
     hook: Hook,
     distribution: DistributionConfig,
+    distribution_connections: ConnectionManager,
+    process_registry: DashMap<crate::atom::Atom, u64>,
     timers: Arc<Mutex<TimerWheel>>,
     output_sink: Mutex<Arc<dyn IoSink>>,
     io_ring: Option<Arc<dyn CompletionRing>>,
@@ -305,6 +308,8 @@ impl Scheduler {
             None => (None, None, None),
         };
         let distribution = config.distribution.unwrap_or_default();
+        let distribution_connections =
+            ConnectionManager::new(Arc::clone(&atom_table), Arc::clone(&distribution.resolver));
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
         let file_io_ring: Arc<dyn CompletionRing> =
@@ -357,6 +362,8 @@ impl Scheduler {
             monitor_set: Mutex::new(MonitorSet::new()),
             hook: Hook::new(),
             distribution,
+            distribution_connections,
+            process_registry: DashMap::new(),
             timers: Arc::new(Mutex::new(TimerWheel::new())),
             output_sink: Mutex::new(Arc::new(NullSink)),
             io_ring,
@@ -376,6 +383,7 @@ impl Scheduler {
                 StandardIoServer::process(standard_io_pid),
             ))),
         );
+        supervision_integration::register_distribution_control_handler(&shared);
         if let (Some(ring), Some(registry)) = (&shared.io_ring, &shared.io_registry) {
             let target: Arc<dyn IoWakeTarget> = shared.clone();
             let bridge = IoCompletionBridge::start(Arc::clone(ring), Arc::clone(registry), target);
@@ -521,6 +529,10 @@ impl Scheduler {
     #[must_use]
     pub fn distribution_config(&self) -> &DistributionConfig {
         &self.shared.distribution
+    }
+    #[must_use]
+    pub fn distribution_connections(&self) -> ConnectionManager {
+        self.shared.distribution_connections.clone()
     }
     pub fn set_output_sink(&self, sink: Arc<dyn IoSink>) {
         *lock_or_recover(&self.shared.output_sink) = sink;

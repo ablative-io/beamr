@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::atom::AtomTable;
 use crate::distribution::{NetKernel, Node};
+use crate::distribution::control::DistributionSendFacility;
 use crate::error::ExecError;
 use crate::io::{IoFacility, IoSink};
 use crate::module::{Module, ModuleRegistry};
@@ -36,6 +37,8 @@ pub struct NativeServices {
     pub local_node: Option<Node>,
     /// Net-kernel facade for distribution connection BIFs.
     pub net_kernel: Option<Arc<NetKernel>>,
+    /// Distribution send facility for remote PID messaging.
+    pub distribution_send: Option<Arc<dyn DistributionSendFacility>>,
     /// Timer wheel for asynchronous timer BIFs.
     pub timers: Option<Arc<Mutex<TimerWheel>>>,
     /// Spawn facility for process creation BIFs.
@@ -120,6 +123,7 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
         atom_table: None,
         local_node: None,
         net_kernel: None,
+        distribution_send: None,
         timers: None,
         spawn_facility: None,
         link_facility: None,
@@ -148,6 +152,7 @@ pub fn run_with_registry(
         atom_table: None,
         local_node: None,
         net_kernel: None,
+        distribution_send: None,
         timers: None,
         spawn_facility: None,
         link_facility: None,
@@ -176,6 +181,7 @@ pub fn run_with_timer_services(
         atom_table: None,
         local_node: None,
         net_kernel: None,
+        distribution_send: None,
         timers: Some(timers),
         spawn_facility: None,
         link_facility: None,

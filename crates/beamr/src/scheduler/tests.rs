@@ -466,8 +466,12 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
     let registry = Arc::new(ModuleRegistry::new());
     let atom_table = Arc::new(crate::atom::AtomTable::new());
     let distribution = DistributionConfig::default();
+    let distribution_connections = crate::distribution::connection::ConnectionManager::new(
+        Arc::clone(&atom_table),
+        Arc::clone(&distribution.resolver),
+    );
     let net_kernel = Arc::new(crate::distribution::NetKernel::new(
-        crate::distribution::ConnectionManager::new(
+        crate::distribution::connection::ConnectionManager::new(
             Arc::clone(&atom_table),
             distribution.resolver.clone(),
         ),
@@ -509,6 +513,8 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         monitor_set: Mutex::new(MonitorSet::new()),
         hook: Hook::new(),
         distribution,
+        distribution_connections,
+        process_registry: DashMap::new(),
         timers: Arc::new(Mutex::new(TimerWheel::new())),
         output_sink: Mutex::new(Arc::new(NullSink)),
         io_ring: None,
@@ -762,8 +768,12 @@ fn process_info_reads_executing_process_metadata() {
 fn tombstone_after_wait_store_prevents_wait_parking() {
     let atom_table = Arc::new(crate::atom::AtomTable::new());
     let distribution = DistributionConfig::default();
+    let distribution_connections = crate::distribution::connection::ConnectionManager::new(
+        Arc::clone(&atom_table),
+        Arc::clone(&distribution.resolver),
+    );
     let net_kernel = Arc::new(crate::distribution::NetKernel::new(
-        crate::distribution::ConnectionManager::new(
+        crate::distribution::connection::ConnectionManager::new(
             Arc::clone(&atom_table),
             distribution.resolver.clone(),
         ),
@@ -794,6 +804,8 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         monitor_set: Mutex::new(MonitorSet::new()),
         hook: Hook::new(),
         distribution,
+        distribution_connections,
+        process_registry: DashMap::new(),
         timers: Arc::new(Mutex::new(TimerWheel::new())),
         output_sink: Mutex::new(Arc::new(NullSink)),
         io_ring: None,
@@ -823,7 +835,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         net_kernel: {
             let dist = DistributionConfig::default();
             let at = Arc::new(crate::atom::AtomTable::new());
-            let cm = crate::distribution::ConnectionManager::new(at, dist.resolver.clone());
+            let cm = crate::distribution::connection::ConnectionManager::new(at, dist.resolver.clone());
             Arc::new(crate::distribution::NetKernel::new(cm))
         },
     });
@@ -846,6 +858,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
             pending_exit_messages: Vec::new(),
             pending_down_messages: Vec::new(),
             pending_io_messages: Vec::new(),
+            pending_distribution_payloads: Vec::new(),
             pending_ets_transfer_messages: Vec::new(),
             pending_udp_messages: Vec::new(),
             pending_tcp_messages: Vec::new(),

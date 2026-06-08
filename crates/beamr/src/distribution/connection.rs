@@ -69,6 +69,7 @@ pub struct ConnectionDownEvent {
 
 type ConnectionDownCallback = dyn Fn(ConnectionDownEvent) + Send + Sync + 'static;
 type InboundIdentifier = dyn Fn(SocketAddr) -> Option<Atom> + Send + Sync + 'static;
+type ControlFrameHandler = dyn Fn(&[u8], &[u8]) + Send + Sync + 'static;
 
 /// Per-manager callback registration for connection-down notifications.
 #[derive(Clone, Default)]
@@ -232,6 +233,7 @@ struct ConnectionManagerInner {
     connect_timeout: Duration,
     connection_down_hook: ConnectionDownHook,
     inbound_identifier: RwLock<Option<Arc<InboundIdentifier>>>,
+    control_frame_handler: RwLock<Option<Arc<ControlFrameHandler>>>,
     pending_inbound: DashMap<SocketAddr, TcpStream>,
 }
 
@@ -281,6 +283,7 @@ impl ConnectionManager {
                 connect_timeout,
                 connection_down_hook: ConnectionDownHook::new(),
                 inbound_identifier: RwLock::new(None),
+                control_frame_handler: RwLock::new(None),
                 pending_inbound: DashMap::new(),
             }),
         }
@@ -324,6 +327,19 @@ impl ConnectionManager {
         *slot = Some(identifier.clone());
         drop(slot);
         self.identify_pending_inbound(&identifier);
+    }
+
+    /// Register a handler for framed distribution control messages read from active links.
+    pub fn register_control_frame_handler<F>(&self, handler: F)
+    where
+        F: Fn(&[u8], &[u8]) + Send + Sync + 'static,
+    {
+        let mut slot = self
+            .inner
+            .control_frame_handler
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        *slot = Some(Arc::new(handler));
     }
 
     /// Remove the temporary inbound identification seam.
@@ -475,15 +491,41 @@ impl ConnectionManager {
     }
 
     fn spawn_read_lifecycle(&self, connection: Arc<DistConnection>, mut read_half: OwnedReadHalf) {
+        let manager = Arc::clone(&self.inner);
         tokio::spawn(async move {
-            let mut buffer = [0_u8; 1];
             loop {
-                match read_half.read(&mut buffer).await {
+                let mut header = [0_u8; 8];
+                match read_half.read_exact(&mut header).await {
                     Ok(0) => {
                         connection.mark_down(ConnectionDownReason::PeerClosed);
                         break;
                     }
-                    Ok(_) => {}
+                    Ok(_) => {
+                        let control_len =
+                            u32::from_be_bytes([header[0], header[1], header[2], header[3]])
+                                as usize;
+                        let payload_len =
+                            u32::from_be_bytes([header[4], header[5], header[6], header[7]])
+                                as usize;
+                        let Some(total_len) = control_len.checked_add(payload_len) else {
+                            connection.mark_down(ConnectionDownReason::ReadError);
+                            break;
+                        };
+                        let mut frame = vec![0_u8; total_len];
+                        if read_half.read_exact(&mut frame).await.is_err() {
+                            connection.mark_down(ConnectionDownReason::ReadError);
+                            break;
+                        }
+                        let handler = manager
+                            .control_frame_handler
+                            .read()
+                            .unwrap_or_else(|error| error.into_inner())
+                            .clone();
+                        if let Some(handler) = handler {
+                            let (control, payload) = frame.split_at(control_len);
+                            handler(control, payload);
+                        }
+                    }
                     Err(_) => {
                         connection.mark_down(ConnectionDownReason::ReadError);
                         break;

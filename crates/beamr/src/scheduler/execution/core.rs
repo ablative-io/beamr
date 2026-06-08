@@ -105,6 +105,7 @@ pub(in crate::scheduler) fn take_runnable_process(
                 pending_exit_messages: Vec::new(),
                 pending_down_messages: Vec::new(),
                 pending_io_messages: Vec::new(),
+                pending_distribution_payloads: Vec::new(),
                 pending_ets_transfer_messages: Vec::new(),
                 pending_udp_messages: Vec::new(),
                 pending_tcp_messages: Vec::new(),
@@ -162,6 +163,16 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
                 );
             }
             for message in metadata.pending_io_messages.drain(..) {
+                process.mailbox_mut().push_owned(message);
+            }
+            for payload in metadata.pending_distribution_payloads.drain(..) {
+                let mut context = crate::native::ProcessContext::new();
+                context.attach_process(&mut process, 0);
+                let Ok(message) =
+                    crate::etf::decode::decode_term(&payload, &mut context, &shared.atom_table)
+                else {
+                    continue;
+                };
                 process.mailbox_mut().push_owned(message);
             }
             let transfer_atom = shared.atom_table.intern("ETS-TRANSFER");
@@ -416,6 +427,7 @@ fn submit_dirty_call(
     context.set_atom_table(services.atom_table);
     context.set_local_node(services.local_node);
     context.set_net_kernel(services.net_kernel);
+    context.set_distribution_send_facility(services.distribution_send);
     context.set_spawn_facility(services.spawn_facility);
     context.set_link_facility(services.link_facility);
     context.set_group_leader_facility(services.group_leader_facility);

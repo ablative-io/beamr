@@ -7,6 +7,10 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::atom::Atom;
+use crate::distribution::control::{
+    ControlDelivery, ControlRegistry, DistributionSendError, DistributionSendFacility,
+    encode_send_frame,
+};
 use crate::ets::{EtsError, EtsTable, EtsTableId, EtsTableMetadata};
 use crate::io::{CompletionRing, IoOp};
 use crate::namespace::NamespaceId;
@@ -24,6 +28,7 @@ use crate::supervision::link;
 use crate::supervision::monitor;
 use crate::term::Term;
 use crate::term::boxed;
+use crate::term::pid_ref::PidRef;
 
 use super::execution::{cleanup_exited_process, wake_process};
 use super::spawning::SpawnRequest;
@@ -58,6 +63,24 @@ pub(super) fn propagate_exit(shared: &SharedState, pid: u64, reason: ExitReason)
         let cascade = process_exit_signal(shared, source_pid, target_pid, signal_reason);
         worklist.extend(cascade);
     }
+}
+
+pub(super) fn register_distribution_control_handler(shared: &Arc<SharedState>) {
+    let shared_for_handler = Arc::clone(shared);
+    shared
+        .distribution_connections
+        .register_control_frame_handler(move |control, payload| {
+            let facility = SchedulerDistributionSendFacility {
+                shared: Arc::clone(&shared_for_handler),
+            };
+            let _ = crate::distribution::control::handle_frame(
+                control,
+                payload,
+                &shared_for_handler.atom_table,
+                &facility,
+                Some(&facility),
+            );
+        });
 }
 
 pub(super) fn deliver_ets_transfer(
@@ -394,10 +417,15 @@ pub(super) fn build_native_services(
     let file_io_facility: Arc<dyn FileIoFacility> = Arc::new(SchedulerFileIoFacility {
         shared: Arc::clone(shared),
     });
+    let distribution_send: Arc<dyn DistributionSendFacility> =
+        Arc::new(SchedulerDistributionSendFacility {
+            shared: Arc::clone(shared),
+        });
     crate::interpreter::NativeServices {
         atom_table: Some(Arc::clone(&shared.atom_table)),
         local_node: Some(shared.local_node),
         net_kernel: Some(Arc::clone(&shared.net_kernel)),
+        distribution_send: Some(distribution_send),
         ets_facility: Some(ets_facility),
         timers: Some(Arc::clone(&shared.timers)),
         spawn_facility: Some(spawn),
@@ -420,6 +448,125 @@ pub(super) fn build_native_services(
 }
 
 // ── Facility implementations ────────────────────────────────────────────────
+
+struct SchedulerDistributionSendFacility {
+    shared: Arc<SharedState>,
+}
+
+impl DistributionSendFacility for SchedulerDistributionSendFacility {
+    fn send_remote(&self, target: Term, message: Term) -> Result<(), DistributionSendError> {
+        let pid = PidRef::new(target).ok_or(DistributionSendError::Encode)?;
+        let node = pid.node().ok_or(DistributionSendError::Encode)?;
+        let node_name = self
+            .shared
+            .atom_table
+            .resolve(node)
+            .ok_or(DistributionSendError::NoConnection)?
+            .to_owned();
+        let frame = encode_send_frame(
+            Term::atom(Atom::OK),
+            target,
+            message,
+            &self.shared.atom_table,
+        )
+        .map_err(|_| DistributionSendError::Encode)?;
+        block_on_distribution_send(
+            &self.shared.distribution_connections,
+            node,
+            &node_name,
+            &frame,
+        )
+    }
+}
+
+fn block_on_distribution_send(
+    manager: &crate::distribution::connection::ConnectionManager,
+    node: Atom,
+    node_name: &str,
+    frame: &[u8],
+) -> Result<(), DistributionSendError> {
+    let manager = manager.clone();
+    let node_name = node_name.to_owned();
+    let frame = frame.to_vec();
+    let future = async move {
+        let connection = match manager.get_connection(node) {
+            Some(connection) => connection,
+            None => manager
+                .connect(&node_name)
+                .await
+                .map_err(|_| DistributionSendError::NoConnection)?,
+        };
+        connection
+            .write_raw(&frame)
+            .await
+            .map_err(|_| DistributionSendError::NoConnection)
+    };
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        if matches!(
+            handle.runtime_flavor(),
+            tokio::runtime::RuntimeFlavor::MultiThread
+        ) {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        } else {
+            std::thread::spawn(move || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_io()
+                    .enable_time()
+                    .build()
+                    .map_err(|_| DistributionSendError::NoConnection)?
+                    .block_on(future)
+            })
+            .join()
+            .map_err(|_| DistributionSendError::NoConnection)?
+        }
+    } else {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .enable_time()
+            .build()
+            .map_err(|_| DistributionSendError::NoConnection)?
+            .block_on(future)
+    }
+}
+
+impl ControlDelivery for SchedulerDistributionSendFacility {
+    fn deliver_payload(&self, target_pid: u64, payload_etf: &[u8]) -> bool {
+        let Some(entry) = self.shared.process_bodies.get(&target_pid) else {
+            return false;
+        };
+        let mut slot = lock_or_recover(&entry);
+        match &mut *slot {
+            ProcessSlot::Present(process) => {
+                let mut context = crate::native::ProcessContext::new();
+                context.attach_process(&mut process.0, 0);
+                let Ok(message) = crate::etf::decode::decode_term(
+                    payload_etf,
+                    &mut context,
+                    &self.shared.atom_table,
+                ) else {
+                    return false;
+                };
+                process.0.mailbox_mut().push_owned(message);
+            }
+            ProcessSlot::Executing(metadata) => {
+                metadata
+                    .pending_distribution_payloads
+                    .push(payload_etf.to_vec());
+            }
+            ProcessSlot::Absent => return false,
+        }
+        drop(slot);
+        drop(entry);
+        wake_process(&self.shared, target_pid);
+        true
+    }
+}
+
+impl ControlRegistry for SchedulerDistributionSendFacility {
+    fn whereis(&self, name: Atom) -> Option<u64> {
+        self.shared.process_registry.get(&name).map(|entry| *entry)
+    }
+}
 
 struct SchedulerIoMessageFacility {
     shared: Arc<SharedState>,

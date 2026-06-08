@@ -1,20 +1,33 @@
 //! Message passing and receive opcode handlers.
 
+use crate::distribution::control::{DistributionSendError, DistributionSendFacility};
 use crate::error::ExecError;
 use crate::interpreter::InstructionOutcome;
 use crate::interpreter::opcodes::core;
 use crate::loader::decode::compact::Operand;
 use crate::module::Module;
 use crate::process::{CodePosition, Process, ProcessStatus, ReceiveTimeout};
+use crate::term::pid_ref::PidRef;
 
 /// Send x(1) to the process identified by x(0) when the caller supplies a receiver.
 pub fn send(
     process: &mut Process,
     receiver: Option<&mut Process>,
+    distribution: Option<&dyn DistributionSendFacility>,
 ) -> Result<InstructionOutcome, ExecError> {
-    let target = process.x_reg(0).as_pid().ok_or(ExecError::Badarg)?;
+    let target_term = process.x_reg(0);
+    let target = PidRef::new(target_term).ok_or(ExecError::Badarg)?;
     let message = process.x_reg(1);
-    if let Some(receiver) = receiver.filter(|receiver| receiver.pid() == target) {
+    if !target.is_local() {
+        let facility = distribution.ok_or(ExecError::NoConnection)?;
+        facility
+            .send_remote(target_term, message)
+            .map_err(distribution_send_error)?;
+        process.set_x_reg(0, message);
+        return Ok(InstructionOutcome::Continue);
+    }
+    let target_pid = target.pid_number();
+    if let Some(receiver) = receiver.filter(|receiver| receiver.pid() == target_pid) {
         receiver
             .mailbox()
             .sender()
@@ -28,6 +41,13 @@ pub fn send(
     }
     process.set_x_reg(0, message);
     Ok(InstructionOutcome::Continue)
+}
+
+fn distribution_send_error(error: DistributionSendError) -> ExecError {
+    match error {
+        DistributionSendError::NoConnection => ExecError::NoConnection,
+        DistributionSendError::Encode => ExecError::Badarg,
+    }
 }
 
 pub fn loop_rec(
@@ -157,6 +177,7 @@ mod tests {
     use crate::loader::Instruction;
     use crate::process::{ExitReason, Process};
     use crate::term::Term;
+    use crate::term::boxed::write_external_pid;
     use std::collections::HashMap;
 
     fn module(code: Vec<Instruction>) -> Module {
@@ -194,7 +215,7 @@ mod tests {
         sender.set_x_reg(1, message);
 
         assert_eq!(
-            send(&mut sender, Some(&mut receiver)),
+            send(&mut sender, Some(&mut receiver), None),
             Ok(InstructionOutcome::Continue)
         );
 
@@ -208,8 +229,22 @@ mod tests {
         sender.set_x_reg(0, Term::pid(99));
         sender.set_x_reg(1, Term::atom(Atom::OK));
 
-        assert_eq!(send(&mut sender, None), Ok(InstructionOutcome::Continue));
+        assert_eq!(
+            send(&mut sender, None, None),
+            Ok(InstructionOutcome::Continue)
+        );
         assert_eq!(sender.x_reg(0), Term::atom(Atom::OK));
+    }
+
+    #[test]
+    fn send_to_remote_pid_without_distribution_returns_noconnection() {
+        let mut sender = Process::new(0, 32);
+        let mut heap = [0_u64; 4];
+        let remote = write_external_pid(&mut heap, Atom::OK, 99, 0).expect("external pid fits");
+        sender.set_x_reg(0, remote);
+        sender.set_x_reg(1, Term::atom(Atom::OK));
+
+        assert_eq!(send(&mut sender, None, None), Err(ExecError::NoConnection));
     }
 
     #[test]
@@ -353,7 +388,7 @@ mod tests {
         sender.set_x_reg(1, Term::atom(Atom::OK));
 
         assert_eq!(
-            send(&mut sender, Some(&mut receiver)),
+            send(&mut sender, Some(&mut receiver), None),
             Ok(InstructionOutcome::Continue)
         );
         assert_eq!(receiver.status(), ProcessStatus::Running);

@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::atom::AtomTable;
+use crate::distribution::control::DistributionSendFacility;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
 use crate::io::{
     CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode,
@@ -183,6 +184,7 @@ pub struct ProcessContext<'process> {
     pid: Option<u64>,
     local_node: Option<crate::distribution::Node>,
     net_kernel: Option<Arc<crate::distribution::NetKernel>>,
+    distribution_send: Option<Arc<dyn DistributionSendFacility>>,
     process: Option<&'process mut Process>,
     live_x: usize,
     timers: Option<Arc<Mutex<TimerWheel>>>,
@@ -215,6 +217,10 @@ impl fmt::Debug for ProcessContext<'_> {
             .field("pid", &self.pid)
             .field("local_node", &self.local_node)
             .field("net_kernel", &self.net_kernel.as_ref().map(|_| ".."))
+            .field(
+                "distribution_send",
+                &self.distribution_send.as_ref().map(|_| ".."),
+            )
             .field("process_heap", &self.process.as_ref().map(|_| ".."))
             .field("live_x", &self.live_x)
             .field("timers", &self.timers)
@@ -290,6 +296,7 @@ impl<'process> ProcessContext<'process> {
             pid: None,
             local_node: None,
             net_kernel: None,
+            distribution_send: None,
             process: None,
             live_x: 256,
             timers: None,
@@ -324,6 +331,7 @@ impl<'process> ProcessContext<'process> {
             pid: Some(pid),
             local_node: None,
             net_kernel: None,
+            distribution_send: None,
             process: None,
             live_x: 256,
             timers: Some(timers),
@@ -377,6 +385,20 @@ impl<'process> ProcessContext<'process> {
     /// Set the net-kernel distribution facade for distribution BIFs.
     pub fn set_net_kernel(&mut self, net_kernel: Option<Arc<crate::distribution::NetKernel>>) {
         self.net_kernel = net_kernel;
+    }
+
+    /// Return the distribution send facility, if one has been configured.
+    #[must_use]
+    pub fn distribution_send_facility(&self) -> Option<&dyn DistributionSendFacility> {
+        self.distribution_send.as_deref()
+    }
+
+    /// Set the distribution send facility for remote PID messaging.
+    pub fn set_distribution_send_facility(
+        &mut self,
+        facility: Option<Arc<dyn DistributionSendFacility>>,
+    ) {
+        self.distribution_send = facility;
     }
 
     /// Returns true when the attached process is re-entering a timed suspend after expiry.

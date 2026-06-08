@@ -253,8 +253,42 @@ fn decode_after_tag(
                 .alloc_map(&keys, &values)
                 .map_err(|_| DecodeError::HeapAllocationFailed)
         }
+        tag if tag == tags::PID_EXT || tag == tags::NEW_PID_EXT => decode_pid(
+            cursor,
+            context,
+            atom_table,
+            options,
+            depth,
+            budget,
+            tag == tags::NEW_PID_EXT,
+        ),
         other => Err(DecodeError::UnsupportedTag(other)),
     }
+}
+
+fn decode_pid(
+    cursor: &mut Cursor<'_>,
+    context: &mut ProcessContext<'_>,
+    atom_table: &AtomTable,
+    options: DecodeOptions,
+    depth: usize,
+    budget: RuntimeDecodeBudget,
+    has_creation_u32: bool,
+) -> Result<Term, DecodeError> {
+    let node = decode_one(cursor, context, atom_table, options, depth + 1, budget)?;
+    let node = node
+        .as_atom()
+        .ok_or(DecodeError::UnsupportedTag(tags::NEW_PID_EXT))?;
+    let id = u64::from(cursor.read_u32()?);
+    let serial = u64::from(cursor.read_u32()?);
+    if has_creation_u32 {
+        let _creation = cursor.read_u32()?;
+    } else {
+        let _creation = cursor.read_u8()?;
+    }
+    context
+        .alloc_external_pid(node, id, serial)
+        .map_err(|_| DecodeError::HeapAllocationFailed)
 }
 
 fn decode_one(

@@ -1,6 +1,7 @@
 use super::*;
 use crate::atom::{Atom, AtomTable};
 use crate::distribution::connection::ConnectionManager;
+use crate::distribution::control::{DistributionSendError, DistributionSendFacility};
 use crate::distribution::resolver::StaticResolver;
 use crate::distribution::{DEFAULT_NODE_NAME, NetKernel, Node};
 use crate::native::spawn::{
@@ -21,6 +22,14 @@ use crate::term::boxed::{
 use crate::term::reference_ref::ReferenceRef;
 
 use std::sync::{Arc, Mutex};
+
+struct NoConnectionDistributionSend;
+
+impl DistributionSendFacility for NoConnectionDistributionSend {
+    fn send_remote(&self, _target: Term, _message: Term) -> Result<(), DistributionSendError> {
+        Err(DistributionSendError::NoConnection)
+    }
+}
 
 fn context(process: &mut Process) -> ProcessContext<'_> {
     let mut context = ProcessContext::new();
@@ -181,6 +190,22 @@ fn send_badarg_wrong_arity() {
     let mut process = Process::new(1, 128);
     let mut ctx = context(&mut process);
     assert_eq!(bif_send(&[Term::pid(1)], &mut ctx), Err(badarg()));
+}
+
+#[test]
+fn send_remote_pid_without_connection_returns_noconnection_atom() {
+    let mut process = Process::new(1, 128);
+    let (atom_table, mut ctx) = context_with_atom_table(&mut process);
+    ctx.set_distribution_send_facility(Some(Arc::new(NoConnectionDistributionSend)));
+    let remote_node = atom_table.intern("remote@127.0.0.1");
+    let mut heap = [0_u64; 4];
+    let remote = write_external_pid(&mut heap, remote_node, 99, 0).expect("remote pid");
+    let noconnection = atom(&atom_table, "noconnection");
+
+    assert_eq!(
+        bif_send(&[remote, Term::atom(Atom::OK)], &mut ctx),
+        Err(noconnection)
+    );
 }
 
 // ---- erlang:tuple_size/1 ----

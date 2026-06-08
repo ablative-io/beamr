@@ -42,6 +42,7 @@ pub(super) struct ProcessMetadata {
     pub(super) pending_exit_messages: Vec<(u64, ExitReason)>,
     pub(super) pending_down_messages: Vec<(u64, u64, ExitReason)>,
     pub(super) pending_io_messages: Vec<Term>,
+    pub(super) pending_distribution_payloads: Vec<Vec<u8>>,
     pub(super) pending_ets_transfer_messages: Vec<PendingEtsTransferMessage>,
     pub(super) pending_udp_messages: Vec<UdpActiveMessage>,
     pub(super) pending_tcp_messages: Vec<TcpActiveMessage>,
