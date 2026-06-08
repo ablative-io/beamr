@@ -12,7 +12,7 @@ use crate::interpreter::InstructionOutcome;
 use crate::module::Module;
 use crate::native::ets_bifs::resume_ets_foldl;
 use crate::native::select::MailboxSnapshot;
-use crate::native::stdlib_stubs::lists_bifs::resume_lists_continuation;
+use crate::native::stdlib_stubs::lists_hof_bifs::resume_lists_continuation;
 use crate::native::stdlib_stubs::maps_bifs::{ContinuationStep, resume_maps_continuation};
 use crate::native::{NativeContinuation, ProcessContext};
 use crate::process::{CodePosition, Process, ProcessStatus, ReceiveTimeout};

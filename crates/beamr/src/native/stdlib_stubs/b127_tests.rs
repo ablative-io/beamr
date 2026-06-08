@@ -1,13 +1,17 @@
 use crate::atom::{Atom, AtomTable};
-use crate::native::ProcessContext;
 use crate::native::stdlib_stubs::lists_bifs::{
     bif_lists_flatten, bif_lists_keydelete, bif_lists_keyfind, bif_lists_keysort,
     bif_lists_keystore, bif_lists_last, bif_lists_member, bif_lists_nth, bif_lists_sort,
     bif_lists_unzip, bif_lists_zip,
 };
+use crate::native::stdlib_stubs::lists_hof_bifs::{
+    bif_lists_filter, bif_lists_foreach, resume_lists_continuation,
+};
+use crate::native::stdlib_stubs::maps_bifs::ContinuationStep;
+use crate::native::{NativeContinuation, ProcessContext};
 use crate::process::Process;
 use crate::term::Term;
-use crate::term::boxed::{Cons, Tuple};
+use crate::term::boxed::{Cons, Tuple, write_closure};
 
 fn context(process: &mut Process) -> ProcessContext<'_> {
     let mut context = ProcessContext::new();
@@ -42,6 +46,11 @@ fn tuple_to_vec(term: Term) -> Vec<Term> {
     (0..tuple.arity())
         .map(|index| tuple.get(index).expect("tuple element"))
         .collect()
+}
+
+fn closure(process: &mut Process, unique_id: u64) -> Term {
+    let heap = process.heap_mut().alloc_slice(3).expect("closure heap");
+    write_closure(heap, Atom::OK, 0, 0, 1, unique_id, &[]).expect("closure")
 }
 
 #[test]
@@ -148,4 +157,157 @@ fn key_manipulation_bifs_preserve_order_and_key_semantics() {
     let keyed = list_from_slice(&mut ctx, &[tuple_b, tuple_a]);
     let sorted = bif_lists_keysort(&[Term::small_int(1), keyed], &mut ctx).expect("keysort");
     assert_eq!(list_to_vec(sorted), vec![tuple_b, tuple_a]);
+}
+
+#[test]
+fn list_query_bifs_reject_invalid_positions_and_empty_last() {
+    let mut process = Process::new(1, 512);
+    let mut ctx = context(&mut process);
+    let list = list_from_slice(&mut ctx, &[Term::small_int(1)]);
+    let short_tuple = ctx.alloc_tuple(&[Term::small_int(1)]).expect("tuple");
+    let tuple_list = list_from_slice(&mut ctx, &[short_tuple]);
+
+    assert_eq!(
+        bif_lists_nth(&[Term::small_int(0), list], &mut ctx),
+        Err(Term::atom(Atom::BADARG))
+    );
+    assert_eq!(
+        bif_lists_nth(&[Term::small_int(2), list], &mut ctx),
+        Err(Term::atom(Atom::BADARG))
+    );
+    assert_eq!(
+        bif_lists_keyfind(
+            &[Term::small_int(1), Term::small_int(2), tuple_list],
+            &mut ctx
+        ),
+        Err(Term::atom(Atom::BADARG))
+    );
+    assert_eq!(
+        bif_lists_last(&[Term::NIL], &mut ctx),
+        Err(Term::atom(Atom::BADARG))
+    );
+}
+
+#[test]
+fn transform_bifs_reject_improper_shapes() {
+    let mut process = Process::new(1, 512);
+    let mut ctx = context(&mut process);
+    let one = list_from_slice(&mut ctx, &[Term::small_int(1)]);
+    let two = list_from_slice(&mut ctx, &[Term::small_int(1), Term::small_int(2)]);
+    let bad_pair = ctx
+        .alloc_tuple(&[Term::small_int(1), Term::small_int(2), Term::small_int(3)])
+        .expect("bad pair");
+    let bad_pair_list = list_from_slice(&mut ctx, &[bad_pair]);
+
+    assert_eq!(
+        bif_lists_zip(&[one, two], &mut ctx),
+        Err(Term::atom(Atom::BADARG))
+    );
+    assert_eq!(
+        bif_lists_flatten(&[Term::small_int(1)], &mut ctx),
+        Err(Term::atom(Atom::BADARG))
+    );
+    assert_eq!(
+        bif_lists_unzip(&[bad_pair_list], &mut ctx),
+        Err(Term::atom(Atom::BADARG))
+    );
+}
+
+#[test]
+fn filter_uses_continuation_trampoline() {
+    let mut process = Process::new(1, 1024);
+    let fun = closure(&mut process, 0x127);
+    let mut ctx = context(&mut process);
+    let list = list_from_slice(
+        &mut ctx,
+        &[Term::small_int(1), Term::small_int(2), Term::small_int(3)],
+    );
+
+    let placeholder = bif_lists_filter(&[fun, list], &mut ctx).expect("filter starts");
+    assert_eq!(placeholder, Term::NIL);
+    let request = ctx.take_trampoline().expect("filter trampoline");
+    assert_eq!(request.fun, fun);
+    assert_eq!(request.args, vec![Term::small_int(1)]);
+    let Some(NativeContinuation::Lists(state)) = request.continuation else {
+        panic!("expected lists continuation");
+    };
+
+    let next =
+        resume_lists_continuation(state, Term::atom(Atom::TRUE), &mut ctx).expect("filter resumes");
+    let ContinuationStep::Call {
+        args, continuation, ..
+    } = next
+    else {
+        panic!("expected next filter call");
+    };
+    assert_eq!(args, vec![Term::small_int(2)]);
+
+    let next = resume_lists_continuation(
+        match continuation {
+            NativeContinuation::Lists(state) => state,
+            _ => panic!("expected lists continuation"),
+        },
+        Term::atom(Atom::FALSE),
+        &mut ctx,
+    )
+    .expect("filter resumes again");
+    let ContinuationStep::Call { continuation, .. } = next else {
+        panic!("expected final filter call");
+    };
+    let done = resume_lists_continuation(
+        match continuation {
+            NativeContinuation::Lists(state) => state,
+            _ => panic!("expected lists continuation"),
+        },
+        Term::atom(Atom::TRUE),
+        &mut ctx,
+    )
+    .expect("filter completes");
+    let ContinuationStep::Done(result) = done else {
+        panic!("expected filter done");
+    };
+    assert_eq!(
+        list_to_vec(result),
+        vec![Term::small_int(1), Term::small_int(3)]
+    );
+}
+
+#[test]
+fn foreach_discards_results_and_finishes_with_ok() {
+    let mut process = Process::new(1, 1024);
+    let fun = closure(&mut process, 0x128);
+    let mut ctx = context(&mut process);
+    let list = list_from_slice(&mut ctx, &[Term::small_int(1), Term::small_int(2)]);
+
+    assert_eq!(
+        bif_lists_foreach(&[fun, list], &mut ctx).expect("foreach starts"),
+        Term::NIL
+    );
+    let request = ctx.take_trampoline().expect("foreach trampoline");
+    assert_eq!(request.args, vec![Term::small_int(1)]);
+    let Some(NativeContinuation::Lists(state)) = request.continuation else {
+        panic!("expected lists continuation");
+    };
+    let next =
+        resume_lists_continuation(state, Term::small_int(99), &mut ctx).expect("foreach resumes");
+    let ContinuationStep::Call {
+        args, continuation, ..
+    } = next
+    else {
+        panic!("expected second foreach call");
+    };
+    assert_eq!(args, vec![Term::small_int(2)]);
+    let done = resume_lists_continuation(
+        match continuation {
+            NativeContinuation::Lists(state) => state,
+            _ => panic!("expected lists continuation"),
+        },
+        Term::small_int(100),
+        &mut ctx,
+    )
+    .expect("foreach completes");
+    let ContinuationStep::Done(result) = done else {
+        panic!("expected foreach done");
+    };
+    assert_eq!(result, Term::atom(Atom::OK));
 }

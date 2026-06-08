@@ -13,7 +13,7 @@ use crate::io::{
     CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode,
 };
 use crate::native::ets_bifs::EtsFoldlState;
-use crate::native::stdlib_stubs::{lists_bifs::ListsHofState, maps_bifs::MapsHofState};
+use crate::native::stdlib_stubs::{lists_hof_bifs::ListsHofState, maps_bifs::MapsHofState};
 use crate::process::{Priority, Process};
 use crate::term::Term;
 use crate::term::boxed::{

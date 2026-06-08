@@ -1,1 +1,1 @@
-feat(beamr): register additional lists stdlib BIF stubs
+Harden B-127 list BIF stubs and continuation coverage

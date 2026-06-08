@@ -1,39 +1,12 @@
-//! lists module stdlib BIFs, including continuation-backed higher-order BIFs.
+//! Non-higher-order BIFs for the `lists` module.
 
 use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
-use crate::native::{NativeContinuation, ProcessContext};
+use crate::native::ProcessContext;
 use crate::term::Term;
-use crate::term::boxed::{Closure, Cons, Tuple};
+use crate::term::boxed::{Cons, Tuple};
 use crate::term::compare;
-
-use super::maps_bifs::ContinuationStep;
-
-#[derive(Clone, Debug)]
-pub enum ListsHofState {
-    Map {
-        fun: Term,
-        remaining: Vec<Term>,
-        results: Vec<Term>,
-    },
-    Filter {
-        fun: Term,
-        current: Term,
-        remaining: Vec<Term>,
-        results: Vec<Term>,
-    },
-    FilterMap {
-        fun: Term,
-        current: Term,
-        remaining: Vec<Term>,
-        results: Vec<Term>,
-    },
-    Foreach {
-        fun: Term,
-        remaining: Vec<Term>,
-    },
-}
 
 pub fn bif_lists_append_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [lists] = args else {
@@ -133,6 +106,9 @@ pub fn bif_lists_flatten(args: &[Term], context: &mut ProcessContext) -> Result<
     let [list] = args else {
         return Err(badarg());
     };
+    if !list.is_nil() && Cons::new(*list).is_none() {
+        return Err(badarg());
+    }
     let mut flattened = Vec::new();
     flatten_term(*list, &mut flattened)?;
     list_from_vec(&flattened, context)
@@ -172,72 +148,6 @@ pub fn bif_lists_unzip(args: &[Term], context: &mut ProcessContext) -> Result<Te
     let left_list = list_from_vec(&left, context)?;
     let right_list = list_from_vec(&right, context)?;
     context.alloc_tuple(&[left_list, right_list])
-}
-
-pub fn bif_lists_filter(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let [fun, list] = args else {
-        return Err(badarg());
-    };
-    ensure_fun_arity(*fun, 1)?;
-    let elements = list_to_vec(*list)?;
-    let Some((first, rest)) = elements.split_first() else {
-        return Ok(Term::NIL);
-    };
-    context.set_continuation_trampoline(
-        *fun,
-        vec![*first],
-        NativeContinuation::Lists(ListsHofState::Filter {
-            fun: *fun,
-            current: *first,
-            remaining: rest.to_vec(),
-            results: Vec::new(),
-        }),
-    );
-    Ok(Term::NIL)
-}
-
-pub fn bif_lists_filtermap(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let [fun, list] = args else {
-        return Err(badarg());
-    };
-    ensure_fun_arity(*fun, 1)?;
-    let elements = list_to_vec(*list)?;
-    let Some((first, rest)) = elements.split_first() else {
-        return Ok(Term::NIL);
-    };
-    context.set_continuation_trampoline(
-        *fun,
-        vec![*first],
-        NativeContinuation::Lists(ListsHofState::FilterMap {
-            fun: *fun,
-            current: *first,
-            remaining: rest.to_vec(),
-            results: Vec::new(),
-        }),
-    );
-    Ok(Term::NIL)
-}
-
-pub fn bif_lists_map(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let [fun, list] = args else {
-        return Err(badarg());
-    };
-    ensure_fun_arity(*fun, 1)?;
-    let elements = list_to_vec(*list)?;
-    if elements.is_empty() {
-        return Ok(Term::NIL);
-    }
-    let first = elements[0];
-    context.set_continuation_trampoline(
-        *fun,
-        vec![first],
-        NativeContinuation::Lists(ListsHofState::Map {
-            fun: *fun,
-            remaining: elements[1..].to_vec(),
-            results: Vec::new(),
-        }),
-    );
-    Ok(Term::NIL)
 }
 
 pub fn bif_lists_reverse_2(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -330,143 +240,6 @@ pub fn bif_lists_keydelete(args: &[Term], context: &mut ProcessContext) -> Resul
     list_from_vec(&results, context)
 }
 
-pub fn bif_lists_foreach(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let [fun, list] = args else {
-        return Err(badarg());
-    };
-    ensure_fun_arity(*fun, 1)?;
-    let elements = list_to_vec(*list)?;
-    let Some((first, rest)) = elements.split_first() else {
-        return Ok(Term::atom(Atom::OK));
-    };
-    context.set_continuation_trampoline(
-        *fun,
-        vec![*first],
-        NativeContinuation::Lists(ListsHofState::Foreach {
-            fun: *fun,
-            remaining: rest.to_vec(),
-        }),
-    );
-    Ok(Term::NIL)
-}
-
-pub fn resume_lists_continuation(
-    state: ListsHofState,
-    closure_result: Term,
-    context: &mut ProcessContext,
-) -> Result<ContinuationStep, Term> {
-    match state {
-        ListsHofState::Map {
-            fun,
-            remaining,
-            mut results,
-        } => {
-            results.push(closure_result);
-            continue_or_finish_list(
-                fun,
-                remaining,
-                results,
-                context,
-                |fun, _current, rest, results| ListsHofState::Map {
-                    fun,
-                    remaining: rest,
-                    results,
-                },
-            )
-        }
-        ListsHofState::Filter {
-            fun,
-            current,
-            remaining,
-            mut results,
-        } => {
-            if is_true(closure_result)? {
-                results.push(current);
-            }
-            continue_or_finish_list(
-                fun,
-                remaining,
-                results,
-                context,
-                |fun, current, rest, results| ListsHofState::Filter {
-                    fun,
-                    current,
-                    remaining: rest,
-                    results,
-                },
-            )
-        }
-        ListsHofState::FilterMap {
-            fun,
-            current,
-            remaining,
-            mut results,
-        } => {
-            if let Some(mapped) = filtermap_value(closure_result)? {
-                results.push(mapped.unwrap_or(current));
-            }
-            continue_or_finish_list(
-                fun,
-                remaining,
-                results,
-                context,
-                |fun, current, rest, results| ListsHofState::FilterMap {
-                    fun,
-                    current,
-                    remaining: rest,
-                    results,
-                },
-            )
-        }
-        ListsHofState::Foreach { fun, remaining } => {
-            if let Some((first, rest)) = remaining.split_first() {
-                Ok(ContinuationStep::Call {
-                    fun,
-                    args: vec![*first],
-                    continuation: NativeContinuation::Lists(ListsHofState::Foreach {
-                        fun,
-                        remaining: rest.to_vec(),
-                    }),
-                })
-            } else {
-                Ok(ContinuationStep::Done(Term::atom(Atom::OK)))
-            }
-        }
-    }
-}
-
-fn continue_or_finish_list(
-    fun: Term,
-    remaining: Vec<Term>,
-    results: Vec<Term>,
-    context: &mut ProcessContext,
-    next_state: impl FnOnce(Term, Term, Vec<Term>, Vec<Term>) -> ListsHofState,
-) -> Result<ContinuationStep, Term> {
-    if let Some((first, rest)) = remaining.split_first() {
-        Ok(ContinuationStep::Call {
-            fun,
-            args: vec![*first],
-            continuation: NativeContinuation::Lists(next_state(
-                fun,
-                *first,
-                rest.to_vec(),
-                results,
-            )),
-        })
-    } else {
-        Ok(ContinuationStep::Done(list_from_vec(&results, context)?))
-    }
-}
-
-fn ensure_fun_arity(fun: Term, arity: u8) -> Result<(), Term> {
-    let closure = Closure::new(fun).ok_or_else(badarg)?;
-    if closure.arity() == arity {
-        Ok(())
-    } else {
-        Err(Term::atom(Atom::BADARITY))
-    }
-}
-
 fn positive_position(term: Term) -> Result<usize, Term> {
     let value = term.as_small_int().ok_or_else(badarg)?;
     if value <= 0 {
@@ -504,37 +277,13 @@ fn flatten_term(term: Term, flattened: &mut Vec<Term>) -> Result<(), Term> {
     Ok(())
 }
 
-fn filtermap_value(term: Term) -> Result<Option<Option<Term>>, Term> {
-    if term == Term::atom(Atom::FALSE) {
-        return Ok(None);
-    }
-    if term == Term::atom(Atom::TRUE) {
-        return Ok(Some(None));
-    }
-    let tuple = Tuple::new(term).ok_or_else(badarg)?;
-    if tuple.arity() != 2 || tuple.get(0) != Some(Term::atom(Atom::TRUE)) {
-        return Err(badarg());
-    }
-    Ok(Some(tuple.get(1)))
-}
-
-fn is_true(term: Term) -> Result<bool, Term> {
-    if term == Term::atom(Atom::TRUE) {
-        Ok(true)
-    } else if term == Term::atom(Atom::FALSE) {
-        Ok(false)
-    } else {
-        Err(badarg())
-    }
-}
-
 fn ordering_atom_table(context: &ProcessContext) -> Arc<AtomTable> {
     context
         .atom_table_arc()
         .unwrap_or_else(|| Arc::new(AtomTable::with_common_atoms()))
 }
 
-fn list_to_vec(term: Term) -> Result<Vec<Term>, Term> {
+pub(super) fn list_to_vec(term: Term) -> Result<Vec<Term>, Term> {
     let mut elements = Vec::new();
     let mut current = term;
     while !current.is_nil() {
@@ -545,7 +294,7 @@ fn list_to_vec(term: Term) -> Result<Vec<Term>, Term> {
     Ok(elements)
 }
 
-fn list_from_vec(elements: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+pub(super) fn list_from_vec(elements: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let mut tail = Term::NIL;
     for element in elements.iter().rev() {
         tail = context.alloc_cons(*element, tail)?;
@@ -557,6 +306,6 @@ fn boolean_atom(value: bool) -> Term {
     Term::atom(if value { Atom::TRUE } else { Atom::FALSE })
 }
 
-fn badarg() -> Term {
+pub(super) fn badarg() -> Term {
     Term::atom(Atom::BADARG)
 }

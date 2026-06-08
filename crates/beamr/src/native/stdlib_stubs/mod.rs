@@ -15,6 +15,7 @@ pub mod gleam_stdlib_ffi;
 pub mod gleam_stdlib_ffi2;
 pub mod io_bifs;
 pub mod lists_bifs;
+pub mod lists_hof_bifs;
 pub mod maps_bifs;
 pub mod math_bifs;
 pub mod sample_support_bifs;
@@ -63,12 +64,12 @@ use io_bifs::{
     bif_io_put_chars_2, bif_io_setopts_2,
 };
 use lists_bifs::{
-    bif_lists_append_1, bif_lists_append_2, bif_lists_filter, bif_lists_filtermap,
-    bif_lists_flatten, bif_lists_foreach, bif_lists_join, bif_lists_keydelete, bif_lists_keyfind,
-    bif_lists_keysort, bif_lists_keystore, bif_lists_last, bif_lists_map, bif_lists_member,
+    bif_lists_append_1, bif_lists_append_2, bif_lists_flatten, bif_lists_join, bif_lists_keydelete,
+    bif_lists_keyfind, bif_lists_keysort, bif_lists_keystore, bif_lists_last, bif_lists_member,
     bif_lists_nth, bif_lists_reverse_2, bif_lists_seq, bif_lists_sort, bif_lists_unzip,
     bif_lists_zip,
 };
+use lists_hof_bifs::{bif_lists_filter, bif_lists_filtermap, bif_lists_foreach, bif_lists_map};
 use maps_bifs::{
     bif_maps_filter, bif_maps_find, bif_maps_fold, bif_maps_keys, bif_maps_merge_with,
     bif_maps_put, bif_maps_to_list, bif_maps_update_with, bif_maps_values, bif_maps_with,
