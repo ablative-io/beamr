@@ -66,6 +66,7 @@ pub fn register_gate1_bifs(
     crate::native::tcp_bifs::register_tcp_bifs(registry, atom_table)?;
     crate::native::udp_bifs::register_udp_bifs(registry, atom_table)?;
     crate::native::process_info_bifs::register_process_info_bifs(registry, atom_table)?;
+    crate::distribution::pg::register_pg_bifs(registry, atom_table)?;
     crate::native::system_info_bifs::register_system_info_bifs(registry, atom_table)?;
 
     Ok(())
@@ -747,6 +748,25 @@ mod tests {
             let entry = registry
                 .lookup(ets, function, arity)
                 .expect("registered ETS BIF should be present");
+            assert_eq!(entry.capability, Capability::ProcessLocal);
+        }
+
+        let pg = atom_table.intern("pg");
+        for (name, arity) in [
+            ("start_link", 1),
+            ("join", 2),
+            ("join", 3),
+            ("leave", 2),
+            ("leave", 3),
+            ("get_members", 1),
+            ("get_members", 2),
+            ("get_local_members", 1),
+            ("get_local_members", 2),
+        ] {
+            let function = atom_table.intern(name);
+            let entry = registry
+                .lookup(pg, function, arity)
+                .expect("registered pg BIF should be present");
             assert_eq!(entry.capability, Capability::ProcessLocal);
         }
     }

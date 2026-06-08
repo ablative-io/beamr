@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::atom::AtomTable;
 use crate::distribution::Node;
+use crate::distribution::pg::PgFacility;
 use crate::error::ExecError;
 use crate::io::{IoFacility, IoSink};
 use crate::module::{Module, ModuleRegistry};
@@ -54,6 +55,8 @@ pub struct NativeServices {
     pub system_info_facility: Option<Arc<dyn SystemInfoFacility>>,
     /// ETS facility for shared table storage BIFs.
     pub ets_facility: Option<Arc<dyn EtsFacility>>,
+    /// Process group facility for pg module BIFs.
+    pub pg_facility: Option<Arc<dyn PgFacility>>,
     /// Async I/O facility for process-side ring submissions.
     pub io_facility: Option<Arc<dyn IoFacility>>,
     /// IO message facility for group-leader protocol BIFs.
@@ -127,6 +130,7 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
         code_management_facility: None,
         system_info_facility: None,
         ets_facility: None,
+        pg_facility: None,
         io_facility: None,
         io_message_facility: None,
         file_io_facility: None,
@@ -154,6 +158,7 @@ pub fn run_with_registry(
         code_management_facility: None,
         system_info_facility: None,
         ets_facility: None,
+        pg_facility: None,
         io_facility: None,
         io_message_facility: None,
         file_io_facility: None,
@@ -181,6 +186,7 @@ pub fn run_with_timer_services(
         code_management_facility: None,
         system_info_facility: None,
         ets_facility: None,
+        pg_facility: None,
         io_facility: None,
         io_message_facility: None,
         file_io_facility: None,

@@ -12,8 +12,9 @@ use self::dirty::DirtyPool;
 use self::execution::scheduler_loop;
 use self::spawning::SpawnRequest;
 use crate::atom::AtomTable;
-use crate::distribution::{DEFAULT_NODE_NAME, Node};
 use crate::distribution::DistributionConfig;
+use crate::distribution::pg::PgRegistry;
+use crate::distribution::{DEFAULT_NODE_NAME, Node};
 
 use crate::error::ExecError;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
@@ -54,7 +55,6 @@ pub struct SchedulerConfig {
     pub node_name: Option<String>,
     pub creation: Option<u32>,
     pub distribution: Option<DistributionConfig>,
-
 }
 pub(super) struct SharedState {
     shutdown: AtomicBool,
@@ -65,6 +65,7 @@ pub(super) struct SharedState {
     atom_table: Arc<AtomTable>,
     local_node: Node,
     ets_registry: Arc<EtsRegistry>,
+    pg_registry: Arc<PgRegistry>,
     bif_registry: Arc<BifRegistryImpl>,
     capability_policy: Arc<dyn CapabilityPolicy>,
     spawn_counter: AtomicUsize,
@@ -319,6 +320,7 @@ impl Scheduler {
         );
         let standard_io_server =
             StandardIoServer::new(standard_io_pid, standard_io_ring, atom_table.as_ref());
+        let pg_registry = Arc::new(PgRegistry::new(atom_table.as_ref()));
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
@@ -328,6 +330,7 @@ impl Scheduler {
             atom_table,
             local_node,
             ets_registry: Arc::new(EtsRegistry::new()),
+            pg_registry,
             bif_registry,
             capability_policy,
             spawn_counter: AtomicUsize::new(0),

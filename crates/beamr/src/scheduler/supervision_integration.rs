@@ -222,6 +222,7 @@ fn process_exit_signal(
 
                 // Record tombstone and remove resources owned by the terminated process.
                 shared.exit_tombstones.insert(target_pid, propagated_reason);
+                shared.pg_registry.remove_pid_from_all_scopes(target_pid);
                 let _deleted_tables = shared.transfer_or_delete_tables_owned_by(target_pid);
                 {
                     let mut ls = lock_or_recover(&shared.link_set);
@@ -279,6 +280,7 @@ fn process_exit_signal(
                     .filter(|linked_pid| *linked_pid != source_pid)
                     .collect();
                 shared.exit_tombstones.insert(target_pid, propagated_reason);
+                shared.pg_registry.remove_pid_from_all_scopes(target_pid);
                 let _deleted_tables = shared.transfer_or_delete_tables_owned_by(target_pid);
                 {
                     let mut ls = lock_or_recover(&shared.link_set);
@@ -394,10 +396,12 @@ pub(super) fn build_native_services(
     let file_io_facility: Arc<dyn FileIoFacility> = Arc::new(SchedulerFileIoFacility {
         shared: Arc::clone(shared),
     });
+    let pg_facility: Arc<dyn crate::distribution::pg::PgFacility> = shared.pg_registry.clone();
     crate::interpreter::NativeServices {
         atom_table: Some(Arc::clone(&shared.atom_table)),
         local_node: Some(shared.local_node),
         ets_facility: Some(ets_facility),
+        pg_facility: Some(pg_facility),
         timers: Some(Arc::clone(&shared.timers)),
         spawn_facility: Some(spawn),
         link_facility: Some(link),

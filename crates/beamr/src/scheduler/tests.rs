@@ -509,6 +509,9 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         io_facility: None,
         atom_table: Arc::new(crate::atom::AtomTable::new()),
         ets_registry: Arc::new(crate::ets::EtsRegistry::new()),
+        pg_registry: Arc::new(crate::distribution::pg::PgRegistry::new(
+            &crate::atom::AtomTable::new(),
+        )),
         bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
@@ -785,6 +788,9 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         io_facility: None,
         atom_table: Arc::new(crate::atom::AtomTable::new()),
         ets_registry: Arc::new(crate::ets::EtsRegistry::new()),
+        pg_registry: Arc::new(crate::distribution::pg::PgRegistry::new(
+            &crate::atom::AtomTable::new(),
+        )),
         bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
