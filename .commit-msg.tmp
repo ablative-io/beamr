@@ -1,7 +1,13 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 B-129
 ||||||| d06b254
 Harden B-107 TCP client transfer implementation
 =======
 review(beamr): harden node-qualified term accessors
 >>>>>>> workflow/onatopp-dev-norn/907b3eee
+||||||| d06b254
+Harden B-107 TCP client transfer implementation
+=======
+review: harden B-113 distribution resolver wiring
+>>>>>>> workflow/onatopp-dev-norn/4ffaa5bf
