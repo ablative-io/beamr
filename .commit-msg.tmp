@@ -1,1 +1,1 @@
-feat(beamr): add tcp active mode and controlling process
+harden(beamr): add TCP active-mode regression coverage and wiring fixes

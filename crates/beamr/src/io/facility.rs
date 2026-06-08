@@ -102,7 +102,7 @@ impl IoFacility for CompletionRingIoFacility {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::{IoCompletion, IoResult};
+    use crate::io::{IoCompletion, IoResult, PendingIoKind};
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Duration;
@@ -144,13 +144,10 @@ mod tests {
             Ok(())
         );
 
-        assert_eq!(
-            registry.take(1),
-            Some(super::super::bridge::PendingIo {
-                pid: 55,
-                result_mode: ResultMode::XRegister,
-            })
-        );
+        let pending = registry.take(1).expect("registered pending I/O");
+        assert_eq!(pending.pid, 55);
+        assert_eq!(pending.result_mode, ResultMode::XRegister);
+        assert!(matches!(pending.kind, PendingIoKind::Generic));
     }
 
     #[test]
@@ -176,13 +173,10 @@ mod tests {
             Ok(())
         );
 
-        assert_eq!(
-            registry.take(1),
-            Some(super::super::bridge::PendingIo {
-                pid: 99,
-                result_mode: ResultMode::Message,
-            })
-        );
+        let pending = registry.take(1).expect("registered bound pending I/O");
+        assert_eq!(pending.pid, 99);
+        assert_eq!(pending.result_mode, ResultMode::Message);
+        assert!(matches!(pending.kind, PendingIoKind::Generic));
     }
 
     fn _keep_io_result_import_live(_: IoResult) {}

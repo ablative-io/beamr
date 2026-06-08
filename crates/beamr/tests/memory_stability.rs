@@ -36,6 +36,7 @@ fn bif_and_literal_heavy_workload_does_not_grow_monotonically() {
         ets_facility: None,
         io_facility: None,
         file_io_facility: None,
+        tcp_io_facility: None,
     };
     let mut process = Process::new(1, 512);
     process.reset_reductions(500_000);

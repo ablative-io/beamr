@@ -98,3 +98,153 @@ fn parse_active_option(options: Term, context: &ProcessContext) -> Result<FdMode
 fn badarg() -> Term {
     Term::atom(Atom::BADARG)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::sync::{Arc, Mutex};
+
+    use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
+    use crate::native::TcpIoFacility;
+    use crate::process::Process;
+    use crate::process::heap::DEFAULT_HEAP_SIZE;
+    use crate::term::boxed::{Tuple, write_cons, write_tuple};
+
+    #[derive(Default)]
+    struct MockTcpIoFacility {
+        submissions: Mutex<Vec<(std::sync::Arc<FdInner>, usize)>>,
+    }
+
+    impl TcpIoFacility for MockTcpIoFacility {
+        fn submit_active_tcp_read(
+            &self,
+            socket: std::sync::Arc<FdInner>,
+            buf_len: usize,
+        ) -> Option<u64> {
+            let mut submissions = self
+                .submissions
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            submissions.push((socket, buf_len));
+            Some(submissions.len() as u64)
+        }
+    }
+
+    fn context_with_pid(pid: u64) -> (Arc<AtomTable>, ProcessContext<'static>) {
+        let atom_table = Arc::new(AtomTable::new());
+        let mut context = ProcessContext::new();
+        context.set_pid(Some(pid));
+        context.set_atom_table(Some(Arc::clone(&atom_table)));
+        (atom_table, context)
+    }
+
+    fn socket_term(socket: Arc<FdInner>) -> (Vec<u64>, Term) {
+        let mut heap = vec![0; FD_RESOURCE_WORDS];
+        let term = write_fd_resource(&mut heap, socket).expect("fd resource term");
+        (heap, term)
+    }
+
+    fn active_option_list(atom_table: &AtomTable, value: Term) -> (Vec<u64>, Vec<u64>, Term) {
+        let active = atom_table.intern("active");
+        let mut tuple_heap = vec![0; 3];
+        let option =
+            write_tuple(&mut tuple_heap, &[Term::atom(active), value]).expect("option tuple");
+        let mut cons_heap = vec![0; 2];
+        let list = write_cons(&mut cons_heap, option, Term::NIL).expect("option list");
+        (tuple_heap, cons_heap, list)
+    }
+
+    #[test]
+    fn tcp_setopts_active_from_passive_starts_read_loop() {
+        let (atom_table, mut context) = context_with_pid(7);
+        let facility = Arc::new(MockTcpIoFacility::default());
+        context.set_tcp_io_facility(Some(facility.clone()));
+        let socket = Arc::new(FdInner::new(55, 7));
+        let (_socket_heap, socket_term) = socket_term(Arc::clone(&socket));
+        let (_tuple_heap, _cons_heap, options) =
+            active_option_list(&atom_table, Term::atom(Atom::TRUE));
+
+        assert_eq!(
+            tcp_setopts(&[socket_term, options], &mut context),
+            Ok(Term::atom(Atom::OK))
+        );
+        assert_eq!(socket.mode(), FdMode::Active);
+        let submissions = facility
+            .submissions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(submissions.len(), 1);
+        assert_eq!(submissions[0].0.fd(), 55);
+        assert_eq!(submissions[0].1, ACTIVE_READ_BUFFER_BYTES);
+    }
+
+    #[test]
+    fn tcp_setopts_active_once_from_active_does_not_start_duplicate_read() {
+        let (atom_table, mut context) = context_with_pid(8);
+        let facility = Arc::new(MockTcpIoFacility::default());
+        context.set_tcp_io_facility(Some(facility.clone()));
+        let socket = Arc::new(FdInner::new(56, 8));
+        socket.set_mode(FdMode::Active);
+        let (_socket_heap, socket_term) = socket_term(Arc::clone(&socket));
+        let once = atom_table.intern("once");
+        let (_tuple_heap, _cons_heap, options) = active_option_list(&atom_table, Term::atom(once));
+
+        assert_eq!(
+            tcp_setopts(&[socket_term, options], &mut context),
+            Ok(Term::atom(Atom::OK))
+        );
+        assert_eq!(socket.mode(), FdMode::ActiveOnce);
+        assert!(
+            facility
+                .submissions
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn tcp_setopts_passive_stops_future_resubmits_without_facility() {
+        let (atom_table, mut context) = context_with_pid(9);
+        let socket = Arc::new(FdInner::new(57, 9));
+        socket.set_mode(FdMode::Active);
+        let (_socket_heap, socket_term) = socket_term(Arc::clone(&socket));
+        let (_tuple_heap, _cons_heap, options) =
+            active_option_list(&atom_table, Term::atom(Atom::FALSE));
+
+        assert_eq!(
+            tcp_setopts(&[socket_term, options], &mut context),
+            Ok(Term::atom(Atom::OK))
+        );
+        assert_eq!(socket.mode(), FdMode::Passive);
+    }
+
+    #[test]
+    fn tcp_controlling_process_transfers_only_from_current_controller() {
+        let (atom_table, mut owner_context) = context_with_pid(10);
+        let socket = Arc::new(FdInner::new(58, 10));
+        let (_socket_heap, socket_term) = socket_term(Arc::clone(&socket));
+
+        assert_eq!(
+            tcp_controlling_process(&[socket_term, Term::pid(11)], &mut owner_context),
+            Ok(Term::atom(Atom::OK))
+        );
+        assert_eq!(socket.controlling_process(), 11);
+
+        let mut process = Process::new(12, DEFAULT_HEAP_SIZE);
+        let mut not_owner_context = ProcessContext::new();
+        not_owner_context.set_atom_table(Some(atom_table));
+        not_owner_context.attach_process(&mut process, 0);
+        let not_owner = not_owner_context
+            .atom_table()
+            .expect("atom table")
+            .intern("not_owner");
+        let result = tcp_controlling_process(&[socket_term, Term::pid(12)], &mut not_owner_context)
+            .expect("not_owner tuple");
+        let tuple = Tuple::new(result).expect("error tuple");
+        assert_eq!(tuple.get(0), Some(Term::atom(Atom::ERROR)));
+        assert_eq!(tuple.get(1), Some(Term::atom(not_owner)));
+        assert_eq!(socket.controlling_process(), 11);
+    }
+}

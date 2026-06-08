@@ -363,13 +363,19 @@ mod tests {
     }
 
     struct MockRing {
+        submitted: Mutex<Vec<IoOp>>,
         completions: Mutex<Vec<IoCompletion>>,
         shutdown: AtomicBool,
     }
 
     impl CompletionRing for MockRing {
-        fn submit(&self, _op: super::super::IoOp) -> u64 {
-            1
+        fn submit(&self, op: IoOp) -> u64 {
+            let mut submitted = self
+                .submitted
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            submitted.push(op);
+            submitted.len() as u64
         }
 
         fn poll_completions(&self, _timeout: Duration) -> Vec<IoCompletion> {
@@ -393,6 +399,7 @@ mod tests {
     struct MockWakeTarget {
         x_result: Mutex<Option<(u64, Term)>>,
         message: Mutex<Option<(u64, Term)>>,
+        active_tcp_events: Mutex<Vec<(u64, ActiveTcpEvent)>>,
         notifications: (Mutex<usize>, Condvar),
     }
 
@@ -432,7 +439,11 @@ mod tests {
             self.notify();
         }
 
-        fn send_active_tcp_event(&self, pid: u64, _event: ActiveTcpEvent) {
+        fn send_active_tcp_event(&self, pid: u64, event: ActiveTcpEvent) {
+            self.active_tcp_events
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push((pid, event));
             *self
                 .message
                 .lock()
@@ -444,6 +455,7 @@ mod tests {
     #[test]
     fn bridge_dispatches_x_register_completion_and_shuts_down() {
         let ring = Arc::new(MockRing {
+            submitted: Mutex::new(Vec::new()),
             completions: Mutex::new(vec![IoCompletion {
                 op_id: 9,
                 result: Ok(IoResult::BytesWritten(5)),
@@ -471,6 +483,7 @@ mod tests {
     #[test]
     fn bridge_dispatches_message_completion() {
         let ring = Arc::new(MockRing {
+            submitted: Mutex::new(Vec::new()),
             completions: Mutex::new(vec![IoCompletion {
                 op_id: 10,
                 result: Err(io::Error::from_raw_os_error(2)),
@@ -492,5 +505,175 @@ mod tests {
                 .unwrap_or_else(|error| error.into_inner()),
             Some((88, Term::small_int(-2)))
         );
+    }
+
+    #[test]
+    fn active_tcp_data_resubmits_while_active() {
+        let ring = MockRing {
+            submitted: Mutex::new(Vec::new()),
+            completions: Mutex::new(Vec::new()),
+            shutdown: AtomicBool::new(false),
+        };
+        let registry = PendingIoRegistry::default();
+        let target = MockWakeTarget::default();
+        let socket = Arc::new(FdInner::new(11, 42));
+        socket.set_mode(FdMode::Active);
+
+        dispatch_active_tcp_read(
+            &ring,
+            &registry,
+            &target,
+            Arc::clone(&socket),
+            4096,
+            Ok(IoResult::BytesRead(3, b"abcdef".to_vec())),
+        );
+
+        assert_eq!(socket.mode(), FdMode::Active);
+        let events = target
+            .active_tcp_events
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].0, 42);
+        assert!(matches!(&events[0].1, ActiveTcpEvent::Data { data, .. } if data == b"abc"));
+        drop(events);
+
+        let submitted = ring
+            .submitted
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(
+            submitted.as_slice(),
+            [IoOp::Read {
+                fd: 11,
+                buf_len: 4096,
+                offset: u64::MAX,
+            }]
+        );
+        let pending = registry
+            .take(1)
+            .expect("resubmitted active read is registered");
+        assert_eq!(pending.pid, 42);
+        assert!(matches!(
+            pending.kind,
+            PendingIoKind::ActiveTcpRead { buf_len: 4096, .. }
+        ));
+    }
+
+    #[test]
+    fn active_once_tcp_data_switches_passive_without_resubmit() {
+        let ring = MockRing {
+            submitted: Mutex::new(Vec::new()),
+            completions: Mutex::new(Vec::new()),
+            shutdown: AtomicBool::new(false),
+        };
+        let registry = PendingIoRegistry::default();
+        let target = MockWakeTarget::default();
+        let socket = Arc::new(FdInner::new(12, 43));
+        socket.set_mode(FdMode::ActiveOnce);
+
+        dispatch_active_tcp_read(
+            &ring,
+            &registry,
+            &target,
+            Arc::clone(&socket),
+            1024,
+            Ok(IoResult::BytesRead(2, b"hi".to_vec())),
+        );
+
+        assert_eq!(socket.mode(), FdMode::Passive);
+        assert!(
+            ring.submitted
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_empty()
+        );
+        let events = target
+            .active_tcp_events
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0].1, ActiveTcpEvent::Data { data, .. } if data == b"hi"));
+    }
+
+    #[test]
+    fn active_tcp_closed_and_error_switch_passive() {
+        let ring = MockRing {
+            submitted: Mutex::new(Vec::new()),
+            completions: Mutex::new(Vec::new()),
+            shutdown: AtomicBool::new(false),
+        };
+        let registry = PendingIoRegistry::default();
+        let target = MockWakeTarget::default();
+        let closed_socket = Arc::new(FdInner::new(13, 44));
+        closed_socket.set_mode(FdMode::Active);
+
+        dispatch_active_tcp_read(
+            &ring,
+            &registry,
+            &target,
+            Arc::clone(&closed_socket),
+            512,
+            Ok(IoResult::BytesRead(0, Vec::new())),
+        );
+
+        assert_eq!(closed_socket.mode(), FdMode::Passive);
+        let error_socket = Arc::new(FdInner::new(14, 45));
+        error_socket.set_mode(FdMode::Active);
+        dispatch_active_tcp_read(
+            &ring,
+            &registry,
+            &target,
+            Arc::clone(&error_socket),
+            512,
+            Err(io::Error::from_raw_os_error(libc::ENOENT)),
+        );
+
+        assert_eq!(error_socket.mode(), FdMode::Passive);
+        let events = target
+            .active_tcp_events
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(events.len(), 2);
+        assert!(matches!(events[0].1, ActiveTcpEvent::Closed { .. }));
+        assert!(
+            matches!(events[1].1, ActiveTcpEvent::Error { reason, .. } if reason == Atom::ENOENT)
+        );
+    }
+
+    #[test]
+    fn passive_switch_during_in_flight_read_delivers_without_resubmit() {
+        let ring = MockRing {
+            submitted: Mutex::new(Vec::new()),
+            completions: Mutex::new(Vec::new()),
+            shutdown: AtomicBool::new(false),
+        };
+        let registry = PendingIoRegistry::default();
+        let target = MockWakeTarget::default();
+        let socket = Arc::new(FdInner::new(15, 46));
+        socket.set_mode(FdMode::Passive);
+
+        dispatch_active_tcp_read(
+            &ring,
+            &registry,
+            &target,
+            Arc::clone(&socket),
+            256,
+            Ok(IoResult::BytesRead(4, b"data".to_vec())),
+        );
+
+        assert_eq!(socket.mode(), FdMode::Passive);
+        assert!(
+            ring.submitted
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_empty()
+        );
+        let events = target
+            .active_tcp_events
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0].1, ActiveTcpEvent::Data { data, .. } if data == b"data"));
     }
 }
