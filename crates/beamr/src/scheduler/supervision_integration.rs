@@ -7,12 +7,14 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::atom::Atom;
+use crate::io::{CompletionRing, IoOp};
 use crate::namespace::NamespaceId;
 use crate::native::links::{LinkError, LinkFacility};
 use crate::native::spawn::{
     SpawnError, SpawnFacility, SpawnMonitorResult, SpawnOptions, SpawnOptionsResult,
 };
 use crate::native::supervision::{MonitorResult, SupervisionError, SupervisionFacility};
+use crate::native::{FileIoCompletion, FileIoContinuation, FileIoFacility};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{ExitReason, Priority, Process, ProcessStatus};
 use crate::supervision::link;
@@ -324,6 +326,9 @@ pub(super) fn build_native_services(
             shared: Arc::clone(shared),
         });
     let ets_facility: Arc<dyn crate::native::EtsFacility> = shared.ets_registry.clone();
+    let file_io_facility: Arc<dyn FileIoFacility> = Arc::new(SchedulerFileIoFacility {
+        shared: Arc::clone(shared),
+    });
     crate::interpreter::NativeServices {
         atom_table: Some(Arc::clone(&shared.atom_table)),
         ets_facility: Some(ets_facility),
@@ -337,10 +342,52 @@ pub(super) fn build_native_services(
         code_management_facility: Some(code_management),
         system_info_facility: Some(system_info),
         io_facility: shared.io_facility.clone(),
+        file_io_facility: Some(file_io_facility),
     }
 }
 
 // ── Facility implementations ────────────────────────────────────────────────
+
+struct SchedulerFileIoFacility {
+    shared: Arc<SharedState>,
+}
+
+impl FileIoFacility for SchedulerFileIoFacility {
+    fn submit_file_io(&self, pid: u64, op: IoOp, continuation: FileIoContinuation) -> u64 {
+        let op_id = self.shared.file_io_ring.submit(op);
+        self.track_submitted_file_io(pid, op_id, continuation);
+        op_id
+    }
+
+    fn track_submitted_file_io(&self, pid: u64, op_id: u64, continuation: FileIoContinuation) {
+        if let Some((_, completion)) = self.shared.file_io_orphans.remove(&op_id) {
+            self.shared.file_io_results.insert(
+                pid,
+                FileIoCompletion {
+                    op_id,
+                    continuation,
+                    completion,
+                },
+            );
+            super::execution::wake_process(&self.shared, pid);
+        } else {
+            self.shared
+                .file_io_pending
+                .insert(op_id, (pid, continuation));
+        }
+    }
+
+    fn take_file_io_completion(&self, pid: u64) -> Option<FileIoCompletion> {
+        self.shared
+            .file_io_results
+            .remove(&pid)
+            .map(|(_, result)| result)
+    }
+
+    fn ring(&self) -> &dyn CompletionRing {
+        self.shared.file_io_ring.as_ref()
+    }
+}
 
 /// Real `ProcessInfoFacility` backed by the scheduler's shared state.
 pub(super) struct SchedulerProcessInfoFacility {

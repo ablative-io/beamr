@@ -13,6 +13,9 @@ use std::io::Write;
 
 pub use bridge::{IoCompletionBridge, IoWakeTarget, PendingIo, PendingIoRegistry, ResultMode};
 pub use facility::{CompletionRingIoFacility, IoError, IoFacility};
+
+use crate::atom::Atom;
+
 pub use ring::{CompletionRing, IoCompletion, IoOp, IoResult, StatxData};
 #[cfg(not(target_os = "linux"))]
 pub use thread_pool::ThreadPoolRing;
@@ -26,6 +29,49 @@ pub struct RingConfig {
     pub ring_depth: u32,
     /// Non-Linux fallback worker count. Defaults to 4.
     pub fallback_pool_size: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::errno_to_atom;
+    use crate::atom::Atom;
+
+    #[test]
+    fn errno_mapping_returns_erlang_reason_atoms() {
+        assert_eq!(errno_to_atom(libc::ENOENT), Atom::ENOENT);
+        assert_eq!(errno_to_atom(libc::EACCES), Atom::EACCES);
+        assert_eq!(errno_to_atom(libc::EEXIST), Atom::EEXIST);
+        assert_eq!(errno_to_atom(libc::EISDIR), Atom::EISDIR);
+        assert_eq!(errno_to_atom(libc::ENOTDIR), Atom::ENOTDIR);
+        assert_eq!(errno_to_atom(libc::ENOSPC), Atom::ENOSPC);
+        assert_eq!(errno_to_atom(libc::EMFILE), Atom::EMFILE);
+        assert_eq!(errno_to_atom(libc::ENFILE), Atom::ENFILE);
+        assert_eq!(errno_to_atom(libc::EBADF), Atom::EBADF);
+        assert_eq!(errno_to_atom(libc::EPIPE), Atom::EPIPE);
+        assert_eq!(errno_to_atom(libc::EAGAIN), Atom::EAGAIN);
+        assert_eq!(errno_to_atom(libc::EINVAL), Atom::EINVAL);
+        assert_eq!(errno_to_atom(i32::MAX), Atom::UNKNOWN_ERROR);
+    }
+}
+
+/// Map OS errno values into Erlang-style file error reason atoms.
+#[must_use]
+pub fn errno_to_atom(errno: i32) -> Atom {
+    match errno {
+        libc::ENOENT => Atom::ENOENT,
+        libc::EACCES => Atom::EACCES,
+        libc::EEXIST => Atom::EEXIST,
+        libc::EISDIR => Atom::EISDIR,
+        libc::ENOTDIR => Atom::ENOTDIR,
+        libc::ENOSPC => Atom::ENOSPC,
+        libc::EMFILE => Atom::EMFILE,
+        libc::ENFILE => Atom::ENFILE,
+        libc::EBADF => Atom::EBADF,
+        libc::EPIPE => Atom::EPIPE,
+        libc::EAGAIN => Atom::EAGAIN,
+        libc::EINVAL => Atom::EINVAL,
+        _ => Atom::UNKNOWN_ERROR,
+    }
 }
 
 impl Default for RingConfig {

@@ -12,7 +12,6 @@ use crate::atom::AtomTable;
 use crate::error::ExecError;
 use crate::io::{IoFacility, IoSink};
 use crate::module::{Module, ModuleRegistry};
-use crate::native::NativeEntry;
 use crate::native::code_management_bifs::CodeManagementFacility;
 use crate::native::ets_bifs::EtsFacility;
 use crate::native::group_leader::GroupLeaderFacility;
@@ -21,6 +20,7 @@ use crate::native::process_info_bifs::ProcessInfoFacility;
 use crate::native::spawn::SpawnFacility;
 use crate::native::supervision::SupervisionFacility;
 use crate::native::system_info_bifs::SystemInfoFacility;
+use crate::native::{FileIoFacility, NativeEntry};
 use crate::process::{CodePosition, ExitReason, Process};
 use crate::scheduler::dirty::DirtySchedulerKind;
 use crate::term::Term;
@@ -52,6 +52,8 @@ pub struct NativeServices {
     pub ets_facility: Option<Arc<dyn EtsFacility>>,
     /// Async I/O facility for process-side ring submissions.
     pub io_facility: Option<Arc<dyn IoFacility>>,
+    /// Completion-ring backed facility for file BIFs.
+    pub file_io_facility: Option<Arc<dyn FileIoFacility>>,
 }
 
 /// Result of running a process until it yields, waits, exits, or faults.
@@ -117,6 +119,7 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
         system_info_facility: None,
         ets_facility: None,
         io_facility: None,
+        file_io_facility: None,
     };
     run_loop(process, module, None, &empty)
 }
@@ -140,6 +143,7 @@ pub fn run_with_registry(
         system_info_facility: None,
         ets_facility: None,
         io_facility: None,
+        file_io_facility: None,
     };
     run_loop(process, initial_module, Some(registry), &empty)
 }
@@ -163,6 +167,7 @@ pub fn run_with_timer_services(
         system_info_facility: None,
         ets_facility: None,
         io_facility: None,
+        file_io_facility: None,
     };
     run_loop(process, initial_module, None, &services)
 }
