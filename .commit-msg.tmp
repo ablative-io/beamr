@@ -1,1 +1,1 @@
-Harden ETS named-table creation and lookup path
+feat(ets): add internal match spec compiler
