@@ -263,11 +263,16 @@ fn openat_fd(dir_fd: RawFd, path: &Path, flags: i32, mode: u32) -> io::Result<Io
 }
 
 fn statx_fd(dir_fd: RawFd, path: &Path, flags: i32, mask: u32) -> io::Result<IoResult> {
-    let c_path = path_to_cstring(path)?;
-    // SAFETY: zeroed stat buffer is immediately initialized by fstatat on success.
+    // SAFETY: zeroed stat buffer is immediately initialized by fstat/fstatat on success.
     let mut stat: libc::stat = unsafe { mem::zeroed() };
-    // SAFETY: `c_path` is NUL-terminated and `stat` points to writable memory.
-    let rc = unsafe { libc::fstatat(dir_fd, c_path.as_ptr(), &mut stat, flags) };
+    let rc = if path.as_os_str().is_empty() {
+        // SAFETY: `stat` points to writable memory and `dir_fd` is the descriptor being queried.
+        unsafe { libc::fstat(dir_fd, &mut stat) }
+    } else {
+        let c_path = path_to_cstring(path)?;
+        // SAFETY: `c_path` is NUL-terminated and `stat` points to writable memory.
+        unsafe { libc::fstatat(dir_fd, c_path.as_ptr(), &mut stat, flags) }
+    };
     if rc < 0 {
         Err(io::Error::last_os_error())
     } else {

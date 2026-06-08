@@ -13,10 +13,9 @@ use crate::term::Term;
 use crate::term::binary::Binary;
 use crate::term::boxed::Tuple;
 
-use super::{file_close, file_open, file_read, file_write};
+use super::{file_close, file_open, file_read, file_seek, file_write, pread, pwrite};
 
 const PID: u64 = 42;
-const CURRENT_POSITION: u64 = u64::MAX;
 
 #[derive(Default)]
 struct MockRing {
@@ -215,8 +214,10 @@ fn close_file_submits_close_tracks_resource_and_marks_closed_on_completion() {
     let mut process = Process::new(PID, 128);
     let mut context = heap_context(&mut process, Arc::clone(&facility));
     let fd = pipe_read_fd();
+    let inner = Arc::new(FdInner::new(fd, PID));
+    inner.set_current_offset(7);
     let resource = context
-        .alloc_fd_resource(Arc::new(FdInner::new(fd, PID)))
+        .alloc_fd_resource(Arc::clone(&inner))
         .expect("fd resource allocation");
 
     let result = file_close(&[resource], &mut context).expect("close submit placeholder");
@@ -260,13 +261,15 @@ fn close_file_already_closed_returns_closed_error() {
 }
 
 #[test]
-fn read_file_submits_current_position_read_and_returns_binary_or_eof() {
+fn read_file_submits_tracked_offset_and_advances_on_success() {
     let facility = Arc::new(MockFileIoFacility::default());
     let mut process = Process::new(PID, 128);
     let mut context = heap_context(&mut process, Arc::clone(&facility));
     let fd = pipe_read_fd();
+    let inner = Arc::new(FdInner::new(fd, PID));
+    inner.set_current_offset(7);
     let resource = context
-        .alloc_fd_resource(Arc::new(FdInner::new(fd, PID)))
+        .alloc_fd_resource(Arc::clone(&inner))
         .expect("fd resource allocation");
 
     let result =
@@ -278,37 +281,45 @@ fn read_file_submits_current_position_read_and_returns_binary_or_eof() {
         [IoOp::Read {
             fd: submitted_fd,
             buf_len: 5,
-            offset: CURRENT_POSITION,
+            offset: 7,
         }] if *submitted_fd == fd
     ));
 
     facility.push_completion(
-        FileIoContinuation::Read,
+        FileIoContinuation::Read {
+            fd: Some(Arc::clone(&inner)),
+        },
         Ok(IoResult::BytesRead(3, b"abc".to_vec())),
     );
     let result = file_read(&[resource, Term::small_int(5)], &mut context).expect("read result");
     let (tag, bytes) = tuple_reason(result);
     assert_eq!(tag, Term::atom(Atom::OK));
     assert_eq!(Binary::new(bytes).expect("binary").as_bytes(), b"abc");
+    assert_eq!(inner.current_offset(), 10);
 
     facility.push_completion(
-        FileIoContinuation::Read,
+        FileIoContinuation::Read {
+            fd: Some(Arc::clone(&inner)),
+        },
         Ok(IoResult::BytesRead(0, Vec::new())),
     );
     let result = file_read(&[resource, Term::small_int(5)], &mut context).expect("eof result");
     let (tag, bytes) = tuple_reason(result);
     assert_eq!(tag, Term::atom(Atom::OK));
     assert_eq!(Binary::new(bytes).expect("binary").as_bytes(), b"");
+    assert_eq!(inner.current_offset(), 10);
 }
 
 #[test]
-fn write_file_submits_current_position_write_and_reports_partial() {
+fn write_file_submits_tracked_offset_and_advances_on_success_or_partial() {
     let facility = Arc::new(MockFileIoFacility::default());
     let mut process = Process::new(PID, 128);
     let mut context = heap_context(&mut process, Arc::clone(&facility));
     let fd = pipe_read_fd();
+    let inner = Arc::new(FdInner::new(fd, PID));
+    inner.set_current_offset(4);
     let resource = context
-        .alloc_fd_resource(Arc::new(FdInner::new(fd, PID)))
+        .alloc_fd_resource(Arc::clone(&inner))
         .expect("fd resource allocation");
     let data = binary(&mut context, b"hello");
 
@@ -320,19 +331,26 @@ fn write_file_submits_current_position_write_and_reports_partial() {
         [IoOp::Write {
             fd: submitted_fd,
             data,
-            offset: CURRENT_POSITION,
+            offset: 4,
         }] if *submitted_fd == fd && data.as_slice() == b"hello"
     ));
 
     facility.push_completion(
-        FileIoContinuation::Write { expected_len: 5 },
+        FileIoContinuation::Write {
+            fd: Some(Arc::clone(&inner)),
+            expected_len: 5,
+        },
         Ok(IoResult::BytesWritten(5)),
     );
     let result = file_write(&[resource, data], &mut context).expect("full write result");
     assert_eq!(result, Term::atom(Atom::OK));
+    assert_eq!(inner.current_offset(), 9);
 
     facility.push_completion(
-        FileIoContinuation::Write { expected_len: 5 },
+        FileIoContinuation::Write {
+            fd: Some(Arc::clone(&inner)),
+            expected_len: 5,
+        },
         Ok(IoResult::BytesWritten(2)),
     );
     let result = file_write(&[resource, data], &mut context).expect("partial write result");
@@ -340,6 +358,180 @@ fn write_file_submits_current_position_write_and_reports_partial() {
     let tuple = Tuple::new(reason).expect("incomplete tuple");
     assert_eq!(tuple.get(0), Some(Term::atom(Atom::INCOMPLETE)));
     assert_eq!(tuple.get(1), Some(Term::small_int(2)));
+    assert_eq!(inner.current_offset(), 11);
+}
+
+#[test]
+fn file_seek_bof_and_cur_update_tracked_offset() {
+    let facility = Arc::new(MockFileIoFacility::default());
+    let mut process = Process::new(PID, 128);
+    let mut context = heap_context(&mut process, Arc::clone(&facility));
+    let fd = pipe_read_fd();
+    let inner = Arc::new(FdInner::new(fd, PID));
+    let resource = context
+        .alloc_fd_resource(Arc::clone(&inner))
+        .expect("fd resource allocation");
+
+    let result = file_seek(
+        &[resource, Term::small_int(10), Term::atom(Atom::BOF)],
+        &mut context,
+    )
+    .expect("bof seek result");
+    assert_eq!(
+        tuple_reason(result),
+        (Term::atom(Atom::OK), Term::small_int(10))
+    );
+    assert_eq!(inner.current_offset(), 10);
+
+    let result = file_seek(
+        &[resource, Term::small_int(-3), Term::atom(Atom::CUR)],
+        &mut context,
+    )
+    .expect("cur seek result");
+    assert_eq!(
+        tuple_reason(result),
+        (Term::atom(Atom::OK), Term::small_int(7))
+    );
+    assert_eq!(inner.current_offset(), 7);
+    assert!(facility.submitted().is_empty());
+}
+
+#[test]
+fn file_seek_rejects_negative_result_with_einval() {
+    let facility = Arc::new(MockFileIoFacility::default());
+    let mut process = Process::new(PID, 128);
+    let mut context = heap_context(&mut process, Arc::clone(&facility));
+    let fd = pipe_read_fd();
+    let inner = Arc::new(FdInner::new(fd, PID));
+    let resource = context
+        .alloc_fd_resource(Arc::clone(&inner))
+        .expect("fd resource allocation");
+
+    let result = file_seek(
+        &[resource, Term::small_int(-1), Term::atom(Atom::BOF)],
+        &mut context,
+    )
+    .expect("negative seek result");
+    assert_eq!(error_reason(result), Term::atom(Atom::EINVAL));
+    assert_eq!(inner.current_offset(), 0);
+    assert!(facility.submitted().is_empty());
+}
+
+#[test]
+fn file_seek_eof_submits_statx_and_sets_size_relative_offset() {
+    let facility = Arc::new(MockFileIoFacility::default());
+    let mut process = Process::new(PID, 128);
+    let mut context = heap_context(&mut process, Arc::clone(&facility));
+    let fd = pipe_read_fd();
+    let inner = Arc::new(FdInner::new(fd, PID));
+    let resource = context
+        .alloc_fd_resource(Arc::clone(&inner))
+        .expect("fd resource allocation");
+
+    let result = file_seek(
+        &[resource, Term::small_int(-2), Term::atom(Atom::EOF)],
+        &mut context,
+    )
+    .expect("eof seek submit result");
+    assert_eq!(result, Term::atom(Atom::OK));
+    assert!(context.take_suspend().is_some());
+    assert!(matches!(
+        facility.submitted().as_slice(),
+        [IoOp::Statx { dir_fd, path, .. }] if *dir_fd == fd && path.as_os_str().is_empty()
+    ));
+
+    facility.push_completion(
+        FileIoContinuation::SeekEof {
+            fd: Arc::clone(&inner),
+            offset: -2,
+        },
+        Ok(IoResult::StatResult(crate::io::ring::StatxData {
+            size: 12,
+            ..Default::default()
+        })),
+    );
+    let result = file_seek(
+        &[resource, Term::small_int(-2), Term::atom(Atom::EOF)],
+        &mut context,
+    )
+    .expect("eof seek completion result");
+    assert_eq!(
+        tuple_reason(result),
+        (Term::atom(Atom::OK), Term::small_int(10))
+    );
+    assert_eq!(inner.current_offset(), 10);
+}
+
+#[test]
+fn pread_submits_explicit_offset_and_does_not_advance_tracked_offset() {
+    let facility = Arc::new(MockFileIoFacility::default());
+    let mut process = Process::new(PID, 128);
+    let mut context = heap_context(&mut process, Arc::clone(&facility));
+    let fd = pipe_read_fd();
+    let inner = Arc::new(FdInner::new(fd, PID));
+    inner.set_current_offset(3);
+    let resource = context
+        .alloc_fd_resource(Arc::clone(&inner))
+        .expect("fd resource allocation");
+
+    let result = pread(
+        &[resource, Term::small_int(100), Term::small_int(4)],
+        &mut context,
+    )
+    .expect("pread submit placeholder");
+    assert_eq!(result, Term::atom(Atom::OK));
+    assert!(matches!(
+        facility.submitted().as_slice(),
+        [IoOp::Read { fd: submitted_fd, buf_len: 4, offset: 100 }] if *submitted_fd == fd
+    ));
+
+    facility.push_completion(
+        FileIoContinuation::Read { fd: None },
+        Ok(IoResult::BytesRead(4, b"data".to_vec())),
+    );
+    let result = pread(
+        &[resource, Term::small_int(100), Term::small_int(4)],
+        &mut context,
+    )
+    .expect("pread completion result");
+    let (tag, bytes) = tuple_reason(result);
+    assert_eq!(tag, Term::atom(Atom::OK));
+    assert_eq!(Binary::new(bytes).expect("binary").as_bytes(), b"data");
+    assert_eq!(inner.current_offset(), 3);
+}
+
+#[test]
+fn pwrite_submits_explicit_offset_and_does_not_advance_tracked_offset() {
+    let facility = Arc::new(MockFileIoFacility::default());
+    let mut process = Process::new(PID, 128);
+    let mut context = heap_context(&mut process, Arc::clone(&facility));
+    let fd = pipe_read_fd();
+    let inner = Arc::new(FdInner::new(fd, PID));
+    inner.set_current_offset(5);
+    let resource = context
+        .alloc_fd_resource(Arc::clone(&inner))
+        .expect("fd resource allocation");
+    let data = binary(&mut context, b"hole");
+
+    let result = pwrite(&[resource, Term::small_int(100), data], &mut context)
+        .expect("pwrite submit placeholder");
+    assert_eq!(result, Term::atom(Atom::OK));
+    assert!(matches!(
+        facility.submitted().as_slice(),
+        [IoOp::Write { fd: submitted_fd, data, offset: 100 }] if *submitted_fd == fd && data.as_slice() == b"hole"
+    ));
+
+    facility.push_completion(
+        FileIoContinuation::Write {
+            fd: None,
+            expected_len: 4,
+        },
+        Ok(IoResult::BytesWritten(4)),
+    );
+    let result = pwrite(&[resource, Term::small_int(100), data], &mut context)
+        .expect("pwrite completion result");
+    assert_eq!(result, Term::atom(Atom::OK));
+    assert_eq!(inner.current_offset(), 5);
 }
 
 #[test]

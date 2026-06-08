@@ -64,6 +64,9 @@ impl Atom {
     pub const APPEND: Self = Self(50);
     pub const CREATE: Self = Self(51);
     pub const TRUNCATE: Self = Self(52);
+    pub const BOF: Self = Self(53);
+    pub const CUR: Self = Self(54);
+    pub const EOF: Self = Self(55);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -128,6 +131,9 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("append", Atom::APPEND),
     ("create", Atom::CREATE),
     ("truncate", Atom::TRUNCATE),
+    ("bof", Atom::BOF),
+    ("cur", Atom::CUR),
+    ("eof", Atom::EOF),
 ];
 
 /// Concurrent intern table for atom strings.
@@ -295,6 +301,9 @@ mod tests {
         assert_eq!(table.resolve(Atom::APPEND), Some("append"));
         assert_eq!(table.resolve(Atom::CREATE), Some("create"));
         assert_eq!(table.resolve(Atom::TRUNCATE), Some("truncate"));
+        assert_eq!(table.resolve(Atom::BOF), Some("bof"));
+        assert_eq!(table.resolve(Atom::CUR), Some("cur"));
+        assert_eq!(table.resolve(Atom::EOF), Some("eof"));
     }
 
     #[test]

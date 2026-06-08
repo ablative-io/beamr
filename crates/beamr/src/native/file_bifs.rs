@@ -15,7 +15,6 @@ use crate::term::Term;
 use crate::term::binary::Binary;
 use crate::term::boxed::{Cons, Tuple};
 
-const CURRENT_POSITION: u64 = u64::MAX;
 const DEFAULT_FILE_PERMISSIONS: u32 = 0o644;
 
 /// Registers Erlang file BIFs.
@@ -29,6 +28,9 @@ pub fn register_file_bifs(
         ("close_file", 1, file_close as crate::native::NativeFn),
         ("read_file", 2, file_read as crate::native::NativeFn),
         ("write_file", 2, file_write as crate::native::NativeFn),
+        ("file_seek", 3, file_seek as crate::native::NativeFn),
+        ("pread", 3, pread as crate::native::NativeFn),
+        ("pwrite", 3, pwrite as crate::native::NativeFn),
     ] {
         registry.register(
             erlang,
@@ -98,22 +100,15 @@ pub fn file_read(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
         return Err(badarg());
     };
     let resource = FdResource::new(*fd_term).ok_or_else(badarg)?;
-    if resource.state() != FdState::Open {
-        return error_tuple(context, Atom::CLOSED);
-    }
-    let count = count_term
-        .as_small_int()
-        .and_then(|value| usize::try_from(value).ok())
-        .ok_or_else(badarg)?;
-    context.submit_file_io(
-        IoOp::Read {
-            fd: resource.fd(),
-            buf_len: count,
-            offset: CURRENT_POSITION,
-        },
-        FileIoContinuation::Read,
-    )?;
-    Ok(Term::atom(Atom::OK))
+    let count = parse_count(*count_term)?;
+    let inner = resource.inner();
+    submit_read(
+        context,
+        resource,
+        count,
+        inner.current_offset(),
+        Some(inner),
+    )
 }
 
 /// erlang:write_file/2.
@@ -129,18 +124,122 @@ pub fn file_write(args: &[Term], context: &mut ProcessContext) -> Result<Term, T
     if resource.state() != FdState::Open {
         return error_tuple(context, Atom::CLOSED);
     }
-    let data = Binary::new(*data_term)
-        .ok_or_else(badarg)?
-        .as_bytes()
-        .to_vec();
+    let data = binary_bytes(*data_term)?;
+    let expected_len = data.len();
+    let inner = resource.inner();
+    context.submit_file_io(
+        IoOp::Write {
+            fd: inner.fd(),
+            data,
+            offset: inner.current_offset(),
+        },
+        FileIoContinuation::Write {
+            fd: Some(inner),
+            expected_len,
+        },
+    )?;
+    Ok(Term::atom(Atom::OK))
+}
+
+pub fn file_seek(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    if let Some(completion) = context.take_file_io_completion() {
+        return finish_seek(completion, context);
+    }
+
+    let [fd_term, offset_term, whence_term] = args else {
+        return Err(badarg());
+    };
+    let resource = FdResource::new(*fd_term).ok_or_else(badarg)?;
+    if resource.state() != FdState::Open {
+        return error_tuple(context, Atom::CLOSED);
+    }
+    let offset = offset_term.as_small_int().ok_or_else(badarg)?;
+    let whence = parse_whence(*whence_term)?;
+    let inner = resource.inner();
+    match whence {
+        SeekWhence::Bof => set_seek_position(context, &inner, i128::from(offset)),
+        SeekWhence::Cur => set_seek_position(
+            context,
+            &inner,
+            i128::from(inner.current_offset()) + i128::from(offset),
+        ),
+        SeekWhence::Eof => {
+            context.submit_file_io(
+                IoOp::Statx {
+                    dir_fd: inner.fd(),
+                    path: PathBuf::new(),
+                    flags: statx_empty_path_flag(),
+                    mask: statx_size_mask(),
+                },
+                FileIoContinuation::SeekEof { fd: inner, offset },
+            )?;
+            Ok(Term::atom(Atom::OK))
+        }
+    }
+}
+
+pub fn pread(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    if let Some(completion) = context.take_file_io_completion() {
+        return finish_read(completion, context);
+    }
+    let [fd_term, offset_term, count_term] = args else {
+        return Err(badarg());
+    };
+    submit_read(
+        context,
+        FdResource::new(*fd_term).ok_or_else(badarg)?,
+        parse_count(*count_term)?,
+        parse_non_negative_offset(*offset_term)?,
+        None,
+    )
+}
+
+fn submit_read(
+    context: &mut ProcessContext,
+    resource: FdResource,
+    count: usize,
+    offset: u64,
+    fd: Option<Arc<FdInner>>,
+) -> Result<Term, Term> {
+    if resource.state() != FdState::Open {
+        return error_tuple(context, Atom::CLOSED);
+    }
+    context.submit_file_io(
+        IoOp::Read {
+            fd: resource.fd(),
+            buf_len: count,
+            offset,
+        },
+        FileIoContinuation::Read { fd },
+    )?;
+    Ok(Term::atom(Atom::OK))
+}
+
+pub fn pwrite(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    if let Some(completion) = context.take_file_io_completion() {
+        return finish_write(completion, context);
+    }
+
+    let [fd_term, offset_term, data_term] = args else {
+        return Err(badarg());
+    };
+    let resource = FdResource::new(*fd_term).ok_or_else(badarg)?;
+    if resource.state() != FdState::Open {
+        return error_tuple(context, Atom::CLOSED);
+    }
+    let offset = parse_non_negative_offset(*offset_term)?;
+    let data = binary_bytes(*data_term)?;
     let expected_len = data.len();
     context.submit_file_io(
         IoOp::Write {
             fd: resource.fd(),
             data,
-            offset: CURRENT_POSITION,
+            offset,
         },
-        FileIoContinuation::Write { expected_len },
+        FileIoContinuation::Write {
+            fd: None,
+            expected_len,
+        },
     )?;
     Ok(Term::atom(Atom::OK))
 }
@@ -174,6 +273,9 @@ fn finish_close(completion: FileIoCompletion, context: &mut ProcessContext) -> R
 fn finish_read(completion: FileIoCompletion, context: &mut ProcessContext) -> Result<Term, Term> {
     match completion.completion.result {
         Ok(IoResult::BytesRead(bytes_read, bytes)) => {
+            if let FileIoContinuation::Read { fd: Some(fd) } = completion.continuation {
+                fd.advance_current_offset(bytes_read);
+            }
             let read_bytes = bytes.get(..bytes_read).ok_or_else(badarg)?;
             let binary = context.alloc_binary(read_bytes)?;
             ok_tuple(context, binary)
@@ -185,14 +287,32 @@ fn finish_read(completion: FileIoCompletion, context: &mut ProcessContext) -> Re
 
 fn finish_write(completion: FileIoCompletion, context: &mut ProcessContext) -> Result<Term, Term> {
     let expected_len = match completion.continuation {
-        FileIoContinuation::Write { expected_len } => expected_len,
+        FileIoContinuation::Write { expected_len, .. } => expected_len,
         _ => return error_tuple(context, Atom::UNKNOWN_ERROR),
     };
     match completion.completion.result {
         Ok(IoResult::BytesWritten(bytes_written)) if bytes_written == expected_len => {
+            advance_write_offset(&completion.continuation, bytes_written);
             Ok(Term::atom(Atom::OK))
         }
-        Ok(IoResult::BytesWritten(bytes_written)) => incomplete_tuple(context, bytes_written),
+        Ok(IoResult::BytesWritten(bytes_written)) => {
+            advance_write_offset(&completion.continuation, bytes_written);
+            incomplete_tuple(context, bytes_written)
+        }
+        Ok(_) => error_tuple(context, Atom::UNKNOWN_ERROR),
+        Err(error) => error_tuple(context, error_reason(error)),
+    }
+}
+
+fn finish_seek(completion: FileIoCompletion, context: &mut ProcessContext) -> Result<Term, Term> {
+    let (fd, offset) = match completion.continuation {
+        FileIoContinuation::SeekEof { fd, offset } => (fd, offset),
+        _ => return error_tuple(context, Atom::UNKNOWN_ERROR),
+    };
+    match completion.completion.result {
+        Ok(IoResult::StatResult(data)) => {
+            set_seek_position(context, &fd, i128::from(data.size) + i128::from(offset))
+        }
         Ok(_) => error_tuple(context, Atom::UNKNOWN_ERROR),
         Err(error) => error_tuple(context, error_reason(error)),
     }
@@ -284,6 +404,83 @@ fn mode_tuple(term: Term) -> Result<ModeItem, Term> {
         Ok(ModeItem::Truncate(bool_value))
     } else {
         Err(badarg())
+    }
+}
+
+enum SeekWhence {
+    Bof,
+    Cur,
+    Eof,
+}
+
+fn parse_whence(term: Term) -> Result<SeekWhence, Term> {
+    if term == Term::atom(Atom::BOF) {
+        Ok(SeekWhence::Bof)
+    } else if term == Term::atom(Atom::CUR) {
+        Ok(SeekWhence::Cur)
+    } else if term == Term::atom(Atom::EOF) {
+        Ok(SeekWhence::Eof)
+    } else {
+        Err(badarg())
+    }
+}
+
+fn parse_non_negative_offset(term: Term) -> Result<u64, Term> {
+    term.as_small_int()
+        .and_then(|value| u64::try_from(value).ok())
+        .ok_or_else(badarg)
+}
+
+fn parse_count(term: Term) -> Result<usize, Term> {
+    term.as_small_int()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(badarg)
+}
+
+fn binary_bytes(term: Term) -> Result<Vec<u8>, Term> {
+    Ok(Binary::new(term).ok_or_else(badarg)?.as_bytes().to_vec())
+}
+
+fn set_seek_position(
+    context: &mut ProcessContext,
+    fd: &FdInner,
+    position: i128,
+) -> Result<Term, Term> {
+    let Ok(position) = u64::try_from(position) else {
+        return error_tuple(context, Atom::EINVAL);
+    };
+    fd.set_current_offset(position);
+    let Some(term) = i64::try_from(position).ok().and_then(Term::try_small_int) else {
+        return error_tuple(context, Atom::EINVAL);
+    };
+    ok_tuple(context, term)
+}
+
+fn advance_write_offset(continuation: &FileIoContinuation, bytes_written: usize) {
+    if let FileIoContinuation::Write { fd: Some(fd), .. } = continuation {
+        fd.advance_current_offset(bytes_written);
+    }
+}
+
+fn statx_size_mask() -> u32 {
+    #[cfg(target_os = "linux")]
+    {
+        libc::STATX_SIZE
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        0
+    }
+}
+
+fn statx_empty_path_flag() -> i32 {
+    #[cfg(target_os = "linux")]
+    {
+        libc::AT_EMPTY_PATH
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        0
     }
 }
 

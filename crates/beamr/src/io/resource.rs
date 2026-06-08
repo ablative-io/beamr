@@ -7,7 +7,7 @@
 
 use std::os::fd::RawFd;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
 use crate::io::ring::{CompletionRing, IoOp};
 use crate::term::Term;
@@ -43,6 +43,7 @@ pub struct FdInner {
     fd: RawFd,
     owner_pid: u64,
     state: AtomicU8,
+    current_offset: AtomicU64,
 }
 
 impl FdInner {
@@ -52,6 +53,7 @@ impl FdInner {
             fd,
             owner_pid,
             state: AtomicU8::new(FdState::Open as u8),
+            current_offset: AtomicU64::new(0),
         }
     }
 
@@ -71,6 +73,24 @@ impl FdInner {
     #[must_use]
     pub fn state(&self) -> FdState {
         FdState::from_u8(self.state.load(Ordering::Acquire))
+    }
+
+    /// Returns the tracked sequential file offset.
+    #[must_use]
+    pub fn current_offset(&self) -> u64 {
+        self.current_offset.load(Ordering::Acquire)
+    }
+
+    /// Sets the tracked sequential file offset.
+    pub fn set_current_offset(&self, offset: u64) {
+        self.current_offset.store(offset, Ordering::Release);
+    }
+
+    /// Advances the tracked sequential file offset by a completed byte count.
+    pub fn advance_current_offset(&self, bytes: usize) {
+        if let Ok(delta) = u64::try_from(bytes) {
+            self.current_offset.fetch_add(delta, Ordering::AcqRel);
+        }
     }
 
     /// BIF-initiated async close. Returns true only for the transition that owns
@@ -337,6 +357,7 @@ mod tests {
         assert_eq!(resource.fd(), fd);
         assert_eq!(resource.owner_pid(), 42);
         assert_eq!(resource.state(), FdState::Open);
+        assert_eq!(resource.inner().current_offset(), 0);
         assert_eq!(Arc::strong_count(&inner), 2);
 
         release_fd_inner_arc(heap.as_ptr());
