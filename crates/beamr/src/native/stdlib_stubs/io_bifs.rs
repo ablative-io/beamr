@@ -25,6 +25,14 @@ pub fn bif_io_put_chars_2(args: &[Term], context: &mut ProcessContext) -> Result
     send_put_chars(*device, *chars, context)
 }
 
+pub fn bif_io_format_2(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [format, arguments] = args else {
+        return Err(badarg());
+    };
+    let target = context.group_leader()?;
+    send_format(target, *format, *arguments, context)
+}
+
 pub fn bif_io_format_3(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [device, format, arguments] = args else {
         return Err(badarg());
@@ -32,9 +40,7 @@ pub fn bif_io_format_3(args: &[Term], context: &mut ProcessContext) -> Result<Te
     if !device.is_pid() {
         return Err(badarg());
     }
-    let bytes = format_bytes(*format, *arguments, context)?;
-    let chars = context.alloc_binary(&bytes)?;
-    send_put_chars(*device, chars, context)
+    send_format(*device, *format, *arguments, context)
 }
 
 pub fn bif_io_get_line_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -67,6 +73,17 @@ fn send_put_chars(target: Term, chars: Term, context: &mut ProcessContext) -> Re
     let chars = context.alloc_binary(&iodata_bytes(chars)?)?;
     let request = io_request_tuple(context, "put_chars", chars)?;
     send_io_request_and_wait(target, request, context)
+}
+
+fn send_format(
+    target: Term,
+    format: Term,
+    arguments: Term,
+    context: &mut ProcessContext,
+) -> Result<Term, Term> {
+    let bytes = format_bytes(format, arguments, context)?;
+    let chars = context.alloc_binary(&bytes)?;
+    send_put_chars(target, chars, context)
 }
 
 fn io_request_tuple(

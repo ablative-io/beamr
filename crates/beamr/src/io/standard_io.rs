@@ -137,8 +137,9 @@ impl StandardIoServer {
             data: bytes.to_vec(),
             offset: CURRENT_POSITION,
         });
-        self.wait_for_completion(op_id)
-            .is_some_and(|result| matches!(result, IoResult::BytesWritten(_)))
+        self.wait_for_completion(op_id).is_some_and(
+            |result| matches!(result, IoResult::BytesWritten(written) if written == bytes.len()),
+        )
     }
 
     fn get_line(&self, prompt: &[u8], delimiter: u8) -> Option<Term> {

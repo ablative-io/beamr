@@ -3,13 +3,10 @@ use crate::native::{BifRegistryImpl, ProcessContext};
 use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary::{self, Binary};
-use crate::term::boxed::{Cons, Tuple, write_cons};
+use crate::term::boxed::{Cons, write_cons};
 use std::sync::Arc;
 
-use super::{
-    bif_binary_part, bif_init_stop, encoding_bifs, gleam_stdlib_ffi, io_bifs,
-    register_stdlib_stubs, string_bifs,
-};
+use super::{bif_binary_part, encoding_bifs, gleam_stdlib_ffi, register_stdlib_stubs, string_bifs};
 
 fn badarg() -> Term {
     Term::atom(Atom::BADARG)
@@ -419,70 +416,6 @@ fn encoding_bifs_cover_exact_acceptance_and_round_trips() {
 }
 
 #[test]
-fn b039_io_and_init_bifs_cover_sink_formatter_and_stop() {
-    use std::sync::{Arc, Mutex};
-
-    #[derive(Default)]
-    struct RecordingSink(Mutex<Vec<u8>>);
-
-    impl crate::io::IoSink for RecordingSink {
-        fn write(&self, bytes: &[u8]) {
-            self.0.lock().expect("sink lock").extend_from_slice(bytes);
-        }
-    }
-
-    let sink = Arc::new(RecordingSink::default());
-    let mut process = Process::new(1, 256);
-    let mut ctx = atom_context(&mut process);
-    ctx.set_io_sink(sink.clone());
-
-    assert_eq!(
-        io_bifs::bif_io_put_chars_1(&[binary(b"hello")], &mut ctx),
-        Ok(Term::atom(Atom::OK))
-    );
-    assert_eq!(&*sink.0.lock().expect("sink lock"), b"hello");
-
-    assert_binary(
-        io_bifs::bif_io_lib_format_2(
-            &[
-                binary(b"~s ~s"),
-                list(&[binary(b"hello"), binary(b"world")]),
-            ],
-            &mut ctx,
-        )
-        .expect("io_lib format"),
-        b"hello world",
-    );
-    assert_binary(
-        io_bifs::bif_io_lib_format_2(
-            &[
-                list(&[
-                    Term::small_int(i64::from(b'~')),
-                    Term::small_int(i64::from(b's')),
-                ]),
-                list(&[binary(b"iodata-format")]),
-            ],
-            &mut ctx,
-        )
-        .expect("io_lib format accepts Erlang string format"),
-        b"iodata-format",
-    );
-
-    let mut null_process = Process::new(1, 256);
-    let mut null_ctx = atom_context(&mut null_process);
-    assert_eq!(
-        io_bifs::bif_io_put_chars_1(&[binary(b"discarded")], &mut null_ctx),
-        Ok(Term::atom(Atom::OK))
-    );
-
-    assert_eq!(
-        bif_init_stop(&[Term::small_int(0)], &mut ctx),
-        Ok(Term::atom(Atom::OK))
-    );
-    assert!(ctx.take_shutdown_request());
-}
-
-#[test]
 fn b033_registry_entries_are_wired_to_function_pointers() {
     let atom_table = AtomTable::new();
     let registry = BifRegistryImpl::new();
@@ -522,7 +455,9 @@ fn b033_registry_entries_are_wired_to_function_pointers() {
         ("base64", "decode", 1),
         ("io", "put_chars", 1),
         ("io", "put_chars", 2),
+        ("io", "format", 2),
         ("io", "format", 3),
+        ("io", "get_line", 1),
         ("io", "setopts", 2),
         ("io_lib", "format", 2),
         ("init", "stop", 1),

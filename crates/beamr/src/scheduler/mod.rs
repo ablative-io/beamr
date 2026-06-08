@@ -239,12 +239,11 @@ impl Scheduler {
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
         let file_io_ring: Arc<dyn CompletionRing> =
             Arc::from(crate::io::create_ring(RingConfig::default()));
+        let standard_io_ring: Arc<dyn CompletionRing> =
+            Arc::from(crate::io::create_ring(RingConfig::default()));
         let standard_io_pid = 0;
-        let standard_io_server = StandardIoServer::new(
-            standard_io_pid,
-            Arc::clone(&file_io_ring),
-            atom_table.as_ref(),
-        );
+        let standard_io_server =
+            StandardIoServer::new(standard_io_pid, standard_io_ring, atom_table.as_ref());
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
