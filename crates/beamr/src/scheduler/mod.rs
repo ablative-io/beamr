@@ -16,8 +16,8 @@ use crate::error::ExecError;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
 use crate::hook::Hook;
 use crate::io::{
-    CompletionRing, CompletionRingIoFacility, IoCompletionBridge, IoCompletion, IoFacility, IoSink,
-    IoWakeTarget, NullSink, PendingIoRegistry, RingConfig, create_ring,
+    ActiveTcpEvent, CompletionRing, CompletionRingIoFacility, IoCompletion, IoCompletionBridge,
+    IoFacility, IoSink, IoWakeTarget, NullSink, PendingIoRegistry, RingConfig, create_ring,
 };
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
@@ -25,12 +25,15 @@ use crate::native::{
     AllCapabilitiesPolicy, BifRegistryImpl, CapabilityPolicy, FileIoCompletion, FileIoContinuation,
     ProcessInfoItem, ProcessInfoStatus, ProcessInfoValue, ProcessMonitorInfo,
 };
+use crate::process::heap::HeapFull;
 use crate::process::registry::ProcessTable;
 use crate::process::{ExitReason, Process, ProcessStatus};
 use crate::scheduler::dirty::DirtyResult;
 use crate::supervision::link::LinkSet;
 use crate::supervision::monitor::MonitorSet;
 use crate::term::Term;
+use crate::term::boxed::write_tuple;
+use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
 use crate::timer::TimerWheel;
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
@@ -556,6 +559,71 @@ pub(super) fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, 
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+pub(super) fn enqueue_active_tcp_event(
+    atom_table: &AtomTable,
+    process: &mut Process,
+    event: ActiveTcpEvent,
+) {
+    if let Ok(message) = active_tcp_event_term(atom_table, process, event) {
+        process.mailbox_mut().push_owned(message);
+    }
+}
+
+fn active_tcp_event_term(
+    atom_table: &AtomTable,
+    process: &mut Process,
+    event: ActiveTcpEvent,
+) -> Result<Term, HeapFull> {
+    let tcp = atom_table.intern("tcp");
+    let tcp_closed = atom_table.intern("tcp_closed");
+    let tcp_error = atom_table.intern("tcp_error");
+    match event {
+        ActiveTcpEvent::Data { socket, data } => {
+            let data_words = alloc_binary_word_count(data.len());
+            let socket_words = crate::io::resource::FD_RESOURCE_WORDS;
+            let tuple_words = 4;
+            crate::gc::ensure_space(process, data_words + socket_words + tuple_words, 0)
+                .map_err(|_| HeapFull::new(data_words + socket_words + tuple_words, 0))?;
+            let binary_heap = process.heap_mut().alloc_slice(data_words)?;
+            let binary =
+                alloc_binary(binary_heap, &data).ok_or_else(|| HeapFull::new(data_words, 0))?;
+            let socket_heap = process.heap_mut().alloc_slice(socket_words)?;
+            let socket_term = crate::io::resource::write_fd_resource(socket_heap, socket)
+                .ok_or_else(|| HeapFull::new(socket_words, 0))?;
+            let tuple_heap = process.heap_mut().alloc_slice(tuple_words)?;
+            write_tuple(tuple_heap, &[Term::atom(tcp), socket_term, binary])
+                .ok_or_else(|| HeapFull::new(tuple_words, 0))
+        }
+        ActiveTcpEvent::Closed { socket } => {
+            let socket_words = crate::io::resource::FD_RESOURCE_WORDS;
+            let tuple_words = 3;
+            crate::gc::ensure_space(process, socket_words + tuple_words, 0)
+                .map_err(|_| HeapFull::new(socket_words + tuple_words, 0))?;
+            let socket_heap = process.heap_mut().alloc_slice(socket_words)?;
+            let socket_term = crate::io::resource::write_fd_resource(socket_heap, socket)
+                .ok_or_else(|| HeapFull::new(socket_words, 0))?;
+            let tuple_heap = process.heap_mut().alloc_slice(tuple_words)?;
+            write_tuple(tuple_heap, &[Term::atom(tcp_closed), socket_term])
+                .ok_or_else(|| HeapFull::new(tuple_words, 0))
+        }
+        ActiveTcpEvent::Error { socket, reason } => {
+            let socket_words = crate::io::resource::FD_RESOURCE_WORDS;
+            let tuple_words = 4;
+            crate::gc::ensure_space(process, socket_words + tuple_words, 0)
+                .map_err(|_| HeapFull::new(socket_words + tuple_words, 0))?;
+            let socket_heap = process.heap_mut().alloc_slice(socket_words)?;
+            let socket_term = crate::io::resource::write_fd_resource(socket_heap, socket)
+                .ok_or_else(|| HeapFull::new(socket_words, 0))?;
+            let tuple_heap = process.heap_mut().alloc_slice(tuple_words)?;
+            write_tuple(
+                tuple_heap,
+                &[Term::atom(tcp_error), socket_term, Term::atom(reason)],
+            )
+            .ok_or_else(|| HeapFull::new(tuple_words, 0))
+        }
+    }
+}
+
 impl IoWakeTarget for SharedState {
     fn wake_with_io_result(&self, pid: u64, term: Term) {
         self.async_results.insert(pid, term);
@@ -571,6 +639,20 @@ impl IoWakeTarget for SharedState {
             process.0.mailbox_mut().push_owned(term);
         } else if let ProcessSlot::Executing(metadata) = &mut *slot {
             metadata.pending_io_messages.push(term);
+        }
+        drop(slot);
+        execution::wake_process(self, pid);
+    }
+
+    fn send_active_tcp_event(&self, pid: u64, event: ActiveTcpEvent) {
+        let Some(entry) = self.process_bodies.get(&pid) else {
+            return;
+        };
+        let mut slot = lock_or_recover(&entry);
+        if let ProcessSlot::Present(process) = &mut *slot {
+            enqueue_active_tcp_event(&self.atom_table, &mut process.0, event);
+        } else if let ProcessSlot::Executing(metadata) = &mut *slot {
+            metadata.pending_tcp_events.push(event);
         }
         drop(slot);
         execution::wake_process(self, pid);

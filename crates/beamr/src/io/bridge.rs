@@ -3,15 +3,18 @@
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+
+use crate::atom::Atom;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use dashmap::DashMap;
 
+use crate::io::resource::{FdInner, FdMode, FdState};
 use crate::term::Term;
 
-use super::{CompletionRing, IoCompletion, IoResult};
+use super::{CompletionRing, IoCompletion, IoOp, IoResult};
 
 /// How an I/O completion should be delivered to the waiting process.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -25,12 +28,37 @@ pub enum ResultMode {
 }
 
 /// Process currently waiting for a ring operation to complete.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PendingIo {
     /// Waiting process id.
     pub pid: u64,
     /// Completion delivery mode.
     pub result_mode: ResultMode,
+    /// Rich metadata for completions that cannot be represented by a small immediate term.
+    pub kind: PendingIoKind,
+}
+
+/// Rich completion delivery metadata.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PendingIoKind {
+    /// Existing generic completion conversion path.
+    Generic,
+    /// Active TCP read loop completion.
+    ActiveTcpRead {
+        socket: Arc<FdInner>,
+        buf_len: usize,
+    },
+}
+
+/// Scheduler-owned active TCP message to materialize on the receiver heap.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ActiveTcpEvent {
+    /// `{tcp, Socket, Data}`.
+    Data { socket: Arc<FdInner>, data: Vec<u8> },
+    /// `{tcp_closed, Socket}`.
+    Closed { socket: Arc<FdInner> },
+    /// `{tcp_error, Socket, Reason}`.
+    Error { socket: Arc<FdInner>, reason: Atom },
 }
 
 /// Concurrent registry of ring operation ids to waiting processes.
@@ -42,13 +70,31 @@ pub struct PendingIoRegistry {
 impl PendingIoRegistry {
     /// Register `pid` as waiting for `op_id`.
     pub fn register(&self, op_id: u64, pid: u64, mode: ResultMode) {
-        self.pending.insert(
+        self.register_pending(
             op_id,
             PendingIo {
                 pid,
                 result_mode: mode,
+                kind: PendingIoKind::Generic,
             },
         );
+    }
+
+    /// Register an active TCP read operation for completion delivery.
+    pub fn register_active_tcp_read(&self, op_id: u64, socket: Arc<FdInner>, buf_len: usize) {
+        self.register_pending(
+            op_id,
+            PendingIo {
+                pid: socket.controlling_process(),
+                result_mode: ResultMode::Message,
+                kind: PendingIoKind::ActiveTcpRead { socket, buf_len },
+            },
+        );
+    }
+
+    /// Register a fully specified pending operation.
+    pub fn register_pending(&self, op_id: u64, pending: PendingIo) {
+        self.pending.insert(op_id, pending);
     }
 
     /// Remove and return the waiting process for `op_id`, if any.
@@ -64,6 +110,9 @@ pub trait IoWakeTarget: Send + Sync {
 
     /// Enqueue `term` as an I/O completion message for `pid`.
     fn send_io_message(&self, pid: u64, term: Term);
+
+    /// Enqueue an active TCP event, materializing boxed terms on the receiver heap.
+    fn send_active_tcp_event(&self, pid: u64, event: ActiveTcpEvent);
 }
 
 /// Lifecycle handle for the dedicated I/O completion poller thread.
@@ -88,7 +137,12 @@ impl IoCompletionBridge {
                 while !shutdown_for_thread.load(Ordering::Acquire) {
                     let completions = ring.poll_completions(Duration::from_millis(100));
                     for completion in completions {
-                        dispatch_completion(&registry, scheduler.as_ref(), completion);
+                        dispatch_completion(
+                            ring.as_ref(),
+                            &registry,
+                            scheduler.as_ref(),
+                            completion,
+                        );
                     }
                 }
             })
@@ -125,6 +179,7 @@ impl Drop for IoCompletionBridge {
 }
 
 fn dispatch_completion(
+    ring: &dyn CompletionRing,
     registry: &PendingIoRegistry,
     scheduler: &dyn IoWakeTarget,
     completion: IoCompletion,
@@ -132,6 +187,17 @@ fn dispatch_completion(
     let Some(pending) = registry.take(completion.op_id) else {
         return;
     };
+    if let PendingIoKind::ActiveTcpRead { socket, buf_len } = pending.kind {
+        dispatch_active_tcp_read(
+            ring,
+            registry,
+            scheduler,
+            socket,
+            buf_len,
+            completion.result,
+        );
+        return;
+    }
     if pending.result_mode == ResultMode::Discard {
         return;
     }
@@ -140,6 +206,81 @@ fn dispatch_completion(
         ResultMode::XRegister => scheduler.wake_with_io_result(pending.pid, term),
         ResultMode::Message => scheduler.send_io_message(pending.pid, term),
         ResultMode::Discard => {}
+    }
+}
+
+/// Submit an active TCP read if the socket is currently open and active.
+pub fn submit_active_tcp_read(
+    ring: &dyn CompletionRing,
+    registry: &PendingIoRegistry,
+    socket: Arc<FdInner>,
+    buf_len: usize,
+) -> Option<u64> {
+    if socket.state() != FdState::Open
+        || !matches!(socket.mode(), FdMode::Active | FdMode::ActiveOnce)
+    {
+        return None;
+    }
+    let op_id = ring.submit(IoOp::Read {
+        fd: socket.fd(),
+        buf_len,
+        offset: u64::MAX,
+    });
+    registry.register_active_tcp_read(op_id, socket, buf_len);
+    Some(op_id)
+}
+
+fn dispatch_active_tcp_read(
+    ring: &dyn CompletionRing,
+    registry: &PendingIoRegistry,
+    scheduler: &dyn IoWakeTarget,
+    socket: Arc<FdInner>,
+    buf_len: usize,
+    result: io::Result<IoResult>,
+) {
+    let pid = socket.controlling_process();
+    match result {
+        Ok(IoResult::BytesRead(0, _)) => {
+            socket.set_mode(FdMode::Passive);
+            scheduler.send_active_tcp_event(pid, ActiveTcpEvent::Closed { socket });
+        }
+        Ok(IoResult::BytesRead(bytes_read, bytes)) => {
+            let data = bytes
+                .get(..bytes_read)
+                .map_or_else(|| bytes.clone(), <[u8]>::to_vec);
+            let previous_mode = socket.mode();
+            if previous_mode == FdMode::ActiveOnce {
+                socket.set_mode(FdMode::Passive);
+            }
+            scheduler.send_active_tcp_event(
+                pid,
+                ActiveTcpEvent::Data {
+                    socket: Arc::clone(&socket),
+                    data,
+                },
+            );
+            if previous_mode == FdMode::Active && socket.mode() == FdMode::Active {
+                let _submitted = submit_active_tcp_read(ring, registry, socket, buf_len);
+            }
+        }
+        Ok(_) => {
+            socket.set_mode(FdMode::Passive);
+            scheduler.send_active_tcp_event(
+                pid,
+                ActiveTcpEvent::Error {
+                    socket,
+                    reason: Atom::UNKNOWN_ERROR,
+                },
+            );
+        }
+        Err(error) => {
+            socket.set_mode(FdMode::Passive);
+            let reason = error
+                .raw_os_error()
+                .map(super::errno_to_atom)
+                .unwrap_or(Atom::UNKNOWN_ERROR);
+            scheduler.send_active_tcp_event(pid, ActiveTcpEvent::Error { socket, reason });
+        }
     }
 }
 
@@ -192,6 +333,7 @@ mod tests {
             Some(PendingIo {
                 pid: 42,
                 result_mode: ResultMode::XRegister,
+                kind: PendingIoKind::Generic,
             })
         );
         assert_eq!(registry.take(7), None);
@@ -219,6 +361,7 @@ mod tests {
                     Some(PendingIo {
                         pid: worker,
                         result_mode: ResultMode::Message,
+                        kind: PendingIoKind::Generic,
                     })
                 );
             }
@@ -292,6 +435,14 @@ mod tests {
                 .message
                 .lock()
                 .unwrap_or_else(|error| error.into_inner()) = Some((pid, term));
+            self.notify();
+        }
+
+        fn send_active_tcp_event(&self, pid: u64, _event: ActiveTcpEvent) {
+            *self
+                .message
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Some((pid, Term::small_int(0)));
             self.notify();
         }
     }

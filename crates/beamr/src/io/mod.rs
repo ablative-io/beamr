@@ -11,7 +11,10 @@ pub mod uring;
 
 use std::io::Write;
 
-pub use bridge::{IoCompletionBridge, IoWakeTarget, PendingIo, PendingIoRegistry, ResultMode};
+pub use bridge::{
+    ActiveTcpEvent, IoCompletionBridge, IoWakeTarget, PendingIo, PendingIoKind, PendingIoRegistry,
+    ResultMode, submit_active_tcp_read,
+};
 pub use facility::{CompletionRingIoFacility, IoError, IoFacility};
 
 use crate::atom::Atom;

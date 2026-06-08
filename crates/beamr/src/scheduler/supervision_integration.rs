@@ -7,6 +7,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::atom::Atom;
+use crate::io::resource::FdInner;
 use crate::io::{CompletionRing, IoOp};
 use crate::namespace::NamespaceId;
 use crate::native::links::{LinkError, LinkFacility};
@@ -14,7 +15,7 @@ use crate::native::spawn::{
     SpawnError, SpawnFacility, SpawnMonitorResult, SpawnOptions, SpawnOptionsResult,
 };
 use crate::native::supervision::{MonitorResult, SupervisionError, SupervisionFacility};
-use crate::native::{FileIoCompletion, FileIoContinuation, FileIoFacility};
+use crate::native::{FileIoCompletion, FileIoContinuation, FileIoFacility, TcpIoFacility};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{ExitReason, Priority, Process, ProcessStatus};
 use crate::supervision::link;
@@ -329,6 +330,9 @@ pub(super) fn build_native_services(
     let file_io_facility: Arc<dyn FileIoFacility> = Arc::new(SchedulerFileIoFacility {
         shared: Arc::clone(shared),
     });
+    let tcp_io_facility: Arc<dyn TcpIoFacility> = Arc::new(SchedulerTcpIoFacility {
+        shared: Arc::clone(shared),
+    });
     crate::interpreter::NativeServices {
         atom_table: Some(Arc::clone(&shared.atom_table)),
         ets_facility: Some(ets_facility),
@@ -343,6 +347,7 @@ pub(super) fn build_native_services(
         system_info_facility: Some(system_info),
         io_facility: shared.io_facility.clone(),
         file_io_facility: Some(file_io_facility),
+        tcp_io_facility: Some(tcp_io_facility),
     }
 }
 
@@ -350,6 +355,18 @@ pub(super) fn build_native_services(
 
 struct SchedulerFileIoFacility {
     shared: Arc<SharedState>,
+}
+
+struct SchedulerTcpIoFacility {
+    shared: Arc<SharedState>,
+}
+
+impl TcpIoFacility for SchedulerTcpIoFacility {
+    fn submit_active_tcp_read(&self, socket: Arc<FdInner>, buf_len: usize) -> Option<u64> {
+        let ring = self.shared.io_ring.as_ref()?;
+        let registry = self.shared.io_registry.as_ref()?;
+        crate::io::submit_active_tcp_read(ring.as_ref(), registry, socket, buf_len)
+    }
 }
 
 impl FileIoFacility for SchedulerFileIoFacility {

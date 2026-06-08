@@ -104,6 +104,7 @@ pub(in crate::scheduler) fn take_runnable_process(
                 pending_exit_messages: Vec::new(),
                 pending_down_messages: Vec::new(),
                 pending_io_messages: Vec::new(),
+                pending_tcp_events: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);
             Some(process)
@@ -159,6 +160,9 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
             }
             for message in metadata.pending_io_messages.drain(..) {
                 process.mailbox_mut().push_owned(message);
+            }
+            for event in metadata.pending_tcp_events.drain(..) {
+                super::super::enqueue_active_tcp_event(&shared.atom_table, &mut process, event);
             }
         }
         *slot = ProcessSlot::Present(ScheduledProcess(process));

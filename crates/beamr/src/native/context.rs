@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use crate::atom::AtomTable;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
-use crate::io::{CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode};
+use crate::io::{
+    CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode,
+};
 use crate::native::ets_bifs::EtsFoldlState;
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
 use crate::process::{Priority, Process};
@@ -104,6 +106,12 @@ pub struct FileIoCompletion {
     pub completion: IoCompletion,
 }
 
+/// Active TCP read-loop submission facility used by socket option BIFs.
+pub trait TcpIoFacility: Send + Sync {
+    /// Start an active TCP read loop for `socket` using `buf_len` read buffers.
+    fn submit_active_tcp_read(&self, socket: Arc<FdInner>, buf_len: usize) -> Option<u64>;
+}
+
 /// Suspend request from a BIF that wants the process to wait.
 ///
 /// Used by `select` when no mailbox message matches any handler.
@@ -142,6 +150,7 @@ pub struct ProcessContext<'process> {
     ets_facility: Option<Arc<dyn EtsFacility>>,
     io_facility: Option<Arc<dyn IoFacility>>,
     file_io_facility: Option<Arc<dyn FileIoFacility>>,
+    tcp_io_facility: Option<Arc<dyn TcpIoFacility>>,
     io_sink: Arc<dyn IoSink>,
     exception_class: ExceptionClass,
     exception_stacktrace: Term,
@@ -197,6 +206,10 @@ impl fmt::Debug for ProcessContext<'_> {
                 "file_io_facility",
                 &self.file_io_facility.as_ref().map(|_| ".."),
             )
+            .field(
+                "tcp_io_facility",
+                &self.tcp_io_facility.as_ref().map(|_| ".."),
+            )
             .field("io_sink", &"..")
             .field("exception_class", &self.exception_class)
             .field("shutdown_requested", &self.shutdown_requested)
@@ -235,6 +248,7 @@ impl<'process> ProcessContext<'process> {
             ets_facility: None,
             io_facility: None,
             file_io_facility: None,
+            tcp_io_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -265,6 +279,7 @@ impl<'process> ProcessContext<'process> {
             ets_facility: None,
             io_facility: None,
             file_io_facility: None,
+            tcp_io_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -576,6 +591,17 @@ impl<'process> ProcessContext<'process> {
     /// Set the file I/O facility for completion-ring backed file BIFs.
     pub fn set_file_io_facility(&mut self, facility: Option<Arc<dyn FileIoFacility>>) {
         self.file_io_facility = facility;
+    }
+
+    /// Return the TCP I/O facility, if one has been configured.
+    #[must_use]
+    pub fn tcp_io_facility(&self) -> Option<&dyn TcpIoFacility> {
+        self.tcp_io_facility.as_deref()
+    }
+
+    /// Set the TCP I/O facility for active-mode socket BIFs.
+    pub fn set_tcp_io_facility(&mut self, facility: Option<Arc<dyn TcpIoFacility>>) {
+        self.tcp_io_facility = facility;
     }
 
     /// Submit a file I/O operation and suspend the calling process until completion.

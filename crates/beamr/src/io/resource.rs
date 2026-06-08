@@ -7,7 +7,7 @@
 
 use std::os::fd::RawFd;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
 use crate::io::ring::{CompletionRing, IoOp};
 use crate::term::Term;
@@ -37,12 +37,33 @@ impl FdState {
     }
 }
 
+/// TCP socket receive mode stored in [`FdInner`].
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum FdMode {
+    Passive = 0,
+    Active = 1,
+    ActiveOnce = 2,
+}
+
+impl FdMode {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Self::Active,
+            2 => Self::ActiveOnce,
+            _ => Self::Passive,
+        }
+    }
+}
+
 /// Reference-counted lifecycle manager for a raw file descriptor.
 #[derive(Debug)]
 pub struct FdInner {
     fd: RawFd,
     owner_pid: u64,
     state: AtomicU8,
+    mode: AtomicU8,
+    controlling_process: AtomicU64,
 }
 
 impl FdInner {
@@ -52,6 +73,8 @@ impl FdInner {
             fd,
             owner_pid,
             state: AtomicU8::new(FdState::Open as u8),
+            mode: AtomicU8::new(FdMode::Passive as u8),
+            controlling_process: AtomicU64::new(owner_pid),
         }
     }
 
@@ -71,6 +94,28 @@ impl FdInner {
     #[must_use]
     pub fn state(&self) -> FdState {
         FdState::from_u8(self.state.load(Ordering::Acquire))
+    }
+
+    /// Returns the current TCP receive mode.
+    #[must_use]
+    pub fn mode(&self) -> FdMode {
+        FdMode::from_u8(self.mode.load(Ordering::Acquire))
+    }
+
+    /// Returns the PID currently controlling active TCP delivery for this socket.
+    #[must_use]
+    pub fn controlling_process(&self) -> u64 {
+        self.controlling_process.load(Ordering::Acquire)
+    }
+
+    /// Sets the TCP receive mode.
+    pub fn set_mode(&self, mode: FdMode) {
+        self.mode.store(mode as u8, Ordering::Release);
+    }
+
+    /// Sets the PID currently controlling active TCP delivery for this socket.
+    pub fn set_controlling_process(&self, pid: u64) {
+        self.controlling_process.store(pid, Ordering::Release);
     }
 
     /// BIF-initiated async close. Returns true only for the transition that owns
@@ -177,6 +222,28 @@ impl FdResource {
     #[must_use]
     pub fn state(self) -> FdState {
         self.inner_ref().state()
+    }
+
+    /// Returns the current TCP receive mode.
+    #[must_use]
+    pub fn mode(self) -> FdMode {
+        self.inner_ref().mode()
+    }
+
+    /// Returns the current active TCP controlling process PID.
+    #[must_use]
+    pub fn controlling_process(self) -> u64 {
+        self.inner_ref().controlling_process()
+    }
+
+    /// Sets the TCP receive mode.
+    pub fn set_mode(self, mode: FdMode) {
+        self.inner_ref().set_mode(mode);
+    }
+
+    /// Sets the active TCP controlling process PID.
+    pub fn set_controlling_process(self, pid: u64) {
+        self.inner_ref().set_controlling_process(pid);
     }
 
     /// Clones the resource lifecycle Arc for use outside the heap term.
@@ -337,6 +404,12 @@ mod tests {
         assert_eq!(resource.fd(), fd);
         assert_eq!(resource.owner_pid(), 42);
         assert_eq!(resource.state(), FdState::Open);
+        assert_eq!(resource.mode(), FdMode::Passive);
+        assert_eq!(resource.controlling_process(), 42);
+        resource.set_mode(FdMode::ActiveOnce);
+        resource.set_controlling_process(99);
+        assert_eq!(inner.mode(), FdMode::ActiveOnce);
+        assert_eq!(inner.controlling_process(), 99);
         assert_eq!(Arc::strong_count(&inner), 2);
 
         release_fd_inner_arc(heap.as_ptr());
