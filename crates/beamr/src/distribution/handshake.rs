@@ -301,7 +301,7 @@ pub fn initiate_handshake<S: Read + Write>(
 
     let ack = read_challenge_ack_packet(stream)?;
     let expected_ack = challenge_digest(cookie, challenge);
-    if ack != expected_ack {
+    if !constant_time_eq(&ack, &expected_ack) {
         return Err(HandshakeError::DigestMismatch);
     }
 
@@ -329,7 +329,7 @@ pub fn respond_handshake<S: Read + Write>(
 
     let reply = read_challenge_reply_packet(stream)?;
     let expected_digest = challenge_digest(cookie, challenge);
-    if reply.digest != expected_digest {
+    if !constant_time_eq(&reply.digest, &expected_digest) {
         send_status_ignore_io_error(stream, "not_allowed");
         return Err(HandshakeError::DigestMismatch);
     }
@@ -344,6 +344,10 @@ pub fn respond_handshake<S: Read + Write>(
 pub fn challenge_digest(cookie: &str, challenge: u32) -> [u8; DIGEST_LEN] {
     let input = format!("{cookie}{challenge}");
     md5::compute(input.as_bytes()).0
+}
+
+fn constant_time_eq(a: &[u8; DIGEST_LEN], b: &[u8; DIGEST_LEN]) -> bool {
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
