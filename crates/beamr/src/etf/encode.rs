@@ -2,7 +2,7 @@
 
 use crate::atom::{Atom, AtomTable};
 use crate::term::binary_ref::BinaryRef;
-use crate::term::boxed::{BigInt, Closure, Cons, Float, Map, Reference, Tuple};
+use crate::term::boxed::{BigInt, Closure, Cons, ExternalPid, Float, Map, Reference, Tuple};
 use crate::term::{Tag, Term};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
@@ -20,6 +20,22 @@ pub enum EncodeError {
     AtomResolveFailed,
     TooDeep,
     CompressionFailed,
+}
+
+fn encode_external_pid(
+    pid: ExternalPid,
+    atom_table: &AtomTable,
+    out: &mut Vec<u8>,
+) -> Result<(), EncodeError> {
+    out.push(tags::NEW_PID_EXT);
+    let node = pid.node().ok_or(EncodeError::UnsupportedTerm)?;
+    encode_atom(node, atom_table, out)?;
+    let id = u32::try_from(pid.pid_number()).map_err(|_| EncodeError::UnsupportedTerm)?;
+    let serial = u32::try_from(pid.serial()).map_err(|_| EncodeError::UnsupportedTerm)?;
+    out.extend_from_slice(&id.to_be_bytes());
+    out.extend_from_slice(&serial.to_be_bytes());
+    out.extend_from_slice(&0_u32.to_be_bytes());
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
@@ -298,6 +314,9 @@ fn encode_boxed_iovec(
     if let Some(reference) = Reference::new(term) {
         return encode_reference(reference, out.bytes());
     }
+    if let Some(pid) = ExternalPid::new(term) {
+        return encode_external_pid(pid, atom_table, out.bytes());
+    }
     if let Some(closure) = Closure::new(term) {
         return encode_closure_iovec(closure, atom_table, out, depth);
     }
@@ -329,6 +348,9 @@ fn encode_boxed(
     }
     if let Some(reference) = Reference::new(term) {
         return encode_reference(reference, out);
+    }
+    if let Some(pid) = ExternalPid::new(term) {
+        return encode_external_pid(pid, atom_table, out);
     }
     if let Some(closure) = Closure::new(term) {
         return encode_closure(closure, atom_table, out, depth);

@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::atom::AtomTable;
+use crate::distribution::control::DistributionSendFacility;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
 use crate::io::{
     CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode,
@@ -182,6 +183,7 @@ pub enum ExceptionClass {
 pub struct ProcessContext<'process> {
     pid: Option<u64>,
     local_node: Option<crate::distribution::Node>,
+    distribution_send: Option<Arc<dyn DistributionSendFacility>>,
     process: Option<&'process mut Process>,
     live_x: usize,
     timers: Option<Arc<Mutex<TimerWheel>>>,
@@ -213,6 +215,10 @@ impl fmt::Debug for ProcessContext<'_> {
         f.debug_struct("ProcessContext")
             .field("pid", &self.pid)
             .field("local_node", &self.local_node)
+            .field(
+                "distribution_send",
+                &self.distribution_send.as_ref().map(|_| ".."),
+            )
             .field("process_heap", &self.process.as_ref().map(|_| ".."))
             .field("live_x", &self.live_x)
             .field("timers", &self.timers)
@@ -287,6 +293,7 @@ impl<'process> ProcessContext<'process> {
         Self {
             pid: None,
             local_node: None,
+            distribution_send: None,
             process: None,
             live_x: 256,
             timers: None,
@@ -320,6 +327,7 @@ impl<'process> ProcessContext<'process> {
         Self {
             pid: Some(pid),
             local_node: None,
+            distribution_send: None,
             process: None,
             live_x: 256,
             timers: Some(timers),
@@ -362,6 +370,20 @@ impl<'process> ProcessContext<'process> {
     /// Set the immutable local node identity for node-aware BIFs.
     pub fn set_local_node(&mut self, node: Option<crate::distribution::Node>) {
         self.local_node = node;
+    }
+
+    /// Return the distribution send facility, if one has been configured.
+    #[must_use]
+    pub fn distribution_send_facility(&self) -> Option<&dyn DistributionSendFacility> {
+        self.distribution_send.as_deref()
+    }
+
+    /// Set the distribution send facility for remote PID messaging.
+    pub fn set_distribution_send_facility(
+        &mut self,
+        facility: Option<Arc<dyn DistributionSendFacility>>,
+    ) {
+        self.distribution_send = facility;
     }
 
     /// Returns true when the attached process is re-entering a timed suspend after expiry.

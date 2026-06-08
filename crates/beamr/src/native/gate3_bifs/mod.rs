@@ -23,7 +23,6 @@ use crate::term::boxed::{Cons, Float, Tuple};
 use crate::term::pid_ref::PidRef;
 use crate::term::reference_ref::ReferenceRef;
 
-
 pub use additional::{
     bif_binary_part, bif_bit_size, bif_is_bitstring, bif_is_map_key, bif_map_size, bif_round,
     bif_trunc, bif_unary_minus,
@@ -185,8 +184,20 @@ pub fn bif_send(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
     let [pid_term, message_term] = args else {
         return Err(badarg());
     };
-    let target = pid_term.as_pid().ok_or_else(badarg)?;
-    let _ = context.send_to_attached_self(target, *message_term);
+    let target = PidRef::new(*pid_term).ok_or_else(badarg)?;
+    if target.is_local() {
+        let _ = context.send_to_attached_self(target.pid_number(), *message_term);
+    } else {
+        let noconnection = Term::atom(
+            context
+                .atom_table()
+                .map_or(Atom::ERROR, |table| table.intern("noconnection")),
+        );
+        let facility = context.distribution_send_facility().ok_or(noconnection)?;
+        facility
+            .send_remote(*pid_term, *message_term)
+            .map_err(|_| noconnection)?;
+    }
     Ok(*message_term)
 }
 

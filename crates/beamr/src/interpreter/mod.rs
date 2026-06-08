@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::atom::AtomTable;
 use crate::distribution::Node;
+use crate::distribution::control::DistributionSendFacility;
 use crate::error::ExecError;
 use crate::io::{IoFacility, IoSink};
 use crate::module::{Module, ModuleRegistry};
@@ -19,6 +20,7 @@ use crate::native::group_leader::GroupLeaderFacility;
 use crate::native::io_message::IoMessageFacility;
 use crate::native::links::LinkFacility;
 use crate::native::process_info_bifs::ProcessInfoFacility;
+use crate::native::registry::RegistryFacility;
 use crate::native::spawn::SpawnFacility;
 use crate::native::supervision::SupervisionFacility;
 use crate::native::system_info_bifs::SystemInfoFacility;
@@ -34,6 +36,8 @@ pub struct NativeServices {
     pub atom_table: Option<Arc<AtomTable>>,
     /// Local node identity for node-aware BIFs.
     pub local_node: Option<Node>,
+    /// Distribution send facility for remote PID messaging.
+    pub distribution_send: Option<Arc<dyn DistributionSendFacility>>,
     /// Timer wheel for asynchronous timer BIFs.
     pub timers: Option<Arc<Mutex<TimerWheel>>>,
     /// Spawn facility for process creation BIFs.
@@ -46,6 +50,8 @@ pub struct NativeServices {
     pub supervision_facility: Option<Arc<dyn SupervisionFacility>>,
     /// Process information facility for process_info/1,2 BIFs.
     pub process_info_facility: Option<Arc<dyn ProcessInfoFacility>>,
+    /// Process name registry facility.
+    pub registry_facility: Option<Arc<dyn RegistryFacility>>,
     /// Output sink for `io` module BIFs.
     pub io_sink: Option<Arc<dyn IoSink>>,
     /// Code management facility for hot-loading BIFs.
@@ -117,12 +123,14 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
     let empty = NativeServices {
         atom_table: None,
         local_node: None,
+        distribution_send: None,
         timers: None,
         spawn_facility: None,
         link_facility: None,
         group_leader_facility: None,
         supervision_facility: None,
         process_info_facility: None,
+        registry_facility: None,
         io_sink: None,
         code_management_facility: None,
         system_info_facility: None,
@@ -144,12 +152,14 @@ pub fn run_with_registry(
     let empty = NativeServices {
         atom_table: None,
         local_node: None,
+        distribution_send: None,
         timers: None,
         spawn_facility: None,
         link_facility: None,
         group_leader_facility: None,
         supervision_facility: None,
         process_info_facility: None,
+        registry_facility: None,
         io_sink: None,
         code_management_facility: None,
         system_info_facility: None,
@@ -171,12 +181,14 @@ pub fn run_with_timer_services(
     let services = NativeServices {
         atom_table: None,
         local_node: None,
+        distribution_send: None,
         timers: Some(timers),
         spawn_facility: None,
         link_facility: None,
         group_leader_facility: None,
         supervision_facility: None,
         process_info_facility: None,
+        registry_facility: None,
         io_sink: None,
         code_management_facility: None,
         system_info_facility: None,

@@ -482,11 +482,13 @@ fn call_external_target(
             if let Some(svc) = ctx.services {
                 context.set_atom_table(svc.atom_table.clone());
                 context.set_local_node(svc.local_node);
+                context.set_distribution_send_facility(svc.distribution_send.clone());
                 context.set_spawn_facility(svc.spawn_facility.clone());
                 context.set_link_facility(svc.link_facility.clone());
                 context.set_group_leader_facility(svc.group_leader_facility.clone());
                 context.set_supervision_facility(svc.supervision_facility.clone());
                 context.set_process_info_facility(svc.process_info_facility.clone());
+                context.set_registry_facility(svc.registry_facility.clone());
                 context.set_code_management_facility(svc.code_management_facility.clone());
                 context.set_system_info_facility(svc.system_info_facility.clone());
                 context.set_ets_facility(svc.ets_facility.clone());

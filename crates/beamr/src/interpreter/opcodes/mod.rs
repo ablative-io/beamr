@@ -284,7 +284,12 @@ fn dispatch_common(
         }
         Instruction::Jump { target } => guards::jump(module, target),
         Instruction::Bif { op, operands } => guards::bif(process, module, *op, operands),
-        Instruction::Send => messaging::send(process, ctx.receiver),
+        Instruction::Send => messaging::send(
+            process,
+            ctx.receiver,
+            ctx.services
+                .and_then(|services| services.distribution_send.as_deref()),
+        ),
         Instruction::LoopRec { fail, destination } => {
             messaging::loop_rec(process, module, fail, destination)
         }

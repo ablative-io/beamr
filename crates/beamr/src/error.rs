@@ -96,6 +96,8 @@ pub enum ExecError {
     Stack(crate::process::stack::StackError),
     /// Heap allocation failed.
     HeapFull { requested: usize, available: usize },
+    /// A distributed send could not reach the target node.
+    NoConnection,
 }
 
 impl fmt::Display for ExecError {
@@ -142,6 +144,7 @@ impl fmt::Display for ExecError {
                 formatter,
                 "heap full: requested {requested} words with {available} available"
             ),
+            Self::NoConnection => formatter.write_str("distributed send failed: noconnection"),
         }
     }
 }

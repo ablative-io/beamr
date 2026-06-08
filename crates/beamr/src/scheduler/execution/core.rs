@@ -415,11 +415,13 @@ fn submit_dirty_call(
     let services = supervision_integration::build_native_services(shared, process.namespace_id());
     context.set_atom_table(services.atom_table);
     context.set_local_node(services.local_node);
+    context.set_distribution_send_facility(services.distribution_send);
     context.set_spawn_facility(services.spawn_facility);
     context.set_link_facility(services.link_facility);
     context.set_group_leader_facility(services.group_leader_facility);
     context.set_supervision_facility(services.supervision_facility);
     context.set_process_info_facility(services.process_info_facility);
+    context.set_registry_facility(services.registry_facility);
     context.set_code_management_facility(services.code_management_facility);
     context.set_system_info_facility(services.system_info_facility);
     if let Some(sink) = services.io_sink {
