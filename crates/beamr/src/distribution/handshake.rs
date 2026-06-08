@@ -472,9 +472,27 @@ fn read_challenge_reply_packet<R: Read>(reader: &mut R) -> Result<ChallengeReply
 
 fn read_challenge_ack_packet<R: Read>(reader: &mut R) -> Result<[u8; DIGEST_LEN], HandshakeError> {
     let payload = read_packet(reader)?;
-    require_exact_len(&payload, 1 + DIGEST_LEN, "challenge ack")?;
-    require_tag(&payload, TAG_CHALLENGE_ACK)?;
-    slice_to_array(&payload[1..17])
+    match payload.first().copied() {
+        Some(TAG_CHALLENGE_ACK) => {
+            require_exact_len(&payload, 1 + DIGEST_LEN, "challenge ack")?;
+            slice_to_array(&payload[1..17])
+        }
+        Some(TAG_STATUS) => {
+            let status = std::str::from_utf8(&payload[1..])
+                .map_err(|_| HandshakeError::MalformedPacket("status is not valid UTF-8".into()))?;
+            if status.is_empty() {
+                return Err(HandshakeError::MalformedPacket("status is empty".into()));
+            }
+            Err(HandshakeError::BadStatus(status.to_owned()))
+        }
+        Some(actual) => Err(HandshakeError::UnexpectedTag {
+            expected: TAG_CHALLENGE_ACK,
+            actual,
+        }),
+        None => Err(HandshakeError::MalformedPacket(
+            "empty handshake packet".into(),
+        )),
+    }
 }
 
 fn parse_name_payload(
@@ -683,10 +701,10 @@ mod tests {
             .expect("responder thread should not panic")
             .expect_err("responder should reject a bad digest");
 
-        assert!(matches!(
+        assert_eq!(
             initiator_error,
-            HandshakeError::MalformedPacket(_) | HandshakeError::UnexpectedTag { .. }
-        ));
+            HandshakeError::BadStatus("not_allowed".into())
+        );
         assert_eq!(responder_error, HandshakeError::DigestMismatch);
     }
 
