@@ -101,6 +101,31 @@ impl SharedState {
         before.saturating_sub(self.ets_registry.table_count())
     }
 
+    pub(super) fn transfer_or_delete_tables_owned_by(&self, owner: u64) -> usize {
+        let before = self.ets_registry.table_count();
+        let owned_ids = self.ets_registry.tables_owned_by(owner);
+        for table_id in owned_ids {
+            let Some(table) = self.ets_registry.lookup_table(table_id) else {
+                continue;
+            };
+            let metadata = table.metadata();
+            let Some(heir) = metadata.heir else {
+                self.ets_registry.delete_table(table_id);
+                continue;
+            };
+            if self.process_table.get(heir.pid).is_some()
+                && supervision_integration::deliver_ets_transfer_message(
+                    self, heir.pid, table_id, owner, heir.data,
+                )
+            {
+                table.transfer_owner(heir.pid);
+            } else {
+                self.ets_registry.delete_table(table_id);
+            }
+        }
+        before.saturating_sub(self.ets_registry.table_count())
+    }
+
     /// Return the number of alive processes tracked by the scheduler.
     #[must_use]
     pub(super) fn process_count(&self) -> usize {

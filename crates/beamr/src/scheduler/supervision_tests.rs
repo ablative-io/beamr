@@ -10,7 +10,7 @@ use dashmap::DashMap;
 
 use super::*;
 use crate::atom::Atom;
-use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
+use crate::ets::{EtsHeir, EtsTableMetadata, EtsTableType, Protection};
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
 use crate::process::ProcessStatus;
 use crate::process::registry::ProcessTable;
@@ -24,6 +24,52 @@ use crate::term::boxed::{self, Tuple};
 /// Helper: insert a running process into shared state with the given pid.
 fn insert_process(shared: &SharedState, pid: u64) -> u64 {
     insert_process_in(shared, pid, NamespaceId::DEFAULT)
+}
+
+#[test]
+fn cleanup_exited_process_transfers_table_to_live_heir() {
+    let shared = make_shared_state();
+    let owner = insert_process(&shared, 21);
+    let heir = insert_process(&shared, 22);
+    let heir_data = Term::atom(Atom::OK);
+    let mut metadata = ets_metadata(None, owner);
+    metadata.heir = Some(EtsHeir {
+        pid: heir,
+        data: heir_data,
+    });
+    let table_id = shared.create_table(metadata);
+
+    cleanup_exited_process(&shared, owner, ExitReason::Normal);
+
+    let table = shared
+        .lookup_table(table_id)
+        .expect("table survives transfer");
+    assert_eq!(table.metadata().owner, heir);
+    let message = read_mailbox_tuple(&shared, heir).expect("heir receives transfer message");
+    assert_eq!(message[0], Term::atom(Atom::ETS_TRANSFER));
+    assert_eq!(message[1], Term::small_int(table_id as i64));
+    assert_eq!(message[2], Term::pid(owner));
+    assert_eq!(message[3], heir_data);
+    assert_eq!(
+        table.check_access(heir, crate::ets::AccessOp::Write),
+        Ok(())
+    );
+}
+
+#[test]
+fn cleanup_exited_process_deletes_table_when_heir_is_not_live() {
+    let shared = make_shared_state();
+    let owner = insert_process(&shared, 31);
+    let mut metadata = ets_metadata(None, owner);
+    metadata.heir = Some(EtsHeir {
+        pid: 999,
+        data: Term::atom(Atom::OK),
+    });
+    let table_id = shared.create_table(metadata);
+
+    cleanup_exited_process(&shared, owner, ExitReason::Normal);
+
+    assert!(shared.lookup_table(table_id).is_none());
 }
 
 /// Helper: insert a running process assigned to `namespace`.
@@ -133,6 +179,7 @@ fn make_executing(shared: &SharedState, pid: u64) -> Process {
                 group_leader: process.group_leader(),
                 pending_exit_messages: Vec::new(),
                 pending_down_messages: Vec::new(),
+                pending_ets_transfer_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);
             process
@@ -190,6 +237,7 @@ fn ets_metadata(name: Option<Atom>, owner: u64) -> EtsTableMetadata {
         protection: Protection::Protected,
         owner,
         keypos: 1,
+        heir: None,
     }
 }
 
@@ -222,7 +270,7 @@ fn make_shared_state() -> Arc<SharedState> {
         hook: crate::hook::Hook::new(),
         timers: Arc::new(std::sync::Mutex::new(crate::timer::TimerWheel::new())),
         output_sink: std::sync::Mutex::new(Arc::new(crate::io::NullSink)),
-        atom_table: Arc::new(crate::atom::AtomTable::new()),
+        atom_table: Arc::new(crate::atom::AtomTable::with_common_atoms()),
         ets_registry: Arc::new(crate::ets::EtsRegistry::new()),
         bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),

@@ -3,7 +3,7 @@
 use std::{
     collections::BTreeMap,
     ops::Bound::{Excluded, Unbounded},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard, RwLock},
 };
 
 use crate::{
@@ -16,7 +16,7 @@ use super::TermKey;
 
 /// B-tree backed ETS `ordered_set` table.
 pub struct EtsOrderedSet {
-    metadata: EtsTableMetadata,
+    metadata: RwLock<EtsTableMetadata>,
     atom_table: Arc<AtomTable>,
     rows: Mutex<BTreeMap<TermKey, Term>>,
 }
@@ -30,7 +30,7 @@ impl EtsOrderedSet {
     #[must_use]
     pub fn with_atom_table(metadata: EtsTableMetadata, atom_table: Arc<AtomTable>) -> Self {
         Self {
-            metadata,
+            metadata: RwLock::new(metadata),
             atom_table,
             rows: Mutex::new(BTreeMap::new()),
         }
@@ -75,7 +75,7 @@ impl EtsOrderedSet {
     fn tuple_key(&self, tuple: Term) -> Result<TermKey, EtsError> {
         let tuple = Tuple::new(tuple).ok_or(EtsError::Badarg)?;
         let index = self
-            .metadata
+            .metadata()
             .keypos
             .checked_sub(1)
             .ok_or(EtsError::Badarg)?;
@@ -92,8 +92,18 @@ impl EtsOrderedSet {
 }
 
 impl EtsTable for EtsOrderedSet {
-    fn metadata(&self) -> &EtsTableMetadata {
-        &self.metadata
+    fn metadata(&self) -> EtsTableMetadata {
+        self.metadata
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn transfer_owner(&self, new_owner: u64) {
+        self.metadata
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .owner = new_owner;
     }
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {
@@ -203,7 +213,8 @@ mod tests {
     #[test]
     fn insert_rejects_non_tuple_and_missing_keypos() {
         let atom_table = Arc::new(AtomTable::new());
-        let mut metadata = EtsTableMetadata::new(None, 1, EtsTableType::OrderedSet, Protection::Protected, 42);
+        let mut metadata =
+            EtsTableMetadata::new(None, 1, EtsTableType::OrderedSet, Protection::Protected, 42);
         metadata.keypos = 3;
         let table = EtsOrderedSet::with_atom_table(metadata, Arc::clone(&atom_table));
         let mut heap = Box::new([0; 3]);

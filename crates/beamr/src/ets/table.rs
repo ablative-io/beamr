@@ -41,6 +41,12 @@ impl fmt::Display for AccessOp {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct EtsHeir {
+    pub pid: u64,
+    pub data: Term,
+}
+
 /// Metadata common to all ETS table implementations.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EtsTableMetadata {
@@ -52,6 +58,8 @@ pub struct EtsTableMetadata {
     pub owner: u64,
     /// 1-based tuple element position used as the key.
     pub keypos: usize,
+    /// Optional ownership recipient used when the owner process exits.
+    pub heir: Option<EtsHeir>,
 }
 
 impl EtsTableMetadata {
@@ -71,6 +79,7 @@ impl EtsTableMetadata {
             protection,
             owner,
             keypos: 1,
+            heir: None,
         }
     }
 }
@@ -113,7 +122,8 @@ impl std::error::Error for EtsError {}
 /// Raw table operations do not carry a caller PID; the scheduler/BIF layer must
 /// call [`EtsTable::check_access`] before invoking reads or writes.
 pub trait EtsTable: Send + Sync {
-    fn metadata(&self) -> &EtsTableMetadata;
+    fn metadata(&self) -> EtsTableMetadata;
+    fn transfer_owner(&self, new_owner: u64);
     fn insert(&self, tuple: Term) -> Result<(), EtsError>;
     fn lookup(&self, key: Term) -> Vec<Term>;
     fn delete_key(&self, key: Term) -> bool;
@@ -159,15 +169,18 @@ mod tests {
                     protection,
                     owner: 7,
                     keypos: 1,
+                    heir: None,
                 },
             }
         }
     }
 
     impl EtsTable for DummyTable {
-        fn metadata(&self) -> &EtsTableMetadata {
-            &self.metadata
+        fn metadata(&self) -> EtsTableMetadata {
+            self.metadata.clone()
         }
+
+        fn transfer_owner(&self, _new_owner: u64) {}
 
         fn insert(&self, _tuple: Term) -> Result<(), EtsError> {
             Ok(())
@@ -195,6 +208,7 @@ mod tests {
             protection: Protection::Protected,
             owner: 34,
             keypos: 2,
+            heir: None,
         };
 
         assert_eq!(metadata.name, Some(Atom::new(9)));
@@ -203,6 +217,7 @@ mod tests {
         assert_eq!(metadata.protection, Protection::Protected);
         assert_eq!(metadata.owner, 34);
         assert_eq!(metadata.keypos, 2);
+        assert_eq!(metadata.heir, None);
     }
 
     #[test]

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
 use crate::ets::{
-    AccessOp, EtsError, EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata, EtsTableType,
+    AccessOp, EtsError, EtsHeir, EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata, EtsTableType,
     Protection,
 };
 use crate::native::{
@@ -28,6 +28,76 @@ pub trait EtsFacility: Send + Sync {
     fn lookup_table_by_name(&self, name: Atom) -> Option<EtsTableId>;
     /// Delete a table by numeric id.
     fn delete_table(&self, id: EtsTableId) -> bool;
+    /// Transfer table ownership and deliver the mandatory ETS-TRANSFER message.
+    fn give_away_table(
+        &self,
+        table_id: EtsTableId,
+        from_pid: u64,
+        to_pid: u64,
+        gift_data: Term,
+    ) -> Result<(), EtsError>;
+}
+
+/// ets:give_away/3 — transfer an ETS table from the owner to another process.
+pub fn bif_give_away(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [tab, recipient, gift_data] = args else {
+        return Err(badarg());
+    };
+    let table = resolve_existing_table(*tab, context, MissingTable::Badarg)?;
+    let metadata = table.metadata();
+    let caller = context.pid().ok_or_else(badarg)?;
+    if metadata.owner != caller {
+        return Err(badarg());
+    }
+
+    #[test]
+    fn ets_new_parses_heir_pid_and_data_into_metadata() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let registry = Arc::new(EtsRegistry::new());
+        let table_name = atom_table.intern("heir_source_name");
+        let heir = atom_table.intern("heir");
+        let data = atom_table.intern("heir_data");
+        let mut process = Process::new(1, 256);
+        let mut context = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+        let heir_option = tuple(
+            &mut context,
+            &[Term::atom(heir), Term::pid(44), Term::atom(data)],
+        );
+        let options = context.alloc_list(&[heir_option]).expect("option list");
+
+        let tab = bif_new(&[Term::atom(table_name), options], &mut context).expect("new table");
+        let table = registry
+            .lookup_table(tab.as_small_int().expect("table id") as u64)
+            .expect("table exists");
+        let stored_heir = table.metadata().heir.expect("heir stored");
+        assert_eq!(stored_heir.pid, 44);
+        assert_eq!(stored_heir.data, Term::atom(data));
+    }
+
+    #[test]
+    fn ets_new_heir_none_disables_heir() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let registry = Arc::new(EtsRegistry::new());
+        let table_name = atom_table.intern("heir_none_source_name");
+        let heir = atom_table.intern("heir");
+        let none = atom_table.intern("none");
+        let mut process = Process::new(1, 256);
+        let mut context = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+        let heir_option = tuple(&mut context, &[Term::atom(heir), Term::atom(none)]);
+        let options = context.alloc_list(&[heir_option]).expect("option list");
+
+        let tab = bif_new(&[Term::atom(table_name), options], &mut context).expect("new table");
+        let table = registry
+            .lookup_table(tab.as_small_int().expect("table id") as u64)
+            .expect("table exists");
+        assert_eq!(table.metadata().heir, None);
+    }
+    let recipient_pid = recipient.as_pid().ok_or_else(badarg)?;
+    let facility = context.ets_facility().ok_or_else(badarg)?;
+    facility
+        .give_away_table(metadata.id, caller, recipient_pid, *gift_data)
+        .map_err(ets_error_to_badarg)?;
+    Ok(Term::atom(Atom::TRUE))
 }
 
 impl EtsFacility for EtsRegistry {
@@ -50,12 +120,27 @@ impl EtsFacility for EtsRegistry {
     fn delete_table(&self, id: EtsTableId) -> bool {
         self.delete_table(id)
     }
+
+    fn give_away_table(
+        &self,
+        table_id: EtsTableId,
+        _from_pid: u64,
+        to_pid: u64,
+        _gift_data: Term,
+    ) -> Result<(), EtsError> {
+        if self.transfer_table_owner(table_id, to_pid) {
+            Ok(())
+        } else {
+            Err(EtsError::Badarg)
+        }
+    }
 }
 
 type EtsBif = (&'static str, u8, NativeFn);
 
 const ETS_BIFS: &[EtsBif] = &[
     ("new", 2, bif_new),
+    ("give_away", 3, bif_give_away),
     ("insert", 2, bif_insert),
     ("lookup", 2, bif_lookup),
     ("delete", 1, bif_delete_1),
@@ -81,6 +166,7 @@ struct NewOptions {
     protection: Protection,
     named_table: bool,
     keypos: usize,
+    heir: Option<EtsHeir>,
 }
 
 /// Registers all ETS BIFs under the `ets` module.
@@ -121,6 +207,7 @@ pub fn bif_new(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term
         protection: options.protection,
         owner,
         keypos: options.keypos,
+        heir: options.heir,
     };
     let table_id = facility
         .create_table(metadata)
@@ -267,6 +354,7 @@ fn parse_new_options(options_term: Term, atom_table: &AtomTable) -> Result<NewOp
         protection: Protection::Protected,
         named_table: false,
         keypos: 1,
+        heir: None,
     };
     let set = atom_table.intern("set");
     let ordered_set = atom_table.intern("ordered_set");
@@ -277,6 +365,8 @@ fn parse_new_options(options_term: Term, atom_table: &AtomTable) -> Result<NewOp
     let private = atom_table.intern("private");
     let named_table = atom_table.intern("named_table");
     let keypos = atom_table.intern("keypos");
+    let heir = atom_table.intern("heir");
+    let none = atom_table.intern("none");
 
     let mut tail = options_term;
     while !tail.is_nil() {
@@ -303,16 +393,29 @@ fn parse_new_options(options_term: Term, atom_table: &AtomTable) -> Result<NewOp
                 return Err(badarg());
             }
         } else if let Some(tuple) = Tuple::new(option) {
-            if tuple.arity() != 2 || tuple.get(0) != Some(Term::atom(keypos)) {
-                return Err(badarg());
+            match (tuple.arity(), tuple.get(0)) {
+                (2, Some(tag)) if tag == Term::atom(keypos) => {
+                    let keypos_value = tuple
+                        .get(1)
+                        .and_then(Term::as_small_int)
+                        .and_then(|value| usize::try_from(value).ok())
+                        .filter(|value| *value > 0)
+                        .ok_or_else(badarg)?;
+                    options.keypos = keypos_value;
+                }
+                (2, Some(tag)) if tag == Term::atom(heir) => {
+                    if tuple.get(1) != Some(Term::atom(none)) {
+                        return Err(badarg());
+                    }
+                    options.heir = None;
+                }
+                (3, Some(tag)) if tag == Term::atom(heir) => {
+                    let pid = tuple.get(1).and_then(Term::as_pid).ok_or_else(badarg)?;
+                    let data = tuple.get(2).ok_or_else(badarg)?;
+                    options.heir = Some(EtsHeir { pid, data });
+                }
+                _ => return Err(badarg()),
             }
-            let keypos_value = tuple
-                .get(1)
-                .and_then(Term::as_small_int)
-                .and_then(|value| usize::try_from(value).ok())
-                .filter(|value| *value > 0)
-                .ok_or_else(badarg)?;
-            options.keypos = keypos_value;
         } else {
             return Err(badarg());
         }
@@ -454,8 +557,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        bif_delete_1, bif_delete_2, bif_info_2, bif_insert, bif_lookup, bif_member, bif_new,
-        register_ets_bifs,
+        bif_delete_1, bif_delete_2, bif_give_away, bif_info_2, bif_insert, bif_lookup, bif_member,
+        bif_new, register_ets_bifs,
     };
     use crate::atom::{Atom, AtomTable};
     use crate::ets::EtsRegistry;
@@ -726,6 +829,7 @@ mod tests {
 
         for (name, arity) in [
             ("new", 2),
+            ("give_away", 3),
             ("insert", 2),
             ("lookup", 2),
             ("delete", 1),

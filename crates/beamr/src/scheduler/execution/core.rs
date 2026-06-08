@@ -103,6 +103,7 @@ pub(in crate::scheduler) fn take_runnable_process(
                 group_leader: process.group_leader(),
                 pending_exit_messages: Vec::new(),
                 pending_down_messages: Vec::new(),
+                pending_ets_transfer_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);
             Some(process)
@@ -154,6 +155,15 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
                     reference,
                     target_pid,
                     reason,
+                );
+            }
+            for (table_id, from_pid, gift_data) in metadata.pending_ets_transfer_messages.drain(..)
+            {
+                crate::scheduler::supervision_integration::enqueue_ets_transfer_message(
+                    &mut process,
+                    table_id,
+                    from_pid,
+                    gift_data,
                 );
             }
         }
@@ -445,7 +455,7 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     reason: ExitReason,
 ) {
     shared.exit_tombstones.insert(pid, reason);
-    let _deleted_tables = shared.delete_tables_owned_by(pid);
+    let _deleted_tables = shared.transfer_or_delete_tables_owned_by(pid);
     supervision_integration::propagate_exit(shared, pid, reason);
     close_owned_fd_resources_on_exit(shared, pid);
     let _removed = shared.process_table.remove(pid);

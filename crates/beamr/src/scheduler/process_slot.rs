@@ -1,3 +1,4 @@
+use crate::ets::EtsTableId;
 use crate::namespace::NamespaceId;
 use crate::process::{ExitReason, Monitor, Priority};
 use crate::term::Term;
@@ -16,6 +17,7 @@ pub(super) struct ProcessMetadata {
     pub(super) group_leader: Term,
     pub(super) pending_exit_messages: Vec<(u64, ExitReason)>,
     pub(super) pending_down_messages: Vec<(u64, u64, ExitReason)>,
+    pub(super) pending_ets_transfer_messages: Vec<(EtsTableId, u64, Term)>,
 }
 
 impl ProcessMetadata {

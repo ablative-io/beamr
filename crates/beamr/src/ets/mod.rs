@@ -21,7 +21,7 @@ pub use copy::{OwnedTerm, copy_term_to_ets, copy_term_to_heap};
 pub use ordered_set::EtsOrderedSet;
 pub use set::EtsSet;
 pub use table::{
-    AccessOp, EtsError, EtsTable, EtsTableId, EtsTableMetadata, EtsTableType, Protection,
+    AccessOp, EtsError, EtsHeir, EtsTable, EtsTableId, EtsTableMetadata, EtsTableType, Protection,
 };
 pub use term_key::TermKey;
 
@@ -46,6 +46,23 @@ impl EtsRegistry {
             tables: DashMap::new(),
             names: DashMap::new(),
         }
+    }
+
+    #[must_use]
+    pub fn tables_owned_by(&self, owner_pid: u64) -> Vec<EtsTableId> {
+        self.tables
+            .iter()
+            .filter(|entry| entry.value().metadata().owner == owner_pid)
+            .map(|entry| *entry.key())
+            .collect()
+    }
+
+    pub fn transfer_table_owner(&self, id: EtsTableId, new_owner: u64) -> bool {
+        let Some(table) = self.lookup_table(id) else {
+            return false;
+        };
+        table.transfer_owner(new_owner);
+        true
     }
 
     pub fn create_table(&self, mut metadata: EtsTableMetadata) -> EtsTableId {
@@ -192,6 +209,7 @@ mod tests {
             protection: Protection::Protected,
             owner: 7,
             keypos: 1,
+            heir: None,
         }
     }
 

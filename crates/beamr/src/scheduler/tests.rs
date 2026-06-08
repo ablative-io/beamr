@@ -36,6 +36,7 @@ fn ets_metadata(name: Option<Atom>, owner: u64) -> EtsTableMetadata {
         protection: Protection::Protected,
         owner,
         keypos: 1,
+        heir: None,
     }
 }
 
@@ -710,6 +711,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
             group_leader: process.group_leader(),
             pending_exit_messages: Vec::new(),
             pending_down_messages: Vec::new(),
+            pending_ets_transfer_messages: Vec::new(),
         })),
     );
     shared.exit_tombstones.insert(pid, ExitReason::Error);

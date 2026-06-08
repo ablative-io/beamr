@@ -1,13 +1,14 @@
 //! Hash-based ETS `set` table implementation.
 
 use dashmap::DashMap;
+use std::sync::RwLock;
 
 use crate::ets::{EtsError, EtsTable, EtsTableMetadata};
 use crate::term::{Term, boxed::Tuple, hash::EtsKey};
 
 /// ETS `set` table backed by a concurrent hash map.
 pub struct EtsSet {
-    metadata: EtsTableMetadata,
+    metadata: RwLock<EtsTableMetadata>,
     entries: DashMap<EtsKey, Term>,
 }
 
@@ -15,7 +16,7 @@ impl EtsSet {
     #[must_use]
     pub fn new(metadata: EtsTableMetadata) -> Self {
         Self {
-            metadata,
+            metadata: RwLock::new(metadata),
             entries: DashMap::new(),
         }
     }
@@ -23,7 +24,7 @@ impl EtsSet {
     fn tuple_key(&self, tuple_term: Term) -> Result<Term, EtsError> {
         let tuple = Tuple::new(tuple_term).ok_or(EtsError::Badarg)?;
         let key_index = self
-            .metadata
+            .metadata()
             .keypos
             .checked_sub(1)
             .ok_or(EtsError::Badarg)?;
@@ -32,8 +33,18 @@ impl EtsSet {
 }
 
 impl EtsTable for EtsSet {
-    fn metadata(&self) -> &EtsTableMetadata {
-        &self.metadata
+    fn metadata(&self) -> EtsTableMetadata {
+        self.metadata
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn transfer_owner(&self, new_owner: u64) {
+        self.metadata
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .owner = new_owner;
     }
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {
@@ -72,6 +83,7 @@ mod tests {
             protection: Protection::Protected,
             owner: 1,
             keypos,
+            heir: None,
         }
     }
 
