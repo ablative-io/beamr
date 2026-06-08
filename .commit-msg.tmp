@@ -1,1 +1,1 @@
-feat(distribution): add scoped pg process groups
+fix(distribution): store remote pg members without atom ordering

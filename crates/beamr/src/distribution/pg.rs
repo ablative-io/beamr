@@ -19,7 +19,7 @@ type Scope = Atom;
 type Group = Atom;
 
 /// Stable identity for a remote member advertised by another node.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct RemoteMember {
     /// Remote node atom.
     pub node: Atom,
@@ -68,7 +68,7 @@ impl PgPropagation for NullPgPropagation {
 #[derive(Default)]
 struct GroupMembers {
     local: BTreeSet<u64>,
-    remote: BTreeSet<RemoteMember>,
+    remote: HashSet<RemoteMember>,
 }
 
 #[derive(Default)]
