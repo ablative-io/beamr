@@ -1,1 +1,1 @@
-feat(beamr): add inet socket option and address BIFs
+fix(beamr): remove unused inet socket atom field

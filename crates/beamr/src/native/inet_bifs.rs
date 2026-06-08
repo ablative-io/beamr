@@ -167,7 +167,6 @@ struct SocketAtoms {
     recbuf: Atom,
     active: Atom,
     once: Atom,
-    enotconn: Atom,
 }
 
 impl SocketAtoms {
@@ -181,7 +180,6 @@ impl SocketAtoms {
             recbuf: atom_table.intern("recbuf"),
             active: atom_table.intern("active"),
             once: atom_table.intern("once"),
-            enotconn: atom_table.intern("enotconn"),
         })
     }
 }
