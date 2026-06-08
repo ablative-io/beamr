@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use crate::atom::AtomTable;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
-use crate::io::{CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode};
+use crate::io::{
+    CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode,
+};
 use crate::native::ets_bifs::EtsFoldlState;
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
 use crate::process::{Priority, Process};
@@ -24,6 +26,7 @@ use crate::timer::{TimerRef, TimerWheel};
 use super::code_management_bifs::CodeManagementFacility;
 use super::ets_bifs::EtsFacility;
 use super::group_leader::GroupLeaderFacility;
+use super::io_message::IoMessageFacility;
 use super::links::LinkFacility;
 use super::process_info_bifs::ProcessInfoFacility;
 use super::registry::RegistryFacility;
@@ -133,6 +136,7 @@ pub struct ProcessContext<'process> {
     spawn_facility: Option<Arc<dyn SpawnFacility>>,
     link_facility: Option<Arc<dyn LinkFacility>>,
     group_leader_facility: Option<Arc<dyn GroupLeaderFacility>>,
+    io_message_facility: Option<Arc<dyn IoMessageFacility>>,
     supervision_facility: Option<Arc<dyn SupervisionFacility>>,
     code_management_facility: Option<Arc<dyn CodeManagementFacility>>,
     process_info_facility: Option<Arc<dyn ProcessInfoFacility>>,
@@ -166,6 +170,10 @@ impl fmt::Debug for ProcessContext<'_> {
             .field(
                 "group_leader_facility",
                 &self.group_leader_facility.as_ref().map(|_| ".."),
+            )
+            .field(
+                "io_message_facility",
+                &self.io_message_facility.as_ref().map(|_| ".."),
             )
             .field(
                 "supervision_facility",
@@ -226,6 +234,7 @@ impl<'process> ProcessContext<'process> {
             spawn_facility: None,
             link_facility: None,
             group_leader_facility: None,
+            io_message_facility: None,
             supervision_facility: None,
             code_management_facility: None,
             process_info_facility: None,
@@ -256,6 +265,7 @@ impl<'process> ProcessContext<'process> {
             spawn_facility: None,
             link_facility: None,
             group_leader_facility: None,
+            io_message_facility: None,
             supervision_facility: None,
             code_management_facility: None,
             process_info_facility: None,
@@ -360,6 +370,17 @@ impl<'process> ProcessContext<'process> {
     /// Set the group-leader facility for process metadata BIFs.
     pub fn set_group_leader_facility(&mut self, facility: Option<Arc<dyn GroupLeaderFacility>>) {
         self.group_leader_facility = facility;
+    }
+
+    /// Return the I/O message facility, if one has been configured.
+    #[must_use]
+    pub fn io_message_facility(&self) -> Option<&dyn IoMessageFacility> {
+        self.io_message_facility.as_deref()
+    }
+
+    /// Set the message delivery facility for group-leader I/O BIFs.
+    pub fn set_io_message_facility(&mut self, facility: Option<Arc<dyn IoMessageFacility>>) {
+        self.io_message_facility = facility;
     }
 
     /// Return the supervision facility, if one has been configured.

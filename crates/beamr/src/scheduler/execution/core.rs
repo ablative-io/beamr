@@ -31,7 +31,21 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
     let Some(mut process) = take_runnable_process(shared, pid) else {
         return;
     };
-    let outcome = execute_slice(shared, &mut process);
+    let outcome = if pid == shared.standard_io_pid {
+        let facility = supervision_integration::SchedulerIoMessageFacility {
+            shared: Arc::clone(shared),
+        };
+        shared
+            .standard_io_server
+            .run_available(&mut process, &facility);
+        if process.mailbox().message_count() == 0 {
+            SliceOutcome::Wait(process)
+        } else {
+            SliceOutcome::Requeue(process)
+        }
+    } else {
+        execute_slice(shared, &mut process)
+    };
     if let Some(reason) = tombstone_reason(shared, pid) {
         store_runnable_process(shared, process);
         cleanup_exited_process(shared, pid, reason);

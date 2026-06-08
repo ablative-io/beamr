@@ -5,30 +5,46 @@ use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, Tuple};
+use crate::term::compare;
 
 pub fn bif_io_put_chars_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [chars] = args else {
         return Err(badarg());
     };
-    write_iodata(*chars, context)?;
-    Ok(Term::atom(Atom::OK))
+    let target = context.group_leader()?;
+    send_put_chars(target, *chars, context)
 }
 
 pub fn bif_io_put_chars_2(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let [_device, chars] = args else {
+    let [device, chars] = args else {
         return Err(badarg());
     };
-    write_iodata(*chars, context)?;
-    Ok(Term::atom(Atom::OK))
+    if !device.is_pid() {
+        return Err(badarg());
+    }
+    send_put_chars(*device, *chars, context)
 }
 
 pub fn bif_io_format_3(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let [_device, format, arguments] = args else {
+    let [device, format, arguments] = args else {
         return Err(badarg());
     };
+    if !device.is_pid() {
+        return Err(badarg());
+    }
     let bytes = format_bytes(*format, *arguments, context)?;
-    context.io_sink().write(&bytes);
-    Ok(Term::atom(Atom::OK))
+    let chars = context.alloc_binary(&bytes)?;
+    send_put_chars(*device, chars, context)
+}
+
+pub fn bif_io_get_line_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [prompt] = args else {
+        return Err(badarg());
+    };
+    let target = context.group_leader()?;
+    let prompt = context.alloc_binary(&iodata_bytes(*prompt)?)?;
+    let request = io_request_tuple(context, "get_line", prompt)?;
+    send_io_request_and_wait(target, request, context)
 }
 
 pub fn bif_io_setopts_2(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -45,6 +61,97 @@ pub fn bif_io_lib_format_2(args: &[Term], context: &mut ProcessContext) -> Resul
     };
     let bytes = format_bytes(*format, *arguments, context)?;
     context.alloc_binary(&bytes)
+}
+
+fn send_put_chars(target: Term, chars: Term, context: &mut ProcessContext) -> Result<Term, Term> {
+    let chars = context.alloc_binary(&iodata_bytes(chars)?)?;
+    let request = io_request_tuple(context, "put_chars", chars)?;
+    send_io_request_and_wait(target, request, context)
+}
+
+fn io_request_tuple(
+    context: &mut ProcessContext,
+    request_atom: &str,
+    data: Term,
+) -> Result<Term, Term> {
+    let (request_tag, unicode) = {
+        let table = context.atom_table().ok_or_else(badarg)?;
+        (table.intern(request_atom), table.intern("unicode"))
+    };
+    context.alloc_tuple(&[Term::atom(request_tag), Term::atom(unicode), data])
+}
+
+fn send_io_request_and_wait(
+    target: Term,
+    request: Term,
+    context: &mut ProcessContext,
+) -> Result<Term, Term> {
+    let target_pid = target.as_pid().ok_or_else(badarg)?;
+    let caller_pid = context.pid().ok_or_else(badarg)?;
+    let io_request = context
+        .atom_table()
+        .ok_or_else(badarg)?
+        .intern("io_request");
+    let reply_ref = context.alloc_reference(reply_ref_id(caller_pid))?;
+    if let Some(result) = take_io_reply(reply_ref, context)? {
+        return Ok(result);
+    }
+    let message = context.alloc_tuple(&[
+        Term::atom(io_request),
+        Term::pid(caller_pid),
+        reply_ref,
+        request,
+    ])?;
+    let sent = {
+        let facility = context.io_message_facility().ok_or_else(badarg)?;
+        facility.send_message(caller_pid, target_pid, message)
+    };
+    if !sent {
+        return Ok(error_tuple(context, Atom::NOPROC)?);
+    }
+    take_io_reply(reply_ref, context)?.map_or_else(
+        || {
+            context.request_suspend(None);
+            Ok(Term::atom(Atom::OK))
+        },
+        Ok,
+    )
+}
+
+fn take_io_reply(reply_ref: Term, context: &mut ProcessContext) -> Result<Option<Term>, Term> {
+    let io_reply = context.atom_table().ok_or_else(badarg)?.intern("io_reply");
+    let Some(select) = context.select_facility() else {
+        return Err(badarg());
+    };
+    for index in 0..select.message_count() {
+        let Some(message) = select.peek_message(index) else {
+            continue;
+        };
+        let Some(tuple) = Tuple::new(message) else {
+            continue;
+        };
+        if tuple.arity() != 3 || tuple.get(0) != Some(Term::atom(io_reply)) {
+            continue;
+        }
+        let Some(reply_as) = tuple.get(1) else {
+            continue;
+        };
+        if !compare::exact_eq(reply_as, reply_ref) {
+            continue;
+        }
+        let result = tuple.get(2).ok_or_else(badarg)?;
+        select.remove_message(index);
+        return Ok(Some(result));
+    }
+    Ok(None)
+}
+
+fn reply_ref_id(pid: u64) -> u64 {
+    pid
+}
+
+fn error_tuple(context: &mut ProcessContext, reason: Atom) -> Result<Term, Term> {
+    context.alloc_tuple(&[Term::atom(Atom::ERROR), Term::atom(reason)])
 }
 
 fn format_bytes(format: Term, arguments: Term, context: &ProcessContext) -> Result<Vec<u8>, Term> {
@@ -88,12 +195,6 @@ fn next_arg(arguments: &[Term], index: &mut usize) -> Result<Term, Term> {
     let term = arguments.get(*index).copied().ok_or_else(badarg)?;
     *index += 1;
     Ok(term)
-}
-
-fn write_iodata(term: Term, context: &ProcessContext) -> Result<(), Term> {
-    let bytes = iodata_bytes(term)?;
-    context.io_sink().write(&bytes);
-    Ok(())
 }
 
 fn iodata_bytes(term: Term) -> Result<Vec<u8>, Term> {

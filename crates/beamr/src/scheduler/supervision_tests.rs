@@ -192,6 +192,9 @@ fn make_shared_state() -> Arc<SharedState> {
     let module_registry = Arc::new(ModuleRegistry::new());
     let namespace_store = DashMap::new();
     namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
+    let atom_table = Arc::new(crate::atom::AtomTable::new());
+    let file_io_ring: Arc<dyn crate::io::CompletionRing> =
+        Arc::from(crate::io::create_ring(RingConfig::default()));
 
     Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
@@ -221,16 +224,18 @@ fn make_shared_state() -> Arc<SharedState> {
         io_registry: None,
         io_bridge: std::sync::Mutex::new(None),
         io_facility: None,
-        atom_table: Arc::new(crate::atom::AtomTable::new()),
+        atom_table: Arc::clone(&atom_table),
         ets_registry: Arc::new(crate::ets::EtsRegistry::new()),
         bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
         dirty_results: DashMap::new(),
-        file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
+        file_io_ring: Arc::clone(&file_io_ring),
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
         file_io_results: DashMap::new(),
+        standard_io_pid: 0,
+        standard_io_server: crate::io::StandardIoServer::new(0, file_io_ring, atom_table.as_ref()),
     })
 }
 

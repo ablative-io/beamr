@@ -4,6 +4,7 @@ pub mod bridge;
 pub mod facility;
 pub mod resource;
 pub mod ring;
+pub mod standard_io;
 #[cfg(not(target_os = "linux"))]
 pub mod thread_pool;
 #[cfg(target_os = "linux")]
@@ -17,6 +18,7 @@ pub use facility::{CompletionRingIoFacility, IoError, IoFacility};
 use crate::atom::Atom;
 
 pub use ring::{CompletionRing, IoCompletion, IoOp, IoResult, StatxData};
+pub use standard_io::StandardIoServer;
 #[cfg(not(target_os = "linux"))]
 pub use thread_pool::ThreadPoolRing;
 #[cfg(target_os = "linux")]

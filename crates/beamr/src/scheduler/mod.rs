@@ -16,8 +16,8 @@ use crate::error::ExecError;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
 use crate::hook::Hook;
 use crate::io::{
-    CompletionRing, CompletionRingIoFacility, IoCompletionBridge, IoCompletion, IoFacility, IoSink,
-    IoWakeTarget, NullSink, PendingIoRegistry, RingConfig, create_ring,
+    CompletionRing, CompletionRingIoFacility, IoCompletion, IoCompletionBridge, IoFacility, IoSink,
+    IoWakeTarget, NullSink, PendingIoRegistry, RingConfig, StandardIoServer, create_ring,
 };
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
@@ -86,6 +86,8 @@ pub(super) struct SharedState {
     io_registry: Option<Arc<PendingIoRegistry>>,
     io_bridge: Mutex<Option<IoCompletionBridge>>,
     io_facility: Option<Arc<dyn IoFacility>>,
+    standard_io_pid: u64,
+    standard_io_server: StandardIoServer,
     #[cfg(test)]
     idle_parks: AtomicUsize,
 }
@@ -235,6 +237,14 @@ impl Scheduler {
         };
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
+        let file_io_ring: Arc<dyn CompletionRing> =
+            Arc::from(crate::io::create_ring(RingConfig::default()));
+        let standard_io_pid = 0;
+        let standard_io_server = StandardIoServer::new(
+            standard_io_pid,
+            Arc::clone(&file_io_ring),
+            atom_table.as_ref(),
+        );
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
@@ -249,7 +259,7 @@ impl Scheduler {
             thread_count,
             dirty_cpu,
             dirty_io,
-            next_pid: AtomicU64::new(0),
+            next_pid: AtomicU64::new(1),
             wait_set: Mutex::new(WaitSet::default()),
             wake_condvar: Condvar::new(),
             process_bodies: DashMap::new(),
@@ -259,7 +269,7 @@ impl Scheduler {
             exit_exceptions: DashMap::new(),
             async_results: DashMap::new(),
             dirty_results: DashMap::new(),
-            file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
+            file_io_ring: Arc::clone(&file_io_ring),
             file_io_pending: DashMap::new(),
             file_io_orphans: DashMap::new(),
             file_io_results: DashMap::new(),
@@ -272,9 +282,18 @@ impl Scheduler {
             io_registry,
             io_bridge: Mutex::new(None),
             io_facility,
+            standard_io_pid,
+            standard_io_server,
             #[cfg(test)]
             idle_parks: AtomicUsize::new(0),
         });
+        shared.process_table.spawn_with_pid(standard_io_pid);
+        shared.process_bodies.insert(
+            standard_io_pid,
+            Mutex::new(ProcessSlot::Present(ScheduledProcess(
+                StandardIoServer::process(standard_io_pid),
+            ))),
+        );
         if let (Some(ring), Some(registry)) = (&shared.io_ring, &shared.io_registry) {
             let target: Arc<dyn IoWakeTarget> = shared.clone();
             let bridge = IoCompletionBridge::start(Arc::clone(ring), Arc::clone(registry), target);
@@ -573,7 +592,13 @@ impl IoWakeTarget for SharedState {
             metadata.pending_io_messages.push(term);
         }
         drop(slot);
-        execution::wake_process(self, pid);
+        if pid == self.standard_io_pid {
+            let mut wait_set = lock_or_recover(&self.wait_set);
+            wait_set.woken.push((pid, 0));
+            self.wake_condvar.notify_all();
+        } else {
+            execution::wake_process(self, pid);
+        }
     }
 }
 

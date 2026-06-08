@@ -179,7 +179,7 @@ impl Scheduler {
             module_version,
             instruction_pointer,
             namespace_id,
-            group_leader: Term::pid(pid),
+            group_leader: Term::pid(self.shared.standard_io_pid),
             priority: Priority::Normal,
             heap_size: DEFAULT_HEAP_SIZE,
             args,

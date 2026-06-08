@@ -313,6 +313,10 @@ pub(super) fn build_native_services(
         Arc::new(SchedulerSupervisionFacility {
             shared: Arc::clone(shared),
         });
+    let io_message: Arc<dyn crate::native::IoMessageFacility> =
+        Arc::new(SchedulerIoMessageFacility {
+            shared: Arc::clone(shared),
+        });
     let process_info: Arc<dyn crate::native::ProcessInfoFacility> =
         Arc::new(SchedulerProcessInfoFacility {
             shared: Arc::clone(shared),
@@ -336,6 +340,7 @@ pub(super) fn build_native_services(
         spawn_facility: Some(spawn),
         link_facility: Some(link),
         group_leader_facility: Some(group_leader),
+        io_message_facility: Some(io_message),
         supervision_facility: Some(supervision),
         process_info_facility: Some(process_info),
         io_sink: Some(Arc::clone(&lock_or_recover(&shared.output_sink))),
@@ -347,6 +352,21 @@ pub(super) fn build_native_services(
 }
 
 // ── Facility implementations ────────────────────────────────────────────────
+
+pub(in crate::scheduler) struct SchedulerIoMessageFacility {
+    pub(in crate::scheduler) shared: Arc<SharedState>,
+}
+
+impl crate::native::IoMessageFacility for SchedulerIoMessageFacility {
+    fn send_message(&self, _sender_pid: u64, target_pid: u64, message: Term) -> bool {
+        if self.shared.process_bodies.contains_key(&target_pid) {
+            self.shared.send_io_message(target_pid, message);
+            true
+        } else {
+            false
+        }
+    }
+}
 
 struct SchedulerFileIoFacility {
     shared: Arc<SharedState>,
