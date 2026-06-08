@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::atom::AtomTable;
+use crate::distribution::control::DistributionControlFacility;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
 use crate::io::{
     CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode,
@@ -190,6 +191,7 @@ pub struct ProcessContext<'process> {
     link_facility: Option<Arc<dyn LinkFacility>>,
     group_leader_facility: Option<Arc<dyn GroupLeaderFacility>>,
     supervision_facility: Option<Arc<dyn SupervisionFacility>>,
+    distribution_control_facility: Option<Arc<dyn DistributionControlFacility>>,
     code_management_facility: Option<Arc<dyn CodeManagementFacility>>,
     process_info_facility: Option<Arc<dyn ProcessInfoFacility>>,
     registry_facility: Option<Arc<dyn RegistryFacility>>,
@@ -229,6 +231,10 @@ impl fmt::Debug for ProcessContext<'_> {
             .field(
                 "supervision_facility",
                 &self.supervision_facility.as_ref().map(|_| ".."),
+            )
+            .field(
+                "distribution_control_facility",
+                &self.distribution_control_facility.as_ref().map(|_| ".."),
             )
             .field(
                 "code_management_facility",
@@ -295,6 +301,7 @@ impl<'process> ProcessContext<'process> {
             link_facility: None,
             group_leader_facility: None,
             supervision_facility: None,
+            distribution_control_facility: None,
             code_management_facility: None,
             process_info_facility: None,
             registry_facility: None,
@@ -328,6 +335,7 @@ impl<'process> ProcessContext<'process> {
             link_facility: None,
             group_leader_facility: None,
             supervision_facility: None,
+            distribution_control_facility: None,
             code_management_facility: None,
             process_info_facility: None,
             registry_facility: None,
@@ -478,6 +486,20 @@ impl<'process> ProcessContext<'process> {
     /// Set the supervision facility for monitor/demonitor/exit BIFs.
     pub fn set_supervision_facility(&mut self, facility: Option<Arc<dyn SupervisionFacility>>) {
         self.supervision_facility = facility;
+    }
+
+    /// Return the distribution control facility, if one has been configured.
+    #[must_use]
+    pub fn distribution_control_facility(&self) -> Option<&dyn DistributionControlFacility> {
+        self.distribution_control_facility.as_deref()
+    }
+
+    /// Set the distribution control facility for cross-node monitor BIFs.
+    pub fn set_distribution_control_facility(
+        &mut self,
+        facility: Option<Arc<dyn DistributionControlFacility>>,
+    ) {
+        self.distribution_control_facility = facility;
     }
 
     /// Return the code-management facility, if one has been configured.

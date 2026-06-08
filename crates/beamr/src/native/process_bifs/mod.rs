@@ -5,6 +5,7 @@
 //! utility functions.
 
 use crate::atom::{Atom, AtomTable};
+use crate::distribution::control::RemotePid;
 use crate::native::links::LinkError;
 use crate::native::{
     BifRegistryImpl, Capability, ExceptionClass, NativeFn, NativeRegistrationError, ProcessContext,
@@ -13,6 +14,7 @@ use crate::native::{
 use crate::process::{ExitReason, Priority};
 use crate::term::Term;
 use crate::term::boxed::{Closure, Cons, Tuple};
+use crate::term::pid_ref::PidRef;
 
 type Gate2Bif = (&'static str, u8, Capability, NativeFn);
 
@@ -188,13 +190,26 @@ pub fn bif_monitor(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
     if type_atom != Atom::PROCESS {
         return Err(badarg());
     }
-    let target_pid = pid_term.as_pid().ok_or_else(badarg)?;
+    let target_pid = PidRef::new(*pid_term).ok_or_else(badarg)?;
     let caller_pid = context.pid().ok_or_else(badarg)?;
-    let facility = context.supervision_facility().ok_or_else(badarg)?;
-    let result = facility
-        .monitor(caller_pid, target_pid)
-        .map_err(|_| badarg())?;
-    Term::try_small_int(result.reference as i64).ok_or_else(badarg)
+    match target_pid {
+        PidRef::Local(target_pid) => {
+            let facility = context.supervision_facility().ok_or_else(badarg)?;
+            let result = facility
+                .monitor(caller_pid, target_pid)
+                .map_err(|_| badarg())?;
+            Term::try_small_int(result.reference as i64).ok_or_else(badarg)
+        }
+        PidRef::Remote(remote_pid) => {
+            let node = remote_pid.node().ok_or_else(badarg)?;
+            let target = RemotePid::new(node, remote_pid.pid_number(), remote_pid.serial());
+            let facility = context.distribution_control_facility().ok_or_else(badarg)?;
+            let reference = facility
+                .monitor_remote(caller_pid, target)
+                .map_err(|_| badarg())?;
+            Term::try_small_int(reference as i64).ok_or_else(badarg)
+        }
+    }
 }
 
 /// erlang:demonitor/1 — remove a monitor identified by its reference.
@@ -207,6 +222,13 @@ pub fn bif_demonitor(args: &[Term], context: &mut ProcessContext) -> Result<Term
         return Err(badarg());
     }
     let caller_pid = context.pid().ok_or_else(badarg)?;
+    if let Some(facility) = context.distribution_control_facility()
+        && facility
+            .demonitor_remote(caller_pid, reference as u64)
+            .map_err(|_| badarg())?
+    {
+        return Ok(Term::atom(Atom::TRUE));
+    }
     let facility = context.supervision_facility().ok_or_else(badarg)?;
     facility
         .demonitor(caller_pid, reference as u64)
@@ -246,6 +268,7 @@ fn exit_reason_from_term(term: Term) -> Result<ExitReason, Term> {
         Atom::KILL => Ok(ExitReason::Kill),
         Atom::KILLED => Ok(ExitReason::Killed),
         Atom::ERROR => Ok(ExitReason::Error),
+        Atom::NOCONNECTION => Ok(ExitReason::NoConnection),
         _ => Err(badarg()),
     }
 }

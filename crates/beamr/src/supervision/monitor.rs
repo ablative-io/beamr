@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use crate::{
     atom::Atom,
+    distribution::control::RemotePid,
     process::{ExitReason, Monitor, Process},
     term::{Term, boxed},
 };
@@ -213,6 +214,18 @@ pub fn enqueue_down_message_pub(
     }
 }
 
+/// Enqueue a DOWN message whose PID element is an external PID.
+pub fn enqueue_remote_down_message_pub(
+    watcher: &mut Process,
+    reference: Reference,
+    target: RemotePid,
+    reason: ExitReason,
+) {
+    if enqueue_remote_down_message(watcher, reference, target, reason).is_err() {
+        watcher.terminate(ExitReason::Error);
+    }
+}
+
 fn enqueue_down_message(
     watcher: &mut Process,
     reference: Reference,
@@ -248,6 +261,41 @@ fn enqueue_down_message(
     // SAFETY: `alloc` returned a live region with exactly the requested number
     // of words in the watcher heap, used only to initialize this tuple.
     let words = unsafe { std::slice::from_raw_parts_mut(words, 1 + elements.len()) };
+    let message = boxed::write_tuple(words, &elements).ok_or(())?;
+    watcher.mailbox_mut().push_owned(message);
+    Ok(())
+}
+
+fn enqueue_remote_down_message(
+    watcher: &mut Process,
+    reference: Reference,
+    target: RemotePid,
+    reason: ExitReason,
+) -> Result<(), ()> {
+    const DOWN_MESSAGE_WORDS: usize = 11;
+
+    crate::gc::ensure_space(watcher, DOWN_MESSAGE_WORDS, 256).map_err(|_| ())?;
+
+    let reference_term = {
+        let reference_words = watcher.heap_mut().alloc_slice(2).map_err(|_| ())?;
+        boxed::write_reference(reference_words, reference).ok_or(())?
+    };
+    let target_term = {
+        let pid_words = watcher.heap_mut().alloc_slice(4).map_err(|_| ())?;
+        boxed::write_external_pid(pid_words, target.node, target.pid_number, target.serial)
+            .ok_or(())?
+    };
+    let elements = [
+        Term::atom(Atom::DOWN),
+        reference_term,
+        Term::atom(Atom::PROCESS),
+        target_term,
+        reason.as_term(),
+    ];
+    let words = watcher
+        .heap_mut()
+        .alloc_slice(1 + elements.len())
+        .map_err(|_| ())?;
     let message = boxed::write_tuple(words, &elements).ok_or(())?;
     watcher.mailbox_mut().push_owned(message);
     Ok(())

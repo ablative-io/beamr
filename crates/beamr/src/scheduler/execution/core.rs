@@ -104,6 +104,7 @@ pub(in crate::scheduler) fn take_runnable_process(
                 group_leader: process.group_leader(),
                 pending_exit_messages: Vec::new(),
                 pending_down_messages: Vec::new(),
+                pending_remote_down_messages: Vec::new(),
                 pending_io_messages: Vec::new(),
                 pending_ets_transfer_messages: Vec::new(),
                 pending_udp_messages: Vec::new(),
@@ -158,6 +159,14 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
                     &mut process,
                     reference,
                     target_pid,
+                    reason,
+                );
+            }
+            for (reference, target, reason) in metadata.pending_remote_down_messages.drain(..) {
+                crate::supervision::monitor::enqueue_remote_down_message_pub(
+                    &mut process,
+                    reference,
+                    target,
                     reason,
                 );
             }

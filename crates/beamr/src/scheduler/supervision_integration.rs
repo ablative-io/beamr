@@ -7,6 +7,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::atom::Atom;
+use crate::distribution::control::{ControlMessage, RemotePid};
 use crate::ets::{EtsError, EtsTable, EtsTableId, EtsTableMetadata};
 use crate::io::{CompletionRing, IoOp};
 use crate::namespace::NamespaceId;
@@ -320,11 +321,15 @@ fn deliver_down_messages(shared: &SharedState, target_pid: u64, reason: ExitReas
             wake_process(shared, watcher_pid);
         }
     }
+
+    for monitor in shared.control_plane.collect_inbound_for_target(target_pid) {
+        let _ = shared.control_plane.send_monitor_exit(monitor, reason);
+    }
 }
 
 /// Deliver a single DOWN message to a watcher process. Returns true if
 /// the message was successfully enqueued.
-fn deliver_single_down(
+pub(super) fn deliver_single_down(
     shared: &SharedState,
     watcher_pid: u64,
     reference: u64,
@@ -356,6 +361,119 @@ fn deliver_single_down(
     }
 }
 
+fn deliver_single_remote_down(
+    shared: &SharedState,
+    watcher_pid: u64,
+    reference: u64,
+    target: RemotePid,
+    reason: ExitReason,
+) -> bool {
+    let Some(entry) = shared.process_bodies.get(&watcher_pid) else {
+        return false;
+    };
+    let mut slot = lock_or_recover(&entry);
+    match &mut *slot {
+        ProcessSlot::Present(ScheduledProcess(watcher)) => {
+            if matches!(watcher.status(), ProcessStatus::Exited(_)) {
+                return false;
+            }
+
+            watcher.remove_monitor(reference);
+            monitor::enqueue_remote_down_message_pub(watcher, reference, target, reason);
+            true
+        }
+        ProcessSlot::Executing(metadata) => {
+            metadata.remove_monitor(reference);
+            metadata
+                .pending_remote_down_messages
+                .push((reference, target, reason));
+            true
+        }
+        ProcessSlot::Absent => false,
+    }
+}
+
+/// Dispatch an inbound distribution monitor control message.
+pub(super) fn dispatch_monitor_control(shared: &SharedState, message: ControlMessage) {
+    match message {
+        ControlMessage::MonitorP {
+            reference,
+            watcher,
+            target,
+        } => handle_monitor_p(shared, reference, watcher, target),
+        ControlMessage::DemonitorP {
+            reference,
+            watcher,
+            target,
+        } => shared
+            .control_plane
+            .remove_inbound_monitor(reference, watcher, target.pid_number),
+        ControlMessage::MonitorPExit {
+            reference,
+            target,
+            reason,
+        } => handle_monitor_p_exit(shared, reference, target, reason),
+    }
+}
+
+fn handle_monitor_p(shared: &SharedState, reference: u64, watcher: RemotePid, target: RemotePid) {
+    let target_pid = target.pid_number;
+    let target_alive = shared.process_table.get(target_pid).is_some();
+    if target_alive {
+        shared
+            .control_plane
+            .register_inbound_monitor(reference, watcher, target_pid);
+        return;
+    }
+
+    let reason = shared
+        .exit_tombstones
+        .get(&target_pid)
+        .map(|entry| *entry.value())
+        .unwrap_or(ExitReason::Normal);
+    let _ = shared.control_plane.send_monitor_exit(
+        crate::distribution::control::InboundRemoteMonitor {
+            watcher,
+            reference,
+            target_pid,
+        },
+        reason,
+    );
+}
+
+fn handle_monitor_p_exit(
+    shared: &SharedState,
+    reference: u64,
+    target: RemotePid,
+    reason: ExitReason,
+) {
+    let Some(monitor) = shared.control_plane.take_outbound_for_exit(reference) else {
+        return;
+    };
+    let delivered =
+        deliver_single_remote_down(shared, monitor.watcher_pid, reference, target, reason);
+    if delivered {
+        wake_process(shared, monitor.watcher_pid);
+    }
+}
+
+/// Convert distribution connection loss into local DOWN messages with reason noconnection.
+pub(super) fn remote_node_down(shared: &SharedState, node: Atom) {
+    let monitors = shared.control_plane.collect_outbound_for_node(node);
+    for monitor in monitors {
+        let delivered = deliver_single_remote_down(
+            shared,
+            monitor.watcher_pid,
+            monitor.reference,
+            monitor.target,
+            ExitReason::NoConnection,
+        );
+        if delivered {
+            wake_process(shared, monitor.watcher_pid);
+        }
+    }
+}
+
 /// Build the `NativeServices` bundle for a scheduler time slice.
 pub(super) fn build_native_services(
     shared: &Arc<SharedState>,
@@ -376,6 +494,8 @@ pub(super) fn build_native_services(
         Arc::new(SchedulerSupervisionFacility {
             shared: Arc::clone(shared),
         });
+    let distribution_control: Arc<dyn crate::distribution::control::DistributionControlFacility> =
+        shared.control_plane.clone();
     let process_info: Arc<dyn crate::native::ProcessInfoFacility> =
         Arc::new(SchedulerProcessInfoFacility {
             shared: Arc::clone(shared),
@@ -403,6 +523,7 @@ pub(super) fn build_native_services(
         link_facility: Some(link),
         group_leader_facility: Some(group_leader),
         supervision_facility: Some(supervision),
+        distribution_control_facility: Some(distribution_control),
         process_info_facility: Some(process_info),
         io_sink: Some(Arc::clone(&lock_or_recover(&shared.output_sink))),
         code_management_facility: Some(code_management),

@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use crate::distribution::control::RemotePid;
 use crate::ets::{EtsTableId, OwnedTerm};
 use crate::io::resource::FdInner;
 use crate::namespace::NamespaceId;
@@ -41,6 +42,7 @@ pub(super) struct ProcessMetadata {
     pub(super) group_leader: Term,
     pub(super) pending_exit_messages: Vec<(u64, ExitReason)>,
     pub(super) pending_down_messages: Vec<(u64, u64, ExitReason)>,
+    pub(super) pending_remote_down_messages: Vec<(u64, RemotePid, ExitReason)>,
     pub(super) pending_io_messages: Vec<Term>,
     pub(super) pending_ets_transfer_messages: Vec<PendingEtsTransferMessage>,
     pub(super) pending_udp_messages: Vec<UdpActiveMessage>,

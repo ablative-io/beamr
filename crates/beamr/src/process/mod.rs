@@ -146,6 +146,8 @@ pub enum ExitReason {
     Killed,
     /// Placeholder error exit until error terms land.
     Error,
+    /// Distribution connection to the monitored node went down.
+    NoConnection,
 }
 
 impl ExitReason {
@@ -157,6 +159,7 @@ impl ExitReason {
             Self::Kill => Atom::KILL,
             Self::Killed => Atom::KILLED,
             Self::Error => Atom::ERROR,
+            Self::NoConnection => Atom::NOCONNECTION,
         }
     }
 

@@ -12,8 +12,8 @@ use self::dirty::DirtyPool;
 use self::execution::scheduler_loop;
 use self::spawning::SpawnRequest;
 use crate::atom::AtomTable;
-use crate::distribution::{DEFAULT_NODE_NAME, Node};
-use crate::distribution::DistributionConfig;
+use crate::distribution::control::{ControlPlane, RecordingControlSender};
+use crate::distribution::{DEFAULT_NODE_NAME, DistributionConfig, Node};
 
 use crate::error::ExecError;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
@@ -54,7 +54,6 @@ pub struct SchedulerConfig {
     pub node_name: Option<String>,
     pub creation: Option<u32>,
     pub distribution: Option<DistributionConfig>,
-
 }
 pub(super) struct SharedState {
     shutdown: AtomicBool,
@@ -88,6 +87,7 @@ pub(super) struct SharedState {
     file_io_canceled: DashSet<u64>,
     link_set: Mutex<LinkSet>,
     monitor_set: Mutex<MonitorSet>,
+    control_plane: Arc<ControlPlane>,
     hook: Hook,
     distribution: DistributionConfig,
     timers: Arc<Mutex<TimerWheel>>,
@@ -228,6 +228,16 @@ impl Scheduler {
         self.shared.create_table(metadata)
     }
 
+    /// Dispatch an inbound distribution monitor control message.
+    pub fn dispatch_monitor_control(&self, message: crate::distribution::control::ControlMessage) {
+        supervision_integration::dispatch_monitor_control(&self.shared, message);
+    }
+
+    /// Notify remote monitor tracking that a distribution node went down.
+    pub fn remote_node_down(&self, node: crate::atom::Atom) {
+        supervision_integration::remote_node_down(&self.shared, node);
+    }
+
     /// Look up a registered ETS table by ID.
     pub fn lookup_ets_table(&self, id: EtsTableId) -> Option<Arc<dyn EtsTable>> {
         self.shared.lookup_table(id)
@@ -319,6 +329,8 @@ impl Scheduler {
         );
         let standard_io_server =
             StandardIoServer::new(standard_io_pid, standard_io_ring, atom_table.as_ref());
+        let control_sender = Arc::new(RecordingControlSender::new());
+        let control_plane = Arc::new(ControlPlane::new(local_node.name, control_sender));
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
@@ -351,6 +363,7 @@ impl Scheduler {
             file_io_canceled: DashSet::new(),
             link_set: Mutex::new(LinkSet::new()),
             monitor_set: Mutex::new(MonitorSet::new()),
+            control_plane,
             hook: Hook::new(),
             distribution,
             timers: Arc::new(Mutex::new(TimerWheel::new())),
