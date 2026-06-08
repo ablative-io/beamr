@@ -147,7 +147,10 @@ pub fn read_dist_message<R: Read>(stream: &mut R) -> Result<(Vec<u8>, Option<Vec
     let mut header = [0_u8; 4];
     read_exact_classified(stream, &mut header, Error::TruncatedHeader)?;
     let length = usize::try_from(u32::from_be_bytes(header)).map_err(|_| Error::LengthTooLarge)?;
-    let mut body = vec![0_u8; length];
+    let mut body = Vec::new();
+    body.try_reserve_exact(length)
+        .map_err(|_| Error::LengthTooLarge)?;
+    body.resize(length, 0);
     read_exact_classified(
         stream,
         &mut body,
@@ -247,7 +250,11 @@ fn encode_i64_big(value: i64, out: &mut Vec<u8>) -> Result<(), EncodeError> {
 }
 
 fn encode_bigint(bigint: BigInt, out: &mut Vec<u8>) -> Result<(), EncodeError> {
-    let mut bytes = Vec::with_capacity(bigint.limb_count() * std::mem::size_of::<u64>());
+    let capacity = bigint
+        .limb_count()
+        .checked_mul(std::mem::size_of::<u64>())
+        .ok_or(EncodeError::UnsupportedTerm)?;
+    let mut bytes = Vec::with_capacity(capacity);
     for limb in bigint.limbs() {
         bytes.extend_from_slice(&limb.to_le_bytes());
     }
@@ -529,7 +536,10 @@ fn decode_one(
         tag if tag == tags::NIL_EXT => Ok(Term::NIL),
         tag if tag == tags::STRING_EXT => {
             let len = usize::from(cursor.read_u16()?);
-            let mut elements = Vec::with_capacity(len);
+            let mut elements = Vec::new();
+            elements
+                .try_reserve_exact(len)
+                .map_err(|_| DecodeError::SizeLimitExceeded)?;
             for byte in cursor.read_bytes(len)? {
                 elements.push(Term::small_int(i64::from(*byte)));
             }
@@ -537,7 +547,14 @@ fn decode_one(
         }
         tag if tag == tags::LIST_EXT => {
             let len = cursor.read_u32()? as usize;
-            let mut elements = Vec::with_capacity(len);
+            ensure_decodable_sequence(
+                cursor,
+                len.checked_add(1).ok_or(DecodeError::SizeLimitExceeded)?,
+            )?;
+            let mut elements = Vec::new();
+            elements
+                .try_reserve_exact(len)
+                .map_err(|_| DecodeError::SizeLimitExceeded)?;
             for _ in 0..len {
                 elements.push(decode_one(cursor, heap, atom_table, depth + 1)?);
             }
@@ -559,8 +576,13 @@ fn decode_one(
         }
         tag if tag == tags::MAP_EXT => {
             let len = cursor.read_u32()? as usize;
-            let mut keys = Vec::with_capacity(len);
-            let mut values = Vec::with_capacity(len);
+            let term_count = len.checked_mul(2).ok_or(DecodeError::SizeLimitExceeded)?;
+            ensure_decodable_sequence(cursor, term_count)?;
+            let mut keys = Vec::new();
+            let mut values = Vec::new();
+            keys.try_reserve_exact(len)
+                .and_then(|_| values.try_reserve_exact(len))
+                .map_err(|_| DecodeError::SizeLimitExceeded)?;
             for _ in 0..len {
                 keys.push(decode_one(cursor, heap, atom_table, depth + 1)?);
                 values.push(decode_one(cursor, heap, atom_table, depth + 1)?);
@@ -582,11 +604,22 @@ fn decode_tuple(
     atom_table: &AtomTable,
     depth: usize,
 ) -> Result<Term, DecodeError> {
-    let mut elements = Vec::with_capacity(arity);
+    ensure_decodable_sequence(cursor, arity)?;
+    let mut elements = Vec::new();
+    elements
+        .try_reserve_exact(arity)
+        .map_err(|_| DecodeError::SizeLimitExceeded)?;
     for _ in 0..arity {
         elements.push(decode_one(cursor, heap, atom_table, depth + 1)?);
     }
     alloc_tuple_term(heap, &elements)
+}
+
+fn ensure_decodable_sequence(cursor: &Cursor<'_>, term_count: usize) -> Result<(), DecodeError> {
+    if cursor.remaining() < term_count {
+        return Err(DecodeError::Truncated);
+    }
+    Ok(())
 }
 
 fn decode_atom(bytes: &[u8], atom_table: &AtomTable) -> Result<Term, DecodeError> {
@@ -625,7 +658,10 @@ fn decode_big_integer(
         }
     } else {
         let limb_count = len.div_ceil(std::mem::size_of::<u64>());
-        let mut limbs = Vec::with_capacity(limb_count);
+        let mut limbs = Vec::new();
+        limbs
+            .try_reserve_exact(limb_count)
+            .map_err(|_| DecodeError::SizeLimitExceeded)?;
         for chunk in bytes.chunks(std::mem::size_of::<u64>()) {
             let mut limb_bytes = [0_u8; std::mem::size_of::<u64>()];
             limb_bytes[..chunk.len()].copy_from_slice(chunk);
@@ -837,7 +873,7 @@ fn scan_one(cursor: &mut Cursor<'_>, depth: usize) -> Result<(), DecodeError> {
             Ok(())
         }
         tag if tag == tags::NEW_PID_EXT => {
-            scan_one(cursor, depth + 1)?;
+            scan_node_atom(cursor)?;
             cursor.skip_bytes(12)
         }
         tag if tag == tags::NEWER_REFERENCE_EXT => {
@@ -845,10 +881,29 @@ fn scan_one(cursor: &mut Cursor<'_>, depth: usize) -> Result<(), DecodeError> {
             if len == 0 || len > 2 {
                 return Err(DecodeError::InvalidReferenceArity(len));
             }
-            scan_one(cursor, depth + 1)?;
+            scan_node_atom(cursor)?;
             cursor.skip_bytes(4 + usize::from(len) * 4)
         }
         other => Err(DecodeError::UnsupportedTag(other)),
+    }
+}
+
+fn scan_node_atom(cursor: &mut Cursor<'_>) -> Result<(), DecodeError> {
+    let tag = cursor.read_u8()?;
+    match tag {
+        tag if tag == tags::ATOM_UTF8_EXT => {
+            let len = usize::from(cursor.read_u16()?);
+            let bytes = cursor.read_bytes(len)?;
+            std::str::from_utf8(bytes).map_err(|_| DecodeError::InvalidUtf8)?;
+            Ok(())
+        }
+        tag if tag == tags::SMALL_ATOM_UTF8_EXT => {
+            let len = usize::from(cursor.read_u8()?);
+            let bytes = cursor.read_bytes(len)?;
+            std::str::from_utf8(bytes).map_err(|_| DecodeError::InvalidUtf8)?;
+            Ok(())
+        }
+        _ => Err(DecodeError::InvalidExternalNode),
     }
 }
 
@@ -872,6 +927,10 @@ impl<'a> Cursor<'a> {
 
     fn position(&self) -> usize {
         self.offset
+    }
+
+    fn remaining(&self) -> usize {
+        self.bytes.len().saturating_sub(self.offset)
     }
 
     fn skip_bytes(&mut self, len: usize) -> Result<(), DecodeError> {
@@ -1156,6 +1215,40 @@ mod tests {
             decode_term(&[131, 90, 0, 0], &mut heap, &atoms),
             Err(DecodeError::InvalidReferenceArity(0))
         );
+        assert_eq!(
+            decode_term(
+                &[
+                    131,
+                    tags::LARGE_TUPLE_EXT,
+                    255,
+                    255,
+                    255,
+                    255,
+                    tags::SMALL_INTEGER_EXT,
+                    1,
+                ],
+                &mut heap,
+                &atoms,
+            ),
+            Err(DecodeError::Truncated)
+        );
+        assert_eq!(
+            decode_term(
+                &[
+                    131,
+                    tags::MAP_EXT,
+                    255,
+                    255,
+                    255,
+                    255,
+                    tags::SMALL_INTEGER_EXT,
+                    1,
+                ],
+                &mut heap,
+                &atoms,
+            ),
+            Err(DecodeError::Truncated)
+        );
     }
 
     #[test]
@@ -1234,6 +1327,23 @@ mod tests {
         assert_eq!(
             read_dist_message(&mut [0_u8, 0, 0, 2, PASS_THROUGH, 131].as_slice()),
             Err(Error::InvalidControl(DecodeError::Truncated))
+        );
+        assert_eq!(
+            read_dist_message(
+                &mut [
+                    0_u8,
+                    0,
+                    0,
+                    4,
+                    PASS_THROUGH,
+                    tags::VERSION,
+                    tags::NEW_PID_EXT,
+                    tags::SMALL_INTEGER_EXT,
+                    1,
+                ]
+                .as_slice(),
+            ),
+            Err(Error::InvalidControl(DecodeError::InvalidExternalNode))
         );
     }
 }

@@ -1,1 +1,1 @@
-feat(distribution): add ETF wire codec and pass-through framing
+Harden distribution ETF decoding and framing length handling
