@@ -193,41 +193,61 @@ fn execute_op(op: IoOp) -> io::Result<IoResult> {
 
 fn read_fd(fd: RawFd, buf_len: usize, offset: u64) -> io::Result<IoResult> {
     let mut buffer = vec![0_u8; buf_len];
-    let rc = if offset == u64::MAX {
-        // SAFETY: `buffer` is valid writable memory for `buf_len` bytes and `fd` ownership remains with caller.
-        unsafe { libc::read(fd, buffer.as_mut_ptr().cast(), buffer.len()) }
-    } else {
-        // SAFETY: `buffer` is valid writable memory for `buf_len` bytes and `fd` ownership remains with caller.
-        unsafe {
-            libc::pread(
-                fd,
-                buffer.as_mut_ptr().cast(),
-                buffer.len(),
-                offset as libc::off_t,
-            )
+    loop {
+        let rc = if offset == u64::MAX {
+            // SAFETY: `buffer` is valid writable memory for `buf_len` bytes and `fd` ownership remains with caller.
+            unsafe { libc::read(fd, buffer.as_mut_ptr().cast(), buffer.len()) }
+        } else {
+            // SAFETY: `buffer` is valid writable memory for `buf_len` bytes and `fd` ownership remains with caller.
+            unsafe {
+                libc::pread(
+                    fd,
+                    buffer.as_mut_ptr().cast(),
+                    buffer.len(),
+                    offset as libc::off_t,
+                )
+            }
+        };
+        if rc >= 0 {
+            let bytes_read = rc as usize;
+            buffer.truncate(bytes_read);
+            return Ok(IoResult::BytesRead(bytes_read, buffer));
         }
-    };
-    if rc < 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        let bytes_read = rc as usize;
-        buffer.truncate(bytes_read);
-        Ok(IoResult::BytesRead(bytes_read, buffer))
+
+        let error = io::Error::last_os_error();
+        if error.kind() == io::ErrorKind::Interrupted {
+            continue;
+        }
+        if is_would_block(&error) {
+            wait_for_fd(fd, libc::POLLIN)?;
+            continue;
+        }
+        return Err(error);
     }
 }
 
 fn write_fd(fd: RawFd, data: &[u8], offset: u64) -> io::Result<IoResult> {
-    let rc = if offset == u64::MAX {
-        // SAFETY: `data` is valid readable memory for its length and `fd` ownership remains with caller.
-        unsafe { libc::write(fd, data.as_ptr().cast(), data.len()) }
-    } else {
-        // SAFETY: `data` is valid readable memory for its length and `fd` ownership remains with caller.
-        unsafe { libc::pwrite(fd, data.as_ptr().cast(), data.len(), offset as libc::off_t) }
-    };
-    if rc < 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(IoResult::BytesWritten(rc as usize))
+    loop {
+        let rc = if offset == u64::MAX {
+            // SAFETY: `data` is valid readable memory for its length and `fd` ownership remains with caller.
+            unsafe { libc::write(fd, data.as_ptr().cast(), data.len()) }
+        } else {
+            // SAFETY: `data` is valid readable memory for its length and `fd` ownership remains with caller.
+            unsafe { libc::pwrite(fd, data.as_ptr().cast(), data.len(), offset as libc::off_t) }
+        };
+        if rc >= 0 {
+            return Ok(IoResult::BytesWritten(rc as usize));
+        }
+
+        let error = io::Error::last_os_error();
+        if error.kind() == io::ErrorKind::Interrupted {
+            continue;
+        }
+        if is_would_block(&error) {
+            wait_for_fd(fd, libc::POLLOUT)?;
+            continue;
+        }
+        return Err(error);
     }
 }
 
@@ -298,11 +318,70 @@ fn connect_fd(fd: RawFd, addr: SocketAddr) -> io::Result<IoResult> {
     let (storage, len) = socket_addr_to_raw(addr);
     // SAFETY: `storage` contains a sockaddr matching `len` and is alive for the call.
     let rc = unsafe { libc::connect(fd, (&storage as *const libc::sockaddr_storage).cast(), len) };
-    if rc < 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(IoResult::Connected)
+    if rc == 0 {
+        return Ok(IoResult::Connected);
     }
+
+    let error = io::Error::last_os_error();
+    match error.raw_os_error() {
+        Some(errno) if errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK => {
+            wait_for_nonblocking_connect(fd)
+        }
+        _ => Err(error),
+    }
+}
+
+fn wait_for_nonblocking_connect(fd: RawFd) -> io::Result<IoResult> {
+    wait_for_fd(fd, libc::POLLOUT)?;
+
+    let mut socket_error = 0;
+    let mut socket_error_len = mem::size_of::<libc::c_int>() as libc::socklen_t;
+    // SAFETY: output pointers are valid for an int SO_ERROR value.
+    let getsockopt_rc = unsafe {
+        libc::getsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_ERROR,
+            (&mut socket_error as *mut libc::c_int).cast(),
+            &mut socket_error_len,
+        )
+    };
+    if getsockopt_rc < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if socket_error == 0 {
+        return Ok(IoResult::Connected);
+    }
+    Err(io::Error::from_raw_os_error(socket_error))
+}
+
+fn wait_for_fd(fd: RawFd, events: libc::c_short) -> io::Result<()> {
+    let mut poll_fd = libc::pollfd {
+        fd,
+        events,
+        revents: 0,
+    };
+    loop {
+        // SAFETY: `poll_fd` points to one valid pollfd entry; -1 waits until readiness or signal.
+        let rc = unsafe { libc::poll(&mut poll_fd, 1, -1) };
+        if rc < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        if rc > 0 {
+            return Ok(());
+        }
+    }
+}
+
+fn is_would_block(error: &io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(errno) if errno == libc::EAGAIN || errno == libc::EWOULDBLOCK
+    )
 }
 
 fn path_to_cstring(path: &Path) -> io::Result<CString> {

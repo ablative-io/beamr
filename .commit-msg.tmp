@@ -1,1 +1,1 @@
-feat(beamr): add completion-backed tcp client bifs
+Harden TCP BIF completion semantics and add focused TCP BIF tests

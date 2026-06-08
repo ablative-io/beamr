@@ -195,6 +195,10 @@ fn finish_send(completion: FileIoCompletion, context: &mut ProcessContext) -> Re
         Ok(IoResult::BytesWritten(bytes_written)) if bytes_written >= remaining.len() => {
             Ok(Term::atom(Atom::OK))
         }
+        Ok(IoResult::BytesWritten(0)) => {
+            fd.close_synchronously();
+            error_tuple(context, Atom::CLOSED)
+        }
         Ok(IoResult::BytesWritten(bytes_written)) => {
             let Some(next) = remaining.get(bytes_written..).map(<[u8]>::to_vec) else {
                 return error_tuple(context, Atom::UNKNOWN_ERROR);
@@ -446,3 +450,7 @@ fn close_raw_fd(fd: RawFd) {
 fn badarg() -> Term {
     Term::atom(Atom::BADARG)
 }
+
+#[cfg(test)]
+#[path = "tcp_bifs_tests.rs"]
+mod tests;
