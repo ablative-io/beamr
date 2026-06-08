@@ -501,6 +501,11 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         monitor_set: Mutex::new(MonitorSet::new()),
         hook: Hook::new(),
         distribution: DistributionConfig::default(),
+        control_router: crate::distribution::control::ControlRouter::new(),
+        connection_manager: crate::distribution::connection::ConnectionManager::new(
+            Arc::new(crate::atom::AtomTable::new()),
+            DistributionConfig::default().resolver,
+        ),
         timers: Arc::new(Mutex::new(TimerWheel::new())),
         output_sink: Mutex::new(Arc::new(NullSink)),
         io_ring: None,
@@ -777,6 +782,11 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         monitor_set: Mutex::new(MonitorSet::new()),
         hook: Hook::new(),
         distribution: DistributionConfig::default(),
+        control_router: crate::distribution::control::ControlRouter::new(),
+        connection_manager: crate::distribution::connection::ConnectionManager::new(
+            Arc::new(crate::atom::AtomTable::new()),
+            DistributionConfig::default().resolver,
+        ),
         timers: Arc::new(Mutex::new(TimerWheel::new())),
         output_sink: Mutex::new(Arc::new(NullSink)),
         io_ring: None,

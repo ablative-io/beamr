@@ -122,11 +122,9 @@ pub(super) fn process_remote_exit_signal(
             if should_die {
                 let propagated_reason = link::terminal_reason(reason);
                 target.terminate(propagated_reason);
-                shared.exit_tombstones.insert(target_pid, propagated_reason);
                 drop(slot);
                 drop(entry);
-                deliver_down_messages(shared, target_pid, propagated_reason);
-                let _removed = shared.process_table.remove(target_pid);
+                cleanup_exited_process(shared, target_pid, propagated_reason);
             } else if target.trap_exit() {
                 link::enqueue_remote_exit_message_pub(target, source_pid, reason);
                 drop(slot);
@@ -136,7 +134,7 @@ pub(super) fn process_remote_exit_signal(
         }
         ProcessSlot::Executing(metadata) => {
             metadata.remove_remote_link(source_pid);
-            if reason != ExitReason::Normal && metadata.trap_exit {
+            if metadata.trap_exit {
                 metadata
                     .pending_exit_messages
                     .push((PendingExitSource::Remote(source_pid), reason));
@@ -157,7 +155,7 @@ pub(super) fn connection_down(shared: &SharedState, node: Atom) {
     let affected: Vec<(u64, RemotePid)> = shared
         .process_bodies
         .iter()
-        .filter_map(|entry| {
+        .flat_map(|entry| {
             let pid = *entry.key();
             let slot = lock_or_recover(entry.value());
             match &*slot {
@@ -165,15 +163,17 @@ pub(super) fn connection_down(shared: &SharedState, node: Atom) {
                     .remote_links()
                     .iter()
                     .copied()
-                    .find(|remote| remote.node == node)
-                    .map(|remote| (pid, remote)),
+                    .filter(|remote| remote.node == node)
+                    .map(|remote| (pid, remote))
+                    .collect::<Vec<_>>(),
                 ProcessSlot::Executing(metadata) => metadata
                     .remote_links
                     .iter()
                     .copied()
-                    .find(|remote| remote.node == node)
-                    .map(|remote| (pid, remote)),
-                ProcessSlot::Absent => None,
+                    .filter(|remote| remote.node == node)
+                    .map(|remote| (pid, remote))
+                    .collect::<Vec<_>>(),
+                ProcessSlot::Absent => Vec::new(),
             }
         })
         .collect();
