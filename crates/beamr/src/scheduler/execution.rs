@@ -194,6 +194,8 @@ fn drain_file_io_completions(shared: &SharedState) {
         if let Some((_, (pid, continuation))) = shared.file_io_pending.remove(&op_id) {
             if let crate::native::FileIoContinuation::UdpActiveRecv { fd } = continuation {
                 handle_udp_active_completion(shared, fd, completion);
+            } else if let crate::native::FileIoContinuation::TcpActiveRecv { fd } = continuation {
+                handle_tcp_active_completion(shared, fd, completion);
             } else {
                 shared.file_io_results.insert(
                     pid,
@@ -281,6 +283,172 @@ fn deliver_udp_active_datagram(
     drop(slot);
     wake_process(shared, target);
     Some(Term::atom(crate::atom::Atom::OK))
+}
+
+fn handle_tcp_active_completion(
+    shared: &SharedState,
+    fd: std::sync::Arc<FdInner>,
+    completion: crate::io::IoCompletion,
+) {
+    if fd.state() != crate::io::resource::FdState::Open {
+        return;
+    }
+    let mode = fd.mode();
+    if mode == FdMode::Passive {
+        return;
+    }
+    match completion.result {
+        Ok(IoResult::BytesRead(0, _)) => {
+            // EOF / peer closed — deliver {tcp_closed, Socket} and stop.
+            deliver_tcp_closed(shared, &fd);
+        }
+        Ok(IoResult::BytesRead(bytes_read, data)) => {
+            let chunk = data.get(..bytes_read).unwrap_or(&data);
+            deliver_tcp_active_data(shared, &fd, chunk);
+            match mode {
+                FdMode::Active => {
+                    let op_id = shared.file_io_ring.submit(crate::io::IoOp::Read {
+                        fd: fd.fd(),
+                        buf_len: 64 * 1024,
+                        offset: u64::MAX,
+                    });
+                    shared.file_io_pending.insert(
+                        op_id,
+                        (
+                            fd.controlling_process(),
+                            crate::native::FileIoContinuation::TcpActiveRecv { fd },
+                        ),
+                    );
+                }
+                FdMode::ActiveOnce => fd.set_mode(FdMode::Passive),
+                FdMode::Passive => {}
+            }
+        }
+        Ok(_) | Err(_) => {
+            deliver_tcp_closed(shared, &fd);
+        }
+    }
+}
+
+fn deliver_tcp_active_data(
+    shared: &SharedState,
+    fd: &std::sync::Arc<FdInner>,
+    data: &[u8],
+) -> Option<Term> {
+    let target = fd.controlling_process();
+    let entry = shared.process_bodies.get(&target)?;
+    let mut slot = super::lock_or_recover(&entry);
+    match &mut *slot {
+        ProcessSlot::Present(ScheduledProcess(process)) => {
+            let message = build_tcp_active_message_for_process(
+                &shared.atom_table,
+                process,
+                fd,
+                data,
+            )?;
+            process.mailbox_mut().push_owned(message);
+        }
+        ProcessSlot::Executing(metadata) => {
+            metadata
+                .pending_tcp_messages
+                .push(super::process_slot::TcpActiveMessage {
+                    fd: std::sync::Arc::clone(fd),
+                    bytes: data.to_vec(),
+                });
+        }
+        ProcessSlot::Absent => return None,
+    }
+    drop(slot);
+    wake_process(shared, target);
+    Some(Term::atom(crate::atom::Atom::OK))
+}
+
+fn deliver_tcp_closed(
+    shared: &SharedState,
+    fd: &std::sync::Arc<FdInner>,
+) -> Option<Term> {
+    let target = fd.controlling_process();
+    let entry = shared.process_bodies.get(&target)?;
+    let mut slot = super::lock_or_recover(&entry);
+    match &mut *slot {
+        ProcessSlot::Present(ScheduledProcess(process)) => {
+            let message = build_tcp_closed_message_for_process(
+                &shared.atom_table,
+                process,
+                fd,
+            )?;
+            process.mailbox_mut().push_owned(message);
+        }
+        ProcessSlot::Executing(metadata) => {
+            // Queue an empty-data TCP message; the process will see {tcp_closed, Socket}
+            // when the scheduler drains it. We use an empty bytes vec as the signal.
+            metadata
+                .pending_tcp_messages
+                .push(super::process_slot::TcpActiveMessage {
+                    fd: std::sync::Arc::clone(fd),
+                    bytes: Vec::new(),
+                });
+        }
+        ProcessSlot::Absent => return None,
+    }
+    drop(slot);
+    wake_process(shared, target);
+    Some(Term::atom(crate::atom::Atom::OK))
+}
+
+pub(in crate::scheduler) fn build_tcp_active_message_for_process(
+    atom_table: &AtomTable,
+    process: &mut Process,
+    fd: &std::sync::Arc<FdInner>,
+    data: &[u8],
+) -> Option<Term> {
+    if data.is_empty() {
+        return build_tcp_closed_message_for_process(atom_table, process, fd);
+    }
+    let binary_words = alloc_binary_word_count(data.len());
+    // {tcp, Socket, Data} = 1 header + 3 elements = 4 words, plus fd resource + binary
+    let needed_words = FD_RESOURCE_WORDS + binary_words + 1 + 3;
+    if crate::gc::ensure_space(process, needed_words, 0).is_err() {
+        return None;
+    }
+    let socket = {
+        let heap = process.heap_mut().alloc_slice(FD_RESOURCE_WORDS).ok()?;
+        write_fd_resource(heap, std::sync::Arc::clone(fd))?
+    };
+    let binary = {
+        let heap = process.heap_mut().alloc_slice(binary_words).ok()?;
+        alloc_binary(heap, data)?
+    };
+    let tcp = Term::atom(atom_table.intern("tcp"));
+    let message_terms = [tcp, socket, binary];
+    let heap = process
+        .heap_mut()
+        .alloc_slice(1 + message_terms.len())
+        .ok()?;
+    write_tuple(heap, &message_terms)
+}
+
+fn build_tcp_closed_message_for_process(
+    atom_table: &AtomTable,
+    process: &mut Process,
+    fd: &std::sync::Arc<FdInner>,
+) -> Option<Term> {
+    // {tcp_closed, Socket} = 1 header + 2 elements = 3 words, plus fd resource
+    let needed_words = FD_RESOURCE_WORDS + 1 + 2;
+    if crate::gc::ensure_space(process, needed_words, 0).is_err() {
+        return None;
+    }
+    let socket = {
+        let heap = process.heap_mut().alloc_slice(FD_RESOURCE_WORDS).ok()?;
+        write_fd_resource(heap, std::sync::Arc::clone(fd))?
+    };
+    let tcp_closed = Term::atom(atom_table.intern("tcp_closed"));
+    let message_terms = [tcp_closed, socket];
+    let heap = process
+        .heap_mut()
+        .alloc_slice(1 + message_terms.len())
+        .ok()?;
+    write_tuple(heap, &message_terms)
 }
 
 pub(in crate::scheduler) fn build_udp_active_message_for_process(

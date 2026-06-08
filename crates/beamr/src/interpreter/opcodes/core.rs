@@ -492,6 +492,7 @@ fn call_external_target(
                 context.set_io_facility(svc.io_facility.clone());
                 context.set_io_message_facility(svc.io_message_facility.clone());
                 context.set_file_io_facility(svc.file_io_facility.clone());
+                context.set_tcp_io_facility(svc.tcp_io_facility.clone());
                 if let Some(sink) = &svc.io_sink {
                     context.set_io_sink(Arc::clone(sink));
                 }

@@ -106,6 +106,7 @@ pub(in crate::scheduler) fn take_runnable_process(
                 pending_io_messages: Vec::new(),
                 pending_ets_transfer_messages: Vec::new(),
                 pending_udp_messages: Vec::new(),
+                pending_tcp_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);
             Some(process)
@@ -185,6 +186,18 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
                         &udp_msg.fd,
                         &udp_msg.bytes,
                         udp_msg.addr,
+                    )
+                {
+                    process.mailbox_mut().push_owned(message);
+                }
+            }
+            for tcp_msg in metadata.pending_tcp_messages.drain(..) {
+                if let Some(message) =
+                    super::build_tcp_active_message_for_process(
+                        &shared.atom_table,
+                        &mut process,
+                        &tcp_msg.fd,
+                        &tcp_msg.bytes,
                     )
                 {
                     process.mailbox_mut().push_owned(message);

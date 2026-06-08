@@ -411,6 +411,9 @@ pub(super) fn build_native_services(
             shared: Arc::clone(shared),
         })),
         file_io_facility: Some(file_io_facility),
+        tcp_io_facility: Some(Arc::new(SchedulerTcpIoFacility {
+            shared: Arc::clone(shared),
+        })),
     }
 }
 
@@ -551,6 +554,32 @@ impl FileIoFacility for SchedulerFileIoFacility {
 
     fn ring(&self) -> &dyn CompletionRing {
         self.shared.file_io_ring.as_ref()
+    }
+}
+
+struct SchedulerTcpIoFacility {
+    shared: Arc<SharedState>,
+}
+
+impl crate::native::TcpIoFacility for SchedulerTcpIoFacility {
+    fn submit_active_tcp_read(
+        &self,
+        socket: Arc<crate::io::resource::FdInner>,
+        buf_len: usize,
+    ) -> Option<u64> {
+        let op_id = self.shared.file_io_ring.submit(IoOp::Read {
+            fd: socket.fd(),
+            buf_len,
+            offset: u64::MAX,
+        });
+        self.shared.file_io_pending.insert(
+            op_id,
+            (
+                socket.controlling_process(),
+                crate::native::FileIoContinuation::TcpActiveRecv { fd: socket },
+            ),
+        );
+        Some(op_id)
     }
 }
 

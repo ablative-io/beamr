@@ -22,6 +22,12 @@ pub struct UdpActiveMessage {
     pub addr: SocketAddr,
 }
 
+/// A TCP data chunk queued for delivery to a process currently executing on a scheduler thread.
+pub struct TcpActiveMessage {
+    pub fd: Arc<FdInner>,
+    pub bytes: Vec<u8>,
+}
+
 pub(super) struct ProcessMetadata {
     pub(super) namespace_id: NamespaceId,
     pub(super) links: Vec<u64>,
@@ -37,6 +43,7 @@ pub(super) struct ProcessMetadata {
     pub(super) pending_io_messages: Vec<Term>,
     pub(super) pending_ets_transfer_messages: Vec<PendingEtsTransferMessage>,
     pub(super) pending_udp_messages: Vec<UdpActiveMessage>,
+    pub(super) pending_tcp_messages: Vec<TcpActiveMessage>,
 }
 
 impl ProcessMetadata {

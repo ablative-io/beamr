@@ -21,7 +21,7 @@ use crate::native::process_info_bifs::ProcessInfoFacility;
 use crate::native::spawn::SpawnFacility;
 use crate::native::supervision::SupervisionFacility;
 use crate::native::system_info_bifs::SystemInfoFacility;
-use crate::native::{FileIoFacility, NativeEntry};
+use crate::native::{FileIoFacility, NativeEntry, TcpIoFacility};
 use crate::process::{CodePosition, ExitReason, Process};
 use crate::scheduler::dirty::DirtySchedulerKind;
 use crate::term::Term;
@@ -57,6 +57,8 @@ pub struct NativeServices {
     pub io_message_facility: Option<Arc<dyn IoMessageFacility>>,
     /// Completion-ring backed facility for file BIFs.
     pub file_io_facility: Option<Arc<dyn FileIoFacility>>,
+    /// Active-mode TCP read-loop facility for socket option BIFs.
+    pub tcp_io_facility: Option<Arc<dyn TcpIoFacility>>,
 }
 
 /// Result of running a process until it yields, waits, exits, or faults.
@@ -124,6 +126,7 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
         io_facility: None,
         io_message_facility: None,
         file_io_facility: None,
+        tcp_io_facility: None,
     };
     run_loop(process, module, None, &empty)
 }
@@ -149,6 +152,7 @@ pub fn run_with_registry(
         io_facility: None,
         io_message_facility: None,
         file_io_facility: None,
+        tcp_io_facility: None,
     };
     run_loop(process, initial_module, Some(registry), &empty)
 }
@@ -174,6 +178,7 @@ pub fn run_with_timer_services(
         io_facility: None,
         io_message_facility: None,
         file_io_facility: None,
+        tcp_io_facility: None,
     };
     run_loop(process, initial_module, None, &services)
 }

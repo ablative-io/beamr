@@ -253,6 +253,22 @@ impl FdResource {
         self.inner_ref().state()
     }
 
+    /// Returns the process that receives active socket messages.
+    #[must_use]
+    pub fn controlling_process(self) -> u64 {
+        self.inner_ref().controlling_process()
+    }
+
+    /// Sets the active/passive receive mode.
+    pub fn set_mode(self, mode: FdMode) {
+        self.inner_ref().set_mode(mode);
+    }
+
+    /// Sets the process that receives active socket messages.
+    pub fn set_controlling_process(self, pid: u64) {
+        self.inner_ref().set_controlling_process(pid);
+    }
+
     /// Clones the resource lifecycle Arc for use outside the heap term.
     #[must_use]
     pub fn inner(self) -> Arc<FdInner> {

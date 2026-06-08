@@ -737,6 +737,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
             pending_io_messages: Vec::new(),
             pending_ets_transfer_messages: Vec::new(),
             pending_udp_messages: Vec::new(),
+            pending_tcp_messages: Vec::new(),
         })),
     );
     shared.exit_tombstones.insert(pid, ExitReason::Error);
