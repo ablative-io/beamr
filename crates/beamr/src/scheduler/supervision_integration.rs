@@ -56,6 +56,24 @@ pub(super) fn propagate_exit(shared: &SharedState, pid: u64, reason: ExitReason)
     }
 }
 
+pub(in crate::scheduler) fn transfer_ets_ownership(
+    shared: &SharedState,
+    table: &dyn EtsTable,
+    table_id: EtsTableId,
+    from_pid: u64,
+    to_pid: u64,
+    gift_data: Term,
+) -> Result<(), EtsError> {
+    if shared.process_table.get(to_pid).is_none() {
+        return Err(EtsError::Badarg);
+    }
+    if !deliver_ets_transfer_message(shared, to_pid, table_id, from_pid, gift_data) {
+        return Err(EtsError::Badarg);
+    }
+    table.transfer_owner(to_pid);
+    Ok(())
+}
+
 pub(in crate::scheduler) fn deliver_ets_transfer_message(
     shared: &SharedState,
     recipient_pid: u64,
@@ -458,14 +476,14 @@ impl crate::native::EtsFacility for SchedulerEtsFacility {
         let Some(table) = self.shared.ets_registry.lookup_table(table_id) else {
             return Err(EtsError::Badarg);
         };
-        if self.shared.process_table.get(to_pid).is_none() {
-            return Err(EtsError::Badarg);
-        }
-        if !deliver_ets_transfer_message(&self.shared, to_pid, table_id, from_pid, gift_data) {
-            return Err(EtsError::Badarg);
-        }
-        table.transfer_owner(to_pid);
-        Ok(())
+        transfer_ets_ownership(
+            &self.shared,
+            table.as_ref(),
+            table_id,
+            from_pid,
+            to_pid,
+            gift_data,
+        )
     }
 }
 

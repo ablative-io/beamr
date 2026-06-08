@@ -10,7 +10,7 @@ use dashmap::DashMap;
 
 use super::*;
 use crate::atom::Atom;
-use crate::ets::{EtsHeir, EtsTableMetadata, EtsTableType, Protection};
+use crate::ets::{AccessOp, EtsHeir, EtsTableMetadata, EtsTableType, Protection};
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
 use crate::process::ProcessStatus;
 use crate::process::registry::ProcessTable;
@@ -70,6 +70,54 @@ fn cleanup_exited_process_deletes_table_when_heir_is_not_live() {
     cleanup_exited_process(&shared, owner, ExitReason::Normal);
 
     assert!(shared.lookup_table(table_id).is_none());
+}
+
+#[test]
+fn scheduler_ets_facility_give_away_transfers_owner_and_message() {
+    let shared = make_shared_state();
+    let owner = insert_process(&shared, 41);
+    let recipient = insert_process(&shared, 42);
+    let gift_data = Term::atom(Atom::OK);
+    let table_id = shared.create_table(ets_metadata(None, owner));
+    let table = shared.lookup_table(table_id).expect("table exists");
+    let facility = supervision_integration::SchedulerEtsFacility {
+        shared: Arc::clone(&shared),
+    };
+
+    crate::native::EtsFacility::give_away_table(&facility, table_id, owner, recipient, gift_data)
+        .expect("give_away succeeds");
+
+    assert_eq!(table.metadata().owner, recipient);
+    assert_eq!(table.check_access(recipient, AccessOp::Write), Ok(()));
+    assert!(table.check_access(owner, AccessOp::Write).is_err());
+    let message =
+        read_mailbox_tuple(&shared, recipient).expect("recipient receives transfer message");
+    assert_eq!(message[0], Term::atom(Atom::ETS_TRANSFER));
+    assert_eq!(message[1], Term::small_int(table_id as i64));
+    assert_eq!(message[2], Term::pid(owner));
+    assert_eq!(message[3], gift_data);
+}
+
+#[test]
+fn scheduler_ets_facility_give_away_rejects_non_live_recipient() {
+    let shared = make_shared_state();
+    let owner = insert_process(&shared, 51);
+    let table_id = shared.create_table(ets_metadata(None, owner));
+    let table = shared.lookup_table(table_id).expect("table exists");
+    let facility = supervision_integration::SchedulerEtsFacility {
+        shared: Arc::clone(&shared),
+    };
+
+    let result = crate::native::EtsFacility::give_away_table(
+        &facility,
+        table_id,
+        owner,
+        999,
+        Term::atom(Atom::OK),
+    );
+
+    assert_eq!(result, Err(crate::ets::EtsError::Badarg));
+    assert_eq!(table.metadata().owner, owner);
 }
 
 /// Helper: insert a running process assigned to `namespace`.

@@ -107,15 +107,19 @@ impl SharedState {
                 self.ets_registry.delete_table(table_id);
                 continue;
             };
-            if self.process_table.get(heir.pid).is_some()
-                && supervision_integration::deliver_ets_transfer_message(
-                    self, heir.pid, table_id, owner, heir.data,
-                )
+            if supervision_integration::transfer_ets_ownership(
+                self,
+                table.as_ref(),
+                table_id,
+                owner,
+                heir.pid,
+                heir.data,
+            )
+            .is_ok()
             {
-                table.transfer_owner(heir.pid);
-            } else {
-                self.ets_registry.delete_table(table_id);
+                continue;
             }
+            self.ets_registry.delete_table(table_id);
         }
         before.saturating_sub(self.ets_registry.table_count())
     }

@@ -50,48 +50,6 @@ pub fn bif_give_away(args: &[Term], context: &mut ProcessContext) -> Result<Term
         return Err(badarg());
     }
 
-    #[test]
-    fn ets_new_parses_heir_pid_and_data_into_metadata() {
-        let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
-        let table_name = atom_table.intern("heir_source_name");
-        let heir = atom_table.intern("heir");
-        let data = atom_table.intern("heir_data");
-        let mut process = Process::new(1, 256);
-        let mut context = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
-        let heir_option = tuple(
-            &mut context,
-            &[Term::atom(heir), Term::pid(44), Term::atom(data)],
-        );
-        let options = context.alloc_list(&[heir_option]).expect("option list");
-
-        let tab = bif_new(&[Term::atom(table_name), options], &mut context).expect("new table");
-        let table = registry
-            .lookup_table(tab.as_small_int().expect("table id") as u64)
-            .expect("table exists");
-        let stored_heir = table.metadata().heir.expect("heir stored");
-        assert_eq!(stored_heir.pid, 44);
-        assert_eq!(stored_heir.data, Term::atom(data));
-    }
-
-    #[test]
-    fn ets_new_heir_none_disables_heir() {
-        let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
-        let table_name = atom_table.intern("heir_none_source_name");
-        let heir = atom_table.intern("heir");
-        let none = atom_table.intern("none");
-        let mut process = Process::new(1, 256);
-        let mut context = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
-        let heir_option = tuple(&mut context, &[Term::atom(heir), Term::atom(none)]);
-        let options = context.alloc_list(&[heir_option]).expect("option list");
-
-        let tab = bif_new(&[Term::atom(table_name), options], &mut context).expect("new table");
-        let table = registry
-            .lookup_table(tab.as_small_int().expect("table id") as u64)
-            .expect("table exists");
-        assert_eq!(table.metadata().heir, None);
-    }
     let recipient_pid = recipient.as_pid().ok_or_else(badarg)?;
     let facility = context.ets_facility().ok_or_else(badarg)?;
     facility
@@ -557,8 +515,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        bif_delete_1, bif_delete_2, bif_give_away, bif_info_2, bif_insert, bif_lookup, bif_member,
-        bif_new, register_ets_bifs,
+        bif_delete_1, bif_delete_2, bif_info_2, bif_insert, bif_lookup, bif_member, bif_new,
+        register_ets_bifs,
     };
     use crate::atom::{Atom, AtomTable};
     use crate::ets::EtsRegistry;
@@ -608,6 +566,49 @@ mod tests {
     ) -> Term {
         let options = atom_list(context, options);
         bif_new(&[Term::atom(name), options], context).expect("ets:new succeeds")
+    }
+
+    #[test]
+    fn ets_new_parses_heir_pid_and_data_into_metadata() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let registry = Arc::new(EtsRegistry::new());
+        let table_name = atom_table.intern("heir_source_name");
+        let heir = atom_table.intern("heir");
+        let data = atom_table.intern("heir_data");
+        let mut process = Process::new(1, 256);
+        let mut context = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+        let heir_option = tuple(
+            &mut context,
+            &[Term::atom(heir), Term::pid(44), Term::atom(data)],
+        );
+        let options = context.alloc_list(&[heir_option]).expect("option list");
+
+        let tab = bif_new(&[Term::atom(table_name), options], &mut context).expect("new table");
+        let table = registry
+            .lookup_table(tab.as_small_int().expect("table id") as u64)
+            .expect("table exists");
+        let stored_heir = table.metadata().heir.expect("heir stored");
+        assert_eq!(stored_heir.pid, 44);
+        assert_eq!(stored_heir.data, Term::atom(data));
+    }
+
+    #[test]
+    fn ets_new_heir_none_disables_heir() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let registry = Arc::new(EtsRegistry::new());
+        let table_name = atom_table.intern("heir_none_source_name");
+        let heir = atom_table.intern("heir");
+        let none = atom_table.intern("none");
+        let mut process = Process::new(1, 256);
+        let mut context = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+        let heir_option = tuple(&mut context, &[Term::atom(heir), Term::atom(none)]);
+        let options = context.alloc_list(&[heir_option]).expect("option list");
+
+        let tab = bif_new(&[Term::atom(table_name), options], &mut context).expect("new table");
+        let table = registry
+            .lookup_table(tab.as_small_int().expect("table id") as u64)
+            .expect("table exists");
+        assert_eq!(table.metadata().heir, None);
     }
 
     #[test]

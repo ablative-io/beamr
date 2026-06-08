@@ -1,1 +1,1 @@
-fix(ets): remove dead owner-delete helper
+fix(ets): harden heir/give_away transfer paths and tests
