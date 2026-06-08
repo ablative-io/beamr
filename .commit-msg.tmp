@@ -1,1 +1,1 @@
-feat(beamr): add node identity and node-qualified terms
+review(beamr): harden node-qualified term accessors

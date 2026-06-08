@@ -355,6 +355,10 @@ pub struct Reference {
 impl Reference {
     pub fn new(term: Term) -> Option<Self> {
         let ptr = header_ptr(term, BoxedTag::Reference)?;
+        if BoxedHeader::size(word_at(ptr, 0)) != 1 {
+            return None;
+        }
+
         Some(Self { ptr })
     }
 
@@ -373,6 +377,12 @@ pub struct ExternalPid {
 impl ExternalPid {
     pub fn new(term: Term) -> Option<Self> {
         let ptr = header_ptr(term, BoxedTag::ExternalPid)?;
+        if BoxedHeader::size(word_at(ptr, 0)) != 3
+            || Term::from_raw(word_at(ptr, 1)).as_atom().is_none()
+        {
+            return None;
+        }
+
         Some(Self { ptr })
     }
 
@@ -403,6 +413,12 @@ pub struct ExternalReference {
 impl ExternalReference {
     pub fn new(term: Term) -> Option<Self> {
         let ptr = header_ptr(term, BoxedTag::ExternalReference)?;
+        if BoxedHeader::size(word_at(ptr, 0)) != 2
+            || Term::from_raw(word_at(ptr, 1)).as_atom().is_none()
+        {
+            return None;
+        }
+
         Some(Self { ptr })
     }
 
@@ -418,6 +434,11 @@ impl ExternalReference {
         // SAFETY: external reference payload contains fixed words after the header.
         unsafe { *self.ptr.add(offset) }
     }
+}
+
+fn word_at(ptr: *const u64, offset: usize) -> u64 {
+    // SAFETY: caller has verified that `ptr` is a boxed object header pointer.
+    unsafe { *ptr.add(offset) }
 }
 
 fn header_ptr(term: Term, expected_tag: BoxedTag) -> Option<*const u64> {
