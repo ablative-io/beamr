@@ -95,12 +95,6 @@ impl SharedState {
         self.ets_registry.delete_table(id)
     }
 
-    pub(super) fn delete_tables_owned_by(&self, owner: u64) -> usize {
-        let before = self.ets_registry.table_count();
-        self.ets_registry.delete_tables_owned_by(owner);
-        before.saturating_sub(self.ets_registry.table_count())
-    }
-
     pub(super) fn transfer_or_delete_tables_owned_by(&self, owner: u64) -> usize {
         let before = self.ets_registry.table_count();
         let owned_ids = self.ets_registry.tables_owned_by(owner);

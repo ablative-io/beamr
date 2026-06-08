@@ -1,1 +1,1 @@
-feat(ets): support heir transfer and give_away
+fix(ets): remove dead owner-delete helper
