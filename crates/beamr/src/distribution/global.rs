@@ -96,7 +96,6 @@ pub enum GlobalNameError {
 }
 
 /// In-memory global name registry with deterministic merge semantics.
-#[derive(Debug)]
 pub struct GlobalNameRegistry {
     local_node: Node,
     atom_table: Arc<AtomTable>,
