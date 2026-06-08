@@ -1,1 +1,1 @@
-fix(ets): harden match variable binding allocation
+feat(beamr): add UDP socket BIFs over completion ring

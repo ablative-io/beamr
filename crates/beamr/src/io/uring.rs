@@ -42,6 +42,19 @@ enum InFlightOp {
     Connect {
         storage: Box<libc::sockaddr_storage>,
     },
+    SendMsg {
+        data: Vec<u8>,
+        storage: Box<libc::sockaddr_storage>,
+        iov: Box<libc::iovec>,
+        msg: Box<libc::msghdr>,
+    },
+    RecvMsg {
+        buffer: Vec<u8>,
+        storage: Box<libc::sockaddr_storage>,
+        len: Box<libc::socklen_t>,
+        iov: Box<libc::iovec>,
+        msg: Box<libc::msghdr>,
+    },
     Close,
     Fsync,
     Openat {
@@ -322,6 +335,65 @@ fn build_entry(op_id: u64, op: IoOp) -> io::Result<(io_uring::squeue::Entry, InF
             .user_data(op_id);
             Ok((entry, InFlightOp::Connect { storage }))
         }
+        IoOp::SendMsg { fd, data, addr } => {
+            let (storage, len) = socket_addr_to_raw(addr);
+            let storage = Box::new(storage);
+            let iov = Box::new(libc::iovec {
+                iov_base: data.as_ptr().cast_mut().cast(),
+                iov_len: data.len(),
+            });
+            // SAFETY: zeroed msghdr is fully initialized with stable in-flight pointers below.
+            let mut msg = Box::new(unsafe { mem::zeroed::<libc::msghdr>() });
+            msg.msg_name = (&*storage as *const libc::sockaddr_storage)
+                .cast_mut()
+                .cast();
+            msg.msg_namelen = len;
+            msg.msg_iov = (&*iov as *const libc::iovec).cast_mut();
+            msg.msg_iovlen = 1;
+            let entry = opcode::SendMsg::new(types::Fd(fd), &*msg)
+                .build()
+                .user_data(op_id);
+            Ok((
+                entry,
+                InFlightOp::SendMsg {
+                    data,
+                    storage,
+                    iov,
+                    msg,
+                },
+            ))
+        }
+        IoOp::RecvMsg { fd, buf_len } => {
+            let mut buffer = vec![0_u8; buf_len];
+            // SAFETY: zeroed storage is filled by recvmsg on success before being decoded.
+            let storage = Box::new(unsafe { mem::zeroed::<libc::sockaddr_storage>() });
+            let len = Box::new(mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t);
+            let iov = Box::new(libc::iovec {
+                iov_base: buffer.as_mut_ptr().cast(),
+                iov_len: buffer.len(),
+            });
+            // SAFETY: zeroed msghdr is fully initialized with stable in-flight pointers below.
+            let mut msg = Box::new(unsafe { mem::zeroed::<libc::msghdr>() });
+            msg.msg_name = (&*storage as *const libc::sockaddr_storage)
+                .cast_mut()
+                .cast();
+            msg.msg_namelen = *len;
+            msg.msg_iov = (&*iov as *const libc::iovec).cast_mut();
+            msg.msg_iovlen = 1;
+            let entry = opcode::RecvMsg::new(types::Fd(fd), &mut *msg)
+                .build()
+                .user_data(op_id);
+            Ok((
+                entry,
+                InFlightOp::RecvMsg {
+                    buffer,
+                    storage,
+                    len,
+                    iov,
+                    msg,
+                },
+            ))
+        }
         IoOp::Close { fd } => Ok((
             opcode::Close::new(types::Fd(fd)).build().user_data(op_id),
             InFlightOp::Close,
@@ -403,6 +475,27 @@ fn decode_completion(op_id: u64, result: i32, op: InFlightOp) -> IoCompletion {
             sockaddr_to_addr(&storage).map(|addr| IoResult::Accepted(result, addr))
         }
         InFlightOp::Connect { storage: _storage } => Ok(IoResult::Connected),
+        InFlightOp::SendMsg {
+            data: _data,
+            storage: _storage,
+            iov: _iov,
+            msg: _msg,
+        } => Ok(IoResult::DatagramSent(result as usize)),
+        InFlightOp::RecvMsg {
+            mut buffer,
+            storage,
+            len: _len,
+            iov: _iov,
+            msg: _msg,
+        } => {
+            let bytes = result as usize;
+            buffer.truncate(bytes);
+            sockaddr_to_addr(&storage).map(|addr| IoResult::DatagramReceived {
+                bytes,
+                data: buffer,
+                addr,
+            })
+        }
         InFlightOp::Close => Ok(IoResult::Closed),
         InFlightOp::Fsync => Ok(IoResult::Synced),
         InFlightOp::Openat { path: _path } => Ok(IoResult::Opened(result)),
@@ -501,7 +594,7 @@ fn sockaddr_to_addr(storage: &libc::sockaddr_storage) -> io::Result<SocketAddr> 
             // SAFETY: family indicates storage contains sockaddr_in.
             let raw =
                 unsafe { *(storage as *const libc::sockaddr_storage).cast::<libc::sockaddr_in>() };
-            let ip = Ipv4Addr::from(u32::from_be(raw.sin_addr.s_addr).to_ne_bytes());
+            let ip = Ipv4Addr::from(raw.sin_addr.s_addr.to_ne_bytes());
             Ok(SocketAddr::V4(SocketAddrV4::new(
                 ip,
                 u16::from_be(raw.sin_port),

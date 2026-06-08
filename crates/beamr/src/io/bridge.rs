@@ -148,6 +148,8 @@ fn io_completion_to_term(result: io::Result<IoResult>) -> Term {
         Ok(IoResult::BytesRead(count, _)) | Ok(IoResult::BytesWritten(count)) => {
             usize_to_term(count)
         }
+        Ok(IoResult::DatagramSent(count)) => usize_to_term(count),
+        Ok(IoResult::DatagramReceived { bytes, .. }) => usize_to_term(bytes),
         Ok(IoResult::Accepted(fd, _)) | Ok(IoResult::Opened(fd)) => i64_to_term(i64::from(fd)),
         Ok(IoResult::Connected)
         | Ok(IoResult::Closed)
