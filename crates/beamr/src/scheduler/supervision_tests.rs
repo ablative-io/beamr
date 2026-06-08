@@ -125,6 +125,7 @@ fn make_executing(shared: &SharedState, pid: u64) -> Process {
             let metadata = ProcessMetadata {
                 namespace_id: process.namespace_id(),
                 links: process.links().to_vec(),
+                remote_links: process.remote_links().to_vec(),
                 monitors: process.monitors().to_vec(),
                 trap_exit: process.trap_exit(),
                 priority: process.priority(),

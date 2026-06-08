@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::atom::AtomTable;
+use crate::distribution::control::DistributionControlFacility;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
 use crate::io::{
     CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode,
@@ -188,6 +189,7 @@ pub struct ProcessContext<'process> {
     atom_table: Option<Arc<AtomTable>>,
     spawn_facility: Option<Arc<dyn SpawnFacility>>,
     link_facility: Option<Arc<dyn LinkFacility>>,
+    distribution_control_facility: Option<Arc<dyn DistributionControlFacility>>,
     group_leader_facility: Option<Arc<dyn GroupLeaderFacility>>,
     supervision_facility: Option<Arc<dyn SupervisionFacility>>,
     code_management_facility: Option<Arc<dyn CodeManagementFacility>>,
@@ -222,6 +224,10 @@ impl fmt::Debug for ProcessContext<'_> {
                 &self.spawn_facility.as_ref().map(|_| ".."),
             )
             .field("link_facility", &self.link_facility.as_ref().map(|_| ".."))
+            .field(
+                "distribution_control_facility",
+                &self.distribution_control_facility.as_ref().map(|_| ".."),
+            )
             .field(
                 "group_leader_facility",
                 &self.group_leader_facility.as_ref().map(|_| ".."),
@@ -293,6 +299,7 @@ impl<'process> ProcessContext<'process> {
             atom_table: None,
             spawn_facility: None,
             link_facility: None,
+            distribution_control_facility: None,
             group_leader_facility: None,
             supervision_facility: None,
             code_management_facility: None,
@@ -326,6 +333,7 @@ impl<'process> ProcessContext<'process> {
             atom_table: None,
             spawn_facility: None,
             link_facility: None,
+            distribution_control_facility: None,
             group_leader_facility: None,
             supervision_facility: None,
             code_management_facility: None,
@@ -456,6 +464,20 @@ impl<'process> ProcessContext<'process> {
     /// Set the link facility for link management BIFs.
     pub fn set_link_facility(&mut self, facility: Option<Arc<dyn LinkFacility>>) {
         self.link_facility = facility;
+    }
+
+    /// Return the distribution control facility, if one has been configured.
+    #[must_use]
+    pub fn distribution_control_facility(&self) -> Option<&dyn DistributionControlFacility> {
+        self.distribution_control_facility.as_deref()
+    }
+
+    /// Set the distribution control facility for remote link lifecycle BIFs.
+    pub fn set_distribution_control_facility(
+        &mut self,
+        facility: Option<Arc<dyn DistributionControlFacility>>,
+    ) {
+        self.distribution_control_facility = facility;
     }
 
     /// Return the group-leader facility, if one has been configured.

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::ets::{EtsTableId, OwnedTerm};
 use crate::io::resource::FdInner;
 use crate::namespace::NamespaceId;
-use crate::process::{ExitReason, Monitor, Priority};
+use crate::process::{ExitReason, Monitor, Priority, RemotePid};
 use crate::term::Term;
 
 use super::ScheduledProcess;
@@ -28,9 +28,19 @@ pub struct TcpActiveMessage {
     pub bytes: Vec<u8>,
 }
 
+/// Source endpoint for a pending trapped EXIT message.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(super) enum PendingExitSource {
+    /// Local immediate PID source.
+    Local(u64),
+    /// Remote boxed PID source.
+    Remote(RemotePid),
+}
+
 pub(super) struct ProcessMetadata {
     pub(super) namespace_id: NamespaceId,
     pub(super) links: Vec<u64>,
+    pub(super) remote_links: Vec<RemotePid>,
     pub(super) monitors: Vec<Monitor>,
     pub(super) trap_exit: bool,
     pub(super) priority: Priority,
@@ -39,7 +49,7 @@ pub(super) struct ProcessMetadata {
     pub(super) binary_heap_size: usize,
     pub(super) message_queue_len: usize,
     pub(super) group_leader: Term,
-    pub(super) pending_exit_messages: Vec<(u64, ExitReason)>,
+    pub(super) pending_exit_messages: Vec<(PendingExitSource, ExitReason)>,
     pub(super) pending_down_messages: Vec<(u64, u64, ExitReason)>,
     pub(super) pending_io_messages: Vec<Term>,
     pub(super) pending_ets_transfer_messages: Vec<PendingEtsTransferMessage>,
@@ -56,6 +66,16 @@ impl ProcessMetadata {
 
     pub(super) fn remove_link(&mut self, pid: u64) {
         self.links.retain(|linked_pid| *linked_pid != pid);
+    }
+
+    pub(super) fn add_remote_link(&mut self, pid: RemotePid) {
+        if !self.remote_links.contains(&pid) {
+            self.remote_links.push(pid);
+        }
+    }
+
+    pub(super) fn remove_remote_link(&mut self, pid: RemotePid) {
+        self.remote_links.retain(|linked_pid| *linked_pid != pid);
     }
 
     pub(super) fn add_monitor(&mut self, monitor: Monitor) {

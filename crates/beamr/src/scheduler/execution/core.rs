@@ -9,6 +9,7 @@ use crate::native::{ExceptionClass, NativeEntry, ProcessContext};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{CodePosition, ExitReason, Process, ProcessStatus};
 use crate::scheduler::dirty::{DirtyJob, DirtyResult, DirtySchedulerKind, oneshot};
+use crate::scheduler::process_slot::PendingExitSource;
 use crate::term::{Term, boxed::BoxedTag};
 use std::sync::Arc;
 
@@ -94,6 +95,7 @@ pub(in crate::scheduler) fn take_runnable_process(
             let metadata = ProcessMetadata {
                 namespace_id: process.namespace_id(),
                 links: process.links().to_vec(),
+                remote_links: process.remote_links().to_vec(),
                 monitors: process.monitors().to_vec(),
                 trap_exit: process.trap_exit(),
                 priority: process.priority(),
@@ -128,6 +130,14 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
             for linked_pid in &metadata.links {
                 process.add_link(*linked_pid);
             }
+            for linked_pid in process.remote_links().to_vec() {
+                if !metadata.remote_links.contains(&linked_pid) {
+                    process.remove_remote_link(linked_pid);
+                }
+            }
+            for linked_pid in &metadata.remote_links {
+                process.add_remote_link(*linked_pid);
+            }
             for monitor in process.monitors().to_vec() {
                 if !metadata
                     .monitors
@@ -147,11 +157,22 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
                 }
             }
             for (source_pid, reason) in metadata.pending_exit_messages.drain(..) {
-                crate::supervision::link::enqueue_exit_message_pub(
-                    &mut process,
-                    source_pid,
-                    reason,
-                );
+                match source_pid {
+                    PendingExitSource::Local(source_pid) => {
+                        crate::supervision::link::enqueue_exit_message_pub(
+                            &mut process,
+                            source_pid,
+                            reason,
+                        );
+                    }
+                    PendingExitSource::Remote(source_pid) => {
+                        crate::supervision::link::enqueue_remote_exit_message_pub(
+                            &mut process,
+                            source_pid,
+                            reason,
+                        );
+                    }
+                }
             }
             for (reference, target_pid, reason) in metadata.pending_down_messages.drain(..) {
                 crate::supervision::monitor::enqueue_down_message_pub(

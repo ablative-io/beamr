@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::atom::AtomTable;
 use crate::distribution::Node;
+use crate::distribution::control::DistributionControlFacility;
 use crate::error::ExecError;
 use crate::io::{IoFacility, IoSink};
 use crate::module::{Module, ModuleRegistry};
@@ -40,6 +41,8 @@ pub struct NativeServices {
     pub spawn_facility: Option<Arc<dyn SpawnFacility>>,
     /// Link facility for link management BIFs.
     pub link_facility: Option<Arc<dyn LinkFacility>>,
+    /// Distribution control facility for remote link lifecycle BIFs.
+    pub distribution_control_facility: Option<Arc<dyn DistributionControlFacility>>,
     /// Group-leader facility for process metadata BIFs.
     pub group_leader_facility: Option<Arc<dyn GroupLeaderFacility>>,
     /// Supervision facility for monitor/demonitor/exit BIFs.
@@ -120,6 +123,7 @@ pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, Ex
         timers: None,
         spawn_facility: None,
         link_facility: None,
+        distribution_control_facility: None,
         group_leader_facility: None,
         supervision_facility: None,
         process_info_facility: None,
@@ -147,6 +151,7 @@ pub fn run_with_registry(
         timers: None,
         spawn_facility: None,
         link_facility: None,
+        distribution_control_facility: None,
         group_leader_facility: None,
         supervision_facility: None,
         process_info_facility: None,
@@ -174,6 +179,7 @@ pub fn run_with_timer_services(
         timers: Some(timers),
         spawn_facility: None,
         link_facility: None,
+        distribution_control_facility: None,
         group_leader_facility: None,
         supervision_facility: None,
         process_info_facility: None,

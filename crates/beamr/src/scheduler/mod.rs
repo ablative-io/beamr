@@ -12,8 +12,10 @@ use self::dirty::DirtyPool;
 use self::execution::scheduler_loop;
 use self::spawning::SpawnRequest;
 use crate::atom::AtomTable;
-use crate::distribution::{DEFAULT_NODE_NAME, Node};
 use crate::distribution::DistributionConfig;
+use crate::distribution::connection::ConnectionManager;
+use crate::distribution::control::ControlRouter;
+use crate::distribution::{DEFAULT_NODE_NAME, Node};
 
 use crate::error::ExecError;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
@@ -54,7 +56,6 @@ pub struct SchedulerConfig {
     pub node_name: Option<String>,
     pub creation: Option<u32>,
     pub distribution: Option<DistributionConfig>,
-
 }
 pub(super) struct SharedState {
     shutdown: AtomicBool,
@@ -90,6 +91,8 @@ pub(super) struct SharedState {
     monitor_set: Mutex<MonitorSet>,
     hook: Hook,
     distribution: DistributionConfig,
+    control_router: ControlRouter,
+    connection_manager: ConnectionManager,
     timers: Arc<Mutex<TimerWheel>>,
     output_sink: Mutex<Arc<dyn IoSink>>,
     io_ring: Option<Arc<dyn CompletionRing>>,
@@ -319,6 +322,8 @@ impl Scheduler {
         );
         let standard_io_server =
             StandardIoServer::new(standard_io_pid, standard_io_ring, atom_table.as_ref());
+        let connection_manager =
+            ConnectionManager::new(Arc::clone(&atom_table), Arc::clone(&distribution.resolver));
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
@@ -353,6 +358,8 @@ impl Scheduler {
             monitor_set: Mutex::new(MonitorSet::new()),
             hook: Hook::new(),
             distribution,
+            control_router: ControlRouter::new(),
+            connection_manager,
             timers: Arc::new(Mutex::new(TimerWheel::new())),
             output_sink: Mutex::new(Arc::new(NullSink)),
             io_ring,
@@ -376,6 +383,17 @@ impl Scheduler {
             let target: Arc<dyn IoWakeTarget> = shared.clone();
             let bridge = IoCompletionBridge::start(Arc::clone(ring), Arc::clone(registry), target);
             *lock_or_recover(&shared.io_bridge) = Some(bridge);
+        }
+        {
+            let shared_for_connection_down = Arc::clone(&shared);
+            shared
+                .connection_manager
+                .register_connection_down(move |event| {
+                    supervision_integration::connection_down(
+                        &shared_for_connection_down,
+                        event.node,
+                    );
+                });
         }
         let inject_queues: Vec<_> = (0..thread_count)
             .map(|_| Arc::new(SegQueue::new()))
