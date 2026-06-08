@@ -32,6 +32,13 @@ pub trait EtsFacility: Send + Sync {
     fn delete_table(&self, id: EtsTableId) -> bool;
     /// Transfer table ownership to a new process id.
     fn transfer_table_owner(&self, id: EtsTableId, new_owner: u64) -> bool;
+    /// Transfer table ownership only when it is still owned by `expected_owner`.
+    fn transfer_table_owner_if_owned(
+        &self,
+        id: EtsTableId,
+        expected_owner: u64,
+        new_owner: u64,
+    ) -> bool;
 }
 
 /// Scheduler-facing process mailbox delivery used by cross-process ETS messages.
@@ -63,6 +70,15 @@ impl EtsFacility for EtsRegistry {
 
     fn transfer_table_owner(&self, id: EtsTableId, new_owner: u64) -> bool {
         self.transfer_table_owner(id, new_owner)
+    }
+
+    fn transfer_table_owner_if_owned(
+        &self,
+        id: EtsTableId,
+        expected_owner: u64,
+        new_owner: u64,
+    ) -> bool {
+        self.transfer_table_owner_if_owned(id, expected_owner, new_owner)
     }
 }
 
@@ -208,7 +224,7 @@ pub fn bif_give_away(args: &[Term], context: &mut ProcessContext) -> Result<Term
         .deliver_message(recipient_pid, message)
         .map_err(ets_error_to_badarg)?;
     let facility = context.ets_facility().ok_or_else(badarg)?;
-    if !facility.transfer_table_owner(metadata.id, recipient_pid) {
+    if !facility.transfer_table_owner_if_owned(metadata.id, caller, recipient_pid) {
         return Err(badarg());
     }
     Ok(Term::atom(Atom::TRUE))

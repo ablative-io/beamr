@@ -89,6 +89,21 @@ impl SharedState {
     }
 
     #[must_use]
+    pub(super) fn transfer_table_owner_if_owned(
+        &self,
+        id: EtsTableId,
+        expected_owner: u64,
+        new_owner: u64,
+    ) -> bool {
+        self.ets_registry
+            .transfer_table_owner_if_owned(id, expected_owner, new_owner)
+    }
+
+    pub(super) fn delete_table_if_owned(&self, id: EtsTableId, owner: u64) -> bool {
+        self.ets_registry.delete_table_if_owned(id, owner)
+    }
+
+    #[must_use]
     pub(super) fn tables_owned_by(&self, owner: u64) -> Vec<(EtsTableId, EtsTableMetadata)> {
         self.ets_registry.tables_owned_by(owner)
     }

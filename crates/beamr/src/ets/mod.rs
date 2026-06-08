@@ -69,6 +69,16 @@ impl EtsRegistry {
         true
     }
 
+    pub fn transfer_table_owner_if_owned(
+        &self,
+        id: EtsTableId,
+        expected_owner: u64,
+        new_owner: u64,
+    ) -> bool {
+        self.lookup_table(id)
+            .is_some_and(|table| table.set_owner_if_owned(expected_owner, new_owner))
+    }
+
     pub fn create_table(&self, mut metadata: EtsTableMetadata) -> EtsTableId {
         if metadata.id == 0 {
             metadata.id = self.allocate_table_id();
@@ -162,6 +172,19 @@ impl EtsRegistry {
 
     pub fn delete_table(&self, id: EtsTableId) -> bool {
         let Some(table) = self.tables.remove(&id).map(|(_, v)| v) else {
+            return false;
+        };
+        if let Some(name) = table.metadata().name {
+            self.names.remove_if(&name, |_, table_id| *table_id == id);
+        }
+        true
+    }
+
+    pub fn delete_table_if_owned(&self, id: EtsTableId, owner_pid: u64) -> bool {
+        let Some((_, table)) = self
+            .tables
+            .remove_if(&id, |_, table| table.metadata().owner == owner_pid)
+        else {
             return false;
         };
         if let Some(name) = table.metadata().name {

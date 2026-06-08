@@ -1,1 +1,1 @@
-feat(beamr): implement ETS ownership transfer
+Harden ETS ownership transfer for heir and give_away

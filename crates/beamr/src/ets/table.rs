@@ -133,6 +133,7 @@ impl std::error::Error for EtsError {}
 pub trait EtsTable: Send + Sync {
     fn metadata(&self) -> EtsTableMetadata;
     fn set_owner(&self, owner: u64);
+    fn set_owner_if_owned(&self, expected_owner: u64, new_owner: u64) -> bool;
     fn insert(&self, tuple: Term) -> Result<(), EtsError>;
     fn lookup(&self, key: Term) -> Vec<Term>;
     fn delete_key(&self, key: Term) -> bool;
@@ -192,6 +193,10 @@ mod tests {
         }
 
         fn set_owner(&self, _owner: u64) {}
+
+        fn set_owner_if_owned(&self, _expected_owner: u64, _new_owner: u64) -> bool {
+            false
+        }
 
         fn insert(&self, _tuple: Term) -> Result<(), EtsError> {
             Ok(())

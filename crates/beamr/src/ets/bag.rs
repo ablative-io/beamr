@@ -37,6 +37,18 @@ impl EtsTable for EtsBag {
             .owner = owner;
     }
 
+    fn set_owner_if_owned(&self, expected_owner: u64, new_owner: u64) -> bool {
+        let mut metadata = self
+            .metadata
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if metadata.owner != expected_owner {
+            return false;
+        }
+        metadata.owner = new_owner;
+        true
+    }
+
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {
         insert_bag_tuple(
             &self.storage,
@@ -89,6 +101,18 @@ impl EtsTable for EtsDuplicateBag {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .owner = owner;
+    }
+
+    fn set_owner_if_owned(&self, expected_owner: u64, new_owner: u64) -> bool {
+        let mut metadata = self
+            .metadata
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if metadata.owner != expected_owner {
+            return false;
+        }
+        metadata.owner = new_owner;
+        true
     }
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {

@@ -463,19 +463,19 @@ fn transfer_or_delete_tables_owned_by(shared: &SharedState, owner_pid: u64) {
             data,
         } = metadata.heir
         else {
-            let _deleted = shared.delete_table(table_id);
+            let _deleted = shared.delete_table_if_owned(table_id, owner_pid);
             continue;
         };
         if heir_pid == owner_pid {
-            let _deleted = shared.delete_table(table_id);
+            let _deleted = shared.delete_table_if_owned(table_id, owner_pid);
             continue;
         }
         let Ok(table_id_i64) = i64::try_from(table_id) else {
-            let _deleted = shared.delete_table(table_id);
+            let _deleted = shared.delete_table_if_owned(table_id, owner_pid);
             continue;
         };
         let Some(tab) = Term::try_small_int(table_id_i64) else {
-            let _deleted = shared.delete_table(table_id);
+            let _deleted = shared.delete_table_if_owned(table_id, owner_pid);
             continue;
         };
         let mut scratch = Process::new(owner_pid, 16);
@@ -485,15 +485,15 @@ fn transfer_or_delete_tables_owned_by(shared: &SharedState, owner_pid: u64) {
         let Ok(message) =
             crate::native::ets_bifs::ets_transfer_message(tab, owner_pid, data, &mut context)
         else {
-            let _deleted = shared.delete_table(table_id);
+            let _deleted = shared.delete_table_if_owned(table_id, owner_pid);
             continue;
         };
         if shared.deliver_process_message(heir_pid, message).is_ok()
-            && shared.transfer_table_owner(table_id, heir_pid)
+            && shared.transfer_table_owner_if_owned(table_id, owner_pid, heir_pid)
         {
             continue;
         }
-        let _deleted = shared.delete_table(table_id);
+        let _deleted = shared.delete_table_if_owned(table_id, owner_pid);
     }
 }
 
