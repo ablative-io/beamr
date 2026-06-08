@@ -314,10 +314,13 @@ fn remote_spawn_impl(
     let result = facility
         .remote_spawn(caller_pid, node, module, function, spawn_args, options)
         .map_err(|_| badarg())?;
-    let pid_term = context.alloc_external_pid(result.node, result.pid_number, result.serial)?;
+    if result.node != node {
+        return Err(badarg());
+    }
+    let pid_term = context.alloc_external_pid(node, result.pid_number, result.serial)?;
     if kind == RemoteSpawnKind::Monitor {
         let reference = result.monitor_reference.ok_or_else(badarg)?;
-        let reference_term = context.alloc_external_reference(result.node, reference)?;
+        let reference_term = context.alloc_external_reference(node, reference)?;
         context.alloc_tuple(&[pid_term, reference_term])
     } else {
         Ok(pid_term)

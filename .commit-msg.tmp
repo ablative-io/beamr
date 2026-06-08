@@ -1,1 +1,1 @@
-feat(beamr): add remote spawn control messages
+Harden remote spawn control reply PID qualification and remote BIF node validation

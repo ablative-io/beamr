@@ -215,9 +215,20 @@ pub fn handle_spawn_request(
             request.options,
         )
         .map_err(SpawnRequestError::Spawn)?;
-    let pid_term = Term::try_pid(result.pid).ok_or(SpawnRequestError::PidOutOfRange)?;
+    let pid_term = spawn_reply_pid(context, result.pid)?;
     alloc_spawn_reply(context, request.request_id, pid_term)
         .map_err(|_| SpawnRequestError::PidOutOfRange)
+}
+
+fn spawn_reply_pid(context: &mut ProcessContext<'_>, pid: u64) -> Result<Term, SpawnRequestError> {
+    if let Some(local_node) = context.local_node() {
+        let pid_number = u32::try_from(pid).map_err(|_| SpawnRequestError::PidOutOfRange)?;
+        return context
+            .alloc_external_pid(local_node.name, u64::from(pid_number), 0)
+            .map_err(|_| SpawnRequestError::PidOutOfRange);
+    }
+
+    Term::try_pid(pid).ok_or(SpawnRequestError::PidOutOfRange)
 }
 
 fn parse_mfa(term: Term) -> Result<RemoteMfa, ControlDecodeError> {
@@ -306,9 +317,11 @@ fn badarg() -> Term {
 mod tests {
     use super::*;
     use crate::atom::AtomTable;
+    use crate::distribution::Node;
     use crate::native::spawn::{SpawnMonitorResult, SpawnOptionsResult};
     use crate::process::Process;
     use crate::term::boxed::{Tuple, write_cons, write_external_pid, write_tuple};
+    use crate::term::pid_ref::PidRef;
     use std::sync::{Arc, Mutex};
 
     struct MockSpawnFacility {
@@ -470,10 +483,12 @@ mod tests {
         let module = atoms.intern("sample");
         let function = atoms.intern("run");
         let link = atoms.intern("link");
+        let local_node_name = atoms.intern("local@host");
         let mut process = Process::new(100, 128);
         let mut context = ProcessContext::new();
         context.set_pid(Some(100));
         context.set_atom_table(Some(atoms));
+        context.set_local_node(Some(Node::new(local_node_name, 0)));
         context.attach_process(&mut process, 0);
 
         let mut mfa_heap = [0_u64; 4];
@@ -504,7 +519,10 @@ mod tests {
         let decoded = decode_spawn_reply(reply).expect("reply decodes");
 
         assert_eq!(decoded.request_id, 5);
-        assert_eq!(decoded.pid, Term::pid(321));
+        let pid = PidRef::new(decoded.pid).expect("reply pid");
+        assert!(!pid.is_local());
+        assert_eq!(pid.node(), Some(local_node_name));
+        assert_eq!(pid.pid_number(), 321);
         let records = facility
             .records
             .lock()

@@ -121,6 +121,51 @@ fn remote_spawn_arities_are_registered() {
 }
 
 #[test]
+fn remote_spawn_badarg_without_facility() {
+    let atoms = Arc::new(AtomTable::with_common_atoms());
+    let node = atoms.intern("remote@host");
+    let module = atoms.intern("sample");
+    let function = atoms.intern("run");
+    let mut process = Process::new(10, 128);
+    let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
+    ctx.set_pid(Some(10));
+    ctx.set_atom_table(Some(atoms));
+
+    assert_eq!(
+        bif_spawn_4(
+            &[
+                Term::atom(node),
+                Term::atom(module),
+                Term::atom(function),
+                Term::NIL,
+            ],
+            &mut ctx,
+        ),
+        Err(badarg()),
+    );
+}
+
+#[test]
+fn remote_spawn_rejects_reply_for_unrequested_node() {
+    let (facility, mut ctx, node, module, function) = remote_spawn_ctx(80, None);
+    facility.set_reply_node(Atom::OK);
+
+    assert_eq!(
+        bif_spawn_4(
+            &[
+                Term::atom(node),
+                Term::atom(module),
+                Term::atom(function),
+                Term::NIL,
+            ],
+            &mut ctx,
+        ),
+        Err(badarg()),
+    );
+}
+
+#[test]
 fn process_flag_priority_sets_high_and_returns_old_priority() {
     let atom_table = Arc::new(AtomTable::with_common_atoms());
     let mut process = Process::new(1, 128);
@@ -996,6 +1041,7 @@ struct MockRemoteSpawnFacility {
     pid_number: u64,
     serial: u64,
     monitor_reference: Option<u64>,
+    reply_node: Mutex<Option<Atom>>,
     records: Mutex<Vec<RemoteSpawnRecord>>,
 }
 
@@ -1005,6 +1051,7 @@ impl MockRemoteSpawnFacility {
             pid_number,
             serial: 0,
             monitor_reference,
+            reply_node: Mutex::new(None),
             records: Mutex::new(Vec::new()),
         }
     }
@@ -1014,6 +1061,13 @@ impl MockRemoteSpawnFacility {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .clone()
+    }
+
+    fn set_reply_node(&self, node: Atom) {
+        *self
+            .reply_node
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(node);
     }
 }
 
@@ -1031,8 +1085,13 @@ impl RemoteSpawnFacility for MockRemoteSpawnFacility {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .push((caller_pid, node, module, function, args, options));
+        let reply_node = self
+            .reply_node
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or(node);
         Ok(RemoteSpawnResult {
-            node,
+            node: reply_node,
             pid_number: self.pid_number,
             serial: self.serial,
             monitor_reference: self.monitor_reference,
@@ -1055,7 +1114,9 @@ fn remote_spawn_ctx(
     let module = atoms.intern("sample");
     let function = atoms.intern("run");
     let facility = Arc::new(MockRemoteSpawnFacility::new(pid_number, monitor_reference));
+    let process = Box::leak(Box::new(Process::new(10, 128)));
     let mut ctx = ProcessContext::new();
+    ctx.attach_process(process, 0);
     ctx.set_pid(Some(10));
     ctx.set_atom_table(Some(atoms));
     ctx.set_remote_spawn_facility(Some(facility.clone()));
