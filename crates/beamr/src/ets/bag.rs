@@ -1,4 +1,5 @@
 use dashmap::{DashMap, mapref::entry::Entry};
+use std::sync::Mutex;
 
 use crate::term::Term;
 use crate::term::hash::EtsKey;
@@ -7,7 +8,7 @@ use super::{EtsError, EtsTable, EtsTableMetadata, tuple_key};
 
 /// ETS bag table storage: many distinct tuples per key.
 pub struct EtsBag {
-    metadata: EtsTableMetadata,
+    metadata: Mutex<EtsTableMetadata>,
     storage: DashMap<EtsKey, Vec<Term>>,
 }
 
@@ -15,21 +16,31 @@ impl EtsBag {
     #[must_use]
     pub fn new(metadata: EtsTableMetadata) -> Self {
         Self {
-            metadata,
+            metadata: Mutex::new(metadata),
             storage: DashMap::new(),
         }
     }
 }
 
 impl EtsTable for EtsBag {
-    fn metadata(&self) -> &EtsTableMetadata {
-        &self.metadata
+    fn metadata(&self) -> EtsTableMetadata {
+        self.metadata
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    }
+
+    fn set_owner(&self, owner: u64) {
+        self.metadata
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .owner = owner;
     }
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {
         insert_bag_tuple(
             &self.storage,
-            tuple_key(tuple, self.metadata.keypos)?,
+            tuple_key(tuple, self.metadata().keypos)?,
             tuple,
             false,
         );
@@ -51,7 +62,7 @@ impl EtsTable for EtsBag {
 
 /// ETS duplicate_bag table storage: many tuples per key, preserving duplicates.
 pub struct EtsDuplicateBag {
-    metadata: EtsTableMetadata,
+    metadata: Mutex<EtsTableMetadata>,
     storage: DashMap<EtsKey, Vec<Term>>,
 }
 
@@ -59,21 +70,31 @@ impl EtsDuplicateBag {
     #[must_use]
     pub fn new(metadata: EtsTableMetadata) -> Self {
         Self {
-            metadata,
+            metadata: Mutex::new(metadata),
             storage: DashMap::new(),
         }
     }
 }
 
 impl EtsTable for EtsDuplicateBag {
-    fn metadata(&self) -> &EtsTableMetadata {
-        &self.metadata
+    fn metadata(&self) -> EtsTableMetadata {
+        self.metadata
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    }
+
+    fn set_owner(&self, owner: u64) {
+        self.metadata
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .owner = owner;
     }
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {
         insert_bag_tuple(
             &self.storage,
-            tuple_key(tuple, self.metadata.keypos)?,
+            tuple_key(tuple, self.metadata().keypos)?,
             tuple,
             true,
         );

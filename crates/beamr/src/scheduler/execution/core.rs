@@ -1,6 +1,7 @@
 //! Private process time-slice execution helpers.
 
 use crate::atom::Atom;
+use crate::ets::EtsHeir;
 use crate::gc::release_all_refcounted_resources;
 use crate::hook::HookDecision;
 use crate::interpreter::{self, ExecutionResult};
@@ -445,7 +446,7 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     reason: ExitReason,
 ) {
     shared.exit_tombstones.insert(pid, reason);
-    let _deleted_tables = shared.delete_tables_owned_by(pid);
+    transfer_or_delete_tables_owned_by(shared, pid);
     supervision_integration::propagate_exit(shared, pid, reason);
     close_owned_fd_resources_on_exit(shared, pid);
     let _removed = shared.process_table.remove(pid);
@@ -453,6 +454,47 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     let mut wait_set = lock_or_recover(&shared.wait_set);
     wait_set.waiting.remove(&pid);
     wait_set.woken.retain(|(woken_pid, _)| *woken_pid != pid);
+}
+
+fn transfer_or_delete_tables_owned_by(shared: &SharedState, owner_pid: u64) {
+    for (table_id, metadata) in shared.tables_owned_by(owner_pid) {
+        let EtsHeir::Pid {
+            pid: heir_pid,
+            data,
+        } = metadata.heir
+        else {
+            let _deleted = shared.delete_table(table_id);
+            continue;
+        };
+        if heir_pid == owner_pid {
+            let _deleted = shared.delete_table(table_id);
+            continue;
+        }
+        let Ok(table_id_i64) = i64::try_from(table_id) else {
+            let _deleted = shared.delete_table(table_id);
+            continue;
+        };
+        let Some(tab) = Term::try_small_int(table_id_i64) else {
+            let _deleted = shared.delete_table(table_id);
+            continue;
+        };
+        let mut scratch = Process::new(owner_pid, 16);
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::clone(&shared.atom_table)));
+        context.attach_process(&mut scratch, 0);
+        let Ok(message) =
+            crate::native::ets_bifs::ets_transfer_message(tab, owner_pid, data, &mut context)
+        else {
+            let _deleted = shared.delete_table(table_id);
+            continue;
+        };
+        if shared.deliver_process_message(heir_pid, message).is_ok()
+            && shared.transfer_table_owner(table_id, heir_pid)
+        {
+            continue;
+        }
+        let _deleted = shared.delete_table(table_id);
+    }
 }
 
 fn close_owned_fd_resources_on_exit(shared: &SharedState, pid: u64) {

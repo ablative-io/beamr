@@ -323,6 +323,10 @@ pub(super) fn build_native_services(
         Arc::new(SchedulerSystemInfoFacility {
             shared: Arc::clone(shared),
         });
+    let process_delivery: Arc<dyn crate::native::ProcessDeliveryFacility> =
+        Arc::new(SchedulerProcessDeliveryFacility {
+            shared: Arc::clone(shared),
+        });
     let ets_facility: Arc<dyn crate::native::EtsFacility> = shared.ets_registry.clone();
     crate::interpreter::NativeServices {
         atom_table: Some(Arc::clone(&shared.atom_table)),
@@ -336,6 +340,7 @@ pub(super) fn build_native_services(
         io_sink: Some(Arc::clone(&lock_or_recover(&shared.output_sink))),
         code_management_facility: Some(code_management),
         system_info_facility: Some(system_info),
+        process_delivery_facility: Some(process_delivery),
     }
 }
 
@@ -364,6 +369,16 @@ pub(super) struct SchedulerSpawnFacility {
 
 pub(super) struct SchedulerSystemInfoFacility {
     pub(super) shared: Arc<SharedState>,
+}
+
+pub(super) struct SchedulerProcessDeliveryFacility {
+    pub(super) shared: Arc<SharedState>,
+}
+
+impl crate::native::ProcessDeliveryFacility for SchedulerProcessDeliveryFacility {
+    fn deliver_message(&self, target_pid: u64, message: Term) -> Result<(), crate::ets::EtsError> {
+        self.shared.deliver_process_message(target_pid, message)
+    }
 }
 
 impl crate::native::SystemInfoFacility for SchedulerSystemInfoFacility {

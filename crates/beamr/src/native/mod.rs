@@ -46,7 +46,7 @@ pub use code_management_bifs::CodeManagementFacility;
 pub use context::{
     ExceptionClass, NativeContinuation, ProcessContext, SuspendRequest, TrampolineRequest,
 };
-pub use ets_bifs::EtsFacility;
+pub use ets_bifs::{EtsFacility, ProcessDeliveryFacility};
 pub use group_leader::GroupLeaderFacility;
 pub use links::LinkFacility;
 pub use process_info_bifs::{

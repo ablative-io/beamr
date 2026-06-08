@@ -13,7 +13,7 @@ use self::execution::scheduler_loop;
 use self::spawning::SpawnRequest;
 use crate::atom::AtomTable;
 use crate::error::ExecError;
-use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
+use crate::ets::{EtsError, EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
 use crate::hook::Hook;
 use crate::io::{IoSink, NullSink};
 use crate::module::ModuleRegistry;
@@ -81,6 +81,36 @@ pub(super) struct SharedState {
 impl SharedState {
     pub(super) fn create_table(&self, metadata: EtsTableMetadata) -> EtsTableId {
         self.ets_registry.create_table(metadata)
+    }
+
+    #[must_use]
+    pub(super) fn transfer_table_owner(&self, id: EtsTableId, new_owner: u64) -> bool {
+        self.ets_registry.transfer_table_owner(id, new_owner)
+    }
+
+    #[must_use]
+    pub(super) fn tables_owned_by(&self, owner: u64) -> Vec<(EtsTableId, EtsTableMetadata)> {
+        self.ets_registry.tables_owned_by(owner)
+    }
+
+    pub(super) fn deliver_process_message(
+        &self,
+        target_pid: u64,
+        message: Term,
+    ) -> Result<(), EtsError> {
+        if self.process_table.get(target_pid).is_none() {
+            return Err(EtsError::Badarg);
+        }
+        let Some(entry) = self.process_bodies.get(&target_pid) else {
+            return Err(EtsError::Badarg);
+        };
+        let mut slot = lock_or_recover(&entry);
+        let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot else {
+            return Err(EtsError::Badarg);
+        };
+        let copied = crate::ets::copy_term_to_heap(message, process.heap_mut())?;
+        process.mailbox_mut().push_owned(copied);
+        Ok(())
     }
 
     pub(super) fn lookup_table(&self, id: EtsTableId) -> Option<Arc<dyn EtsTable>> {

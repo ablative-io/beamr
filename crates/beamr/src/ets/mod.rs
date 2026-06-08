@@ -23,7 +23,7 @@ pub use match_spec::{CompiledMatchSpec, MatchSpec, MatchSpecError};
 pub use ordered_set::EtsOrderedSet;
 pub use set::EtsSet;
 pub use table::{
-    AccessOp, EtsError, EtsTable, EtsTableId, EtsTableMetadata, EtsTableType, Protection,
+    AccessOp, EtsError, EtsHeir, EtsTable, EtsTableId, EtsTableMetadata, EtsTableType, Protection,
 };
 pub use term_key::TermKey;
 
@@ -48,6 +48,25 @@ impl EtsRegistry {
             tables: DashMap::new(),
             names: DashMap::new(),
         }
+    }
+
+    #[must_use]
+    pub fn tables_owned_by(&self, owner_pid: u64) -> Vec<(EtsTableId, EtsTableMetadata)> {
+        self.tables
+            .iter()
+            .filter_map(|entry| {
+                let metadata = entry.value().metadata();
+                (metadata.owner == owner_pid).then_some((*entry.key(), metadata))
+            })
+            .collect()
+    }
+
+    pub fn transfer_table_owner(&self, id: EtsTableId, new_owner: u64) -> bool {
+        let Some(table) = self.lookup_table(id) else {
+            return false;
+        };
+        table.set_owner(new_owner);
+        true
     }
 
     pub fn create_table(&self, mut metadata: EtsTableMetadata) -> EtsTableId {

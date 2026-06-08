@@ -14,6 +14,15 @@ pub enum EtsTableType {
     DuplicateBag,
 }
 
+/// ETS heir configured for ownership transfer when the owner exits.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum EtsHeir {
+    /// No heir is configured; owner exit deletes the table.
+    None,
+    /// Transfer the table to `pid` and include `data` in the ETS-TRANSFER message.
+    Pid { pid: u64, data: Term },
+}
+
 /// Access protection policy for a table.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Protection {
@@ -50,6 +59,8 @@ pub struct EtsTableMetadata {
     pub protection: Protection,
     /// Owning process identifier.
     pub owner: u64,
+    /// Optional process that inherits the table when the owner exits.
+    pub heir: EtsHeir,
     /// 1-based tuple element position used as the key.
     pub keypos: usize,
     /// Hint that table reads should be allowed to proceed concurrently.
@@ -74,6 +85,7 @@ impl EtsTableMetadata {
             table_type,
             protection,
             owner,
+            heir: EtsHeir::None,
             keypos: 1,
             read_concurrency: false,
             write_concurrency: false,
@@ -119,7 +131,8 @@ impl std::error::Error for EtsError {}
 /// Raw table operations do not carry a caller PID; the scheduler/BIF layer must
 /// call [`EtsTable::check_access`] before invoking reads or writes.
 pub trait EtsTable: Send + Sync {
-    fn metadata(&self) -> &EtsTableMetadata;
+    fn metadata(&self) -> EtsTableMetadata;
+    fn set_owner(&self, owner: u64);
     fn insert(&self, tuple: Term) -> Result<(), EtsError>;
     fn lookup(&self, key: Term) -> Vec<Term>;
     fn delete_key(&self, key: Term) -> bool;
@@ -164,6 +177,7 @@ mod tests {
                     table_type: EtsTableType::Set,
                     protection,
                     owner: 7,
+                    heir: EtsHeir::None,
                     keypos: 1,
                     read_concurrency: false,
                     write_concurrency: false,
@@ -173,9 +187,11 @@ mod tests {
     }
 
     impl EtsTable for DummyTable {
-        fn metadata(&self) -> &EtsTableMetadata {
-            &self.metadata
+        fn metadata(&self) -> EtsTableMetadata {
+            self.metadata.clone()
         }
+
+        fn set_owner(&self, _owner: u64) {}
 
         fn insert(&self, _tuple: Term) -> Result<(), EtsError> {
             Ok(())
@@ -202,6 +218,10 @@ mod tests {
             table_type: EtsTableType::Bag,
             protection: Protection::Protected,
             owner: 34,
+            heir: EtsHeir::Pid {
+                pid: 55,
+                data: Term::small_int(99),
+            },
             keypos: 2,
             read_concurrency: true,
             write_concurrency: true,
@@ -212,6 +232,13 @@ mod tests {
         assert_eq!(metadata.table_type, EtsTableType::Bag);
         assert_eq!(metadata.protection, Protection::Protected);
         assert_eq!(metadata.owner, 34);
+        assert_eq!(
+            metadata.heir,
+            EtsHeir::Pid {
+                pid: 55,
+                data: Term::small_int(99)
+            }
+        );
         assert_eq!(metadata.keypos, 2);
         assert!(metadata.read_concurrency);
         assert!(metadata.write_concurrency);
