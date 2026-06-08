@@ -470,7 +470,7 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
-        standard_io_server: crate::io::StandardIoServer::new(
+        _standard_io_server: crate::io::StandardIoServer::new(
             u64::MAX,
             Arc::from(crate::io::create_ring(RingConfig::default())),
             &crate::atom::AtomTable::new(),
@@ -746,7 +746,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
-        standard_io_server: crate::io::StandardIoServer::new(
+        _standard_io_server: crate::io::StandardIoServer::new(
             u64::MAX,
             Arc::from(crate::io::create_ring(RingConfig::default())),
             &crate::atom::AtomTable::new(),

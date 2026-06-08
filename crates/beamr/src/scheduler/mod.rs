@@ -91,7 +91,7 @@ pub(super) struct SharedState {
     io_bridge: Mutex<Option<IoCompletionBridge>>,
     io_facility: Option<Arc<dyn IoFacility>>,
     standard_io_pid: u64,
-    standard_io_server: StandardIoServer,
+    _standard_io_server: StandardIoServer,
     #[cfg(test)]
     idle_parks: AtomicUsize,
 }
@@ -312,7 +312,7 @@ impl Scheduler {
             io_bridge: Mutex::new(None),
             io_facility,
             standard_io_pid,
-            standard_io_server,
+            _standard_io_server: standard_io_server,
             #[cfg(test)]
             idle_parks: AtomicUsize::new(0),
         });
