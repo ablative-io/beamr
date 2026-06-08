@@ -2,6 +2,7 @@
 
 mod node;
 pub mod connection;
+pub mod handshake;
 pub mod resolver;
 
 pub use node::{DEFAULT_NODE_NAME, Node};
