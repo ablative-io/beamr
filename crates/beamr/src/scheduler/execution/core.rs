@@ -31,21 +31,11 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
     let Some(mut process) = take_runnable_process(shared, pid) else {
         return;
     };
-    let outcome = if pid == shared.standard_io_pid {
-        let facility = supervision_integration::SchedulerIoMessageFacility {
-            shared: Arc::clone(shared),
-        };
-        shared
-            .standard_io_server
-            .run_available(&mut process, &facility);
-        if process.mailbox().message_count() == 0 {
-            SliceOutcome::Wait(process)
-        } else {
-            SliceOutcome::Requeue(process)
-        }
-    } else {
-        execute_slice(shared, &mut process)
-    };
+    if pid == shared.standard_io_pid {
+        run_standard_io_process(shared, queue, pid, my_index, process);
+        return;
+    }
+    let outcome = execute_slice(shared, &mut process);
     if let Some(reason) = tombstone_reason(shared, pid) {
         store_runnable_process(shared, process);
         cleanup_exited_process(shared, pid, reason);
@@ -93,6 +83,32 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
             store_runnable_process(shared, process);
             cleanup_exited_process(shared, pid, reason);
         }
+    }
+}
+
+fn run_standard_io_process(
+    shared: &Arc<SharedState>,
+    queue: &RunQueue,
+    pid: u64,
+    my_index: usize,
+    mut process: Process,
+) {
+    let facility = supervision_integration::SchedulerIoMessageFacility {
+        shared: Arc::clone(shared),
+    };
+    shared
+        .standard_io_server
+        .run_available(&mut process, &facility);
+    let has_messages = process.mailbox().message_count() > 0;
+    store_runnable_process(shared, process);
+    if cleanup_if_tombstoned_after_store(shared, pid) {
+        return;
+    }
+    if has_messages {
+        queue.push_with_priority(pid, crate::process::Priority::Normal);
+    } else {
+        let mut ws = lock_or_recover(&shared.wait_set);
+        ws.waiting.insert(pid, my_index);
     }
 }
 

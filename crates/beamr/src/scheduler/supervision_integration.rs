@@ -7,7 +7,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::atom::Atom;
-use crate::io::{CompletionRing, IoOp};
+use crate::io::{CompletionRing, IoOp, IoWakeTarget};
 use crate::namespace::NamespaceId;
 use crate::native::links::{LinkError, LinkFacility};
 use crate::native::spawn::{

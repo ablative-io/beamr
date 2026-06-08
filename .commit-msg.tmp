@@ -1,1 +1,1 @@
-feat(beamr): route io BIFs through standard group leader
+fix(beamr): complete standard io verification fixes

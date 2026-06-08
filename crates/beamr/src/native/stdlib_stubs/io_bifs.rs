@@ -107,7 +107,7 @@ fn send_io_request_and_wait(
         facility.send_message(caller_pid, target_pid, message)
     };
     if !sent {
-        return Ok(error_tuple(context, Atom::NOPROC)?);
+        return error_tuple(context, Atom::NOPROC);
     }
     take_io_reply(reply_ref, context)?.map_or_else(
         || {
