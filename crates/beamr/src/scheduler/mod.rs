@@ -15,12 +15,12 @@ use crate::atom::AtomTable;
 use crate::error::ExecError;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
 use crate::hook::Hook;
-use crate::io::{IoSink, NullSink};
+use crate::io::{CompletionRing, IoCompletion, IoSink, NullSink, RingConfig};
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
 use crate::native::{
-    AllCapabilitiesPolicy, BifRegistryImpl, CapabilityPolicy, ProcessInfoItem, ProcessInfoStatus,
-    ProcessInfoValue, ProcessMonitorInfo,
+    AllCapabilitiesPolicy, BifRegistryImpl, CapabilityPolicy, FileIoCompletion, FileIoContinuation,
+    ProcessInfoItem, ProcessInfoStatus, ProcessInfoValue, ProcessMonitorInfo,
 };
 use crate::process::registry::ProcessTable;
 use crate::process::{ExitReason, Process, ProcessStatus};
@@ -69,6 +69,10 @@ pub(super) struct SharedState {
     exit_exceptions: DashMap<u64, crate::process::Exception>,
     async_results: DashMap<u64, Term>,
     dirty_results: DashMap<u64, DirtyResult>,
+    file_io_ring: Arc<dyn CompletionRing>,
+    file_io_pending: DashMap<u64, (u64, FileIoContinuation)>,
+    file_io_orphans: DashMap<u64, IoCompletion>,
+    file_io_results: DashMap<u64, FileIoCompletion>,
     link_set: Mutex<LinkSet>,
     monitor_set: Mutex<MonitorSet>,
     hook: Hook,
@@ -234,6 +238,10 @@ impl Scheduler {
             exit_exceptions: DashMap::new(),
             async_results: DashMap::new(),
             dirty_results: DashMap::new(),
+            file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
+            file_io_pending: DashMap::new(),
+            file_io_orphans: DashMap::new(),
+            file_io_results: DashMap::new(),
             link_set: Mutex::new(LinkSet::new()),
             monitor_set: Mutex::new(MonitorSet::new()),
             hook: Hook::new(),

@@ -37,6 +37,7 @@ impl Scheduler {
     pub fn shutdown(&self) {
         self.shared.dirty_cpu.shutdown();
         self.shared.dirty_io.shutdown();
+        self.shared.file_io_ring.shutdown();
         self.shared.shutdown.store(true, Ordering::Release);
         self.shared.wake_condvar.notify_all();
         let mut threads = lock_or_recover(&self.threads);
@@ -114,6 +115,7 @@ pub(in crate::scheduler) fn scheduler_loop(
         drain_injected(shared, queue, inject);
         if my_index == 0 {
             timer_integration::tick_timers(shared);
+            drain_file_io_completions(shared);
         }
         drain_woken(shared, queue, my_index);
         let pid = match queue.pop() {
@@ -164,6 +166,28 @@ pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
     if let Some(scheduler_index) = wait_set.waiting.remove(&pid) {
         wait_set.woken.push((pid, scheduler_index));
         shared.wake_condvar.notify_all();
+    }
+}
+
+fn drain_file_io_completions(shared: &SharedState) {
+    for completion in shared
+        .file_io_ring
+        .poll_completions(std::time::Duration::from_millis(0))
+    {
+        let op_id = completion.op_id;
+        if let Some((_, (pid, continuation))) = shared.file_io_pending.remove(&op_id) {
+            shared.file_io_results.insert(
+                pid,
+                crate::native::FileIoCompletion {
+                    op_id,
+                    continuation,
+                    completion,
+                },
+            );
+            wake_process(shared, pid);
+        } else {
+            shared.file_io_orphans.insert(op_id, completion);
+        }
     }
 }
 

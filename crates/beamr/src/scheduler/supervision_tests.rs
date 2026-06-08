@@ -11,6 +11,7 @@ use dashmap::DashMap;
 use super::*;
 use crate::atom::Atom;
 use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
+use crate::io::RingConfig;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
 use crate::process::ProcessStatus;
 use crate::process::registry::ProcessTable;
@@ -228,6 +229,10 @@ fn make_shared_state() -> Arc<SharedState> {
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
         dirty_results: DashMap::new(),
+        file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
+        file_io_pending: DashMap::new(),
+        file_io_orphans: DashMap::new(),
+        file_io_results: DashMap::new(),
     })
 }
 

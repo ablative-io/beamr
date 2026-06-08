@@ -10,7 +10,7 @@ use super::*;
 use crate::atom::{Atom, AtomTable};
 use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
 use crate::hook::{Hook, HookDecision};
-use crate::io::NullSink;
+use crate::io::{NullSink, RingConfig};
 use crate::loader::Instruction;
 use crate::loader::decode::compact::Operand;
 use crate::mailbox::Mailbox;
@@ -431,6 +431,10 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
         dirty_results: DashMap::new(),
+        file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
+        file_io_pending: DashMap::new(),
+        file_io_orphans: DashMap::new(),
+        file_io_results: DashMap::new(),
     });
     let mut process = Process::new(1, DEFAULT_HEAP_SIZE);
     process.set_code_position(Some(CodePosition {
@@ -692,6 +696,10 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         dirty_cpu: crate::scheduler::dirty::DirtyPool::new("test-cpu", 1),
         dirty_io: crate::scheduler::dirty::DirtyPool::new("test-io", 1),
         dirty_results: DashMap::new(),
+        file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
+        file_io_pending: DashMap::new(),
+        file_io_orphans: DashMap::new(),
+        file_io_results: DashMap::new(),
     });
     let pid = 1;
     shared.process_table.spawn_with_pid(pid);

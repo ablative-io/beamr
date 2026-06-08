@@ -44,6 +44,26 @@ impl Atom {
     pub const THROW: Self = Self(30);
     pub const EXIT_CLASS: Self = Self(31);
     pub const LINE: Self = Self(32);
+    pub const ENOENT: Self = Self(33);
+    pub const EACCES: Self = Self(34);
+    pub const EEXIST: Self = Self(35);
+    pub const EISDIR: Self = Self(36);
+    pub const ENOTDIR: Self = Self(37);
+    pub const ENOSPC: Self = Self(38);
+    pub const EMFILE: Self = Self(39);
+    pub const ENFILE: Self = Self(40);
+    pub const EBADF: Self = Self(41);
+    pub const EPIPE: Self = Self(42);
+    pub const EAGAIN: Self = Self(43);
+    pub const EINVAL: Self = Self(44);
+    pub const UNKNOWN_ERROR: Self = Self(45);
+    pub const CLOSED: Self = Self(46);
+    pub const INCOMPLETE: Self = Self(47);
+    pub const READ: Self = Self(48);
+    pub const WRITE: Self = Self(49);
+    pub const APPEND: Self = Self(50);
+    pub const CREATE: Self = Self(51);
+    pub const TRUNCATE: Self = Self(52);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -88,6 +108,26 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("throw", Atom::THROW),
     ("exit", Atom::EXIT_CLASS),
     ("line", Atom::LINE),
+    ("enoent", Atom::ENOENT),
+    ("eacces", Atom::EACCES),
+    ("eexist", Atom::EEXIST),
+    ("eisdir", Atom::EISDIR),
+    ("enotdir", Atom::ENOTDIR),
+    ("enospc", Atom::ENOSPC),
+    ("emfile", Atom::EMFILE),
+    ("enfile", Atom::ENFILE),
+    ("ebadf", Atom::EBADF),
+    ("epipe", Atom::EPIPE),
+    ("eagain", Atom::EAGAIN),
+    ("einval", Atom::EINVAL),
+    ("unknown_error", Atom::UNKNOWN_ERROR),
+    ("closed", Atom::CLOSED),
+    ("incomplete", Atom::INCOMPLETE),
+    ("read", Atom::READ),
+    ("write", Atom::WRITE),
+    ("append", Atom::APPEND),
+    ("create", Atom::CREATE),
+    ("truncate", Atom::TRUNCATE),
 ];
 
 /// Concurrent intern table for atom strings.
@@ -235,6 +275,26 @@ mod tests {
         assert_eq!(table.intern("throw"), Atom::THROW);
         assert_eq!(table.intern("exit"), Atom::EXIT_CLASS);
         assert_eq!(table.intern("ok"), Atom::OK);
+        assert_eq!(table.resolve(Atom::ENOENT), Some("enoent"));
+        assert_eq!(table.resolve(Atom::EACCES), Some("eacces"));
+        assert_eq!(table.resolve(Atom::EEXIST), Some("eexist"));
+        assert_eq!(table.resolve(Atom::EISDIR), Some("eisdir"));
+        assert_eq!(table.resolve(Atom::ENOTDIR), Some("enotdir"));
+        assert_eq!(table.resolve(Atom::ENOSPC), Some("enospc"));
+        assert_eq!(table.resolve(Atom::EMFILE), Some("emfile"));
+        assert_eq!(table.resolve(Atom::ENFILE), Some("enfile"));
+        assert_eq!(table.resolve(Atom::EBADF), Some("ebadf"));
+        assert_eq!(table.resolve(Atom::EPIPE), Some("epipe"));
+        assert_eq!(table.resolve(Atom::EAGAIN), Some("eagain"));
+        assert_eq!(table.resolve(Atom::EINVAL), Some("einval"));
+        assert_eq!(table.resolve(Atom::UNKNOWN_ERROR), Some("unknown_error"));
+        assert_eq!(table.resolve(Atom::CLOSED), Some("closed"));
+        assert_eq!(table.resolve(Atom::INCOMPLETE), Some("incomplete"));
+        assert_eq!(table.resolve(Atom::READ), Some("read"));
+        assert_eq!(table.resolve(Atom::WRITE), Some("write"));
+        assert_eq!(table.resolve(Atom::APPEND), Some("append"));
+        assert_eq!(table.resolve(Atom::CREATE), Some("create"));
+        assert_eq!(table.resolve(Atom::TRUNCATE), Some("truncate"));
     }
 
     #[test]

@@ -59,6 +59,7 @@ pub fn register_gate1_bifs(
     crate::native::etf_bifs::register_etf_bifs(registry, atom_table)?;
     crate::native::ets_bifs::register_ets_bifs(registry, atom_table)?;
     crate::native::exception_bifs::register_exception_bifs(registry, atom_table)?;
+    crate::native::file_bifs::register_file_bifs(registry, atom_table)?;
     crate::native::process_info_bifs::register_process_info_bifs(registry, atom_table)?;
     crate::native::system_info_bifs::register_system_info_bifs(registry, atom_table)?;
 
@@ -699,6 +700,10 @@ mod tests {
             ("term_to_iovec", 1, Capability::Pure),
             ("term_to_iovec", 2, Capability::Pure),
             ("raise", 3, Capability::Pure),
+            ("open_file", 2, Capability::ExternalIo),
+            ("close_file", 1, Capability::ExternalIo),
+            ("read_file", 2, Capability::ExternalIo),
+            ("write_file", 2, Capability::ExternalIo),
             ("process_info", 1, Capability::Pure),
             ("process_info", 2, Capability::Pure),
             ("system_info", 1, Capability::Pure),

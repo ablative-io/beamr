@@ -76,12 +76,21 @@ impl FdInner {
     /// BIF-initiated async close. Returns true only for the transition that owns
     /// the close operation.
     pub fn explicit_close(&self, ring: &dyn CompletionRing) -> bool {
+        self.explicit_close_with_op_id(ring).is_some()
+    }
+
+    /// BIF-initiated async close that also returns the submitted operation id.
+    pub fn explicit_close_with_op_id(&self, ring: &dyn CompletionRing) -> Option<u64> {
         if self.begin_close() {
-            let _op_id = ring.submit(IoOp::Close { fd: self.fd });
-            true
+            Some(ring.submit(IoOp::Close { fd: self.fd }))
         } else {
-            false
+            None
         }
+    }
+
+    /// Complete an asynchronous close lifecycle after the completion ring reports success.
+    pub fn mark_closed(&self) {
+        self.state.store(FdState::Closed as u8, Ordering::Release);
     }
 
     /// Synchronous fallback close used when no completion ring is available.

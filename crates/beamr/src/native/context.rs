@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::atom::AtomTable;
-use crate::io::{IoSink, NullSink};
+use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
+use crate::io::{CompletionRing, IoCompletion, IoOp, IoSink, NullSink};
 use crate::native::stdlib_stubs::{lists_bifs::ListsMapState, maps_bifs::MapsHofState};
 use crate::process::{Priority, Process};
 use crate::term::Term;
@@ -61,6 +62,45 @@ pub enum NativeContinuation {
     GleamResultTry,
 }
 
+/// File I/O continuation data used when a suspended file BIF resumes.
+#[derive(Clone, Debug)]
+pub enum FileIoContinuation {
+    /// `erlang:open_file/2` completion.
+    Open,
+    /// `erlang:close_file/1` completion.
+    Close { fd: Arc<FdInner> },
+    /// `erlang:read_file/2` completion.
+    Read,
+    /// `erlang:write_file/2` completion.
+    Write { expected_len: usize },
+}
+
+/// Completion facility used by file BIFs to submit ring work and retrieve resume completions.
+pub trait FileIoFacility: Send + Sync {
+    /// Submit an operation for `pid`, tagged with the BIF continuation metadata.
+    fn submit_file_io(&self, pid: u64, op: IoOp, continuation: FileIoContinuation) -> u64;
+
+    /// Associate an already-submitted operation with `pid` and continuation metadata.
+    fn track_submitted_file_io(&self, pid: u64, op_id: u64, continuation: FileIoContinuation);
+
+    /// Take a completion that woke `pid`, if any.
+    fn take_file_io_completion(&self, pid: u64) -> Option<FileIoCompletion>;
+
+    /// Completion ring used by `FdInner::explicit_close`.
+    fn ring(&self) -> &dyn CompletionRing;
+}
+
+/// File I/O completion delivered back to a suspended process.
+#[derive(Debug)]
+pub struct FileIoCompletion {
+    /// Operation id returned by the ring.
+    pub op_id: u64,
+    /// BIF continuation associated with the operation.
+    pub continuation: FileIoContinuation,
+    /// Backend completion result.
+    pub completion: IoCompletion,
+}
+
 /// Suspend request from a BIF that wants the process to wait.
 ///
 /// Used by `select` when no mailbox message matches any handler.
@@ -97,6 +137,7 @@ pub struct ProcessContext<'process> {
     select_facility: Option<Arc<dyn SelectFacility>>,
     system_info_facility: Option<Arc<dyn SystemInfoFacility>>,
     ets_facility: Option<Arc<dyn EtsFacility>>,
+    file_io_facility: Option<Arc<dyn FileIoFacility>>,
     io_sink: Arc<dyn IoSink>,
     exception_class: ExceptionClass,
     exception_stacktrace: Term,
@@ -147,6 +188,10 @@ impl fmt::Debug for ProcessContext<'_> {
                 &self.system_info_facility.as_ref().map(|_| ".."),
             )
             .field("ets_facility", &self.ets_facility.as_ref().map(|_| ".."))
+            .field(
+                "file_io_facility",
+                &self.file_io_facility.as_ref().map(|_| ".."),
+            )
             .field("io_sink", &"..")
             .field("exception_class", &self.exception_class)
             .field("shutdown_requested", &self.shutdown_requested)
@@ -183,6 +228,7 @@ impl<'process> ProcessContext<'process> {
             select_facility: None,
             system_info_facility: None,
             ets_facility: None,
+            file_io_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -211,6 +257,7 @@ impl<'process> ProcessContext<'process> {
             select_facility: None,
             system_info_facility: None,
             ets_facility: None,
+            file_io_facility: None,
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -487,6 +534,66 @@ impl<'process> ProcessContext<'process> {
         self.ets_facility = facility;
     }
 
+    /// Return the file I/O facility, if one has been configured.
+    #[must_use]
+    pub fn file_io_facility(&self) -> Option<&dyn FileIoFacility> {
+        self.file_io_facility.as_deref()
+    }
+
+    /// Set the file I/O facility for completion-ring backed file BIFs.
+    pub fn set_file_io_facility(&mut self, facility: Option<Arc<dyn FileIoFacility>>) {
+        self.file_io_facility = facility;
+    }
+
+    /// Submit a file I/O operation and suspend the calling process until completion.
+    pub fn submit_file_io(
+        &mut self,
+        op: IoOp,
+        continuation: FileIoContinuation,
+    ) -> Result<u64, Term> {
+        let pid = self
+            .pid
+            .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
+        let facility = self
+            .file_io_facility
+            .as_ref()
+            .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
+        let op_id = facility.submit_file_io(pid, op, continuation);
+        self.request_suspend(None);
+        Ok(op_id)
+    }
+
+    /// Associate an already-submitted file I/O operation with this process.
+    pub fn track_submitted_file_io(
+        &mut self,
+        op_id: u64,
+        continuation: FileIoContinuation,
+    ) -> Result<(), Term> {
+        let pid = self
+            .pid
+            .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
+        let facility = self
+            .file_io_facility
+            .as_ref()
+            .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
+        facility.track_submitted_file_io(pid, op_id, continuation);
+        Ok(())
+    }
+
+    /// Take the completion used to resume the currently executing file BIF.
+    pub fn take_file_io_completion(&self) -> Option<FileIoCompletion> {
+        let pid = self.pid?;
+        self.file_io_facility.as_ref()?.take_file_io_completion(pid)
+    }
+
+    /// Return the completion ring backing file I/O resources.
+    #[must_use]
+    pub fn file_completion_ring(&self) -> Option<&dyn CompletionRing> {
+        self.file_io_facility
+            .as_ref()
+            .map(|facility| facility.ring())
+    }
+
     /// Store a value in the attached process dictionary.
     pub fn dict_put(&mut self, key: Term, value: Term) -> Result<Term, Term> {
         let Some(process) = self.process.as_deref_mut() else {
@@ -741,6 +848,12 @@ impl<'process> ProcessContext<'process> {
         let words = alloc_binary_word_count(bytes.len());
         let heap = self.alloc_words(words)?;
         alloc_binary(heap, bytes).ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))
+    }
+
+    /// Allocate an FdResource on the calling process heap.
+    pub fn alloc_fd_resource(&mut self, fd_inner: Arc<FdInner>) -> Result<Term, Term> {
+        let heap = self.alloc_words(FD_RESOURCE_WORDS)?;
+        write_fd_resource(heap, fd_inner).ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))
     }
 
     /// Allocate a big integer on the calling process heap.
