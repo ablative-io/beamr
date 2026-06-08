@@ -1,3 +1,5 @@
+use std::sync::RwLock;
+
 use dashmap::{DashMap, mapref::entry::Entry};
 
 use crate::term::Term;
@@ -7,7 +9,7 @@ use super::{EtsError, EtsTable, EtsTableMetadata, tuple_key};
 
 /// ETS bag table storage: many distinct tuples per key.
 pub struct EtsBag {
-    metadata: EtsTableMetadata,
+    metadata: RwLock<EtsTableMetadata>,
     storage: DashMap<EtsKey, Vec<Term>>,
 }
 
@@ -15,21 +17,25 @@ impl EtsBag {
     #[must_use]
     pub fn new(metadata: EtsTableMetadata) -> Self {
         Self {
-            metadata,
+            metadata: RwLock::new(metadata),
             storage: DashMap::new(),
         }
     }
 }
 
 impl EtsTable for EtsBag {
-    fn metadata(&self) -> &EtsTableMetadata {
-        &self.metadata
+    fn metadata(&self) -> EtsTableMetadata {
+        read_metadata(&self.metadata)
+    }
+
+    fn set_owner(&self, owner: u64) {
+        set_metadata_owner(&self.metadata, owner);
     }
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {
         insert_bag_tuple(
             &self.storage,
-            tuple_key(tuple, self.metadata.keypos)?,
+            tuple_key(tuple, self.metadata().keypos)?,
             tuple,
             false,
         );
@@ -51,7 +57,7 @@ impl EtsTable for EtsBag {
 
 /// ETS duplicate_bag table storage: many tuples per key, preserving duplicates.
 pub struct EtsDuplicateBag {
-    metadata: EtsTableMetadata,
+    metadata: RwLock<EtsTableMetadata>,
     storage: DashMap<EtsKey, Vec<Term>>,
 }
 
@@ -59,21 +65,25 @@ impl EtsDuplicateBag {
     #[must_use]
     pub fn new(metadata: EtsTableMetadata) -> Self {
         Self {
-            metadata,
+            metadata: RwLock::new(metadata),
             storage: DashMap::new(),
         }
     }
 }
 
 impl EtsTable for EtsDuplicateBag {
-    fn metadata(&self) -> &EtsTableMetadata {
-        &self.metadata
+    fn metadata(&self) -> EtsTableMetadata {
+        read_metadata(&self.metadata)
+    }
+
+    fn set_owner(&self, owner: u64) {
+        set_metadata_owner(&self.metadata, owner);
     }
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {
         insert_bag_tuple(
             &self.storage,
-            tuple_key(tuple, self.metadata.keypos)?,
+            tuple_key(tuple, self.metadata().keypos)?,
             tuple,
             true,
         );
@@ -127,6 +137,23 @@ fn tab2list(storage: &DashMap<EtsKey, Vec<Term>>) -> Vec<Term> {
         .iter()
         .flat_map(|entry| entry.value().clone())
         .collect()
+}
+
+fn read_metadata(metadata: &RwLock<EtsTableMetadata>) -> EtsTableMetadata {
+    metadata
+        .read()
+        .map_or_else(|poisoned| poisoned.into_inner().clone(), |guard| guard.clone())
+}
+
+fn set_metadata_owner(metadata: &RwLock<EtsTableMetadata>, owner: u64) {
+    match metadata.write() {
+        Ok(mut metadata) => {
+            metadata.owner = owner;
+        }
+        Err(poisoned) => {
+            poisoned.into_inner().owner = owner;
+        }
+    }
 }
 
 #[cfg(test)]

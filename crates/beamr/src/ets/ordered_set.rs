@@ -16,7 +16,7 @@ use super::TermKey;
 
 /// B-tree backed ETS `ordered_set` table.
 pub struct EtsOrderedSet {
-    metadata: EtsTableMetadata,
+    metadata: RwLock<EtsTableMetadata>,
     atom_table: Arc<AtomTable>,
     rows: OrderedSetRows,
 }
@@ -45,7 +45,7 @@ impl EtsOrderedSet {
             OrderedSetRows::Mutex(Mutex::new(BTreeMap::new()))
         };
         Self {
-            metadata,
+            metadata: RwLock::new(metadata),
             atom_table,
             rows,
         }
@@ -92,7 +92,7 @@ impl EtsOrderedSet {
     fn tuple_key(&self, tuple: Term) -> Result<TermKey, EtsError> {
         let tuple = Tuple::new(tuple).ok_or(EtsError::Badarg)?;
         let index = self
-            .metadata
+            .metadata()
             .keypos
             .checked_sub(1)
             .ok_or(EtsError::Badarg)?;
@@ -128,8 +128,21 @@ impl EtsOrderedSet {
 }
 
 impl EtsTable for EtsOrderedSet {
-    fn metadata(&self) -> &EtsTableMetadata {
-        &self.metadata
+    fn metadata(&self) -> EtsTableMetadata {
+        self.metadata
+            .read()
+            .map_or_else(|poisoned| poisoned.into_inner().clone(), |guard| guard.clone())
+    }
+
+    fn set_owner(&self, owner: u64) {
+        match self.metadata.write() {
+            Ok(mut metadata) => {
+                metadata.owner = owner;
+            }
+            Err(poisoned) => {
+                poisoned.into_inner().owner = owner;
+            }
+        }
     }
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {

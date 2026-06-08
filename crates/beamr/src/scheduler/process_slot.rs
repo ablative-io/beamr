@@ -1,3 +1,4 @@
+use crate::ets::OwnedTerm;
 use crate::namespace::NamespaceId;
 use crate::process::{ExitReason, Monitor, Priority};
 use crate::term::Term;
@@ -17,6 +18,7 @@ pub(super) struct ProcessMetadata {
     pub(super) pending_exit_messages: Vec<(u64, ExitReason)>,
     pub(super) pending_down_messages: Vec<(u64, u64, ExitReason)>,
     pub(super) pending_io_messages: Vec<Term>,
+    pub(super) pending_messages: Vec<OwnedTerm>,
 }
 
 impl ProcessMetadata {

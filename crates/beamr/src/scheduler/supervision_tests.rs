@@ -10,7 +10,7 @@ use dashmap::DashMap;
 
 use super::*;
 use crate::atom::Atom;
-use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
+use crate::ets::{EtsHeir, EtsTableMetadata, EtsTableType, Protection, copy_term_to_ets};
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
 use crate::process::ProcessStatus;
 use crate::process::registry::ProcessTable;
@@ -134,6 +134,7 @@ fn make_executing(shared: &SharedState, pid: u64) -> Process {
                 pending_exit_messages: Vec::new(),
                 pending_down_messages: Vec::new(),
                 pending_io_messages: Vec::new(),
+                pending_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);
             process
@@ -288,6 +289,49 @@ fn cleanup_exited_process_deletes_tables_owned_by_process() {
     assert!(shared.lookup_table(owned_id).is_none());
     assert_eq!(shared.lookup_table_by_name(owned_name), None);
     assert!(shared.lookup_table(other_id).is_some());
+}
+
+#[test]
+fn cleanup_exited_process_transfers_owned_table_to_live_heir() {
+    let shared = make_shared_state();
+    let owner = insert_process(&shared, 21);
+    let heir = insert_process(&shared, 22);
+    let mut metadata = ets_metadata(None, owner);
+    metadata.heir = Some(EtsHeir {
+        pid: heir,
+        data: copy_term_to_ets(Term::small_int(77)).expect("heir data copy"),
+    });
+    let table_id = shared.create_table(metadata);
+
+    cleanup_exited_process(&shared, owner, ExitReason::Normal);
+
+    let table = shared.lookup_table(table_id).expect("table survives");
+    assert_eq!(table.metadata().owner, heir);
+    assert_eq!(
+        read_mailbox_tuple(&shared, heir),
+        Some(vec![
+            Term::atom(Atom::ETS_TRANSFER),
+            Term::small_int(table_id as i64),
+            Term::pid(owner),
+            Term::small_int(77),
+        ])
+    );
+}
+
+#[test]
+fn cleanup_exited_process_deletes_table_when_heir_is_absent() {
+    let shared = make_shared_state();
+    let owner = insert_process(&shared, 31);
+    let mut metadata = ets_metadata(None, owner);
+    metadata.heir = Some(EtsHeir {
+        pid: 999,
+        data: copy_term_to_ets(Term::small_int(88)).expect("heir data copy"),
+    });
+    let table_id = shared.create_table(metadata);
+
+    cleanup_exited_process(&shared, owner, ExitReason::Normal);
+
+    assert!(shared.lookup_table(table_id).is_none());
 }
 
 #[test]

@@ -11,9 +11,11 @@ mod timer_integration;
 use self::dirty::DirtyPool;
 use self::execution::scheduler_loop;
 use self::spawning::SpawnRequest;
-use crate::atom::AtomTable;
+use crate::atom::{Atom, AtomTable};
 use crate::error::ExecError;
-use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
+use crate::ets::{
+    EtsError, EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata, OwnedTerm, copy_term_to_ets,
+};
 use crate::hook::Hook;
 use crate::io::{
     CompletionRing, CompletionRingIoFacility, IoCompletionBridge, IoFacility, IoSink,
@@ -31,7 +33,7 @@ use crate::process::{ExitReason, Process, ProcessStatus};
 use crate::scheduler::dirty::DirtyResult;
 use crate::supervision::link::LinkSet;
 use crate::supervision::monitor::MonitorSet;
-use crate::term::Term;
+use crate::term::{Term, boxed};
 use crate::timer::TimerWheel;
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
@@ -110,6 +112,64 @@ impl SharedState {
         before.saturating_sub(self.ets_registry.table_count())
     }
 
+    pub(super) fn transfer_or_delete_tables_owned_by(&self, owner: u64) {
+        for table_id in self.ets_registry.tables_owned_by(owner) {
+            let Some(table) = self.ets_registry.lookup_table(table_id) else {
+                continue;
+            };
+            let metadata = table.metadata();
+            let Some(heir) = metadata.heir else {
+                let _deleted = self.ets_registry.delete_table(table_id);
+                continue;
+            };
+            if self
+                .ets_registry
+                .transfer_ownership(table_id, owner, heir.pid)
+                .is_err()
+            {
+                let _deleted = self.ets_registry.delete_table(table_id);
+                continue;
+            }
+            if self
+                .send_ets_transfer(heir.pid, table_id, owner, &heir.data)
+                .is_err()
+            {
+                let _deleted = self.ets_registry.delete_table(table_id);
+            }
+        }
+    }
+
+    pub(super) fn send_ets_transfer(
+        &self,
+        to: u64,
+        table_id: EtsTableId,
+        from: u64,
+        data: &OwnedTerm,
+    ) -> Result<(), EtsError> {
+        let Some(entry) = self.process_bodies.get(&to) else {
+            return Err(EtsError::Badarg);
+        };
+        let mut slot = lock_or_recover(&entry);
+        match &mut *slot {
+            ProcessSlot::Present(ScheduledProcess(process)) => {
+                if matches!(process.status(), ProcessStatus::Exited(_)) {
+                    return Err(EtsError::Badarg);
+                }
+                let message = ets_transfer_message_on_heap(process, table_id, from, data)?;
+                process.mailbox_mut().push_owned(message);
+                execution::wake_process(self, to);
+                Ok(())
+            }
+            ProcessSlot::Executing(metadata) => {
+                let message = ets_transfer_message_owned(table_id, from, data)?;
+                metadata.pending_messages.push(message);
+                execution::wake_process(self, to);
+                Ok(())
+            }
+            ProcessSlot::Absent => Err(EtsError::Badarg),
+        }
+    }
+
     /// Return the number of alive processes tracked by the scheduler.
     #[must_use]
     pub(super) fn process_count(&self) -> usize {
@@ -127,6 +187,57 @@ impl SharedState {
     pub(super) fn atom_count(&self) -> usize {
         self.atom_table.len()
     }
+}
+
+fn ets_transfer_message_owned(
+    table_id: EtsTableId,
+    from: u64,
+    data: &OwnedTerm,
+) -> Result<OwnedTerm, EtsError> {
+    let table_term = table_id_term(table_id)?;
+    let from_term = Term::try_pid(from).ok_or(EtsError::Badarg)?;
+    let mut words = [0_u64; 5];
+    let tuple = boxed::write_tuple(
+        &mut words,
+        &[
+            Term::atom(Atom::ETS_TRANSFER),
+            table_term,
+            from_term,
+            data.root(),
+        ],
+    )
+    .ok_or(EtsError::InvalidBoxedTerm)?;
+    copy_term_to_ets(tuple)
+}
+
+fn ets_transfer_message_on_heap(
+    process: &mut Process,
+    table_id: EtsTableId,
+    from: u64,
+    data: &OwnedTerm,
+) -> Result<Term, EtsError> {
+    let table_term = table_id_term(table_id)?;
+    let from_term = Term::try_pid(from).ok_or(EtsError::Badarg)?;
+    let data_term = data.copy_to_heap(process.heap_mut())?;
+    let words = process
+        .heap_mut()
+        .alloc_slice(5)
+        .map_err(|_error| EtsError::AllocationFailed)?;
+    boxed::write_tuple(
+        words,
+        &[
+            Term::atom(Atom::ETS_TRANSFER),
+            table_term,
+            from_term,
+            data_term,
+        ],
+    )
+    .ok_or(EtsError::InvalidBoxedTerm)
+}
+
+fn table_id_term(table_id: EtsTableId) -> Result<Term, EtsError> {
+    let table_id = i64::try_from(table_id).map_err(|_error| EtsError::Badarg)?;
+    Term::try_small_int(table_id).ok_or(EtsError::Badarg)
 }
 
 #[derive(Default)]

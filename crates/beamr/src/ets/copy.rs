@@ -13,7 +13,7 @@ use crate::term::boxed::{
 };
 
 /// A term whose boxed/list objects are owned by ETS rather than a process heap.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OwnedTerm {
     root: Term,
     allocations: Vec<Box<[u64]>>,

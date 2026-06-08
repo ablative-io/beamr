@@ -104,6 +104,7 @@ pub(in crate::scheduler) fn take_runnable_process(
                 pending_exit_messages: Vec::new(),
                 pending_down_messages: Vec::new(),
                 pending_io_messages: Vec::new(),
+                pending_messages: Vec::new(),
             };
             *slot = ProcessSlot::Executing(metadata);
             Some(process)
@@ -159,6 +160,11 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
             }
             for message in metadata.pending_io_messages.drain(..) {
                 process.mailbox_mut().push_owned(message);
+            }
+            for message in metadata.pending_messages.drain(..) {
+                if let Ok(message) = message.copy_to_heap(process.heap_mut()) {
+                    process.mailbox_mut().push_owned(message);
+                }
             }
         }
         *slot = ProcessSlot::Present(ScheduledProcess(process));
@@ -449,7 +455,7 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     reason: ExitReason,
 ) {
     shared.exit_tombstones.insert(pid, reason);
-    let _deleted_tables = shared.delete_tables_owned_by(pid);
+    shared.transfer_or_delete_tables_owned_by(pid);
     supervision_integration::propagate_exit(shared, pid, reason);
     close_owned_fd_resources_on_exit(shared, pid);
     let _removed = shared.process_table.remove(pid);

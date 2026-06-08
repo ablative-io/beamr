@@ -1,4 +1,5 @@
 use crate::atom::Atom;
+use crate::ets::OwnedTerm;
 use crate::term::Term;
 use std::fmt;
 
@@ -41,6 +42,13 @@ impl fmt::Display for AccessOp {
     }
 }
 
+/// ETS heir configured for ownership transfer when the owner exits.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EtsHeir {
+    pub pid: u64,
+    pub data: OwnedTerm,
+}
+
 /// Metadata common to all ETS table implementations.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EtsTableMetadata {
@@ -56,6 +64,8 @@ pub struct EtsTableMetadata {
     pub read_concurrency: bool,
     /// Hint that table writes should be allowed to proceed concurrently.
     pub write_concurrency: bool,
+    /// Optional heir that receives ownership when the owner exits.
+    pub heir: Option<EtsHeir>,
 }
 
 impl EtsTableMetadata {
@@ -77,6 +87,7 @@ impl EtsTableMetadata {
             keypos: 1,
             read_concurrency: false,
             write_concurrency: false,
+            heir: None,
         }
     }
 }
@@ -119,7 +130,8 @@ impl std::error::Error for EtsError {}
 /// Raw table operations do not carry a caller PID; the scheduler/BIF layer must
 /// call [`EtsTable::check_access`] before invoking reads or writes.
 pub trait EtsTable: Send + Sync {
-    fn metadata(&self) -> &EtsTableMetadata;
+    fn metadata(&self) -> EtsTableMetadata;
+    fn set_owner(&self, owner: u64);
     fn insert(&self, tuple: Term) -> Result<(), EtsError>;
     fn lookup(&self, key: Term) -> Vec<Term>;
     fn delete_key(&self, key: Term) -> bool;
@@ -167,14 +179,18 @@ mod tests {
                     keypos: 1,
                     read_concurrency: false,
                     write_concurrency: false,
+                    heir: None,
                 },
             }
         }
     }
 
     impl EtsTable for DummyTable {
-        fn metadata(&self) -> &EtsTableMetadata {
-            &self.metadata
+        fn metadata(&self) -> EtsTableMetadata {
+            self.metadata.clone()
+        }
+
+        fn set_owner(&self, _owner: u64) {
         }
 
         fn insert(&self, _tuple: Term) -> Result<(), EtsError> {
@@ -205,6 +221,7 @@ mod tests {
             keypos: 2,
             read_concurrency: true,
             write_concurrency: true,
+            heir: None,
         };
 
         assert_eq!(metadata.name, Some(Atom::new(9)));
@@ -215,6 +232,7 @@ mod tests {
         assert_eq!(metadata.keypos, 2);
         assert!(metadata.read_concurrency);
         assert!(metadata.write_concurrency);
+        assert_eq!(metadata.heir, None);
     }
 
     #[test]

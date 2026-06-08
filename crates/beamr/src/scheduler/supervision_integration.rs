@@ -323,7 +323,9 @@ pub(super) fn build_native_services(
         Arc::new(SchedulerSystemInfoFacility {
             shared: Arc::clone(shared),
         });
-    let ets_facility: Arc<dyn crate::native::EtsFacility> = shared.ets_registry.clone();
+    let ets_facility: Arc<dyn crate::native::EtsFacility> = Arc::new(SchedulerEtsFacility {
+        shared: Arc::clone(shared),
+    });
     crate::interpreter::NativeServices {
         atom_table: Some(Arc::clone(&shared.atom_table)),
         ets_facility: Some(ets_facility),
@@ -341,6 +343,62 @@ pub(super) fn build_native_services(
 }
 
 // ── Facility implementations ────────────────────────────────────────────────
+
+pub(super) struct SchedulerEtsFacility {
+    pub(super) shared: Arc<SharedState>,
+}
+
+impl crate::native::EtsFacility for SchedulerEtsFacility {
+    fn create_table(
+        &self,
+        metadata: crate::ets::EtsTableMetadata,
+    ) -> Result<crate::ets::EtsTableId, crate::ets::EtsError> {
+        self.shared.ets_registry.try_create_table(metadata)
+    }
+
+    fn lookup_table(
+        &self,
+        id: crate::ets::EtsTableId,
+    ) -> Option<Arc<dyn crate::ets::EtsTable>> {
+        self.shared.ets_registry.lookup_table(id)
+    }
+
+    fn lookup_named_table(
+        &self,
+        name: crate::atom::Atom,
+    ) -> Option<Arc<dyn crate::ets::EtsTable>> {
+        self.shared.ets_registry.lookup_named_table(name)
+    }
+
+    fn lookup_table_by_name(&self, name: crate::atom::Atom) -> Option<crate::ets::EtsTableId> {
+        self.shared.ets_registry.lookup_table_by_name(name)
+    }
+
+    fn delete_table(&self, id: crate::ets::EtsTableId) -> bool {
+        self.shared.ets_registry.delete_table(id)
+    }
+
+    fn transfer_ownership(
+        &self,
+        id: crate::ets::EtsTableId,
+        from: u64,
+        to: u64,
+    ) -> Result<(), crate::ets::EtsError> {
+        self.shared.ets_registry.transfer_ownership(id, from, to)
+    }
+
+    fn send_ets_transfer(
+        &self,
+        to: u64,
+        table_id: crate::ets::EtsTableId,
+        from: u64,
+        data: crate::term::Term,
+        _atom_table: &crate::atom::AtomTable,
+    ) -> Result<(), crate::ets::EtsError> {
+        let data = crate::ets::copy_term_to_ets(data)?;
+        self.shared.send_ets_transfer(to, table_id, from, &data)
+    }
+}
 
 /// Real `ProcessInfoFacility` backed by the scheduler's shared state.
 pub(super) struct SchedulerProcessInfoFacility {
