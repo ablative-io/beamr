@@ -364,6 +364,62 @@ impl Reference {
     }
 }
 
+/// Borrowed accessor for a boxed remote PID.
+#[derive(Copy, Clone, Debug)]
+pub struct ExternalPid {
+    ptr: *const u64,
+}
+
+impl ExternalPid {
+    pub fn new(term: Term) -> Option<Self> {
+        let ptr = header_ptr(term, BoxedTag::ExternalPid)?;
+        Some(Self { ptr })
+    }
+
+    pub fn node(self) -> Option<Atom> {
+        Term::from_raw(self.word(1)).as_atom()
+    }
+
+    pub fn pid_number(self) -> u64 {
+        self.word(2)
+    }
+
+    pub fn serial(self) -> u64 {
+        self.word(3)
+    }
+
+    fn word(self, offset: usize) -> u64 {
+        // SAFETY: external PID payload contains fixed words after the header.
+        unsafe { *self.ptr.add(offset) }
+    }
+}
+
+/// Borrowed accessor for a boxed remote reference.
+#[derive(Copy, Clone, Debug)]
+pub struct ExternalReference {
+    ptr: *const u64,
+}
+
+impl ExternalReference {
+    pub fn new(term: Term) -> Option<Self> {
+        let ptr = header_ptr(term, BoxedTag::ExternalReference)?;
+        Some(Self { ptr })
+    }
+
+    pub fn node(self) -> Option<Atom> {
+        Term::from_raw(self.word(1)).as_atom()
+    }
+
+    pub fn id(self) -> u64 {
+        self.word(2)
+    }
+
+    fn word(self, offset: usize) -> u64 {
+        // SAFETY: external reference payload contains fixed words after the header.
+        unsafe { *self.ptr.add(offset) }
+    }
+}
+
 fn header_ptr(term: Term, expected_tag: BoxedTag) -> Option<*const u64> {
     if !term.is_boxed() {
         return None;

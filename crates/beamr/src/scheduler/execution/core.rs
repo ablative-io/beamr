@@ -179,27 +179,23 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
                 process.mailbox_mut().push_owned(message);
             }
             for udp_msg in metadata.pending_udp_messages.drain(..) {
-                if let Some(message) =
-                    super::build_udp_active_message_for_process(
-                        &shared.atom_table,
-                        &mut process,
-                        &udp_msg.fd,
-                        &udp_msg.bytes,
-                        udp_msg.addr,
-                    )
-                {
+                if let Some(message) = super::build_udp_active_message_for_process(
+                    &shared.atom_table,
+                    &mut process,
+                    &udp_msg.fd,
+                    &udp_msg.bytes,
+                    udp_msg.addr,
+                ) {
                     process.mailbox_mut().push_owned(message);
                 }
             }
             for tcp_msg in metadata.pending_tcp_messages.drain(..) {
-                if let Some(message) =
-                    super::build_tcp_active_message_for_process(
-                        &shared.atom_table,
-                        &mut process,
-                        &tcp_msg.fd,
-                        &tcp_msg.bytes,
-                    )
-                {
+                if let Some(message) = super::build_tcp_active_message_for_process(
+                    &shared.atom_table,
+                    &mut process,
+                    &tcp_msg.fd,
+                    &tcp_msg.bytes,
+                ) {
                     process.mailbox_mut().push_owned(message);
                 }
             }
@@ -417,6 +413,7 @@ fn submit_dirty_call(
         ProcessContext::with_timer_services(process.pid(), Arc::clone(&shared.timers));
     let services = supervision_integration::build_native_services(shared, process.namespace_id());
     context.set_atom_table(services.atom_table);
+    context.set_local_node(services.local_node);
     context.set_spawn_facility(services.spawn_facility);
     context.set_link_facility(services.link_facility);
     context.set_group_leader_facility(services.group_leader_facility);
