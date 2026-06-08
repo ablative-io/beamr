@@ -1,1 +1,1 @@
-fix(distribution): store remote pg members without atom ordering
+fix(distribution): stabilize pg remote member ordering

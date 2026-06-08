@@ -164,11 +164,14 @@ impl PgRegistry {
     /// Return remote members for a scope/group.
     #[must_use]
     pub fn remote_members(&self, scope: Scope, group: Group) -> Vec<RemoteMember> {
-        self.lock_state()
+        let mut members: Vec<_> = self
+            .lock_state()
             .groups
             .get(&(scope, group))
             .map(|members| members.remote.iter().copied().collect())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        members.sort_by_key(|member| (member.node.index(), member.pid_number, member.serial));
+        members
     }
 
     /// Apply a join received from a remote node.
