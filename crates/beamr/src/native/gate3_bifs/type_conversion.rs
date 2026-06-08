@@ -21,10 +21,7 @@ pub fn bif_atom_to_binary_2(args: &[Term], context: &mut ProcessContext) -> Resu
     let [atom_term, encoding_term] = args else {
         return Err(badarg());
     };
-    let encoding = encoding_term.as_atom().ok_or_else(badarg)?;
-    if encoding != Atom::UTF8 && encoding != Atom::LATIN1 {
-        return Err(badarg());
-    }
+    validate_text_encoding(*encoding_term, context)?;
     atom_to_binary(*atom_term, context)
 }
 
@@ -73,10 +70,7 @@ pub fn bif_binary_to_existing_atom_2(
     let [binary_term, encoding_term] = args else {
         return Err(badarg());
     };
-    let encoding = encoding_term.as_atom().ok_or_else(badarg)?;
-    if encoding != Atom::UTF8 && encoding != Atom::LATIN1 {
-        return Err(badarg());
-    }
+    validate_text_encoding(*encoding_term, context)?;
     binary_to_existing_atom(*binary_term, context)
 }
 
@@ -85,6 +79,15 @@ fn binary_to_existing_atom(binary_term: Term, context: &mut ProcessContext) -> R
     let table = context.atom_table().ok_or_else(badarg)?;
     let atom = table.lookup(name).ok_or_else(badarg)?;
     Ok(Term::atom(atom))
+}
+
+fn validate_text_encoding(encoding_term: Term, context: &ProcessContext<'_>) -> Result<(), Term> {
+    let encoding = encoding_term.as_atom().ok_or_else(badarg)?;
+    let table = context.atom_table().ok_or_else(badarg)?;
+    match table.resolve(encoding) {
+        Some("utf8" | "latin1") => Ok(()),
+        _ => Err(badarg()),
+    }
 }
 
 /// erlang:binary_to_list/1 — converts binary bytes to a list of integer terms.
@@ -280,6 +283,7 @@ fn parse_float_format_options(
             .get(1)
             .and_then(Term::as_small_int)
             .and_then(|value| usize::try_from(value).ok())
+            .filter(|value| *value <= 253)
             .ok_or_else(badarg)?;
         decimals = Some(value);
         current = cons.tail();
@@ -294,7 +298,11 @@ fn format_float(float_term: Term, decimals: Option<usize>) -> Result<String, Ter
     if let Some(decimals) = decimals {
         Ok(format!("{value:.prec$}", prec = decimals))
     } else {
-        Ok(value.to_string())
+        let mut text = value.to_string();
+        if !text.contains(['.', 'e', 'E']) {
+            text.push_str(".0");
+        }
+        Ok(text)
     }
 }
 

@@ -83,6 +83,21 @@ fn atom_to_binary_latin1_encoding_works() {
 }
 
 #[test]
+fn atom_to_binary_resolves_encoding_by_name() {
+    let mut process = Process::new(1, 128);
+    let mut ctx = ProcessContext::new();
+    let table = Arc::new(AtomTable::new());
+    let ok = table.intern("ok");
+    let utf8 = table.intern("utf8");
+    ctx.set_atom_table(Some(table));
+    ctx.attach_process(&mut process, 0);
+
+    let result = bif_atom_to_binary(&[Term::atom(ok), Term::atom(utf8)], &mut ctx).unwrap();
+    let binary = crate::term::binary::Binary::new(result).expect("should be binary");
+    assert_eq!(binary.as_bytes(), b"ok");
+}
+
+#[test]
 fn atom_to_binary_badarg_invalid_encoding() {
     let mut process = Process::new(1, 128);
     let mut ctx = ctx_with_atoms(&mut process);
@@ -193,6 +208,22 @@ fn binary_to_existing_atom_2_finds_interned_atom() {
     let bin = write_binary(&mut heap, b"ok").expect("binary");
     let result = bif_binary_to_existing_atom_2(&[bin, Term::atom(Atom::UTF8)], &mut ctx).unwrap();
     assert_eq!(result.as_atom(), Some(Atom::OK));
+}
+
+#[test]
+fn binary_to_existing_atom_2_resolves_encoding_by_name() {
+    let mut process = Process::new(1, 128);
+    let mut ctx = ProcessContext::new();
+    let table = Arc::new(AtomTable::new());
+    let ok = table.intern("ok");
+    let utf8 = table.intern("utf8");
+    ctx.set_atom_table(Some(table));
+    ctx.attach_process(&mut process, 0);
+    let mut heap = [0u64; 3];
+    let bin = write_binary(&mut heap, b"ok").expect("binary");
+
+    let result = bif_binary_to_existing_atom_2(&[bin, Term::atom(utf8)], &mut ctx).unwrap();
+    assert_eq!(result.as_atom(), Some(ok));
 }
 
 #[test]
@@ -420,6 +451,17 @@ fn float_to_list_formats_character_list() {
 }
 
 #[test]
+fn float_to_list_formats_integral_float_as_float_text() {
+    let mut process = Process::new(1, 128);
+    let mut ctx = ProcessContext::new();
+    ctx.attach_process(&mut process, 0);
+    let mut heap = [0u64; 2];
+    let float = write_float(&mut heap, 3.0).expect("float");
+    let result = bif_float_to_list(&[float], &mut ctx).unwrap();
+    assert_eq!(list_bytes(result), b"3.0");
+}
+
+#[test]
 fn float_to_binary_formats_with_decimals_option() {
     let mut process = Process::new(1, 256);
     let mut ctx = ctx_with_atoms(&mut process);
@@ -444,6 +486,27 @@ fn float_to_binary_badarg_malformed_options() {
     let options = ctx
         .alloc_list(&[Term::atom(Atom::OK)])
         .expect("options list");
+    assert_eq!(
+        bif_float_to_binary_2(&[float, options], &mut ctx),
+        Err(badarg())
+    );
+}
+
+#[test]
+fn float_to_binary_badarg_decimals_out_of_range() {
+    let mut process = Process::new(1, 256);
+    let mut ctx = ctx_with_atoms(&mut process);
+    let decimals = ctx.atom_table_arc().expect("atom table").intern("decimals");
+    let mut tuple_heap = [0u64; 3];
+    let option = write_tuple(
+        &mut tuple_heap,
+        &[Term::atom(decimals), Term::small_int(254)],
+    )
+    .expect("tuple");
+    let options = ctx.alloc_list(&[option]).expect("options list");
+    let mut float_heap = [0u64; 2];
+    let float = write_float(&mut float_heap, 3.14).expect("float");
+
     assert_eq!(
         bif_float_to_binary_2(&[float, options], &mut ctx),
         Err(badarg())
