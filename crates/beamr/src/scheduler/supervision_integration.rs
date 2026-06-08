@@ -418,8 +418,9 @@ pub(super) fn dispatch_monitor_control(shared: &SharedState, message: ControlMes
 
 fn handle_monitor_p(shared: &SharedState, reference: u64, watcher: RemotePid, target: RemotePid) {
     let target_pid = target.pid_number;
-    let target_alive = shared.process_table.get(target_pid).is_some();
-    if target_alive {
+    if target.node == shared.local_node.name
+        && process_body_accepts_remote_monitor(shared, target_pid)
+    {
         shared
             .control_plane
             .register_inbound_monitor(reference, watcher, target_pid);
@@ -459,6 +460,7 @@ fn handle_monitor_p_exit(
 
 /// Convert distribution connection loss into local DOWN messages with reason noconnection.
 pub(super) fn remote_node_down(shared: &SharedState, node: Atom) {
+    shared.control_plane.remove_inbound_for_watcher_node(node);
     let monitors = shared.control_plane.collect_outbound_for_node(node);
     for monitor in monitors {
         let delivered = deliver_single_remote_down(
@@ -471,6 +473,20 @@ pub(super) fn remote_node_down(shared: &SharedState, node: Atom) {
         if delivered {
             wake_process(shared, monitor.watcher_pid);
         }
+    }
+}
+
+fn process_body_accepts_remote_monitor(shared: &SharedState, target_pid: u64) -> bool {
+    let Some(entry) = shared.process_bodies.get(&target_pid) else {
+        return false;
+    };
+    let slot = lock_or_recover(&entry);
+    match &*slot {
+        ProcessSlot::Present(ScheduledProcess(process)) => {
+            !matches!(process.status(), ProcessStatus::Exited(_))
+        }
+        ProcessSlot::Executing(_) => true,
+        ProcessSlot::Absent => false,
     }
 }
 

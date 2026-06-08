@@ -12,6 +12,10 @@ use std::sync::{Arc, Mutex};
 
 use crate::atom::Atom;
 use crate::process::ExitReason;
+use crate::term::Term;
+
+const REMOTE_MONITOR_REFERENCE_START: u64 = 1 << 56;
+const REMOTE_MONITOR_REFERENCE_MAX: u64 = Term::SMALL_INT_MAX as u64;
 
 /// Distribution control operation codes used by process control messages.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -149,12 +153,17 @@ pub struct OutboundControl {
 pub enum ControlSendError {
     /// No distribution route or connection exists for the destination node.
     NoConnection,
+    /// The small-integer remote monitor reference space has been exhausted.
+    ReferenceExhausted,
 }
 
 impl fmt::Display for ControlSendError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoConnection => formatter.write_str("no distribution connection"),
+            Self::ReferenceExhausted => {
+                formatter.write_str("remote monitor reference space exhausted")
+            }
         }
     }
 }
@@ -219,11 +228,20 @@ pub struct InboundRemoteMonitor {
     pub target_pid: u64,
 }
 
-#[derive(Default)]
 struct RemoteMonitorState {
     next_reference: u64,
     outbound_by_ref: HashMap<u64, OutboundRemoteMonitor>,
     inbound: Vec<InboundRemoteMonitor>,
+}
+
+impl Default for RemoteMonitorState {
+    fn default() -> Self {
+        Self {
+            next_reference: REMOTE_MONITOR_REFERENCE_START,
+            outbound_by_ref: HashMap::new(),
+            inbound: Vec::new(),
+        }
+    }
 }
 
 /// Shared cross-node monitor control plane.
@@ -252,6 +270,9 @@ impl ControlPlane {
     ) -> Result<u64, ControlSendError> {
         let reference = {
             let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            if state.next_reference > REMOTE_MONITOR_REFERENCE_MAX {
+                return Err(ControlSendError::ReferenceExhausted);
+            }
             let reference = state.next_reference;
             state.next_reference = state.next_reference.saturating_add(1);
             state.outbound_by_ref.insert(
@@ -375,6 +396,12 @@ impl ControlPlane {
             .collect()
     }
 
+    /// Remove all inbound registrations owned by watchers on `node`.
+    pub fn remove_inbound_for_watcher_node(&self, node: Atom) {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        state.inbound.retain(|monitor| monitor.watcher.node != node);
+    }
+
     /// Emit MONITOR_P_EXIT for a remote watcher.
     pub fn send_monitor_exit(
         &self,
@@ -416,3 +443,6 @@ impl DistributionControlFacility for ControlPlane {
         self.demonitor_remote(watcher_pid, reference)
     }
 }
+
+#[cfg(test)]
+mod tests;

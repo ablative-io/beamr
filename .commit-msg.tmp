@@ -1,1 +1,1 @@
-feat(beamr): add remote process monitor control messages
+review(beamr): harden remote monitor control handling
