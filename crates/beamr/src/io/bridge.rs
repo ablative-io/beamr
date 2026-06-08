@@ -28,7 +28,7 @@ pub enum ResultMode {
 }
 
 /// Process currently waiting for a ring operation to complete.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct PendingIo {
     /// Waiting process id.
     pub pid: u64,
@@ -39,7 +39,7 @@ pub struct PendingIo {
 }
 
 /// Rich completion delivery metadata.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum PendingIoKind {
     /// Existing generic completion conversion path.
     Generic,
@@ -51,7 +51,7 @@ pub enum PendingIoKind {
 }
 
 /// Scheduler-owned active TCP message to materialize on the receiver heap.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum ActiveTcpEvent {
     /// `{tcp, Socket, Data}`.
     Data { socket: Arc<FdInner>, data: Vec<u8> },
@@ -328,15 +328,11 @@ mod tests {
         let registry = PendingIoRegistry::default();
         registry.register(7, 42, ResultMode::XRegister);
 
-        assert_eq!(
-            registry.take(7),
-            Some(PendingIo {
-                pid: 42,
-                result_mode: ResultMode::XRegister,
-                kind: PendingIoKind::Generic,
-            })
-        );
-        assert_eq!(registry.take(7), None);
+        let pending = registry.take(7).expect("registered pending I/O");
+        assert_eq!(pending.pid, 42);
+        assert_eq!(pending.result_mode, ResultMode::XRegister);
+        assert!(matches!(pending.kind, PendingIoKind::Generic));
+        assert!(registry.take(7).is_none());
     }
 
     #[test]
@@ -356,14 +352,12 @@ mod tests {
         }
         for worker in 0..8_u64 {
             for op in 0..32_u64 {
-                assert_eq!(
-                    registry.take(worker * 100 + op),
-                    Some(PendingIo {
-                        pid: worker,
-                        result_mode: ResultMode::Message,
-                        kind: PendingIoKind::Generic,
-                    })
-                );
+                let pending = registry
+                    .take(worker * 100 + op)
+                    .expect("registered concurrent pending I/O");
+                assert_eq!(pending.pid, worker);
+                assert_eq!(pending.result_mode, ResultMode::Message);
+                assert!(matches!(pending.kind, PendingIoKind::Generic));
             }
         }
     }
