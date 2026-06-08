@@ -65,6 +65,7 @@ pub fn register_gate1_bifs(
     crate::native::tcp_bifs::register_tcp_bifs(registry, atom_table)?;
     crate::native::process_info_bifs::register_process_info_bifs(registry, atom_table)?;
     crate::native::system_info_bifs::register_system_info_bifs(registry, atom_table)?;
+    crate::native::udp_bifs::register_udp_bifs(registry, atom_table)?;
 
     Ok(())
 }

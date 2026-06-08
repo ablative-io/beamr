@@ -31,6 +31,14 @@ pub enum IoOp {
     Accept { listener_fd: RawFd },
     /// Connect a socket to `addr`.
     Connect { fd: RawFd, addr: SocketAddr },
+    /// Send one datagram to `addr` with sendmsg-style address inclusion.
+    SendMsg {
+        fd: RawFd,
+        data: Vec<u8>,
+        addr: SocketAddr,
+    },
+    /// Receive one datagram and its source address with recvmsg-style address inclusion.
+    RecvMsg { fd: RawFd, buf_len: usize },
     /// Close a raw file descriptor asynchronously.
     Close { fd: RawFd },
     /// Synchronize file contents to stable storage.
@@ -108,6 +116,14 @@ pub enum IoResult {
     Accepted(RawFd, SocketAddr),
     /// Connect completed successfully.
     Connected,
+    /// Datagram bytes sent.
+    DatagramSent(usize),
+    /// Datagram bytes received with peer address and exact data buffer.
+    DatagramReceived {
+        bytes: usize,
+        data: Vec<u8>,
+        addr: SocketAddr,
+    },
     /// File descriptor closed.
     Closed,
     /// Fsync completed successfully.

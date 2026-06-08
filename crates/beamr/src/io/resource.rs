@@ -27,6 +27,25 @@ pub enum FdState {
     Closed = 2,
 }
 
+/// Socket receive mode for stream/datagram active delivery.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum FdMode {
+    Passive = 0,
+    Active = 1,
+    ActiveOnce = 2,
+}
+
+impl FdMode {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Self::Active,
+            2 => Self::ActiveOnce,
+            _ => Self::Passive,
+        }
+    }
+}
+
 impl FdState {
     fn from_u8(value: u8) -> Self {
         match value {
@@ -44,6 +63,7 @@ pub struct FdInner {
     owner_pid: u64,
     state: AtomicU8,
     current_offset: AtomicU64,
+
 }
 
 impl FdInner {
@@ -54,6 +74,7 @@ impl FdInner {
             owner_pid,
             state: AtomicU8::new(FdState::Open as u8),
             current_offset: AtomicU64::new(0),
+
         }
     }
 
@@ -94,6 +115,7 @@ impl FdInner {
                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
                     Some(current.saturating_add(delta))
                 });
+
     }
 
     /// BIF-initiated async close. Returns true only for the transition that owns
@@ -188,6 +210,12 @@ impl FdResource {
     #[must_use]
     pub fn fd(self) -> RawFd {
         self.inner_ref().fd()
+    }
+
+    /// Returns the active/passive receive mode.
+    #[must_use]
+    pub fn mode(self) -> FdMode {
+        self.inner_ref().mode()
     }
 
     /// Returns the owning process PID.

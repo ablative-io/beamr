@@ -97,6 +97,7 @@ pub enum FileIoContinuation {
     Rename,
     /// `erlang:tcp_accept/1,2` completion.
     Accept,
+
 }
 
 /// Completion facility used by file BIFs to submit ring work and retrieve resume completions.

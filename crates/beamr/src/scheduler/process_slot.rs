@@ -25,6 +25,7 @@ pub(super) struct ProcessMetadata {
     pub(super) pending_down_messages: Vec<(u64, u64, ExitReason)>,
     pub(super) pending_io_messages: Vec<Term>,
     pub(super) pending_ets_transfer_messages: Vec<PendingEtsTransferMessage>,
+
 }
 
 impl ProcessMetadata {
@@ -56,3 +57,7 @@ pub(super) enum ProcessSlot {
     #[default]
     Absent,
 }
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use crate::io::resource::FdInner;
