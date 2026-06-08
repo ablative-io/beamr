@@ -41,6 +41,7 @@ dependencies = [
  "num_cpus",
  "proptest",
  "rand 0.10.1",
+ "rustix",
  "serde_json",
 ]
 

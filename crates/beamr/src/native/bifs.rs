@@ -61,6 +61,7 @@ pub fn register_gate1_bifs(
     crate::native::exception_bifs::register_exception_bifs(registry, atom_table)?;
     crate::native::file_bifs::register_file_bifs(registry, atom_table)?;
     crate::native::file_meta_bifs::register_file_meta_bifs(registry, atom_table)?;
+    crate::native::inet_bifs::register_inet_bifs(registry, atom_table)?;
 
     crate::native::tcp_bifs::register_tcp_bifs(registry, atom_table)?;
     crate::native::udp_bifs::register_udp_bifs(registry, atom_table)?;
@@ -708,6 +709,12 @@ mod tests {
             ("close_file", 1, Capability::ExternalIo),
             ("read_file", 2, Capability::ExternalIo),
             ("write_file", 2, Capability::ExternalIo),
+            ("inet_setopts", 2, Capability::ExternalIo),
+            ("inet_getopts", 2, Capability::ExternalIo),
+            ("inet_peername", 1, Capability::ExternalIo),
+            ("inet_sockname", 1, Capability::ExternalIo),
+            ("inet_port", 1, Capability::ExternalIo),
+            ("inet_close", 1, Capability::ExternalIo),
             ("tcp_listen", 2, Capability::ExternalIo),
             ("tcp_accept", 1, Capability::ExternalIo),
             ("tcp_accept", 2, Capability::ExternalIo),

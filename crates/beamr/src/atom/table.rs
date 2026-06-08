@@ -76,6 +76,7 @@ impl Atom {
     pub const ECONNREFUSED: Self = Self(62);
     pub const ECONNRESET: Self = Self(63);
     pub const EINPROGRESS: Self = Self(64);
+    pub const ENOTCONN: Self = Self(65);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -152,6 +153,7 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("econnrefused", Atom::ECONNREFUSED),
     ("econnreset", Atom::ECONNRESET),
     ("einprogress", Atom::EINPROGRESS),
+    ("enotconn", Atom::ENOTCONN),
 ];
 
 /// Concurrent intern table for atom strings.
@@ -322,6 +324,7 @@ mod tests {
         assert_eq!(table.resolve(Atom::BOF), Some("bof"));
         assert_eq!(table.resolve(Atom::CUR), Some("cur"));
         assert_eq!(table.resolve(Atom::EOF), Some("eof"));
+        assert_eq!(table.resolve(Atom::ENOTCONN), Some("enotconn"));
     }
 
     #[test]
