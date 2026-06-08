@@ -30,6 +30,7 @@ pub mod spawn;
 pub mod stdlib_stubs;
 pub mod supervision;
 pub mod system_info_bifs;
+pub mod tcp_bifs;
 
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;

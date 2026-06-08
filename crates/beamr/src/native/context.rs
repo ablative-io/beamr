@@ -95,6 +95,8 @@ pub enum FileIoContinuation {
     DelDir,
     /// `erlang:rename/2` completion.
     Rename,
+    /// `erlang:tcp_accept/1,2` completion.
+    Accept,
 }
 
 /// Completion facility used by file BIFs to submit ring work and retrieve resume completions.
@@ -107,6 +109,9 @@ pub trait FileIoFacility: Send + Sync {
 
     /// Take a completion that woke `pid`, if any.
     fn take_file_io_completion(&self, pid: u64) -> Option<FileIoCompletion>;
+
+    /// Drop pending operations and future completions for `pid` after a timed wait expires.
+    fn cancel_pending_file_io_for_pid(&self, pid: u64);
 
     /// Completion ring used by `FdInner::explicit_close`.
     fn ring(&self) -> &dyn CompletionRing;
@@ -297,6 +302,29 @@ impl<'process> ProcessContext<'process> {
     #[must_use]
     pub fn pid(&self) -> Option<u64> {
         self.pid
+    }
+
+    /// Returns true when the attached process is re-entering a timed suspend after expiry.
+    #[must_use]
+    pub fn receive_timeout_expired(&self) -> bool {
+        self.process
+            .as_ref()
+            .is_some_and(|process| process.receive_timeout().is_some())
+    }
+
+    /// Clear timed-suspend metadata after a native timed wait has resolved.
+    pub fn clear_receive_timeout(&mut self) {
+        if let Some(process) = self.process.as_deref_mut() {
+            process.set_receive_timeout(None);
+            process.set_receive_timer_ref(None);
+        }
+    }
+
+    /// Cancel any file I/O operation tracked for the attached process.
+    pub fn cancel_pending_file_io_for_current_process(&self) {
+        if let (Some(pid), Some(facility)) = (self.pid, self.file_io_facility.as_ref()) {
+            facility.cancel_pending_file_io_for_pid(pid);
+        }
     }
 
     /// Set the calling process id.
@@ -603,6 +631,16 @@ impl<'process> ProcessContext<'process> {
         op: IoOp,
         continuation: FileIoContinuation,
     ) -> Result<u64, Term> {
+        self.submit_file_io_with_timeout(op, continuation, None)
+    }
+
+    /// Submit a file I/O operation and suspend the calling process until completion or timeout.
+    pub fn submit_file_io_with_timeout(
+        &mut self,
+        op: IoOp,
+        continuation: FileIoContinuation,
+        timeout_ms: Option<u64>,
+    ) -> Result<u64, Term> {
         let pid = self
             .pid
             .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
@@ -611,7 +649,7 @@ impl<'process> ProcessContext<'process> {
             .as_ref()
             .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
         let op_id = facility.submit_file_io(pid, op, continuation);
-        self.request_suspend(None);
+        self.request_suspend(timeout_ms);
         Ok(op_id)
     }
 
