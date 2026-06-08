@@ -375,3 +375,200 @@ fn error_reason(error: io::Error) -> Atom {
 fn badarg() -> Term {
     Term::atom(Atom::BADARG)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    use crate::io::CompletionRing;
+    use crate::io::ring::IoCompletion;
+    use crate::native::FileIoFacility;
+    use crate::process::Process;
+
+    struct MockFileIoFacility {
+        submissions: Mutex<Vec<(u64, IoOp, FileIoContinuation)>>,
+    }
+
+    impl MockFileIoFacility {
+        fn new() -> Self {
+            Self {
+                submissions: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl CompletionRing for MockFileIoFacility {
+        fn submit(&self, op: IoOp) -> u64 {
+            let mut submissions = self.submissions.lock().expect("submissions lock");
+            let op_id = (submissions.len() + 1) as u64;
+            submissions.push((0, op, FileIoContinuation::UdpRecv));
+            op_id
+        }
+
+        fn poll_completions(&self, _timeout: Duration) -> Vec<IoCompletion> {
+            Vec::new()
+        }
+
+        fn pending_count(&self) -> usize {
+            self.submissions.lock().map_or(0, |ops| ops.len())
+        }
+
+        fn shutdown(&self) {}
+    }
+
+    impl FileIoFacility for MockFileIoFacility {
+        fn submit_file_io(&self, pid: u64, op: IoOp, continuation: FileIoContinuation) -> u64 {
+            let mut submissions = self.submissions.lock().expect("submissions lock");
+            let op_id = (submissions.len() + 1) as u64;
+            submissions.push((pid, op, continuation));
+            op_id
+        }
+
+        fn track_submitted_file_io(&self, pid: u64, op_id: u64, continuation: FileIoContinuation) {
+            let mut submissions = self.submissions.lock().expect("submissions lock");
+            let index = usize::try_from(op_id.saturating_sub(1)).unwrap_or_default();
+            if let Some((stored_pid, _op, stored_continuation)) = submissions.get_mut(index) {
+                *stored_pid = pid;
+                *stored_continuation = continuation;
+            } else {
+                submissions.push((pid, IoOp::Nop, continuation));
+            }
+        }
+
+        fn take_file_io_completion(&self, _pid: u64) -> Option<FileIoCompletion> {
+            None
+        }
+
+        fn ring(&self) -> &dyn CompletionRing {
+            self
+        }
+    }
+
+    fn context_with_process<'a>(process: &'a mut Process) -> ProcessContext<'a> {
+        let mut context = ProcessContext::new();
+        context.attach_process(process, 0);
+        context.set_atom_table(Some(Arc::new(AtomTable::with_common_atoms())));
+        context
+    }
+
+    fn small(value: i64) -> Term {
+        Term::try_small_int(value).unwrap_or(Term::NIL)
+    }
+
+    fn tuple(context: &mut ProcessContext, terms: &[Term]) -> Term {
+        context.alloc_tuple(terms).unwrap_or(Term::NIL)
+    }
+
+    fn list(context: &mut ProcessContext, terms: &[Term]) -> Term {
+        let mut tail = Term::NIL;
+        for term in terms.iter().rev() {
+            tail = context.alloc_cons(*term, tail).unwrap_or(Term::NIL);
+        }
+        tail
+    }
+
+    #[test]
+    fn udp_open_zero_returns_passive_fd_resource_bound_to_udp_socket() {
+        let mut process = Process::new(10, 512);
+        let mut context = context_with_process(&mut process);
+
+        let socket = udp_open_1(&[small(0)], &mut context).expect("udp_open/1");
+        let resource = FdResource::new(socket).expect("fd resource");
+
+        assert_eq!(resource.state(), FdState::Open);
+        assert_eq!(resource.mode(), FdMode::Passive);
+        let mut addr: libc::sockaddr_in = unsafe { mem::zeroed() };
+        let mut len = mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+        let rc = unsafe {
+            libc::getsockname(
+                resource.fd(),
+                (&mut addr as *mut libc::sockaddr_in).cast(),
+                &mut len,
+            )
+        };
+        assert_eq!(rc, 0);
+        assert_eq!(addr.sin_family as i32, libc::AF_INET);
+        assert_ne!(u16::from_be(addr.sin_port), 0);
+    }
+
+    #[test]
+    fn udp_open_parses_ip_and_active_once_options() {
+        let mut process = Process::new(11, 512);
+        let facility = Arc::new(MockFileIoFacility::new());
+        let mut context = context_with_process(&mut process);
+        context.set_file_io_facility(Some(facility.clone()));
+        let ip_atom = Term::atom(context.atom_table().unwrap().intern("ip"));
+        let active_atom = Term::atom(context.atom_table().unwrap().intern("active"));
+        let once_atom = Term::atom(context.atom_table().unwrap().intern("once"));
+        let ip_value = tuple(&mut context, &[small(127), small(0), small(0), small(1)]);
+        let ip_option = tuple(&mut context, &[ip_atom, ip_value]);
+        let active_option = tuple(&mut context, &[active_atom, once_atom]);
+        let options = list(&mut context, &[ip_option, active_option]);
+
+        let socket = udp_open_2(&[small(0), options], &mut context).expect("udp_open/2");
+        let resource = FdResource::new(socket).expect("fd resource");
+
+        assert_eq!(resource.mode(), FdMode::ActiveOnce);
+        assert_eq!(resource.owner_pid(), 11);
+        let submissions = facility.submissions.lock().expect("submissions lock");
+        assert!(submissions.iter().any(|(_, op, continuation)| {
+            matches!(
+                op,
+                IoOp::RecvMsg {
+                    buf_len: DEFAULT_RECV_SIZE,
+                    ..
+                }
+            ) && matches!(continuation, FileIoContinuation::UdpActiveRecv { .. })
+        }));
+    }
+
+    #[test]
+    fn udp_recv_zero_length_submits_default_sized_recvmsg() {
+        let mut process = Process::new(12, 512);
+        let facility = Arc::new(MockFileIoFacility::new());
+        let mut context = context_with_process(&mut process);
+        context.set_file_io_facility(Some(facility.clone()));
+        let socket = udp_open_1(&[small(0)], &mut context).expect("udp_open/1");
+
+        assert_eq!(
+            udp_recv_2(&[socket, small(0)], &mut context),
+            Ok(Term::atom(Atom::OK))
+        );
+
+        let submissions = facility.submissions.lock().expect("submissions lock");
+        assert!(submissions.iter().any(|(_, op, continuation)| {
+            matches!(
+                op,
+                IoOp::RecvMsg {
+                    buf_len: DEFAULT_RECV_SIZE,
+                    ..
+                }
+            ) && matches!(continuation, FileIoContinuation::UdpRecv)
+        }));
+    }
+
+    #[test]
+    fn registered_udp_bifs_have_external_io_capability() {
+        let atom_table = AtomTable::with_common_atoms();
+        let registry = BifRegistryImpl::new();
+
+        register_udp_bifs(&registry, &atom_table).expect("register UDP BIFs");
+
+        let erlang = atom_table.intern("erlang");
+        for (name, arity) in [
+            ("udp_open", 1),
+            ("udp_open", 2),
+            ("udp_send", 4),
+            ("udp_recv", 2),
+            ("udp_recv", 3),
+        ] {
+            let entry = registry
+                .lookup(erlang, atom_table.intern(name), arity)
+                .expect("registered UDP BIF");
+            assert_eq!(entry.capability, Capability::ExternalIo);
+        }
+    }
+}

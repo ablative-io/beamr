@@ -8,7 +8,6 @@ use crossbeam_queue::SegQueue;
 use crate::error::ExecError;
 use crate::process::ExitReason;
 use crate::scheduler::dirty::DirtyResult;
-use crate::term::Term;
 
 use super::{
     PriorityStealers, RunQueue, Scheduler, SharedState, SpawnRequest, lock_or_recover,
@@ -169,6 +168,7 @@ use crate::atom::AtomTable;
 use crate::io::IoResult;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, FdMode, write_fd_resource};
 use crate::process::Process;
+use crate::term::Term;
 use crate::term::boxed::write_tuple;
 use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
 #[cfg(test)]
@@ -225,9 +225,7 @@ fn handle_udp_active_completion(
     }
     match completion.result {
         Ok(IoResult::DatagramReceived { bytes, data, addr }) => {
-            if let Some(message) = build_udp_active_message(shared, &fd, bytes, &data, addr) {
-                deliver_udp_active_message(shared, fd.controlling_process(), message);
-            }
+            deliver_udp_active_datagram(shared, &fd, bytes, &data, addr);
             match mode {
                 FdMode::Active => {
                     let op_id = shared.file_io_ring.submit(crate::io::IoOp::RecvMsg {
@@ -250,7 +248,7 @@ fn handle_udp_active_completion(
     }
 }
 
-fn build_udp_active_message(
+fn deliver_udp_active_datagram(
     shared: &SharedState,
     fd: &std::sync::Arc<FdInner>,
     bytes: usize,
@@ -261,23 +259,28 @@ fn build_udp_active_message(
     let entry = shared.process_bodies.get(&target)?;
     let mut slot = super::lock_or_recover(&entry);
     match &mut *slot {
-        ProcessSlot::Present(process) => build_udp_active_message_for_process(
-            &shared.atom_table,
-            &mut process.0,
-            fd,
-            data.get(..bytes)?,
-            addr,
-        ),
+        ProcessSlot::Present(ScheduledProcess(process)) => {
+            let message = build_udp_active_message_for_process(
+                &shared.atom_table,
+                process,
+                fd,
+                data.get(..bytes)?,
+                addr,
+            )?;
+            process.mailbox_mut().push_owned(message);
+        }
         ProcessSlot::Executing(metadata) => {
             metadata.pending_udp_messages.push(UdpActiveMessage {
                 fd: std::sync::Arc::clone(fd),
                 bytes: data.get(..bytes)?.to_vec(),
                 addr,
             });
-            Some(Term::NIL)
         }
-        ProcessSlot::Absent => None,
+        ProcessSlot::Absent => return None,
     }
+    drop(slot);
+    wake_process(shared, target);
+    Some(Term::atom(crate::atom::Atom::OK))
 }
 
 pub(in crate::scheduler) fn build_udp_active_message_for_process(
@@ -322,22 +325,6 @@ pub(in crate::scheduler) fn build_udp_active_message_for_process(
         .alloc_slice(1 + message_terms.len())
         .ok()?;
     write_tuple(heap, &message_terms)
-}
-
-fn deliver_udp_active_message(shared: &SharedState, pid: u64, message: Term) {
-    if message == Term::NIL {
-        wake_process(shared, pid);
-        return;
-    }
-    let Some(entry) = shared.process_bodies.get(&pid) else {
-        return;
-    };
-    let mut slot = lock_or_recover(&entry);
-    if let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot {
-        process.mailbox_mut().push_owned(message);
-    }
-    drop(slot);
-    wake_process(shared, pid);
 }
 
 fn drain_woken(shared: &SharedState, queue: &RunQueue, my_index: usize) {
