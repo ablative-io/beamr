@@ -4,18 +4,40 @@ use std::os::fd::RawFd;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use crate::atom::Atom;
+use crate::atom::{Atom, AtomTable};
 use crate::io::resource::{FdInner, FdResource, FdState};
 use crate::io::{CompletionRing, IoCompletion, IoOp, IoResult};
-use crate::native::{FileIoCompletion, FileIoContinuation, FileIoFacility, ProcessContext};
+use crate::native::{
+    BifRegistryImpl, FileIoCompletion, FileIoContinuation, FileIoFacility, ProcessContext,
+};
 use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary::Binary;
 use crate::term::boxed::Tuple;
 
-use super::{file_close, file_open, file_read, file_seek, file_write, pread, pwrite};
+use super::{
+    file_close, file_open, file_read, file_seek, file_write, pread, pwrite, register_file_bifs,
+};
 
 const PID: u64 = 42;
+
+#[test]
+fn registers_positional_file_bifs() {
+    let registry = BifRegistryImpl::new();
+    let atom_table = AtomTable::new();
+
+    register_file_bifs(&registry, &atom_table).expect("file BIF registration");
+
+    let erlang = atom_table.intern("erlang");
+    for (name, arity) in [("file_seek", 3), ("pread", 3), ("pwrite", 3)] {
+        assert!(
+            registry
+                .lookup(erlang, atom_table.intern(name), arity)
+                .is_some(),
+            "expected erlang:{name}/{arity} to be registered"
+        );
+    }
+}
 
 #[derive(Default)]
 struct MockRing {
@@ -368,6 +390,7 @@ fn file_seek_bof_and_cur_update_tracked_offset() {
     let mut context = heap_context(&mut process, Arc::clone(&facility));
     let fd = pipe_read_fd();
     let inner = Arc::new(FdInner::new(fd, PID));
+    inner.set_current_offset(5);
     let resource = context
         .alloc_fd_resource(Arc::clone(&inner))
         .expect("fd resource allocation");
@@ -397,12 +420,13 @@ fn file_seek_bof_and_cur_update_tracked_offset() {
 }
 
 #[test]
-fn file_seek_rejects_negative_result_with_einval() {
+fn file_seek_rejects_negative_result_and_preserves_offset_with_einval() {
     let facility = Arc::new(MockFileIoFacility::default());
     let mut process = Process::new(PID, 128);
     let mut context = heap_context(&mut process, Arc::clone(&facility));
     let fd = pipe_read_fd();
     let inner = Arc::new(FdInner::new(fd, PID));
+    inner.set_current_offset(5);
     let resource = context
         .alloc_fd_resource(Arc::clone(&inner))
         .expect("fd resource allocation");
@@ -413,7 +437,33 @@ fn file_seek_rejects_negative_result_with_einval() {
     )
     .expect("negative seek result");
     assert_eq!(error_reason(result), Term::atom(Atom::EINVAL));
-    assert_eq!(inner.current_offset(), 0);
+    assert_eq!(inner.current_offset(), 5);
+    assert!(facility.submitted().is_empty());
+}
+
+#[test]
+fn file_seek_rejects_unrepresentable_position_without_mutating_offset() {
+    let facility = Arc::new(MockFileIoFacility::default());
+    let mut process = Process::new(PID, 128);
+    let mut context = heap_context(&mut process, Arc::clone(&facility));
+    let fd = pipe_read_fd();
+    let inner = Arc::new(FdInner::new(fd, PID));
+    inner.set_current_offset(5);
+    let resource = context
+        .alloc_fd_resource(Arc::clone(&inner))
+        .expect("fd resource allocation");
+
+    let result = file_seek(
+        &[
+            resource,
+            Term::small_int(Term::SMALL_INT_MAX),
+            Term::atom(Atom::BOF),
+        ],
+        &mut context,
+    )
+    .expect("unrepresentable seek result");
+    assert_eq!(error_reason(result), Term::atom(Atom::EINVAL));
+    assert_eq!(inner.current_offset(), 5);
     assert!(facility.submitted().is_empty());
 }
 

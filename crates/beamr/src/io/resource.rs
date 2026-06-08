@@ -88,9 +88,12 @@ impl FdInner {
 
     /// Advances the tracked sequential file offset by a completed byte count.
     pub fn advance_current_offset(&self, bytes: usize) {
-        if let Ok(delta) = u64::try_from(bytes) {
-            self.current_offset.fetch_add(delta, Ordering::AcqRel);
-        }
+        let delta = u64::try_from(bytes).unwrap_or(u64::MAX);
+        let _previous =
+            self.current_offset
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                    Some(current.saturating_add(delta))
+                });
     }
 
     /// BIF-initiated async close. Returns true only for the transition that owns

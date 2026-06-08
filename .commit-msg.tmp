@@ -1,1 +1,1 @@
-feat(beamr): add positional file io BIFs
+review: harden positional file io offsets

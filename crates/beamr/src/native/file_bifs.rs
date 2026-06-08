@@ -141,6 +141,7 @@ pub fn file_write(args: &[Term], context: &mut ProcessContext) -> Result<Term, T
     Ok(Term::atom(Atom::OK))
 }
 
+/// erlang:file_seek/3.
 pub fn file_seek(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     if let Some(completion) = context.take_file_io_completion() {
         return finish_seek(completion, context);
@@ -178,6 +179,7 @@ pub fn file_seek(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     }
 }
 
+/// erlang:pread/3.
 pub fn pread(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     if let Some(completion) = context.take_file_io_completion() {
         return finish_read(completion, context);
@@ -215,6 +217,7 @@ fn submit_read(
     Ok(Term::atom(Atom::OK))
 }
 
+/// erlang:pwrite/3.
 pub fn pwrite(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     if let Some(completion) = context.take_file_io_completion() {
         return finish_write(completion, context);
@@ -449,10 +452,10 @@ fn set_seek_position(
     let Ok(position) = u64::try_from(position) else {
         return error_tuple(context, Atom::EINVAL);
     };
-    fd.set_current_offset(position);
     let Some(term) = i64::try_from(position).ok().and_then(Term::try_small_int) else {
         return error_tuple(context, Atom::EINVAL);
     };
+    fd.set_current_offset(position);
     ok_tuple(context, term)
 }
 
