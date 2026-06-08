@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
 use crate::ets::{
-    AccessOp, EtsError, EtsHeir, EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata,
-    EtsTableType, Protection, TermKey, copy_term_to_ets,
+    AccessOp, EtsError, EtsHeir, EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata, EtsTableType,
+    Protection, TermKey, copy_term_to_ets,
 };
 use crate::native::stdlib_stubs::maps_bifs::ContinuationStep;
 use crate::native::{
@@ -222,13 +222,9 @@ pub fn bif_give_away(args: &[Term], context: &mut ProcessContext) -> Result<Term
     facility
         .transfer_ownership(metadata.id, caller, recipient)
         .map_err(ets_error_to_badarg)?;
-    if let Err(error) = facility.send_ets_transfer(
-        recipient,
-        metadata.id,
-        caller,
-        *gift_data,
-        atom_table,
-    ) {
+    if let Err(error) =
+        facility.send_ets_transfer(recipient, metadata.id, caller, *gift_data, atom_table)
+    {
         let _rollback = facility.transfer_ownership(metadata.id, recipient, caller);
         return Err(ets_error_to_badarg(error));
     }
@@ -511,7 +507,11 @@ fn parse_new_options(options_term: Term, atom_table: &AtomTable) -> Result<NewOp
                     if option_name != Term::atom(heir) {
                         return Err(badarg());
                     }
-                    let pid = tuple.get(1).ok_or_else(badarg)?.as_pid().ok_or_else(badarg)?;
+                    let pid = tuple
+                        .get(1)
+                        .ok_or_else(badarg)?
+                        .as_pid()
+                        .ok_or_else(badarg)?;
                     let data = copy_term_to_ets(tuple.get(2).ok_or_else(badarg)?)
                         .map_err(ets_error_to_badarg)?;
                     options.heir = Some(EtsHeir { pid, data });
@@ -761,10 +761,9 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::{
-        bif_delete_1, bif_delete_2, bif_first, bif_foldl, bif_give_away, bif_info_2,
-        bif_insert, bif_last, bif_lookup, bif_member, bif_new, bif_next, bif_prev, bif_tab2list,
-        register_ets_bifs,
-        resume_ets_foldl,
+        bif_delete_1, bif_delete_2, bif_first, bif_foldl, bif_give_away, bif_info_2, bif_insert,
+        bif_last, bif_lookup, bif_member, bif_new, bif_next, bif_prev, bif_tab2list,
+        register_ets_bifs, resume_ets_foldl,
     };
     use crate::atom::{Atom, AtomTable};
     use crate::ets::EtsRegistry;
@@ -839,7 +838,12 @@ mod tests {
             self.transfers
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
-                .push(TransferRecord { to, table_id, from, data });
+                .push(TransferRecord {
+                    to,
+                    table_id,
+                    from,
+                    data,
+                });
             Ok(())
         }
     }
@@ -981,7 +985,11 @@ mod tests {
         let mut context = context(&mut process, Arc::clone(&atom_table), registry);
         let bad_option = tuple3(
             &mut context,
-            &[Term::atom(heir_atom), Term::small_int(1), Term::small_int(2)],
+            &[
+                Term::atom(heir_atom),
+                Term::small_int(1),
+                Term::small_int(2),
+            ],
         );
         let options = context.alloc_list(&[bad_option]).expect("option list");
 
@@ -1563,7 +1571,8 @@ mod tests {
         let private = atom_table.intern("private");
         let mut process = Process::new(1, 512);
         let ets_facility: Arc<dyn crate::native::EtsFacility> = facility.clone();
-        let mut context = context_with_facility(&mut process, Arc::clone(&atom_table), ets_facility);
+        let mut context =
+            context_with_facility(&mut process, Arc::clone(&atom_table), ets_facility);
         let tab = new_table(
             &mut context,
             &atom_table,
@@ -1608,14 +1617,14 @@ mod tests {
         let gift = atom_table.intern("gift");
         let mut process = Process::new(1, 256);
         let ets_facility: Arc<dyn crate::native::EtsFacility> = facility.clone();
-        let mut context = context_with_facility(&mut process, Arc::clone(&atom_table), ets_facility);
-        let mut metadata = EtsTableMetadata::new(None, 0, EtsTableType::Set, Protection::Public, 9);
-        metadata.protection = Protection::Public;
+        let mut context =
+            context_with_facility(&mut process, Arc::clone(&atom_table), ets_facility);
+        let metadata = EtsTableMetadata::new(None, 0, EtsTableType::Set, Protection::Public, 9);
         let table_id = registry.create_table(metadata);
         let tab = Term::small_int(table_id as i64);
 
         assert_eq!(
-            bif_give_away(&[tab, Term::pid(2), Term::atom(public)], &mut context),
+            bif_give_away(&[tab, Term::pid(2), Term::atom(gift)], &mut context),
             Err(Term::atom(Atom::BADARG))
         );
         assert!(facility.transfers().is_empty());

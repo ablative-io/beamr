@@ -1,1 +1,1 @@
-Harden async I/O completion bridge and scheduler message delivery
+feat(ets): support ownership transfer heirs and give_away
