@@ -25,6 +25,7 @@ const CLOSURE_GENERATION_OFFSET: i32 = (5 * WORD_BYTES) as i32;
 const CLOSURE_UNIQUE_ID_OFFSET: i32 = (6 * WORD_BYTES) as i32;
 const CLOSURE_FREE_VAR_BASE_OFFSET: usize = 7 * WORD_BYTES;
 
+#[derive(Clone, Copy)]
 pub(crate) struct ClosureHelpers {
     pub(crate) alloc: FuncRef,
     pub(crate) dispatch: FuncRef,

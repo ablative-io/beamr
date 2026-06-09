@@ -15,6 +15,7 @@ const TUPLE_HEADER_TAG: i64 = 0x10;
 const HEADER_TAG_BITS: i64 = 8;
 const WORD_BYTES: usize = 8;
 
+#[derive(Clone, Copy)]
 pub(crate) struct AllocationHelpers {
     pub(crate) tuple: FuncRef,
     pub(crate) cons: FuncRef,

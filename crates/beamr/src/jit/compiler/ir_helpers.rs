@@ -1,14 +1,190 @@
-use cranelift_codegen::ir::{AbiParam, types};
+use cranelift_codegen::ir::{types, AbiParam, FuncRef};
 use cranelift_jit::JITModule;
 use cranelift_module::{Linkage, Module};
 
+use crate::jit::ir_allocation::AllocationHelpers;
 use crate::jit::ir_binary::BinaryHelpers;
+use crate::jit::ir_closure::ClosureHelpers;
+use crate::jit::ir_exceptions::ExceptionHelpers;
 use crate::jit::ir_map::MapHelpers;
 use crate::jit::ir_message::MessageHelpers;
 
 use super::JitError;
 
-pub(super) fn declare_message_helpers(
+/// All declared Cranelift helper function references needed during instruction lowering.
+#[derive(Clone, Copy)]
+pub(super) struct CompileHelpers {
+    pub(super) allocation: AllocationHelpers,
+    pub(super) closure: ClosureHelpers,
+    pub(super) exception: ExceptionHelpers,
+    pub(super) binary: BinaryHelpers,
+    pub(super) map: MapHelpers,
+    pub(super) message: MessageHelpers,
+    pub(super) charge: FuncRef,
+    pub(super) call_interpreted: FuncRef,
+    pub(super) box_float: FuncRef,
+}
+
+/// Declare all Cranelift helper function references used by the instruction dispatch loop.
+pub(super) fn declare_compile_helpers(
+    jit_module: &mut JITModule,
+    ctx: &mut cranelift_codegen::ir::Function,
+) -> Result<CompileHelpers, JitError> {
+    let mut tuple_signature = jit_module.make_signature();
+    tuple_signature.params.push(AbiParam::new(types::I64));
+    tuple_signature.params.push(AbiParam::new(types::I64));
+    tuple_signature.returns.push(AbiParam::new(types::I64));
+    let tuple_helper = jit_module
+        .declare_function("beamr_jit_alloc_tuple", Linkage::Import, &tuple_signature)
+        .map_err(|error| JitError::CraneliftError(error.to_string()))?;
+    let tuple_helper = jit_module.declare_func_in_func(tuple_helper, ctx);
+
+    let mut cons_signature = jit_module.make_signature();
+    cons_signature.params.push(AbiParam::new(types::I64));
+    cons_signature.returns.push(AbiParam::new(types::I64));
+    let cons_helper = jit_module
+        .declare_function("beamr_jit_alloc_cons", Linkage::Import, &cons_signature)
+        .map_err(|error| JitError::CraneliftError(error.to_string()))?;
+    let cons_helper = jit_module.declare_func_in_func(cons_helper, ctx);
+
+    let mut closure_alloc_signature = jit_module.make_signature();
+    closure_alloc_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    closure_alloc_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    closure_alloc_signature
+        .returns
+        .push(AbiParam::new(types::I64));
+    let closure_alloc_helper = jit_module
+        .declare_function(
+            "beamr_jit_alloc_closure",
+            Linkage::Import,
+            &closure_alloc_signature,
+        )
+        .map_err(|error| JitError::CraneliftError(error.to_string()))?;
+    let closure_alloc_helper = jit_module.declare_func_in_func(closure_alloc_helper, ctx);
+
+    let mut box_float_signature = jit_module.make_signature();
+    box_float_signature.params.push(AbiParam::new(types::I64));
+    box_float_signature.params.push(AbiParam::new(types::F64));
+    box_float_signature.returns.push(AbiParam::new(types::I64));
+    let box_float_helper = jit_module
+        .declare_function("beamr_jit_box_float", Linkage::Import, &box_float_signature)
+        .map_err(|error| JitError::CraneliftError(error.to_string()))?;
+    let box_float_helper = jit_module.declare_func_in_func(box_float_helper, ctx);
+
+    let mut closure_call_signature = jit_module.make_signature();
+    closure_call_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    closure_call_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    closure_call_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    closure_call_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    closure_call_signature
+        .returns
+        .push(AbiParam::new(types::I8));
+    closure_call_signature
+        .returns
+        .push(AbiParam::new(types::I64));
+    let closure_call_helper = jit_module
+        .declare_function(
+            "beamr_jit_call_closure",
+            Linkage::Import,
+            &closure_call_signature,
+        )
+        .map_err(|error| JitError::CraneliftError(error.to_string()))?;
+    let closure_call_helper = jit_module.declare_func_in_func(closure_call_helper, ctx);
+
+    let mut charge_signature = jit_module.make_signature();
+    charge_signature.params.push(AbiParam::new(types::I64));
+    charge_signature.returns.push(AbiParam::new(types::I64));
+    let charge_helper = jit_module
+        .declare_function(
+            "beamr_jit_charge_reduction",
+            Linkage::Import,
+            &charge_signature,
+        )
+        .map_err(|error| JitError::CraneliftError(error.to_string()))?;
+    let charge_helper = jit_module.declare_func_in_func(charge_helper, ctx);
+
+    let mut call_interpreted_signature = jit_module.make_signature();
+    call_interpreted_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    call_interpreted_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    call_interpreted_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    call_interpreted_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    call_interpreted_signature
+        .params
+        .push(AbiParam::new(types::I64));
+    call_interpreted_signature
+        .returns
+        .push(AbiParam::new(types::I8));
+    call_interpreted_signature
+        .returns
+        .push(AbiParam::new(types::I64));
+    let call_interpreted_helper = jit_module
+        .declare_function(
+            "beamr_jit_call_interpreted",
+            Linkage::Import,
+            &call_interpreted_signature,
+        )
+        .map_err(|error| JitError::CraneliftError(error.to_string()))?;
+    let call_interpreted_helper = jit_module.declare_func_in_func(call_interpreted_helper, ctx);
+
+    let exception_class_helper =
+        declare_unary_helper(jit_module, ctx, "beamr_jit_exception_class")?;
+    let exception_reason_helper =
+        declare_unary_helper(jit_module, ctx, "beamr_jit_exception_reason")?;
+    let exception_trace_helper =
+        declare_unary_helper(jit_module, ctx, "beamr_jit_exception_trace")?;
+    let exception_clear_helper = declare_void_unary_helper(jit_module, ctx)?;
+    let exception_add_frame_helper = declare_add_frame_helper(jit_module, ctx)?;
+
+    let binary_helpers = declare_binary_helpers(jit_module, ctx)?;
+    let map_helpers = declare_map_helpers(jit_module, ctx)?;
+    let message_helpers = declare_message_helpers(jit_module, ctx)?;
+
+    Ok(CompileHelpers {
+        allocation: AllocationHelpers {
+            tuple: tuple_helper,
+            cons: cons_helper,
+        },
+        closure: ClosureHelpers {
+            alloc: closure_alloc_helper,
+            dispatch: closure_call_helper,
+        },
+        exception: ExceptionHelpers {
+            class: exception_class_helper,
+            reason: exception_reason_helper,
+            trace: exception_trace_helper,
+            clear: exception_clear_helper,
+            add_frame: exception_add_frame_helper,
+        },
+        binary: binary_helpers,
+        map: map_helpers,
+        message: message_helpers,
+        charge: charge_helper,
+        call_interpreted: call_interpreted_helper,
+        box_float: box_float_helper,
+    })
+}
+
+fn declare_message_helpers(
     module: &mut JITModule,
     func: &mut cranelift_codegen::ir::Function,
 ) -> Result<MessageHelpers, JitError> {
@@ -57,7 +233,7 @@ pub(super) fn declare_message_helpers(
     })
 }
 
-pub(super) fn declare_map_helpers(
+fn declare_map_helpers(
     module: &mut JITModule,
     func: &mut cranelift_codegen::ir::Function,
 ) -> Result<MapHelpers, JitError> {
@@ -93,7 +269,7 @@ pub(super) fn declare_map_helpers(
     })
 }
 
-pub(super) fn declare_binary_helpers(
+fn declare_binary_helpers(
     module: &mut JITModule,
     func: &mut cranelift_codegen::ir::Function,
 ) -> Result<BinaryHelpers, JitError> {
@@ -206,7 +382,7 @@ pub(super) fn declare_binary_helpers(
     })
 }
 
-pub(super) fn declare_helper(
+fn declare_helper(
     module: &mut JITModule,
     func: &mut cranelift_codegen::ir::Function,
     name: &str,
@@ -216,7 +392,7 @@ pub(super) fn declare_helper(
     declare_multi_return_helper(module, func, name, params, &[return_type])
 }
 
-pub(super) fn declare_void_helper(
+fn declare_void_helper(
     module: &mut JITModule,
     func: &mut cranelift_codegen::ir::Function,
     name: &str,
@@ -225,7 +401,7 @@ pub(super) fn declare_void_helper(
     declare_multi_return_helper(module, func, name, params, &[])
 }
 
-pub(super) fn declare_multi_return_helper(
+fn declare_multi_return_helper(
     module: &mut JITModule,
     func: &mut cranelift_codegen::ir::Function,
     name: &str,
@@ -245,7 +421,7 @@ pub(super) fn declare_multi_return_helper(
     Ok(module.declare_func_in_func(helper, func))
 }
 
-pub(super) fn declare_unary_helper(
+fn declare_unary_helper(
     module: &mut JITModule,
     func: &mut cranelift_codegen::ir::Function,
     name: &str,
@@ -259,14 +435,14 @@ pub(super) fn declare_unary_helper(
     Ok(module.declare_func_in_func(helper, func))
 }
 
-pub(super) fn declare_void_unary_helper(
+fn declare_void_unary_helper(
     module: &mut JITModule,
     func: &mut cranelift_codegen::ir::Function,
 ) -> Result<cranelift_codegen::ir::FuncRef, JitError> {
     declare_void_helper(module, func, "beamr_jit_clear_exception", &[types::I64])
 }
 
-pub(super) fn declare_add_frame_helper(
+fn declare_add_frame_helper(
     module: &mut JITModule,
     func: &mut cranelift_codegen::ir::Function,
 ) -> Result<cranelift_codegen::ir::FuncRef, JitError> {

@@ -2338,7 +2338,10 @@ fn compiled_local_call_charges_reduction_and_yields_when_exhausted() {
     let returned = call_native_status(&native, &mut registers, &mut process);
 
     assert_eq!(returned.status, JIT_STATUS_YIELD);
-    assert_eq!(returned.value, super::JIT_YIELD_SENTINEL as u64);
+    assert_eq!(
+        returned.value,
+        crate::jit::runtime::JIT_YIELD_SENTINEL as u64,
+    );
     assert_eq!(process.reduction_counter(), 0);
 }
 
