@@ -2,10 +2,11 @@
 
 use std::sync::Arc;
 
+use super::collection_bifs::list_length;
 use crate::atom::{Atom, AtomTable};
 use crate::native::ProcessContext;
 use crate::term::Term;
-use crate::term::boxed::{Cons, Tuple};
+use crate::term::boxed::{Cons, Tuple, write_cons};
 use crate::term::compare;
 
 pub fn bif_lists_append_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -154,10 +155,28 @@ pub fn bif_lists_reverse_2(args: &[Term], context: &mut ProcessContext) -> Resul
     let [list, tail] = args else {
         return Err(badarg());
     };
-    let elements = list_to_vec(*list)?;
-    let mut result = *tail;
-    for element in elements {
-        result = context.alloc_cons(element, result)?;
+    let count = list_length(*list)?;
+    if count == 0 {
+        return Ok(*tail);
+    }
+    {
+        let process = context.process_mut().ok_or_else(badarg)?;
+        process.set_x_reg(0, *list);
+        process.set_x_reg(1, *tail);
+    }
+    context.ensure_heap_space(count * 2)?;
+    let (list, mut result) = {
+        let process = context.process_mut().ok_or_else(badarg)?;
+        (process.x_reg(0), process.x_reg(1))
+    };
+    let mut current = list;
+    for _ in 0..count {
+        let cons = Cons::new(current).ok_or_else(badarg)?;
+        let head = cons.head();
+        current = cons.tail();
+        let process = context.process_mut().ok_or_else(badarg)?;
+        let heap = process.heap_mut().alloc_slice(2).map_err(|_| badarg())?;
+        result = write_cons(heap, head, result).ok_or_else(badarg)?;
     }
     Ok(result)
 }

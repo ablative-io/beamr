@@ -105,16 +105,25 @@ pub fn bif_maps_remove(args: &[Term], context: &mut ProcessContext) -> Result<Te
 }
 
 /// lists:reverse/1 — reverses a proper list.
+///
+/// Uses a GC-safe two-pass approach: count first (no allocation), save the
+/// input to x-register 0 so GC can trace it, reserve heap space (GC may run
+/// and update the x-register), then re-read and build the reversed result.
 pub fn bif_lists_reverse(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [input] = args else {
         return Err(badarg());
     };
-
-    // Collect all elements from the proper list.
-    let elements = list_to_vec(*input)?;
-
-    let reversed: Vec<_> = elements.into_iter().rev().collect();
-    context.alloc_list(&reversed)
+    let count = list_length(*input)?;
+    if count == 0 {
+        return Ok(Term::NIL);
+    }
+    {
+        let process = context.process_mut().ok_or_else(badarg)?;
+        process.set_x_reg(0, *input);
+    }
+    context.ensure_heap_space(count * 2)?;
+    let input = context.process_mut().ok_or_else(badarg)?.x_reg(0);
+    build_reversed_list(context, input, count)
 }
 
 /// maps:map/2 — trampoline-backed higher-order map transformation.
@@ -166,18 +175,42 @@ fn list_of_2tuples(term: Term) -> Result<Vec<(Term, Term)>, Term> {
     }
 }
 
-/// Collects a proper list into a `Vec<Term>`.
-fn list_to_vec(term: Term) -> Result<Vec<Term>, Term> {
-    let mut elements = Vec::new();
+/// Counts elements in a proper list without allocating.
+pub(super) fn list_length(term: Term) -> Result<usize, Term> {
+    let mut count = 0;
     let mut current = term;
     loop {
         if current.is_nil() {
-            return Ok(elements);
+            return Ok(count);
         }
         let cons = Cons::new(current).ok_or_else(badarg)?;
-        elements.push(cons.head());
+        count += 1;
         current = cons.tail();
     }
+}
+
+/// Builds a reversed list from a live heap list using pre-reserved space.
+/// Caller must have already called `ensure_heap_space(count * 2)`.
+fn build_reversed_list(
+    context: &mut ProcessContext,
+    list: Term,
+    count: usize,
+) -> Result<Term, Term> {
+    use crate::term::boxed::write_cons;
+    let mut result = Term::NIL;
+    let mut current = list;
+    for _ in 0..count {
+        let cons = Cons::new(current).ok_or_else(badarg)?;
+        let head = cons.head();
+        current = cons.tail();
+        let process = context.process_mut().ok_or_else(badarg)?;
+        let heap = process
+            .heap_mut()
+            .alloc_slice(2)
+            .map_err(|_| badarg())?;
+        result = write_cons(heap, head, result).ok_or_else(badarg)?;
+    }
+    Ok(result)
 }
 
 fn badarg() -> Term {
