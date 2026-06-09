@@ -6,13 +6,14 @@ use crate::jit::ir_exceptions::{
     JIT_STATUS_DEOPT, JIT_STATUS_EXCEPTION, JIT_STATUS_NORMAL, JIT_STATUS_YIELD, JitReturn,
 };
 use crate::jit::type_info::{FunctionSignature, TypeDescriptor};
-use crate::loader::decode::{BifOp, ComparisonOp, Operand, TypeTestOp};
+use crate::loader::decode::{BifOp, ComparisonOp, MapOp, Operand, TypeTestOp};
 use crate::loader::{Instruction, LambdaEntry};
 use crate::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use crate::process::{JitRuntimeContext, Process};
 use crate::term::Term;
 use crate::term::boxed::{
-    Closure, Cons, Float, Tuple, write_closure, write_cons, write_float, write_tuple,
+    Closure, Cons, Float, Map, Tuple, write_closure, write_cons, write_float, write_map,
+    write_tuple,
 };
 use std::collections::HashMap;
 
@@ -105,6 +106,20 @@ fn heap_float(process: &mut Process, value: f64) -> Term {
     // process heap allocator for this test allocation.
     let heap = unsafe { std::slice::from_raw_parts_mut(ptr, 2) };
     write_float(heap, value).expect("float layout fits")
+}
+
+fn heap_map(process: &mut Process, entries: &[(Term, Term)]) -> Term {
+    let words = 2 + entries.len() * 2;
+    let ptr = process.heap_mut().alloc(words).expect("map heap fits");
+    // SAFETY: `ptr` addresses `words` contiguous heap words returned by the
+    // process heap allocator for this test allocation.
+    let heap = unsafe { std::slice::from_raw_parts_mut(ptr, words) };
+    let keys = entries.iter().map(|(key, _value)| *key).collect::<Vec<_>>();
+    let values = entries
+        .iter()
+        .map(|(_key, value)| *value)
+        .collect::<Vec<_>>();
+    write_map(heap, &keys, &values).expect("map layout fits")
 }
 
 fn test_module(name: Atom, code: Vec<Instruction>) -> Module {
@@ -1211,6 +1226,210 @@ fn compiled_put_tuple2_emits_safepoint_and_allocates_tuple() {
     assert_eq!(tuple.arity(), 2);
     assert_eq!(tuple.get(0), Some(Term::small_int(4)));
     assert_eq!(tuple.get(1), Some(Term::small_int(9)));
+}
+
+#[test]
+fn compiled_put_map_assoc_emits_safepoint_and_allocates_map() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let native = compiler
+        .compile(
+            &[
+                Instruction::MapOp {
+                    op: MapOp::PutMapAssoc,
+                    operands: vec![
+                        Operand::Label(1),
+                        Operand::X(1),
+                        Operand::X(4),
+                        Operand::Unsigned(0),
+                        Operand::List(vec![
+                            Operand::X(0),
+                            Operand::X(2),
+                            Operand::Atom(Some(Atom::ERROR)),
+                            Operand::X(3),
+                        ]),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 1 },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            0,
+        )
+        .unwrap();
+
+    assert_eq!(native.stack_maps().len(), 1);
+    assert_eq!(native.stack_maps()[0].offset_from_entry, 0);
+    assert_eq!(
+        native.stack_maps()[0].live_roots,
+        vec![
+            RootLocation::Register(1),
+            RootLocation::Register(0),
+            RootLocation::Register(2),
+            RootLocation::Register(3),
+            RootLocation::Register(4),
+        ]
+    );
+
+    let mut process = Process::new(0, 233);
+    let empty = heap_map(&mut process, &[]);
+    let mut registers = vec![
+        Term::atom(Atom::OK).raw(),
+        empty.raw(),
+        Term::small_int(1).raw(),
+        Term::small_int(2).raw(),
+        0,
+    ];
+    let _returned = call_native_with_process(&native, &mut registers, &mut process);
+
+    let map = Map::new(Term::from_raw(registers[4])).unwrap();
+    assert_eq!(map.len(), 2);
+    assert_eq!(map.get(Term::atom(Atom::OK)), Some(Term::small_int(1)));
+    assert_eq!(map.get(Term::atom(Atom::ERROR)), Some(Term::small_int(2)));
+}
+
+#[test]
+fn compiled_put_map_assoc_allocates_empty_map() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let native = compiler
+        .compile(
+            &[
+                Instruction::MapOp {
+                    op: MapOp::PutMapAssoc,
+                    operands: vec![
+                        Operand::Label(1),
+                        Operand::X(1),
+                        Operand::X(0),
+                        Operand::Unsigned(0),
+                        Operand::List(vec![]),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 1 },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            0,
+        )
+        .unwrap();
+
+    let mut process = Process::new(0, 233);
+    let empty = heap_map(&mut process, &[]);
+    let mut registers = vec![0, empty.raw()];
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+
+    assert_eq!(returned, registers[0]);
+    let map = Map::new(Term::from_raw(registers[0])).unwrap();
+    assert!(map.is_empty());
+}
+
+#[test]
+fn compiled_put_map_exact_updates_existing_key_and_fails_missing_key() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let native = compiler
+        .compile(
+            &[
+                Instruction::MapOp {
+                    op: MapOp::PutMapExact,
+                    operands: vec![
+                        Operand::Label(1),
+                        Operand::X(1),
+                        Operand::X(0),
+                        Operand::Unsigned(0),
+                        Operand::List(vec![Operand::Atom(Some(Atom::OK)), Operand::X(2)]),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 1 },
+                Instruction::Move {
+                    source: Operand::X(3),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            0,
+        )
+        .unwrap();
+
+    let mut process = Process::new(0, 233);
+    let source = heap_map(&mut process, &[(Term::atom(Atom::OK), Term::small_int(1))]);
+    let mut registers = vec![0, source.raw(), Term::small_int(2).raw(), Term::NIL.raw()];
+    let _returned = call_native_with_process(&native, &mut registers, &mut process);
+    let updated = Map::new(Term::from_raw(registers[0])).unwrap();
+    assert_eq!(updated.get(Term::atom(Atom::OK)), Some(Term::small_int(2)));
+    assert_eq!(
+        Map::new(source).unwrap().get(Term::atom(Atom::OK)),
+        Some(Term::small_int(1))
+    );
+
+    let missing_source = heap_map(
+        &mut process,
+        &[(Term::atom(Atom::ERROR), Term::small_int(1))],
+    );
+    let mut registers = vec![
+        0,
+        missing_source.raw(),
+        Term::small_int(3).raw(),
+        Term::NIL.raw(),
+    ];
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+    assert_eq!(returned, Term::NIL.raw());
+}
+
+#[test]
+fn compiled_map_pattern_ops_are_read_only_and_emit_no_safepoints() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let native = compiler
+        .compile(
+            &[
+                Instruction::MapOp {
+                    op: MapOp::HasMapFields,
+                    operands: vec![
+                        Operand::Label(1),
+                        Operand::X(1),
+                        Operand::List(vec![Operand::Atom(Some(Atom::OK))]),
+                    ],
+                },
+                Instruction::MapOp {
+                    op: MapOp::GetMapElements,
+                    operands: vec![
+                        Operand::Label(1),
+                        Operand::X(1),
+                        Operand::List(vec![Operand::Atom(Some(Atom::OK)), Operand::X(0)]),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 1 },
+                Instruction::Move {
+                    source: Operand::X(2),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            0,
+        )
+        .unwrap();
+
+    assert!(native.stack_maps().is_empty());
+    let mut process = Process::new(0, 233);
+    let source = heap_map(&mut process, &[(Term::atom(Atom::OK), Term::small_int(42))]);
+    let mut registers = vec![0, source.raw(), Term::NIL.raw()];
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+    assert_eq!(returned, Term::small_int(42).raw());
+
+    let missing = heap_map(
+        &mut process,
+        &[(Term::atom(Atom::ERROR), Term::small_int(42))],
+    );
+    let mut registers = vec![0, missing.raw(), Term::NIL.raw()];
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+    assert_eq!(returned, Term::NIL.raw());
 }
 
 #[test]

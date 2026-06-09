@@ -5,7 +5,7 @@ use crate::jit::type_info::{FunctionSignature, TypeDescriptor};
 use crate::loader::Instruction;
 use crate::loader::decode::chunks::LambdaEntry;
 use crate::loader::decode::compact::Operand;
-use crate::loader::decode::{BinaryOp, TypeTestOp};
+use crate::loader::decode::{BinaryOp, MapOp, TypeTestOp};
 use crate::scheduler::lock_or_recover;
 use crate::term::Term;
 use cranelift_codegen::CodegenError;
@@ -71,6 +71,11 @@ use super::ir_guards::{
     SelectPair, immediate_raw_term, immediate_usize, lower_is_tagged_tuple, lower_select_val,
     lower_test_arity, lower_type_test, parse_select_pairs,
 };
+use super::ir_map::{
+    MapHelpers, MapLoweringContext, map_allocation_roots, parse_get_map_elements_operands,
+    parse_has_map_fields_operands, parse_put_map_operands, translate_get_map_elements,
+    translate_has_map_fields, translate_put_map_assoc, translate_put_map_exact,
+};
 use super::ir_message::{
     MessageHelpers, MessageLoweringContext, translate_loop_rec, translate_loop_rec_end,
     translate_remove_message, translate_send, translate_timeout, translate_wait,
@@ -81,9 +86,9 @@ use super::runtime::{
     jit_bs_finish, jit_bs_get_binary, jit_bs_get_integer, jit_bs_get_utf8, jit_bs_get_utf16,
     jit_bs_get_utf32, jit_bs_init, jit_bs_put_binary, jit_bs_put_integer, jit_bs_put_utf8,
     jit_bs_put_utf16, jit_bs_put_utf32, jit_bs_start_match, jit_bs_test_tail, jit_bs_test_unit,
-    jit_call_closure, jit_call_interpreted, jit_charge_reduction, jit_receive_accept,
-    jit_receive_next, jit_receive_peek, jit_receive_timeout, jit_receive_wait,
-    jit_receive_wait_timeout, jit_send_message,
+    jit_call_closure, jit_call_interpreted, jit_charge_reduction, jit_map_get, jit_map_has_key,
+    jit_map_new, jit_map_update, jit_receive_accept, jit_receive_next, jit_receive_peek,
+    jit_receive_timeout, jit_receive_wait, jit_receive_wait_timeout, jit_send_message,
 };
 use super::safepoint::SafepointBuilder;
 use super::types::NativeCode;
@@ -381,6 +386,10 @@ impl JitCompiler {
         builder.symbol("beamr_jit_bs_put_utf16", jit_bs_put_utf16 as *const u8);
         builder.symbol("beamr_jit_bs_put_utf32", jit_bs_put_utf32 as *const u8);
         builder.symbol("beamr_jit_bs_finish", jit_bs_finish as *const u8);
+        builder.symbol("beamr_jit_map_new", jit_map_new as *const u8);
+        builder.symbol("beamr_jit_map_update", jit_map_update as *const u8);
+        builder.symbol("beamr_jit_map_get", jit_map_get as *const u8);
+        builder.symbol("beamr_jit_map_has_key", jit_map_has_key as *const u8);
         builder.symbol("beamr_jit_send_message", jit_send_message as *const u8);
         builder.symbol("beamr_jit_receive_peek", jit_receive_peek as *const u8);
         builder.symbol("beamr_jit_receive_next", jit_receive_next as *const u8);
@@ -652,6 +661,7 @@ impl JitCompiler {
         let exception_add_frame_helper = declare_add_frame_helper(&mut jit_module, &mut ctx.func)?;
 
         let binary_helpers = declare_binary_helpers(&mut jit_module, &mut ctx.func)?;
+        let map_helpers = declare_map_helpers(&mut jit_module, &mut ctx.func)?;
         let message_helpers = declare_message_helpers(&mut jit_module, &mut ctx.func)?;
         let allocation_helpers = AllocationHelpers {
             tuple: tuple_helper,
@@ -1460,6 +1470,98 @@ impl JitCompiler {
                         clear_binary_outputs(&mut typed_state, *op, operands);
                         terminated = false;
                     }
+                    Instruction::MapOp { op, operands } => {
+                        let context = MapLoweringContext {
+                            register_file,
+                            process,
+                        };
+                        match op {
+                            MapOp::PutMapAssoc => {
+                                safepoints.record_allocation_site(
+                                    index,
+                                    map_allocation_roots(*op, operands)?,
+                                )?;
+                                let (fail_operand, parsed) = parse_put_map_operands(operands)?;
+                                typed_state.materialize_operands_for_untyped_lowering(
+                                    &mut builder,
+                                    register_file,
+                                    std::iter::once(parsed.source).chain(parsed.pairs.iter()),
+                                );
+                                let fail = blocks.label_block(label_operand(fail_operand)?)?;
+                                translate_put_map_assoc(
+                                    &mut builder,
+                                    context,
+                                    map_helpers,
+                                    parsed,
+                                    fail,
+                                )?;
+                                typed_state.clear_operand(parsed.destination);
+                                terminated = false;
+                            }
+                            MapOp::PutMapExact => {
+                                safepoints.record_allocation_site(
+                                    index,
+                                    map_allocation_roots(*op, operands)?,
+                                )?;
+                                let (fail_operand, parsed) = parse_put_map_operands(operands)?;
+                                typed_state.materialize_operands_for_untyped_lowering(
+                                    &mut builder,
+                                    register_file,
+                                    std::iter::once(parsed.source).chain(parsed.pairs.iter()),
+                                );
+                                let fail = blocks.label_block(label_operand(fail_operand)?)?;
+                                translate_put_map_exact(
+                                    &mut builder,
+                                    context,
+                                    map_helpers,
+                                    parsed,
+                                    fail,
+                                )?;
+                                typed_state.clear_operand(parsed.destination);
+                                terminated = false;
+                            }
+                            MapOp::GetMapElements => {
+                                let (fail_operand, parsed) =
+                                    parse_get_map_elements_operands(operands)?;
+                                typed_state.materialize_operands_for_untyped_lowering(
+                                    &mut builder,
+                                    register_file,
+                                    std::iter::once(parsed.source)
+                                        .chain(parsed.pairs.iter().step_by(2)),
+                                );
+                                let fail = blocks.label_block(label_operand(fail_operand)?)?;
+                                translate_get_map_elements(
+                                    &mut builder,
+                                    context,
+                                    map_helpers,
+                                    parsed,
+                                    fail,
+                                )?;
+                                for destination in parsed.pairs.iter().skip(1).step_by(2) {
+                                    typed_state.clear_operand(destination);
+                                }
+                                terminated = false;
+                            }
+                            MapOp::HasMapFields => {
+                                let (fail_operand, parsed) =
+                                    parse_has_map_fields_operands(operands)?;
+                                typed_state.materialize_operands_for_untyped_lowering(
+                                    &mut builder,
+                                    register_file,
+                                    std::iter::once(parsed.source).chain(parsed.keys.iter()),
+                                );
+                                let fail = blocks.label_block(label_operand(fail_operand)?)?;
+                                translate_has_map_fields(
+                                    &mut builder,
+                                    context,
+                                    map_helpers,
+                                    parsed,
+                                    fail,
+                                )?;
+                                terminated = false;
+                            }
+                        }
+                    }
                     Instruction::Apply { arity } => {
                         typed_state.materialize_all_for_untyped_call(&mut builder, register_file);
                         let call_arity = immediate_u8(arity, "closure apply arity")?;
@@ -1932,6 +2034,42 @@ fn declare_message_helpers(
             func,
             "beamr_jit_receive_timeout",
             &[types::I64],
+        )?,
+    })
+}
+
+fn declare_map_helpers(
+    module: &mut JITModule,
+    func: &mut cranelift_codegen::ir::Function,
+) -> Result<MapHelpers, JitError> {
+    Ok(MapHelpers {
+        new: declare_helper(
+            module,
+            func,
+            "beamr_jit_map_new",
+            &[types::I64, types::I64, types::I64, types::I64],
+            types::I64,
+        )?,
+        update: declare_helper(
+            module,
+            func,
+            "beamr_jit_map_update",
+            &[types::I64, types::I64, types::I64, types::I64],
+            types::I64,
+        )?,
+        get: declare_multi_return_helper(
+            module,
+            func,
+            "beamr_jit_map_get",
+            &[types::I64, types::I64],
+            &[types::I8, types::I64],
+        )?,
+        has_key: declare_helper(
+            module,
+            func,
+            "beamr_jit_map_has_key",
+            &[types::I64, types::I64],
+            types::I8,
         )?,
     })
 }

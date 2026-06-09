@@ -1,7 +1,7 @@
 //! Control flow structures for the JIT compiler.
 
 use crate::loader::Instruction;
-use crate::loader::decode::{BifOp, TypeTestOp};
+use crate::loader::decode::{BifOp, MapOp, TypeTestOp};
 use cranelift_frontend::FunctionBuilder;
 use std::collections::{HashMap, HashSet};
 
@@ -12,6 +12,9 @@ use super::ir_common::{
 };
 use super::ir_guards::{
     immediate_raw_term, immediate_usize, parse_select_pairs, validate_tag_atom,
+};
+use super::ir_map::{
+    parse_get_map_elements_operands, parse_has_map_fields_operands, parse_put_map_operands,
 };
 
 pub(crate) struct TranslationPlan {
@@ -226,6 +229,37 @@ impl TranslationPlan {
                 Instruction::BinaryOp { .. } => {
                     block_starts.insert(index + 1);
                 }
+                Instruction::MapOp { op, operands } => {
+                    match op {
+                        MapOp::PutMapAssoc | MapOp::PutMapExact => {
+                            let (fail, parsed) = parse_put_map_operands(operands)?;
+                            validate_label_operand(fail)?;
+                            validate_read_operand(parsed.source)?;
+                            validate_write_operand(parsed.destination)?;
+                            for operand in parsed.pairs {
+                                validate_read_operand(operand)?;
+                            }
+                        }
+                        MapOp::GetMapElements => {
+                            let (fail, parsed) = parse_get_map_elements_operands(operands)?;
+                            validate_label_operand(fail)?;
+                            validate_read_operand(parsed.source)?;
+                            for pair in parsed.pairs.chunks_exact(2) {
+                                validate_read_operand(&pair[0])?;
+                                validate_write_operand(&pair[1])?;
+                            }
+                        }
+                        MapOp::HasMapFields => {
+                            let (fail, parsed) = parse_has_map_fields_operands(operands)?;
+                            validate_label_operand(fail)?;
+                            validate_read_operand(parsed.source)?;
+                            for key in parsed.keys {
+                                validate_read_operand(key)?;
+                            }
+                        }
+                    }
+                    block_starts.insert(index + 1);
+                }
                 Instruction::Send | Instruction::RemoveMessage | Instruction::Timeout => {
                     block_starts.insert(index + 1);
                 }
@@ -300,6 +334,16 @@ impl TranslationPlan {
                 | Instruction::Wait { fail }
                 | Instruction::WaitTimeout { fail, .. }
                 | Instruction::RecvMarkerBind { label: fail, .. } => {
+                    ensure_known_label(&labels, fail)?;
+                }
+                Instruction::MapOp { op, operands } => {
+                    let fail = match op {
+                        MapOp::PutMapAssoc | MapOp::PutMapExact => {
+                            parse_put_map_operands(operands)?.0
+                        }
+                        MapOp::GetMapElements => parse_get_map_elements_operands(operands)?.0,
+                        MapOp::HasMapFields => parse_has_map_fields_operands(operands)?.0,
+                    };
                     ensure_known_label(&labels, fail)?;
                 }
                 _ => {}
