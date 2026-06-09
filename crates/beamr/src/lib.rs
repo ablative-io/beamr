@@ -14,6 +14,7 @@ pub mod hook;
 pub mod interpreter;
 #[path = "io/mod.rs"]
 pub mod io;
+pub mod jit;
 pub mod loader;
 pub mod mailbox;
 pub mod module;

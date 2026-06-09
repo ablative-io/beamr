@@ -53,9 +53,11 @@ fn block_on_ready(future: ResolveFuture<'_>) -> Result<std::net::SocketAddr, Res
 #[test]
 fn default_distribution_config_resolves_nothing() {
     assert!(SchedulerConfig::default().distribution.is_none());
+    assert_eq!(SchedulerConfig::default().jit_threshold, None);
 
     let scheduler = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
         .expect("scheduler should start");
+    assert_eq!(scheduler.jit_profiler().threshold(), 1000);
 
     assert_eq!(
         block_on_ready(
@@ -67,6 +69,21 @@ fn default_distribution_config_resolves_nothing() {
         Err(ResolveError::NotFound)
     );
 
+    scheduler.shutdown();
+}
+
+#[test]
+fn scheduler_uses_explicit_jit_threshold() {
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            jit_threshold: Some(500),
+            ..SchedulerConfig::default()
+        },
+        Arc::new(ModuleRegistry::new()),
+    )
+    .expect("scheduler should start");
+
+    assert_eq!(scheduler.jit_profiler().threshold(), 500);
     scheduler.shutdown();
 }
 
@@ -843,7 +860,8 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         net_kernel: {
             let dist = DistributionConfig::default();
             let at = Arc::new(crate::atom::AtomTable::new());
-            let cm = crate::distribution::connection::ConnectionManager::new(at, dist.resolver.clone());
+            let cm =
+                crate::distribution::connection::ConnectionManager::new(at, dist.resolver.clone());
             Arc::new(crate::distribution::NetKernel::new(cm))
         },
     });

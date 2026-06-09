@@ -101,8 +101,23 @@ pub struct DirtyJob {
 // that boundary by submitting only detached contexts.
 unsafe impl Send for DirtyJob {}
 
+/// Generic dirty CPU work item for runtime maintenance jobs such as JIT compilation.
+pub struct DirtyTask {
+    task: Box<dyn FnOnce() + Send + 'static>,
+}
+
+impl DirtyTask {
+    /// Creates a dirty task from an owned closure.
+    pub fn new(task: impl FnOnce() + Send + 'static) -> Self {
+        Self {
+            task: Box::new(task),
+        }
+    }
+}
+
 enum DirtyMessage {
-    Run(Box<DirtyJob>),
+    RunNative(Box<DirtyJob>),
+    RunTask(DirtyTask),
     Shutdown,
 }
 
@@ -191,7 +206,20 @@ impl DirtyPool {
             return Err(DirtySubmitError::ShutDown);
         }
         self.sender
-            .try_send(DirtyMessage::Run(Box::new(job)))
+            .try_send(DirtyMessage::RunNative(Box::new(job)))
+            .map_err(|error| match error {
+                crossbeam_channel::TrySendError::Full(_) => DirtySubmitError::QueueFull,
+                crossbeam_channel::TrySendError::Disconnected(_) => DirtySubmitError::Disconnected,
+            })
+    }
+
+    /// Enqueues a generic dirty task without blocking a normal scheduler thread.
+    pub fn submit_task(&self, task: DirtyTask) -> Result<(), DirtySubmitError> {
+        if self.shutdown.load(Ordering::Acquire) {
+            return Err(DirtySubmitError::ShutDown);
+        }
+        self.sender
+            .try_send(DirtyMessage::RunTask(task))
             .map_err(|error| match error {
                 crossbeam_channel::TrySendError::Full(_) => DirtySubmitError::QueueFull,
                 crossbeam_channel::TrySendError::Disconnected(_) => DirtySubmitError::Disconnected,
@@ -255,7 +283,7 @@ impl Drop for DirtyPool {
 fn worker_loop(receiver: Receiver<DirtyMessage>) {
     while let Ok(message) = receiver.recv() {
         match message {
-            DirtyMessage::Run(mut job) => {
+            DirtyMessage::RunNative(mut job) => {
                 let _pid = job.pid;
                 let result = (job.function)(&job.args, &mut job.context);
                 let exception_class = job.context.take_exception_class();
@@ -265,6 +293,9 @@ fn worker_loop(receiver: Receiver<DirtyMessage>) {
                     exception_class,
                     exception_stacktrace,
                 });
+            }
+            DirtyMessage::RunTask(task) => {
+                (task.task)();
             }
             DirtyMessage::Shutdown => break,
         }

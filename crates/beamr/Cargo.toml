@@ -13,6 +13,11 @@ authors = [
 
 [dependencies]
 base64 = { version = "0.22.1", optional = true }
+cranelift-codegen = "0.131.2"
+cranelift-frontend = "0.131.2"
+cranelift-jit = "0.131.2"
+cranelift-module = "0.131.2"
+cranelift-native = "0.131.2"
 crossbeam-channel = "0.5.15"
 crossbeam-deque = "0.8.6"
 crossbeam-queue = "0.3.12"
