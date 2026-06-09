@@ -1,1 +1,1 @@
-feat(beamr): add JIT benchmarks and adaptive threshold tuning
+fix(beamr): avoid const Ord::clamp in JIT threshold tuning

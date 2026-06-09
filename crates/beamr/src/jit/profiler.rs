@@ -194,7 +194,13 @@ impl JitProfiler {
 }
 
 const fn clamp_tuned_threshold(threshold: u32) -> u32 {
-    threshold.clamp(MIN_TUNED_THRESHOLD, MAX_TUNED_THRESHOLD)
+    if threshold < MIN_TUNED_THRESHOLD {
+        MIN_TUNED_THRESHOLD
+    } else if threshold > MAX_TUNED_THRESHOLD {
+        MAX_TUNED_THRESHOLD
+    } else {
+        threshold
+    }
 }
 
 #[cfg(test)]
