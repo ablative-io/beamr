@@ -135,22 +135,7 @@ pub(crate) fn lower_call_fun(
     call: ClosureCall<'_>,
 ) -> Result<(Value, Value), JitError> {
     let fun_term = read_operand_term(builder, context.register_file, call.fun)?;
-    let closure = validate_closure_or_deopt(builder, fun_term, context.deopt);
-    let expected_arity = builder.ins().load(
-        types::I64,
-        MemFlags::trusted(),
-        closure,
-        CLOSURE_ARITY_OFFSET,
-    );
-    let arity_matches = builder
-        .ins()
-        .icmp_imm(IntCC::Equal, expected_arity, i64::from(call.arity));
-    let continuation = builder.create_block();
-    builder
-        .ins()
-        .brif(arity_matches, continuation, &[], context.deopt, &[]);
-    builder.switch_to_block(continuation);
-
+    validate_closure_or_deopt(builder, fun_term, context.deopt);
     let arity_value = builder.ins().iconst(types::I64, i64::from(call.arity));
     let returned = builder.ins().call(
         dispatch_helper,
