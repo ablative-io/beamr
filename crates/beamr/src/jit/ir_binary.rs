@@ -169,7 +169,7 @@ pub(crate) fn binary_allocation_roots(
         }
         BinaryOp::BsInitWritable => match operands {
             [_, destination] => Ok(vec![destination.clone()]),
-            _ => Ok(Vec::new()),
+            _ => Err(invalid_operands("bs_init_writable")),
         },
         BinaryOp::BsCreateBin => match operands {
             [destination, _, segments @ ..] => {
@@ -177,15 +177,65 @@ pub(crate) fn binary_allocation_roots(
                 roots.extend(segment_roots(segments));
                 Ok(roots)
             }
-            _ => Ok(Vec::new()),
+            _ => Err(invalid_operands("bs_create_bin")),
         },
         BinaryOp::BsGetTail => match operands {
             [_fail, context, _live, destination] => Ok(vec![context.clone(), destination.clone()]),
             [_fail, context, destination] => Ok(vec![context.clone(), destination.clone()]),
-            _ => Ok(Vec::new()),
+            _ => Err(invalid_operands("bs_get_tail")),
         },
+        BinaryOp::BsMatch => bs_match_allocation_roots(operands),
         _ => Ok(Vec::new()),
     }
+}
+
+fn bs_match_allocation_roots(operands: &[Operand]) -> Result<Vec<Operand>, JitError> {
+    let (_fail, match_context, commands) = match operands {
+        [fail, context, Operand::List(commands)] => (fail, context, commands.as_slice()),
+        [fail, context, rest @ ..] => (fail, context, rest),
+        _ => return Err(invalid_operands("bs_match")),
+    };
+    if !commands
+        .iter()
+        .all(|command| matches!(command, Operand::List(_)))
+    {
+        return Err(JitError::UnsupportedOperand {
+            operand: "flat bs_match command stream".to_owned(),
+        });
+    }
+
+    let mut destinations = Vec::new();
+    for command in commands {
+        let Operand::List(items) = command else {
+            return Err(invalid_operands("bs_match command"));
+        };
+        match items.as_slice() {
+            [Operand::Unsigned(4) | Operand::Integer(4), .., dst] if items.len() == 6 => {
+                destinations.push(dst.clone());
+            }
+            [Operand::Unsigned(6) | Operand::Integer(6), .., dst]
+                if items.len() == 3 || items.len() == 4 =>
+            {
+                destinations.push(dst.clone());
+            }
+            [Operand::Unsigned(0) | Operand::Integer(0), ..] if items.len() == 3 => {}
+            [Operand::Unsigned(1) | Operand::Integer(1), ..] if items.len() == 3 => {}
+            [Operand::Unsigned(2) | Operand::Integer(2), ..] if items.len() == 6 => {}
+            [Operand::Unsigned(3) | Operand::Integer(3), ..] if items.len() == 6 => {}
+            _ => {
+                return Err(JitError::UnsupportedOperand {
+                    operand: format!("bs_match command {items:?}"),
+                });
+            }
+        }
+    }
+    if destinations.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut roots = Vec::with_capacity(destinations.len() + 1);
+    roots.push(match_context.clone());
+    roots.extend(destinations);
+    Ok(roots)
 }
 
 pub(crate) fn fail_operand(op: BinaryOp, operands: &[Operand]) -> Option<&Operand> {
@@ -211,4 +261,144 @@ pub(crate) fn lower_exception_block(builder: &mut FunctionBuilder<'_>) {
         crate::term::Term::atom(crate::atom::Atom::BADARG).raw() as i64,
     );
     return_status(builder, JIT_STATUS_EXCEPTION, reason);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bs_match_roots(commands: Vec<Operand>) -> Vec<Operand> {
+        binary_allocation_roots(
+            BinaryOp::BsMatch,
+            &[Operand::Label(1), Operand::X(0), Operand::List(commands)],
+        )
+        .expect("bs_match roots")
+    }
+
+    fn bs_match_roots_from_rest_commands(commands: Vec<Operand>) -> Vec<Operand> {
+        let mut operands = vec![Operand::Label(1), Operand::X(0)];
+        operands.extend(commands);
+        binary_allocation_roots(BinaryOp::BsMatch, &operands).expect("bs_match roots")
+    }
+
+    fn binary_roots(op: BinaryOp, operands: &[Operand]) -> Vec<Operand> {
+        binary_allocation_roots(op, operands).expect("binary roots")
+    }
+
+    fn get_binary_command(destination: Operand) -> Operand {
+        Operand::List(vec![
+            Operand::Unsigned(4),
+            Operand::Unsigned(0),
+            Operand::Unsigned(0),
+            Operand::Unsigned(8),
+            Operand::Unsigned(1),
+            destination,
+        ])
+    }
+
+    fn get_tail_command(destination: Operand) -> Operand {
+        Operand::List(vec![
+            Operand::Unsigned(6),
+            Operand::Unsigned(0),
+            destination,
+        ])
+    }
+
+    fn get_integer_command(destination: Operand) -> Operand {
+        Operand::List(vec![
+            Operand::Unsigned(2),
+            Operand::Unsigned(0),
+            Operand::Unsigned(0),
+            Operand::Unsigned(8),
+            Operand::Unsigned(1),
+            destination,
+        ])
+    }
+
+    fn get_float_command(destination: Operand) -> Operand {
+        Operand::List(vec![
+            Operand::Unsigned(3),
+            Operand::Unsigned(0),
+            Operand::Unsigned(0),
+            Operand::Unsigned(64),
+            Operand::Unsigned(1),
+            destination,
+        ])
+    }
+
+    #[test]
+    fn bs_match_get_binary_roots_match_context_and_destination() {
+        let roots = bs_match_roots(vec![get_binary_command(Operand::X(1))]);
+
+        assert_eq!(roots, vec![Operand::X(0), Operand::X(1)]);
+    }
+
+    #[test]
+    fn bs_match_get_tail_roots_match_context_and_destination() {
+        let roots = bs_match_roots(vec![get_tail_command(Operand::Y(2))]);
+
+        assert_eq!(roots, vec![Operand::X(0), Operand::Y(2)]);
+    }
+
+    #[test]
+    fn bs_match_multiple_allocating_commands_root_all_destinations() {
+        let roots = bs_match_roots(vec![
+            get_binary_command(Operand::X(1)),
+            get_tail_command(Operand::X(2)),
+        ]);
+
+        assert_eq!(roots, vec![Operand::X(0), Operand::X(1), Operand::X(2)]);
+    }
+
+    #[test]
+    fn bs_match_rest_command_layout_roots_allocating_destinations() {
+        let roots = bs_match_roots_from_rest_commands(vec![
+            get_binary_command(Operand::X(1)),
+            get_tail_command(Operand::X(2)),
+        ]);
+
+        assert_eq!(roots, vec![Operand::X(0), Operand::X(1), Operand::X(2)]);
+    }
+
+    #[test]
+    fn bs_match_non_allocating_commands_add_no_roots() {
+        let roots = bs_match_roots(vec![
+            get_integer_command(Operand::X(1)),
+            get_float_command(Operand::X(2)),
+        ]);
+
+        assert!(roots.is_empty());
+    }
+
+    #[test]
+    fn allocating_binary_ops_do_not_silently_return_empty_roots_for_malformed_operands() {
+        assert!(binary_allocation_roots(BinaryOp::BsInitWritable, &[]).is_err());
+        assert!(binary_allocation_roots(BinaryOp::BsCreateBin, &[]).is_err());
+        assert!(binary_allocation_roots(BinaryOp::BsGetTail, &[]).is_err());
+    }
+
+    #[test]
+    fn well_formed_allocating_binary_ops_return_non_empty_roots() {
+        assert_eq!(
+            binary_roots(
+                BinaryOp::BsInitWritable,
+                &[Operand::Unsigned(8), Operand::X(1)]
+            ),
+            vec![Operand::X(1)]
+        );
+        assert_eq!(
+            binary_roots(
+                BinaryOp::BsCreateBin,
+                &[Operand::X(1), Operand::Unsigned(0)]
+            ),
+            vec![Operand::X(1)]
+        );
+        assert_eq!(
+            binary_roots(
+                BinaryOp::BsGetTail,
+                &[Operand::Label(1), Operand::X(0), Operand::X(1)]
+            ),
+            vec![Operand::X(0), Operand::X(1)]
+        );
+    }
 }
