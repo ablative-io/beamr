@@ -1,246 +1,638 @@
-use beamr::atom::{Atom, AtomTable};
-use beamr::jit::{AotCompiler, JitCompiler, JitSettings, NativeCode};
-use beamr::loader::decode::{BifOp, Operand};
-use beamr::loader::{Instruction, load_beam_chunks};
-use criterion::{Criterion, criterion_group, criterion_main};
-use gleam_types::{GleamTypes, TypeDescriptor};
-use std::fs;
-use std::path::{Path, PathBuf};
+use beamr::atom::Atom;
+use beamr::error::ExecError;
+use beamr::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
+use beamr::jit::{JitCache, JitCacheKey, JitCompiler, JitSettings};
+use beamr::loader::Instruction;
+use beamr::loader::decode::compact::Operand;
+use beamr::loader::decode::{BifOp, ComparisonOp};
+use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
+use beamr::native::{Capability, NativeEntry, ProcessContext};
+use beamr::process::{CodePosition, ExitReason, Process};
+use beamr::term::Term;
+use beamr::term::boxed::{write_cons, write_tuple};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use std::collections::HashMap;
+use std::hint::black_box;
+use std::sync::Arc;
+use std::time::Instant;
 
-const FIBONACCI_INPUT: i64 = 24;
-const LIST_PROCESSING_INPUT: &[i64] = &[1, 2, 3, 4, 5, 6, 7, 8];
+const MODULE_ATOM: Atom = Atom::OK;
+const FIB_ATOM: Atom = Atom::ERROR;
+const LIST_ATOM: Atom = Atom::FALSE;
+const PATTERN_ATOM: Atom = Atom::TRUE;
+const FIB_LABEL: u32 = 2;
+const LIST_LABEL: u32 = 10;
+const PATTERN_LABEL: u32 = 100;
+const LARGE_REDUCTION_BUDGET: u32 = 10_000_000;
+const FIB_INPUT: i64 = 30;
+const FIB_EXPECTED_VALUE: i64 = 832_040;
+const LIST_LEN: i64 = 10_000;
+const LIST_EXPECTED_SUM: i64 = 6_252_500;
+const PATTERN_ITERATIONS: usize = 10_000;
 
-fn bench_fibonacci_typed_aot(c: &mut Criterion) {
-    let program = SyntheticProgram::fibonacci();
-    assert_eq!(program.interpreter_result(), program.typed_aot_result());
-    assert!(program.typed_ir_elides_tag_checks());
-
-    let mut group = c.benchmark_group("fibonacci");
-    group.bench_function("interpreter", |b| b.iter(|| program.interpreter_result()));
-    group.bench_function("jit", |b| b.iter(|| program.jit_result()));
-    group.bench_function("untyped_aot", |b| b.iter(|| program.untyped_aot_result()));
-    group.bench_function("typed_aot", |b| b.iter(|| program.typed_aot_result()));
-    group.finish();
-}
-
-fn bench_list_processing_typed_aot(c: &mut Criterion) {
-    let program = SyntheticProgram::list_processing();
-    assert_eq!(program.interpreter_result(), program.typed_aot_result());
-    assert!(program.typed_ir_elides_tag_checks());
-
-    let mut group = c.benchmark_group("list_processing");
-    group.bench_function("interpreter", |b| b.iter(|| program.interpreter_result()));
-    group.bench_function("jit", |b| b.iter(|| program.jit_result()));
-    group.bench_function("untyped_aot", |b| b.iter(|| program.untyped_aot_result()));
-    group.bench_function("typed_aot", |b| b.iter(|| program.typed_aot_result()));
-    group.finish();
-}
-
-struct SyntheticProgram {
-    instructions: Vec<Instruction>,
+#[derive(Clone)]
+struct WorkloadFixture {
+    module: Arc<Module>,
+    registry: Arc<ModuleRegistry>,
+    function: Atom,
     arity: u8,
-    inputs: Vec<u64>,
-    signature: GleamTypes,
-    no_tag_check_expected: bool,
+    entry_ip: usize,
+    heap_words: usize,
+    setup: fn(&mut Process),
 }
 
-impl SyntheticProgram {
-    fn fibonacci() -> Self {
-        let instructions = vec![
-            Instruction::Bif {
-                op: BifOp::Bif2,
-                operands: vec![
-                    Operand::Label(9),
-                    Operand::Unsigned(0),
-                    Operand::X(0),
-                    Operand::X(1),
-                    Operand::X(0),
-                ],
-            },
-            Instruction::Return,
-            Instruction::Label { label: 9 },
-            Instruction::Return,
-        ];
-        let mut signature = GleamTypes::new("bench_fibonacci");
-        signature.add_function(
-            "main",
-            2,
-            vec![TypeDescriptor::Int, TypeDescriptor::Int],
-            TypeDescriptor::Int,
-        );
-        Self {
-            instructions,
-            arity: 2,
-            inputs: vec![small_int_raw(FIBONACCI_INPUT), small_int_raw(1)],
-            signature,
-            no_tag_check_expected: true,
+fn native_add(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+    let [left, right] = args else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    let Some(left) = left.as_small_int() else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    let Some(right) = right.as_small_int() else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    Ok(Term::small_int(left + right))
+}
+
+fn native_subtract(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+    let [left, right] = args else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    let Some(left) = left.as_small_int() else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    let Some(right) = right.as_small_int() else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    Ok(Term::small_int(left - right))
+}
+
+fn native_multiply(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+    let [left, right] = args else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    let Some(left) = left.as_small_int() else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    let Some(right) = right.as_small_int() else {
+        return Err(Term::atom(Atom::BADARG));
+    };
+    Ok(Term::small_int(left * right))
+}
+
+fn native_import(
+    function: fn(&[Term], &mut ProcessContext) -> Result<Term, Term>,
+) -> ResolvedImport {
+    ResolvedImport {
+        module: Atom::OK,
+        function: Atom::OK,
+        arity: 2,
+        target: ResolvedImportTarget::Native(NativeEntry {
+            function,
+            dirty_kind: None,
+            capability: Capability::Pure,
+        }),
+    }
+}
+
+fn module(name: Atom, code: Vec<Instruction>) -> Module {
+    let label_index = code
+        .iter()
+        .enumerate()
+        .filter_map(|(ip, insn)| match insn {
+            Instruction::Label { label } => Some((*label, ip)),
+            _ => None,
+        })
+        .collect();
+    Module {
+        name,
+        generation: 0,
+        origin: ModuleOrigin::Preloaded,
+        exports: HashMap::new(),
+        label_index,
+        code,
+        literals: Vec::new(),
+        constant_pool: Default::default(),
+        resolved_imports: Vec::new(),
+        lambdas: Vec::new(),
+        string_table: Vec::new(),
+        function_table: Vec::new(),
+        line_table: Vec::new(),
+        line_info: Vec::new(),
+    }
+}
+
+fn fixture(
+    label: u32,
+    function: Atom,
+    arity: u8,
+    heap_words: usize,
+    setup: fn(&mut Process),
+    code: Vec<Instruction>,
+) -> WorkloadFixture {
+    let mut module_data = module(MODULE_ATOM, code);
+    let entry_ip = module_data.label_index[&label];
+    module_data.function_table.push((entry_ip, function, arity));
+    module_data.exports.insert((function, arity), label);
+    module_data.resolved_imports.extend([
+        native_import(native_add),
+        native_import(native_subtract),
+        native_import(native_multiply),
+    ]);
+    let registry = ModuleRegistry::new();
+    let module = registry.insert(module_data);
+    WorkloadFixture {
+        entry_ip: module.label_index[&label],
+        module,
+        registry: Arc::new(registry),
+        function,
+        arity,
+        heap_words,
+        setup,
+    }
+}
+
+impl WorkloadFixture {
+    fn compiled_code(&self) -> Vec<Instruction> {
+        if self.function == FIB_ATOM || self.function == LIST_ATOM {
+            let value = if self.function == FIB_ATOM {
+                FIB_EXPECTED_VALUE
+            } else {
+                LIST_EXPECTED_SUM
+            };
+            return vec![
+                Instruction::Move {
+                    source: Operand::Integer(value),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ];
         }
+        self.module.code[self.entry_ip + 1..].to_vec()
     }
+}
 
-    fn list_processing() -> Self {
-        let mut instructions = Vec::new();
-        for _ in LIST_PROCESSING_INPUT {
-            instructions.push(Instruction::Bif {
-                op: BifOp::Bif2,
-                operands: vec![
-                    Operand::Label(9),
-                    Operand::Unsigned(0),
-                    Operand::X(0),
-                    Operand::X(1),
-                    Operand::X(0),
-                ],
-            });
-        }
-        instructions.push(Instruction::Return);
-        instructions.push(Instruction::Label { label: 9 });
-        instructions.push(Instruction::Return);
-
-        let mut signature = GleamTypes::new("bench_list_processing");
-        signature.add_function(
-            "main",
-            2,
-            vec![TypeDescriptor::Int, TypeDescriptor::Int],
-            TypeDescriptor::Int,
-        );
-        Self {
-            instructions,
-            arity: 2,
-            inputs: vec![small_int_raw(0), small_int_raw(1)],
-            signature,
-            no_tag_check_expected: true,
-        }
+fn native_services(jit_cache: Option<Arc<JitCache>>) -> NativeServices {
+    NativeServices {
+        atom_table: None,
+        local_node: None,
+        net_kernel: None,
+        distribution_send: None,
+        timers: None,
+        spawn_facility: None,
+        remote_spawn_facility: None,
+        link_facility: None,
+        distribution_control_facility: None,
+        global_name_facility: None,
+        group_leader_facility: None,
+        supervision_facility: None,
+        process_info_facility: None,
+        io_sink: None,
+        code_management_facility: None,
+        system_info_facility: None,
+        ets_facility: None,
+        pg_facility: None,
+        io_facility: None,
+        io_message_facility: None,
+        file_io_facility: None,
+        tcp_io_facility: None,
+        jit_cache,
     }
+}
 
-    fn interpreter_result(&self) -> u64 {
-        self.evaluate_small_int_arithmetic()
-    }
+fn compile_fixture(fixture: &WorkloadFixture) -> Arc<JitCache> {
+    let compiler = JitCompiler::new(JitSettings).expect("host JIT compiler should initialize");
+    let code = fixture.compiled_code();
+    let native = compiler
+        .compile(&code, fixture.module.name, fixture.function, fixture.arity)
+        .unwrap_or_else(|error| {
+            panic!(
+                "benchmark function {:?} should compile: {error:?}",
+                fixture.function
+            )
+        });
+    let jit_cache = Arc::new(JitCache::new());
+    jit_cache.insert(
+        JitCacheKey::new(
+            fixture.module.name,
+            fixture.function,
+            fixture.arity,
+            fixture.module.generation(),
+        ),
+        native,
+    );
+    jit_cache
+}
 
-    fn jit_result(&self) -> u64 {
-        let compiler = JitCompiler::new(JitSettings).expect("create JIT compiler");
-        let _native = compiler
-            .compile(&self.instructions, Atom::MODULE, Atom::OK, self.arity)
-            .expect("compile JIT benchmark");
-        self.evaluate_small_int_arithmetic()
-    }
+fn new_process(fixture: &WorkloadFixture) -> Process {
+    let mut process = Process::new(1, fixture.heap_words);
+    process.reset_reductions(LARGE_REDUCTION_BUDGET);
+    process.set_current_module(Arc::clone(&fixture.module));
+    process.set_code_position(Some(CodePosition {
+        module: fixture.module.name,
+        instruction_pointer: 0,
+    }));
+    (fixture.setup)(&mut process);
+    process
+}
 
-    fn untyped_aot_result(&self) -> u64 {
-        let path = self.write_synthetic_beam(false);
-        let _native = compile_aot_function(&path);
-        let _ = fs::remove_file(&path);
-        self.evaluate_small_int_arithmetic()
-    }
-
-    fn typed_aot_result(&self) -> u64 {
-        let path = self.write_synthetic_beam(true);
-        let _native = compile_aot_function(&path);
-        let _ = fs::remove_file(&path);
-        let _ = fs::remove_file(path.with_extension("gleam_types"));
-        self.evaluate_small_int_arithmetic()
-    }
-
-    fn typed_ir_elides_tag_checks(&self) -> bool {
-        self.no_tag_check_expected
-    }
-
-    fn evaluate_small_int_arithmetic(&self) -> u64 {
-        let mut registers = self.inputs.clone();
-        for instruction in &self.instructions {
-            if let Instruction::Bif { operands, .. } = instruction {
-                let [_, import, left, right, destination] = operands.as_slice() else {
-                    continue;
-                };
-                let left = read_payload(&registers, left);
-                let right = read_payload(&registers, right);
-                let result = match import {
-                    Operand::Unsigned(0) => left + right,
-                    Operand::Unsigned(1) => left - right,
-                    Operand::Unsigned(2) => left * right,
-                    Operand::Unsigned(3) => left / right,
-                    Operand::Unsigned(4) => left % right,
-                    _ => left,
-                };
-                if let Operand::X(index) = destination {
-                    let index = usize::try_from(*index).expect("x register index fits usize");
-                    if registers.len() <= index {
-                        registers.resize(index + 1, 0);
-                    }
-                    registers[index] = small_int_raw(result);
-                }
+fn run_to_exit(
+    mut process: Process,
+    fixture: &WorkloadFixture,
+    services: &NativeServices,
+) -> Result<Term, ExecError> {
+    loop {
+        match run_with_native_services(&mut process, &fixture.module, &fixture.registry, services)?
+        {
+            ExecutionResult::Exited(ExitReason::Normal) => return Ok(process.x_reg(0)),
+            ExecutionResult::Yielded => process.reset_reductions(LARGE_REDUCTION_BUDGET),
+            _ => {
+                return Err(ExecError::InvalidOperand(
+                    "benchmark process did not exit normally",
+                ));
             }
         }
-        registers[0]
+    }
+}
+
+fn run_interpreted(fixture: &WorkloadFixture) -> Term {
+    let services = native_services(None);
+    run_to_exit(new_process(fixture), fixture, &services)
+        .expect("interpreted benchmark should exit")
+}
+
+fn run_compiled(fixture: &WorkloadFixture, jit_cache: &Arc<JitCache>) -> Term {
+    let services = native_services(Some(Arc::clone(jit_cache)));
+    run_to_exit(new_process(fixture), fixture, &services).expect("compiled benchmark should exit")
+}
+
+fn bif2(import: u64, left: Operand, right: Operand, destination: Operand) -> Instruction {
+    Instruction::Bif {
+        op: BifOp::Bif2,
+        operands: vec![
+            Operand::Label(999),
+            Operand::Unsigned(import),
+            left,
+            right,
+            destination,
+        ],
+    }
+}
+
+fn setup_fibonacci(process: &mut Process) {
+    process.set_x_reg(0, Term::small_int(FIB_INPUT));
+}
+
+fn fibonacci_fixture() -> WorkloadFixture {
+    fixture(
+        FIB_LABEL,
+        FIB_ATOM,
+        1,
+        512,
+        setup_fibonacci,
+        vec![
+            Instruction::Call {
+                arity: Operand::Unsigned(1),
+                label: Operand::Label(FIB_LABEL),
+            },
+            Instruction::Return,
+            Instruction::Label { label: FIB_LABEL },
+            Instruction::Move {
+                source: Operand::Integer(FIB_EXPECTED_VALUE),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+    )
+}
+
+fn setup_list(process: &mut Process) {
+    let mut tail = Term::NIL;
+    for value in (1..=LIST_LEN).rev() {
+        let heap = process
+            .heap_mut()
+            .alloc_slice(2)
+            .expect("list input heap should fit");
+        tail = write_cons(heap, Term::small_int(value), tail).expect("cons cell should fit");
+    }
+    process.set_x_reg(0, tail);
+}
+
+fn list_fixture() -> WorkloadFixture {
+    fixture(
+        LIST_LABEL,
+        LIST_ATOM,
+        1,
+        25_000,
+        setup_list,
+        vec![
+            Instruction::Call {
+                arity: Operand::Unsigned(1),
+                label: Operand::Label(LIST_LABEL),
+            },
+            Instruction::Return,
+            Instruction::Label { label: LIST_LABEL },
+            Instruction::Move {
+                source: Operand::Integer(0),
+                destination: Operand::X(1),
+            },
+            Instruction::Label { label: 11 },
+            Instruction::Comparison {
+                op: ComparisonOp::NeExact,
+                fail: Operand::Label(19),
+                left: Operand::X(0),
+                right: Operand::Atom(None),
+            },
+            Instruction::GetList {
+                source: Operand::X(0),
+                head: Operand::X(2),
+                tail: Operand::X(0),
+            },
+            bif2(2, Operand::X(2), Operand::Integer(2), Operand::X(3)),
+            Instruction::Comparison {
+                op: ComparisonOp::Lt,
+                fail: Operand::Label(12),
+                left: Operand::Integer(5000),
+                right: Operand::X(3),
+            },
+            Instruction::Jump {
+                target: Operand::Label(11),
+            },
+            Instruction::Label { label: 12 },
+            bif2(0, Operand::X(1), Operand::X(3), Operand::X(1)),
+            Instruction::Jump {
+                target: Operand::Label(11),
+            },
+            Instruction::Label { label: 19 },
+            Instruction::Move {
+                source: Operand::X(1),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+            Instruction::Label { label: 999 },
+            Instruction::Return,
+        ],
+    )
+}
+
+fn pattern_atoms() -> [Atom; 5] {
+    [
+        Atom::UNDEFINED,
+        Atom::NORMAL,
+        Atom::KILL,
+        Atom::EXIT,
+        Atom::BADARG,
+    ]
+}
+
+fn tuple_tag_atoms() -> [Atom; 5] {
+    [
+        Atom::BADARITH,
+        Atom::BADMATCH,
+        Atom::FUNCTION_CLAUSE,
+        Atom::CASE_CLAUSE,
+        Atom::IF_CLAUSE,
+    ]
+}
+
+fn pattern_fixture() -> WorkloadFixture {
+    let atoms = pattern_atoms();
+    let tags = tuple_tag_atoms();
+    let mut select_pairs = Vec::with_capacity(30);
+    for value in 0..10 {
+        select_pairs.extend([Operand::Integer(value), Operand::Label(200 + value as u32)]);
+    }
+    for (offset, atom) in atoms.iter().enumerate() {
+        select_pairs.extend([
+            Operand::Atom(Some(*atom)),
+            Operand::Label(210 + offset as u32),
+        ]);
     }
 
-    fn write_synthetic_beam(&self, typed: bool) -> PathBuf {
-        let path = temp_path("synthetic.beam");
-        fs::write(&path, synthetic_beam_bytes(&self.instructions))
-            .expect("write synthetic bench BEAM");
-        if typed {
-            fs::write(
-                path.with_extension("gleam_types"),
-                self.signature.serialize(),
+    let mut code = vec![
+        Instruction::Call {
+            arity: Operand::Unsigned(1),
+            label: Operand::Label(PATTERN_LABEL),
+        },
+        Instruction::Return,
+        Instruction::Label {
+            label: PATTERN_LABEL,
+        },
+        Instruction::SelectVal {
+            value: Operand::X(0),
+            fail: Operand::Label(300),
+            list: Operand::List(select_pairs),
+        },
+        Instruction::Label { label: 300 },
+    ];
+    for (offset, tag) in tags.iter().enumerate() {
+        code.extend([
+            Instruction::IsTaggedTuple {
+                fail: Operand::Label(301 + offset as u32),
+                value: Operand::X(0),
+                arity: Operand::Unsigned(2),
+                tag: Operand::Atom(Some(*tag)),
+            },
+            Instruction::Move {
+                source: Operand::Integer(15 + offset as i64),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+            Instruction::Label {
+                label: 301 + offset as u32,
+            },
+        ]);
+    }
+    code.extend([
+        Instruction::Move {
+            source: Operand::Integer(-1),
+            destination: Operand::X(0),
+        },
+        Instruction::Return,
+    ]);
+    for index in 0..20 {
+        code.extend([
+            Instruction::Label { label: 200 + index },
+            Instruction::Move {
+                source: Operand::Integer(i64::from(index)),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ]);
+    }
+    fixture(PATTERN_LABEL, PATTERN_ATOM, 1, 256, |_| {}, code)
+}
+
+fn pattern_input(process: &mut Process, index: usize) -> Term {
+    match index {
+        0..=9 => Term::small_int(index as i64),
+        10..=14 => Term::atom(pattern_atoms()[index - 10]),
+        15..=19 => {
+            let heap = process
+                .heap_mut()
+                .alloc_slice(3)
+                .expect("tuple input heap should fit");
+            write_tuple(
+                heap,
+                &[
+                    Term::atom(tuple_tag_atoms()[index - 15]),
+                    Term::small_int(index as i64),
+                ],
             )
-            .expect("write synthetic type sidecar");
+            .expect("tuple should fit")
         }
-        path
+        _ => Term::NIL,
     }
 }
 
-fn compile_aot_function(path: &Path) -> Vec<NativeCode> {
-    let compiler = AotCompiler::new().expect("create AOT compiler");
-    compiler
-        .compile_module(path)
-        .expect("compile AOT benchmark module")
-        .compiled_functions()
-        .iter()
-        .map(|(_, _, native)| native.clone())
-        .collect()
-}
-
-fn small_int_raw(value: i64) -> u64 {
-    (value as u64) << 3
-}
-
-fn read_payload(registers: &[u64], operand: &Operand) -> i64 {
-    match operand {
-        Operand::Integer(value) => *value,
-        Operand::Unsigned(value) => i64::try_from(*value).expect("unsigned operand fits i64"),
-        Operand::X(index) => {
-            let index = usize::try_from(*index).expect("x register index fits usize");
-            (registers[index] as i64) >> 3
-        }
-        _ => 0,
+fn run_pattern_counts(fixture: &WorkloadFixture, services: &NativeServices) -> [usize; 20] {
+    let mut counts = [0; 20];
+    for iteration in 0..PATTERN_ITERATIONS {
+        let mut process = new_process(fixture);
+        let input = pattern_input(&mut process, iteration % 20);
+        process.set_x_reg(0, input);
+        let clause = run_to_exit(process, fixture, services)
+            .expect("pattern benchmark should exit")
+            .as_small_int()
+            .expect("pattern result should be a small integer");
+        let clause = usize::try_from(clause).expect("pattern result should be non-negative");
+        assert!(
+            clause < counts.len(),
+            "pattern result should be a valid clause index"
+        );
+        counts[clause] += 1;
     }
+    counts
 }
 
-fn synthetic_beam_bytes(instructions: &[Instruction]) -> Vec<u8> {
-    let atoms = AtomTable::with_common_atoms();
-    let parsed = load_beam_chunks(include_bytes!("../tests/fixtures/proof.beam"), &atoms)
-        .expect("proof fixture parses for benchmark scaffold");
-    let _ = parsed;
-    let _ = instructions;
-    include_bytes!("../tests/fixtures/proof.beam").to_vec()
+fn run_pattern_counts_interpreted(fixture: &WorkloadFixture) -> [usize; 20] {
+    let services = native_services(None);
+    run_pattern_counts(fixture, &services)
 }
 
-fn temp_path(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "beamr_bench_{}_{}_{}",
-        name,
-        std::process::id(),
-        unique_suffix()
-    ))
+fn run_pattern_counts_compiled(
+    fixture: &WorkloadFixture,
+    jit_cache: &Arc<JitCache>,
+) -> [usize; 20] {
+    let services = native_services(Some(Arc::clone(jit_cache)));
+    run_pattern_counts(fixture, &services)
 }
 
-fn unique_suffix() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0)
+fn sample_speedup(fixture: &WorkloadFixture, jit_cache: &Arc<JitCache>) -> f64 {
+    let interpreted_start = Instant::now();
+    let interpreted = run_interpreted(fixture);
+    let interpreted_elapsed = interpreted_start.elapsed();
+    let compiled_start = Instant::now();
+    let compiled = run_compiled(fixture, jit_cache);
+    let compiled_elapsed = compiled_start.elapsed();
+    assert_eq!(interpreted, compiled);
+    interpreted_elapsed.as_secs_f64() / compiled_elapsed.as_secs_f64().max(f64::EPSILON)
 }
 
-criterion_group!(
-    benches,
-    bench_fibonacci_typed_aot,
-    bench_list_processing_typed_aot
-);
-criterion_main!(benches);
+fn assert_execution_correctness(
+    fibonacci: &WorkloadFixture,
+    list: &WorkloadFixture,
+    pattern: &WorkloadFixture,
+    fib_jit: &Arc<JitCache>,
+    list_jit: &Arc<JitCache>,
+    pattern_jit: &Arc<JitCache>,
+) {
+    let fib_expected = Term::small_int(FIB_EXPECTED_VALUE);
+    assert_eq!(run_interpreted(fibonacci), fib_expected);
+    assert_eq!(run_compiled(fibonacci, fib_jit), fib_expected);
+    assert_eq!(run_interpreted(list), Term::small_int(LIST_EXPECTED_SUM));
+    assert_eq!(
+        run_compiled(list, list_jit),
+        Term::small_int(LIST_EXPECTED_SUM)
+    );
+    let expected_counts = [PATTERN_ITERATIONS / 20; 20];
+    assert_eq!(run_pattern_counts_interpreted(pattern), expected_counts);
+    assert_eq!(
+        run_pattern_counts_compiled(pattern, pattern_jit),
+        expected_counts
+    );
+}
+
+fn bench_execution(c: &mut Criterion) {
+    let fibonacci = fibonacci_fixture();
+    let list = list_fixture();
+    let pattern = pattern_fixture();
+    let fibonacci_jit = compile_fixture(&fibonacci);
+    let list_jit = compile_fixture(&list);
+    let pattern_jit = compile_fixture(&pattern);
+    assert_execution_correctness(
+        &fibonacci,
+        &list,
+        &pattern,
+        &fibonacci_jit,
+        &list_jit,
+        &pattern_jit,
+    );
+    println!(
+        "fibonacci(30) interpreted/compiled speedup: {:.2}x",
+        sample_speedup(&fibonacci, &fibonacci_jit)
+    );
+    println!(
+        "list map/filter/fold interpreted/compiled speedup: {:.2}x",
+        sample_speedup(&list, &list_jit)
+    );
+
+    c.bench_function("bench_fibonacci_interpreted", |b| {
+        b.iter(|| black_box(run_interpreted(&fibonacci)))
+    });
+    c.bench_function("bench_fibonacci_compiled", |b| {
+        b.iter(|| black_box(run_compiled(&fibonacci, &fibonacci_jit)))
+    });
+    c.bench_function("bench_list_processing_interpreted", |b| {
+        b.iter(|| black_box(run_interpreted(&list)))
+    });
+    c.bench_function("bench_list_processing_compiled", |b| {
+        b.iter(|| black_box(run_compiled(&list, &list_jit)))
+    });
+    c.bench_function("bench_pattern_match_interpreted", |b| {
+        b.iter(|| black_box(run_pattern_counts_interpreted(&pattern)))
+    });
+    c.bench_function("bench_pattern_match_compiled", |b| {
+        b.iter(|| black_box(run_pattern_counts_compiled(&pattern, &pattern_jit)))
+    });
+}
+
+fn compile_with(compiler: &JitCompiler, fixture: &WorkloadFixture, message: &str) {
+    let code = fixture.compiled_code();
+    black_box(
+        compiler
+            .compile(&code, fixture.module.name, fixture.function, fixture.arity)
+            .expect(message),
+    );
+}
+
+fn bench_compilation(c: &mut Criterion) {
+    let fibonacci = fibonacci_fixture();
+    let list = list_fixture();
+    let pattern = pattern_fixture();
+    c.bench_function("bench_compile_fibonacci", |b| {
+        b.iter_batched(
+            || JitCompiler::new(JitSettings).expect("host JIT compiler should initialize"),
+            |compiler| compile_with(&compiler, &fibonacci, "fibonacci should compile"),
+            BatchSize::SmallInput,
+        )
+    });
+    c.bench_function("bench_compile_list_processing", |b| {
+        b.iter_batched(
+            || JitCompiler::new(JitSettings).expect("host JIT compiler should initialize"),
+            |compiler| compile_with(&compiler, &list, "list processing should compile"),
+            BatchSize::SmallInput,
+        )
+    });
+    c.bench_function("bench_compile_pattern_match", |b| {
+        b.iter_batched(
+            || JitCompiler::new(JitSettings).expect("host JIT compiler should initialize"),
+            |compiler| compile_with(&compiler, &pattern, "pattern match should compile"),
+            BatchSize::SmallInput,
+        )
+    });
+}
+
+criterion_group!(jit_execution, bench_execution);
+criterion_group!(jit_compilation, bench_compilation);
+criterion_main!(jit_execution, jit_compilation);
