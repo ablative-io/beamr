@@ -45,7 +45,7 @@ fn module(name: Atom, code: Vec<Instruction>) -> Module {
 
 fn dirty_sleep_value(_args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
     DIRTY_STARTED.store(true, Ordering::Release);
-    std::thread::sleep(Duration::from_millis(10));
+    std::thread::sleep(Duration::from_millis(200));
     DIRTY_FINISHED.store(true, Ordering::Release);
     Ok(Term::small_int(42))
 }
@@ -126,6 +126,7 @@ fn dirty_nif_round_trip_does_not_block_normal_scheduler() {
             node_name: None,
             creation: None,
             distribution: None,
+            jit_threshold: None,
         },
         Arc::clone(&registry),
     )
@@ -168,6 +169,7 @@ fn dirty_nif_error_resumes_and_raises_exception() {
             node_name: None,
             creation: None,
             distribution: None,
+            jit_threshold: None,
         },
         Arc::clone(&registry),
     )

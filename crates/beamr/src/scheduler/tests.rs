@@ -561,6 +561,7 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         ),
         local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
         net_kernel,
+        jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
     });
     let mut process = Process::new(1, DEFAULT_HEAP_SIZE);
     process.set_code_position(Some(CodePosition {
@@ -864,6 +865,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
                 crate::distribution::connection::ConnectionManager::new(at, dist.resolver.clone());
             Arc::new(crate::distribution::NetKernel::new(cm))
         },
+        jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
     });
     let pid = 1;
     shared.process_table.spawn_with_pid(pid);
