@@ -1092,7 +1092,7 @@ fn aot_compiled_path_matches_jit_for_fixture_function() {
     let runner = DifferentialRunner::new_aot(SchedulerConfig::default());
     match runner.run(include_bytes!("fixtures/proof.beam"), "main", 0, &[]) {
         DifferentialResult::Match { result } => {
-            assert_eq!(result, RunOutcome::Value(Term::small_int(42)));
+            assert_eq!(result, Term::small_int(42));
         }
         DifferentialResult::CompilationSkipped { reason } => {
             eprintln!("AOT differential test skipped for main/0: {reason}");

@@ -104,7 +104,7 @@ fn write_u16(output: &mut Vec<u8>, value: u16) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
-fn write_u32(output: &mut Vec<u8>, value: u32) {
+pub(crate) fn write_u32(output: &mut Vec<u8>, value: u32) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
