@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/beamr", "crates/beamr-cli"]
+members = ["crates/beamr", "crates/beamr-cli", "crates/gleam-types"]
 
 [workspace.package]
 license = "Apache-2.0"
@@ -9,3 +9,6 @@ authors = [
     "Tom Whiting <tom@ablative.com.au>",
     "Josh Bearup <Joshuabearup1@gmail.com>",
 ]
+
+[workspace.dependencies]
+ecow = "=0.2.6"
