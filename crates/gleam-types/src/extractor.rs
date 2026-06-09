@@ -53,15 +53,33 @@ impl GleamTypeExtractor {
                 if matches!(function.publicity, Publicity::Private) {
                     continue;
                 }
-                let has_all_argument_annotations = function
-                    .arguments
-                    .iter()
-                    .all(|argument| argument.annotation.is_some());
-                if !has_all_argument_annotations || function.return_annotation.is_none() {
-                    return Err(ExtractError::TypeCheck(format!(
-                        "function {name} is missing explicit type annotations"
-                    )));
+                let arity = function.arguments.len();
+                if u8::try_from(arity).is_err() {
+                    return Err(ExtractError::ArityTooLarge {
+                        function: name.to_string(),
+                        arity,
+                    });
                 }
+
+                for argument in &function.arguments {
+                    let annotation = argument.annotation.as_ref().ok_or_else(|| {
+                        ExtractError::MissingAnnotation {
+                            function: name.to_string(),
+                        }
+                    })?;
+                    type_ast_to_descriptor(annotation).map_err(|message| {
+                        ExtractError::UnsupportedType(format!("{name}: {message}"))
+                    })?;
+                }
+
+                let return_annotation = function.return_annotation.as_ref().ok_or_else(|| {
+                    ExtractError::MissingAnnotation {
+                        function: name.to_string(),
+                    }
+                })?;
+                type_ast_to_descriptor(return_annotation).map_err(|message| {
+                    ExtractError::UnsupportedType(format!("{name}: {message}"))
+                })?;
             }
         }
         Ok(TypedModule {
@@ -90,13 +108,13 @@ impl GleamTypeExtractor {
                         argument
                             .annotation
                             .as_ref()
-                            .and_then(type_ast_to_descriptor)
+                            .and_then(|annotation| type_ast_to_descriptor(annotation).ok())
                     })
                     .collect::<Option<Vec<_>>>()?;
                 let return_type = function
                     .return_annotation
                     .as_ref()
-                    .and_then(type_ast_to_descriptor)?;
+                    .and_then(|annotation| type_ast_to_descriptor(annotation).ok())?;
                 Some(FunctionSignature {
                     name,
                     arity,
@@ -126,38 +144,39 @@ impl fmt::Display for ExtractError {
 
 impl std::error::Error for ExtractError {}
 
-fn type_ast_to_descriptor(type_ast: &TypeAst) -> Option<TypeDescriptor> {
+fn type_ast_to_descriptor(type_ast: &TypeAst) -> Result<TypeDescriptor, String> {
     match type_ast {
         TypeAst::Constructor(constructor) => {
-            let (module, name) = constructor_name(&constructor.name)?;
+            let (module, name) = constructor_name(&constructor.name)
+                .ok_or_else(|| "malformed type constructor name".to_string())?;
             let arguments = constructor
                 .arguments
                 .iter()
                 .map(type_ast_to_descriptor)
-                .collect::<Option<Vec<_>>>()?;
-            named_type_to_descriptor(module, name, arguments)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(named_type_to_descriptor(module, name, arguments))
         }
         TypeAst::Fn(function) => {
             let arguments = function
                 .arguments
                 .iter()
                 .map(type_ast_to_descriptor)
-                .collect::<Option<Vec<_>>>()?;
+                .collect::<Result<Vec<_>, _>>()?;
             let return_ = type_ast_to_descriptor(&function.return_)?;
-            Some(TypeDescriptor::Fn(arguments, Box::new(return_)))
+            Ok(TypeDescriptor::Fn(arguments, Box::new(return_)))
         }
         TypeAst::Tuple(tuple) => tuple
             .elements
             .iter()
             .map(type_ast_to_descriptor)
-            .collect::<Option<Vec<_>>>()
+            .collect::<Result<Vec<_>, _>>()
             .map(TypeDescriptor::Tuple),
-        TypeAst::Var(var) => Some(TypeDescriptor::CustomType {
+        TypeAst::Var(var) => Ok(TypeDescriptor::CustomType {
             module: String::new(),
             name: var.name.to_string(),
             type_params: Vec::new(),
         }),
-        TypeAst::Hole(_) => None,
+        TypeAst::Hole(_) => Err("type holes are not supported in sidecars".into()),
     }
 }
 
@@ -175,24 +194,23 @@ fn named_type_to_descriptor(
     module: String,
     name: String,
     arguments: Vec<TypeDescriptor>,
-) -> Option<TypeDescriptor> {
+) -> TypeDescriptor {
     match (module.as_str(), name.as_str(), arguments.as_slice()) {
-        ("", "Int", []) => Some(TypeDescriptor::Int),
-        ("", "Float", []) => Some(TypeDescriptor::Float),
-        ("", "String", []) => Some(TypeDescriptor::String),
-        ("", "BitArray", []) => Some(TypeDescriptor::BitArray),
-        ("", "Bool", []) => Some(TypeDescriptor::Bool),
-        ("", "Nil", []) => Some(TypeDescriptor::Nil),
-        ("", "List", [inner]) => Some(TypeDescriptor::List(Box::new(inner.clone()))),
-        ("", "Result", [ok, error]) => Some(TypeDescriptor::Result(
-            Box::new(ok.clone()),
-            Box::new(error.clone()),
-        )),
-        _ => Some(TypeDescriptor::CustomType {
+        ("", "Int", []) => TypeDescriptor::Int,
+        ("", "Float", []) => TypeDescriptor::Float,
+        ("", "String", []) => TypeDescriptor::String,
+        ("", "BitArray", []) => TypeDescriptor::BitArray,
+        ("", "Bool", []) => TypeDescriptor::Bool,
+        ("", "Nil", []) => TypeDescriptor::Nil,
+        ("", "List", [inner]) => TypeDescriptor::List(Box::new(inner.clone())),
+        ("", "Result", [ok, error]) => {
+            TypeDescriptor::Result(Box::new(ok.clone()), Box::new(error.clone()))
+        }
+        _ => TypeDescriptor::CustomType {
             module,
             name,
             type_params: arguments,
-        }),
+        },
     }
 }
 

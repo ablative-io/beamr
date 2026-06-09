@@ -1,1 +1,1 @@
-fix: pin ecow for gleam-core compatibility
+review: harden gleam type sidecar extraction errors

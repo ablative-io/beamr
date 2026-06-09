@@ -39,9 +39,20 @@ fn run(args: impl IntoIterator<Item = OsString>) -> Result<(), CliError> {
             skipped = skipped.saturating_add(1);
             continue;
         };
-        let source = fs::read_to_string(&source_path)?;
-        let parsed = GleamTypeExtractor::parse_module(&source)?;
-        let typed = GleamTypeExtractor::type_check(parsed)?;
+        let source = fs::read_to_string(&source_path).map_err(|error| CliError::ReadSource {
+            path: source_path.clone(),
+            source: error,
+        })?;
+        let parsed =
+            GleamTypeExtractor::parse_module(&source).map_err(|error| CliError::ExtractModule {
+                module: module_name.clone(),
+                source: error,
+            })?;
+        let typed =
+            GleamTypeExtractor::type_check(parsed).map_err(|error| CliError::ExtractModule {
+                module: module_name.clone(),
+                source: error,
+            })?;
         let signatures = GleamTypeExtractor::extract_signatures(typed);
         let mut sidecar = GleamTypes::new(module_name);
         for signature in signatures {
@@ -52,7 +63,11 @@ fn run(args: impl IntoIterator<Item = OsString>) -> Result<(), CliError> {
                 signature.return_type,
             );
         }
-        fs::write(beam_path.with_extension("gleam_types"), sidecar.serialize())?;
+        let sidecar_path = beam_path.with_extension("gleam_types");
+        fs::write(&sidecar_path, sidecar.serialize()).map_err(|error| CliError::WriteSidecar {
+            path: sidecar_path,
+            source: error,
+        })?;
         extracted = extracted.saturating_add(1);
     }
 
@@ -115,7 +130,18 @@ fn find_beam<'a>(beams: &'a [PathBuf], module_name: &str) -> Option<&'a Path> {
 enum CliError {
     Usage(String),
     Io(io::Error),
-    Extract(gleam_types::ExtractError),
+    ReadSource {
+        path: PathBuf,
+        source: io::Error,
+    },
+    WriteSidecar {
+        path: PathBuf,
+        source: io::Error,
+    },
+    ExtractModule {
+        module: String,
+        source: gleam_types::ExtractError,
+    },
     InvalidPath(PathBuf),
 }
 
@@ -124,7 +150,23 @@ impl fmt::Display for CliError {
         match self {
             Self::Usage(message) => f.write_str(message),
             Self::Io(error) => write!(f, "I/O error: {error}"),
-            Self::Extract(error) => write!(f, "{error}"),
+            Self::ReadSource { path, source } => {
+                write!(
+                    f,
+                    "failed to read Gleam source {}: {source}",
+                    path.display()
+                )
+            }
+            Self::WriteSidecar { path, source } => {
+                write!(
+                    f,
+                    "failed to write type sidecar {}: {source}",
+                    path.display()
+                )
+            }
+            Self::ExtractModule { module, source } => {
+                write!(f, "failed to extract types for module {module}: {source}")
+            }
             Self::InvalidPath(path) => write!(f, "invalid source path {}", path.display()),
         }
     }
@@ -134,7 +176,8 @@ impl std::error::Error for CliError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io(error) => Some(error),
-            Self::Extract(error) => Some(error),
+            Self::ReadSource { source, .. } | Self::WriteSidecar { source, .. } => Some(source),
+            Self::ExtractModule { source, .. } => Some(source),
             Self::Usage(_) | Self::InvalidPath(_) => None,
         }
     }
@@ -143,11 +186,5 @@ impl std::error::Error for CliError {
 impl From<io::Error> for CliError {
     fn from(error: io::Error) -> Self {
         Self::Io(error)
-    }
-}
-
-impl From<gleam_types::ExtractError> for CliError {
-    fn from(error: gleam_types::ExtractError) -> Self {
-        Self::Extract(error)
     }
 }
