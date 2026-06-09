@@ -116,7 +116,7 @@ enum GuardDecision {
     Unknown,
 }
 
-pub(super) fn typed_guard_decision(type_: &TypeDescriptor, op: TypeTestOp) -> GuardDecision {
+fn typed_guard_decision(type_: &TypeDescriptor, op: TypeTestOp) -> GuardDecision {
     match op {
         TypeTestOp::IsInteger => bool_decision(matches!(type_, TypeDescriptor::Int)),
         TypeTestOp::IsAtom => {
