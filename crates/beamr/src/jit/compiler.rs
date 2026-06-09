@@ -29,10 +29,10 @@ use super::ir_common::{
 };
 use super::ir_control::{BlockMap, TranslationPlan, opcode_name};
 use super::ir_exceptions::{
-    CompiledFrameInfo, ExceptionHelpers, ExceptionLoweringState, JIT_STATUS_DEOPT,
-    JIT_STATUS_NORMAL, JIT_STATUS_YIELD, dispatch_exception_status, jit_add_compiled_frame,
-    jit_clear_exception, jit_exception_class, jit_exception_reason, jit_exception_trace,
-    return_status, return_status_raw,
+    CompiledFrameInfo, ExceptionDispatch, ExceptionHelpers, ExceptionLoweringState,
+    JIT_STATUS_DEOPT, JIT_STATUS_NORMAL, JIT_STATUS_YIELD, dispatch_exception_status,
+    jit_add_compiled_frame, jit_clear_exception, jit_exception_class, jit_exception_reason,
+    jit_exception_trace, return_status, return_status_raw,
 };
 use super::ir_guards::{
     SelectPair, immediate_raw_term, immediate_usize, lower_is_tagged_tuple, lower_select_val,
@@ -437,14 +437,16 @@ impl JitCompiler {
                         let normal_continuation = builder.create_block();
                         dispatch_exception_status(
                             &mut builder,
-                            exception_helpers,
-                            exceptions.current_frame(),
-                            compiled_frame,
-                            process,
-                            register_file,
-                            status,
-                            returned,
-                            normal_continuation,
+                            ExceptionDispatch {
+                                helpers: exception_helpers,
+                                frame: exceptions.current_frame(),
+                                compiled_frame,
+                                process,
+                                register_file,
+                                status,
+                                value: returned,
+                                continuation: normal_continuation,
+                            },
                         );
                         write_operand_term(
                             &mut builder,

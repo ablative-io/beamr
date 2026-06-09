@@ -179,6 +179,17 @@ pub(crate) struct ExceptionHelpers {
     pub(crate) add_frame: FuncRef,
 }
 
+pub(crate) struct ExceptionDispatch {
+    pub(crate) helpers: ExceptionHelpers,
+    pub(crate) frame: Option<TryCatchFrame>,
+    pub(crate) compiled_frame: CompiledFrameInfo,
+    pub(crate) process: Value,
+    pub(crate) register_file: Value,
+    pub(crate) status: Value,
+    pub(crate) value: Value,
+    pub(crate) continuation: Block,
+}
+
 pub(crate) fn return_status(builder: &mut FunctionBuilder<'_>, status: u8, value: Value) {
     let status = builder.ins().iconst(types::I8, i64::from(status));
     builder.ins().return_(&[status, value]);
@@ -191,53 +202,61 @@ pub(crate) fn return_status_raw(builder: &mut FunctionBuilder<'_>, status: u8, r
 
 pub(crate) fn dispatch_exception_status(
     builder: &mut FunctionBuilder<'_>,
-    helpers: ExceptionHelpers,
-    frame: Option<TryCatchFrame>,
-    compiled_frame: CompiledFrameInfo,
-    process: Value,
-    register_file: Value,
-    status: Value,
-    value: Value,
-    continuation: Block,
+    dispatch: ExceptionDispatch,
 ) {
-    let is_exception =
-        builder
-            .ins()
-            .icmp_imm(IntCC::Equal, status, i64::from(JIT_STATUS_EXCEPTION));
+    let is_exception = builder.ins().icmp_imm(
+        IntCC::Equal,
+        dispatch.status,
+        i64::from(JIT_STATUS_EXCEPTION),
+    );
     let exception_block = builder.create_block();
-    builder
-        .ins()
-        .brif(is_exception, exception_block, &[], continuation, &[]);
+    builder.ins().brif(
+        is_exception,
+        exception_block,
+        &[],
+        dispatch.continuation,
+        &[],
+    );
     builder.switch_to_block(exception_block);
 
-    if let Some(frame) = frame {
-        let class = call_unary(builder, helpers.class, process);
-        let reason = call_unary(builder, helpers.reason, process);
-        let trace = call_unary(builder, helpers.trace, process);
-        write_register_term(builder, register_file, frame.class_register, class);
-        write_register_term(builder, register_file, frame.reason_register, reason);
-        write_register_term(builder, register_file, frame.trace_register, trace);
-        builder.ins().call(helpers.clear, &[process]);
+    if let Some(frame) = dispatch.frame {
+        let class = call_unary(builder, dispatch.helpers.class, dispatch.process);
+        let reason = call_unary(builder, dispatch.helpers.reason, dispatch.process);
+        let trace = call_unary(builder, dispatch.helpers.trace, dispatch.process);
+        write_register_term(builder, dispatch.register_file, frame.class_register, class);
+        write_register_term(
+            builder,
+            dispatch.register_file,
+            frame.reason_register,
+            reason,
+        );
+        write_register_term(builder, dispatch.register_file, frame.trace_register, trace);
+        builder
+            .ins()
+            .call(dispatch.helpers.clear, &[dispatch.process]);
         builder.ins().jump(frame.catch_block, &[]);
         let unreachable = builder.create_block();
         builder.switch_to_block(unreachable);
     } else {
-        let module = builder
-            .ins()
-            .iconst(types::I64, i64::from(compiled_frame.module.index()));
-        let function = builder
-            .ins()
-            .iconst(types::I64, i64::from(compiled_frame.function.index()));
+        let module = builder.ins().iconst(
+            types::I64,
+            i64::from(dispatch.compiled_frame.module.index()),
+        );
+        let function = builder.ins().iconst(
+            types::I64,
+            i64::from(dispatch.compiled_frame.function.index()),
+        );
         let arity = builder
             .ins()
-            .iconst(types::I64, i64::from(compiled_frame.arity));
-        builder
-            .ins()
-            .call(helpers.add_frame, &[process, module, function, arity]);
-        return_status(builder, JIT_STATUS_EXCEPTION, value);
+            .iconst(types::I64, i64::from(dispatch.compiled_frame.arity));
+        builder.ins().call(
+            dispatch.helpers.add_frame,
+            &[dispatch.process, module, function, arity],
+        );
+        return_status(builder, JIT_STATUS_EXCEPTION, dispatch.value);
     }
 
-    builder.switch_to_block(continuation);
+    builder.switch_to_block(dispatch.continuation);
 }
 
 fn call_unary(builder: &mut FunctionBuilder<'_>, helper: FuncRef, process: Value) -> Value {
