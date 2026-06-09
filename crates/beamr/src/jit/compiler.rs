@@ -498,6 +498,11 @@ impl JitCompiler {
                             )?;
                             typed_state.set_operand_type(bif.destination, TypeDescriptor::Int);
                         } else {
+                            typed_state.materialize_operands_for_untyped_lowering(
+                                &mut builder,
+                                register_file,
+                                [bif.left, bif.right],
+                            );
                             lower_arithmetic_bif(&mut builder, register_file, lowering)?;
                             typed_state.clear_operand(bif.destination);
                         }
@@ -526,6 +531,11 @@ impl JitCompiler {
                     } => {
                         let fail = blocks.label_block(label_operand(fail)?)?;
                         let next = blocks.block_after(index);
+                        typed_state.materialize_operands_for_untyped_lowering(
+                            &mut builder,
+                            register_file,
+                            [left, right],
+                        );
                         lower_comparison(
                             &mut builder,
                             register_file,
@@ -580,6 +590,11 @@ impl JitCompiler {
                     }
                     Instruction::SelectVal { value, fail, list } => {
                         let fail = blocks.label_block(label_operand(fail)?)?;
+                        typed_state.materialize_operands_for_untyped_lowering(
+                            &mut builder,
+                            register_file,
+                            [value],
+                        );
                         let pairs = parse_select_pairs(list)?
                             .into_iter()
                             .map(|(candidate, target)| {
@@ -672,6 +687,12 @@ impl JitCompiler {
                             index,
                             [head.clone(), tail.clone(), destination.clone()],
                         )?;
+                        let destination_type = typed_state.list_type_from_head(head);
+                        typed_state.materialize_operands_for_untyped_lowering(
+                            &mut builder,
+                            register_file,
+                            [head, tail],
+                        );
                         lower_put_list(
                             &mut builder,
                             LoweringContext {
@@ -684,26 +705,51 @@ impl JitCompiler {
                             tail,
                             destination,
                         )?;
-                        typed_state.propagate_put_list(head, destination);
+                        typed_state.set_optional_operand_type(destination, destination_type);
                         terminated = false;
                     }
                     Instruction::GetList { source, head, tail } => {
+                        let head_type = typed_state.list_head_type(source);
+                        let tail_type = typed_state.list_tail_type(source);
                         lower_get_list(&mut builder, register_file, source, head, tail)?;
-                        typed_state.propagate_list_access(source, head, tail);
+                        typed_state.mark_loaded_operand_type(
+                            &mut builder,
+                            register_file,
+                            head,
+                            head_type,
+                        );
+                        typed_state.mark_loaded_operand_type(
+                            &mut builder,
+                            register_file,
+                            tail,
+                            tail_type,
+                        );
                     }
                     Instruction::GetHd {
                         source,
                         destination,
                     } => {
+                        let destination_type = typed_state.list_head_type(source);
                         lower_get_hd(&mut builder, register_file, source, destination)?;
-                        typed_state.propagate_list_head(source, destination);
+                        typed_state.mark_loaded_operand_type(
+                            &mut builder,
+                            register_file,
+                            destination,
+                            destination_type,
+                        );
                     }
                     Instruction::GetTl {
                         source,
                         destination,
                     } => {
+                        let destination_type = typed_state.list_tail_type(source);
                         lower_get_tl(&mut builder, register_file, source, destination)?;
-                        typed_state.propagate_list_tail(source, destination);
+                        typed_state.mark_loaded_operand_type(
+                            &mut builder,
+                            register_file,
+                            destination,
+                            destination_type,
+                        );
                     }
                     Instruction::PutTuple2 {
                         destination,
@@ -712,6 +758,12 @@ impl JitCompiler {
                         safepoints.record_allocation_site(
                             index,
                             tuple_root_operands(destination, elements)?,
+                        )?;
+                        let destination_type = typed_state.tuple_type_from_elements(elements);
+                        typed_state.materialize_tuple_elements_for_untyped_lowering(
+                            &mut builder,
+                            register_file,
+                            elements,
                         )?;
                         lower_put_tuple2(
                             &mut builder,
@@ -724,7 +776,7 @@ impl JitCompiler {
                             destination,
                             elements,
                         )?;
-                        typed_state.propagate_put_tuple(destination, elements);
+                        typed_state.set_optional_operand_type(destination, destination_type);
                         terminated = false;
                     }
                     Instruction::GetTupleElement {
@@ -733,6 +785,7 @@ impl JitCompiler {
                         destination,
                     } => {
                         let index = immediate_usize(index, "get_tuple_element index")?;
+                        let destination_type = typed_state.tuple_element_type(source, index);
                         lower_get_tuple_element(
                             &mut builder,
                             register_file,
@@ -740,7 +793,12 @@ impl JitCompiler {
                             index,
                             destination,
                         )?;
-                        typed_state.propagate_tuple_element(source, index, destination);
+                        typed_state.mark_loaded_operand_type(
+                            &mut builder,
+                            register_file,
+                            destination,
+                            destination_type,
+                        );
                     }
                     other => {
                         return Err(JitError::UnsupportedOpcode {
@@ -843,14 +901,55 @@ impl TypedRegisterState {
         builder: &mut FunctionBuilder<'_>,
         register_file: cranelift_codegen::ir::Value,
     ) {
-        for (register, type_) in &self.registers {
-            if matches!(type_, TypeDescriptor::Int) {
-                let payload = read_register_term(builder, register_file, *register);
+        let registers = self.registers.keys().copied().collect::<Vec<_>>();
+        self.materialize_registers(builder, register_file, registers);
+    }
+
+    fn materialize_operands_for_untyped_lowering<'a>(
+        &mut self,
+        builder: &mut FunctionBuilder<'_>,
+        register_file: cranelift_codegen::ir::Value,
+        operands: impl IntoIterator<Item = &'a Operand>,
+    ) {
+        let registers = operands
+            .into_iter()
+            .filter_map(|operand| register_operand(operand).ok())
+            .collect::<Vec<_>>();
+        self.materialize_registers(builder, register_file, registers);
+    }
+
+    fn materialize_tuple_elements_for_untyped_lowering(
+        &mut self,
+        builder: &mut FunctionBuilder<'_>,
+        register_file: cranelift_codegen::ir::Value,
+        elements: &Operand,
+    ) -> Result<(), JitError> {
+        let Operand::List(elements) = elements else {
+            return Err(JitError::UnsupportedOperand {
+                operand: format!("put_tuple2 elements must be a list, got {elements:?}"),
+            });
+        };
+        let registers = elements
+            .iter()
+            .filter_map(|operand| register_operand(operand).ok())
+            .collect::<Vec<_>>();
+        self.materialize_registers(builder, register_file, registers);
+        Ok(())
+    }
+
+    fn materialize_registers(
+        &mut self,
+        builder: &mut FunctionBuilder<'_>,
+        register_file: cranelift_codegen::ir::Value,
+        registers: impl IntoIterator<Item = Register>,
+    ) {
+        for register in registers {
+            if matches!(self.registers.remove(&register), Some(TypeDescriptor::Int)) {
+                let payload = read_register_term(builder, register_file, register);
                 let tagged = builder.ins().ishl_imm(payload, SMALL_INT_SHIFT);
-                write_register_term(builder, register_file, *register, tagged);
+                write_register_term(builder, register_file, register, tagged);
             }
         }
-        self.registers.clear();
     }
 
     fn read_operand_value(
@@ -876,8 +975,12 @@ impl TypedRegisterState {
     }
 
     fn set_operand_type(&mut self, operand: &Operand, type_: TypeDescriptor) {
+        self.set_optional_operand_type(operand, Some(type_));
+    }
+
+    fn set_optional_operand_type(&mut self, operand: &Operand, type_: Option<TypeDescriptor>) {
         if let Ok(register) = register_operand(operand) {
-            if let Some(type_) = supported_type(&type_) {
+            if let Some(type_) = type_.as_ref().and_then(supported_type) {
                 self.registers.insert(register, type_);
             } else {
                 self.registers.remove(&register);
@@ -925,59 +1028,67 @@ impl TypedRegisterState {
         register_operand(operand).is_ok()
     }
 
-    fn propagate_put_list(&mut self, head: &Operand, destination: &Operand) {
-        if let Some(head_type) = self.operand_type(head).cloned() {
-            self.set_operand_type(destination, TypeDescriptor::List(Box::new(head_type)));
-        } else {
-            self.clear_operand(destination);
-        }
+    fn list_type_from_head(&self, head: &Operand) -> Option<TypeDescriptor> {
+        self.operand_type(head)
+            .cloned()
+            .map(|head_type| TypeDescriptor::List(Box::new(head_type)))
     }
 
-    fn propagate_list_access(&mut self, source: &Operand, head: &Operand, tail: &Operand) {
-        self.propagate_list_head(source, head);
-        self.propagate_list_tail(source, tail);
-    }
-
-    fn propagate_list_head(&mut self, source: &Operand, destination: &Operand) {
+    fn list_head_type(&self, source: &Operand) -> Option<TypeDescriptor> {
         if let Some(TypeDescriptor::List(inner)) = self.operand_type(source) {
-            self.set_operand_type(destination, inner.as_ref().clone());
+            Some(inner.as_ref().clone())
         } else {
-            self.clear_operand(destination);
+            None
         }
     }
 
-    fn propagate_list_tail(&mut self, source: &Operand, destination: &Operand) {
+    fn list_tail_type(&self, source: &Operand) -> Option<TypeDescriptor> {
         if let Some(TypeDescriptor::List(inner)) = self.operand_type(source) {
-            self.set_operand_type(destination, TypeDescriptor::List(inner.clone()));
+            Some(TypeDescriptor::List(inner.clone()))
         } else {
-            self.clear_operand(destination);
+            None
         }
     }
 
-    fn propagate_put_tuple(&mut self, destination: &Operand, elements: &Operand) {
+    fn tuple_type_from_elements(&self, elements: &Operand) -> Option<TypeDescriptor> {
         let Operand::List(elements) = elements else {
-            self.clear_operand(destination);
-            return;
+            return None;
         };
-        let Some(types) = elements
+        elements
             .iter()
             .map(|element| self.operand_type(element).cloned())
             .collect::<Option<Vec<_>>>()
-        else {
-            self.clear_operand(destination);
-            return;
-        };
-        self.set_operand_type(destination, TypeDescriptor::Tuple(types));
+            .map(TypeDescriptor::Tuple)
     }
 
-    fn propagate_tuple_element(&mut self, source: &Operand, index: usize, destination: &Operand) {
-        if let Some(TypeDescriptor::Tuple(elements)) = self.operand_type(source)
-            && let Some(type_) = elements.get(index).cloned()
-        {
-            self.set_operand_type(destination, type_);
-            return;
+    fn tuple_element_type(&self, source: &Operand, index: usize) -> Option<TypeDescriptor> {
+        if let Some(TypeDescriptor::Tuple(elements)) = self.operand_type(source) {
+            elements.get(index).cloned()
+        } else {
+            None
         }
-        self.clear_operand(destination);
+    }
+
+    fn mark_loaded_operand_type(
+        &mut self,
+        builder: &mut FunctionBuilder<'_>,
+        register_file: cranelift_codegen::ir::Value,
+        operand: &Operand,
+        type_: Option<TypeDescriptor>,
+    ) {
+        let Ok(register) = register_operand(operand) else {
+            return;
+        };
+        let Some(type_) = type_.as_ref().and_then(supported_type) else {
+            self.registers.remove(&register);
+            return;
+        };
+        if matches!(type_, TypeDescriptor::Int) {
+            let tagged = read_register_term(builder, register_file, register);
+            let payload = builder.ins().sshr_imm(tagged, SMALL_INT_SHIFT);
+            write_register_term(builder, register_file, register, payload);
+        }
+        self.registers.insert(register, type_);
     }
 }
 

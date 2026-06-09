@@ -167,15 +167,19 @@ fn compiled_add_returns_small_int_result() {
     assert_eq!(registers[0], Term::small_int(5).raw());
 }
 
-#[test]
-fn typed_add_returns_small_int_result() {
-    let compiler = JitCompiler::new(JitSettings).unwrap();
-    let signature = FunctionSignature {
-        name: "add".to_owned(),
+fn int_int_signature(name: &str) -> FunctionSignature {
+    FunctionSignature {
+        name: name.to_owned(),
         arity: 2,
         param_types: vec![TypeDescriptor::Int, TypeDescriptor::Int],
         return_type: TypeDescriptor::Int,
-    };
+    }
+}
+
+#[test]
+fn typed_add_returns_small_int_result() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = int_int_signature("add");
     let native = compiler
         .compile_typed(
             &[
@@ -208,12 +212,7 @@ fn typed_add_returns_small_int_result() {
 #[test]
 fn typed_add_overflow_deopts_for_bignum_promotion() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
-    let signature = FunctionSignature {
-        name: "add".to_owned(),
-        arity: 2,
-        param_types: vec![TypeDescriptor::Int, TypeDescriptor::Int],
-        return_type: TypeDescriptor::Int,
-    };
+    let signature = int_int_signature("add");
     let native = compiler
         .compile_typed(
             &[
@@ -249,12 +248,7 @@ fn typed_add_overflow_deopts_for_bignum_promotion() {
 #[test]
 fn typed_div_by_zero_takes_badarith_fail_label() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
-    let signature = FunctionSignature {
-        name: "div".to_owned(),
-        arity: 2,
-        param_types: vec![TypeDescriptor::Int, TypeDescriptor::Int],
-        return_type: TypeDescriptor::Int,
-    };
+    let signature = int_int_signature("div");
     let native = compiler
         .compile_typed(
             &[
@@ -280,6 +274,116 @@ fn typed_div_by_zero_takes_badarith_fail_label() {
             Atom::OK,
             2,
             signature,
+        )
+        .unwrap();
+    let mut registers = vec![Term::small_int(10).raw(), Term::small_int(0).raw()];
+    let returned = call_native(&native, &mut registers);
+
+    assert_eq!(returned, Term::atom(Atom::BADARITH).raw());
+}
+
+#[test]
+fn typed_mixed_known_unknown_arithmetic_materializes_known_operand_for_untyped_fallback() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = FunctionSignature {
+        name: "mixed_add".to_owned(),
+        arity: 2,
+        param_types: vec![TypeDescriptor::Int, TypeDescriptor::Unknown],
+        return_type: TypeDescriptor::Unknown,
+    };
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::Bif {
+                    op: BifOp::Bif2,
+                    operands: vec![
+                        Operand::Label(9),
+                        Operand::Unsigned(0),
+                        Operand::X(0),
+                        Operand::X(1),
+                        Operand::X(0),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 9 },
+                Instruction::Move {
+                    source: Operand::Integer(99),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            2,
+            signature,
+        )
+        .unwrap();
+    let mut registers = vec![Term::small_int(5).raw(), Term::small_int(3).raw()];
+    let returned = call_native(&native, &mut registers);
+
+    assert_eq!(returned, Term::small_int(8).raw());
+}
+
+#[test]
+fn typed_div_min_by_minus_one_deopts_safely() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::Bif {
+                    op: BifOp::Bif2,
+                    operands: vec![
+                        Operand::Label(9),
+                        Operand::Unsigned(3),
+                        Operand::X(0),
+                        Operand::X(1),
+                        Operand::X(0),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 9 },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            2,
+            int_int_signature("div"),
+        )
+        .unwrap();
+    let mut registers = vec![i64::MIN as u64, (-1i64) as u64];
+    let returned = call_native(&native, &mut registers);
+
+    assert_eq!(returned, JIT_DEOPT_SENTINEL as u64);
+}
+
+#[test]
+fn typed_rem_by_zero_takes_badarith_fail_label() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::Bif {
+                    op: BifOp::Bif2,
+                    operands: vec![
+                        Operand::Label(9),
+                        Operand::Unsigned(4),
+                        Operand::X(0),
+                        Operand::X(1),
+                        Operand::X(0),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 9 },
+                Instruction::Move {
+                    source: Operand::Atom(Some(Atom::BADARITH)),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            2,
+            int_int_signature("rem"),
         )
         .unwrap();
     let mut registers = vec![Term::small_int(10).raw(), Term::small_int(0).raw()];
@@ -464,6 +568,46 @@ fn compiled_get_list_destructures_constructed_cons() {
 }
 
 #[test]
+fn typed_put_list_stores_tagged_int_and_typed_head_load_returns_tagged_result() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = FunctionSignature {
+        name: "typed_list".to_owned(),
+        arity: 1,
+        param_types: vec![TypeDescriptor::Int],
+        return_type: TypeDescriptor::Int,
+    };
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::PutList {
+                    head: Operand::X(0),
+                    tail: Operand::Atom(None),
+                    destination: Operand::X(1),
+                },
+                Instruction::GetHd {
+                    source: Operand::X(1),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            1,
+            signature,
+        )
+        .unwrap();
+
+    assert_eq!(native.stack_maps().len(), 1);
+    let mut process = Process::new(0, 233);
+    let mut registers = vec![Term::small_int(31).raw(), 0];
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+
+    assert_eq!(returned, Term::small_int(31).raw());
+    let cons = Cons::new(Term::from_raw(registers[1])).unwrap();
+    assert_eq!(cons.head(), Term::small_int(31));
+}
+
+#[test]
 fn compiled_get_list_read_is_pure_and_emits_no_safepoint() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
     let native = compiler
@@ -612,6 +756,46 @@ fn compiled_put_tuple2_emits_safepoint_and_allocates_tuple() {
 }
 
 #[test]
+fn typed_put_tuple_stores_tagged_int_and_typed_element_load_returns_tagged_result() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = FunctionSignature {
+        name: "typed_tuple".to_owned(),
+        arity: 1,
+        param_types: vec![TypeDescriptor::Int],
+        return_type: TypeDescriptor::Int,
+    };
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::PutTuple2 {
+                    destination: Operand::X(1),
+                    elements: Operand::List(vec![Operand::X(0)]),
+                },
+                Instruction::GetTupleElement {
+                    source: Operand::X(1),
+                    index: Operand::Integer(0),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            1,
+            signature,
+        )
+        .unwrap();
+
+    assert_eq!(native.stack_maps().len(), 1);
+    let mut process = Process::new(0, 233);
+    let mut registers = vec![Term::small_int(41).raw(), 0];
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+
+    assert_eq!(returned, Term::small_int(41).raw());
+    let tuple = Tuple::new(Term::from_raw(registers[1])).unwrap();
+    assert_eq!(tuple.get(0), Some(Term::small_int(41)));
+}
+
+#[test]
 fn compiled_get_tuple_element_reads_constructed_tuple() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
     let native = compiler
@@ -720,6 +904,130 @@ fn compiled_is_integer_distinguishes_integer_from_atom() {
         call_native(&native, &mut atom_registers),
         Term::small_int(0).raw()
     );
+}
+
+#[test]
+fn typed_is_integer_guard_elides_known_int_and_returns_tagged_value() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = FunctionSignature {
+        name: "guard".to_owned(),
+        arity: 1,
+        param_types: vec![TypeDescriptor::Int],
+        return_type: TypeDescriptor::Int,
+    };
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::TypeTest {
+                    op: TypeTestOp::IsInteger,
+                    fail: Operand::Label(7),
+                    value: Operand::X(0),
+                },
+                Instruction::Return,
+                Instruction::Label { label: 7 },
+                Instruction::Move {
+                    source: Operand::Integer(0),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            1,
+            signature,
+        )
+        .unwrap();
+    let mut registers = vec![Term::small_int(55).raw()];
+    let returned = call_native(&native, &mut registers);
+
+    assert_eq!(returned, Term::small_int(55).raw());
+}
+
+#[test]
+fn typed_is_atom_guard_on_known_int_jumps_to_fail_label() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = FunctionSignature {
+        name: "guard".to_owned(),
+        arity: 1,
+        param_types: vec![TypeDescriptor::Int],
+        return_type: TypeDescriptor::Int,
+    };
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::TypeTest {
+                    op: TypeTestOp::IsAtom,
+                    fail: Operand::Label(7),
+                    value: Operand::X(0),
+                },
+                Instruction::Move {
+                    source: Operand::Integer(1),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+                Instruction::Label { label: 7 },
+                Instruction::Move {
+                    source: Operand::Integer(0),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            1,
+            signature,
+        )
+        .unwrap();
+    let mut registers = vec![Term::small_int(55).raw()];
+    let returned = call_native(&native, &mut registers);
+
+    assert_eq!(returned, Term::small_int(0).raw());
+}
+
+#[test]
+fn typed_test_arity_uses_known_tuple_length() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = FunctionSignature {
+        name: "arity".to_owned(),
+        arity: 1,
+        param_types: vec![TypeDescriptor::Tuple(vec![
+            TypeDescriptor::Int,
+            TypeDescriptor::Int,
+        ])],
+        return_type: TypeDescriptor::Int,
+    };
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::TestArity {
+                    fail: Operand::Label(7),
+                    tuple: Operand::X(0),
+                    arity: Operand::Integer(3),
+                },
+                Instruction::Move {
+                    source: Operand::Integer(1),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+                Instruction::Label { label: 7 },
+                Instruction::Move {
+                    source: Operand::Integer(0),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            1,
+            signature,
+        )
+        .unwrap();
+    let mut tuple_words = [0; 3];
+    let tuple = write_tuple(&mut tuple_words, &[Term::small_int(1), Term::small_int(2)]).unwrap();
+    let mut registers = vec![tuple.raw()];
+    let returned = call_native(&native, &mut registers);
+
+    assert_eq!(returned, Term::small_int(0).raw());
 }
 
 #[test]

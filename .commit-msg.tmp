@@ -1,1 +1,1 @@
-feat(beamr): add typed AOT translation dispatch
+Harden typed AOT lowering representation boundaries and benchmark scaffolding

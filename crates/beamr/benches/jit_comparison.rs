@@ -1,8 +1,7 @@
 use beamr::atom::{Atom, AtomTable};
-use beamr::jit::{AotCompiler, JitCompiler, JitSettings};
+use beamr::jit::{AotCompiler, JitCompiler, JitSettings, NativeCode};
 use beamr::loader::decode::{BifOp, Operand};
 use beamr::loader::{Instruction, load_beam_chunks};
-use beamr::term::Term;
 use criterion::{Criterion, criterion_group, criterion_main};
 use gleam_types::{GleamTypes, TypeDescriptor};
 use std::fs;
@@ -72,10 +71,7 @@ impl SyntheticProgram {
         Self {
             instructions,
             arity: 2,
-            inputs: vec![
-                Term::small_int(FIBONACCI_INPUT).raw(),
-                Term::small_int(1).raw(),
-            ],
+            inputs: vec![small_int_raw(FIBONACCI_INPUT), small_int_raw(1)],
             signature,
             no_tag_check_expected: true,
         }
@@ -83,14 +79,14 @@ impl SyntheticProgram {
 
     fn list_processing() -> Self {
         let mut instructions = Vec::new();
-        for value in LIST_PROCESSING_INPUT {
+        for _ in LIST_PROCESSING_INPUT {
             instructions.push(Instruction::Bif {
                 op: BifOp::Bif2,
                 operands: vec![
                     Operand::Label(9),
                     Operand::Unsigned(0),
                     Operand::X(0),
-                    Operand::Integer(*value),
+                    Operand::X(1),
                     Operand::X(0),
                 ],
             });
@@ -100,13 +96,18 @@ impl SyntheticProgram {
         instructions.push(Instruction::Return);
 
         let mut signature = GleamTypes::new("bench_list_processing");
-        signature.add_function("main", 1, vec![TypeDescriptor::Int], TypeDescriptor::Int);
+        signature.add_function(
+            "main",
+            2,
+            vec![TypeDescriptor::Int, TypeDescriptor::Int],
+            TypeDescriptor::Int,
+        );
         Self {
             instructions,
-            arity: 1,
-            inputs: vec![Term::small_int(0).raw()],
+            arity: 2,
+            inputs: vec![small_int_raw(0), small_int_raw(1)],
             signature,
-            no_tag_check_expected: false,
+            no_tag_check_expected: true,
         }
     }
 
@@ -124,14 +125,14 @@ impl SyntheticProgram {
 
     fn untyped_aot_result(&self) -> u64 {
         let path = self.write_synthetic_beam(false);
-        compile_aot_function(&path);
+        let _native = compile_aot_function(&path);
         let _ = fs::remove_file(&path);
         self.evaluate_small_int_arithmetic()
     }
 
     fn typed_aot_result(&self) -> u64 {
         let path = self.write_synthetic_beam(true);
-        compile_aot_function(&path);
+        let _native = compile_aot_function(&path);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("gleam_types"));
         self.evaluate_small_int_arithmetic()
@@ -163,7 +164,7 @@ impl SyntheticProgram {
                     if registers.len() <= index {
                         registers.resize(index + 1, 0);
                     }
-                    registers[index] = Term::small_int(result).raw();
+                    registers[index] = small_int_raw(result);
                 }
             }
         }
@@ -185,9 +186,19 @@ impl SyntheticProgram {
     }
 }
 
-fn compile_aot_function(path: &Path) {
+fn compile_aot_function(path: &Path) -> Vec<NativeCode> {
     let compiler = AotCompiler::new().expect("create AOT compiler");
-    let _ = compiler.compile_module(path);
+    compiler
+        .compile_module(path)
+        .expect("compile AOT benchmark module")
+        .compiled_functions()
+        .iter()
+        .map(|(_, _, native)| native.clone())
+        .collect()
+}
+
+fn small_int_raw(value: i64) -> u64 {
+    (value as u64) << 3
 }
 
 fn read_payload(registers: &[u64], operand: &Operand) -> i64 {
