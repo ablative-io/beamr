@@ -5,6 +5,7 @@ use crate::loader::Instruction;
 use crate::scheduler::dirty::{DirtyPool, DirtySubmitError, DirtyTask};
 use std::sync::Arc;
 
+use super::cache::{JitCache, JitCacheKey};
 use super::compiler::{JitCompiler, JitError};
 use super::profiler::JitProfiler;
 
@@ -13,9 +14,11 @@ pub struct CompilationJob {
     module: Atom,
     function: Atom,
     arity: u8,
+    generation: u64,
     instructions: Vec<Instruction>,
     compiler: Arc<JitCompiler>,
     profiler: Arc<JitProfiler>,
+    cache: Arc<JitCache>,
 }
 
 impl CompilationJob {
@@ -25,17 +28,21 @@ impl CompilationJob {
         module: Atom,
         function: Atom,
         arity: u8,
+        generation: u64,
         instructions: Vec<Instruction>,
         compiler: Arc<JitCompiler>,
         profiler: Arc<JitProfiler>,
+        cache: Arc<JitCache>,
     ) -> Self {
         Self {
             module,
             function,
             arity,
+            generation,
             instructions,
             compiler,
             profiler,
+            cache,
         }
     }
 
@@ -44,7 +51,11 @@ impl CompilationJob {
             .compiler
             .compile(&self.instructions, self.module, self.function, self.arity)
         {
-            Ok(_native_code) => {
+            Ok(native_code) => {
+                self.cache.insert(
+                    JitCacheKey::new(self.module, self.function, self.arity, self.generation),
+                    native_code,
+                );
                 self.profiler
                     .mark_compiled(self.module, self.function, self.arity);
             }
@@ -72,6 +83,7 @@ pub fn submit_jit_compilation(
 mod tests {
     use super::{CompilationJob, submit_jit_compilation};
     use crate::atom::Atom;
+    use crate::jit::cache::JitCache;
     use crate::jit::compiler::{JitCompiler, JitSettings};
     use crate::jit::profiler::{JitProfiler, RecordResult};
     use crate::loader::Instruction;
@@ -96,6 +108,7 @@ mod tests {
         let pool = DirtyPool::with_queue_depth("jit-compile-success", 1, 4);
         let compiler = Arc::new(JitCompiler::new(JitSettings).unwrap());
         let profiler = Arc::new(JitProfiler::new(1));
+        let cache = Arc::new(JitCache::new());
         assert_eq!(
             profiler.record_call(Atom::MODULE, Atom::OK, 0),
             RecordResult::CompileNow
@@ -105,9 +118,11 @@ mod tests {
             Atom::MODULE,
             Atom::OK,
             0,
+            1,
             vec![Instruction::Return],
             compiler,
             Arc::clone(&profiler),
+            Arc::clone(&cache),
         );
         assert_eq!(submit_jit_compilation(&pool, job), Ok(()));
 
@@ -115,7 +130,9 @@ mod tests {
             Atom::MODULE,
             Atom::OK,
             0
-        )));
+        ) && cache
+            .lookup(Atom::MODULE, Atom::OK, 0, 1)
+            .is_some()));
         pool.shutdown();
     }
 
@@ -124,6 +141,7 @@ mod tests {
         let pool = DirtyPool::with_queue_depth("jit-compile-unsupported", 1, 4);
         let compiler = Arc::new(JitCompiler::new(JitSettings).unwrap());
         let profiler = Arc::new(JitProfiler::new(1));
+        let cache = Arc::new(JitCache::new());
         assert_eq!(
             profiler.record_call(Atom::MODULE, Atom::ERROR, 0),
             RecordResult::CompileNow
@@ -133,6 +151,7 @@ mod tests {
             Atom::MODULE,
             Atom::ERROR,
             0,
+            1,
             vec![Instruction::Generic {
                 opcode: 255,
                 name: "unknown",
@@ -140,6 +159,7 @@ mod tests {
             }],
             compiler,
             Arc::clone(&profiler),
+            Arc::clone(&cache),
         );
         assert_eq!(submit_jit_compilation(&pool, job), Ok(()));
 
@@ -148,6 +168,7 @@ mod tests {
             Atom::ERROR,
             0
         )));
+        assert!(cache.lookup(Atom::MODULE, Atom::ERROR, 0, 1).is_none());
         for _ in 0..10 {
             assert_eq!(
                 profiler.record_call(Atom::MODULE, Atom::ERROR, 0),

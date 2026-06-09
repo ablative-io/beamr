@@ -1,1 +1,1 @@
-feat(jit): add generation-aware code cache invalidation
+harden(jit): cache successful generation-aware compilation

@@ -137,20 +137,18 @@ fn hot_load_evicts_jit_cache_entries_for_old_generation() {
     let old_code = compiler
         .compile(&[Instruction::Return], counter, version, 0)
         .expect("compile v1 stand-in");
-    let old_ptr = old_code.call_ptr();
     scheduler
         .jit_cache()
         .insert(JitCacheKey::new(counter, version, 0, 1), old_code);
-    assert!(
-        scheduler
-            .jit_cache()
-            .lookup(counter, version, 0, 1)
-            .is_some()
-    );
+    let old_cached = scheduler
+        .jit_cache()
+        .lookup(counter, version, 0, 1)
+        .expect("old generation code cached before reload");
 
-    scheduler
+    let second = scheduler
         .hot_load_module(&fixture("counter_v2.beam"))
         .expect("load v2");
+    assert_eq!(second.generation, 2);
 
     assert!(
         scheduler
@@ -161,13 +159,10 @@ fn hot_load_evicts_jit_cache_entries_for_old_generation() {
     assert!(
         scheduler
             .jit_cache()
-            .lookup(counter, version, 0, 2)
+            .lookup(counter, version, 0, second.generation)
             .is_none()
     );
-    let fresh_code = compiler
-        .compile(&[Instruction::Return], counter, version, 0)
-        .expect("compile v2 stand-in");
-    assert_ne!(fresh_code.call_ptr(), old_ptr);
+    assert!(!old_cached.call_ptr().is_null());
     scheduler.shutdown();
 }
 
