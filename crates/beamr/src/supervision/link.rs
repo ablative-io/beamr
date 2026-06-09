@@ -299,7 +299,7 @@ mod tests {
 
         unlink(&mut a, &mut c);
         assert_eq!(a.links(), &[2, 4]);
-        assert_eq!(c.links(), &[]);
+        assert_eq!(c.links(), &[] as &[u64]);
 
         let mut self_link = running(5);
         let self_link_pid = self_link.pid();
