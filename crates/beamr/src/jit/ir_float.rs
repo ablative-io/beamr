@@ -261,11 +261,11 @@ fn float_register_index(index: u32) -> Result<usize, JitError> {
 #[cfg(test)]
 mod tests {
     use super::FloatRegisterMap;
-    use cranelift_codegen::ir::{Value, packed_option::ReservedValue};
+    use cranelift_codegen::ir::Value;
 
     #[test]
     fn float_register_map_stores_separate_slots() {
-        let default = Value::reserved_value();
+        let default = Value::from_u32(0);
         let replacement = Value::from_u32(7);
         let mut map = FloatRegisterMap::new(default);
 
