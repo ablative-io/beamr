@@ -8,6 +8,7 @@ use cranelift_frontend::FunctionBuilder;
 use super::compiler::JitError;
 use super::ir_common::{read_operand_term, write_operand_term};
 
+const TERM_TAG_MASK: i64 = 0b111;
 const BOXED_TAG: i64 = 0b100;
 const LIST_TAG: i64 = 0b101;
 const TUPLE_HEADER_TAG: i64 = 0x10;
@@ -86,6 +87,61 @@ pub(crate) fn lower_put_tuple2(
     write_operand_term(builder, context.register_file, destination, term)
 }
 
+pub(crate) fn lower_get_list(
+    builder: &mut FunctionBuilder<'_>,
+    register_file: Value,
+    source: &Operand,
+    head: &Operand,
+    tail: &Operand,
+) -> Result<(), JitError> {
+    let cons = read_cons_pointer(builder, register_file, source)?;
+    let head_value = builder.ins().load(types::I64, MemFlags::trusted(), cons, 0);
+    let tail_value = builder
+        .ins()
+        .load(types::I64, MemFlags::trusted(), cons, WORD_BYTES as i32);
+    write_operand_term(builder, register_file, head, head_value)?;
+    write_operand_term(builder, register_file, tail, tail_value)
+}
+
+pub(crate) fn lower_get_hd(
+    builder: &mut FunctionBuilder<'_>,
+    register_file: Value,
+    source: &Operand,
+    destination: &Operand,
+) -> Result<(), JitError> {
+    let cons = read_cons_pointer(builder, register_file, source)?;
+    let head = builder.ins().load(types::I64, MemFlags::trusted(), cons, 0);
+    write_operand_term(builder, register_file, destination, head)
+}
+
+pub(crate) fn lower_get_tl(
+    builder: &mut FunctionBuilder<'_>,
+    register_file: Value,
+    source: &Operand,
+    destination: &Operand,
+) -> Result<(), JitError> {
+    let cons = read_cons_pointer(builder, register_file, source)?;
+    let tail = builder
+        .ins()
+        .load(types::I64, MemFlags::trusted(), cons, WORD_BYTES as i32);
+    write_operand_term(builder, register_file, destination, tail)
+}
+
+pub(crate) fn lower_get_tuple_element(
+    builder: &mut FunctionBuilder<'_>,
+    register_file: Value,
+    source: &Operand,
+    index: usize,
+    destination: &Operand,
+) -> Result<(), JitError> {
+    let tuple = read_boxed_pointer(builder, register_file, source)?;
+    let offset = element_offset(index)?;
+    let element = builder
+        .ins()
+        .load(types::I64, MemFlags::trusted(), tuple, offset);
+    write_operand_term(builder, register_file, destination, element)
+}
+
 pub(crate) fn tuple_root_operands(
     destination: &Operand,
     elements: &Operand,
@@ -114,4 +170,39 @@ fn tuple_elements_error(elements: &Operand) -> JitError {
     JitError::UnsupportedOperand {
         operand: format!("put_tuple2 elements must be a list, got {elements:?}"),
     }
+}
+
+fn read_cons_pointer(
+    builder: &mut FunctionBuilder<'_>,
+    register_file: Value,
+    source: &Operand,
+) -> Result<Value, JitError> {
+    let term = read_operand_term(builder, register_file, source)?;
+    Ok(builder.ins().band_imm(term, !TERM_TAG_MASK))
+}
+
+fn read_boxed_pointer(
+    builder: &mut FunctionBuilder<'_>,
+    register_file: Value,
+    source: &Operand,
+) -> Result<Value, JitError> {
+    let term = read_operand_term(builder, register_file, source)?;
+    Ok(builder.ins().band_imm(term, !TERM_TAG_MASK))
+}
+
+fn element_offset(index: usize) -> Result<i32, JitError> {
+    let word_index = index
+        .checked_add(1)
+        .ok_or_else(|| JitError::UnsupportedOperand {
+            operand: format!("tuple element offset {index}"),
+        })?;
+    let byte_offset =
+        word_index
+            .checked_mul(WORD_BYTES)
+            .ok_or_else(|| JitError::UnsupportedOperand {
+                operand: format!("tuple element offset {index}"),
+            })?;
+    i32::try_from(byte_offset).map_err(|_| JitError::UnsupportedOperand {
+        operand: format!("tuple element offset {index}"),
+    })
 }

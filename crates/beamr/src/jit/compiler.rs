@@ -15,7 +15,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::ir_allocation::{
-    AllocationHelpers, LoweringContext, lower_put_list, lower_put_tuple2, tuple_root_operands,
+    AllocationHelpers, LoweringContext, lower_get_hd, lower_get_list, lower_get_tl,
+    lower_get_tuple_element, lower_put_list, lower_put_tuple2, tuple_root_operands,
 };
 use super::ir_arithmetic::{
     ArithmeticLowering, ArithmeticOp, ParsedBif, lower_arithmetic_bif, lower_comparison,
@@ -26,8 +27,8 @@ use super::ir_common::{
 };
 use super::ir_control::{BlockMap, TranslationPlan, opcode_name};
 use super::ir_guards::{
-    SelectPair, immediate_raw_term, lower_is_tagged_tuple, lower_select_val, lower_test_arity,
-    lower_type_test, parse_select_pairs,
+    SelectPair, immediate_raw_term, immediate_usize, lower_is_tagged_tuple, lower_select_val,
+    lower_test_arity, lower_type_test, parse_select_pairs,
 };
 use super::runtime::{jit_alloc_cons, jit_alloc_tuple};
 use super::safepoint::SafepointBuilder;
@@ -307,6 +308,21 @@ impl JitCompiler {
                             destination,
                         )?;
                     }
+                    Instruction::GetList { source, head, tail } => {
+                        lower_get_list(&mut builder, register_file, source, head, tail)?;
+                    }
+                    Instruction::GetHd {
+                        source,
+                        destination,
+                    } => {
+                        lower_get_hd(&mut builder, register_file, source, destination)?;
+                    }
+                    Instruction::GetTl {
+                        source,
+                        destination,
+                    } => {
+                        lower_get_tl(&mut builder, register_file, source, destination)?;
+                    }
                     Instruction::PutTuple2 {
                         destination,
                         elements,
@@ -325,6 +341,20 @@ impl JitCompiler {
                             allocation_helpers.tuple,
                             destination,
                             elements,
+                        )?;
+                    }
+                    Instruction::GetTupleElement {
+                        source,
+                        index,
+                        destination,
+                    } => {
+                        let index = immediate_usize(index, "get_tuple_element index")?;
+                        lower_get_tuple_element(
+                            &mut builder,
+                            register_file,
+                            source,
+                            index,
+                            destination,
                         )?;
                     }
                     other => {

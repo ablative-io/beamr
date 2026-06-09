@@ -275,6 +275,85 @@ fn compiled_put_list_emits_safepoint_and_allocates_cons() {
 }
 
 #[test]
+fn compiled_get_list_destructures_constructed_cons() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let native = compiler
+        .compile(
+            &[
+                Instruction::PutList {
+                    head: Operand::Integer(11),
+                    tail: Operand::Atom(None),
+                    destination: Operand::X(1),
+                },
+                Instruction::GetList {
+                    source: Operand::X(1),
+                    head: Operand::X(2),
+                    tail: Operand::X(3),
+                },
+                Instruction::Move {
+                    source: Operand::X(2),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            0,
+        )
+        .unwrap();
+
+    assert_eq!(native.stack_maps().len(), 1);
+    let mut process = Process::new(0, 233);
+    let mut registers = vec![0; 4];
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+
+    assert_eq!(returned, Term::small_int(11).raw());
+    assert_eq!(registers[2], Term::small_int(11).raw());
+    assert_eq!(registers[3], Term::NIL.raw());
+}
+
+#[test]
+fn compiled_get_hd_and_get_tl_read_cons_fields() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let native = compiler
+        .compile(
+            &[
+                Instruction::PutList {
+                    head: Operand::Integer(17),
+                    tail: Operand::X(4),
+                    destination: Operand::X(1),
+                },
+                Instruction::GetHd {
+                    source: Operand::X(1),
+                    destination: Operand::X(2),
+                },
+                Instruction::GetTl {
+                    source: Operand::X(1),
+                    destination: Operand::X(3),
+                },
+                Instruction::Move {
+                    source: Operand::X(3),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            0,
+        )
+        .unwrap();
+
+    assert_eq!(native.stack_maps().len(), 1);
+    let mut process = Process::new(0, 233);
+    let mut registers = vec![0, 0, 0, 0, Term::NIL.raw()];
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+
+    assert_eq!(returned, Term::NIL.raw());
+    assert_eq!(registers[2], Term::small_int(17).raw());
+    assert_eq!(registers[3], Term::NIL.raw());
+}
+
+#[test]
 fn compiled_put_tuple2_emits_safepoint_and_allocates_tuple() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
     let native = compiler
@@ -306,6 +385,40 @@ fn compiled_put_tuple2_emits_safepoint_and_allocates_tuple() {
     assert_eq!(returned, Term::small_int(4).raw());
     let tuple = Tuple::new(Term::from_raw(registers[2])).unwrap();
     assert_eq!(tuple.arity(), 2);
+    assert_eq!(tuple.get(0), Some(Term::small_int(4)));
+    assert_eq!(tuple.get(1), Some(Term::small_int(9)));
+}
+
+#[test]
+fn compiled_get_tuple_element_reads_constructed_tuple() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let native = compiler
+        .compile(
+            &[
+                Instruction::PutTuple2 {
+                    destination: Operand::X(1),
+                    elements: Operand::List(vec![Operand::Integer(4), Operand::Integer(9)]),
+                },
+                Instruction::GetTupleElement {
+                    source: Operand::X(1),
+                    index: Operand::Integer(1),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            0,
+        )
+        .unwrap();
+
+    assert_eq!(native.stack_maps().len(), 1);
+    let mut process = Process::new(0, 233);
+    let mut registers = vec![0; 2];
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+
+    assert_eq!(returned, Term::small_int(9).raw());
+    let tuple = Tuple::new(Term::from_raw(registers[1])).unwrap();
     assert_eq!(tuple.get(0), Some(Term::small_int(4)));
     assert_eq!(tuple.get(1), Some(Term::small_int(9)));
 }
@@ -345,7 +458,6 @@ fn compiled_allocation_with_tiny_heap_survives_gc() {
     assert_eq!(inner.get(0), Some(Term::small_int(3)));
     assert_eq!(outer.get(1), Some(Term::small_int(8)));
 }
-
 
 #[test]
 fn compiled_is_integer_distinguishes_integer_from_atom() {

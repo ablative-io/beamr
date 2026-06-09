@@ -63,6 +63,22 @@ impl TranslationPlan {
                     validate_write_operand(destination)?;
                     block_starts.insert(index + 1);
                 }
+                Instruction::GetList { source, head, tail } => {
+                    validate_read_operand(source)?;
+                    validate_write_operand(head)?;
+                    validate_write_operand(tail)?;
+                }
+                Instruction::GetHd {
+                    source,
+                    destination,
+                }
+                | Instruction::GetTl {
+                    source,
+                    destination,
+                } => {
+                    validate_read_operand(source)?;
+                    validate_write_operand(destination)?;
+                }
                 Instruction::PutTuple2 {
                     destination,
                     elements,
@@ -79,6 +95,15 @@ impl TranslationPlan {
                         validate_read_operand(element)?;
                     }
                     block_starts.insert(index + 1);
+                }
+                Instruction::GetTupleElement {
+                    source,
+                    index,
+                    destination,
+                } => {
+                    validate_read_operand(source)?;
+                    let _ = immediate_usize(index, "get_tuple_element index")?;
+                    validate_write_operand(destination)?;
                 }
                 Instruction::Comparison {
                     fail, left, right, ..

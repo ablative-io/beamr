@@ -1,1 +1,1 @@
-harden(beamr): guard JIT select_val CFG and tagged tuple edge cases
+feat(beamr): lower JIT tuple and list destructuring
