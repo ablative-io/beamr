@@ -1,0 +1,95 @@
+{
+  "id": "B-161",
+  "cluster": "beamr",
+  "title": "JIT IR translation — closure operations",
+  "depends_on": ["B-131", "B-133", "B-134", "B-135"],
+  "blocked_by": [],
+  "checklist": ["C218"],
+  "stories": ["S34"],
+  "purpose": "Closures (anonymous functions) are fundamental to Gleam's functional programming model — map, filter, fold, and higher-order functions all use closures. make_fun2 captures free variables into a heap-allocated closure object. apply dispatches a closure call. JIT-compiling these avoids interpreter overhead for closure creation and dispatch in hot loops (e.g. lists:map(fun, List) where the fun is called per element).",
+  "task": "Implement IR translation for closure opcodes in crates/beamr/src/jit/ir_closure.rs. make_fun2 compiles to a heap allocation (safepoint + runtime helper) that captures free variables from the current stack frame. apply compiles to an indirect call through the closure's function pointer, with the captured variables loaded from the closure object.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Closure creation IR — make_fun2",
+      "spec": "THE SYSTEM SHALL translate make_fun2 into Cranelift IR that: (1) emits a GC safepoint with all free variables in the root set, (2) calls jit_alloc_closure(process, fun_entry, arity, num_free) to allocate a closure object on the process heap, (3) writes each free variable to the closure object at the correct offset. THE SYSTEM SHALL tag the resulting pointer as a boxed Term (fun tag).",
+      "acceptance": [
+        "translate_make_fun2(builder, emitter, fun_entry, arity, free_vars, dest) emits safepoint + alloc + writes",
+        "jit_alloc_closure(process, fun_entry, arity, num_free) runtime helper allocates header + free var slots",
+        "Free variables are written to closure_ptr + header_size + (i * word_size)",
+        "Result is a tagged boxed Term with fun tag",
+        "Test: create closure capturing 2 free vars -> closure object has correct fun entry and captured values",
+        "Test: create closure capturing 0 free vars -> valid zero-capture closure"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/jit/ir_closure.rs"],
+        "modify": ["crates/beamr/src/jit/mod.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C218"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R2",
+      "title": "Closure dispatch IR — apply and call_fun",
+      "spec": "THE SYSTEM SHALL translate apply and call_fun opcodes into Cranelift IR that: (1) extracts the function entry pointer from the closure object, (2) loads captured free variables into the appropriate registers (appended after explicit arguments), (3) checks the JitCache for a compiled version of the closure's target function, (4) dispatches to native code (cache hit) or interpreter (cache miss). THE SYSTEM SHALL verify arity matches at the call site — arity mismatch raises badarity error.",
+      "acceptance": [
+        "translate_apply(builder, emitter, fun_term, args, dest) emits closure unpack + dispatch",
+        "translate_call_fun(builder, emitter, fun_term, arity, dest) emits closure unpack + dispatch",
+        "Free variables from closure are loaded and passed as additional arguments after explicit args",
+        "Arity mismatch (explicit args != closure arity) raises badarity — free vars are captured in the closure object, not part of call-site arity",
+        "Cache hit: direct native call; cache miss: jit_call_interpreted with closure args",
+        "Test: create closure capturing x, apply it -> x accessible in closure body",
+        "Test: apply closure with wrong arity -> badarity error"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_closure.rs"]
+      },
+      "checklist": ["C218"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R3",
+      "title": "Closure as GC root",
+      "spec": "WHEN a closure Term is live across a GC safepoint, THE SYSTEM SHALL track it in the SafepointEmitter root set. THE SYSTEM SHALL ensure the GC can relocate the closure object and update all references (the closure contains boxed free variables that may themselves be relocatable). THE SYSTEM SHALL NOT special-case closure root tracking — closures are boxed Terms like tuples and follow the same GC root protocol.",
+      "acceptance": [
+        "Closure Terms are tracked via SafepointEmitter::track_root like any boxed Term",
+        "GC can relocate closure objects during safepoint collection",
+        "Free variables inside closures are reachable from the closure root (GC follows the boxed header)",
+        "Test: create closure, trigger GC, apply closure -> free variables still correct after relocation"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_closure.rs"]
+      },
+      "checklist": ["C218"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R4",
+      "title": "Opcode dispatch wiring for closure opcodes",
+      "spec": "THE SYSTEM SHALL update the main opcode dispatch in compiler.rs to route make_fun2, apply, and call_fun opcodes to ir_closure.rs translations instead of emitting deopt exits. THE SYSTEM SHALL leave fun_info and is_function2 opcodes as deopt.",
+      "acceptance": [
+        "make_fun2, apply, call_fun opcodes route to ir_closure.rs translations",
+        "fun_info and is_function2 still deopt to interpreter",
+        "Test: function that creates and calls a closure compiles without deopt"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/compiler.rs"]
+      },
+      "checklist": ["C218"],
+      "stories": ["S34"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement closure inlining — each closure call is a full dispatch",
+    "SHALL NOT implement closure specialisation (monomorphisation for known closure bodies) — deferred to future optimisation",
+    "SHALL NOT implement fun_info introspection from compiled code — deoptimise to interpreter"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p beamr passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "ir_closure.rs is under 500 lines of production code",
+    "Closure creation emits GC safepoint before allocation",
+    "Closure dispatch correctly loads free variables and checks arity"
+  ]
+}

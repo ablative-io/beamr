@@ -1,0 +1,119 @@
+{
+  "id": "B-159",
+  "cluster": "beamr",
+  "title": "AOT type-aware specialisation — Gleam type-driven code generation",
+  "depends_on": ["B-157", "B-158"],
+  "blocked_by": [],
+  "checklist": ["C208"],
+  "stories": ["S36"],
+  "purpose": "With Gleam type information from .gleam_types sidecars, the AOT compiler can eliminate tag checks for statically-typed operations, specialise arithmetic to native-width integers, and inline known-safe operations. Per D7: the Gleam-to-native path uses type annotations to produce measurably faster code than the untyped JIT/AOT path. This is the high-performance path that justifies Gleam as the primary language.",
+  "task": "Extend the AOT compilation pipeline (B-157) with type-aware specialisation using the GleamTypeReader (B-158 R4). When type information is available, the IR translator emits specialised Cranelift IR: native i64 arithmetic instead of tagged-term arithmetic, direct struct access instead of tag-check-then-load, and inlined known-safe operations (list head on known-list, tuple element on known-tuple).",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Type-aware IR translation dispatch",
+      "spec": "WHEN compiling a function with available type information, THE SYSTEM SHALL use a TypedIrTranslator that consults the FunctionSignature for each parameter and local variable. WHEN the type is known (e.g. Int), THE SYSTEM SHALL emit specialised IR. WHEN the type is unknown or polymorphic, THE SYSTEM SHALL fall back to the untyped IR path (same tag checks as JIT). THE SYSTEM SHALL NOT mix typed and untyped IR for the same value — a value is either fully typed or fully untyped.",
+      "acceptance": [
+        "TypedIrTranslator::new(signature: FunctionSignature, compiler: &JitCompiler) creates a type-aware translator",
+        "Parameters with known types are marked as typed in the IR builder context",
+        "Typed values skip tag checks in subsequent operations",
+        "Unknown/polymorphic parameters use the standard untyped IR path",
+        "Test: function (a: Int, b: Int) -> Int — no tag checks emitted for a, b, or result"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/aot.rs"]
+      },
+      "checklist": ["C208"],
+      "stories": ["S36"]
+    },
+    {
+      "id": "R2",
+      "title": "Specialised integer arithmetic — native i64",
+      "spec": "WHEN both operands of an arithmetic operation (add, sub, mul, div, rem) have type Int, THE SYSTEM SHALL emit native i64 arithmetic without tag extraction (operands are known-untagged). THE SYSTEM SHALL still emit overflow checks for add/sub/mul using Cranelift's iadd_checked/isub_checked/imul_checked — WHEN overflow occurs, THE SYSTEM SHALL deoptimise to the interpreter for bignum promotion (Gleam integers are arbitrary precision). THE SYSTEM SHALL check for division by zero on div and rem. The benefit over untyped: no tag extraction, no tag-check branching, no re-tagging of the result — only the overflow check remains.",
+      "acceptance": [
+        "typed_add(a: Int, b: Int) emits: iadd_checked i64 with deopt on overflow (no tag extraction/re-tagging)",
+        "typed_sub(a: Int, b: Int) emits: isub_checked i64 with deopt on overflow",
+        "typed_mul(a: Int, b: Int) emits: imul_checked i64 with deopt on overflow",
+        "typed_div(a: Int, b: Int) emits: check b != 0, then sdiv i64",
+        "typed_rem(a: Int, b: Int) emits: check b != 0, then srem i64",
+        "Overflow deopt restores interpreter state at the bytecode position of the arithmetic op",
+        "Test: typed add(5, 3) produces 8 via native i64 (no tag overhead)",
+        "Test: typed add(SMALL_INT_MAX, 1) deoptimises to interpreter for bignum promotion",
+        "Test: typed div(10, 0) raises badarith error"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/aot.rs"]
+      },
+      "checklist": ["C208"],
+      "stories": ["S36"]
+    },
+    {
+      "id": "R3",
+      "title": "Specialised type tests — elision for known types",
+      "spec": "WHEN a type test (is_integer, is_atom, is_tuple, test_arity) is applied to a value with a known type, THE SYSTEM SHALL elide the test entirely if the type matches (always-true path). WHEN the type is known to NOT match, THE SYSTEM SHALL emit an unconditional branch to the fail label (always-false path). This eliminates guard overhead in pattern matching on typed values.",
+      "acceptance": [
+        "is_integer on a known-Int value: no IR emitted (fall through)",
+        "is_atom on a known-Int value: unconditional jump to fail label",
+        "test_arity(N) on a known Tuple(types) where len(types) == N: no IR emitted",
+        "test_arity(N) on a known Tuple(types) where len(types) != N: unconditional fail",
+        "Test: function with case on a known-Int parameter — guard checks eliminated",
+        "Test: function with case on an unknown parameter — guard checks preserved"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/aot.rs"]
+      },
+      "checklist": ["C208"],
+      "stories": ["S36"]
+    },
+    {
+      "id": "R4",
+      "title": "Specialised tuple and list access — skip tag checks",
+      "spec": "WHEN accessing a tuple element (get_tuple_element) on a value with known Tuple type, THE SYSTEM SHALL emit a direct load without the preceding boxed-tag check. WHEN accessing list head/tail on a value with known List type, THE SYSTEM SHALL emit a direct load without the list-tag check. THE SYSTEM SHALL still emit GC safepoints for construction operations (put_tuple2, put_list) even when types are known — allocation always needs safepoints.",
+      "acceptance": [
+        "get_tuple_element on known-Tuple: direct load (no tag check)",
+        "get_hd on known-List: direct load (no tag check)",
+        "get_tl on known-List: direct load (no tag check)",
+        "put_tuple2 on known types: still emits safepoint before allocation",
+        "Test: typed tuple access is measurably fewer IR instructions than untyped"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/aot.rs"]
+      },
+      "checklist": ["C208"],
+      "stories": ["S36"]
+    },
+    {
+      "id": "R5",
+      "title": "AOT type-aware benchmark comparison",
+      "spec": "THE SYSTEM SHALL extend the benchmark suite (B-138) with typed-AOT variants of the existing benchmarks. THE SYSTEM SHALL measure: (1) typed AOT vs untyped AOT, (2) typed AOT vs JIT, (3) typed AOT vs interpreter. Per the design goal: Gleam AOT compilation produces measurably faster execution on statically-typed operations than the untyped JIT path.",
+      "acceptance": [
+        "bench_fibonacci_typed_aot: fibonacci compiled with type info",
+        "bench_list_processing_typed_aot: list ops compiled with type info",
+        "Typed AOT fibonacci produces same result as interpreter (correctness check)",
+        "Typed AOT list processing produces same result as interpreter (correctness check)",
+        "Typed AOT Cranelift IR dump contains no tag-check instructions for fully-typed functions",
+        "Benchmarks run to completion and report timing data (speedup is a goal, not pass/fail)"
+      ],
+      "files": {
+        "modify": ["crates/beamr/benches/jit_comparison.rs"]
+      },
+      "checklist": ["C208"],
+      "stories": ["S36"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement type inference — only use types explicitly provided in .gleam_types",
+    "SHALL NOT specialise float arithmetic in this brief — float operations deoptimise (float JIT IR is a separate brief)",
+    "SHALL NOT specialise binary operations — binary JIT IR is a separate brief",
+    "SHALL NOT implement speculative type specialisation (assume type, deopt if wrong) — only specialise when type is statically guaranteed",
+    "SHALL NOT implement bignum specialisation — values exceeding small-int range deopt to interpreter"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p beamr passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "Typed AOT benchmarks show measurable speedup over untyped AOT",
+    "Differential tests pass with typed-AOT-compiled functions",
+    "No tag check instructions in Cranelift IR output for fully-typed functions"
+  ]
+}

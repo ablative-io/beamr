@@ -1,0 +1,101 @@
+{
+  "id": "B-158",
+  "cluster": "beamr",
+  "title": "Gleam type sidecar — external gleam-types tool",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": ["C208"],
+  "stories": ["S36"],
+  "purpose": "Gleam erases types at the BEAM level — .beam bytecode has no type information. To eliminate tag checks in AOT-compiled code, the AOT pipeline needs Gleam's static type annotations. Per D8: a standalone external tool (gleam-types binary) reads Gleam source files and outputs .gleam_types companion files alongside .beam files. The tool uses the Gleam compiler's parser and type checker as a Rust library dependency — not a fork. Upstream contribution to the Gleam project is the long-term goal, but external tool first. C208 is split across this brief (format, extraction, consumer API) and B-159 (type-aware specialisation).",
+  "task": "Create a standalone crate (crates/gleam-types/) that depends on the Gleam compiler's type checking infrastructure as a library. The tool reads .gleam source files, extracts function signatures and type annotations, and writes a .gleam_types sidecar file in a versioned binary format. The sidecar format is beamr-specific. This brief delivers the tool and sidecar format only — the AOT pipeline's consumption of the sidecar is B-159.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": ".gleam_types sidecar format",
+      "spec": "THE SYSTEM SHALL define a versioned binary format for .gleam_types files containing: a header (magic b\"GLEAM_TYPES\\0\", format_version: u8), module name, and a sequence of function type entries. Each entry contains: function name, arity, parameter types (as TypeDescriptor), return type (as TypeDescriptor). TypeDescriptor is an enum covering: Int, Float, String, BitArray, Bool, Atom, Nil, List(Box<TypeDescriptor>), Tuple(Vec<TypeDescriptor>), Result(Box<TypeDescriptor>, Box<TypeDescriptor>), CustomType { module: String, name: String, type_params: Vec<TypeDescriptor> }, Fn(Vec<TypeDescriptor>, Box<TypeDescriptor>).",
+      "acceptance": [
+        "GleamTypes::new(module_name) creates a type sidecar for the named module",
+        "GleamTypes::add_function(name, arity, param_types, return_type) adds a function entry",
+        "GleamTypes::serialize() -> Vec<u8> produces the binary format",
+        "GleamTypes::deserialize(bytes) -> Result<GleamTypes, TypeError> parses and validates",
+        "TypeDescriptor covers all Gleam standard library types",
+        "Test: round-trip serialize/deserialize for a function with Int -> Result(String, Nil)"
+      ],
+      "files": {
+        "create": ["crates/gleam-types/src/format.rs"]
+      },
+      "checklist": ["C208"],
+      "stories": ["S36"]
+    },
+    {
+      "id": "R2",
+      "title": "Gleam compiler library integration",
+      "spec": "THE SYSTEM SHALL depend on the gleam-core crate (the Gleam compiler's type checking library) as a Cargo dependency. THE SYSTEM SHALL use gleam-core's parser to parse .gleam source files and its type checker to resolve function signatures. THE SYSTEM SHALL NOT fork or vendor the Gleam compiler — use it as an upstream dependency. THE SYSTEM SHALL pin to a specific gleam-core version for reproducibility.",
+      "acceptance": [
+        "crates/gleam-types/Cargo.toml depends on gleam-core at a pinned version",
+        "GleamTypeExtractor::parse_module(source: &str) -> Result<ParsedModule, ExtractError>",
+        "GleamTypeExtractor::type_check(parsed: ParsedModule) -> Result<TypedModule, ExtractError>",
+        "GleamTypeExtractor::extract_signatures(typed: TypedModule) -> Vec<FunctionSignature>",
+        "FunctionSignature maps to the TypeDescriptor types from R1",
+        "Test: extract types from 'pub fn add(a: Int, b: Int) -> Int' -> params [Int, Int], return Int"
+      ],
+      "files": {
+        "create": ["crates/gleam-types/src/extractor.rs", "crates/gleam-types/src/lib.rs", "crates/gleam-types/Cargo.toml"],
+        "modify": ["Cargo.toml"]
+      },
+      "checklist": ["C208"],
+      "stories": ["S36"]
+    },
+    {
+      "id": "R3",
+      "title": "gleam-types CLI binary",
+      "spec": "THE SYSTEM SHALL provide a gleam-types CLI binary that takes a Gleam project directory (containing src/ with .gleam files and build/ with .beam files) and outputs .gleam_types files in the build directory alongside corresponding .beam files. THE SYSTEM SHALL match .gleam source files to .beam output files by module name. WHEN a .gleam file has no corresponding .beam file, THE SYSTEM SHALL skip it with a warning.",
+      "acceptance": [
+        "gleam-types <project-dir> processes all .gleam files in src/",
+        "Each .gleam file produces a .gleam_types file alongside its .beam in build/",
+        "Module name matching: src/user.gleam -> build/.../user.gleam_types",
+        "Missing .beam file: warning logged, .gleam_types not written",
+        "Summary: 'Extracted types for 15 modules (2 skipped)'",
+        "Test: run on a sample Gleam project -> .gleam_types files created"
+      ],
+      "files": {
+        "create": ["crates/gleam-types/src/main.rs"]
+      },
+      "checklist": ["C208"],
+      "stories": ["S36"]
+    },
+    {
+      "id": "R4",
+      "title": "Type sidecar consumer API for AOT pipeline",
+      "spec": "THE SYSTEM SHALL provide a GleamTypeReader in the beamr crate that reads .gleam_types files and exposes type information for AOT specialisation (B-159). THE SYSTEM SHALL provide lookup by function MFA: given (module, function, arity), return the parameter and return TypeDescriptors. WHEN no .gleam_types file exists for a module, THE SYSTEM SHALL return None (untyped AOT path).",
+      "acceptance": [
+        "GleamTypeReader::load(path: &Path) -> Result<GleamTypeReader, TypeError>",
+        "GleamTypeReader::function_signature(function: &str, arity: u8) -> Option<FunctionSignature>",
+        "Missing .gleam_types file: load returns TypeError::NotFound",
+        "Function not in sidecar: function_signature returns None",
+        "Test: load .gleam_types, query add/2 -> Some(FunctionSignature { params: [Int, Int], return: Int })"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/jit/type_info.rs"],
+        "modify": ["crates/beamr/src/jit/mod.rs"]
+      },
+      "checklist": ["C208"],
+      "stories": ["S36"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT fork or vendor the Gleam compiler — library dependency only",
+    "SHALL NOT modify Gleam source files — read-only analysis",
+    "SHALL NOT implement AOT specialisation in this brief — sidecar format and extraction only (specialisation is B-159)",
+    "SHALL NOT support non-Gleam languages for type extraction — Gleam only",
+    "SHALL NOT implement incremental extraction — full re-extraction on each run"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p gleam-types passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "gleam-types CLI produces .gleam_types files for a sample Gleam project",
+    "Type sidecar round-trips correctly (serialize -> deserialize -> same types)",
+    "GleamTypeReader in beamr can load and query .gleam_types files"
+  ]
+}

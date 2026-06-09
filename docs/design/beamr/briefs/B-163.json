@@ -1,0 +1,114 @@
+{
+  "id": "B-163",
+  "cluster": "beamr",
+  "title": "JIT IR translation — message send and selective receive",
+  "depends_on": ["B-131", "B-134", "B-135"],
+  "blocked_by": [],
+  "checklist": ["C220"],
+  "stories": ["S34"],
+  "purpose": "Message passing (send operator !) and selective receive are the core BEAM concurrency primitives. JIT-compiling these to native code eliminates interpreter dispatch overhead for the send instruction and the receive loop. Send compiles to a runtime helper call. Receive compiles to a loop that scans the process mailbox with pattern matching on each message, with a timeout mechanism for receive-after clauses. These operations interact with the scheduler (yield during receive wait) and the process mailbox.",
+  "task": "Implement IR translation for message send and selective receive opcodes in crates/beamr/src/jit/ir_message.rs. The send operator compiles to a jit_send_message runtime helper. Selective receive (loop_rec, loop_rec_end, wait, wait_timeout, remove_message) compiles to a loop structure with runtime helpers for mailbox scanning. Receive loops include reduction checks and yield points.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Message send IR — send operator",
+      "spec": "THE SYSTEM SHALL translate the send operator (!) into Cranelift IR that calls jit_send_message(process, dest_pid, message) runtime helper. THE SYSTEM SHALL emit a GC safepoint before the send (the message may be deep-copied to the recipient's heap). THE SYSTEM SHALL return the sent message as the result (BEAM semantics: send returns the message).",
+      "acceptance": [
+        "translate_send(builder, emitter, dest, message, result_dest) emits safepoint + jit_send_message call",
+        "jit_send_message(process, dest_pid: u64, message: u64) -> u64 sends and returns the message",
+        "GC safepoint root set includes both dest_pid and message",
+        "Result register receives the message term (not a success/fail indicator)",
+        "Test: compiled send(Pid, hello) -> message received by target process",
+        "Test: compiled send to dead pid -> message dropped silently (BEAM semantics)"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/jit/ir_message.rs"],
+        "modify": ["crates/beamr/src/jit/mod.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C220"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R2",
+      "title": "Selective receive loop IR — mailbox scanning",
+      "spec": "THE SYSTEM SHALL translate loop_rec and loop_rec_end into a Cranelift IR loop that scans the process mailbox. loop_rec loads the next message from the mailbox save pointer and branches to the body (match attempt) or the wait label (mailbox exhausted). loop_rec_end advances the save pointer to the next message and jumps back to loop_rec. THE SYSTEM SHALL call jit_receive_peek(process) and jit_receive_next(process) runtime helpers for mailbox interaction.",
+      "acceptance": [
+        "translate_loop_rec(builder, emitter, fail_label) emits: jit_receive_peek call, branch to fail if exhausted",
+        "translate_loop_rec_end(builder, emitter, loop_label) emits: jit_receive_next call, jump to loop_label",
+        "jit_receive_peek(process) -> Option<u64> returns the current message or None",
+        "jit_receive_next(process) advances the mailbox save pointer",
+        "Test: compiled receive matches first message in mailbox",
+        "Test: compiled receive skips non-matching messages and matches later message"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_message.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C220"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R3",
+      "title": "Message removal and receive completion",
+      "spec": "WHEN a message matches a receive clause, THE SYSTEM SHALL translate remove_message into IR that calls jit_receive_accept(process) to remove the matched message from the mailbox. THE SYSTEM SHALL ensure the message Term is accessible from the destination register before removal. THE SYSTEM SHALL track the message as a GC root if it is live across any safepoint in the receive clause body.",
+      "acceptance": [
+        "translate_remove_message(builder, emitter) emits jit_receive_accept call",
+        "jit_receive_accept(process) removes the current message from the mailbox",
+        "The message value remains valid in the destination register after removal",
+        "Message Term is in the safepoint root set if used after the accept call",
+        "Test: receive hello -> remove_message -> message no longer in mailbox"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_message.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C220"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R4",
+      "title": "Receive timeout — wait and wait_timeout",
+      "spec": "THE SYSTEM SHALL translate wait into IR that suspends the process until a new message arrives (calls jit_receive_wait(process) which yields to the scheduler). THE SYSTEM SHALL translate wait_timeout into IR that sets a timeout and suspends until either a message arrives or the timeout expires. WHEN the timeout expires, THE SYSTEM SHALL branch to the timeout clause label. THE SYSTEM SHALL emit a reduction check at the wait point (yield to scheduler).",
+      "acceptance": [
+        "translate_wait(builder, emitter, loop_label) emits jit_receive_wait + reduction check + jump to loop",
+        "translate_wait_timeout(builder, emitter, timeout_value, timeout_label, loop_label) emits timeout setup + wait",
+        "jit_receive_wait(process) -> WaitResult::NewMessage or WaitResult::Timeout",
+        "NewMessage: jump back to loop_rec for re-scan",
+        "Timeout: branch to timeout_label",
+        "Test: receive with after 0 -> immediately executes timeout clause when mailbox empty",
+        "Test: receive with message already in mailbox -> no wait, immediate match"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_message.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C220"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R5",
+      "title": "Opcode dispatch wiring for message opcodes",
+      "spec": "THE SYSTEM SHALL update the main opcode dispatch in compiler.rs to route send, loop_rec, loop_rec_end, wait, wait_timeout, remove_message, and timeout opcodes to ir_message.rs translations instead of emitting deopt exits. THE SYSTEM SHALL leave recv_marker_bind, recv_marker_clear, and recv_marker_use opcodes as deopt (ref-matching optimisation is out of scope).",
+      "acceptance": [
+        "send, loop_rec, loop_rec_end, wait, wait_timeout, remove_message route to ir_message.rs",
+        "recv_marker opcodes still deopt to interpreter",
+        "Test: function with send + receive compiles without deopt"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/compiler.rs"]
+      },
+      "checklist": ["C220"],
+      "stories": ["S34"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement receive optimisation (ref-matching fast path) — basic linear scan only",
+    "SHALL NOT implement distributed message send — local pid only (remote send deoptimises to interpreter)",
+    "SHALL NOT implement process_info(messages) from compiled code — deoptimise to interpreter"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p beamr passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "ir_message.rs is under 500 lines of production code",
+    "Send emits GC safepoint before message copy",
+    "Receive loop includes reduction checks at wait points"
+  ]
+}

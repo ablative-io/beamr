@@ -1,0 +1,99 @@
+{
+  "id": "B-164",
+  "cluster": "beamr",
+  "title": "JIT IR translation — map operations",
+  "depends_on": ["B-131", "B-134"],
+  "blocked_by": [],
+  "checklist": ["C221"],
+  "stories": ["S34"],
+  "purpose": "Gleam uses maps extensively for record-like data structures. Map construction (put_map_assoc, put_map_exact), update, and pattern matching (get_map_elements, has_map_fields) are common in Gleam code. JIT-compiling these to native code eliminates interpreter dispatch overhead. Map operations are complex (hash tables, key comparison, structural sharing) and compile to runtime helper calls rather than inline IR — the performance gain is from avoiding the interpreter's opcode dispatch loop, not from optimising the map operations themselves.",
+  "task": "Implement IR translation for map opcodes in crates/beamr/src/jit/ir_map.rs. All map operations compile to runtime helper calls. Construction and update operations allocate on the heap (require GC safepoints). Pattern matching operations are read-only (no safepoints). This brief makes maps no longer require deoptimisation to the interpreter.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Map construction IR — put_map_assoc",
+      "spec": "THE SYSTEM SHALL translate put_map_assoc into Cranelift IR that calls jit_map_new(process, pairs_ptr, pair_count) runtime helper. THE SYSTEM SHALL emit a GC safepoint before the call (heap allocation). THE SYSTEM SHALL pass key-value pairs as an array of u64 term values. THE SYSTEM SHALL track all key and value Terms as GC roots across the allocation.",
+      "acceptance": [
+        "translate_put_map_assoc(builder, emitter, pairs, dest, fail_label) emits safepoint + jit_map_new call",
+        "jit_map_new(process, pairs_ptr, pair_count) allocates a new map on the process heap",
+        "Keys and values are in safepoint root set",
+        "Result is a tagged boxed map Term",
+        "Test: compiled #{a => 1, b => 2} -> valid 2-entry map",
+        "Test: compiled empty map #{} -> valid empty map"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/jit/ir_map.rs"],
+        "modify": ["crates/beamr/src/jit/mod.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C221"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R2",
+      "title": "Map update IR — put_map_exact",
+      "spec": "THE SYSTEM SHALL translate put_map_exact into Cranelift IR that calls jit_map_update(process, existing_map, pairs_ptr, pair_count) runtime helper. THE SYSTEM SHALL emit a GC safepoint before the call. IF a key does not exist in the map (exact update semantics), THE SYSTEM SHALL branch to the fail label (badmap error). THE SYSTEM SHALL NOT modify the existing map — map update creates a new map with structural sharing.",
+      "acceptance": [
+        "translate_put_map_exact(builder, emitter, map, pairs, dest, fail_label) emits safepoint + jit_map_update call",
+        "jit_map_update returns new map or signals failure (key not found)",
+        "Failure branches to fail_label",
+        "Existing map is not modified (structural sharing)",
+        "Test: compiled #{a := 2} on #{a => 1} -> #{a => 2}",
+        "Test: compiled #{c := 3} on #{a => 1} -> branches to fail (key c not found)"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_map.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C221"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R3",
+      "title": "Map pattern matching IR — get_map_elements and has_map_fields",
+      "spec": "THE SYSTEM SHALL translate get_map_elements into Cranelift IR that calls jit_map_get(process, map, key) for each requested key and stores the value in the destination register. IF any key is not found, THE SYSTEM SHALL branch to the fail label. THE SYSTEM SHALL translate has_map_fields into a series of jit_map_has_key(map, key) calls. THE SYSTEM SHALL NOT emit GC safepoints for read-only map access.",
+      "acceptance": [
+        "translate_get_map_elements(builder, map, keys_and_dests, fail_label) emits one jit_map_get per key",
+        "translate_has_map_fields(builder, map, keys, fail_label) emits one jit_map_has_key per key",
+        "jit_map_get(map, key) -> Option<u64> returns the value or None",
+        "Missing key branches to fail_label",
+        "No GC safepoints emitted (read-only operations)",
+        "Test: compiled case #{a => V} on #{a => 42} -> V = 42",
+        "Test: compiled case #{a => V} on #{b => 42} -> branches to fail"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_map.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C221"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R4",
+      "title": "Remove map deoptimisation from opcode dispatch",
+      "spec": "THE SYSTEM SHALL update the main opcode dispatch to route map opcodes (put_map_assoc, put_map_exact, get_map_elements, has_map_fields) to ir_map.rs translations instead of emitting deopt exits. Prior to this brief, map opcodes triggered interpreter deoptimisation. THE SYSTEM SHALL leave map comprehension and map_size opcodes as deopt (out of scope for this brief).",
+      "acceptance": [
+        "put_map_assoc, put_map_exact, get_map_elements, has_map_fields no longer trigger deopt",
+        "These opcodes route to ir_map.rs translations",
+        "map_size and map comprehension opcodes still deopt to interpreter",
+        "Test: function with map construction and pattern matching compiles and executes natively"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/compiler.rs"]
+      },
+      "checklist": ["C221"],
+      "stories": ["S34"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement map operations inline — all map ops go through runtime helpers",
+    "SHALL NOT implement map comprehensions in JIT — deoptimise to interpreter",
+    "SHALL NOT implement map_size in JIT — deoptimise to interpreter",
+    "SHALL NOT implement maps:merge or maps:fold in JIT — these are BIF calls handled via normal call dispatch"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p beamr passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "ir_map.rs is under 500 lines of production code",
+    "Map construction emits GC safepoints",
+    "Map pattern matching does NOT emit GC safepoints"
+  ]
+}

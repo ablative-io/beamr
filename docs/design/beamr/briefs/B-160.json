@@ -1,0 +1,113 @@
+{
+  "id": "B-160",
+  "cluster": "beamr",
+  "title": "JIT IR translation — binary matching and construction",
+  "depends_on": ["B-131", "B-134"],
+  "blocked_by": [],
+  "checklist": ["C217"],
+  "stories": ["S34"],
+  "purpose": "Binary pattern matching (bs_match, bs_get_integer, bs_get_binary, bs_get_utf8) and construction (bs_init, bs_put_integer, bs_put_binary) are performance-critical for protocol handling and data parsing. JIT-compiling these to native code with runtime helper calls avoids interpreter dispatch overhead for each segment extraction or append. Binary operations are complex (match context state, heap allocation for sub-binaries) and use runtime helpers rather than inline IR for the actual memory operations.",
+  "task": "Implement IR translation for binary matching and construction opcodes in crates/beamr/src/jit/ir_binary.rs. Matching opcodes compile to runtime helper calls that advance a match context. Construction opcodes compile to runtime helper calls that build binary segments on the process heap. All heap-allocating operations emit GC safepoints via B-134's SafepointEmitter.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Binary match context runtime helpers",
+      "spec": "THE SYSTEM SHALL provide extern 'C' runtime helpers for binary matching: jit_bs_start_match(process, binary) -> match_context, jit_bs_get_integer(match_ctx, size, flags) -> term, jit_bs_get_binary(match_ctx, size) -> term, jit_bs_test_tail(match_ctx, expected_bits) -> bool. Each helper operates on a MatchContext that tracks the current bit position. THE SYSTEM SHALL emit a GC safepoint before jit_bs_get_binary (allocates a sub-binary on heap).",
+      "acceptance": [
+        "jit_bs_start_match creates a MatchContext from a binary Term",
+        "jit_bs_get_integer extracts an integer of given size and advances position",
+        "jit_bs_get_binary extracts a sub-binary and advances position (heap allocation + safepoint)",
+        "jit_bs_test_tail checks remaining bits equal expected",
+        "RuntimeHelpers struct extended with binary matching function pointers",
+        "Test: match <<1:8, 2:16>> -> extracts 1 and 2 correctly"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C217"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R2",
+      "title": "Binary matching IR translation",
+      "spec": "THE SYSTEM SHALL translate bs_match, bs_get_integer, bs_get_binary, bs_get_utf8, bs_test_tail, and bs_test_unit opcodes into Cranelift IR that calls the corresponding runtime helpers. WHEN a binary match fails (pattern mismatch), THE SYSTEM SHALL branch to the fail label. THE SYSTEM SHALL track the match context as a live root in the SafepointEmitter.",
+      "acceptance": [
+        "translate_bs_match(builder, emitter, binary, fail_label) emits jit_bs_start_match call + fail check",
+        "translate_bs_get_integer(builder, emitter, match_ctx, size, flags, dest, fail_label) emits helper call",
+        "translate_bs_get_binary(builder, emitter, match_ctx, size, dest, fail_label) emits safepoint + helper call",
+        "Match context is tracked as live root across all safepoints",
+        "Test: compiled binary match <<A:8, B:16, Rest/binary>> extracts A, B, Rest correctly",
+        "Test: compiled binary match on non-binary input branches to fail"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/jit/ir_binary.rs"],
+        "modify": ["crates/beamr/src/jit/mod.rs"]
+      },
+      "checklist": ["C217"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R3",
+      "title": "Binary construction runtime helpers and IR",
+      "spec": "THE SYSTEM SHALL provide runtime helpers for binary construction: jit_bs_init(process, size_hint) -> builder, jit_bs_put_integer(builder, value, size, flags), jit_bs_put_binary(builder, binary), jit_bs_finish(builder) -> binary_term. THE SYSTEM SHALL translate bs_init, bs_put_integer, bs_put_binary, and bs_finish opcodes into Cranelift IR calling these helpers. THE SYSTEM SHALL emit a GC safepoint before jit_bs_init (heap allocation).",
+      "acceptance": [
+        "translate_bs_init(builder, emitter, size_hint, dest) emits safepoint + jit_bs_init call",
+        "translate_bs_put_integer(builder, bs_builder, value, size, flags) emits helper call",
+        "translate_bs_put_binary(builder, bs_builder, binary) emits helper call",
+        "translate_bs_finish(builder, bs_builder, dest) emits helper call returning tagged binary Term",
+        "Test: compiled <<1:8, 256:16>> -> valid 3-byte binary",
+        "Test: compiled <<Head/binary, Tail/binary>> concatenation -> correct result"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_binary.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C217"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R4",
+      "title": "UTF-8 binary operations",
+      "spec": "THE SYSTEM SHALL translate bs_get_utf8, bs_get_utf16, bs_get_utf32, bs_put_utf8, bs_put_utf16, and bs_put_utf32 opcodes into runtime helper calls that handle Unicode encoding/decoding. IF a UTF operation encounters invalid encoding, THE SYSTEM SHALL branch to the fail label (matching) or raise a badarg error (construction).",
+      "acceptance": [
+        "jit_bs_get_utf8(match_ctx) extracts one UTF-8 codepoint and advances position",
+        "jit_bs_put_utf8(builder, codepoint) encodes and appends one UTF-8 codepoint",
+        "Invalid UTF-8 during match branches to fail label",
+        "Invalid codepoint during construction raises badarg",
+        "Test: match <<\"hello\"/utf8>> extracts 5 codepoints",
+        "Test: construct <<0x1F600:32/utf32>> -> correct 4-byte encoding"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_binary.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C217"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R5",
+      "title": "Opcode dispatch wiring for binary opcodes",
+      "spec": "THE SYSTEM SHALL update the main opcode dispatch in compiler.rs to route bs_match, bs_get_integer, bs_get_binary, bs_get_utf8, bs_test_tail, bs_test_unit, bs_init, bs_put_integer, bs_put_binary, bs_finish, bs_get_utf16, bs_get_utf32, bs_put_utf8, bs_put_utf16, and bs_put_utf32 opcodes to the ir_binary.rs translations instead of emitting deopt exits. THE SYSTEM SHALL leave bs_append and binary comprehension opcodes as deopt.",
+      "acceptance": [
+        "All listed binary opcodes route to ir_binary.rs translations in the compiler dispatch",
+        "bs_append and binary comprehension opcodes still deopt to interpreter",
+        "Test: function with binary match + construction compiles without deopt"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/compiler.rs"]
+      },
+      "checklist": ["C217"],
+      "stories": ["S34"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement bit-level binary matching inline — all binary operations go through runtime helpers",
+    "SHALL NOT optimise binary append (the append optimisation requires tracking binary references, deferred)",
+    "SHALL NOT implement binary comprehensions — deoptimise to interpreter"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p beamr passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "ir_binary.rs is under 500 lines of production code",
+    "All heap-allocating binary operations have GC safepoints"
+  ]
+}

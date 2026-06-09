@@ -1,0 +1,99 @@
+{
+  "id": "B-162",
+  "cluster": "beamr",
+  "title": "JIT IR translation — float arithmetic",
+  "depends_on": ["B-131", "B-132", "B-134"],
+  "blocked_by": [],
+  "checklist": ["C219"],
+  "stories": ["S34"],
+  "purpose": "BEAM float operations (fconv, fadd, fsub, fmul, fdiv, fnegate) operate on unboxed f64 values stored in float registers. B-132 currently deoptimises all float operations to the interpreter. This brief implements native float arithmetic in compiled code, eliminating the deopt overhead for numeric workloads that mix integer and float operations. Float values are boxed on the heap when stored in term registers (requiring GC safepoints) but unboxed in float registers during computation.",
+  "task": "Implement IR translation for float arithmetic opcodes in crates/beamr/src/jit/ir_float.rs. Float register operations (fr0-fr15) compile to Cranelift f64 instructions. fconv (term to float) compiles to unboxing. Float-to-term boxing allocates on the heap with a GC safepoint. This brief removes B-132's deopt-on-float-guard behaviour for the supported float opcodes.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Float register management in Cranelift IR",
+      "spec": "THE SYSTEM SHALL map BEAM float registers (fr0 through fr15) to Cranelift f64 SSA values. THE SYSTEM SHALL maintain a FloatRegisterMap that tracks which Cranelift SSA variable holds each float register's current value. THE SYSTEM SHALL NOT store float values in term registers — float registers are a separate namespace.",
+      "acceptance": [
+        "FloatRegisterMap::new() initialises 16 float register slots",
+        "FloatRegisterMap::get(fr_index) -> CraneliftValue returns the current f64 SSA value",
+        "FloatRegisterMap::set(fr_index, value) updates the mapping",
+        "Float registers are separate from x/y term registers",
+        "Test: set fr0 to f64 value, get fr0 -> same value"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/jit/ir_float.rs"],
+        "modify": ["crates/beamr/src/jit/mod.rs"]
+      },
+      "checklist": ["C219"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R2",
+      "title": "Float conversion IR — fconv and boxing",
+      "spec": "THE SYSTEM SHALL translate fconv (term to float register) into Cranelift IR that: (1) checks if the term is a small integer — if so, converts via sitofp, (2) checks if the term is a boxed float — if so, loads the f64 from the heap. THE SYSTEM SHALL provide a float boxing helper jit_box_float(process, f64_value) -> tagged_term that allocates a boxed float on the heap with a GC safepoint.",
+      "acceptance": [
+        "translate_fconv(builder, emitter, term_src, fr_dest) emits type check + conversion/load",
+        "Small integer conversion: untag, sitofp i64 to f64",
+        "Boxed float: untag pointer, load f64 from heap at float data offset",
+        "jit_box_float(process, value) allocates boxed float header + f64 on process heap",
+        "Boxing emits GC safepoint before allocation",
+        "Test: fconv on small_int(42) -> fr0 = 42.0",
+        "Test: fconv on boxed float 3.14 -> fr0 = 3.14"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_float.rs", "crates/beamr/src/jit/runtime.rs"]
+      },
+      "checklist": ["C219"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R3",
+      "title": "Float arithmetic IR — fadd, fsub, fmul, fdiv, fnegate",
+      "spec": "THE SYSTEM SHALL translate fadd, fsub, fmul, fdiv into Cranelift f64 instructions (fadd, fsub, fmul, fdiv respectively) operating on float register values. THE SYSTEM SHALL translate fnegate into Cranelift fneg. THE SYSTEM SHALL check for division by zero on fdiv and raise badarith if the divisor is 0.0. THE SYSTEM SHALL check for NaN/Inf results and raise badarith (BEAM does not produce NaN or infinity).",
+      "acceptance": [
+        "translate_fadd(builder, fr_a, fr_b, fr_dest) emits Cranelift fadd",
+        "translate_fsub(builder, fr_a, fr_b, fr_dest) emits Cranelift fsub",
+        "translate_fmul(builder, fr_a, fr_b, fr_dest) emits Cranelift fmul",
+        "translate_fdiv(builder, fr_a, fr_b, fr_dest) emits: check divisor != 0.0, Cranelift fdiv, check not NaN/Inf",
+        "translate_fnegate(builder, fr_src, fr_dest) emits Cranelift fneg",
+        "Test: fadd(1.5, 2.5) -> fr_dest = 4.0",
+        "Test: fdiv(1.0, 0.0) -> badarith error",
+        "Test: fnegate(-3.14) -> fr_dest = 3.14"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_float.rs"]
+      },
+      "checklist": ["C219"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R4",
+      "title": "Remove float deoptimisation from ir_guards.rs",
+      "spec": "THE SYSTEM SHALL update ir_guards.rs (B-132 R5) to no longer deoptimise on float-specific opcodes (fconv, fadd, fsub, fmul, fdiv). Instead, THE SYSTEM SHALL delegate these opcodes to the new ir_float.rs translations. THE SYSTEM SHALL retain deoptimisation for gc_bif guard opcodes (those still require interpreter fallback per B-134 scope).",
+      "acceptance": [
+        "fconv, fadd, fsub, fmul, fdiv no longer trigger deopt exit in ir_guards.rs",
+        "These opcodes are routed to ir_float.rs translations in the main opcode dispatch",
+        "gc_bif1/gc_bif2/gc_bif3 still deoptimise (unchanged)",
+        "Test: function with float guard compiles and executes natively (no deopt)"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/ir_guards.rs"]
+      },
+      "checklist": ["C219"],
+      "stories": ["S34"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement dedicated float comparison opcodes (fge, flt, feq) — functions using these opcodes cannot be JIT-compiled and will be skipped (marked unsupported). Integer comparison opcodes (is_lt, is_ge) do not handle float operands in compiled code — mixed comparisons deoptimise",
+    "SHALL NOT implement float-to-integer truncation (trunc) — deoptimise to interpreter",
+    "SHALL NOT produce NaN or infinity values — check and raise badarith per BEAM semantics"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p beamr passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "ir_float.rs is under 500 lines of production code",
+    "Float boxing emits GC safepoint",
+    "Float division by zero and NaN checks raise badarith"
+  ]
+}

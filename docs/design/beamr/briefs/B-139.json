@@ -1,0 +1,133 @@
+{
+  "id": "B-139",
+  "cluster": "beamr",
+  "title": "Differential testing — interpreter vs compiled equivalence",
+  "depends_on": ["B-135", "B-136", "B-137"],
+  "blocked_by": [],
+  "checklist": ["C214", "C215", "C216"],
+  "stories": ["S39"],
+  "purpose": "JIT compilers are notoriously hard to test. The interpreter is the correctness oracle — it is correct by construction (verified across Phases 0-3 with 1020+ tests). Differential testing runs every test through both interpreter and JIT/AOT paths and compares results. Any divergence is a compiler bug. Per D11: differential testing is the primary correctness strategy. Property-based testing and fuzzing complement this by generating inputs the test suite doesn't cover.",
+  "task": "Implement a differential test runner in crates/beamr/tests/differential.rs that executes functions through both interpreter and compiled paths and compares results. Implement a property-based test generator that creates random BEAM programs (valid instruction sequences) and verifies interpreter/compiler equivalence. The differential runner is an integration test harness, not a unit test — it exercises the full pipeline (load, compile, execute, compare).",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Differential test runner",
+      "spec": "THE SYSTEM SHALL provide a DifferentialRunner that accepts a BEAM function (module bytes or instruction sequence) and executes it through both the interpreter and the JIT compiler, comparing the results. WHEN both paths produce the same result, THE SYSTEM SHALL report success. WHEN the results diverge, THE SYSTEM SHALL report a DivergenceError containing the function identity, input arguments, interpreter result, and compiled result.",
+      "acceptance": [
+        "DifferentialRunner::new(config) creates a runner with a scheduler config (threshold=1 to force immediate compilation)",
+        "DifferentialRunner::run(module_bytes, function, arity, args) -> DifferentialResult",
+        "DifferentialResult::Match { result: Term } when both paths agree",
+        "DifferentialResult::Divergence { function, args, interpreted, compiled } when paths disagree",
+        "DifferentialResult::CompilationSkipped { reason } when JIT cannot compile the function",
+        "Test: fibonacci(10) -> Match { result: 55 }",
+        "Test: intentionally broken compiled path (mock) -> Divergence reported"
+      ],
+      "files": {
+        "create": ["crates/beamr/tests/differential.rs"]
+      },
+      "checklist": ["C214"],
+      "stories": ["S39"]
+    },
+    {
+      "id": "R2",
+      "title": "Result comparison with Term equality",
+      "spec": "THE SYSTEM SHALL compare interpreter and compiled results using structural Term equality (the existing PartialEq implementation). WHEN the result is an exception, THE SYSTEM SHALL compare exception class, reason, and stacktrace MFAs (ignoring stacktrace line numbers since compiled frames have none per B-137 R5). WHEN the result involves heap-allocated terms (tuples, lists, binaries), THE SYSTEM SHALL perform deep structural comparison, not pointer comparison.",
+      "acceptance": [
+        "compare_results(interpreted, compiled) -> CompareResult::Equal or CompareResult::Different { diff }",
+        "Integer, atom, and pid results compared by value",
+        "Tuple results compared element-by-element recursively",
+        "List results compared element-by-element recursively",
+        "Exception results compared by class + reason (stacktrace MFAs only, no line numbers)",
+        "Test: identical deep tuples -> Equal",
+        "Test: different nested list element -> Different with path to divergence"
+      ],
+      "files": {
+        "modify": ["crates/beamr/tests/differential.rs"]
+      },
+      "checklist": ["C215"],
+      "stories": ["S39"]
+    },
+    {
+      "id": "R3",
+      "title": "Divergence reporting with reproduction information",
+      "spec": "WHEN a divergence is detected, THE SYSTEM SHALL produce a DivergenceReport containing: (1) the function MFA, (2) the input arguments as formatted Terms, (3) the interpreter result, (4) the compiled result, (5) the BEAM bytecode of the function (for reproduction). THE SYSTEM SHALL format the report as a human-readable string suitable for test failure output. THE SYSTEM SHALL also write the diverging function's bytecode to a file for offline reproduction.",
+      "acceptance": [
+        "DivergenceReport has fields: mfa, args, interpreted_result, compiled_result, bytecode",
+        "DivergenceReport::to_string() produces a human-readable diff",
+        "DivergenceReport::save_bytecode(path) writes the function bytecode to a file",
+        "The report includes enough information to reproduce the divergence outside the test harness",
+        "Test: divergence report for {ok, 42} vs {ok, 43} shows the differing element"
+      ],
+      "files": {
+        "modify": ["crates/beamr/tests/differential.rs"]
+      },
+      "checklist": ["C215"],
+      "stories": ["S39"]
+    },
+    {
+      "id": "R4",
+      "title": "Test suite integration — run existing tests differentially",
+      "spec": "THE SYSTEM SHALL provide a macro or test helper that wraps existing unit test functions to run them differentially. WHEN applied to an existing test, THE SYSTEM SHALL execute the test function through both interpreter and compiled paths and assert equivalence. THE SYSTEM SHALL skip differential execution for tests that use features not yet supported by the JIT (maps, binaries, float arithmetic) and log the skip reason.",
+      "acceptance": [
+        "differential_test!(module_bytes, function, arity, args) macro runs both paths and asserts Match",
+        "Unsupported-opcode functions are skipped with CompilationSkipped, not failed",
+        "Skip reasons are logged (not silently swallowed) so coverage gaps are visible",
+        "Test: existing fibonacci test wrapped in differential_test! passes",
+        "Test: function with map operations -> CompilationSkipped logged"
+      ],
+      "files": {
+        "modify": ["crates/beamr/tests/differential.rs"]
+      },
+      "checklist": ["C214"],
+      "stories": ["S39"]
+    },
+    {
+      "id": "R5",
+      "title": "Property-based test generator — random BEAM programs",
+      "spec": "THE SYSTEM SHALL provide a proptest generator that produces random valid BEAM instruction sequences covering the JIT-supported opcode subset (arithmetic, comparison, control flow, type tests, tuple/list operations, try/catch). WHEN a generated program causes a divergence, THE SYSTEM SHALL shrink the failing case to the minimal reproducing program. THE SYSTEM SHALL NOT generate opcodes outside the JIT-supported set (no maps, binaries, float ops, receive).",
+      "acceptance": [
+        "BeamProgramStrategy generates random functions with 5-50 instructions",
+        "Generated instructions are drawn from: move, swap, add, sub, mul, is_integer, is_atom, is_tuple, put_tuple2, put_list, get_tuple_element, get_hd, get_tl, call, return, try, try_end, try_case, test_arity, select_val, jump, label",
+        "Generated programs are syntactically valid (labels resolve, registers in range, arities consistent)",
+        "proptest shrinking produces minimal failing cases (fewer instructions, smaller values)",
+        "Test: run 1000 generated programs differentially — all Match or CompilationSkipped (no Divergence on correct JIT)"
+      ],
+      "files": {
+        "modify": ["crates/beamr/tests/differential.rs"]
+      },
+      "checklist": ["C216"],
+      "stories": ["S39"]
+    },
+    {
+      "id": "R6",
+      "title": "Side-effect equivalence checking",
+      "spec": "WHEN the test function produces side effects (process dictionary writes, message sends, exception raises), THE SYSTEM SHALL compare the side-effect traces between interpreter and compiled execution. THE SYSTEM SHALL capture: messages sent (destination pid + message term), process dictionary modifications (key + value), and exceptions raised (class + reason). THE SYSTEM SHALL normalise pid values before comparison — separate executions produce different pids, so pid comparison uses ordinal position (first spawned pid, second spawned pid) rather than raw pid values. THE SYSTEM SHALL NOT compare timing-dependent side effects (timestamps, scheduling order).",
+      "acceptance": [
+        "SideEffectTrace captures: messages_sent, pdict_modifications, exceptions_raised",
+        "DifferentialRunner captures side-effect traces for both execution paths",
+        "Side-effect comparison reports which side effect differs",
+        "Test: function that sends a message — both paths send the same message to the same pid",
+        "Test: function that modifies process dictionary — both paths produce same pdict state"
+      ],
+      "files": {
+        "modify": ["crates/beamr/tests/differential.rs"]
+      },
+      "checklist": ["C214"],
+      "stories": ["S39"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT test opcodes not yet supported by JIT (maps, binaries, float arithmetic, receive) — skip with logged reason",
+    "SHALL NOT compare timing-dependent behaviour (scheduling order, wall-clock times)",
+    "SHALL NOT test concurrent multi-process scenarios — differential testing is per-function, single-process",
+    "SHALL NOT run differential tests in the default cargo test profile — gate behind a differential cfg or integration test flag to avoid slowing the standard test suite"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p beamr --test differential passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "differential.rs is under 500 lines of production code",
+    "At least 3 existing test scenarios (fibonacci, list processing, pattern matching) run differentially",
+    "Property-based generator produces and tests at least 100 random programs per run"
+  ]
+}

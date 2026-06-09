@@ -1,0 +1,119 @@
+{
+  "id": "B-156",
+  "cluster": "beamr",
+  "title": "Single-binary packaging — .beam file embedding",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": ["C211", "C212", "C213"],
+  "stories": ["S38"],
+  "purpose": "Meridian agents should deploy as a single self-contained binary with no external .beam file dependencies. This brief implements the .beam embedding path (the first of two modes per D10): a build-time tool embeds .beam files into the beamr binary as a static asset, and the loader checks the embedded archive before the filesystem. This is independent of the JIT pipeline — embed.rs lives in the loader module, not in jit/. Native code embedding follows in a separate brief when AOT is ready.",
+  "task": "Implement .beam file embedding in crates/beamr/src/loader/embed.rs. A build script (build.rs) or proc-macro reads .beam files from a configured directory, compresses them, and embeds them as a static byte array via include_bytes!. At runtime, the loader's module resolution checks the embedded archive first, then falls back to the filesystem. Embedded modules are discoverable via the same module_info/code_info paths as filesystem-loaded modules.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Embedded archive format",
+      "spec": "THE SYSTEM SHALL define an EmbeddedArchive format consisting of: a magic number header (b\"BEAMR_EMBED\\0\"), a version byte (1), a module count (u32 LE), followed by a sequence of (module_name_len: u16 LE, module_name: [u8], beam_data_len: u32 LE, beam_data: [u8]) entries. THE SYSTEM SHALL compress each beam_data entry with zstd at build time. THE SYSTEM SHALL NOT use a custom binary format for individual .beam files — they are stored as-is (compressed) and decompressed on load.",
+      "acceptance": [
+        "EmbeddedArchive::parse(bytes) -> Result<EmbeddedArchive, EmbedError> validates magic + version",
+        "EmbeddedArchive::modules() -> impl Iterator<Item = (&str, &[u8])> yields (name, compressed_beam) pairs",
+        "EmbeddedArchive::get(module_name) -> Option<Vec<u8>> decompresses and returns the .beam bytes",
+        "Invalid magic or version returns EmbedError::InvalidArchive",
+        "Test: round-trip — pack 3 modules, parse, get each -> matches original bytes",
+        "Test: parse empty bytes -> InvalidArchive"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/loader/embed.rs"]
+      },
+      "checklist": ["C212"],
+      "stories": ["S38"]
+    },
+    {
+      "id": "R2",
+      "title": "Build-time archive packer",
+      "spec": "THE SYSTEM SHALL provide an archive_pack function (usable from build.rs) that reads .beam files from a directory, compresses each with zstd, and writes the EmbeddedArchive format to a byte vector. THE SYSTEM SHALL sort modules alphabetically for deterministic output. THE SYSTEM SHALL skip non-.beam files in the directory. THE SYSTEM SHALL NOT fail if the directory is empty — produce a valid archive with zero modules.",
+      "acceptance": [
+        "archive_pack(beam_dir: &Path) -> Result<Vec<u8>, EmbedError> reads and packs all .beam files",
+        "Output starts with magic header and correct module count",
+        "Each module's data is zstd-compressed",
+        "Modules are sorted alphabetically by name",
+        "Non-.beam files are silently skipped",
+        "Empty directory produces a valid archive with count=0",
+        "Test: pack directory with 3 .beam files -> archive_parse yields 3 modules in sorted order"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/loader/embed.rs"]
+      },
+      "checklist": ["C212"],
+      "stories": ["S38"]
+    },
+    {
+      "id": "R3",
+      "title": "Loader integration — embedded archive as first resolution source",
+      "spec": "WHEN resolving a module load request, THE SYSTEM SHALL check the embedded archive before the filesystem. WHEN the module is found in the embedded archive, THE SYSTEM SHALL decompress and load it as if it were read from the filesystem. WHEN the module is not in the embedded archive, THE SYSTEM SHALL fall through to filesystem resolution (existing behaviour unchanged). THE SYSTEM SHALL NOT embed modules when no archive is compiled in — the embedded archive is an optional static asset (empty archive by default).",
+      "acceptance": [
+        "Module resolution order: embedded archive -> filesystem code paths",
+        "Embedded module loads successfully via the standard load_module path",
+        "Non-embedded module falls through to filesystem with no error",
+        "When no archive is compiled in: all loads go to filesystem (no overhead beyond a single Option check)",
+        "Test: embed module 'foo', load_module('foo') succeeds without foo.beam on disk",
+        "Test: load_module('bar') with bar.beam on disk but not embedded succeeds via filesystem"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/loader/mod.rs"]
+      },
+      "checklist": ["C211"],
+      "stories": ["S38"]
+    },
+    {
+      "id": "R4",
+      "title": "Embedded module discoverability via module_info",
+      "spec": "THE SYSTEM SHALL make embedded modules discoverable through the same module_info and code:all_loaded introspection paths as filesystem-loaded modules. WHEN an embedded module is loaded, THE SYSTEM SHALL record its origin as embedded (not filesystem) in the module registry metadata. THE SYSTEM SHALL provide a way to list all embedded module names without loading them.",
+      "acceptance": [
+        "ModuleOrigin enum has variants: Filesystem(PathBuf), Embedded, Preloaded",
+        "Loaded embedded modules have origin = Embedded in module registry",
+        "module_info(module, source) returns embedded for embedded modules",
+        "EmbeddedArchive::module_names() -> Vec<&str> lists all embedded module names",
+        "Test: load embedded module, query module_info -> origin is Embedded",
+        "Test: module_names() returns sorted list matching packed modules"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/loader/embed.rs", "crates/beamr/src/module.rs"]
+      },
+      "checklist": ["C213"],
+      "stories": ["S38"]
+    },
+    {
+      "id": "R5",
+      "title": "Static embedding via include_bytes!",
+      "spec": "THE SYSTEM SHALL provide a mechanism to embed the archive at compile time using include_bytes! referencing a build-generated archive file. The build.rs script packs the archive from a configurable BEAMR_EMBED_DIR environment variable. WHEN BEAMR_EMBED_DIR is not set, THE SYSTEM SHALL compile with an empty embedded archive. THE SYSTEM SHALL NOT require BEAMR_EMBED_DIR for a successful build — embedding is opt-in.",
+      "acceptance": [
+        "build.rs reads BEAMR_EMBED_DIR env var, packs archive, writes to OUT_DIR/embedded_archive.bin",
+        "embed.rs uses include_bytes!(concat!(env!(\"OUT_DIR\"), \"/embedded_archive.bin\")) for the static data",
+        "When BEAMR_EMBED_DIR is set: archive contains .beam files from that directory",
+        "When BEAMR_EMBED_DIR is not set: archive is empty (magic + version + count=0)",
+        "cargo build without BEAMR_EMBED_DIR succeeds (no error, empty archive)",
+        "Test: BEAMR_EMBED_DIR=/path/to/beams cargo build embeds the modules"
+      ],
+      "files": {
+        "create": ["crates/beamr/build.rs"],
+        "modify": ["crates/beamr/src/loader/embed.rs"]
+      },
+      "checklist": ["C212"],
+      "stories": ["S38"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT embed native code (AOT-compiled) in this brief — native embedding follows when AOT is ready",
+    "SHALL NOT implement hot code loading for embedded modules — embedded modules are immutable (load once, no reload)",
+    "SHALL NOT implement archive encryption or signing — plaintext compressed .beam only (zstd is an always-on dependency for embed decompression)"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p beamr passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "embed.rs is under 500 lines of production code",
+    "build.rs is under 100 lines",
+    "cargo build without BEAMR_EMBED_DIR succeeds with no warnings",
+    "Embedded module round-trips: pack -> embed -> load -> execute -> correct result"
+  ]
+}

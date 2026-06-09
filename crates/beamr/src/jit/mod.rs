@@ -1,5 +1,7 @@
 //! JIT compilation infrastructure.
 
+pub mod aot;
+pub(crate) mod aot_format;
 pub mod cache;
 pub mod compile_job;
 pub mod compiler;
@@ -13,8 +15,11 @@ pub(crate) mod runtime;
 pub mod safepoint;
 pub mod types;
 
+pub use aot::{
+    AotCompiler, AotError, AotResult, NativeCodeBundle, NativeEntries, NativeModuleEntries,
+};
 pub use cache::{JitCache, JitCacheKey};
-pub use compile_job::{CompilationJob, submit_jit_compilation};
+pub use compile_job::{CompilationJob, CompilationTarget, submit_jit_compilation};
 pub use compiler::{JitCompiler, JitError, JitSettings};
 pub use profiler::{JitProfiler, MfaKey, RecordResult};
 pub use types::{NativeCode, RootLocation, StackMapEntry};

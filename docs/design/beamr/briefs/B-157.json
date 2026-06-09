@@ -1,0 +1,115 @@
+{
+  "id": "B-157",
+  "cluster": "beamr",
+  "title": "AOT compilation — BEAM-to-Cranelift ahead-of-time path",
+  "depends_on": ["B-130", "B-131", "B-132", "B-133", "B-134", "B-136", "B-137", "B-139"],
+  "blocked_by": [],
+  "checklist": ["C207", "C209", "C210"],
+  "stories": ["S34"],
+  "purpose": "AOT compilation is a build-time version of JIT — it compiles .beam files to native code using the same Cranelift pipeline, eliminating interpretation startup cost for known-hot modules. Per D7: the untyped BEAM-to-Cranelift path works with any BEAM language and preserves all tag checks (same code quality as JIT, just compiled earlier). AOT-compiled functions are loaded into the JIT cache at startup with generation 0, skipping the interpretation and profiling warm-up.",
+  "task": "Implement the AOT compilation entry point in crates/beamr/src/jit/aot.rs. The AotCompiler reads .beam files, translates each function through the existing JIT IR pipeline (B-131 through B-137), and produces NativeCode entries. A CLI subcommand (beamr compile) invokes AOT compilation. Results are serialised to a .beamr_native file alongside the .beam file for loading at startup.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "AotCompiler entry point",
+      "spec": "THE SYSTEM SHALL provide an AotCompiler struct that takes a .beam file path and compiles all exported functions to NativeCode using JitCompiler::compile. WHEN a function contains unsupported opcodes, THE SYSTEM SHALL skip it (log the skip, continue with remaining functions). THE SYSTEM SHALL return an AotResult containing the compiled functions and a list of skipped functions with reasons.",
+      "acceptance": [
+        "AotCompiler::new() creates a compiler wrapping JitCompiler",
+        "AotCompiler::compile_module(beam_path: &Path) -> Result<AotResult, AotError>",
+        "AotResult::compiled_functions() -> &[(Atom, u8, NativeCode)] lists all compiled MFA+arity+code",
+        "AotResult::skipped_functions() -> &[(Atom, u8, String)] lists skipped MFA+arity+reason",
+        "Test: compile a .beam file with 3 functions (2 compilable, 1 with maps) -> 2 compiled, 1 skipped"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/jit/aot.rs"],
+        "modify": ["crates/beamr/src/jit/mod.rs"]
+      },
+      "checklist": ["C207"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R2",
+      "title": "Native code serialisation format (.beamr_native)",
+      "spec": "THE SYSTEM SHALL define a serialisation format for AOT-compiled native code. The .beamr_native file contains: a header (magic b\"BEAMR_AOT\\0\", version byte, target triple hash), followed by serialised NativeCode entries (function pointer data as relocatable machine code, stack map entries). THE SYSTEM SHALL validate the target triple on load — native code compiled for x86_64 SHALL NOT load on aarch64.",
+      "acceptance": [
+        "NativeCodeBundle::serialize(aot_result) -> Vec<u8> produces the .beamr_native format",
+        "NativeCodeBundle::deserialize(bytes, target) -> Result<Vec<(Atom, u8, NativeCode)>, AotError>",
+        "Target triple mismatch returns AotError::TargetMismatch",
+        "Round-trip: serialize then deserialize produces equivalent NativeCode",
+        "Test: serialize + deserialize for a simple function -> call_ptr is callable and produces correct result",
+        "Test: deserialize aarch64 bundle on x86_64 -> TargetMismatch error"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/aot.rs"]
+      },
+      "checklist": ["C207"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R3",
+      "title": "AOT cache loading at startup",
+      "spec": "WHEN a .beamr_native file exists alongside a .beam file, THE SYSTEM SHALL load the AOT-compiled functions into the JitCache at startup with generation 0. THE SYSTEM SHALL validate that the .beamr_native file's module checksum matches the .beam file (recompilation after source change invalidates the cache). WHEN the checksum mismatches, THE SYSTEM SHALL discard the .beamr_native file and fall back to interpretation + JIT.",
+      "acceptance": [
+        "Module loader checks for .beamr_native alongside .beam during load_module",
+        "Valid .beamr_native: all functions inserted into JitCache with generation 0",
+        "Checksum mismatch: .beamr_native discarded, module loaded from .beam normally",
+        "Missing .beamr_native: no error, normal load path",
+        "JitProfiler marks AOT-loaded functions as compiled (no re-profiling)",
+        "Test: .beam + matching .beamr_native -> functions immediately available as compiled",
+        "Test: .beam + stale .beamr_native (different checksum) -> functions interpreted, JIT profiles normally"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/jit/aot.rs", "crates/beamr/src/loader/mod.rs"]
+      },
+      "checklist": ["C209"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R4",
+      "title": "CLI subcommand — beamr compile",
+      "spec": "THE SYSTEM SHALL provide a beamr compile CLI subcommand that takes a directory of .beam files and AOT-compiles them, writing .beamr_native files alongside each .beam file. THE SYSTEM SHALL report compilation statistics: total functions, compiled, skipped, time elapsed. THE SYSTEM SHALL support a --verbose flag that lists each compiled/skipped function.",
+      "acceptance": [
+        "beamr compile <dir> compiles all .beam files in the directory",
+        "Each .beam file gets a .beamr_native companion file",
+        "Summary output: 'Compiled 42 functions (3 skipped) in 1.2s'",
+        "--verbose lists each function: 'foo:bar/2 compiled (0.5ms)' or 'foo:baz/1 skipped (unsupported: bs_match)'",
+        "Test: beamr compile on a directory with 2 .beam files -> 2 .beamr_native files created"
+      ],
+      "files": {
+        "modify": ["crates/beamr-cli/src/main.rs"]
+      },
+      "checklist": ["C207"],
+      "stories": ["S34"]
+    },
+    {
+      "id": "R5",
+      "title": "Untyped AOT produces same code as JIT",
+      "spec": "THE SYSTEM SHALL produce identical native code for the untyped AOT path as the JIT would for the same function. THE SYSTEM SHALL verify this by running the differential test suite (B-139) against AOT-compiled code. Per D7 and C210: AOT compilation without type sidecar produces the same code as JIT (tag checks preserved).",
+      "acceptance": [
+        "AotCompiler uses the same JitCompiler::compile internally — no separate code path",
+        "Differential runner accepts AOT-compiled functions as the compiled path",
+        "All differential tests pass with AOT-compiled functions",
+        "Test: fibonacci AOT-compiled produces same result as JIT-compiled and interpreted"
+      ],
+      "files": {
+        "modify": ["crates/beamr/tests/differential.rs"]
+      },
+      "checklist": ["C210"],
+      "stories": ["S34"]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT implement Gleam type-aware AOT in this brief — untyped path only (type-aware AOT is B-158/B-159)",
+    "SHALL NOT implement cross-compilation — AOT compiles for the host target only",
+    "SHALL NOT AOT-compile functions with unsupported opcodes — skip and log",
+    "SHALL NOT modify the JitCompiler for AOT — reuse it directly"
+  ],
+  "verification": [
+    "cargo check --workspace passes",
+    "cargo test -p beamr passes with all tests green",
+    "cargo clippy --workspace -- -D warnings passes",
+    "aot.rs is under 500 lines of production code",
+    "beamr compile CLI subcommand produces .beamr_native files",
+    "Differential tests pass with AOT-compiled functions"
+  ]
+}
