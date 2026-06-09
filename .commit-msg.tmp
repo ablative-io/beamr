@@ -1,1 +1,1 @@
-feat(beamr): add AOT compilation and native bundle CLI
+fix(beamr): factor AOT and compile job clippy types

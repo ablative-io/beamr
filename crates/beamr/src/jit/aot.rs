@@ -38,6 +38,12 @@ pub struct AotResult {
     skipped: Vec<(Atom, u8, String)>,
 }
 
+/// Native entries reconstructed from a serialized bundle.
+pub type NativeEntries = Vec<(Atom, u8, NativeCode)>;
+
+/// Module atom and native entries loaded from a validated bundle.
+pub type NativeModuleEntries = (Atom, NativeEntries);
+
 /// Serialized AOT cache bundle helpers.
 pub struct NativeCodeBundle;
 
@@ -174,10 +180,7 @@ impl NativeCodeBundle {
     }
 
     /// Deserializes and recompiles native entries for `target`.
-    pub fn deserialize(
-        bytes: &[u8],
-        target: &str,
-    ) -> Result<Vec<(Atom, u8, NativeCode)>, AotError> {
+    pub fn deserialize(bytes: &[u8], target: &str) -> Result<NativeEntries, AotError> {
         let bundle = DecodedBundle::read(bytes, target)?;
         let compiler = JitCompiler::new(JitSettings).map_err(AotError::Jit)?;
         let atom_table = AtomTable::with_common_atoms();
@@ -190,7 +193,7 @@ impl NativeCodeBundle {
         bytes: &[u8],
         target: &str,
         beam_bytes: &[u8],
-    ) -> Result<(Atom, Vec<(Atom, u8, NativeCode)>), AotError> {
+    ) -> Result<NativeModuleEntries, AotError> {
         let bundle = DecodedBundle::read(bytes, target)?;
         let actual = module_checksum(beam_bytes);
         if bundle.module_checksum != actual {
@@ -269,7 +272,7 @@ fn recompile_entries(
     compiler: &JitCompiler,
     parsed: &ParsedModule,
     entries: &[(Atom, u8, Vec<StackMapEntry>)],
-) -> Result<Vec<(Atom, u8, NativeCode)>, AotError> {
+) -> Result<NativeEntries, AotError> {
     let exports: HashMap<(Atom, u8), &ExportEntry> = parsed
         .exports
         .iter()

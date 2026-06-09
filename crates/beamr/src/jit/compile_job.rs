@@ -9,6 +9,28 @@ use super::cache::{JitCache, JitCacheKey};
 use super::compiler::{JitCompiler, JitError};
 use super::profiler::JitProfiler;
 
+/// Module/function/arity/generation identity for one compilation job.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct CompilationTarget {
+    module: Atom,
+    function: Atom,
+    arity: u8,
+    generation: u64,
+}
+
+impl CompilationTarget {
+    /// Creates a target identity for a dirty-CPU compilation job.
+    #[must_use]
+    pub const fn new(module: Atom, function: Atom, arity: u8, generation: u64) -> Self {
+        Self {
+            module,
+            function,
+            arity,
+            generation,
+        }
+    }
+}
+
 /// Owned request to compile one BEAM function on a dirty CPU worker.
 pub struct CompilationJob {
     module: Atom,
@@ -25,20 +47,17 @@ impl CompilationJob {
     /// Creates a compilation job for an MFA and its current instruction slice.
     #[must_use]
     pub fn new(
-        module: Atom,
-        function: Atom,
-        arity: u8,
-        generation: u64,
+        target: CompilationTarget,
         instructions: Vec<Instruction>,
         compiler: Arc<JitCompiler>,
         profiler: Arc<JitProfiler>,
         cache: Arc<JitCache>,
     ) -> Self {
         Self {
-            module,
-            function,
-            arity,
-            generation,
+            module: target.module,
+            function: target.function,
+            arity: target.arity,
+            generation: target.generation,
             instructions,
             compiler,
             profiler,
@@ -85,7 +104,7 @@ pub fn submit_jit_compilation(
 
 #[cfg(test)]
 mod tests {
-    use super::{CompilationJob, submit_jit_compilation};
+    use super::{CompilationJob, CompilationTarget, submit_jit_compilation};
     use crate::atom::Atom;
     use crate::jit::cache::JitCache;
     use crate::jit::compiler::{JitCompiler, JitSettings};
@@ -119,10 +138,7 @@ mod tests {
         );
 
         let job = CompilationJob::new(
-            Atom::MODULE,
-            Atom::OK,
-            0,
-            1,
+            CompilationTarget::new(Atom::MODULE, Atom::OK, 0, 1),
             vec![Instruction::Return],
             compiler,
             Arc::clone(&profiler),
@@ -152,10 +168,7 @@ mod tests {
         );
 
         let job = CompilationJob::new(
-            Atom::MODULE,
-            Atom::ERROR,
-            0,
-            1,
+            CompilationTarget::new(Atom::MODULE, Atom::ERROR, 0, 1),
             vec![Instruction::Generic {
                 opcode: 255,
                 name: "unknown",
