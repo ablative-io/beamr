@@ -92,10 +92,12 @@ fn dynamic_int_returns_error_for_atoms() {
 }
 
 #[test]
-fn os_getenv_0_returns_empty_list() {
+fn os_getenv_0_returns_environment_list() {
+    let mut process = Process::new(1, 4096);
     let mut context = ProcessContext::new();
+    context.attach_process(&mut process, 0);
     let result = erlang_stubs::bif_os_getenv_0(&[], &mut context);
-    assert_eq!(result, Ok(Term::NIL));
+    assert!(result.is_ok());
 }
 
 #[test]

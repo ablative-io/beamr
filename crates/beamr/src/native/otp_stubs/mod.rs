@@ -17,8 +17,8 @@ use crate::native::{
 use crate::term::Term;
 
 use erlang_stubs::{
-    bif_code_priv_dir, bif_connect_node, bif_ensure_all_started, bif_os_getenv_0,
-    bif_os_getenv_1, bif_os_putenv, bif_os_type, bif_os_unsetenv, bif_string_split,
+    bif_code_priv_dir, bif_connect_node, bif_ensure_all_started, bif_os_getenv_0, bif_os_getenv_1,
+    bif_os_putenv, bif_os_type, bif_os_unsetenv, bif_string_split,
 };
 use gleam_stubs::{
     bif_dynamic_classify, bif_dynamic_int, bif_dynamic_string, bif_intensity_tracker_add_event,
@@ -159,7 +159,7 @@ pub fn register_otp_stubs(
 /// Initializes sentinel atoms used by OTP stubs.
 ///
 /// Must be called before `register_otp_stubs` so that atoms like "None",
-/// "unix", and "darwin" resolve correctly at runtime.
+/// OS identifiers, and OTP error reasons resolve correctly at runtime.
 pub fn init_otp_atoms(atom_table: &AtomTable) {
     gleam_stubs::init_gleam_atoms(atom_table);
     erlang_stubs::init_erlang_atoms(atom_table);
