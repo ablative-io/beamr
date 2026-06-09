@@ -18,6 +18,7 @@ pub mod types;
 
 pub use aot::{
     AotCompiler, AotError, AotResult, NativeCodeBundle, NativeEntries, NativeModuleEntries,
+    TypedIrTranslator,
 };
 pub use cache::{JitCache, JitCacheKey};
 pub use compile_job::{CompilationJob, CompilationRequest, submit_jit_compilation};

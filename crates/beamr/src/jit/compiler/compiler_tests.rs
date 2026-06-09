@@ -2,6 +2,7 @@ use super::{JitCompiler, JitError, JitSettings};
 use crate::atom::Atom;
 use crate::jit::RootLocation;
 use crate::jit::ir_common::{JIT_DEOPT_SENTINEL, X_REGISTER_COUNT};
+use crate::jit::type_info::{FunctionSignature, TypeDescriptor};
 use crate::loader::Instruction;
 use crate::loader::decode::{BifOp, ComparisonOp, Operand, TypeTestOp};
 use crate::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
@@ -164,6 +165,127 @@ fn compiled_add_returns_small_int_result() {
 
     assert_eq!(returned, Term::small_int(5).raw());
     assert_eq!(registers[0], Term::small_int(5).raw());
+}
+
+#[test]
+fn typed_add_returns_small_int_result() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = FunctionSignature {
+        name: "add".to_owned(),
+        arity: 2,
+        param_types: vec![TypeDescriptor::Int, TypeDescriptor::Int],
+        return_type: TypeDescriptor::Int,
+    };
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::Bif {
+                    op: BifOp::Bif2,
+                    operands: vec![
+                        Operand::Label(9),
+                        Operand::Unsigned(0),
+                        Operand::X(0),
+                        Operand::X(1),
+                        Operand::X(0),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 9 },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            2,
+            signature,
+        )
+        .unwrap();
+    let mut registers = vec![Term::small_int(5).raw(), Term::small_int(3).raw()];
+    let returned = call_native(&native, &mut registers);
+
+    assert_eq!(returned, Term::small_int(8).raw());
+}
+
+#[test]
+fn typed_add_overflow_deopts_for_bignum_promotion() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = FunctionSignature {
+        name: "add".to_owned(),
+        arity: 2,
+        param_types: vec![TypeDescriptor::Int, TypeDescriptor::Int],
+        return_type: TypeDescriptor::Int,
+    };
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::Bif {
+                    op: BifOp::Bif2,
+                    operands: vec![
+                        Operand::Label(9),
+                        Operand::Unsigned(0),
+                        Operand::X(0),
+                        Operand::X(1),
+                        Operand::X(0),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 9 },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            2,
+            signature,
+        )
+        .unwrap();
+    let mut registers = vec![
+        Term::small_int(Term::SMALL_INT_MAX).raw(),
+        Term::small_int(1).raw(),
+    ];
+    let returned = call_native(&native, &mut registers);
+
+    assert_eq!(returned, JIT_DEOPT_SENTINEL as u64);
+}
+
+#[test]
+fn typed_div_by_zero_takes_badarith_fail_label() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let signature = FunctionSignature {
+        name: "div".to_owned(),
+        arity: 2,
+        param_types: vec![TypeDescriptor::Int, TypeDescriptor::Int],
+        return_type: TypeDescriptor::Int,
+    };
+    let native = compiler
+        .compile_typed(
+            &[
+                Instruction::Bif {
+                    op: BifOp::Bif2,
+                    operands: vec![
+                        Operand::Label(9),
+                        Operand::Unsigned(3),
+                        Operand::X(0),
+                        Operand::X(1),
+                        Operand::X(0),
+                    ],
+                },
+                Instruction::Return,
+                Instruction::Label { label: 9 },
+                Instruction::Move {
+                    source: Operand::Atom(Some(Atom::BADARITH)),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            2,
+            signature,
+        )
+        .unwrap();
+    let mut registers = vec![Term::small_int(10).raw(), Term::small_int(0).raw()];
+    let returned = call_native(&native, &mut registers);
+
+    assert_eq!(returned, Term::atom(Atom::BADARITH).raw());
 }
 
 #[test]
