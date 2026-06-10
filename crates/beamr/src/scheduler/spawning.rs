@@ -36,6 +36,8 @@ pub(in crate::scheduler) struct SpawnRequest {
     pub(in crate::scheduler) group_leader: Term,
     pub(in crate::scheduler) priority: Priority,
     pub(in crate::scheduler) heap_size: usize,
+    #[cfg(feature = "telemetry")]
+    pub(in crate::scheduler) trace_context: Option<crate::telemetry::spans::TraceCarrier>,
 }
 
 struct EnqueueSpawnRequest {
@@ -47,6 +49,8 @@ struct EnqueueSpawnRequest {
     parent_pid: u64,
     function: Atom,
     arity: u8,
+    #[cfg(feature = "telemetry")]
+    trace_context: Option<crate::telemetry::spans::TraceCarrier>,
 }
 
 impl Scheduler {
@@ -63,6 +67,23 @@ impl Scheduler {
     /// Spawn a process at the beginning of a module.
     pub fn spawn_process(&self, module: &Arc<Module>) -> u64 {
         self.enqueue_spawn(Arc::clone(module), 0, Vec::new(), Atom::NIL, 0)
+    }
+
+    /// Spawn a process at the beginning of a module under the supplied OpenTelemetry context.
+    #[cfg(feature = "telemetry")]
+    pub fn spawn_process_with_trace_context(
+        &self,
+        module: &Arc<Module>,
+        context: &opentelemetry::Context,
+    ) -> u64 {
+        self.enqueue_spawn_with_context(
+            Arc::clone(module),
+            0,
+            Vec::new(),
+            Atom::NIL,
+            0,
+            Some(crate::telemetry::spans::inject_context(context)),
+        )
     }
 
     /// Spawn a process with trap-exit set before it is made runnable.
@@ -100,6 +121,57 @@ impl Scheduler {
             parent_pid: 0,
             function: entry_function,
             arity,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
+        }))
+    }
+
+    /// Spawn a process in a namespace under the supplied OpenTelemetry context.
+    #[cfg(feature = "telemetry")]
+    pub fn spawn_in_with_trace_context(
+        &self,
+        namespace: NamespaceId,
+        entry_module: Atom,
+        entry_function: Atom,
+        args: Vec<Term>,
+        context: &opentelemetry::Context,
+    ) -> Result<u64, ExecError> {
+        self.spawn_in_with_optional_trace_context(
+            namespace,
+            entry_module,
+            entry_function,
+            args,
+            Some(crate::telemetry::spans::inject_context(context)),
+        )
+    }
+
+    #[cfg(feature = "telemetry")]
+    fn spawn_in_with_optional_trace_context(
+        &self,
+        namespace: NamespaceId,
+        entry_module: Atom,
+        entry_function: Atom,
+        args: Vec<Term>,
+        trace_context: Option<crate::telemetry::spans::TraceCarrier>,
+    ) -> Result<u64, ExecError> {
+        let arity = u8::try_from(args.len()).map_err(|_| ExecError::Badarg)?;
+        let registry = namespace_registry(&self.shared, namespace).ok_or(ExecError::Undef {
+            module: entry_module,
+            function: entry_function,
+            arity,
+        })?;
+        let entry = registry.lookup_mfa(entry_module, entry_function, arity)?;
+        let instruction_pointer = entry.module.label_ip(entry.label)?;
+        Ok(self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
+            module_version: entry.module,
+            instruction_pointer,
+            args,
+            trap_exit: false,
+            namespace_id: namespace,
+            parent_pid: 0,
+            function: entry_function,
+            arity,
+            trace_context,
         }))
     }
 
@@ -128,6 +200,8 @@ impl Scheduler {
             parent_pid: 0,
             function: entry_function,
             arity,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
         }))
     }
 
@@ -188,6 +262,31 @@ impl Scheduler {
             parent_pid: 0,
             function,
             arity,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
+        })
+    }
+
+    #[cfg(feature = "telemetry")]
+    fn enqueue_spawn_with_context(
+        &self,
+        module_version: Arc<Module>,
+        instruction_pointer: usize,
+        args: Vec<Term>,
+        function: Atom,
+        arity: u8,
+        trace_context: Option<crate::telemetry::spans::TraceCarrier>,
+    ) -> u64 {
+        self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
+            module_version,
+            instruction_pointer,
+            args,
+            trap_exit: false,
+            namespace_id: NamespaceId::DEFAULT,
+            parent_pid: 0,
+            function,
+            arity,
+            trace_context,
         })
     }
 
@@ -214,6 +313,8 @@ impl Scheduler {
             function,
             arity,
             args: enqueue.args,
+            #[cfg(feature = "telemetry")]
+            trace_context: enqueue.trace_context,
         };
         if enqueue.trap_exit {
             let mut process = build_process(request);
@@ -307,6 +408,13 @@ pub(in crate::scheduler) fn build_process(request: SpawnRequest) -> Process {
         if let Ok(register) = u16::try_from(index) {
             process.set_x_reg(register, arg);
         }
+    }
+    #[cfg(feature = "telemetry")]
+    if let Some(carrier) = request.trace_context.as_ref() {
+        let parent = crate::telemetry::spans::extract_context(carrier);
+        let trace_context =
+            crate::telemetry::spans::start_process_trace_context(&parent, request.pid);
+        process.set_trace_context(Some(trace_context));
     }
     process
 }

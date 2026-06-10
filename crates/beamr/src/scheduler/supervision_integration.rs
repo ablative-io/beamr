@@ -988,6 +988,8 @@ impl SpawnFacility for SchedulerSpawnFacility {
             parent_pid: caller_pid,
             function,
             arity,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
         });
 
         if let Some(parent_pid) = link_to {
@@ -1083,6 +1085,8 @@ impl SpawnFacility for SchedulerSpawnFacility {
             parent_pid: caller_pid,
             function: Atom::NIL,
             arity: 0,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
         });
 
         if let Some(parent_pid) = link_to {
@@ -1194,6 +1198,8 @@ impl SchedulerSpawnFacility {
             parent_pid: caller_pid,
             function,
             arity,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
         });
 
         let result = self.register_monitor_insert_and_wake(caller_pid, child_pid, child);
@@ -1248,6 +1254,8 @@ impl SchedulerSpawnFacility {
             parent_pid: caller_pid,
             function,
             arity,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
         };
         Ok(self.insert_options_child(caller_pid, request, options))
     }
@@ -1290,6 +1298,8 @@ impl SchedulerSpawnFacility {
             parent_pid: caller_pid,
             function: Atom::NIL,
             arity: 0,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
         };
         Ok(self.insert_options_child(caller_pid, request, options))
     }
@@ -1399,6 +1409,8 @@ impl SchedulerSpawnFacility {
             parent_pid: caller_pid,
             function: Atom::NIL,
             arity: 0,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
         });
 
         let result = self.register_monitor_insert_and_wake(caller_pid, child_pid, child);

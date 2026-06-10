@@ -77,6 +77,8 @@ pub struct Process {
     jit_status: Option<JitStatus>,
     #[cfg(feature = "telemetry")]
     receive_wait_started: Option<crate::telemetry::spans::ReceiveWaitStarted>,
+    #[cfg(feature = "telemetry")]
+    trace_context: Option<crate::telemetry::spans::ProcessTraceContext>,
     links: Vec<u64>,
     remote_links: Vec<RemotePid>,
     monitors: Vec<Monitor>,
@@ -115,6 +117,10 @@ impl Clone for Process {
             current_mfa: self.current_mfa,
             jit_runtime_context: self.jit_runtime_context,
             jit_status: self.jit_status,
+            #[cfg(feature = "telemetry")]
+            receive_wait_started: self.receive_wait_started,
+            #[cfg(feature = "telemetry")]
+            trace_context: self.trace_context.clone(),
             links: self.links.clone(),
             remote_links: self.remote_links.clone(),
             monitors: self.monitors.clone(),
@@ -170,6 +176,8 @@ impl Process {
             jit_status: None,
             #[cfg(feature = "telemetry")]
             receive_wait_started: None,
+            #[cfg(feature = "telemetry")]
+            trace_context: None,
             links: Vec::new(),
             remote_links: Vec::new(),
             monitors: Vec::new(),
@@ -578,6 +586,21 @@ impl Process {
         self.receive_wait_started
             .take()
             .map(|started| started.elapsed())
+    }
+
+    #[cfg(feature = "telemetry")]
+    pub(crate) fn set_trace_context(
+        &mut self,
+        trace_context: Option<crate::telemetry::spans::ProcessTraceContext>,
+    ) {
+        self.trace_context = trace_context;
+    }
+
+    #[cfg(feature = "telemetry")]
+    pub(crate) const fn trace_context(
+        &self,
+    ) -> Option<&crate::telemetry::spans::ProcessTraceContext> {
+        self.trace_context.as_ref()
     }
 
     /// Read X register `n`.

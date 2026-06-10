@@ -1,6 +1,7 @@
 //! OpenTelemetry metric helpers for VM health and per-process scheduler state.
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use opentelemetry::KeyValue;
@@ -18,6 +19,9 @@ struct Instruments {
     memory_heap_words: Gauge<u64>,
     process_message_queue_len: Gauge<u64>,
     process_reductions: Counter<u64>,
+    workflow_steps_completed: Counter<u64>,
+    workflow_step_duration: Histogram<f64>,
+    workflow_active: Gauge<u64>,
 }
 
 impl Instruments {
@@ -67,6 +71,21 @@ impl Instruments {
                 .u64_counter("beamr.process.reductions")
                 .with_description("Total scheduler reductions consumed by process")
                 .with_unit("{reduction}")
+                .build(),
+            workflow_steps_completed: meter
+                .u64_counter("beamr.workflow.steps_completed")
+                .with_description("Total completed Beamr workflow steps")
+                .with_unit("{step}")
+                .build(),
+            workflow_step_duration: meter
+                .f64_histogram("beamr.workflow.step_duration")
+                .with_description("Beamr workflow step duration")
+                .with_unit("s")
+                .build(),
+            workflow_active: meter
+                .u64_gauge("beamr.workflow.active")
+                .with_description("Current number of active Beamr workflows")
+                .with_unit("{workflow}")
                 .build(),
         }
     }
@@ -124,6 +143,47 @@ pub(crate) fn record_process_slice(pid: u64, reductions: u32, message_queue_len:
     instruments
         .process_message_queue_len
         .record(usize_to_u64(message_queue_len), &attributes);
+}
+
+/// Record that a workflow instance has started and update the active workflow gauge.
+pub fn record_workflow_started(workflow_id: impl Into<String>) {
+    let active = active_workflows()
+        .fetch_add(1, Ordering::Relaxed)
+        .saturating_add(1);
+    let attributes = [KeyValue::new("workflow_id", workflow_id.into())];
+    instruments().workflow_active.record(active, &attributes);
+}
+
+/// Record that a workflow instance has finished and update the active workflow gauge.
+pub fn record_workflow_finished(workflow_id: impl Into<String>) {
+    let previous = active_workflows().fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        Some(value.saturating_sub(1))
+    });
+    let active = previous.map_or(0, |value| value.saturating_sub(1));
+    let attributes = [KeyValue::new("workflow_id", workflow_id.into())];
+    instruments().workflow_active.record(active, &attributes);
+}
+
+/// Record one completed workflow step for caller-supplied workflow metadata.
+pub fn record_workflow_step_completed(
+    workflow_id: impl Into<String>,
+    step_type: impl Into<String>,
+    duration: Duration,
+) {
+    let attributes = [
+        KeyValue::new("workflow_id", workflow_id.into()),
+        KeyValue::new("step_type", step_type.into()),
+    ];
+    let instruments = instruments();
+    instruments.workflow_steps_completed.add(1, &attributes);
+    instruments
+        .workflow_step_duration
+        .record(duration.as_secs_f64(), &attributes);
+}
+
+fn active_workflows() -> &'static AtomicU64 {
+    static ACTIVE_WORKFLOWS: AtomicU64 = AtomicU64::new(0);
+    &ACTIVE_WORKFLOWS
 }
 
 fn usize_to_u64(value: usize) -> u64 {

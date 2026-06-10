@@ -28,6 +28,13 @@ pub(crate) struct MessageTraceContext {
     span_context: opentelemetry::trace::SpanContext,
 }
 
+#[derive(Clone, Debug)]
+pub struct ProcessTraceContext {
+    carrier: TraceCarrier,
+    span_context: opentelemetry::trace::SpanContext,
+    context: Context,
+}
+
 #[derive(Debug)]
 pub(crate) struct ExecutionSliceSpan {
     span: opentelemetry::global::BoxedSpan,
@@ -35,9 +42,12 @@ pub(crate) struct ExecutionSliceSpan {
 
 impl ExecutionSliceSpan {
     /// Start a span for one scheduler execution slice.
-    pub(crate) fn start(atom_table: &AtomTable, process: &Process) -> Self {
+    pub(crate) fn start(_atom_table: &AtomTable, process: &Process) -> Self {
         let tracer = global::tracer(TRACER_NAME);
-        let mut span = tracer.start("beamr.scheduler.execute_slice");
+        let parent = process
+            .trace_context()
+            .map_or_else(Context::current, ProcessTraceContext::parent_context);
+        let mut span = tracer.start_with_context("beamr.scheduler.execute_slice", &parent);
         span.set_attribute(KeyValue::new(
             "process.pid",
             i64::try_from(process.pid()).unwrap_or(i64::MAX),
@@ -154,6 +164,58 @@ pub(crate) type ReceiveWaitStarted = Instant;
 
 pub(crate) fn receive_wait_started_now() -> ReceiveWaitStarted {
     Instant::now()
+}
+
+impl ProcessTraceContext {
+    fn parent_context(&self) -> Context {
+        global::get_text_map_propagator(|propagator| propagator.extract(&self.carrier))
+    }
+
+    pub(crate) fn finish(&self, exit_reason: &'static str) {
+        self.context
+            .span()
+            .set_attribute(KeyValue::new("process.exit_reason", exit_reason));
+        self.context.span().end();
+    }
+
+    #[must_use]
+    pub fn span_context(&self) -> &opentelemetry::trace::SpanContext {
+        &self.span_context
+    }
+}
+
+#[must_use]
+pub fn inject_current_context() -> TraceCarrier {
+    inject_context(&Context::current())
+}
+
+#[must_use]
+pub fn inject_context(context: &Context) -> TraceCarrier {
+    let mut carrier = TraceCarrier::new();
+    global::get_text_map_propagator(|propagator| propagator.inject_context(context, &mut carrier));
+    carrier
+}
+
+#[must_use]
+pub fn extract_context(carrier: &TraceCarrier) -> Context {
+    global::get_text_map_propagator(|propagator| propagator.extract(carrier))
+}
+
+pub(crate) fn start_process_trace_context(parent: &Context, pid: u64) -> ProcessTraceContext {
+    let tracer = global::tracer(TRACER_NAME);
+    let mut span = tracer.start_with_context("beamr.process", parent);
+    span.set_attribute(KeyValue::new(
+        "process.pid",
+        i64::try_from(pid).unwrap_or(i64::MAX),
+    ));
+    let span_context = span.span_context().clone();
+    let context = Context::current_with_span(span);
+    let carrier = inject_context(&context);
+    ProcessTraceContext {
+        carrier,
+        span_context,
+        context,
+    }
 }
 
 fn atom_name(atom_table: &AtomTable, atom: Atom) -> String {

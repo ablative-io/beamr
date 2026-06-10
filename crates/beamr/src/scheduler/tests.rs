@@ -8,6 +8,8 @@ use std::task::{Context, Poll, Wake, Waker};
 #[cfg(feature = "telemetry")]
 use opentelemetry::Key;
 #[cfg(feature = "telemetry")]
+use opentelemetry::trace::{TraceContextExt, Tracer};
+#[cfg(feature = "telemetry")]
 use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData, ResourceMetrics};
 #[cfg(feature = "telemetry")]
 use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
@@ -26,10 +28,11 @@ use crate::loader::Instruction;
 use crate::loader::decode::compact::Operand;
 use crate::mailbox::Mailbox;
 use crate::module::{Module, ModuleOrigin};
+use crate::namespace::NamespaceId;
 use crate::native::{Capability, CapabilitySet, SpawnFacility, SpawnOptions};
 use crate::process::heap::{DEFAULT_HEAP_SIZE, Heap};
 use crate::process::registry::ProcessTable;
-use crate::process::{CodePosition, Priority};
+use crate::process::{CodePosition, ExitReason, Priority};
 use crate::scheduler::execution::{
     SliceOutcome, cleanup_if_tombstoned_after_store, execute_slice, store_runnable_process,
     take_runnable_process,
@@ -271,6 +274,41 @@ fn metric_has_histogram_count_at_least(
         AggregatedMetrics::F64(MetricData::Histogram(histogram)) => histogram
             .data_points()
             .any(|point| point.count() >= minimum),
+        _ => false,
+    }
+}
+
+#[cfg(feature = "telemetry")]
+fn metric_has_string_attribute(
+    metrics: &[ResourceMetrics],
+    name: &str,
+    key: &str,
+    value: &str,
+) -> bool {
+    fn has_attribute<'a>(
+        mut attributes: impl Iterator<Item = &'a opentelemetry::KeyValue>,
+        key: &str,
+        value: &str,
+    ) -> bool {
+        attributes.any(|attribute| {
+            attribute.key.as_str() == key
+                && matches!(&attribute.value, opentelemetry::Value::String(actual) if actual.to_string() == value)
+        })
+    }
+
+    let Some(metric) = find_metric(metrics, name) else {
+        return false;
+    };
+    match metric.data() {
+        AggregatedMetrics::U64(MetricData::Sum(sum)) => sum
+            .data_points()
+            .any(|point| has_attribute(point.attributes(), key, value)),
+        AggregatedMetrics::U64(MetricData::Gauge(gauge)) => gauge
+            .data_points()
+            .any(|point| has_attribute(point.attributes(), key, value)),
+        AggregatedMetrics::F64(MetricData::Histogram(histogram)) => histogram
+            .data_points()
+            .any(|point| has_attribute(point.attributes(), key, value)),
         _ => false,
     }
 }
@@ -555,6 +593,100 @@ fn execute_slice_emits_telemetry_span_with_mfa_reductions_and_outcome() {
 
 #[cfg(feature = "telemetry")]
 #[test]
+fn spawned_process_trace_context_nests_process_and_slice_under_workflow_span() {
+    let (exporter, provider) = install_telemetry_test_provider();
+    let atoms = Arc::new(AtomTable::new());
+    let module_name = atoms.intern("telemetry_workflow_slice");
+    let function = atoms.intern("main");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = registry.insert(test_module(
+        module_name,
+        vec![
+            Instruction::FuncInfo {
+                module: Operand::Atom(Some(module_name)),
+                function: Operand::Atom(Some(function)),
+                arity: Operand::Unsigned(0),
+            },
+            Instruction::Label { label: 1 },
+            Instruction::Return,
+        ],
+    ));
+    let scheduler = Scheduler::with_code_server(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        Arc::clone(&registry),
+        Arc::clone(&atoms),
+        Arc::new(BifRegistryImpl::new()),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    scheduler.shutdown();
+
+    let tracer = opentelemetry::global::tracer("beamr-test");
+    let workflow_span = tracer.start("meridian.workflow");
+    let workflow_span_id = workflow_span.span_context().span_id();
+    let workflow_context = opentelemetry::Context::current_with_span(workflow_span);
+    let pid = 66;
+    let mut process = super::spawning::build_process(super::spawning::SpawnRequest {
+        pid,
+        module: module_name,
+        module_version: module,
+        instruction_pointer: 0,
+        args: Vec::new(),
+        parent_pid: 0,
+        function,
+        arity: 0,
+        capabilities: CapabilitySet::all(),
+        namespace_id: NamespaceId::DEFAULT,
+        group_leader: Term::pid(pid),
+        priority: Priority::Normal,
+        heap_size: DEFAULT_HEAP_SIZE,
+        trace_context: Some(crate::telemetry::spans::inject_context(&workflow_context)),
+    });
+
+    let SliceOutcome::Exited(ExitReason::Normal, _) =
+        execute_slice(&scheduler.shared, &mut process)
+    else {
+        panic!("workflow step process should exit normally");
+    };
+    workflow_context.span().end();
+    provider.force_flush().expect("spans flush");
+    let spans = exporter.get_finished_spans().expect("finished spans");
+    let workflow = spans
+        .iter()
+        .find(|span| span.name.as_ref() == "meridian.workflow")
+        .expect("workflow span emitted");
+    let process = spans
+        .iter()
+        .find(|span| span.name.as_ref() == "beamr.process")
+        .expect("process span emitted");
+    let slice = spans
+        .iter()
+        .find(|span| span.name.as_ref() == "beamr.scheduler.execute_slice")
+        .expect("execution-slice span emitted");
+
+    assert_eq!(workflow.span_context.span_id(), workflow_span_id);
+    assert_eq!(process.parent_span_id, workflow.span_context.span_id());
+    assert_eq!(slice.parent_span_id, process.span_context.span_id());
+    assert_eq!(
+        span_attr_i64(process, "process.pid"),
+        Some(i64::try_from(pid).unwrap_or(i64::MAX))
+    );
+    assert_eq!(
+        span_attr_i64(slice, "process.pid"),
+        Some(i64::try_from(pid).unwrap_or(i64::MAX))
+    );
+    assert_eq!(
+        span_attr_str(process, "process.exit_reason").as_deref(),
+        Some("normal")
+    );
+
+    provider.shutdown().expect("provider shutdown");
+}
+
+#[cfg(feature = "telemetry")]
+#[test]
 fn execute_slice_emits_vm_health_and_process_metrics() {
     let (exporter, provider) = install_metric_test_provider();
     let atoms = Arc::new(AtomTable::new());
@@ -647,6 +779,54 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
         "beamr.process.message_queue_len",
         55,
         5
+    ));
+
+    provider.shutdown().expect("provider shutdown");
+}
+
+#[cfg(feature = "telemetry")]
+#[test]
+fn workflow_metric_helpers_emit_instance_and_step_attributes() {
+    let (exporter, provider) = install_metric_test_provider();
+
+    crate::telemetry::metrics::record_workflow_started("workflow-123");
+    crate::telemetry::metrics::record_workflow_step_completed(
+        "workflow-123",
+        "function",
+        std::time::Duration::from_millis(25),
+    );
+    crate::telemetry::metrics::record_workflow_finished("workflow-123");
+    provider.force_flush().expect("metrics flush");
+    let metrics = exporter.get_finished_metrics().expect("finished metrics");
+
+    assert!(metric_has_u64_sum_at_least(
+        &metrics,
+        "beamr.workflow.steps_completed",
+        1
+    ));
+    assert!(metric_has_histogram_count_at_least(
+        &metrics,
+        "beamr.workflow.step_duration",
+        1
+    ));
+    assert!(find_metric(&metrics, "beamr.workflow.active").is_some());
+    assert!(metric_has_string_attribute(
+        &metrics,
+        "beamr.workflow.steps_completed",
+        "workflow_id",
+        "workflow-123"
+    ));
+    assert!(metric_has_string_attribute(
+        &metrics,
+        "beamr.workflow.step_duration",
+        "step_type",
+        "function"
+    ));
+    assert!(metric_has_string_attribute(
+        &metrics,
+        "beamr.workflow.active",
+        "workflow_id",
+        "workflow-123"
     ));
 
     provider.shutdown().expect("provider shutdown");

@@ -524,8 +524,23 @@ fn exit_process(shared: &SharedState, process: &mut Process, reason: ExitReason)
         #[cfg(feature = "telemetry")]
         crate::telemetry::lifecycle::record_process_crashed_reason(&shared.atom_table, pid, reason);
     }
+    #[cfg(feature = "telemetry")]
+    if let Some(trace_context) = process.trace_context() {
+        trace_context.finish(exit_reason_label(reason));
+    }
     process.terminate(reason);
     SliceOutcome::Exited(reason, result)
+}
+
+#[cfg(feature = "telemetry")]
+const fn exit_reason_label(reason: ExitReason) -> &'static str {
+    match reason {
+        ExitReason::Normal => "normal",
+        ExitReason::Kill => "kill",
+        ExitReason::Killed => "killed",
+        ExitReason::Error => "error",
+        ExitReason::NoConnection => "noconnection",
+    }
 }
 
 enum InstructionOutcomeAfterDirty {
