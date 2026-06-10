@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::time::Instant;
 
 use crate::atom::Atom;
@@ -8,6 +9,8 @@ use crate::replay::{
 };
 use crate::term::Term;
 use crate::timer::{ExpiredTimer, TimerRef};
+
+const MAGIC: &[u8; 8] = b"BMRRPLY\0";
 
 #[test]
 fn replay_log_save_load_round_trips_all_event_variants() {
@@ -92,6 +95,24 @@ fn replay_log_save_load_preserves_cli_transcript() {
     assert_eq!(result.exit_code(), 7);
 }
 
+#[test]
+fn replay_log_load_rejects_unknown_header_flags() {
+    let path = temp_replay_path("unknown-flags");
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(MAGIC);
+    bytes.extend_from_slice(&ReplayLog::format_version().to_le_bytes());
+    bytes.push(0x80);
+    bytes.extend_from_slice(&0_u64.to_le_bytes());
+    std::fs::File::create(&path)
+        .and_then(|mut file| file.write_all(&bytes))
+        .expect("write malformed replay log");
+
+    let error = ReplayLog::load(&path).expect_err("unknown flags should be rejected");
+    let _ = std::fs::remove_file(path);
+
+    assert!(error.to_string().contains("unknown replay log flags"));
+}
+
 fn assert_timer_fields_round_trip(loaded: &ReplayEvent, original: &ReplayEvent) {
     match (loaded, original) {
         (ReplayEvent::TimerExpiry(loaded), ReplayEvent::TimerExpiry(original)) => {
@@ -102,4 +123,15 @@ fn assert_timer_fields_round_trip(loaded: &ReplayEvent, original: &ReplayEvent) 
         }
         other => panic!("unexpected timer events: {other:?}"),
     }
+}
+
+fn temp_replay_path(label: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!(
+        "beamr-replay-{label}-{}-{}.rlog",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ))
 }

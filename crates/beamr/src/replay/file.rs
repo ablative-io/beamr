@@ -15,6 +15,7 @@ const MAGIC: &[u8; 8] = b"BMRRPLY\0";
 const FORMAT_VERSION: u16 = 1;
 const FLAG_ZSTD: u8 = 0x01;
 const FLAG_CLI_RESULT: u8 = 0x02;
+const KNOWN_FLAGS: u8 = FLAG_ZSTD | FLAG_CLI_RESULT;
 const ZSTD_LEVEL: i32 = 3;
 const MAX_EVENTS: usize = 1_000_000;
 const MAX_PAYLOAD_BYTES: usize = 256 * 1024 * 1024;
@@ -112,6 +113,11 @@ impl ReplayLog {
             return Err(ReplayLogFileError::UnsupportedVersion(version));
         }
         let flags = read_u8(&mut cursor)?;
+        if flags & !KNOWN_FLAGS != 0 {
+            return Err(ReplayLogFileError::InvalidFormat(
+                "unknown replay log flags",
+            ));
+        }
         let body_len = u64_to_usize(read_u64(&mut cursor)?)?;
         if body_len > MAX_PAYLOAD_BYTES || body_len != remaining(&cursor) {
             return Err(ReplayLogFileError::InvalidFormat(

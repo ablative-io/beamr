@@ -41,6 +41,16 @@ where
         }
     }
 
+    if log.is_some()
+        && filtered_args
+            .first()
+            .is_none_or(|command| command != "record")
+    {
+        return Err(CliError::Usage(format!(
+            "--log is only supported with record\n{USAGE}"
+        )));
+    }
+
     for (index, arg) in filtered_args.iter().enumerate() {
         if arg.starts_with('-') {
             match arg.as_str() {
