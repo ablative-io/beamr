@@ -141,7 +141,7 @@ fn dispatch_common(
     // has returned (trampoline return frame popped); while the closure is
     // still running the stack sits above the recorded resume depth.
     if process.native_continuation_ready() {
-        return trampoline::handle_native_continuation(process, module, ctx.registry);
+        return trampoline::handle_native_continuation(process, module, ctx.registry, ctx.services);
     }
     match instruction {
         Instruction::Label { label } => core::label(*label),

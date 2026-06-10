@@ -154,6 +154,7 @@ pub fn handle_native_continuation(
     process: &mut Process,
     module: &Module,
     registry: Option<&crate::module::ModuleRegistry>,
+    services: Option<&crate::interpreter::NativeServices>,
 ) -> Result<InstructionOutcome, ExecError> {
     let continuation = process
         .take_native_continuation()
@@ -161,6 +162,9 @@ pub fn handle_native_continuation(
     let closure_result = process.x_reg(0);
     let mut context = ProcessContext::new();
     context.set_pid(Some(process.pid()));
+    if let Some(services) = services {
+        context.set_nif_private_data(services.nif_private_data.clone());
+    }
     context.attach_process(process, 1);
     let step = match continuation {
         NativeContinuation::Maps(state) => {
