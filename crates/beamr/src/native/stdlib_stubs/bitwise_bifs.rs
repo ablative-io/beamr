@@ -110,8 +110,8 @@ fn to_twos_complement(value: &BigIntValue, width: usize) -> Vec<u64> {
     let len = mask.len();
     limbs.resize(len, 0);
     let mut out = Vec::with_capacity(len);
-    for index in 0..len {
-        out.push(!limbs[index]);
+    for limb in limbs.iter().take(len) {
+        out.push(!*limb);
     }
     let mut carry = 1_u128;
     for limb in &mut out {
@@ -129,8 +129,8 @@ fn from_twos_complement(limbs: &[u64], width: usize) -> BigIntValue {
     let mask = low_bits_mask(width);
     let len = mask.len();
     let mut magnitude = Vec::with_capacity(len);
-    for index in 0..len {
-        magnitude.push(!(*limbs.get(index).unwrap_or(&0)) & mask[index]);
+    for (index, mask_limb) in mask.iter().enumerate().take(len) {
+        magnitude.push(!(*limbs.get(index).unwrap_or(&0)) & *mask_limb);
     }
     let mut carry = 1_u128;
     for limb in &mut magnitude {
