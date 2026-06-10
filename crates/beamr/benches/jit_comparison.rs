@@ -180,6 +180,7 @@ fn native_services(jit_cache: Option<Arc<JitCache>>) -> NativeServices {
         file_io_facility: None,
         tcp_io_facility: None,
         jit_cache,
+        replay_driver: None,
     }
 }
 
