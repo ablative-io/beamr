@@ -468,18 +468,24 @@ fn spawn_opt_capabilities_attenuate_but_never_escalate() {
     ctx.set_spawn_facility(Some(facility.clone()));
 
     let file_options = capabilities_option_list(&atom_table, &["file"]);
-    ctx.attach_process(&mut process, 0);
-    let allowed = bif_spawn_opt_4(
-        &[
-            Term::atom(Atom::OK),
-            Term::atom(Atom::ERROR),
-            Term::NIL,
-            file_options,
-        ],
-        &mut ctx,
-    );
-    ctx.detach_process();
-    assert_eq!(allowed, Ok(Term::pid(22)));
+    {
+        let mut ctx = ProcessContext::new();
+        ctx.set_pid(Some(3));
+        ctx.set_atom_table(Some(atom_table.clone()));
+        ctx.set_spawn_facility(Some(facility.clone()));
+        ctx.attach_process(&mut process, 0);
+        let allowed = bif_spawn_opt_4(
+            &[
+                Term::atom(Atom::OK),
+                Term::atom(Atom::ERROR),
+                Term::NIL,
+                file_options,
+            ],
+            &mut ctx,
+        );
+        ctx.detach_process();
+        assert_eq!(allowed, Ok(Term::pid(22)));
+    }
     let requested = facility.options_records()[0]
         .options
         .capabilities
@@ -491,18 +497,24 @@ fn spawn_opt_capabilities_attenuate_but_never_escalate() {
     );
 
     let escalating_options = capabilities_option_list(&atom_table, &["file", "spawn"]);
-    ctx.attach_process(&mut process, 0);
-    let denied = bif_spawn_opt_4(
-        &[
-            Term::atom(Atom::OK),
-            Term::atom(Atom::ERROR),
-            Term::NIL,
-            escalating_options,
-        ],
-        &mut ctx,
-    );
-    ctx.detach_process();
-    assert_eq!(denied, Err(badarg()));
+    {
+        let mut ctx = ProcessContext::new();
+        ctx.set_pid(Some(3));
+        ctx.set_atom_table(Some(atom_table.clone()));
+        ctx.set_spawn_facility(Some(facility.clone()));
+        ctx.attach_process(&mut process, 0);
+        let denied = bif_spawn_opt_4(
+            &[
+                Term::atom(Atom::OK),
+                Term::atom(Atom::ERROR),
+                Term::NIL,
+                escalating_options,
+            ],
+            &mut ctx,
+        );
+        ctx.detach_process();
+        assert_eq!(denied, Err(badarg()));
+    }
 }
 
 fn capabilities_option_list(atom_table: &AtomTable, names: &[&str]) -> Term {
@@ -1311,6 +1323,7 @@ impl SpawnFacility for MockSpawnFacility {
         args: Vec<Term>,
         options: SpawnOptions,
     ) -> Result<SpawnOptionsResult, SpawnError> {
+        let monitor = options.monitor;
         self.options_records
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -1323,7 +1336,7 @@ impl SpawnFacility for MockSpawnFacility {
             });
         Ok(SpawnOptionsResult {
             pid: self.next_pid,
-            reference: options.monitor.then_some(self.next_reference),
+            reference: monitor.then_some(self.next_reference),
         })
     }
 
@@ -1334,6 +1347,7 @@ impl SpawnFacility for MockSpawnFacility {
         _lambda_index: u32,
         options: SpawnOptions,
     ) -> Result<SpawnOptionsResult, SpawnError> {
+        let monitor = options.monitor;
         self.lambda_options_records
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -1343,7 +1357,7 @@ impl SpawnFacility for MockSpawnFacility {
             });
         Ok(SpawnOptionsResult {
             pid: self.next_pid,
-            reference: options.monitor.then_some(self.next_reference),
+            reference: monitor.then_some(self.next_reference),
         })
     }
 }

@@ -679,13 +679,14 @@ mod tests {
             args: Vec<Term>,
             options: SpawnOptions,
         ) -> Result<SpawnOptionsResult, SpawnError> {
+            let monitor = options.monitor;
             self.records
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
                 .push((caller_pid, module, function, args, options));
             Ok(SpawnOptionsResult {
                 pid: self.next_pid,
-                reference: options.monitor.then_some(1),
+                reference: monitor.then_some(1),
             })
         }
 
