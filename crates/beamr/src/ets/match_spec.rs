@@ -5,6 +5,7 @@
 //! comparison guards, simple type-test guards, and body construction from
 //! variables/literals/tuples/lists plus the `$_` and `$$` special returns.
 
+use std::cell::RefCell;
 use std::cmp::Ordering;
 
 use crate::atom::AtomTable;
@@ -121,25 +122,38 @@ impl TermAllocator for ProcessAllocator<'_, '_> {
     }
 }
 
-struct LeakingAllocator;
+thread_local! {
+    static FALLBACK_ALLOCATIONS: RefCell<Vec<Box<[u64]>>> = const { RefCell::new(Vec::new()) };
+}
 
-impl TermAllocator for LeakingAllocator {
+struct FallbackAllocator;
+
+impl TermAllocator for FallbackAllocator {
     fn alloc_tuple(&mut self, elements: &[Term]) -> Result<Term, Term> {
-        let leaked = Box::leak(vec![0_u64; 1 + elements.len()].into_boxed_slice());
-        crate::term::boxed::write_tuple(leaked, elements)
-            .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))
+        with_fallback_words(1 + elements.len(), |words| {
+            crate::term::boxed::write_tuple(words, elements)
+        })
     }
 
     fn alloc_list(&mut self, elements: &[Term]) -> Result<Term, Term> {
         let mut tail = Term::NIL;
         for element in elements.iter().rev().copied() {
-            let mut words = vec![0_u64; 2].into_boxed_slice();
-            tail = crate::term::boxed::write_cons(&mut words, element, tail)
-                .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
-            let _leaked: &'static mut [u64] = Box::leak(words);
+            tail = with_fallback_words(2, |words| {
+                crate::term::boxed::write_cons(words, element, tail)
+            })?;
         }
         Ok(tail)
     }
+}
+
+fn with_fallback_words(
+    word_count: usize,
+    write: impl FnOnce(&mut [u64]) -> Option<Term>,
+) -> Result<Term, Term> {
+    let mut words = vec![0_u64; word_count].into_boxed_slice();
+    let term = write(&mut words).ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
+    FALLBACK_ALLOCATIONS.with(|allocations| allocations.borrow_mut().push(words));
+    Ok(term)
 }
 
 impl CompiledMatchSpec {
@@ -171,7 +185,7 @@ impl CompiledMatchSpec {
     #[must_use]
     pub fn eval(&self, tuple: Term) -> Option<Term> {
         let atom_table = AtomTable::with_common_atoms();
-        let mut allocator = LeakingAllocator;
+        let mut allocator = FallbackAllocator;
         self.eval_with_allocator(tuple, &atom_table, &mut allocator)
             .ok()
             .flatten()

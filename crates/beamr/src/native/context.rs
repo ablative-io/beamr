@@ -1147,6 +1147,23 @@ impl<'process> ProcessContext<'process> {
         self.alloc_words_prereserved(words)
     }
 
+    /// Keep detached allocations alive by moving them into an owned term.
+    ///
+    /// Dirty native calls run without an attached process heap. Terms allocated
+    /// in that detached context point into `detached_allocations`, so the dirty
+    /// completion path must preserve those allocations until it can copy the
+    /// returned term onto the resuming process heap.
+    pub fn take_detached_result(&mut self, root: Term) -> Option<crate::ets::OwnedTerm> {
+        if self.detached_allocations.is_empty() {
+            None
+        } else {
+            Some(crate::ets::OwnedTerm::from_allocations(
+                root,
+                std::mem::take(&mut self.detached_allocations),
+            ))
+        }
+    }
+
     /// Allocate heap words WITHOUT triggering GC. Caller must have already
     /// called `ensure_heap_space` for the total allocation budget. Panics
     /// (via alloc_slice error) if insufficient space remains.
@@ -1338,12 +1355,18 @@ mod tests {
     }
 
     #[test]
-    fn helpers_fail_without_attached_process() {
+    fn detached_context_allocations_are_owned_until_taken() {
         let mut context = ProcessContext::new();
-        assert_eq!(
-            context.alloc_tuple(&[Term::atom(Atom::OK)]),
-            Err(Term::atom(Atom::BADARG))
-        );
+        let tuple = context
+            .alloc_tuple(&[Term::atom(Atom::OK)])
+            .expect("detached tuple allocation");
+        assert_eq!(Tuple::new(tuple).expect("tuple accessor").arity(), 1);
+
+        let owned = context
+            .take_detached_result(tuple)
+            .expect("detached allocation ownership");
+        assert_eq!(owned.allocation_count(), 1);
+        assert!(context.take_detached_result(Term::NIL).is_none());
     }
 
     #[test]

@@ -1,1 +1,1 @@
-test(beamr): enable differential suite and harden scheduler tests
+Harden B-176 test reliability fixes: enable differential tests, repair sample workflow runtime path, and stabilize flaky cleanup/dirty tests

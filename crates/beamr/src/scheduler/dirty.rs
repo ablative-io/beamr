@@ -290,11 +290,13 @@ fn worker_loop(receiver: Receiver<DirtyMessage>) {
                 let raw_result = match &result {
                     Ok(value) | Err(value) => *value,
                 };
-                let owned_result = if raw_result.is_list() || raw_result.is_boxed() {
-                    crate::ets::copy_term_to_ets(raw_result).ok()
-                } else {
-                    None
-                };
+                let owned_result = job.context.take_detached_result(raw_result).or_else(|| {
+                    if raw_result.is_list() || raw_result.is_boxed() {
+                        crate::ets::copy_term_to_ets(raw_result).ok()
+                    } else {
+                        None
+                    }
+                });
                 let result = match owned_result.as_ref() {
                     Some(owned) => result.map(|_| owned.root()).map_err(|_| owned.root()),
                     None => result,
