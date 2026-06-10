@@ -14,11 +14,11 @@ pub mod encoding_bifs;
 pub mod gleam_stdlib_ffi;
 pub mod gleam_stdlib_ffi2;
 pub mod io_bifs;
+pub mod json_bifs;
 pub mod lists_bifs;
 pub mod lists_hof_bifs;
 pub mod maps_bifs;
 pub mod math_bifs;
-pub mod sample_support_bifs;
 pub mod string_bifs;
 pub mod type_conversion_bifs;
 pub mod uri_bifs;
@@ -75,11 +75,11 @@ use maps_bifs::{
     bif_maps_put, bif_maps_to_list, bif_maps_update_with, bif_maps_values, bif_maps_with,
     bif_maps_without,
 };
-use math_bifs::{bif_ceil, bif_exp, bif_floor, bif_log, bif_pow};
-use sample_support_bifs::{
-    bif_gleam_list_map, bif_gleam_string_repeat, bif_gleam_string_replace,
-    bif_gleam_string_tree_split, bif_gleeunit_main,
+use json_bifs::{
+    bif_json_decode, bif_json_encode, bif_json_encode_binary, bif_json_encode_float,
+    bif_json_encode_integer,
 };
+use math_bifs::{bif_ceil, bif_exp, bif_floor, bif_log, bif_pow};
 use string_bifs::{
     bif_equal as bif_string_equal, bif_find as bif_string_find,
     bif_is_empty as bif_string_is_empty, bif_length as bif_string_length,
@@ -948,45 +948,31 @@ const STDLIB_STUBS: &[StubBif] = &[
         Some(DirtySchedulerKind::Io),
         bif_timer_sleep,
     ),
+    ("json", "decode", 1, Capability::Pure, None, bif_json_decode),
+    ("json", "encode", 1, Capability::Pure, None, bif_json_encode),
     (
-        "gleam@list",
-        "map",
-        2,
+        "json",
+        "encode_integer",
+        1,
         Capability::Pure,
         None,
-        bif_gleam_list_map,
+        bif_json_encode_integer,
     ),
     (
-        "gleam@string",
-        "repeat",
-        2,
+        "json",
+        "encode_float",
+        1,
         Capability::Pure,
         None,
-        bif_gleam_string_repeat,
+        bif_json_encode_float,
     ),
     (
-        "gleam@string",
-        "replace",
-        3,
+        "json",
+        "encode_binary",
+        1,
         Capability::Pure,
         None,
-        bif_gleam_string_replace,
-    ),
-    (
-        "gleam@string_tree",
-        "split",
-        2,
-        Capability::Pure,
-        None,
-        bif_gleam_string_tree_split,
-    ),
-    (
-        "gleeunit",
-        "main",
-        0,
-        Capability::ExternalIo,
-        None,
-        bif_gleeunit_main,
+        bif_json_encode_binary,
     ),
     (
         "erlang",
@@ -1006,12 +992,6 @@ const STDLIB_STUBS: &[StubBif] = &[
     ),
 ];
 
-#[cfg(feature = "json")]
-const JSON_STUBS: &[StubBif] = &[
-    ("json", "decode", 1, Capability::Pure, None, bif_json_decode),
-    ("json", "encode", 1, Capability::Pure, None, bif_json_encode),
-];
-
 /// Registers all stdlib stub BIFs under their OTP module names.
 pub fn register_stdlib_stubs(
     registry: &BifRegistryImpl,
@@ -1019,22 +999,6 @@ pub fn register_stdlib_stubs(
 ) -> Result<(), NativeRegistrationError> {
     for &(module_name, function_name, arity, capability, dirty_kind, native_function) in
         STDLIB_STUBS
-    {
-        let module = atom_table.intern(module_name);
-        let function = atom_table.intern(function_name);
-        register_stub(
-            registry,
-            module,
-            function,
-            arity,
-            native_function,
-            capability,
-            dirty_kind,
-        )?;
-    }
-
-    #[cfg(feature = "json")]
-    for &(module_name, function_name, arity, capability, dirty_kind, native_function) in JSON_STUBS
     {
         let module = atom_table.intern(module_name);
         let function = atom_table.intern(function_name);
@@ -1254,7 +1218,11 @@ pub fn bif_fwrite_g(args: &[Term], context: &mut ProcessContext) -> Result<Term,
     } else {
         return Err(badarg());
     };
-    context.alloc_binary(format!("{f}").as_bytes())
+    let mut text = format!("{f}");
+    if !text.contains(['.', 'e', 'E']) {
+        text.push_str(".0");
+    }
+    context.alloc_binary(text.as_bytes())
 }
 
 fn badarg() -> Term {
@@ -1273,32 +1241,12 @@ mod bitwise_bifs_tests;
 mod collection_bifs_tests;
 #[cfg(test)]
 mod gc_rooting_tests;
-#[cfg(feature = "json")]
-fn bif_json_decode(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let [input] = args else {
-        return Err(badarg());
-    };
-    let binary = BinaryRef::new(*input).ok_or_else(badarg)?;
-    let json_value: serde_json::Value =
-        serde_json::from_slice(binary.as_bytes()).map_err(|_| badarg())?;
-    crate::term::json::value_to_term(&json_value, context).map_err(|_| badarg())
-}
-
-#[cfg(feature = "json")]
-fn bif_json_encode(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let [input] = args else {
-        return Err(badarg());
-    };
-    let atom_table = context.atom_table().ok_or_else(badarg)?;
-    let json_value = crate::term::json::term_to_value(*input, atom_table).map_err(|_| badarg())?;
-    let json_bytes = serde_json::to_vec(&json_value).map_err(|_| badarg())?;
-    context.alloc_binary(&json_bytes)
-}
-
 #[cfg(test)]
 mod gleam_stdlib_ffi2_tests;
 #[cfg(test)]
 mod io_bifs_tests;
+#[cfg(test)]
+mod json_bifs_tests;
 #[cfg(test)]
 mod math_bifs_tests;
 #[cfg(test)]

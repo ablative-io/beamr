@@ -182,6 +182,21 @@ impl Closure {
         }
     }
 
+    /// True when this closure is an export fun (`fun M:F/A`) written by
+    /// `write_export_fun`, marked by the sentinel generation.
+    pub fn is_export(self) -> bool {
+        self.generation() == super::EXPORT_FUN_GENERATION
+    }
+
+    /// Function atom of an export fun; `None` for ordinary closures.
+    pub fn export_function(self) -> Option<Atom> {
+        if self.is_export() {
+            Term::from_raw(self.word(2)).as_atom()
+        } else {
+            None
+        }
+    }
+
     fn word(self, offset: usize) -> u64 {
         // SAFETY: see Tuple::word.
         unsafe { *self.ptr.add(offset) }

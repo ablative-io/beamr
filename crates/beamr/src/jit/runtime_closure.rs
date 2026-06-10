@@ -53,6 +53,11 @@ pub(crate) extern "C" fn jit_call_closure(
     if closure.arity() != arity {
         return exception_return(process, Atom::BADARITY);
     }
+    if closure.is_export() {
+        // Export funs (`fun M:F/A`) need MFA dispatch with native-BIF and
+        // service support; the interpreter owns that path.
+        return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
+    }
 
     for register in 0..arity {
         let raw = if arity == 0 {

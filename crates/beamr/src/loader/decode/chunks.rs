@@ -55,6 +55,12 @@ pub enum Literal {
     List(Vec<Literal>, Box<Literal>),
     Map(Vec<(Literal, Literal)>),
     String(Vec<u8>),
+    /// `fun Module:Function/Arity` (ETF `EXPORT_EXT`).
+    ExportFun {
+        module: Atom,
+        function: Atom,
+        arity: u8,
+    },
 }
 
 pub(crate) fn decode_atom_chunk(

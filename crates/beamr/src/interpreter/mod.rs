@@ -88,6 +88,8 @@ pub struct NativeServices {
     pub capability_audit_sink: Option<Arc<dyn CapabilityAuditSink>>,
     /// Optional handler invoked for denied runtime native capability checks.
     pub capability_violation_handler: Option<Arc<dyn ViolationHandler>>,
+    /// BIF registry for dynamic MFA dispatch (export funs, apply).
+    pub bif_registry: Option<Arc<crate::native::BifRegistryImpl>>,
 }
 
 /// Result of running a process until it yields, waits, exits, or faults.

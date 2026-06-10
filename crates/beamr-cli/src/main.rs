@@ -360,6 +360,7 @@ fn run_module(
 ) -> Result<CliSuccess, CliError> {
     let LoadContext {
         atom_table,
+        bif_registry,
         module_registry,
         module,
         report,
@@ -390,12 +391,17 @@ fn run_module(
 
     let args = parse_runtime_args(runtime_args, &atom_table)?;
     let registry = Arc::new(module_registry);
-    let scheduler = Scheduler::new(
+    // Share the load-time atom table and BIF registry with the scheduler so
+    // runtime atom resolution and dynamic MFA dispatch (export funs) see the
+    // same state the modules were loaded against.
+    let scheduler = Scheduler::with_code_server(
         SchedulerConfig {
             thread_count: Some(1),
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        Arc::clone(&atom_table),
+        bif_registry,
     )
     .map_err(CliError::Scheduler)?;
     scheduler.set_output_sink(Arc::new(StdoutSink));
@@ -424,15 +430,16 @@ fn run_module(
 }
 
 struct LoadContext {
-    atom_table: AtomTable,
+    atom_table: Arc<AtomTable>,
+    bif_registry: Arc<BifRegistryImpl>,
     module_registry: ModuleRegistry,
     module: std::sync::Arc<beamr::module::Module>,
     report: UnresolvedImportReport,
 }
 
 fn load_context(path: &Path, dirs: &[PathBuf]) -> Result<LoadContext, CliError> {
-    let atom_table = AtomTable::with_common_atoms();
-    let bif_registry = BifRegistryImpl::new();
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let bif_registry = Arc::new(BifRegistryImpl::new());
     register_gate1_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_gate2_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_gate3_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
@@ -457,7 +464,7 @@ fn load_context(path: &Path, dirs: &[PathBuf]) -> Result<LoadContext, CliError> 
             &bytes,
             &atom_table,
             &module_registry,
-            &bif_registry,
+            &*bif_registry,
             ModuleOrigin::Embedded,
         )
     } else {
@@ -469,7 +476,7 @@ fn load_context(path: &Path, dirs: &[PathBuf]) -> Result<LoadContext, CliError> 
             &bytes,
             &atom_table,
             &module_registry,
-            &bif_registry,
+            &*bif_registry,
             ModuleOrigin::Filesystem(path.to_path_buf()),
         )
     }
@@ -477,6 +484,7 @@ fn load_context(path: &Path, dirs: &[PathBuf]) -> Result<LoadContext, CliError> 
 
     Ok(LoadContext {
         atom_table,
+        bif_registry,
         module_registry,
         module,
         report,

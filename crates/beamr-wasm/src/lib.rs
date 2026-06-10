@@ -180,7 +180,9 @@ fn registration_error_to_js(error: NativeRegistrationError) -> JsValue {
     JsValue::from_str(&error.to_string())
 }
 
-#[cfg(test)]
+// wasm-bindgen types abort when constructed outside a wasm runtime, so this
+// suite only runs on the wasm32 target (e.g. via `wasm-pack test`).
+#[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::*;
 

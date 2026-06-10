@@ -70,8 +70,9 @@ pub fn call_fun(
     module: &Module,
     arity: &Operand,
     return_ip: usize,
-    registry: Option<&ModuleRegistry>,
+    ctx: &core::ExtCallContext<'_>,
 ) -> Result<InstructionOutcome, ExecError> {
+    let registry = ctx.registry;
     let arity = operand_u8(arity, "call_fun arity")?;
     let fun_term = process.x_reg(arity.into());
     let closure = Closure::new(fun_term).ok_or(ExecError::Badfun { term: fun_term })?;
@@ -81,6 +82,9 @@ pub fn call_fun(
             fun: fun_term,
             args,
         });
+    }
+    if closure.is_export() {
+        return call_export_fun(process, module, closure, fun_term, arity, return_ip, ctx);
     }
 
     let free_count = closure.num_free();
@@ -111,6 +115,64 @@ pub fn call_fun(
         instruction_pointer: core::label_ip(resolved.module.as_ref(), resolved.label)?,
     };
     process.set_current_module(resolved.module);
+    core::jump_position_with_reduction(process, target)
+}
+
+/// Dispatches a called export fun (`fun M:F/A`) with its args already in
+/// `x0..arity-1` — native BIF registry first (matching load-time import
+/// resolution order), then loaded-module exports.
+fn call_export_fun(
+    process: &mut Process,
+    module: &Module,
+    closure: Closure,
+    fun_term: Term,
+    arity: u8,
+    return_ip: usize,
+    ctx: &core::ExtCallContext<'_>,
+) -> Result<InstructionOutcome, ExecError> {
+    let target_module = closure.module().ok_or(ExecError::Badfun { term: fun_term })?;
+    let target_function = closure
+        .export_function()
+        .ok_or(ExecError::Badfun { term: fun_term })?;
+
+    if let Some(entry) = ctx
+        .services
+        .and_then(|services| services.bif_registry.as_ref())
+        .and_then(|bifs| {
+            crate::native::BifRegistry::lookup(bifs.as_ref(), target_module, target_function, arity)
+        })
+    {
+        // save_return=true: the BIF runs inline and execution continues at
+        // the instruction after the call, like a body call.
+        return core::call_native_entry(
+            process,
+            module,
+            entry,
+            (target_module, target_function, arity),
+            true,
+            ctx,
+        );
+    }
+
+    let target_mod = ctx
+        .registry
+        .and_then(|registry| registry.lookup(target_module))
+        .ok_or(ExecError::Undef {
+            module: target_module,
+            function: target_function,
+            arity,
+        })?;
+    let instruction_pointer = target_mod.export_ip(target_function, arity)?;
+    let caller_module = core::current_module_pin(process, module);
+    process
+        .stack_mut()
+        .push_frame(module.name, return_ip, caller_module, 0)
+        .map_err(ExecError::from)?;
+    let target = CodePosition {
+        module: target_module,
+        instruction_pointer,
+    };
+    process.set_current_module(target_mod);
     core::jump_position_with_reduction(process, target)
 }
 
@@ -173,8 +235,9 @@ pub fn call_fun2(
     func: &Operand,
     arity: &Operand,
     return_ip: usize,
-    registry: Option<&ModuleRegistry>,
+    ctx: &core::ExtCallContext<'_>,
 ) -> Result<InstructionOutcome, ExecError> {
+    let registry = ctx.registry;
     let arity = operand_u8(arity, "call_fun2 arity")?;
     let fun_term = core::read_term(process, module, func)?;
     let closure = Closure::new(fun_term).ok_or(ExecError::Badfun { term: fun_term })?;
@@ -184,6 +247,10 @@ pub fn call_fun2(
             fun: fun_term,
             args,
         });
+    }
+    if closure.is_export() {
+        // The fun's args are already in x0..arity-1; dispatch by MFA.
+        return call_export_fun(process, module, closure, fun_term, arity, return_ip, ctx);
     }
 
     let free_count = closure.num_free();

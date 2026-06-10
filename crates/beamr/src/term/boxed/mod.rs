@@ -166,6 +166,30 @@ pub fn write_bigint(heap: &mut [u64], negative: bool, limbs: &[u64]) -> Option<T
     Some(Term::boxed_ptr(heap.as_ptr()))
 }
 
+/// Sentinel `generation` marking a closure as an export fun (`fun M:F/A`).
+///
+/// Export funs reuse the closure layout — module atom in the module slot,
+/// the raw function-atom term in the function-index slot, no free variables —
+/// so GC, copying, and comparison need no new boxed tag. Real module
+/// generations are monotonically allocated and never reach this value.
+pub const EXPORT_FUN_GENERATION: u64 = u64::MAX;
+
+/// Writes an export fun (`fun M:F/A`) using the closure layout with
+/// [`EXPORT_FUN_GENERATION`] as the generation sentinel.
+pub fn write_export_fun(heap: &mut [u64], module: Atom, function: Atom, arity: u8) -> Option<Term> {
+    if heap.len() < 7 {
+        return None;
+    }
+    heap[0] = BoxedHeader::new(BoxedTag::Closure, 6);
+    heap[1] = Term::atom(module).raw();
+    heap[2] = Term::atom(function).raw();
+    heap[3] = u64::from(arity);
+    heap[4] = 0;
+    heap[5] = EXPORT_FUN_GENERATION;
+    heap[6] = 0;
+    Some(Term::boxed_ptr(heap.as_ptr()))
+}
+
 /// Writes a closure layout
 /// (`header, module, function_index, arity, num_free, generation, unique_id, free...`).
 pub fn write_closure(

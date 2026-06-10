@@ -14,7 +14,8 @@ use crate::term::bigint_convert;
 use crate::term::bigint_math::BigIntValue;
 use crate::term::binary::{packed_word_count, write_binary};
 use crate::term::boxed::{
-    BoxedHeader, BoxedTag, write_bigint, write_cons, write_float, write_map, write_tuple,
+    BoxedHeader, BoxedTag, write_bigint, write_cons, write_export_fun, write_float, write_map,
+    write_tuple,
 };
 use crate::term::{Term, compare};
 
@@ -356,6 +357,16 @@ fn materialise_literal(
             pool.push_root(result)
         }
         Literal::Nil => Ok(RootEntry::Immediate(Term::NIL)),
+        Literal::ExportFun {
+            module,
+            function,
+            arity,
+        } => {
+            let block = pool.push_block(vec![0; 7], BlockKind::Boxed)?;
+            let term = write_export_fun(&mut pool.blocks[block], *module, *function, *arity)
+                .ok_or_else(write_failed)?;
+            pool.push_root(term)
+        }
         Literal::Tuple(elements) => {
             let terms = materialise_literal_terms(pool, elements, atom_table)?;
             let block = pool.push_block(vec![0; 1 + terms.len()], BlockKind::Boxed)?;
@@ -488,6 +499,27 @@ mod tests {
         let literals = vec![Literal::String(Vec::new())];
         let pool = materialise_literals(&literals, None).expect("pool");
         assert!(pool.get(0).expect("empty string literal").is_nil());
+    }
+
+    #[test]
+    fn export_fun_literal_materialises_as_callable_closure() {
+        let atoms = AtomTable::new();
+        let module = atoms.intern("erlang");
+        let function = atoms.intern("integer_to_binary");
+        let literals = vec![Literal::ExportFun {
+            module,
+            function,
+            arity: 1,
+        }];
+        let pool = materialise_literals(&literals, None).expect("pool");
+
+        let term = pool.get(0).expect("export fun literal");
+        let closure = crate::term::boxed::Closure::new(term).expect("closure layout");
+        assert!(closure.is_export());
+        assert_eq!(closure.module(), Some(module));
+        assert_eq!(closure.export_function(), Some(function));
+        assert_eq!(closure.arity(), 1);
+        assert_eq!(closure.num_free(), 0);
     }
 
     #[test]

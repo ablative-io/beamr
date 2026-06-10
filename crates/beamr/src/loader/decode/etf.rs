@@ -81,14 +81,26 @@ pub(super) fn decode_external_term(
         113 => {
             // EXPORT_EXT: fun Module:Function/Arity encoded as
             // tag(113) + Module(atom_ext) + Function(atom_ext) + Arity(small_integer_ext).
-            // Decoded as a 3-tuple {Module, Function, Arity}.
             budget.descend()?;
             let result = (|| {
                 let module = decode_external_term(cursor, atom_table, budget)?;
                 let function = decode_external_term(cursor, atom_table, budget)?;
                 let arity = decode_external_term(cursor, atom_table, budget)?;
                 budget.charge_bytes(3 * std::mem::size_of::<Literal>())?;
-                Ok(Literal::Tuple(vec![module, function, arity]))
+                let (Literal::Atom(module), Literal::Atom(function), Literal::Integer(arity)) =
+                    (module, function, arity)
+                else {
+                    return Err(LoadError::DecodeError(
+                        "EXPORT_EXT components must be two atoms and an arity".into(),
+                    ));
+                };
+                let arity = u8::try_from(arity)
+                    .map_err(|_| LoadError::DecodeError("EXPORT_EXT arity out of range".into()))?;
+                Ok(Literal::ExportFun {
+                    module,
+                    function,
+                    arity,
+                })
             })();
             budget.ascend();
             result

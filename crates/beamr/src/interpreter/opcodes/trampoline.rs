@@ -95,7 +95,31 @@ pub fn handle_trampoline(
         process.set_x_reg(register, value);
     }
 
-    let resolved = resolve_closure_target(closure, module, registry, trampoline.fun)?;
+    let (target_module, target_ip) = if closure.is_export() {
+        // Export funs (`fun M:F/A`) dispatch by MFA. Only bytecode targets
+        // are reachable from a trampoline — a native HOF calling an export
+        // fun of another native BIF has no service context here, so an
+        // unloaded target reports undef with the full MFA.
+        let module_atom = closure.module().ok_or(ExecError::Badfun {
+            term: trampoline.fun,
+        })?;
+        let function = closure.export_function().ok_or(ExecError::Badfun {
+            term: trampoline.fun,
+        })?;
+        let target_mod = registry
+            .and_then(|registry| registry.lookup(module_atom))
+            .ok_or(ExecError::Undef {
+                module: module_atom,
+                function,
+                arity,
+            })?;
+        let instruction_pointer = target_mod.export_ip(function, arity)?;
+        (target_mod, instruction_pointer)
+    } else {
+        let resolved = resolve_closure_target(closure, module, registry, trampoline.fun)?;
+        let instruction_pointer = super::core::label_ip(resolved.module.as_ref(), resolved.label)?;
+        (resolved.module, instruction_pointer)
+    };
 
     // Push a return frame so the closure returns to the BIF's caller.
     let return_ip = process
@@ -111,10 +135,10 @@ pub fn handle_trampoline(
     process.set_native_continuation(trampoline.continuation);
 
     let target = CodePosition {
-        module: resolved.module_name,
-        instruction_pointer: super::core::label_ip(resolved.module.as_ref(), resolved.label)?,
+        module: target_module.name,
+        instruction_pointer: target_ip,
     };
-    process.set_current_module(resolved.module);
+    process.set_current_module(target_module);
 
     charge_reduction(process)?;
     Ok(if process.reductions_exhausted() {

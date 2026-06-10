@@ -361,13 +361,29 @@ fn dispatch_common(
         }
         Instruction::MakeFun { operands } => closures::make_fun(process, module, operands),
         Instruction::CallFun { arity } => {
-            closures::call_fun(process, module, arity, next_ip, ctx.registry)
+            let ext = core::ExtCallContext {
+                timers: ctx.timers,
+                services: ctx.services,
+                registry: ctx.registry,
+                atom_table: ctx.atom_table,
+                jit_cache: ctx.jit_cache,
+            };
+            closures::call_fun(process, module, arity, next_ip, &ext)
         }
         Instruction::CallFun2 {
             function: _tag,
             arity,
             destination: func,
-        } => closures::call_fun2(process, module, func, arity, next_ip, ctx.registry),
+        } => {
+            let ext = core::ExtCallContext {
+                timers: ctx.timers,
+                services: ctx.services,
+                registry: ctx.registry,
+                atom_table: ctx.atom_table,
+                jit_cache: ctx.jit_cache,
+            };
+            closures::call_fun2(process, module, func, arity, next_ip, &ext)
+        }
         Instruction::Apply { arity } => {
             let registry = ctx
                 .registry

@@ -7,6 +7,16 @@ use crate::process::ExitReason;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+fn ext_ctx(registry: Option<&ModuleRegistry>) -> core::ExtCallContext<'_> {
+    core::ExtCallContext {
+        timers: None,
+        services: None,
+        registry,
+        atom_table: None,
+        jit_cache: None,
+    }
+}
+
 fn module(name: Atom, code: Vec<Instruction>) -> Module {
     let label_index = code
         .iter()
@@ -109,7 +119,7 @@ fn call_fun_restores_captured_variables_and_jumps_to_lambda_label() {
     process.set_x_reg(0, Term::small_int(11));
     process.set_x_reg(1, fun);
 
-    let outcome = call_fun(&mut process, &module, &Operand::Unsigned(1), 99, None)
+    let outcome = call_fun(&mut process, &module, &Operand::Unsigned(1), 99, &ext_ctx(None))
         .expect("call_fun succeeds");
 
     assert_eq!(jump_ip(outcome), 1);
@@ -130,7 +140,7 @@ fn call_fun_reports_badfun_and_badarity() {
     let mut process = Process::new(1, 16);
     process.set_x_reg(1, Term::small_int(42));
     assert_eq!(
-        call_fun(&mut process, &module, &Operand::Unsigned(1), 1, None),
+        call_fun(&mut process, &module, &Operand::Unsigned(1), 1, &ext_ctx(None)),
         Err(ExecError::Badfun {
             term: Term::small_int(42)
         })
@@ -142,7 +152,7 @@ fn call_fun_reports_badfun_and_badarity() {
     process.set_x_reg(0, Term::small_int(10));
     process.set_x_reg(1, fun);
     assert_eq!(
-        call_fun(&mut process, &module, &Operand::Unsigned(1), 1, None),
+        call_fun(&mut process, &module, &Operand::Unsigned(1), 1, &ext_ctx(None)),
         Err(ExecError::Badarity {
             fun,
             args: vec![Term::small_int(10)],
@@ -205,7 +215,7 @@ fn call_fun_resolves_reloaded_module_by_unique_id() {
         &v2,
         &Operand::Unsigned(0),
         99,
-        Some(&registry),
+        &ext_ctx(Some(&registry)),
     )
     .expect("call_fun resolves by unique id");
 
@@ -247,7 +257,7 @@ fn call_fun_reports_badfun_when_reloaded_lambda_removed() {
             &v3,
             &Operand::Unsigned(0),
             99,
-            Some(&registry)
+            &ext_ctx(Some(&registry))
         ),
         Err(ExecError::Badfun { term: fun })
     );
@@ -684,4 +694,120 @@ fn map_from_pairs(process: &mut Process, pairs: &[(Term, Term)]) -> Term {
     let ptr = process.heap_mut().alloc(words).expect("heap allocation");
     let heap = core::heap_slice(ptr, words);
     write_map(heap, &keys, &values).expect("map write")
+}
+
+fn export_fun(process: &mut Process, module: Atom, function: Atom, arity: u8) -> Term {
+    let ptr = process.heap_mut().alloc(7).expect("heap space");
+    let heap = core::heap_slice(ptr, 7);
+    crate::term::boxed::write_export_fun(heap, module, function, arity).expect("export fun")
+}
+
+#[test]
+fn call_fun_dispatches_export_fun_to_loaded_module_export() {
+    let atoms = AtomTable::new();
+    let target_atom = atoms.intern("export_target");
+    let run_atom = atoms.intern("run");
+    let registry = ModuleRegistry::new();
+
+    let mut target = module(
+        target_atom,
+        vec![
+            Instruction::Label { label: 5 },
+            Instruction::Move {
+                source: Operand::Integer(77),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+    );
+    target.exports.insert((run_atom, 0), 5);
+    registry.insert(target);
+
+    let caller = module(atoms.intern("caller"), vec![Instruction::Return]);
+    let mut process = Process::new(1, 64);
+    let fun = export_fun(&mut process, target_atom, run_atom, 0);
+    process.set_x_reg(0, fun);
+
+    let outcome = call_fun(
+        &mut process,
+        &caller,
+        &Operand::Unsigned(0),
+        9,
+        &ext_ctx(Some(&registry)),
+    )
+    .expect("export fun dispatches to bytecode");
+
+    assert_eq!(jump_ip(outcome), 0);
+    assert_eq!(process.stack().len(), 1);
+}
+
+#[test]
+fn call_fun_dispatches_export_fun_to_native_bif() {
+    fn native_seven(_args: &[Term], _ctx: &mut crate::native::ProcessContext) -> Result<Term, Term> {
+        Ok(Term::small_int(7))
+    }
+
+    let atoms = AtomTable::new();
+    let module_atom = atoms.intern("native_mod");
+    let function_atom = atoms.intern("seven");
+    let bifs = std::sync::Arc::new(crate::native::BifRegistryImpl::new());
+    bifs.register(
+        module_atom,
+        function_atom,
+        0,
+        native_seven,
+        crate::native::Capability::Pure,
+    )
+    .expect("register");
+    let services = crate::interpreter::NativeServices {
+        bif_registry: Some(std::sync::Arc::clone(&bifs)),
+        ..crate::interpreter::NativeServices::default()
+    };
+    let registry = ModuleRegistry::new();
+    let ctx = core::ExtCallContext {
+        timers: None,
+        services: Some(&services),
+        registry: Some(&registry),
+        atom_table: None,
+        jit_cache: None,
+    };
+
+    let caller = module(atoms.intern("caller"), vec![Instruction::Return]);
+    let mut process = Process::new(1, 64);
+    let fun = export_fun(&mut process, module_atom, function_atom, 0);
+    process.set_x_reg(0, fun);
+
+    let outcome =
+        call_fun(&mut process, &caller, &Operand::Unsigned(0), 9, &ctx).expect("native dispatch");
+
+    assert!(matches!(outcome, InstructionOutcome::Continue));
+    assert_eq!(process.x_reg(0), Term::small_int(7));
+}
+
+#[test]
+fn call_fun_reports_undef_for_unloaded_export_target() {
+    let atoms = AtomTable::new();
+    let module_atom = atoms.intern("missing_mod");
+    let function_atom = atoms.intern("run");
+    let registry = ModuleRegistry::new();
+
+    let caller = module(atoms.intern("caller"), vec![Instruction::Return]);
+    let mut process = Process::new(1, 64);
+    let fun = export_fun(&mut process, module_atom, function_atom, 0);
+    process.set_x_reg(0, fun);
+
+    assert_eq!(
+        call_fun(
+            &mut process,
+            &caller,
+            &Operand::Unsigned(0),
+            9,
+            &ext_ctx(Some(&registry))
+        ),
+        Err(ExecError::Undef {
+            module: module_atom,
+            function: function_atom,
+            arity: 0,
+        })
+    );
 }
