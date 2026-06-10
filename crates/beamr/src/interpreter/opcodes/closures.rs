@@ -15,6 +15,12 @@ use crate::term::compare;
 
 use super::core;
 
+/// Heap words of a closure object excluding its free variables: the boxed
+/// header plus six metadata slots (module, lambda/function ids, arity,
+/// num_free, unique id). `make_fun` allocates this plus one word per free
+/// variable; allocation-list accounting must reserve the same.
+pub(crate) const CLOSURE_BASE_WORDS: usize = 7;
+
 pub fn make_fun(
     process: &mut Process,
     module: &Module,
@@ -44,7 +50,7 @@ pub fn make_fun(
     } else {
         lambda.arity
     };
-    let words = 7usize
+    let words = CLOSURE_BASE_WORDS
         .checked_add(free_vars.len())
         .ok_or(ExecError::InvalidOperand("closure size"))?;
     let ptr = process.heap_mut().alloc(words).map_err(ExecError::from)?;

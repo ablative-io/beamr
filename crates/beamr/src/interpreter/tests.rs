@@ -2196,3 +2196,26 @@ fn interpreter_binary_opcodes_construct_and_match_binary_patterns() {
         &[67]
     );
 }
+
+#[test]
+fn alloc_list_fun_entries_reserve_the_full_closure_base() {
+    use crate::interpreter::opcodes::closures::CLOSURE_BASE_WORDS;
+    use crate::loader::decode::compact::Allocation;
+
+    // `{test_heap, {alloc, [{words,3},{funs,1}]}, Live}` must leave room for
+    // a subsequent make_fun (closure base; free-variable words arrive in the
+    // words component) plus the listed words, or the follow-up put_tuple2
+    // starves mid-instruction-sequence.
+    let mut process = Process::new(1, 2);
+    crate::interpreter::opcodes::core::test_heap(
+        &mut process,
+        &Operand::Allocation(vec![Allocation::Words(3), Allocation::Funs(1)]),
+        &Operand::Unsigned(0),
+    )
+    .expect("test_heap grows the heap");
+    assert!(
+        process.heap().available() >= 3 + CLOSURE_BASE_WORDS,
+        "alloc list must reserve words + full closure base, available: {}",
+        process.heap().available()
+    );
+}

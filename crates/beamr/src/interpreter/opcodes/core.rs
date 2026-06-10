@@ -779,7 +779,9 @@ pub(crate) fn operand_usize(operand: &Operand, context: &'static str) -> Result<
                 let words = match entry {
                     Allocation::Words(n) => *n as usize,
                     Allocation::Floats(n) => (*n as usize) * 2,
-                    Allocation::Funs(n) => (*n as usize) * 6,
+                    // The compiler counts free-variable words in the Words
+                    // component; each fun entry covers the closure base.
+                    Allocation::Funs(n) => (*n as usize) * super::closures::CLOSURE_BASE_WORDS,
                     Allocation::Unknown { .. } => 0,
                 };
                 total = total.saturating_add(words);
