@@ -1,1 +1,1 @@
-feat(telemetry): add VM health and process metrics
+harden telemetry metrics facade and process metric cleanup

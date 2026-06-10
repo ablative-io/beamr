@@ -310,6 +310,11 @@ impl SharedState {
     }
 
     #[cfg(feature = "telemetry")]
+    pub(super) fn remove_process_metric_state(&self, pid: u64) {
+        lock_or_recover(&self.telemetry_metrics.last_process_samples).remove(&pid);
+    }
+
+    #[cfg(feature = "telemetry")]
     fn record_vm_health_metrics(&self) {
         let (heap_words, _) = self.process_heap_and_binary_words();
         crate::telemetry::metrics::record_vm_health(

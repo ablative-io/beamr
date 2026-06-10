@@ -706,7 +706,10 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     let _removed = shared.process_table.remove(pid);
     let _removed_body = shared.process_bodies.remove(&pid);
     #[cfg(feature = "telemetry")]
-    shared.record_scheduler_executing(std::time::Duration::ZERO);
+    {
+        shared.remove_process_metric_state(pid);
+        shared.record_scheduler_executing(std::time::Duration::ZERO);
+    }
     let mut wait_set = lock_or_recover(&shared.wait_set);
     wait_set.waiting.remove(&pid);
     wait_set.woken.retain(|(woken_pid, _)| *woken_pid != pid);

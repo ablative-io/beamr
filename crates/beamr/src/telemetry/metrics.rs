@@ -1,5 +1,6 @@
 //! OpenTelemetry metric helpers for VM health and per-process scheduler state.
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use opentelemetry::KeyValue;
@@ -71,8 +72,9 @@ impl Instruments {
     }
 }
 
-fn instruments() -> Instruments {
-    Instruments::new()
+fn instruments() -> &'static Instruments {
+    static INSTRUMENTS: OnceLock<Instruments> = OnceLock::new();
+    INSTRUMENTS.get_or_init(Instruments::new)
 }
 
 /// Record a VM health snapshot.
