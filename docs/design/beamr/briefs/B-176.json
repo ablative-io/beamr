@@ -1,0 +1,91 @@
+{
+  "id": "B-176",
+  "cluster": "beamr",
+  "title": "Test reliability — enable differential tests, fix sample_workflow_e2e, harden flaky tests",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": [],
+  "stories": [],
+  "purpose": "The differential JIT test suite (tests/differential.rs) is behind a feature gate and never runs in CI or cargo test, meaning JIT/interpreter divergence goes undetected. The sample_workflow_e2e test fails because the sample workflow hits an unimplemented BIF or runtime error that returns ExitReason::Error — but the error is opaque (Term(4398215108)) with no diagnostic. Two tests are flaky due to timing/fd-race conditions. This brief fixes all four test reliability issues so the full test suite is green and stays green.",
+  "task": "Remove the differential feature gate so differential tests run by default. Investigate and fix the sample_workflow_e2e failure (likely missing BIF or runtime error). Harden the two flaky tests (cleanup_exited_process_closes_fd_resources_owned_by_process and dirty_nif_round_trip_does_not_block_normal_scheduler) with proper synchronization instead of timing assumptions.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Enable differential tests by default",
+      "spec": "Remove the #![cfg(feature = \"differential\")] gate from tests/differential.rs. Add any missing dev-dependencies (proptest is already in dev-deps). Ensure cargo test -p beamr --test differential passes. If any differential tests fail due to known JIT limitations, mark them with #[ignore] and a comment naming the limitation, rather than gating the entire file.",
+      "acceptance": [
+        "cargo test -p beamr --test differential runs without --features differential",
+        "All passing differential tests continue to pass",
+        "Any JIT-limited tests are individually #[ignore]d with a reason comment",
+        "The differential feature flag is removed from Cargo.toml"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/tests/differential.rs",
+          "crates/beamr/Cargo.toml"
+        ]
+      },
+      "checklist": [],
+      "stories": []
+    },
+    {
+      "id": "R2",
+      "title": "Fix sample_workflow_e2e test failure",
+      "spec": "Investigate why sample_workflow_e2e returns ExitReason::Error instead of Normal. Use take_exit_error/take_exit_exception from the scheduler to identify the crash reason. Fix the underlying issue — likely a missing BIF, incorrect arity, or unimplemented opcode. If the fix requires new BIF implementations, add them. The test shall pass with ExitReason::Normal.",
+      "acceptance": [
+        "cargo test -p beamr --test sample_workflow_e2e passes",
+        "The sample workflow completes with ExitReason::Normal",
+        "The output file is written to the expected path",
+        "No new Box::leak sites are introduced"
+      ],
+      "files": {
+        "modify": ["crates/beamr/tests/sample_workflow_e2e.rs"]
+      },
+      "checklist": [],
+      "stories": []
+    },
+    {
+      "id": "R3",
+      "title": "Harden flaky process cleanup test",
+      "spec": "Fix cleanup_exited_process_closes_fd_resources_owned_by_process to use synchronization primitives (e.g. condvar or channel) instead of timing-based assumptions. The test fails intermittently due to a pipe fd race — the cleanup runs before the fd is fully registered, or after it is already closed.",
+      "acceptance": [
+        "Test passes reliably in 100 consecutive runs",
+        "No sleep-based synchronization",
+        "Test completes in under 1 second"
+      ],
+      "files": {
+        "modify": []
+      },
+      "checklist": [],
+      "stories": []
+    },
+    {
+      "id": "R4",
+      "title": "Harden flaky dirty NIF test",
+      "spec": "Fix dirty_nif_round_trip_does_not_block_normal_scheduler to use synchronization primitives instead of timing assumptions. The test fails intermittently because the dirty NIF completion races with the scheduler's polling interval.",
+      "acceptance": [
+        "Test passes reliably in 100 consecutive runs",
+        "No sleep-based synchronization beyond the dirty NIF's actual work",
+        "Test completes in under 2 seconds"
+      ],
+      "files": {
+        "modify": []
+      },
+      "checklist": [],
+      "stories": []
+    }
+  ],
+  "boundaries": [
+    "Differential tests that fail due to known JIT limitations are marked #[ignore], not deleted",
+    "sample_workflow_e2e fix addresses the immediate crash — deeper workflow coverage is separate",
+    "Flaky test fixes use proper synchronization, not longer timeouts",
+    "OUT OF SCOPE: Adding new differential test scenarios — only enabling existing ones",
+    "OUT OF SCOPE: Changing the sample workflow's Gleam source code"
+  ],
+  "verification": [
+    "cargo test -p beamr passes with zero failures",
+    "cargo test -p beamr --test differential passes without --features flag",
+    "cargo test -p beamr --test sample_workflow_e2e passes",
+    "cargo test -p beamr --test no_box_leak passes (no regression from other changes)"
+  ]
+}

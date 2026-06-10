@@ -1,0 +1,79 @@
+{
+  "id": "B-175",
+  "cluster": "beamr",
+  "title": "ETS match spec arena allocator — eliminate Box::leak in production code",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": [],
+  "stories": [],
+  "purpose": "The ETS match spec evaluator uses a LeakingAllocator that calls Box::leak to produce match result tuples and lists. These allocations are never freed, causing unbounded memory growth in long-running processes that use ETS match operations. The no_box_leak CI gate test correctly catches this. BEAM solves this with per-table or per-operation allocators. This brief replaces LeakingAllocator with an arena-backed allocator that owns the memory and frees it when the match results are consumed.",
+  "task": "Replace the LeakingAllocator in ets/match_spec.rs with an arena allocator that owns heap memory for match spec result terms. The arena should live as long as the match operation's result set. When results are copied into a process heap (the normal consumption path), the arena can be dropped. This fixes the no_box_leak CI gate test.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "MatchArena owned allocator",
+      "spec": "Create a MatchArena struct in crates/beamr/src/ets/match_arena.rs that implements TermAllocator. It shall own a Vec<Box<[u64]>> of allocation blocks. alloc_tuple and alloc_list allocate from new blocks pushed onto the Vec. The arena frees all memory when dropped.",
+      "acceptance": [
+        "MatchArena implements TermAllocator",
+        "alloc_tuple produces valid tuple Terms",
+        "alloc_list produces valid list Terms",
+        "Dropping MatchArena frees all allocated memory",
+        "Terms produced by MatchArena are valid as long as the arena is alive"
+      ],
+      "files": {
+        "create": ["crates/beamr/src/ets/match_arena.rs"],
+        "modify": ["crates/beamr/src/ets/mod.rs"]
+      },
+      "checklist": [],
+      "stories": []
+    },
+    {
+      "id": "R2",
+      "title": "Replace LeakingAllocator with MatchArena",
+      "spec": "Replace all uses of LeakingAllocator in match_spec.rs with MatchArena. The CompiledMatchSpec::run method shall accept or create a MatchArena and return results tied to its lifetime. Remove the LeakingAllocator struct entirely.",
+      "acceptance": [
+        "LeakingAllocator is deleted from match_spec.rs",
+        "No Box::leak calls remain in match_spec.rs",
+        "CompiledMatchSpec::run uses MatchArena",
+        "All existing ETS match spec tests pass",
+        "The no_box_leak CI gate test passes"
+      ],
+      "files": {
+        "modify": ["crates/beamr/src/ets/match_spec.rs"]
+      },
+      "checklist": [],
+      "stories": []
+    },
+    {
+      "id": "R3",
+      "title": "Result copying to process heap",
+      "spec": "ETS select/match operations that return results to a process shall deep-copy arena-allocated terms into the process heap before the arena is dropped. Add a copy_term_to_process utility if one does not already exist.",
+      "acceptance": [
+        "ETS select returns terms allocated on the process heap, not the arena",
+        "Arena is dropped after results are copied",
+        "Process heap terms remain valid after arena drop",
+        "No use-after-free on arena-allocated terms"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/ets/set.rs",
+          "crates/beamr/src/ets/match_spec.rs"
+        ]
+      },
+      "checklist": [],
+      "stories": []
+    }
+  ],
+  "boundaries": [
+    "Arena is per-match-operation, not per-table — keeps memory bounded to operation scope",
+    "No changes to the ETS table data storage model (entries still live in table-owned memory)",
+    "OUT OF SCOPE: Full ETS-owned heap (BEAM's per-table allocator) — arena per match operation is sufficient",
+    "OUT OF SCOPE: Concurrent arena access — match operations are single-threaded per operation"
+  ],
+  "verification": [
+    "cargo test -p beamr --test no_box_leak passes",
+    "cargo test -p beamr --lib -- ets passes",
+    "grep -r 'Box::leak' crates/beamr/src/ returns only src/atom/table.rs hits",
+    "No LeakingAllocator remains in the codebase"
+  ]
+}
