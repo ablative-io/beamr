@@ -77,8 +77,8 @@ fn namespaces_load_same_module_name_independently() {
 
     assert_eq!(reason1, ExitReason::Normal);
     assert_eq!(reason2, ExitReason::Normal);
-    assert_eq!(result1, Term::small_int(1));
-    assert_eq!(result2, Term::small_int(2));
+    assert_eq!(result1.root(), Term::small_int(1));
+    assert_eq!(result2.root(), Term::small_int(2));
     scheduler.shutdown();
 }
 
@@ -98,7 +98,7 @@ fn default_namespace_spawn_matches_existing_api() {
     let (reason, result) = scheduler.run_until_exit(p);
 
     assert_eq!(reason, ExitReason::Normal);
-    assert_eq!(result, Term::small_int(1));
+    assert_eq!(result.root(), Term::small_int(1));
     scheduler.shutdown();
 }
 
@@ -130,8 +130,8 @@ fn namespace_hot_load_does_not_affect_other_namespace() {
     let (_reason1, result1) = scheduler.run_until_exit(p1);
     let (_reason2, result2) = scheduler.run_until_exit(p2);
 
-    assert_eq!(result1, Term::small_int(2));
-    assert_eq!(result2, Term::small_int(1));
+    assert_eq!(result1.root(), Term::small_int(2));
+    assert_eq!(result2.root(), Term::small_int(1));
     scheduler.shutdown();
 }
 
@@ -202,7 +202,7 @@ fn force_purge_module_in_only_affects_target_namespace() {
         .expect("spawn ns2 current");
     let (reason, result) = scheduler.run_until_exit(p);
     assert_eq!(reason, ExitReason::Normal);
-    assert_eq!(result, Term::small_int(2));
+    assert_eq!(result.root(), Term::small_int(2));
     scheduler.shutdown();
 }
 
@@ -234,14 +234,14 @@ fn spawn_from_process_inherits_parent_namespace() {
         .expect("spawn child_version in ns1");
     let (ns1_reason, ns1_result) = scheduler.run_until_exit(ns1_pid);
     assert_eq!(ns1_reason, ExitReason::Normal);
-    assert_eq!(ns1_result, Term::small_int(1));
+    assert_eq!(ns1_result.root(), Term::small_int(1));
 
     let ns2_pid = scheduler
         .spawn_in(ns2, parent, child_version, Vec::new())
         .expect("spawn child_version in ns2");
     let (ns2_reason, ns2_result) = scheduler.run_until_exit(ns2_pid);
     assert_eq!(ns2_reason, ExitReason::Normal);
-    assert_eq!(ns2_result, Term::small_int(2));
+    assert_eq!(ns2_result.root(), Term::small_int(2));
 
     assert!(scheduler.lookup_module_in(ns1, counter).is_some());
     assert!(scheduler.lookup_module_in(ns2, counter).is_some());
@@ -277,7 +277,7 @@ fn deferred_import_resolves_only_in_calling_namespace() {
         .expect("spawn deferred caller in ns1");
     let (ok_reason, ok_result) = scheduler.run_until_exit(ok_pid);
     assert_eq!(ok_reason, ExitReason::Normal);
-    assert_eq!(ok_result, Term::small_int(1));
+    assert_eq!(ok_result.root(), Term::small_int(1));
 
     let missing_pid = scheduler
         .spawn_in(ns2, caller, call_counter, Vec::new())

@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::atom::Atom;
 use crate::native::ProcessContext;
-use crate::process::Process;
 use crate::native::registry::{RegistryError, RegistryFacility};
 use crate::term::Term;
 

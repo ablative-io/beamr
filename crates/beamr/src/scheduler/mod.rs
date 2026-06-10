@@ -1,5 +1,6 @@
 pub mod dirty;
 mod execution;
+mod exit_capture;
 mod module_management;
 mod process_slot;
 pub mod run_queue;
@@ -21,7 +22,9 @@ use crate::distribution::{DEFAULT_NODE_NAME, NetKernel, Node};
 pub use wasm::{WasmRunSummary, WasmScheduler};
 
 use crate::error::ExecError;
+use crate::ets::copy::OwnedTerm;
 use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
+pub use exit_capture::OwnedException;
 use crate::hook::Hook;
 use crate::io::{
     CompletionRing, CompletionRingIoFacility, IoCompletion, IoCompletionBridge, IoFacility, IoOp,
@@ -119,9 +122,9 @@ pub(super) struct SharedState {
     wake_condvar: Condvar,
     process_bodies: DashMap<u64, Mutex<ProcessSlot>>,
     exit_tombstones: DashMap<u64, ExitReason>,
-    exit_results: DashMap<u64, Term>,
+    exit_results: DashMap<u64, OwnedTerm>,
     exit_errors: DashMap<u64, ExecError>,
-    exit_exceptions: DashMap<u64, crate::process::Exception>,
+    exit_exceptions: DashMap<u64, OwnedException>,
     async_results: DashMap<u64, Term>,
     dirty_results: DashMap<u64, DirtyResult>,
     file_io_ring: Arc<dyn CompletionRing>,

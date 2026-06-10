@@ -1,6 +1,7 @@
 //! Private process time-slice execution helpers.
 
 use crate::atom::Atom;
+use crate::ets::copy::OwnedTerm;
 use crate::gc::release_all_refcounted_resources;
 use crate::hook::HookDecision;
 use crate::interpreter::{self, ExecutionResult};
@@ -21,7 +22,9 @@ pub(in crate::scheduler) enum SliceOutcome {
     Requeue(Process),
     Wait(Process),
     Suspended(Process),
-    Exited(ExitReason, Term),
+    /// The result is captured as an owning copy before `Process::terminate`
+    /// frees the heap it pointed into.
+    Exited(ExitReason, OwnedTerm),
 }
 
 pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64, my_index: usize) {
@@ -276,10 +279,16 @@ pub(in crate::scheduler) fn execute_slice(
             | ProcessStatus::Waiting
             | ProcessStatus::Suspended
     ) {
-        return SliceOutcome::Exited(exit_reason_from_status(process.status()), process.x_reg(0));
+        return SliceOutcome::Exited(
+            exit_reason_from_status(process.status()),
+            crate::scheduler::exit_capture::capture_term(process.x_reg(0)),
+        );
     }
     if process.transition_to(ProcessStatus::Running).is_err() {
-        return SliceOutcome::Exited(exit_reason_from_status(process.status()), process.x_reg(0));
+        return SliceOutcome::Exited(
+            exit_reason_from_status(process.status()),
+            crate::scheduler::exit_capture::capture_term(process.x_reg(0)),
+        );
     }
     #[cfg(feature = "telemetry")]
     let span = start_slice_span(shared, process);
@@ -499,11 +508,18 @@ fn finish_slice_span(
 
 fn exit_process(shared: &SharedState, process: &mut Process, reason: ExitReason) -> SliceOutcome {
     let pid = process.pid();
-    let result = process.x_reg(0);
+    // Capture before `terminate` below replaces the heap the result points
+    // into.
+    let result = crate::scheduler::exit_capture::capture_term(process.x_reg(0));
     if let Some(exception) = process.current_exception() {
         #[cfg(feature = "telemetry")]
         crate::telemetry::lifecycle::record_process_crashed(&shared.atom_table, pid, exception);
-        shared.exit_exceptions.insert(pid, exception);
+        // Capture while the process heap is still alive; the exception terms
+        // point into it and the heap is freed during cleanup.
+        shared.exit_exceptions.insert(
+            pid,
+            crate::scheduler::exit_capture::OwnedException::capture(exception),
+        );
     } else if reason != ExitReason::Normal {
         #[cfg(feature = "telemetry")]
         crate::telemetry::lifecycle::record_process_crashed_reason(&shared.atom_table, pid, reason);

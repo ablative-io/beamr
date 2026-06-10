@@ -192,8 +192,8 @@ fn new_processes_use_new_version_and_purge_after_old_process_exits() {
     let (reason2, result2) = scheduler.run_until_exit(p2);
     assert_eq!(reason1, ExitReason::Normal);
     assert_eq!(reason2, ExitReason::Normal);
-    assert_eq!(result1, Term::small_int(1));
-    assert_eq!(result2, Term::small_int(2));
+    assert_eq!(result1.root(), Term::small_int(1));
+    assert_eq!(result2.root(), Term::small_int(2));
 
     scheduler.purge_module(counter).expect("safe purge");
     assert!(!scheduler.check_old_code(counter));
@@ -218,7 +218,7 @@ fn on_load_success_commits_and_failure_rolls_back() {
         .expect("spawn committed on_load module");
     let (reason1, result1) = scheduler.run_until_exit(p1);
     assert_eq!(reason1, ExitReason::Normal);
-    assert_eq!(result1, Term::small_int(1));
+    assert_eq!(result1.root(), Term::small_int(1));
 
     let failed = scheduler
         .hot_load_module(&fixture("on_load_crash.beam"))
@@ -231,7 +231,7 @@ fn on_load_success_commits_and_failure_rolls_back() {
         .expect("spawn retained previous module");
     let (reason2, result2) = scheduler.run_until_exit(p2);
     assert_eq!(reason2, ExitReason::Normal);
-    assert_eq!(result2, Term::small_int(1));
+    assert_eq!(result2.root(), Term::small_int(1));
     scheduler.shutdown();
 }
 
@@ -257,8 +257,8 @@ fn closure_fixtures_hot_load_and_versions_are_tracked() {
 
     let (_reason1, result1) = scheduler.run_until_exit(p1);
     let (_reason2, result2) = scheduler.run_until_exit(p2);
-    assert_eq!(result1, Term::small_int(1));
-    assert_eq!(result2, Term::small_int(2));
+    assert_eq!(result1.root(), Term::small_int(1));
+    assert_eq!(result2.root(), Term::small_int(2));
     scheduler.force_purge_module(module).expect("force purge");
     scheduler.shutdown();
 }

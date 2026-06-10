@@ -24,32 +24,8 @@ fn bif_and_literal_heavy_workload_does_not_grow_monotonically() {
     let registry = ModuleRegistry::new();
     let services = NativeServices {
         atom_table: Some(Arc::clone(&atom_table)),
-        local_node: None,
-        timers: None,
-        spawn_facility: None,
-        remote_spawn_facility: None,
-        link_facility: None,
-        distribution_control_facility: None,
-        global_name_facility: None,
-        supervision_facility: None,
-        io_sink: None,
-        code_management_facility: None,
-        process_info_facility: None,
-        system_info_facility: None,
-        group_leader_facility: None,
-        ets_facility: None,
-        pg_facility: None,
-        io_facility: None,
-        io_message_facility: None,
-        net_kernel: None,
-        distribution_send: None,
-        file_io_facility: None,
-        tcp_io_facility: None,
-        jit_cache: None,
-        replay_driver: None,
-        capability_audit_sink: None,
-        capability_violation_handler: None,
-    };
+        ..NativeServices::default()
+    };
     let mut process = Process::new(1, 512);
     process.reset_reductions(500_000);
     process.heap_mut().set_max_capacity(64 * 1024);

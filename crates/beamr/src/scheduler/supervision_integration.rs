@@ -582,12 +582,10 @@ pub(super) fn build_native_services(
         pg_facility: Some(pg_facility),
         timers: Some(Arc::clone(&shared.timers)),
         spawn_facility: Some(spawn),
-        remote_spawn_facility: None,
         link_facility: Some(link),
         distribution_control_facility: Some(Arc::new(SchedulerDistributionControlFacility {
             shared: Arc::clone(shared),
         })),
-        global_name_facility: None,
         group_leader_facility: Some(group_leader),
         supervision_facility: Some(supervision),
         process_info_facility: Some(process_info),
@@ -610,8 +608,7 @@ pub(super) fn build_native_services(
         }),
         jit_cache: Some(Arc::clone(&shared.jit_cache)),
         replay_driver: shared.replay_driver.clone(),
-        capability_audit_sink: None,
-        capability_violation_handler: None,
+        ..crate::interpreter::NativeServices::default()
     }
 }
 

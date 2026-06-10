@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
 use crate::error::ExecError;
+use crate::ets::copy::OwnedTerm;
 use crate::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
@@ -42,7 +43,7 @@ pub struct WasmScheduler {
     ready: ReadyQueues,
     waiting: BTreeSet<u64>,
     exit_reasons: BTreeMap<u64, ExitReason>,
-    exit_results: BTreeMap<u64, Term>,
+    exit_results: BTreeMap<u64, OwnedTerm>,
     exit_errors: BTreeMap<u64, ExecError>,
 }
 
@@ -220,7 +221,10 @@ impl WasmScheduler {
                     let x0 = process.x_reg(0);
                     let _transition = process.transition_to(ProcessStatus::Exited(reason));
                     self.exit_reasons.insert(pid, reason);
-                    self.exit_results.insert(pid, x0);
+                    // Deep-copy while the process heap is still alive; the
+                    // process is dropped at the end of this scope.
+                    self.exit_results
+                        .insert(pid, super::exit_capture::capture_term(x0));
                     summary.exited.push(pid);
                 }
                 Ok(ExecutionResult::DirtyCall { .. }) => {
@@ -246,48 +250,29 @@ impl WasmScheduler {
     }
 
     /// Return a process exit result captured from x(0), if available.
+    ///
+    /// The result is an owning deep copy that outlives the exited process.
     #[must_use]
-    pub fn take_exit_result(&mut self, pid: u64) -> Option<Term> {
+    pub fn take_exit_result(&mut self, pid: u64) -> Option<OwnedTerm> {
         self.exit_results.remove(&pid)
     }
 
     /// Return all currently recorded exit results without consuming them.
+    ///
+    /// The returned terms borrow storage owned by this scheduler; they stay
+    /// valid until the corresponding entry is removed via `take_exit_result`.
     #[must_use]
     pub fn exit_results(&self) -> Vec<(u64, Term)> {
         self.exit_results
             .iter()
-            .map(|(pid, term)| (*pid, *term))
+            .map(|(pid, owned)| (*pid, owned.root()))
             .collect()
     }
 
     fn native_services(&self) -> NativeServices {
         NativeServices {
             atom_table: Some(Arc::clone(&self.atom_table)),
-            local_node: None,
-            net_kernel: None,
-            distribution_send: None,
-            timers: None,
-            spawn_facility: None,
-            remote_spawn_facility: None,
-            link_facility: None,
-            distribution_control_facility: None,
-            global_name_facility: None,
-            group_leader_facility: None,
-            supervision_facility: None,
-            process_info_facility: None,
-            io_sink: None,
-            code_management_facility: None,
-            system_info_facility: None,
-            ets_facility: None,
-            pg_facility: None,
-            io_facility: None,
-            io_message_facility: None,
-            file_io_facility: None,
-            tcp_io_facility: None,
-            jit_cache: None,
-            replay_driver: None,
-            capability_audit_sink: None,
-            capability_violation_handler: None,
+            ..NativeServices::default()
         }
     }
 }

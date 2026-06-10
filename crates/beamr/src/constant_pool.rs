@@ -313,13 +313,32 @@ fn materialise_literal(
             pool.push_root(term)
         }
         Literal::Atom(atom) => Ok(RootEntry::Immediate(Term::atom(*atom))),
-        Literal::Binary(bytes) | Literal::String(bytes) => {
+        Literal::Binary(bytes) => {
             let block = pool.push_block(
                 vec![0; 2 + packed_word_count(bytes.len())],
                 BlockKind::Boxed,
             )?;
             let term = write_binary(&mut pool.blocks[block], bytes).ok_or_else(write_failed)?;
             pool.push_root(term)
+        }
+        // STRING_EXT is a compact wire encoding for a proper list of byte-sized
+        // integers, not a binary — it must materialise as cons cells.
+        Literal::String(bytes) => {
+            if bytes.is_empty() {
+                return Ok(RootEntry::Immediate(Term::NIL));
+            }
+            let block = pool.push_block(vec![0; bytes.len() * 2], BlockKind::List)?;
+            let mut result = Term::NIL;
+            for (index, byte) in bytes.iter().enumerate().rev() {
+                let start = index * 2;
+                result = write_cons(
+                    &mut pool.blocks[block][start..start + 2],
+                    Term::small_int(i64::from(*byte)),
+                    result,
+                )
+                .ok_or_else(write_failed)?;
+            }
+            pool.push_root(result)
         }
         Literal::Nil => Ok(RootEntry::Immediate(Term::NIL)),
         Literal::Tuple(elements) => {
@@ -429,6 +448,28 @@ mod tests {
     use crate::term::{Term, compare};
 
     use super::materialise_literals;
+
+    #[test]
+    fn string_literal_materialises_as_proper_list_of_small_ints() {
+        let literals = vec![Literal::String(vec![1, 2, 3])];
+        let pool = materialise_literals(&literals, None).expect("pool");
+
+        let mut current = pool.get(0).expect("string literal");
+        let mut elements = Vec::new();
+        while !current.is_nil() {
+            let cons = Cons::new(current).expect("string literal must be cons cells");
+            elements.push(cons.head().as_small_int().expect("byte element"));
+            current = cons.tail();
+        }
+        assert_eq!(elements, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn empty_string_literal_materialises_as_nil() {
+        let literals = vec![Literal::String(Vec::new())];
+        let pool = materialise_literals(&literals, None).expect("pool");
+        assert!(pool.get(0).expect("empty string literal").is_nil());
+    }
 
     #[test]
     fn materialises_literal_storage_and_returns_stable_roots() {

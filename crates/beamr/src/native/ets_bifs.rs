@@ -1259,12 +1259,6 @@ mod tests {
         tuple(context, elements)
     }
 
-    fn table_id(tab: Term) -> u64 {
-        tab.as_small_int()
-            .and_then(|value| u64::try_from(value).ok())
-            .expect("numeric table id")
-    }
-
     fn list_terms(list: Term) -> Vec<Term> {
         let mut values = Vec::new();
         let mut tail = list;

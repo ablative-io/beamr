@@ -8,6 +8,7 @@ use std::time::Instant;
 use crossbeam_queue::SegQueue;
 
 use crate::error::ExecError;
+use crate::ets::copy::OwnedTerm;
 use crate::process::ExitReason;
 use crate::scheduler::dirty::DirtyResult;
 use crate::term::Term;
@@ -58,7 +59,11 @@ impl Scheduler {
 
     /// Block until the given process exits, returning its exit reason and
     /// the value in x(0) at the time of exit.
-    pub fn run_until_exit(&self, pid: u64) -> (ExitReason, Term) {
+    ///
+    /// The result is an owning deep copy made at the exit boundary: it stays
+    /// valid after the process heap is freed, for as long as the caller holds
+    /// it.
+    pub fn run_until_exit(&self, pid: u64) -> (ExitReason, OwnedTerm) {
         loop {
             if let Some(entry) = self.shared.exit_tombstones.get(&pid) {
                 let reason = *entry;
@@ -67,7 +72,7 @@ impl Scheduler {
                     .exit_results
                     .remove(&pid)
                     .map(|(_, term)| term)
-                    .unwrap_or(Term::NIL);
+                    .unwrap_or_else(|| OwnedTerm::immediate(Term::NIL));
                 return (reason, result);
             }
             let guard = lock_or_recover(&self.shared.wait_set);
@@ -82,7 +87,10 @@ impl Scheduler {
     }
 
     /// Retrieve the BEAM exception that caused a process to exit, if any.
-    pub fn take_exit_exception(&self, pid: u64) -> Option<crate::process::Exception> {
+    ///
+    /// The exception terms are owning deep copies that remain valid after the
+    /// process heap is freed.
+    pub fn take_exit_exception(&self, pid: u64) -> Option<super::OwnedException> {
         self.shared.exit_exceptions.remove(&pid).map(|(_, e)| e)
     }
 

@@ -29,6 +29,25 @@ impl OwnedTerm {
         Self { root, allocations }
     }
 
+    /// Wraps an immediate term (small int, atom, nil, pid) that owns no
+    /// heap storage.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds when `term` points into a heap, because such a
+    /// term would dangle as soon as its source heap is freed.
+    #[must_use]
+    pub fn immediate(term: Term) -> Self {
+        debug_assert!(
+            term.heap_ptr().is_none(),
+            "OwnedTerm::immediate requires a non-heap term"
+        );
+        Self {
+            root: term,
+            allocations: Vec::new(),
+        }
+    }
+
     /// Root term value for table-side comparisons and traversal.
     #[must_use]
     pub const fn root(&self) -> Term {

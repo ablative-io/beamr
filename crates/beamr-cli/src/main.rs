@@ -410,7 +410,7 @@ fn run_module(
     match reason {
         ExitReason::Normal => Ok(CliSuccess::Stdout(format!(
             "{}\n",
-            format_term(result, &atom_table)
+            format_term(result.root(), &atom_table)
         ))),
         other => {
             let detail = exit_exception

@@ -157,33 +157,9 @@ impl WorkloadFixture {
 
 fn native_services(jit_cache: Option<Arc<JitCache>>) -> NativeServices {
     NativeServices {
-        atom_table: None,
-        local_node: None,
-        net_kernel: None,
-        distribution_send: None,
-        timers: None,
-        spawn_facility: None,
-        remote_spawn_facility: None,
-        link_facility: None,
-        distribution_control_facility: None,
-        global_name_facility: None,
-        group_leader_facility: None,
-        supervision_facility: None,
-        process_info_facility: None,
-        io_sink: None,
-        code_management_facility: None,
-        system_info_facility: None,
-        ets_facility: None,
-        pg_facility: None,
-        io_facility: None,
-        io_message_facility: None,
-        file_io_facility: None,
-        tcp_io_facility: None,
         jit_cache,
-        replay_driver: None,
-        capability_audit_sink: None,
-        capability_violation_handler: None,
-    }
+        ..NativeServices::default()
+    }
 }
 
 fn compile_fixture(fixture: &WorkloadFixture) -> Arc<JitCache> {

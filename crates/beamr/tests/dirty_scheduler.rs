@@ -170,11 +170,7 @@ fn dirty_nif_round_trip_does_not_block_normal_scheduler() {
             dirty_cpu_threads: Some(1),
             dirty_io_threads: Some(1),
             dirty_queue_depth: Some(8),
-            io: None,
-            node_name: None,
-            creation: None,
-            distribution: None,
-            jit_threshold: None,
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -187,13 +183,13 @@ fn dirty_nif_round_trip_does_not_block_normal_scheduler() {
     let normal_pid = scheduler.spawn_process(&normal_module);
     let (normal_reason, normal_result) = scheduler.run_until_exit(normal_pid);
     assert_eq!(normal_reason, ExitReason::Normal);
-    assert_eq!(normal_result, Term::small_int(7));
+    assert_eq!(normal_result.root(), Term::small_int(7));
     assert_eq!(NORMAL_PROGRESS.load(Ordering::Acquire), 1);
     assert!(!dirty_finished_for_generation(generation));
 
     let (dirty_reason, dirty_result) = scheduler.run_until_exit(dirty_pid);
     assert_eq!(dirty_reason, ExitReason::Normal);
-    assert_eq!(dirty_result, Term::small_int(42));
+    assert_eq!(dirty_result.root(), Term::small_int(42));
     assert!(dirty_finished_for_generation(generation));
 
     scheduler.shutdown();
@@ -213,11 +209,7 @@ fn dirty_nif_error_resumes_and_raises_exception() {
             dirty_cpu_threads: Some(1),
             dirty_io_threads: Some(1),
             dirty_queue_depth: Some(8),
-            io: None,
-            node_name: None,
-            creation: None,
-            distribution: None,
-            jit_threshold: None,
+            ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
     )
@@ -229,8 +221,8 @@ fn dirty_nif_error_resumes_and_raises_exception() {
     let exception = scheduler
         .take_exit_exception(pid)
         .expect("dirty native error captured exception");
-    assert_eq!(exception.class, Term::atom(Atom::ERROR));
-    assert_eq!(exception.reason, Term::atom(Atom::BADARG));
+    assert_eq!(exception.view().class, Term::atom(Atom::ERROR));
+    assert_eq!(exception.view().reason, Term::atom(Atom::BADARG));
 
     scheduler.shutdown();
 }
