@@ -511,8 +511,10 @@ fn run_command_args(
         }
         ("=:=", [_live, bits, value]) => {
             let bits = core::operand_usize(bits, "bs_match exact bits")?;
-            let expected = exact_value_bytes(module, value, bits)?;
-            if match_bytes(context, bits, expected)? {
+            if !context.has_bits(bits) {
+                return Ok(false);
+            }
+            if exact_segment_matches(module, context, bits, value)? {
                 context.set_position_bits(context.position_bits() + bits);
                 Ok(true)
             } else {
@@ -705,15 +707,49 @@ pub(super) fn literal_bytes<'a>(
         }
     }
 }
-fn exact_value_bytes<'a>(
-    module: &'a Module,
-    operand: &'a Operand,
+/// Compare the next `bits` bits of the match context against a `bs_match`
+/// `'=:='` command's expected value without advancing the position.
+///
+/// OTP emits `{'=:=', Live, Bits, Value}` with `Value` as the integer value
+/// of the segment read MSB-first; literal string matches are split into
+/// sub-word chunks (e.g. 31+17 bits for a six-byte tail), so neither the
+/// chunk width nor the running position is byte-aligned in general. A
+/// `Literal` operand instead carries the expected bytes directly and is only
+/// defined for whole-byte segments.
+fn exact_segment_matches(
+    module: &Module,
+    context: MatchContext,
     bits: usize,
-) -> Result<&'a [u8], ExecError> {
-    if !bits.is_multiple_of(u8::BITS as usize) {
-        return Err(ExecError::Badarg);
+    value: &Operand,
+) -> Result<bool, ExecError> {
+    if matches!(value, Operand::Literal(_)) {
+        if !bits.is_multiple_of(u8::BITS as usize) {
+            return Err(ExecError::Badarg);
+        }
+        let expected = literal_bytes(module, value, bits / u8::BITS as usize)?;
+        return match_bytes(context, bits, expected);
     }
-    literal_bytes(module, operand, bits / u8::BITS as usize)
+    let expected = core::operand_usize(value, "bs_match exact value")? as u64;
+    let position = context.position_bits();
+    let actual = match bits {
+        0 => 0,
+        1..=63 => context
+            .read_bits_big_endian(position, bits)
+            .ok_or(ExecError::Badarg)?,
+        64 => {
+            let high = context
+                .read_bits_big_endian(position, 32)
+                .ok_or(ExecError::Badarg)?;
+            let low = context
+                .read_bits_big_endian(position + 32, 32)
+                .ok_or(ExecError::Badarg)?;
+            (high << 32) | low
+        }
+        // Wider chunks arrive as multiple commands; a single oversized
+        // integer comparison has no defined encoding.
+        _ => return Err(ExecError::Badarg),
+    };
+    Ok(actual == expected)
 }
 #[derive(Copy, Clone)]
 pub(crate) struct MatchContext {

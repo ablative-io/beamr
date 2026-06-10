@@ -927,3 +927,76 @@ fn bs_match_runs_commands_and_rolls_back_position_on_failure() {
         before
     );
 }
+
+#[test]
+fn bs_match_compares_split_integer_value_chunks() {
+    // The OTP compiler lowers a literal string clause (Gleam
+    // `case s { "approved" -> ... }`) into an integer extraction that feeds
+    // a select, then `'=:='` commands whose value operand is the INTEGER
+    // value of the next chunk of bits — split sub-word (31+17 bits for the
+    // six-byte tail here), so neither the chunk width nor the running
+    // position stays byte-aligned.
+    let mut process = Process::new(1, 128);
+    let (module, ctx) = start_context(&mut process, b"approved");
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsMatch,
+        &[
+            Operand::Label(9),
+            Operand::X(1),
+            Operand::List(vec![
+                Operand::Unsigned(0),
+                Operand::Unsigned(16),
+                Operand::Unsigned(1),
+                Operand::Unsigned(2),
+                Operand::Unsigned(0),
+                Operand::Atom(None),
+                Operand::Unsigned(16),
+                Operand::Unsigned(1),
+                Operand::X(2),
+            ]),
+        ],
+    )
+    .expect("dispatch extraction");
+    assert_eq!(process.x_reg(2).as_small_int(), Some(0x6170)); // "ap"
+
+    let tail: u64 = 0x7072_6F76_6564; // "proved"
+    let high = tail >> 17;
+    let low = tail & 0x1_FFFF;
+    let exact_commands = |first_chunk: u64| {
+        Operand::List(vec![
+            Operand::Unsigned(1),
+            Operand::Unsigned(48),
+            Operand::Atom(None),
+            Operand::Atom(None),
+            Operand::Unsigned(31),
+            Operand::Unsigned(first_chunk),
+            Operand::Atom(None),
+            Operand::Atom(None),
+            Operand::Unsigned(17),
+            Operand::Unsigned(low),
+        ])
+    };
+
+    // A wrong first chunk must take the fail label and roll the position back.
+    assert!(matches!(
+        binary_op(
+            &mut process,
+            &module,
+            BinaryOp::BsMatch,
+            &[Operand::Label(9), Operand::X(1), exact_commands(high ^ 1),],
+        ),
+        Ok(InstructionOutcome::Jump(_))
+    ));
+    assert_eq!(MatchContext::new(ctx).expect("context").position_bits(), 16);
+
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsMatch,
+        &[Operand::Label(9), Operand::X(1), exact_commands(high)],
+    )
+    .expect("split literal chunks match");
+    assert_eq!(MatchContext::new(ctx).expect("context").position_bits(), 64);
+}
