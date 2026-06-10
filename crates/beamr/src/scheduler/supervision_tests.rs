@@ -13,8 +13,8 @@ use crate::atom::Atom;
 use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
 use crate::io::RingConfig;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, write_fd_resource};
-use crate::process::{ProcessStatus, RemotePid};
 use crate::process::registry::ProcessTable;
+use crate::process::{ProcessStatus, RemotePid};
 use crate::scheduler::execution::{
     cleanup_exited_process, cleanup_if_tombstoned_after_store, store_runnable_process,
 };
@@ -136,6 +136,7 @@ fn make_executing(shared: &SharedState, pid: u64) -> Process {
         ProcessSlot::Present(ScheduledProcess(process)) => {
             let metadata = ProcessMetadata {
                 namespace_id: process.namespace_id(),
+                capabilities: process.capabilities().clone(),
                 links: process.links().to_vec(),
                 remote_links: process.remote_links().to_vec(),
                 monitors: process.monitors().to_vec(),
@@ -803,15 +804,12 @@ fn remote_exit_to_trapping_process_enqueues_remote_exit_tuple() {
     add_remote_link(&shared, target, remote);
     set_trap_exit(&shared, target, true);
 
-    supervision_integration::process_remote_exit_signal(
-        &shared, remote, target, ExitReason::Error,
-    );
+    supervision_integration::process_remote_exit_signal(&shared, remote, target, ExitReason::Error);
 
     let tuple = read_mailbox_tuple(&shared, target).expect("remote EXIT message");
     assert_eq!(tuple.len(), 3);
     assert_eq!(tuple[0], Term::atom(Atom::EXIT));
-    let source =
-        crate::term::boxed::ExternalPid::new(tuple[1]).expect("remote source pid");
+    let source = crate::term::boxed::ExternalPid::new(tuple[1]).expect("remote source pid");
     assert_eq!(source.node(), Some(remote.node));
     assert_eq!(source.pid_number(), remote.pid_number);
     assert_eq!(source.serial(), remote.serial);

@@ -1,1 +1,1 @@
-harden(beamr): bound bigint left-shift allocation
+feat(beamr): enforce per-process native capabilities

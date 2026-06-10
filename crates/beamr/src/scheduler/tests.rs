@@ -690,6 +690,7 @@ fn spawn_facility_options_apply_link_monitor_priority_and_heap_before_wake() {
                 monitor: true,
                 priority: Some(Priority::High),
                 min_heap_size: Some(512),
+                capabilities: None,
             },
         )
         .unwrap_or_else(|error| panic!("spawn_with_options succeeds: {error:?}"));
@@ -880,6 +881,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         pid,
         Mutex::new(ProcessSlot::Executing(ProcessMetadata {
             namespace_id: NamespaceId::DEFAULT,
+            capabilities: process.capabilities().clone(),
             links: Vec::new(),
             remote_links: Vec::new(),
             monitors: Vec::new(),
