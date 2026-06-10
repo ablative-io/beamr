@@ -7,6 +7,8 @@ use crate::term::binary_ref::BinaryRef;
 
 const BASE64_ALPHABET: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_URLSAFE_ALPHABET: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 pub fn bif_binary_encode_hex(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [input] = args else {
@@ -39,13 +41,51 @@ pub fn bif_binary_decode_hex(args: &[Term], context: &mut ProcessContext) -> Res
 }
 
 pub fn bif_base64_encode(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    let [input, alphabet] = args else {
+    let [input, options] = args else {
         return Err(badarg());
     };
-    if atom_name(*alphabet, context)? != "standard" {
-        return Err(badarg());
+    let (alphabet, padding) = base64_options(*options, context)?;
+    let encoded = encode_base64(binary_bytes(*input)?, alphabet, padding);
+    context.alloc_binary(encoded.as_bytes())
+}
+
+/// Decode OTP 26+ `base64:encode/2` options: either an alphabet atom
+/// (`standard` | `urlsafe`) or a map `#{mode => standard | urlsafe,
+/// padding => boolean()}` with both keys optional.
+fn base64_options(
+    options: Term,
+    context: &ProcessContext,
+) -> Result<(&'static [u8; 64], bool), Term> {
+    if options.as_atom().is_some() {
+        return Ok((base64_alphabet(options, context)?, true));
     }
-    context.alloc_binary(encode_base64(binary_bytes(*input)?).as_bytes())
+    let map = crate::term::boxed::Map::new(options).ok_or_else(badarg)?;
+    let mut alphabet: &'static [u8; 64] = BASE64_ALPHABET;
+    let mut padding = true;
+    for index in 0..map.len() {
+        let key = map.key(index).ok_or_else(badarg)?;
+        let value = map.value(index).ok_or_else(badarg)?;
+        match atom_name(key, context)? {
+            "mode" => alphabet = base64_alphabet(value, context)?,
+            "padding" => {
+                padding = match value.as_atom() {
+                    Some(Atom::TRUE) => true,
+                    Some(Atom::FALSE) => false,
+                    _ => return Err(badarg()),
+                }
+            }
+            _ => return Err(badarg()),
+        }
+    }
+    Ok((alphabet, padding))
+}
+
+fn base64_alphabet(mode: Term, context: &ProcessContext) -> Result<&'static [u8; 64], Term> {
+    match atom_name(mode, context)? {
+        "standard" => Ok(BASE64_ALPHABET),
+        "urlsafe" => Ok(BASE64_URLSAFE_ALPHABET),
+        _ => Err(badarg()),
+    }
 }
 
 pub fn bif_base64_decode(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -56,23 +96,23 @@ pub fn bif_base64_decode(args: &[Term], context: &mut ProcessContext) -> Result<
     context.alloc_binary(&decoded)
 }
 
-fn encode_base64(bytes: &[u8]) -> String {
+fn encode_base64(bytes: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0];
         let b1 = chunk.get(1).copied().unwrap_or(0);
         let b2 = chunk.get(2).copied().unwrap_or(0);
 
-        out.push(BASE64_ALPHABET[(b0 >> 2) as usize] as char);
-        out.push(BASE64_ALPHABET[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        out.push(alphabet[(b0 >> 2) as usize] as char);
+        out.push(alphabet[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
         if chunk.len() > 1 {
-            out.push(BASE64_ALPHABET[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
-        } else {
+            out.push(alphabet[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+        } else if padding {
             out.push('=');
         }
         if chunk.len() > 2 {
-            out.push(BASE64_ALPHABET[(b2 & 0x3f) as usize] as char);
-        } else {
+            out.push(alphabet[(b2 & 0x3f) as usize] as char);
+        } else if padding {
             out.push('=');
         }
     }

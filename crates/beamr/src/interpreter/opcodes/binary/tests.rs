@@ -87,22 +87,20 @@ fn interpreter_binary_builder_init_tracks_empty_position_and_capacity() {
 }
 
 #[test]
-fn interpreter_binary_builder_init_reports_gc_needed_when_heap_is_full() {
+fn interpreter_binary_builder_init_collects_and_grows_when_heap_is_full() {
     let mut process = Process::new(1, 2);
     let module = module(Vec::new());
 
-    assert_eq!(
-        binary_op(
-            &mut process,
-            &module,
-            BinaryOp::BsInitWritable,
-            &[Operand::Unsigned(10), Operand::X(0)],
-        ),
-        Err(ExecError::GcNeeded {
-            requested: 5,
-            available: 2
-        })
-    );
+    binary_op(
+        &mut process,
+        &module,
+        BinaryOp::BsInitWritable,
+        &[Operand::Unsigned(10), Operand::X(0)],
+    )
+    .expect("builder init grows the heap instead of failing");
+    let builder = BinaryBuilder::new(process.x_reg(0)).expect("builder term in x0");
+    assert_eq!(builder.write_position_bits(), 0);
+    assert!(builder.capacity_bytes() >= 10);
 }
 
 #[test]

@@ -613,10 +613,13 @@ fn exit_process(shared: &SharedState, process: &mut Process, reason: ExitReason)
         #[cfg(feature = "telemetry")]
         crate::telemetry::lifecycle::record_process_crashed(&shared.atom_table, pid, exception);
         // Capture while the process heap is still alive; the exception terms
-        // point into it and the heap is freed during cleanup.
+        // point into it and the heap is freed during cleanup. Raise-time raw
+        // frames are resolved to names here so diagnostics keep a usable
+        // stacktrace even when the exception term carries none.
+        let frames = resolve_raise_frames(shared, process);
         shared.exit_exceptions.insert(
             pid,
-            crate::scheduler::exit_capture::OwnedException::capture(exception),
+            crate::scheduler::exit_capture::OwnedException::capture_with_frames(exception, frames),
         );
     } else if reason != ExitReason::Normal {
         #[cfg(feature = "telemetry")]
@@ -628,6 +631,38 @@ fn exit_process(shared: &SharedState, process: &mut Process, reason: ExitReason)
     }
     process.terminate(reason);
     SliceOutcome::Exited(reason, result)
+}
+
+/// Resolve the raise-time raw stacktrace into owned, name-resolved frames.
+fn resolve_raise_frames(
+    shared: &SharedState,
+    process: &Process,
+) -> Vec<crate::scheduler::exit_capture::CapturedFrame> {
+    process
+        .raw_stacktrace()
+        .iter()
+        .map(|entry| {
+            let (function, arity) = entry
+                .mfa
+                .map(|(_, function, arity)| (function, arity))
+                .or_else(|| entry.module.function_at_ip(entry.ip))
+                .unwrap_or((crate::atom::Atom::UNDEFINED, 0));
+            crate::scheduler::exit_capture::CapturedFrame {
+                module: shared
+                    .atom_table
+                    .resolve(entry.module.name)
+                    .unwrap_or("#<unknown>")
+                    .to_owned(),
+                function: shared
+                    .atom_table
+                    .resolve(function)
+                    .unwrap_or("#<unknown>")
+                    .to_owned(),
+                arity,
+                line: entry.module.line_at_ip(entry.ip),
+            }
+        })
+        .collect()
 }
 
 #[cfg(feature = "telemetry")]

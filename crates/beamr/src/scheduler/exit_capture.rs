@@ -21,6 +21,23 @@ pub(super) fn capture_term(term: Term) -> OwnedTerm {
     copy_term_to_ets(term).unwrap_or_else(|_| OwnedTerm::immediate(Term::atom(Atom::UNDEFINED)))
 }
 
+/// One stacktrace frame pre-resolved to names at exit time.
+///
+/// The raw frames recorded by `raise_exception` reference pinned modules and
+/// instruction pointers that die with the process; resolving them into plain
+/// strings at the exit boundary lets diagnostics outlive the heap.
+#[derive(Debug)]
+pub struct CapturedFrame {
+    /// Module name.
+    pub module: String,
+    /// Function name.
+    pub function: String,
+    /// Function arity.
+    pub arity: u8,
+    /// Source line, when line info is present in the module.
+    pub line: Option<u32>,
+}
+
 /// An exception whose class, reason, and stacktrace are owned by the capture
 /// rather than borrowed from a process heap.
 #[derive(Debug)]
@@ -28,15 +45,18 @@ pub struct OwnedException {
     class: OwnedTerm,
     reason: OwnedTerm,
     stacktrace: OwnedTerm,
+    frames: Vec<CapturedFrame>,
 }
 
 impl OwnedException {
-    /// Captures `exception` by deep-copying each field out of the process heap.
-    pub(super) fn capture(exception: Exception) -> Self {
+    /// Captures `exception` together with pre-resolved raise-time frames used
+    /// when the exception itself carries no stacktrace term.
+    pub(super) fn capture_with_frames(exception: Exception, frames: Vec<CapturedFrame>) -> Self {
         Self {
             class: capture_term(exception.class),
             reason: capture_term(exception.reason),
             stacktrace: capture_term(exception.stacktrace),
+            frames,
         }
     }
 
@@ -52,10 +72,29 @@ impl OwnedException {
         }
     }
 
+    /// Stacktrace frames resolved at the exit boundary.
+    #[must_use]
+    pub fn frames(&self) -> &[CapturedFrame] {
+        &self.frames
+    }
+
     /// Formats exception details for user-facing diagnostics.
     #[must_use]
     pub fn format_with_atoms(&self, atom_table: &crate::atom::AtomTable) -> String {
-        self.view().format_with_atoms(atom_table)
+        let mut output = self.view().format_with_atoms(atom_table);
+        if self.view().stacktrace.is_nil() && !self.frames.is_empty() {
+            output.push_str("\n  stacktrace (captured at raise):");
+            for frame in &self.frames {
+                output.push_str(&format!(
+                    "\n    {}:{}/{}",
+                    frame.module, frame.function, frame.arity
+                ));
+                if let Some(line) = frame.line {
+                    output.push_str(&format!(" line {line}"));
+                }
+            }
+        }
+        output
     }
 }
 
@@ -93,7 +132,7 @@ mod tests {
             stacktrace: Term::NIL,
         };
 
-        let captured = OwnedException::capture(exception);
+        let captured = OwnedException::capture_with_frames(exception, Vec::new());
         drop(process);
 
         let view = captured.view();

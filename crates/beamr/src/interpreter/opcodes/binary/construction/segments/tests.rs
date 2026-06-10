@@ -436,7 +436,7 @@ fn bs_create_bin_non_numeric_source_raises_badarg() {
 }
 
 #[test]
-fn bs_create_bin_reports_gc_needed_when_heap_is_full() {
+fn bs_create_bin_collects_and_grows_when_heap_is_full() {
     let module = module(Vec::new(), Vec::new());
     let mut process = Process::new(1, 2);
     process.set_x_reg(1, Term::small_int(65));
@@ -447,10 +447,9 @@ fn bs_create_bin_reports_gc_needed_when_heap_is_full() {
         Operand::X(1),
         Operand::Integer(8),
     )];
-    assert!(matches!(
-        create_bin(&mut process, &module, 0, segments),
-        Err(ExecError::GcNeeded { .. })
-    ));
+    create_bin(&mut process, &module, 0, segments)
+        .expect("create_bin grows the heap instead of failing");
+    assert_eq!(result_bytes(&process), vec![65]);
 }
 
 #[test]

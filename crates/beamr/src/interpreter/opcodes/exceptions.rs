@@ -156,6 +156,9 @@ pub fn raise_exception(
 
     if let Some(handler) = process.pop_exception_handler() {
         process.stack_mut().truncate(handler.stack_depth);
+        // Continuations whose trampoline return frames were just discarded
+        // belong to aborted closure calls and must never resume.
+        process.prune_native_continuations(handler.stack_depth);
         process.set_current_exception(Some(exception));
         match handler.kind {
             HandlerKind::Try => {

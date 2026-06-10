@@ -90,7 +90,10 @@ pub enum ExecError {
     InvalidLabel { label: u32 },
     /// Import table entry was missing.
     InvalidImport { index: usize },
-    /// A heap check failed and GC must run before continuing.
+    /// A heap check failed and GC must run before continuing. No longer
+    /// raised: binary opcodes reserve heap space and collect directly via
+    /// `gc::ensure_space`. Kept because removing a variant from this
+    /// exhaustively-matchable enum would break downstream matches.
     GcNeeded { requested: usize, available: usize },
     /// A boxed literal cannot be materialized by the no-allocation move opcode.
     UnsupportedLiteral,

@@ -118,18 +118,21 @@ pub fn handle_trampoline(
         (resolved.module, instruction_pointer)
     };
 
-    // Push a return frame so the closure returns to the BIF's caller.
+    // Push a return frame so the closure returns to the BIF's caller — for a
+    // continuation that means back to the calling instruction, where the
+    // resume-depth check re-enters the native with the closure result in x0.
+    let resume_depth = process.stack().len();
     let return_ip = process
         .code_position()
         .map_or(0, |pos| pos.instruction_pointer);
-    if trampoline.continuation.is_none() || !process.has_native_continuation() {
-        let caller_module = super::core::current_module_pin(process, module);
-        process
-            .stack_mut()
-            .push_frame(module.name, return_ip, caller_module, 0)
-            .map_err(ExecError::from)?;
+    let caller_module = super::core::current_module_pin(process, module);
+    process
+        .stack_mut()
+        .push_frame(module.name, return_ip, caller_module, 0)
+        .map_err(ExecError::from)?;
+    if let Some(continuation) = trampoline.continuation {
+        process.push_native_continuation(continuation, resume_depth);
     }
-    process.set_native_continuation(trampoline.continuation);
 
     let target = CodePosition {
         module: target_module.name,
@@ -183,19 +186,16 @@ pub fn handle_native_continuation(
             fun,
             args,
             continuation,
-        } => {
-            process.set_native_continuation(Some(continuation.clone()));
-            handle_trampoline(
-                process,
-                module,
-                registry,
-                crate::native::TrampolineRequest {
-                    fun,
-                    args,
-                    continuation: Some(continuation),
-                },
-            )
-        }
+        } => handle_trampoline(
+            process,
+            module,
+            registry,
+            crate::native::TrampolineRequest {
+                fun,
+                args,
+                continuation: Some(continuation),
+            },
+        ),
     }
 }
 

@@ -35,6 +35,10 @@ pub(crate) fn collect(process: &mut Process, live_x: usize) -> Result<GcStats, G
 
     release_refcounted_resources_in_young(process, |addr| forwarding.contains_key(&addr));
     process.heap_mut().reset_young();
+    // Registers outside the live prefix were not traced and may point into
+    // the nursery space just reclaimed — clear them so later full-register
+    // walks (major GC, conservative natives) stay sound.
+    process.clear_dead_x_regs(live_x);
     finish_stats(&mut stats, process);
     Ok(stats)
 }

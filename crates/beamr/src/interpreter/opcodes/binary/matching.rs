@@ -2,6 +2,7 @@ use super::super::core;
 use super::{MATCH_CONTEXT_WORDS, boxed_tag, heap_slice, jump_label, read_word, write_word};
 use crate::atom::Atom;
 use crate::error::ExecError;
+use crate::gc;
 use crate::interpreter::InstructionOutcome;
 use crate::loader::decode::Literal;
 use crate::loader::decode::compact::Operand;
@@ -37,6 +38,9 @@ pub(super) fn bs_start_match(
         (_, [fail, source, _live, destination]) => (fail, source, destination),
         _ => return Err(ExecError::InvalidOperand("bs_start_match operands")),
     };
+    // Reserve before reading the source: GC moves heap terms, and registers
+    // are the only roots, so no term may be held across a collection.
+    gc::ensure_space(process, MATCH_CONTEXT_WORDS, 256).map_err(core::gc_error_to_exec)?;
     let source = core::read_term(process, module, source)?;
     // `resume` hands back a term that already carries a match context.
     if MatchContext::new(source).is_some() {
@@ -91,15 +95,10 @@ pub(super) fn bs_get_float(
 ) -> Result<InstructionOutcome, ExecError> {
     let (fail, context, size, unit, flags, destination) =
         parse_get_operands(operands, "bs_get_float2")?;
+    gc::ensure_space(process, 2, 256).map_err(core::gc_error_to_exec)?;
     let context = read_context(process, module, context)?;
     match get_float_value(context, size, unit, flags)? {
         Some((value, bits)) => {
-            if process.heap().available() < 2 {
-                return Err(ExecError::GcNeeded {
-                    requested: 2,
-                    available: process.heap().available(),
-                });
-            }
             let ptr = process.heap_mut().alloc(2).map_err(ExecError::from)?;
             let term = write_float(heap_slice(ptr, 2), value).ok_or(ExecError::Badarg)?;
             core::write_term(process, destination, term)?;
@@ -116,6 +115,11 @@ pub(super) fn bs_get_binary(
 ) -> Result<InstructionOutcome, ExecError> {
     let (fail, context, size, unit, flags, destination) =
         parse_get_operands(operands, "bs_get_binary2")?;
+    // Worst case across both extraction shapes: a sub-binary into a ProcBin
+    // source or a full heap copy of the matched bytes.
+    let bits = segment_bits(size, unit)?;
+    let words = SUB_BINARY_WORDS.max(alloc_binary_word_count(bits / u8::BITS as usize));
+    gc::ensure_space(process, words, 256).map_err(core::gc_error_to_exec)?;
     let context = read_context(process, module, context)?;
     match get_binary_bytes(context, size, unit, flags)? {
         Some((bytes, bits)) => {
@@ -206,11 +210,11 @@ pub(super) fn bs_get_tail(
     operands: &[Operand],
 ) -> Result<InstructionOutcome, ExecError> {
     // `{bs_get_tail, Ctx, Dst, Live}` — no fail operand.
-    let (context, destination) = match operands {
+    let (context_operand, destination) = match operands {
         [context, destination, _live] => (context, destination),
         _ => return Err(ExecError::InvalidOperand("bs_get_tail operands")),
     };
-    let context = read_context(process, module, context)?;
+    let context = read_context(process, module, context_operand)?;
     if !context.position_bits().is_multiple_of(u8::BITS as usize) {
         return Err(ExecError::Badarg);
     }
@@ -218,6 +222,11 @@ pub(super) fn bs_get_tail(
     if !bits.is_multiple_of(u8::BITS as usize) {
         return Err(ExecError::Badarg);
     }
+    // The tail size depends on the context, so reserve after sizing and then
+    // re-read the (possibly moved) context before touching its bytes.
+    let words = alloc_binary_word_count(bits / u8::BITS as usize);
+    gc::ensure_space(process, words, 256).map_err(core::gc_error_to_exec)?;
+    let context = read_context(process, module, context_operand)?;
     let bytes = context.slice(bits).ok_or(ExecError::Badarg)?;
     let binary = allocate_binary(process, bytes)?;
     core::write_term(process, destination, binary)?;
@@ -267,6 +276,14 @@ pub(super) fn bs_match(
         [fail, context, rest @ ..] => (fail, context, rest),
         _ => return Err(ExecError::InvalidOperand("bs_match operands")),
     };
+    // Reserve the worst-case heap need of the whole command list up front:
+    // the command loop holds the raw match context across commands, so no
+    // collection may run once it starts.
+    let context = read_context(process, module, context_operand)?;
+    let needed = match_commands_heap_need(context, commands)?;
+    if needed > 0 {
+        gc::ensure_space(process, needed, 256).map_err(core::gc_error_to_exec)?;
+    }
     let context = read_context(process, module, context_operand)?;
     let saved = context.position_bits();
     let result = run_match_commands(process, module, context, commands);
@@ -331,6 +348,17 @@ fn run_flat_command(
     commands: &[Operand],
     index: &mut usize,
 ) -> Result<bool, ExecError> {
+    let args = flat_command_args(tag, commands, index)?;
+    run_command_args(process, module, context, tag, args)
+}
+
+/// Slice the argument operands of one flat-form `bs_match` command and
+/// advance `index` past them.
+fn flat_command_args<'a>(
+    tag: &str,
+    commands: &'a [Operand],
+    index: &mut usize,
+) -> Result<&'a [Operand], ExecError> {
     let arity = match tag {
         "ensure" | "ensure_at_least" => 2,
         // OTP encodes `{ensure_exactly, Stride}` — one argument.
@@ -354,7 +382,58 @@ fn run_flat_command(
         .get(*index..end)
         .ok_or(ExecError::InvalidOperand("bs_match command"))?;
     *index = end;
-    run_command_args(process, module, context, tag, args)
+    Ok(args)
+}
+
+/// Upper bound on heap words the command list can allocate. Integer
+/// extractions produce immediates, float extractions need a boxed float,
+/// binary extractions need a sub-binary or a heap copy of the segment, and
+/// `get_tail` copies at most the bits remaining when the instruction starts
+/// (the position only ever advances).
+fn match_commands_heap_need(
+    context: MatchContext,
+    commands: &[Operand],
+) -> Result<usize, ExecError> {
+    let mut needed = 0_usize;
+    if commands
+        .iter()
+        .all(|command| matches!(command, Operand::List(_)))
+    {
+        for command in commands {
+            let Operand::List(items) = command else {
+                return Err(ExecError::InvalidOperand("bs_match command"));
+            };
+            let Some((tag, args)) = items.split_first() else {
+                return Err(ExecError::InvalidOperand("bs_match command"));
+            };
+            needed = needed.saturating_add(command_heap_need(context, command_name(tag)?, args)?);
+        }
+        return Ok(needed);
+    }
+    let mut index = 0;
+    while index < commands.len() {
+        let tag = command_name(&commands[index])?;
+        index += 1;
+        let args = flat_command_args(tag, commands, &mut index)?;
+        needed = needed.saturating_add(command_heap_need(context, tag, args)?);
+    }
+    Ok(needed)
+}
+
+fn command_heap_need(
+    context: MatchContext,
+    tag: &str,
+    args: &[Operand],
+) -> Result<usize, ExecError> {
+    Ok(match (tag, args) {
+        ("float", _) => 2,
+        ("binary", [_live, _flags, size, unit, _dst]) => {
+            let bits = segment_bits(size, unit)?;
+            SUB_BINARY_WORDS.max(alloc_binary_word_count(bits / u8::BITS as usize))
+        }
+        ("get_tail", _) => alloc_binary_word_count(context.remaining_bits() / u8::BITS as usize),
+        _ => 0,
+    })
 }
 fn run_command_args(
     process: &mut Process,
@@ -364,9 +443,16 @@ fn run_command_args(
     args: &[Operand],
 ) -> Result<bool, ExecError> {
     match (tag, args) {
-        // `{ensure_at_least, Size, Unit}` requires Size*Unit more bits.
-        ("ensure" | "ensure_at_least", [size, unit]) => {
-            Ok(context.has_bits(segment_bits(size, unit)?))
+        // `{ensure_at_least, Stride, Unit}` requires at least Stride more
+        // bits with the total remainder evenly divisible by Unit (e.g.
+        // `<<H, T/binary>>` emits Stride=8, Unit=8: one byte plus a
+        // whole-byte tail). Stride and Unit are independent operands, not
+        // a Size*Unit product.
+        ("ensure" | "ensure_at_least", [stride, unit]) => {
+            let stride = core::operand_usize(stride, "bs_match ensure stride")?;
+            let unit = core::operand_usize(unit, "bs_match ensure unit")?.max(1);
+            let remaining = context.remaining_bits();
+            Ok(remaining >= stride && remaining.is_multiple_of(unit))
         }
         ("ensure_exactly", [stride, _unit]) => {
             Ok(context.remaining_bits() == core::operand_usize(stride, "bs_match ensure exactly")?)
@@ -388,12 +474,7 @@ fn run_command_args(
             let Some((value, bits)) = get_float_value(context, size, unit, flags)? else {
                 return Ok(false);
             };
-            if process.heap().available() < 2 {
-                return Err(ExecError::GcNeeded {
-                    requested: 2,
-                    available: process.heap().available(),
-                });
-            }
+            // Space was reserved by `bs_match` before the command loop began.
             let ptr = process.heap_mut().alloc(2).map_err(ExecError::from)?;
             let term = write_float(heap_slice(ptr, 2), value).ok_or(ExecError::Badarg)?;
             core::write_term(process, dst, term)?;
@@ -449,16 +530,36 @@ fn get_integer_value(
 ) -> Result<Option<(i64, usize)>, ExecError> {
     let size_bits = segment_bits(size, unit)?;
     let flags = SegmentFlags::from_flags(flags);
-    if !size_bits.is_multiple_of(u8::BITS as usize)
-        || !context.position_bits().is_multiple_of(u8::BITS as usize)
-    {
-        return Err(ExecError::Badarg);
-    }
     if !context.has_bits(size_bits) {
         return Ok(None);
     }
-    let bytes = context.slice(size_bits).ok_or(ExecError::Badarg)?;
-    Ok(Some((decode_integer(bytes, flags)?, size_bits)))
+    if size_bits == 0 {
+        return Ok(Some((0, 0)));
+    }
+    // Byte-aligned segments take the fast slice path; anything else (e.g.
+    // `<<A:4, B:4>>` in gleam_stdlib's percent_encode) is read bitwise.
+    if size_bits.is_multiple_of(u8::BITS as usize)
+        && context.position_bits().is_multiple_of(u8::BITS as usize)
+    {
+        let bytes = context.slice(size_bits).ok_or(ExecError::Badarg)?;
+        return Ok(Some((decode_integer(bytes, flags)?, size_bits)));
+    }
+    if matches!(flags.endian, Endian::Little) {
+        // OTP only defines little-endian for whole-byte segments.
+        return Err(ExecError::Badarg);
+    }
+    if size_bits > 63 {
+        return Err(ExecError::Badarg);
+    }
+    let unsigned = context
+        .read_bits_big_endian(context.position_bits(), size_bits)
+        .ok_or(ExecError::Badarg)?;
+    let value = if flags.signed && size_bits > 0 && (unsigned >> (size_bits - 1)) & 1 == 1 {
+        (unsigned as i64) - (1_i64 << size_bits)
+    } else {
+        unsigned as i64
+    };
+    Ok(Some((value, size_bits)))
 }
 fn get_float_value(
     context: MatchContext,
@@ -517,14 +618,11 @@ fn match_bytes(context: MatchContext, bits: usize, expected: &[u8]) -> Result<bo
     }
     Ok(context.slice(bits).ok_or(ExecError::Badarg)? == expected)
 }
+/// Copy `bytes` into a fresh heap binary. Callers reserve heap space before
+/// deriving `bytes` from the match context — no GC may run here because the
+/// source slice points into the heap.
 fn allocate_binary(process: &mut Process, bytes: &[u8]) -> Result<Term, ExecError> {
     let words = alloc_binary_word_count(bytes.len());
-    if process.heap().available() < words {
-        return Err(ExecError::GcNeeded {
-            requested: words,
-            available: process.heap().available(),
-        });
-    }
     let ptr = process.heap_mut().alloc(words).map_err(ExecError::from)?;
     alloc_binary(heap_slice(ptr, words), bytes).ok_or(ExecError::Badarg)
 }
@@ -538,12 +636,6 @@ fn allocate_extracted_binary(
     if ProcBin::new(source).is_some() {
         let start = context.position_bits() / u8::BITS as usize;
         let length = bits / u8::BITS as usize;
-        if process.heap().available() < SUB_BINARY_WORDS {
-            return Err(ExecError::GcNeeded {
-                requested: SUB_BINARY_WORDS,
-                available: process.heap().available(),
-            });
-        }
         let ptr = process
             .heap_mut()
             .alloc(SUB_BINARY_WORDS)
@@ -654,6 +746,21 @@ impl MatchContext {
         self.position_bits()
             .checked_add(bits)
             .is_some_and(|end| end <= self.total_bits())
+    }
+    /// Read `size_bits` (1..=63) starting at absolute `pos_bits`, MSB-first.
+    fn read_bits_big_endian(self, pos_bits: usize, size_bits: usize) -> Option<u64> {
+        let end = pos_bits.checked_add(size_bits)?;
+        if end > self.total_bits() {
+            return None;
+        }
+        let bytes = self.source()?.as_bytes();
+        let mut acc = 0_u64;
+        for offset in pos_bits..end {
+            let byte = *bytes.get(offset / u8::BITS as usize)?;
+            let bit = (byte >> (7 - (offset % u8::BITS as usize))) & 1;
+            acc = (acc << 1) | u64::from(bit);
+        }
+        Some(acc)
     }
     pub(crate) fn slice(self, bits: usize) -> Option<&'static [u8]> {
         if !bits.is_multiple_of(u8::BITS as usize)

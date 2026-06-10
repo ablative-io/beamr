@@ -28,6 +28,20 @@ use crate::term::{Term, boxed::BoxedTag, compare};
 /// Default number of reductions assigned to a fresh process time slice.
 pub const DEFAULT_REDUCTION_BUDGET: u32 = 4000;
 
+/// One pending native higher-order-BIF continuation.
+///
+/// Pending continuations form a stack so natives can nest (a closure called
+/// by `lists:map` may itself call `lists:map`). Each entry records the frame
+/// depth just below its trampoline return frame; the continuation resumes
+/// when the stack is back at that depth, i.e. when its closure call returned.
+#[derive(Clone, Debug)]
+pub struct PendingNativeContinuation {
+    /// Saved native state to re-enter.
+    pub continuation: NativeContinuation,
+    /// Frame count below the trampoline return frame.
+    pub resume_depth: usize,
+}
+
 /// One isolated BEAM-style process.
 ///
 /// The `Rc` marker intentionally makes `Process` neither [`Send`] nor [`Sync`]:
@@ -63,7 +77,7 @@ pub struct Process {
     receive_timer_ref: Option<u64>,
     x_regs: [Term; 1024],
     float_regs: [f64; 16],
-    native_continuation: Option<NativeContinuation>,
+    native_continuations: Vec<PendingNativeContinuation>,
     /// Explicit GC roots registered by native code for terms it must keep
     /// alive across allocations. See `ProcessContext::root_term`.
     native_roots: Vec<Term>,
@@ -108,7 +122,7 @@ impl Clone for Process {
             receive_timer_ref: self.receive_timer_ref,
             x_regs: self.x_regs,
             float_regs: self.float_regs,
-            native_continuation: self.native_continuation.clone(),
+            native_continuations: self.native_continuations.clone(),
             native_roots: self.native_roots.clone(),
             raw_stacktrace: self.raw_stacktrace.clone(),
             reduction_counter: self.reduction_counter,
@@ -166,7 +180,7 @@ impl Process {
             receive_timer_ref: None,
             x_regs: [Term::NIL; 1024],
             float_regs: [0.0; 16],
-            native_continuation: None,
+            native_continuations: Vec::new(),
             native_roots: Vec::new(),
             raw_stacktrace: Vec::new(),
             reduction_counter: DEFAULT_REDUCTION_BUDGET,
@@ -436,8 +450,10 @@ impl Process {
             .chain(std::iter::once(self.group_leader))
             .collect();
         roots.extend(self.native_roots.iter().copied());
-        if let Some(continuation) = &self.native_continuation {
-            continuation.for_each_term(&mut |term| roots.push(term));
+        for pending in &self.native_continuations {
+            pending
+                .continuation
+                .for_each_term(&mut |term| roots.push(term));
         }
         roots
     }
@@ -501,8 +517,8 @@ impl Process {
             }
             index += 1;
         }
-        if let Some(continuation) = &mut self.native_continuation {
-            continuation.for_each_term_mut(&mut |term| {
+        for pending in &mut self.native_continuations {
+            pending.continuation.for_each_term_mut(&mut |term| {
                 if let Some(value) = roots.get(index).copied() {
                     *term = value;
                 }
@@ -646,14 +662,42 @@ impl Process {
         &mut self.x_regs
     }
 
-    /// Store native continuation state for closure-return re-entry.
-    pub fn set_native_continuation(&mut self, continuation: Option<NativeContinuation>) {
-        self.native_continuation = continuation;
+    /// Push native continuation state for closure-return re-entry.
+    ///
+    /// `resume_depth` is the frame count just below the trampoline return
+    /// frame: the continuation resumes once the stack is back at (or below)
+    /// that depth, which happens exactly when the closure call returns.
+    pub fn push_native_continuation(
+        &mut self,
+        continuation: NativeContinuation,
+        resume_depth: usize,
+    ) {
+        self.native_continuations.push(PendingNativeContinuation {
+            continuation,
+            resume_depth,
+        });
     }
 
-    /// Take native continuation state after a closure returns.
+    /// Take the innermost native continuation after its closure returns.
     pub fn take_native_continuation(&mut self) -> Option<NativeContinuation> {
-        self.native_continuation.take()
+        self.native_continuations.pop().map(|p| p.continuation)
+    }
+
+    /// True when the innermost pending continuation's closure has returned
+    /// (its trampoline return frame has been popped) and the native must be
+    /// re-entered before the next instruction executes.
+    #[must_use]
+    pub fn native_continuation_ready(&self) -> bool {
+        self.native_continuations
+            .last()
+            .is_some_and(|pending| self.stack.len() <= pending.resume_depth)
+    }
+
+    /// Drop pending continuations whose trampoline return frames were
+    /// discarded by an exception-handler stack truncation to `depth`.
+    pub fn prune_native_continuations(&mut self, depth: usize) {
+        self.native_continuations
+            .retain(|pending| pending.resume_depth < depth);
     }
 
     /// Register `term` as an explicit GC root, returning its stack index.
@@ -677,6 +721,19 @@ impl Process {
         }
     }
 
+    /// Clear x registers at and above `live_x`.
+    ///
+    /// Called by minor GC after reclaiming the nursery: registers outside the
+    /// traced live prefix may still point into reclaimed space, and a later
+    /// full-register walk (major GC, conservative natives) must never chase
+    /// them. The invariant is that every register always holds NIL, an
+    /// immediate, or a pointer to a currently-allocated object.
+    pub(crate) fn clear_dead_x_regs(&mut self, live_x: usize) {
+        for reg in self.x_regs.iter_mut().skip(live_x) {
+            *reg = Term::NIL;
+        }
+    }
+
     /// Number of registered native roots.
     pub(crate) fn native_root_depth(&self) -> usize {
         self.native_roots.len()
@@ -687,10 +744,10 @@ impl Process {
         self.native_roots.truncate(depth);
     }
 
-    /// Check whether a native continuation is pending.
+    /// Check whether any native continuation is pending.
     #[must_use]
     pub fn has_native_continuation(&self) -> bool {
-        self.native_continuation.is_some()
+        !self.native_continuations.is_empty()
     }
 
     /// Current reduction budget remainder.
@@ -939,7 +996,7 @@ impl Process {
         self.receive_timer_ref = None;
         self.x_regs = [Term::NIL; 1024];
         self.float_regs = [0.0; 16];
-        self.native_continuation = None;
+        self.native_continuations.clear();
         self.native_roots.clear();
         self.reduction_counter = 0;
         self.code_position = None;

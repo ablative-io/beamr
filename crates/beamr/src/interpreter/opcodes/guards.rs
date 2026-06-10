@@ -168,12 +168,16 @@ pub fn bif(
     module: &Module,
     op: BifOp,
     operands: &[Operand],
+    services: Option<&crate::interpreter::NativeServices>,
 ) -> Result<InstructionOutcome, ExecError> {
     let parsed = parse_bif_operands(op, operands)?;
-    if let Some(heap_need) = parsed.heap_need {
-        let live = Operand::Unsigned(parsed.expected_arity.into());
-        core::test_heap(process, heap_need, &live)?;
-    }
+    // gc_bifs collect with the compiler-stated live register count; plain
+    // bifs get a conservative full-register live set in case a native
+    // allocates anyway (all registers stay rooted).
+    let live = match parsed.live {
+        Some(operand) => core::operand_usize(operand, "gc_bif live")?,
+        None => 256,
+    };
 
     let import_index = core::operand_usize(parsed.import, "bif import index")?;
     let resolved = module
@@ -197,7 +201,11 @@ pub fn bif(
 
     let mut context = ProcessContext::new();
     context.set_pid(Some(process.pid()));
-    context.attach_process(process, usize::from(parsed.expected_arity));
+    // Comparison BIFs need the atom table for atom ordering.
+    if let Some(services) = services {
+        context.set_atom_table(services.atom_table.clone());
+    }
+    context.attach_process(process, live);
     match (entry.function)(&args, &mut context) {
         Ok(result) => {
             context.detach_process();
@@ -307,7 +315,9 @@ struct ParsedBif<'a> {
     import: &'a Operand,
     args: &'a [Operand],
     destination: &'a Operand,
-    heap_need: Option<&'a Operand>,
+    /// `gc_bif*` carry the live x-register count for collections the BIF
+    /// may trigger; plain `bif*` must not collect, so they have none.
+    live: Option<&'a Operand>,
     expected_arity: u8,
 }
 
@@ -332,7 +342,7 @@ fn parse_bif_operands(op: BifOp, operands: &[Operand]) -> Result<ParsedBif<'_>, 
                 import: &operands[0],
                 args: &[],
                 destination: &operands[1],
-                heap_need: None,
+                live: None,
                 expected_arity: 0,
             })
         }
@@ -345,7 +355,7 @@ fn parse_bif_operands(op: BifOp, operands: &[Operand]) -> Result<ParsedBif<'_>, 
                 import: &operands[1],
                 args: &operands[2..2 + arity],
                 destination: &operands[2 + arity],
-                heap_need: None,
+                live: None,
                 expected_arity: arity as u8,
             })
         }
@@ -353,14 +363,16 @@ fn parse_bif_operands(op: BifOp, operands: &[Operand]) -> Result<ParsedBif<'_>, 
             if operands.len() != gc_len && operands.len() != non_gc_len {
                 return Err(ExecError::InvalidOperand("gc_bif operands"));
             }
-            let has_heap_need = operands.len() == gc_len;
-            let offset = usize::from(has_heap_need);
+            // OTP form: [Fail, Live, Import, Args.., Dst] — operand 1 is
+            // the live x-register count, not a heap need.
+            let has_live = operands.len() == gc_len;
+            let offset = usize::from(has_live);
             Ok(ParsedBif {
                 fail: &operands[0],
                 import: &operands[1 + offset],
                 args: &operands[2 + offset..2 + offset + arity],
                 destination: &operands[2 + offset + arity],
-                heap_need: has_heap_need.then_some(&operands[1]),
+                live: has_live.then_some(&operands[1]),
                 expected_arity: arity as u8,
             })
         }

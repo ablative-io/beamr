@@ -557,6 +557,7 @@ fn guard_bif_success_writes_result_and_failure_branches() {
             Operand::Integer(4),
             Operand::X(0),
         ],
+        None,
     )
     .expect("bif success");
     assert_eq!(process.x_reg(0), Term::small_int(7));
@@ -572,6 +573,7 @@ fn guard_bif_success_writes_result_and_failure_branches() {
             Operand::Integer(1),
             Operand::X(0),
         ],
+        None,
     )
     .expect("bif failure branches");
     assert_eq!(jump_ip(outcome), 0);

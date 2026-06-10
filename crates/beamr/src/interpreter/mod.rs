@@ -245,6 +245,18 @@ fn run_loop(
             .checked_add(1)
             .ok_or(ExecError::InvalidOperand("instruction pointer"))?;
 
+        // Instruction tracing for VM debugging: BEAMR_TRACE_IP=1 prints
+        // every dispatched instruction with its module and ip.
+        {
+            static TRACE_IP: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+            if *TRACE_IP.get_or_init(|| std::env::var_os("BEAMR_TRACE_IP").is_some()) {
+                eprintln!(
+                    "trace {:?}@{} {:?}",
+                    module.name, position.instruction_pointer, instruction
+                );
+            }
+        }
+
         match opcodes::dispatch_with_services(
             process,
             module,

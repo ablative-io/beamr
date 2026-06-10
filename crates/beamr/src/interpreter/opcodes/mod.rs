@@ -137,7 +137,10 @@ fn dispatch_common(
     next_ip: usize,
     ctx: DispatchCtx<'_>,
 ) -> Result<InstructionOutcome, ExecError> {
-    if process.has_native_continuation() {
+    // A pending native HOF continuation resumes only after its closure call
+    // has returned (trampoline return frame popped); while the closure is
+    // still running the stack sits above the recorded resume depth.
+    if process.native_continuation_ready() {
         return trampoline::handle_native_continuation(process, module, ctx.registry);
     }
     match instruction {
@@ -310,7 +313,9 @@ fn dispatch_common(
             guards::select_tuple_arity(process, module, value, fail, list)
         }
         Instruction::Jump { target } => guards::jump(module, target),
-        Instruction::Bif { op, operands } => guards::bif(process, module, *op, operands),
+        Instruction::Bif { op, operands } => {
+            guards::bif(process, module, *op, operands, ctx.services)
+        }
         Instruction::Send => messaging::send(
             process,
             ctx.receiver,

@@ -130,11 +130,14 @@ fn native_continuation_terms_are_gc_roots() {
         let results = alloc_floats(&mut ctx, 3);
         (fun, remaining, results)
     };
-    process.set_native_continuation(Some(NativeContinuation::Lists(ListsHofState::Map {
-        fun,
-        remaining: remaining.clone(),
-        results: results.clone(),
-    })));
+    process.push_native_continuation(
+        NativeContinuation::Lists(ListsHofState::Map {
+            fun,
+            remaining: remaining.clone(),
+            results: results.clone(),
+        }),
+        0,
+    );
 
     // Force a full collection cycle with no live x registers.
     crate::gc::ensure_space(&mut process, 64, 0).expect("gc");

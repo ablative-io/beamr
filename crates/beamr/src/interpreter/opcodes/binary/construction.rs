@@ -149,12 +149,13 @@ fn allocate_builder(process: &mut Process, capacity: usize) -> Result<Term, Exec
     let words = BUILDER_META_WORDS
         .checked_add(packed_word_count(capacity))
         .ok_or(ExecError::InvalidOperand("binary builder size"))?;
-    if process.heap().available() < words {
-        return Err(ExecError::GcNeeded {
-            requested: words,
-            available: process.heap().available(),
-        });
-    }
+    // Reserve the finalized binary's words as well: the builder term is held
+    // in a local across the append/finalize sequence and is not a GC root, so
+    // no collection may run between here and `finalize_builder`.
+    let total = words
+        .checked_add(alloc_binary_word_count(capacity))
+        .ok_or(ExecError::InvalidOperand("binary builder size"))?;
+    crate::gc::ensure_space(process, total, 256).map_err(core::gc_error_to_exec)?;
     let ptr = process.heap_mut().alloc(words).map_err(ExecError::from)?;
     let heap = heap_slice(ptr, words);
     heap[0] = BoxedHeader::new(BoxedTag::BinaryBuilder, words - 1);
