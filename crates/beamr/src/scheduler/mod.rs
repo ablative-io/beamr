@@ -19,7 +19,7 @@ use crate::distribution::connection::ConnectionManager;
 use crate::distribution::pg::PgRegistry;
 use crate::distribution::remote_link::ControlRouter;
 use crate::distribution::{DEFAULT_NODE_NAME, NetKernel, Node};
-pub use wasm::{WasmRunSummary, WasmScheduler};
+pub use wasm::{WasmAsyncCompletion, WasmRunSummary, WasmScheduledTimer, WasmScheduler};
 
 use crate::error::ExecError;
 use crate::ets::copy::OwnedTerm;

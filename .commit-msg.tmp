@@ -1,1 +1,1 @@
-Harden deterministic replay delivery validation and test coverage
+Harden B-145 WASM timer/async bridge and add targeted scheduler tests
