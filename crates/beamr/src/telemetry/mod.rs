@@ -4,4 +4,5 @@
 //! do not carry OpenTelemetry dependencies or call-site overhead.
 
 pub mod lifecycle;
+pub mod metrics;
 pub mod spans;

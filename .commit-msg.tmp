@@ -1,1 +1,1 @@
-harden(beamr): tighten lifecycle telemetry event wiring
+harden telemetry metrics facade and process metric cleanup

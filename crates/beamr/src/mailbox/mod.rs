@@ -281,6 +281,8 @@ impl MailboxSender {
             #[cfg(feature = "telemetry")]
             None,
         );
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::metrics::record_message_sent();
         Ok(())
     }
 
@@ -296,6 +298,7 @@ impl MailboxSender {
         let trace_context =
             crate::telemetry::spans::record_message_send_context(sender_pid, receiver_pid, message);
         self.enqueue_copied(copied, Some(trace_context));
+        crate::telemetry::metrics::record_message_sent();
         Ok(())
     }
 

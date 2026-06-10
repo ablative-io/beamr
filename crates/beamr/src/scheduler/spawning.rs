@@ -219,6 +219,9 @@ impl Scheduler {
                 pid,
                 Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
             );
+            #[cfg(feature = "telemetry")]
+            self.shared
+                .record_scheduler_executing(std::time::Duration::ZERO);
             let mut wait_set = lock_or_recover(&self.shared.wait_set);
             wait_set.woken.push((pid, index));
             self.shared.wake_condvar.notify_all();
@@ -281,6 +284,8 @@ pub(super) fn materialize_spawn_request(shared: &SharedState, request: SpawnRequ
         function,
         arity,
     );
+    #[cfg(feature = "telemetry")]
+    shared.record_scheduler_executing(std::time::Duration::ZERO);
     pid
 }
 
