@@ -985,11 +985,16 @@ impl SpawnFacility for SchedulerSpawnFacility {
             capabilities,
             priority: Priority::Normal,
             heap_size: DEFAULT_HEAP_SIZE,
+            parent_pid: caller_pid,
+            function,
+            arity,
         });
 
         if let Some(parent_pid) = link_to {
             child.add_link(parent_pid);
             add_link_to_slot(&self.shared, parent_pid, child_pid);
+            #[cfg(feature = "telemetry")]
+            crate::telemetry::lifecycle::record_process_linked(parent_pid, child_pid);
         }
 
         self.shared.process_bodies.insert(
@@ -1011,6 +1016,16 @@ impl SpawnFacility for SchedulerSpawnFacility {
             ws.woken.push((child_pid, 0));
         }
         self.shared.wake_condvar.notify_all();
+
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::lifecycle::record_process_spawned(
+            &self.shared.atom_table,
+            child_pid,
+            caller_pid,
+            entry.module.name,
+            function,
+            arity,
+        );
 
         Ok(child_pid)
     }
@@ -1063,11 +1078,16 @@ impl SpawnFacility for SchedulerSpawnFacility {
             capabilities,
             priority: Priority::Normal,
             heap_size: DEFAULT_HEAP_SIZE,
+            parent_pid: caller_pid,
+            function: Atom::NIL,
+            arity: 0,
         });
 
         if let Some(parent_pid) = link_to {
             child.add_link(parent_pid);
             add_link_to_slot(&self.shared, parent_pid, child_pid);
+            #[cfg(feature = "telemetry")]
+            crate::telemetry::lifecycle::record_process_linked(parent_pid, child_pid);
         }
 
         self.shared.process_bodies.insert(
@@ -1083,6 +1103,16 @@ impl SpawnFacility for SchedulerSpawnFacility {
             ws.woken.push((child_pid, 0));
         }
         self.shared.wake_condvar.notify_all();
+
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::lifecycle::record_process_spawned(
+            &self.shared.atom_table,
+            child_pid,
+            caller_pid,
+            loaded.name,
+            Atom::NIL,
+            0,
+        );
 
         Ok(child_pid)
     }
@@ -1157,9 +1187,22 @@ impl SchedulerSpawnFacility {
             capabilities,
             priority: Priority::Normal,
             heap_size: DEFAULT_HEAP_SIZE,
+            parent_pid: caller_pid,
+            function,
+            arity,
         });
 
-        Ok(self.register_monitor_insert_and_wake(caller_pid, child_pid, child))
+        let result = self.register_monitor_insert_and_wake(caller_pid, child_pid, child);
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::lifecycle::record_process_spawned(
+            &self.shared.atom_table,
+            child_pid,
+            caller_pid,
+            entry.module.name,
+            function,
+            arity,
+        );
+        Ok(result)
     }
 
     fn spawn_mfa_with_options(
@@ -1198,6 +1241,9 @@ impl SchedulerSpawnFacility {
             capabilities,
             priority: options.priority.unwrap_or(Priority::Normal),
             heap_size: options.min_heap_size.unwrap_or(DEFAULT_HEAP_SIZE),
+            parent_pid: caller_pid,
+            function,
+            arity,
         };
         Ok(self.insert_options_child(caller_pid, request, options))
     }
@@ -1237,6 +1283,9 @@ impl SchedulerSpawnFacility {
             capabilities,
             priority: options.priority.unwrap_or(Priority::Normal),
             heap_size: options.min_heap_size.unwrap_or(DEFAULT_HEAP_SIZE),
+            parent_pid: caller_pid,
+            function: Atom::NIL,
+            arity: 0,
         };
         Ok(self.insert_options_child(caller_pid, request, options))
     }
@@ -1257,19 +1306,43 @@ impl SchedulerSpawnFacility {
         options: SpawnOptions,
     ) -> SpawnOptionsResult {
         let child_pid = request.pid;
+        let _parent_pid = request.parent_pid;
+        let _module = request.module;
+        let _function = request.function;
+        let _arity = request.arity;
         let mut child = super::spawning::build_process(request);
         if options.link {
             child.add_link(caller_pid);
             add_link_to_slot(&self.shared, caller_pid, child_pid);
+            #[cfg(feature = "telemetry")]
+            crate::telemetry::lifecycle::record_process_linked(caller_pid, child_pid);
         }
         if options.monitor {
             let result = self.register_monitor_insert_and_wake(caller_pid, child_pid, child);
+            #[cfg(feature = "telemetry")]
+            crate::telemetry::lifecycle::record_process_spawned(
+                &self.shared.atom_table,
+                child_pid,
+                parent_pid,
+                module,
+                function,
+                arity,
+            );
             SpawnOptionsResult {
                 pid: result.pid,
                 reference: Some(result.reference),
             }
         } else {
             self.insert_and_wake(child_pid, child);
+            #[cfg(feature = "telemetry")]
+            crate::telemetry::lifecycle::record_process_spawned(
+                &self.shared.atom_table,
+                child_pid,
+                parent_pid,
+                module,
+                function,
+                arity,
+            );
             SpawnOptionsResult {
                 pid: child_pid,
                 reference: None,
@@ -1313,9 +1386,22 @@ impl SchedulerSpawnFacility {
             capabilities: self.caller_capabilities(caller_pid),
             priority: Priority::Normal,
             heap_size: DEFAULT_HEAP_SIZE,
+            parent_pid: caller_pid,
+            function: Atom::NIL,
+            arity: 0,
         });
 
-        Ok(self.register_monitor_insert_and_wake(caller_pid, child_pid, child))
+        let result = self.register_monitor_insert_and_wake(caller_pid, child_pid, child);
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::lifecycle::record_process_spawned(
+            &self.shared.atom_table,
+            child_pid,
+            caller_pid,
+            loaded.name,
+            Atom::NIL,
+            0,
+        );
+        Ok(result)
     }
 
     fn register_monitor_insert_and_wake(
@@ -1334,6 +1420,9 @@ impl SchedulerSpawnFacility {
             add_monitor_to_slot(&self.shared, caller_pid, mon);
             reference
         };
+
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::lifecycle::record_process_monitored(caller_pid, child_pid, reference);
 
         self.insert_and_wake(child_pid, child);
 
@@ -1436,6 +1525,18 @@ fn add_link_to_slot(shared: &SharedState, pid: u64, linked_pid: u64) -> bool {
     }
 }
 
+fn slot_has_link(shared: &SharedState, pid: u64, linked_pid: u64) -> bool {
+    let Some(entry) = shared.process_bodies.get(&pid) else {
+        return false;
+    };
+    let slot = lock_or_recover(&entry);
+    match &*slot {
+        ProcessSlot::Present(ScheduledProcess(process)) => process.links().contains(&linked_pid),
+        ProcessSlot::Executing(metadata) => metadata.links.contains(&linked_pid),
+        ProcessSlot::Absent => false,
+    }
+}
+
 fn remove_link_from_slot(shared: &SharedState, pid: u64, linked_pid: u64) {
     if let Some(entry) = shared.process_bodies.get(&pid) {
         let mut slot = lock_or_recover(&entry);
@@ -1470,6 +1571,8 @@ impl LinkFacility for SchedulerLinkFacility {
             return Err(LinkError::NoProc);
         }
 
+        let already_linked = slot_has_link(&self.shared, caller_pid, target_pid);
+
         // Add link to caller.
         if !add_link_to_slot(&self.shared, caller_pid, target_pid) {
             return Err(LinkError::NoCaller);
@@ -1477,6 +1580,11 @@ impl LinkFacility for SchedulerLinkFacility {
 
         // Add link to target.
         add_link_to_slot(&self.shared, target_pid, caller_pid);
+
+        if !already_linked {
+            #[cfg(feature = "telemetry")]
+            crate::telemetry::lifecycle::record_process_linked(caller_pid, target_pid);
+        }
 
         Ok(())
     }
@@ -1604,6 +1712,9 @@ impl SupervisionFacility for SchedulerSupervisionFacility {
                 p.add_monitor(mon);
             }
         }
+
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::lifecycle::record_process_monitored(caller_pid, target_pid, reference);
 
         Ok(MonitorResult {
             reference,

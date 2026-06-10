@@ -1,1 +1,1 @@
-Harden B-152 OpenTelemetry span integration
+feat(beamr): emit structured process lifecycle events
