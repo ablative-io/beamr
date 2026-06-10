@@ -1262,6 +1262,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
             binary_heap_size: 0,
             message_queue_len: 0,
             group_leader: process.group_leader(),
+            logical_clock: process.logical_clock(),
             pending_exit_messages: Vec::new(),
             pending_down_messages: Vec::new(),
             pending_io_messages: Vec::new(),

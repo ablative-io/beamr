@@ -1,1 +1,1 @@
-fix(beamr-wasm): serialize unresolved imports via atom table
+feat(beamr): add deterministic replay causal ordering

@@ -30,6 +30,8 @@ pub fn send(
     }
     let target_pid = target.pid_number();
     if let Some(receiver) = receiver.filter(|receiver| receiver.pid() == target_pid) {
+        let sender_clock = process.tick_logical_clock();
+        receiver.observe_message_clock(sender_clock);
         #[cfg(feature = "telemetry")]
         receiver
             .mailbox()
