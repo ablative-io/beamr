@@ -44,14 +44,20 @@ pub mod distribution_bifs;
 pub mod etf_bifs;
 pub mod ets_bifs;
 pub mod exception_bifs;
+#[cfg(feature = "fs")]
 pub mod file_bifs;
+#[cfg(feature = "fs")]
 pub mod file_meta_bifs;
+#[cfg(feature = "threads")]
 pub mod gate3_bifs;
+#[cfg(feature = "threads")]
 pub mod gleam_ffi;
 pub mod group_leader;
+#[cfg(feature = "net")]
 pub mod inet_bifs;
 pub mod io_message;
 pub mod links;
+#[cfg(feature = "fs")]
 pub mod meridian_ffi;
 pub mod otp_stubs;
 pub mod process_bifs;
@@ -63,13 +69,14 @@ pub mod spawn;
 pub mod stdlib_stubs;
 pub mod supervision;
 pub mod system_info_bifs;
+#[cfg(feature = "net")]
 pub mod tcp_bifs;
+#[cfg(feature = "net")]
 pub mod udp_bifs;
 
+use core::{fmt, ptr};
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
-use std::error::Error;
-use std::fmt;
 
 use crate::atom::Atom;
 use crate::scheduler::dirty::DirtySchedulerKind;
@@ -118,7 +125,7 @@ pub struct NativeEntry {
 
 impl PartialEq for NativeEntry {
     fn eq(&self, other: &Self) -> bool {
-        std::ptr::fn_addr_eq(self.function, other.function)
+        ptr::fn_addr_eq(self.function, other.function)
             && self.dirty_kind == other.dirty_kind
             && self.capability == other.capability
     }
@@ -187,7 +194,8 @@ impl fmt::Display for NativeRegistrationError {
     }
 }
 
-impl Error for NativeRegistrationError {}
+#[cfg(feature = "std")]
+impl std::error::Error for NativeRegistrationError {}
 
 /// Trait used by import resolution to query built-in functions.
 pub trait BifRegistry {
