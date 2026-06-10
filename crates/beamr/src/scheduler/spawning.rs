@@ -25,8 +25,11 @@ pub(in crate::scheduler) struct SpawnRequest {
     pub(in crate::scheduler) module_version: Arc<Module>,
     pub(in crate::scheduler) instruction_pointer: usize,
     pub(in crate::scheduler) args: Vec<Term>,
+    #[cfg_attr(not(feature = "telemetry"), allow(dead_code))]
     pub(in crate::scheduler) parent_pid: u64,
+    #[cfg_attr(not(feature = "telemetry"), allow(dead_code))]
     pub(in crate::scheduler) function: Atom,
+    #[cfg_attr(not(feature = "telemetry"), allow(dead_code))]
     pub(in crate::scheduler) arity: u8,
     pub(in crate::scheduler) capabilities: CapabilitySet,
     pub(in crate::scheduler) namespace_id: NamespaceId,
