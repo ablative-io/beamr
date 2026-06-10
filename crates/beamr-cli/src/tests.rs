@@ -70,6 +70,53 @@ fn parses_entry_flag_and_runtime_args() {
 }
 
 #[test]
+fn parses_record_command_with_log_and_runtime_args() {
+    assert_eq!(
+        parse_args([
+            "record",
+            "hello.beam",
+            "--entry",
+            "hello:add/2",
+            "--log",
+            "run.rlog",
+            "--",
+            "17",
+            "25"
+        ])
+        .expect("record parses"),
+        Command::Record {
+            path: "hello.beam".into(),
+            entry: EntryPoint {
+                module: "hello".into(),
+                function: "add".into(),
+                arity: 2,
+            },
+            log: "run.rlog".into(),
+            args: vec!["17".into(), "25".into()],
+            dirs: Vec::new(),
+        }
+    );
+}
+
+#[test]
+fn parses_replay_command() {
+    assert_eq!(
+        parse_args(["replay", "run.rlog"]).expect("replay parses"),
+        Command::Replay {
+            log: "run.rlog".into(),
+        }
+    );
+}
+
+#[test]
+fn rejects_record_log_without_value() {
+    let error = parse_args(["record", "hello.beam", "--entry", "hello:main/0", "--log"])
+        .expect_err("--log without value should fail");
+
+    assert!(matches!(error, CliError::MissingLogValue(_)));
+}
+
+#[test]
 fn parses_imports_command() {
     assert_eq!(
         parse_args(["imports", "hello.beam"]).expect("imports parses"),
@@ -253,8 +300,7 @@ fn parses_multiple_dir_flags() {
 
 #[test]
 fn rejects_dir_without_value() {
-    let error =
-        parse_args(["hello.beam", "--dir"]).expect_err("--dir without value should fail");
+    let error = parse_args(["hello.beam", "--dir"]).expect_err("--dir without value should fail");
 
     assert!(matches!(error, CliError::MissingDirValue(_)));
 }

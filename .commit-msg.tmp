@@ -1,1 +1,1 @@
-Harden deterministic replay delivery validation and test coverage
+feat(replay): persist replay logs and add record/replay CLI
