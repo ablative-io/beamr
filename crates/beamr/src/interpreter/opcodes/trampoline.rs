@@ -46,10 +46,6 @@ pub fn apply_mailbox_removal(process: &mut Process, snapshot: &MailboxSnapshot) 
 }
 
 /// Apply a mailbox removal by deterministic index from the current scan list.
-///
-/// Passing `None` removes the current message. Replay select uses that mode
-/// because live mailbox order must not be consulted after the recorded message
-/// has already been supplied to the selector.
 pub fn apply_mailbox_removal_at(process: &mut Process, index: Option<usize>) {
     process.mailbox_mut().reset_save_pointer();
     if let Some(index) = index {

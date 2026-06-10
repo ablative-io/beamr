@@ -541,7 +541,7 @@ fn call_external_target(
                         resolved.function,
                         resolved.arity,
                     )
-                    .map_err(|_| ExecError::InvalidOperand("replay native call"))?;
+                    .map_err(ExecError::from)?;
                 return apply_replayed_native_result(process, recorded.outcome, save_return);
             }
             let mut context = match ctx.timers {
@@ -582,26 +582,31 @@ fn call_external_target(
             }
 
             // Provide mailbox access for select BIFs before borrowing the process for heap allocation.
-            let mut replay_select = false;
-            let snapshot = if let Some(svc) = ctx.services
-                && let Some(driver) = &svc.replay_driver
-            {
-                let facility =
-                    crate::replay::ReplayDriver::select_facility(Arc::clone(driver), process.pid())
-                        .map_err(|_| ExecError::InvalidOperand("replay select"))?;
-                replay_select = true;
-                context
-                    .set_select_facility(Some(facility as Arc<dyn crate::native::SelectFacility>));
-                None
-            } else {
-                let snapshot = trampoline::build_mailbox_snapshot(process);
-                context.set_select_facility(
+            let mut replay_select = None;
+            let snapshot =
+                if should_replay_select(ctx, resolved.module, resolved.function, resolved.arity) {
+                    let driver = ctx
+                        .services
+                        .and_then(|svc| svc.replay_driver.as_ref())
+                        .ok_or(ExecError::InvalidOperand("replay select driver"))?;
+                    let facility = crate::replay::ReplayDriver::select_facility(
+                        Arc::clone(driver),
+                        process.pid(),
+                    )
+                    .map_err(ExecError::from)?;
+                    let select_facility: Arc<dyn crate::native::SelectFacility> = facility.clone();
+                    context.set_select_facility(Some(select_facility));
+                    replay_select = Some(facility);
+                    None
+                } else {
+                    let snapshot = trampoline::build_mailbox_snapshot(process);
+                    context.set_select_facility(
+                        snapshot
+                            .clone()
+                            .map(|s| s as Arc<dyn crate::native::SelectFacility>),
+                    );
                     snapshot
-                        .clone()
-                        .map(|s| s as Arc<dyn crate::native::SelectFacility>),
-                );
-                snapshot
-            };
+                };
             context.attach_process(process, usize::from(arity));
 
             let call_result = (entry.function)(&args, &mut context);
@@ -624,8 +629,10 @@ fn call_external_target(
             };
 
             // Handle mailbox removal if the select facility recorded one.
-            if replay_select {
-                trampoline::apply_mailbox_removal_at(process, None);
+            if let Some(facility) = replay_select {
+                if let Some(index) = facility.removed_index() {
+                    trampoline::apply_mailbox_removal_at(process, Some(index));
+                }
             } else if let Some(snapshot) = snapshot {
                 trampoline::apply_mailbox_removal(process, &snapshot);
             }
@@ -658,6 +665,22 @@ fn call_external_target(
             }
         }
     }
+}
+
+fn should_replay_select(ctx: &ExtCallContext<'_>, module: Atom, function: Atom, arity: u8) -> bool {
+    let Some(services) = ctx.services else {
+        return false;
+    };
+    if services.replay_driver.is_none() || function != services.atom_table.intern("select") {
+        return false;
+    }
+    let Some(module_name) = services.atom_table.resolve(module) else {
+        return false;
+    };
+    matches!(
+        (module_name, arity),
+        ("gleam_erlang_ffi", 1 | 2) | ("erlang", 1 | 2)
+    )
 }
 
 fn apply_replayed_native_result(

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use crate::atom::Atom;
 use crate::hook::{HookDecision, HookEvent};
-use crate::process::{Process, ProcessStatus};
+use crate::process::{ExitReason, Process, ProcessStatus};
 use crate::term::Term;
 use crate::timer::TimerRef;
 
@@ -65,11 +65,27 @@ pub(super) fn tick_replay_timers(shared: &SharedState) {
         Ok(mut guard) => guard.next_timer_expiry(),
         Err(error) => error.into_inner().next_timer_expiry(),
     };
-    let Ok(recorded) = recorded else {
-        return;
-    };
-    let _discarded = lock_or_recover(&shared.timers).tick_at(recorded.now);
-    expire_timers(shared, recorded.expired);
+    match recorded {
+        Ok(recorded) => {
+            let _discarded = lock_or_recover(&shared.timers).tick_at(recorded.now);
+            expire_timers(shared, recorded.expired);
+        }
+        Err(error) => fail_replay_timer(shared, error),
+    }
+}
+
+fn fail_replay_timer(shared: &SharedState, error: crate::replay::ReplayMismatch) {
+    let exec_error = crate::error::ExecError::from(error);
+    for entry in &shared.process_bodies {
+        let pid = *entry.key();
+        shared.exit_errors.insert(pid, exec_error.clone());
+        shared.exit_tombstones.insert(pid, ExitReason::Error);
+        let _removed = shared.process_table.remove(pid);
+    }
+    shared
+        .shutdown
+        .store(true, std::sync::atomic::Ordering::Release);
+    shared.wake_condvar.notify_all();
 }
 
 /// Process expired timers: update the process code position to the timeout

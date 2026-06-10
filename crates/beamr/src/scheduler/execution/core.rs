@@ -461,7 +461,7 @@ fn submit_dirty_call(
                     .next_native_call(process.pid(), module, function, arity)
             }
         }
-        .map_err(|_| DirtySubmissionError::ReplayMismatch)?;
+        .map_err(DirtySubmissionError::ReplayMismatch)?;
         shared.dirty_results.insert(
             process.pid(),
             DirtyResult {
@@ -532,16 +532,20 @@ fn submit_dirty_call(
     Ok(())
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum DirtySubmissionError {
     PoolUnavailable,
     CompletionBridgeSpawn,
-    ReplayMismatch,
+    ReplayMismatch(crate::replay::ReplayMismatch),
 }
 
 impl From<DirtySubmissionError> for crate::error::ExecError {
-    fn from(_error: DirtySubmissionError) -> Self {
-        Self::Badarg
+    fn from(error: DirtySubmissionError) -> Self {
+        match error {
+            DirtySubmissionError::PoolUnavailable => Self::Badarg,
+            DirtySubmissionError::CompletionBridgeSpawn => Self::Badarg,
+            DirtySubmissionError::ReplayMismatch(error) => Self::from(error),
+        }
     }
 }
 
