@@ -177,6 +177,7 @@ pub fn handle_native_continuation(
         NativeContinuation::GleamResult(state) => {
             resume_gleam_result_continuation(state, closure_result, &mut context)
         }
+        NativeContinuation::AionTimeout(state) => (state.resume)(state, closure_result, &mut context),
     }
     .map_err(|_| ExecError::Badarg)?;
     context.detach_process();

@@ -87,7 +87,8 @@ pub use capability::{
 };
 pub use code_management_bifs::CodeManagementFacility;
 pub use context::{
-    ExceptionClass, FileIoCompletion, FileIoContinuation, FileIoFacility, NativeContinuation,
+    AionTimeoutContinuation, ExceptionClass, FileIoCompletion, FileIoContinuation,
+    FileIoFacility, NativeContinuation,
     ProcessContext, RemoteSpawnError, RemoteSpawnFacility, RemoteSpawnResult, RootedTerms,
     SuspendRequest, TcpIoFacility, TrampolineRequest,
 };

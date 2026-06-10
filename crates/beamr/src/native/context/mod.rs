@@ -17,7 +17,10 @@ use crate::io::{
 };
 use crate::native::ets_bifs::EtsFoldlState;
 use crate::native::otp_stubs::gleam_stubs::{GleamOptionState, GleamResultState};
-use crate::native::stdlib_stubs::{lists_hof_bifs::ListsHofState, maps_bifs::MapsHofState};
+use crate::native::stdlib_stubs::{
+    lists_hof_bifs::ListsHofState,
+    maps_bifs::{ContinuationStep, MapsHofState},
+};
 use crate::process::{Priority, Process};
 use crate::replay::ReplayDriver;
 use crate::term::Term;
@@ -79,6 +82,26 @@ pub enum NativeContinuation {
     GleamOption(GleamOptionState),
     /// Continuation for Gleam result higher-order BIFs.
     GleamResult(GleamResultState),
+    /// Continuation for Aion with_timeout NIF trampoline.
+    AionTimeout(AionTimeoutContinuation),
+}
+
+/// Aion timeout continuation state — carries an opaque state ID and a resume
+/// function. No heap Terms are held, so GC tracing is a no-op.
+#[derive(Clone)]
+pub struct AionTimeoutContinuation {
+    /// Opaque identifier for the timeout state in the Aion runtime.
+    pub state_id: u64,
+    /// Resume function called when the closure returns.
+    pub resume: fn(AionTimeoutContinuation, Term, &mut ProcessContext<'_>) -> Result<ContinuationStep, Term>,
+}
+
+impl std::fmt::Debug for AionTimeoutContinuation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AionTimeoutContinuation")
+            .field("state_id", &self.state_id)
+            .finish()
+    }
 }
 
 impl NativeContinuation {
@@ -97,6 +120,7 @@ impl NativeContinuation {
             Self::GleamResultTry => {}
             Self::GleamOption(state) => state.for_each_term(f),
             Self::GleamResult(state) => state.for_each_term(f),
+            Self::AionTimeout(_) => {}
         }
     }
 
@@ -110,6 +134,7 @@ impl NativeContinuation {
             Self::GleamResultTry => {}
             Self::GleamOption(state) => state.for_each_term_mut(f),
             Self::GleamResult(state) => state.for_each_term_mut(f),
+            Self::AionTimeout(_) => {}
         }
     }
 }
