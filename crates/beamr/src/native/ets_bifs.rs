@@ -2005,6 +2005,59 @@ mod tests {
     }
 
     #[test]
+    fn select_copies_constructed_results_to_process_heap() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let registry = Arc::new(EtsRegistry::new());
+        let public = atom_table.intern("public");
+        let ordered_set = atom_table.intern("ordered_set");
+        let first_var = atom_table.intern("$1");
+        let second_var = atom_table.intern("$2");
+        let mut process = Process::new(1, 2048);
+        let mut context = context(&mut process, Arc::clone(&atom_table), registry);
+        let tab = new_table(
+            &mut context,
+            &atom_table,
+            atom_table.intern("select_copy_tab"),
+            &[ordered_set, public],
+        );
+        let row = tuple(&mut context, &[Term::small_int(1), Term::small_int(10)]);
+        assert_eq!(
+            bif_insert(&[tab, row], &mut context),
+            Ok(Term::atom(Atom::TRUE))
+        );
+
+        let head = tuple(
+            &mut context,
+            &[Term::atom(first_var), Term::atom(second_var)],
+        );
+        let guards = context.alloc_list(&[]).expect("empty guards");
+        let body_tuple = tuple(
+            &mut context,
+            &[Term::atom(second_var), Term::atom(first_var)],
+        );
+        let body_constructor = tuple(&mut context, &[body_tuple]);
+        let body = context.alloc_list(&[body_constructor]).expect("body");
+        let clause = tuple(&mut context, &[head, guards, body]);
+        let spec = context.alloc_list(&[clause]).expect("spec");
+
+        let result_list = bif_select_2(&[tab, spec], &mut context).expect("select/2");
+        let results = list_terms(result_list);
+        assert_eq!(results.len(), 1);
+        let result_tuple = Tuple::new(results[0]).expect("select result is tuple");
+        assert_eq!(result_tuple.get(0), Some(Term::small_int(10)));
+        assert_eq!(result_tuple.get(1), Some(Term::small_int(1)));
+        let result_ptr = results[0].heap_ptr().expect("tuple has heap pointer");
+        assert!(
+            context
+                .process_mut()
+                .expect("process attached")
+                .heap()
+                .contains(result_ptr),
+            "constructed select result must be copied into the process heap"
+        );
+    }
+
+    #[test]
     fn match_and_select_pagination_consumes_all_rows() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
         let registry = Arc::new(EtsRegistry::new());

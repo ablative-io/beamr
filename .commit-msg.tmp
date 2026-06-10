@@ -1,1 +1,1 @@
-fix(ets): replace match-spec leaking allocator with arena
+Harden ETS match arena review coverage
