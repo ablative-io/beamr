@@ -274,17 +274,9 @@ pub(in crate::scheduler) fn execute_slice(
             | ProcessStatus::Waiting
             | ProcessStatus::Suspended
     ) {
-        #[cfg(feature = "telemetry")]
-        let span = start_slice_span(shared, process);
-        #[cfg(feature = "telemetry")]
-        finish_slice_span(span, 0, crate::telemetry::spans::SliceSpanOutcome::Exited);
         return SliceOutcome::Exited(exit_reason_from_status(process.status()), process.x_reg(0));
     }
     if process.transition_to(ProcessStatus::Running).is_err() {
-        #[cfg(feature = "telemetry")]
-        let span = start_slice_span(shared, process);
-        #[cfg(feature = "telemetry")]
-        finish_slice_span(span, 0, crate::telemetry::spans::SliceSpanOutcome::Exited);
         return SliceOutcome::Exited(exit_reason_from_status(process.status()), process.x_reg(0));
     }
     #[cfg(feature = "telemetry")]
@@ -295,7 +287,13 @@ pub(in crate::scheduler) fn execute_slice(
             Ok(InstructionOutcomeAfterDirty::Exit(reason)) => {
                 let outcome = exit_process(shared, process, reason);
                 #[cfg(feature = "telemetry")]
-                finish_slice_span(span, 0, crate::telemetry::spans::SliceSpanOutcome::Exited);
+                finish_slice_span(
+                    shared,
+                    process,
+                    span,
+                    0,
+                    crate::telemetry::spans::SliceSpanOutcome::Exited,
+                );
                 return outcome;
             }
             Err(error) => {
@@ -303,7 +301,13 @@ pub(in crate::scheduler) fn execute_slice(
                 shared.exit_errors.insert(pid, error);
                 let outcome = exit_process(shared, process, ExitReason::Error);
                 #[cfg(feature = "telemetry")]
-                finish_slice_span(span, 0, crate::telemetry::spans::SliceSpanOutcome::Exited);
+                finish_slice_span(
+                    shared,
+                    process,
+                    span,
+                    0,
+                    crate::telemetry::spans::SliceSpanOutcome::Exited,
+                );
                 return outcome;
             }
         }
@@ -318,7 +322,13 @@ pub(in crate::scheduler) fn execute_slice(
         None => {
             let outcome = exit_process(shared, process, ExitReason::Normal);
             #[cfg(feature = "telemetry")]
-            finish_slice_span(span, 0, crate::telemetry::spans::SliceSpanOutcome::Exited);
+            finish_slice_span(
+                shared,
+                process,
+                span,
+                0,
+                crate::telemetry::spans::SliceSpanOutcome::Exited,
+            );
             return outcome;
         }
     };
@@ -340,7 +350,13 @@ pub(in crate::scheduler) fn execute_slice(
         let Some(module) = registry.lookup(module_atom) else {
             let outcome = exit_process(shared, process, ExitReason::Error);
             #[cfg(feature = "telemetry")]
-            finish_slice_span(span, 0, crate::telemetry::spans::SliceSpanOutcome::Exited);
+            finish_slice_span(
+                shared,
+                process,
+                span,
+                0,
+                crate::telemetry::spans::SliceSpanOutcome::Exited,
+            );
             return outcome;
         };
         process.set_current_module(Arc::clone(&module));
@@ -355,38 +371,41 @@ pub(in crate::scheduler) fn execute_slice(
     ) && timer_integration::invoke_hook(shared, process, reductions) == HookDecision::Suspend
     {
         let _t = process.transition_to(ProcessStatus::Suspended);
-        let outcome = SliceOutcome::Suspended(take_process(process));
         #[cfg(feature = "telemetry")]
         finish_slice_span(
+            shared,
+            process,
             span,
             reductions,
             crate::telemetry::spans::SliceSpanOutcome::Waiting,
         );
-        return outcome;
+        return SliceOutcome::Suspended(take_process(process));
     }
     match result {
         Ok(ExecutionResult::Yielded) => {
             let _t = process.transition_to(ProcessStatus::Yielded);
             process.reset_reductions(DEFAULT_REDUCTION_BUDGET);
-            let outcome = SliceOutcome::Requeue(take_process(process));
             #[cfg(feature = "telemetry")]
             finish_slice_span(
+                shared,
+                process,
                 span,
                 reductions,
                 crate::telemetry::spans::SliceSpanOutcome::Yielded,
             );
-            outcome
+            SliceOutcome::Requeue(take_process(process))
         }
         Ok(ExecutionResult::Waiting) => {
             let _t = process.transition_to(ProcessStatus::Waiting);
-            let outcome = SliceOutcome::Wait(take_process(process));
             #[cfg(feature = "telemetry")]
             finish_slice_span(
+                shared,
+                process,
                 span,
                 reductions,
                 crate::telemetry::spans::SliceSpanOutcome::Waiting,
             );
-            outcome
+            SliceOutcome::Wait(take_process(process))
         }
         Ok(ExecutionResult::DirtyCall { entry, args, kind }) => {
             if let Err(error) = submit_dirty_call(shared, process, entry, args, kind) {
@@ -394,6 +413,8 @@ pub(in crate::scheduler) fn execute_slice(
                 let outcome = exit_process(shared, process, ExitReason::Error);
                 #[cfg(feature = "telemetry")]
                 finish_slice_span(
+                    shared,
+                    process,
                     span,
                     reductions,
                     crate::telemetry::spans::SliceSpanOutcome::Exited,
@@ -401,19 +422,22 @@ pub(in crate::scheduler) fn execute_slice(
                 return outcome;
             }
             let _t = process.transition_to(ProcessStatus::Suspended);
-            let outcome = SliceOutcome::Suspended(take_process(process));
             #[cfg(feature = "telemetry")]
             finish_slice_span(
+                shared,
+                process,
                 span,
                 reductions,
                 crate::telemetry::spans::SliceSpanOutcome::Waiting,
             );
-            outcome
+            SliceOutcome::Suspended(take_process(process))
         }
         Ok(ExecutionResult::Exited(reason)) => {
             let outcome = exit_process(shared, process, reason);
             #[cfg(feature = "telemetry")]
             finish_slice_span(
+                shared,
+                process,
                 span,
                 reductions,
                 crate::telemetry::spans::SliceSpanOutcome::Exited,
@@ -426,6 +450,8 @@ pub(in crate::scheduler) fn execute_slice(
             let outcome = exit_process(shared, process, ExitReason::Error);
             #[cfg(feature = "telemetry")]
             finish_slice_span(
+                shared,
+                process,
                 span,
                 reductions,
                 crate::telemetry::spans::SliceSpanOutcome::Exited,
@@ -445,11 +471,13 @@ fn start_slice_span(
 
 #[cfg(feature = "telemetry")]
 fn finish_slice_span(
+    shared: &SharedState,
+    process: &Process,
     span: crate::telemetry::spans::ExecutionSliceSpan,
     reductions_consumed: u32,
     outcome: crate::telemetry::spans::SliceSpanOutcome,
 ) {
-    span.finish(reductions_consumed, outcome);
+    span.finish(&shared.atom_table, process, reductions_consumed, outcome);
 }
 
 fn exit_process(shared: &SharedState, process: &mut Process, reason: ExitReason) -> SliceOutcome {

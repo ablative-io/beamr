@@ -32,15 +32,7 @@ pub fn send(
         receiver
             .mailbox()
             .sender()
-            .send_with_trace_context(
-                message,
-                receiver.heap_mut(),
-                crate::telemetry::spans::record_message_send_context(
-                    process.pid(),
-                    target_pid,
-                    message,
-                ),
-            )
+            .send_traced(process.pid(), target_pid, message, receiver.heap_mut())
             .map_err(send_error)?;
         #[cfg(not(feature = "telemetry"))]
         receiver

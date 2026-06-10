@@ -1,1 +1,1 @@
-feat(beamr): add feature-gated OpenTelemetry spans
+Harden B-152 OpenTelemetry span integration

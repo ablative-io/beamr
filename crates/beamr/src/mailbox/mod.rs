@@ -274,13 +274,16 @@ impl MailboxSender {
     }
 
     #[cfg(feature = "telemetry")]
-    pub(crate) fn send_with_trace_context(
+    pub(crate) fn send_traced(
         &self,
+        sender_pid: u64,
+        receiver_pid: u64,
         message: Term,
         receiver_heap: &mut Heap,
-        trace_context: crate::telemetry::spans::MessageTraceContext,
     ) -> Result<(), SendError> {
         let copied = copy_term(message, receiver_heap)?;
+        let trace_context =
+            crate::telemetry::spans::record_message_send_context(sender_pid, receiver_pid, message);
         self.enqueue_copied(copied, Some(trace_context));
         Ok(())
     }

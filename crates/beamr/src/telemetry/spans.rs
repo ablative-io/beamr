@@ -36,24 +36,28 @@ pub(crate) struct ExecutionSliceSpan {
 impl ExecutionSliceSpan {
     /// Start a span for one scheduler execution slice.
     pub(crate) fn start(atom_table: &AtomTable, process: &Process) -> Self {
-        let (module, function, arity) = process.current_mfa().unwrap_or((Atom::NIL, Atom::NIL, 0));
         let tracer = global::tracer(TRACER_NAME);
         let mut span = tracer.start("beamr.scheduler.execute_slice");
-        span.set_attributes([
-            KeyValue::new(
-                "process.pid",
-                i64::try_from(process.pid()).unwrap_or(i64::MAX),
-            ),
-            KeyValue::new("code.module", atom_name(atom_table, module)),
-            KeyValue::new("code.function", atom_name(atom_table, function)),
-            KeyValue::new("code.arity", i64::from(arity)),
-        ]);
+        span.set_attribute(KeyValue::new(
+            "process.pid",
+            i64::try_from(process.pid()).unwrap_or(i64::MAX),
+        ));
         Self { span }
     }
 
-    /// Complete the execution-slice span with final reductions and outcome.
-    pub(crate) fn finish(mut self, reductions_consumed: u32, outcome: SliceSpanOutcome) {
+    /// Complete the execution-slice span with final code metadata, reductions, and outcome.
+    pub(crate) fn finish(
+        mut self,
+        atom_table: &AtomTable,
+        process: &Process,
+        reductions_consumed: u32,
+        outcome: SliceSpanOutcome,
+    ) {
+        let (module, function, arity) = process.current_mfa().unwrap_or((Atom::NIL, Atom::NIL, 0));
         self.span.set_attributes([
+            KeyValue::new("code.module", atom_name(atom_table, module)),
+            KeyValue::new("code.function", atom_name(atom_table, function)),
+            KeyValue::new("code.arity", i64::from(arity)),
             KeyValue::new("reductions.consumed", i64::from(reductions_consumed)),
             KeyValue::new("outcome", outcome.as_str()),
         ]);
@@ -224,4 +228,87 @@ fn estimate_term_size(term: Term, depth: usize, seen: &mut HashSet<usize>) -> us
 fn mark_seen(term: Term, seen: &mut HashSet<usize>) -> Option<()> {
     let ptr = term.heap_ptr()? as usize;
     seen.insert(ptr).then_some(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opentelemetry::Key;
+    use opentelemetry::global;
+    use opentelemetry::trace::TraceContextExt;
+    use opentelemetry_sdk::propagation::TraceContextPropagator;
+    use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
+
+    fn install_test_provider() -> (InMemorySpanExporter, SdkTracerProvider) {
+        global::set_text_map_propagator(TraceContextPropagator::new());
+        let exporter = InMemorySpanExporter::default();
+        let provider = SdkTracerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build();
+        global::set_tracer_provider(provider.clone());
+        (exporter, provider)
+    }
+
+    fn attr_i64(span: &opentelemetry_sdk::trace::SpanData, key: &str) -> Option<i64> {
+        span.attributes.iter().find_map(|attribute| {
+            (attribute.key == Key::from_static_str(key)).then(|| match &attribute.value {
+                opentelemetry::Value::I64(value) => Some(*value),
+                _ => None,
+            })?
+        })
+    }
+
+    fn attr_bool(span: &opentelemetry_sdk::trace::SpanData, key: &str) -> Option<bool> {
+        span.attributes.iter().find_map(|attribute| {
+            (attribute.key == Key::from_static_str(key)).then(|| match &attribute.value {
+                opentelemetry::Value::Bool(value) => Some(*value),
+                _ => None,
+            })?
+        })
+    }
+
+    #[test]
+    fn message_send_and_receive_spans_record_attributes_and_link_context() {
+        let (exporter, provider) = install_test_provider();
+        let trace_context = record_message_send_context(10, 20, Term::small_int(123));
+        record_message_receive(
+            20,
+            Some(Duration::from_millis(7)),
+            true,
+            Some(&trace_context),
+        );
+        provider.force_flush().expect("spans flush");
+
+        let spans = exporter.get_finished_spans().expect("finished spans");
+        let send_span = spans
+            .iter()
+            .find(|span| span.name.as_ref() == "beamr.message.send")
+            .expect("send span emitted");
+        let receive_span = spans
+            .iter()
+            .find(|span| span.name.as_ref() == "beamr.message.receive")
+            .expect("receive span emitted");
+
+        assert_eq!(attr_i64(send_span, "message.sender.pid"), Some(10));
+        assert_eq!(attr_i64(send_span, "message.receiver.pid"), Some(20));
+        assert_eq!(attr_i64(send_span, "message.size"), Some(WORD_BYTES as i64));
+        assert_eq!(attr_i64(receive_span, "message.receiver.pid"), Some(20));
+        assert_eq!(attr_i64(receive_span, "message.wait_duration_ms"), Some(7));
+        assert_eq!(attr_bool(receive_span, "message.matched"), Some(true));
+        assert_eq!(
+            receive_span.parent_span_id,
+            send_span.span_context.span_id(),
+            "receive span should extract propagated send context as parent"
+        );
+        assert!(
+            receive_span
+                .links
+                .links
+                .iter()
+                .any(|link| link.span_context.span_id() == send_span.span_context.span_id()),
+            "receive span should also link directly to the send span context"
+        );
+
+        provider.shutdown().expect("provider shutdown");
+    }
 }
