@@ -1,1 +1,1 @@
-feat(beamr): resolve atom names in user-facing term output
+harden(beamr): remove remaining raw term debug output

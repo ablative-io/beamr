@@ -111,17 +111,38 @@ impl fmt::Display for ExecError {
                 module,
                 function,
                 arity,
-            } => write!(
-                formatter,
-                "undefined function {module:?}:{function:?}/{arity}"
-            ),
-            Self::Badarith => formatter.write_str("arithmetic operation failed"),
-            Self::Badarg => formatter.write_str("bad argument"),
-            Self::Badfun { term } => write!(formatter, "bad function term {term:?}"),
-            Self::Badarity { fun, args } => {
+            } => {
+                let fallback = AtomTable::with_common_atoms();
                 write!(
                     formatter,
-                    "bad arity for function {fun:?} with args {args:?}"
+                    "undefined function {}:{}/{}",
+                    fallback.resolve(*module).unwrap_or("#<unknown atom>"),
+                    fallback.resolve(*function).unwrap_or("#<unknown atom>"),
+                    arity
+                )
+            }
+            Self::Badarith => formatter.write_str("arithmetic operation failed"),
+            Self::Badarg => formatter.write_str("bad argument"),
+            Self::Badfun { term } => {
+                let fallback = AtomTable::with_common_atoms();
+                write!(
+                    formatter,
+                    "bad function term {}",
+                    format_term(*term, &fallback)
+                )
+            }
+            Self::Badarity { fun, args } => {
+                let fallback = AtomTable::with_common_atoms();
+                let formatted_args = args
+                    .iter()
+                    .map(|arg| format_term(*arg, &fallback))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(
+                    formatter,
+                    "bad arity for function {} with args [{}]",
+                    format_term(*fun, &fallback),
+                    formatted_args
                 )
             }
             Self::UserExit => formatter.write_str("process exited explicitly"),
