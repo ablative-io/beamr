@@ -549,6 +549,8 @@ impl<'process> ProcessContext<'process> {
             return false;
         }
         process.mailbox_mut().push_owned(message);
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::metrics::record_message_sent();
         true
     }
 

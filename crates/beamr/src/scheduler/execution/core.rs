@@ -493,6 +493,7 @@ fn finish_slice_span(
     reductions_consumed: u32,
     outcome: crate::telemetry::spans::SliceSpanOutcome,
 ) {
+    shared.record_process_slice_metrics(process, reductions_consumed);
     span.finish(&shared.atom_table, process, reductions_consumed, outcome);
 }
 
@@ -704,6 +705,8 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     close_owned_fd_resources_on_exit(shared, pid);
     let _removed = shared.process_table.remove(pid);
     let _removed_body = shared.process_bodies.remove(&pid);
+    #[cfg(feature = "telemetry")]
+    shared.record_scheduler_executing(std::time::Duration::ZERO);
     let mut wait_set = lock_or_recover(&shared.wait_set);
     wait_set.waiting.remove(&pid);
     wait_set.woken.retain(|(woken_pid, _)| *woken_pid != pid);

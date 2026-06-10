@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+#[cfg(feature = "telemetry")]
+use std::time::Instant;
 
 use crossbeam_queue::SegQueue;
 
@@ -149,7 +151,11 @@ pub(in crate::scheduler) fn scheduler_loop(
                 }
             }
         };
+        #[cfg(feature = "telemetry")]
+        let executing_started = Instant::now();
         run_process(shared, queue, pid, my_index);
+        #[cfg(feature = "telemetry")]
+        shared.record_scheduler_executing(executing_started.elapsed());
     }
 }
 
@@ -529,10 +535,14 @@ fn park_thread(shared: &SharedState) {
     }
     let guard = lock_or_recover(&shared.wait_set);
     let timeout = std::time::Duration::from_millis(5);
+    #[cfg(feature = "telemetry")]
+    let idle_started = Instant::now();
     match shared.wake_condvar.wait_timeout(guard, timeout) {
         Ok(_) => {}
         Err(error) => {
             let _recovered = error.into_inner();
         }
     }
+    #[cfg(feature = "telemetry")]
+    shared.record_scheduler_idle(idle_started.elapsed());
 }

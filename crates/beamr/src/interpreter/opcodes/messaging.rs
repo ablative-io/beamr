@@ -23,6 +23,8 @@ pub fn send(
         facility
             .send_remote(target_term, message)
             .map_err(distribution_send_error)?;
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::metrics::record_message_sent();
         process.set_x_reg(0, message);
         return Ok(InstructionOutcome::Continue);
     }

@@ -49,6 +49,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
+#[cfg(feature = "telemetry")]
+use std::time::Instant;
 pub const DEFAULT_REDUCTION_BUDGET: u32 = crate::process::DEFAULT_REDUCTION_BUDGET;
 
 enum ReplayMode {
@@ -88,6 +90,8 @@ pub struct SchedulerConfig {
     pub creation: Option<u32>,
     pub distribution: Option<DistributionConfig>,
     pub jit_threshold: Option<u32>,
+    /// Minimum interval between per-process telemetry samples at scheduler slice boundaries.
+    pub telemetry_sample_interval: Option<Duration>,
 }
 pub(super) struct SharedState {
     shutdown: AtomicBool,
@@ -139,6 +143,8 @@ pub(super) struct SharedState {
     standard_io_pid: u64,
     replay_driver: Option<Arc<Mutex<ReplayDriver>>>,
     replay_mode: bool,
+    #[cfg(feature = "telemetry")]
+    telemetry_metrics: TelemetryMetricState,
 
     // Kept for ownership: dropping SharedState must also stop the backing standard I/O server.
     #[allow(dead_code)]
@@ -146,6 +152,26 @@ pub(super) struct SharedState {
 
     #[cfg(test)]
     idle_parks: AtomicUsize,
+}
+
+#[cfg(feature = "telemetry")]
+pub(super) struct TelemetryMetricState {
+    sample_interval: Duration,
+    last_process_samples: Mutex<std::collections::HashMap<u64, Instant>>,
+    scheduler_executing_nanos: AtomicU64,
+    scheduler_idle_nanos: AtomicU64,
+}
+
+#[cfg(feature = "telemetry")]
+impl TelemetryMetricState {
+    fn new(sample_interval: Duration) -> Self {
+        Self {
+            sample_interval,
+            last_process_samples: Mutex::new(std::collections::HashMap::new()),
+            scheduler_executing_nanos: AtomicU64::new(0),
+            scheduler_idle_nanos: AtomicU64::new(0),
+        }
+    }
 }
 
 impl SharedState {
@@ -215,6 +241,19 @@ impl SharedState {
     /// Return an approximate memory summary for OTP compatibility probes.
     #[must_use]
     pub(super) fn memory_summary(&self) -> crate::native::system_info_bifs::MemorySummary {
+        let (process_heap_words, binary) = self.process_heap_and_binary_words();
+
+        let processes =
+            process_heap_words.saturating_mul(crate::native::system_info_bifs::WORDSIZE_BYTES);
+        let atom = self
+            .atom_count()
+            .saturating_mul(crate::native::system_info_bifs::WORDSIZE_BYTES);
+        crate::native::system_info_bifs::MemorySummary::from_components(processes, atom, binary)
+    }
+
+    /// Return approximate process heap and virtual binary memory words.
+    #[must_use]
+    pub(super) fn process_heap_and_binary_words(&self) -> (usize, usize) {
         let mut process_heap_words = 0usize;
         let mut binary = 0usize;
 
@@ -236,12 +275,77 @@ impl SharedState {
             }
         }
 
-        let processes =
-            process_heap_words.saturating_mul(crate::native::system_info_bifs::WORDSIZE_BYTES);
-        let atom = self
-            .atom_count()
-            .saturating_mul(crate::native::system_info_bifs::WORDSIZE_BYTES);
-        crate::native::system_info_bifs::MemorySummary::from_components(processes, atom, binary)
+        (process_heap_words, binary)
+    }
+
+    #[cfg(feature = "telemetry")]
+    pub(super) fn record_scheduler_executing(&self, duration: Duration) {
+        self.add_scheduler_duration(&self.telemetry_metrics.scheduler_executing_nanos, duration);
+        self.record_vm_health_metrics();
+    }
+
+    #[cfg(feature = "telemetry")]
+    pub(super) fn record_scheduler_idle(&self, duration: Duration) {
+        self.add_scheduler_duration(&self.telemetry_metrics.scheduler_idle_nanos, duration);
+        self.record_vm_health_metrics();
+    }
+
+    #[cfg(feature = "telemetry")]
+    pub(super) fn record_process_slice_metrics(&self, process: &Process, reductions_consumed: u32) {
+        let now = Instant::now();
+        {
+            let mut last_samples = lock_or_recover(&self.telemetry_metrics.last_process_samples);
+            if let Some(last_sample) = last_samples.get(&process.pid())
+                && now.duration_since(*last_sample) < self.telemetry_metrics.sample_interval
+            {
+                return;
+            }
+            last_samples.insert(process.pid(), now);
+        }
+        crate::telemetry::metrics::record_process_slice(
+            process.pid(),
+            reductions_consumed,
+            process.mailbox().message_count(),
+        );
+    }
+
+    #[cfg(feature = "telemetry")]
+    fn record_vm_health_metrics(&self) {
+        let (heap_words, _) = self.process_heap_and_binary_words();
+        crate::telemetry::metrics::record_vm_health(
+            self.process_count(),
+            heap_words,
+            self.scheduler_utilization(),
+        );
+    }
+
+    #[cfg(feature = "telemetry")]
+    fn scheduler_utilization(&self) -> f64 {
+        let executing = self
+            .telemetry_metrics
+            .scheduler_executing_nanos
+            .load(Ordering::Relaxed);
+        let idle = self
+            .telemetry_metrics
+            .scheduler_idle_nanos
+            .load(Ordering::Relaxed);
+        let total = executing.saturating_add(idle);
+        if total == 0 {
+            0.0
+        } else {
+            executing as f64 / total as f64
+        }
+    }
+
+    #[cfg(feature = "telemetry")]
+    fn add_scheduler_duration(&self, counter: &AtomicU64, duration: Duration) {
+        let nanos = match u64::try_from(duration.as_nanos()) {
+            Ok(value) => value,
+            Err(_) => u64::MAX,
+        };
+        let _previous = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            Some(current.saturating_add(nanos))
+        });
     }
 }
 
@@ -389,6 +493,12 @@ impl Scheduler {
         let jit_profiler = Arc::new(JitProfiler::new(
             config.jit_threshold.unwrap_or(DEFAULT_JIT_THRESHOLD),
         ));
+        #[cfg(feature = "telemetry")]
+        let telemetry_sample_interval = config
+            .telemetry_sample_interval
+            .unwrap_or_else(|| Duration::from_millis(100));
+        #[cfg(not(feature = "telemetry"))]
+        let _telemetry_sample_interval = config.telemetry_sample_interval;
         let jit_cache = Arc::new(JitCache::new());
         let io_runtime = if replay_enabled {
             None
@@ -484,6 +594,8 @@ impl Scheduler {
             standard_io_pid,
             replay_driver,
             replay_mode: replay_enabled,
+            #[cfg(feature = "telemetry")]
+            telemetry_metrics: TelemetryMetricState::new(telemetry_sample_interval),
             _standard_io_server: standard_io_server,
             #[cfg(test)]
             idle_parks: AtomicUsize::new(0),
@@ -498,6 +610,8 @@ impl Scheduler {
                 ))),
             );
         }
+        #[cfg(feature = "telemetry")]
+        shared.record_vm_health_metrics();
         supervision_integration::register_distribution_control_handler(&shared);
         if !shared.replay_mode
             && let (Some(ring), Some(registry)) = (&shared.io_ring, &shared.io_registry)

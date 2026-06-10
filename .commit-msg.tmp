@@ -1,1 +1,1 @@
-Harden B-152 OpenTelemetry span integration
+feat(telemetry): add VM health and process metrics

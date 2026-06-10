@@ -100,12 +100,26 @@ pub fn collect_minor(process: &mut Process) -> Result<GcStats, GcError> {
 
 /// Collect only the target process's nursery using a live X-register prefix.
 pub fn collect_minor_with_live(process: &mut Process, live_x: usize) -> Result<GcStats, GcError> {
-    minor::collect(process, live_x)
+    #[cfg(feature = "telemetry")]
+    let started = std::time::Instant::now();
+    let result = minor::collect(process, live_x);
+    #[cfg(feature = "telemetry")]
+    if result.is_ok() {
+        crate::telemetry::metrics::record_gc_collection("minor", started.elapsed());
+    }
+    result
 }
 
 /// Fully compact the target process heap into fresh old space.
 pub fn collect_major(process: &mut Process) -> Result<GcStats, GcError> {
-    major::collect(process)
+    #[cfg(feature = "telemetry")]
+    let started = std::time::Instant::now();
+    let result = major::collect(process);
+    #[cfg(feature = "telemetry")]
+    if result.is_ok() {
+        crate::telemetry::metrics::record_gc_collection("major", started.elapsed());
+    }
+    result
 }
 
 /// Allocate in the process nursery, running per-process GC on HeapFull.
