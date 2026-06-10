@@ -1,1 +1,1 @@
-harden telemetry metrics facade and process metric cleanup
+fix(beamr-wasm): serialize unresolved imports via atom table
