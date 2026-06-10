@@ -56,10 +56,30 @@ pub(super) fn cancel_receive_timer(shared: &SharedState, pid: u64) {
     }
 }
 
+/// Process a timer batch recorded in the replay log.
+pub(super) fn tick_replay_timers(shared: &SharedState) {
+    let Some(driver) = &shared.replay_driver else {
+        return;
+    };
+    let recorded = match driver.lock() {
+        Ok(mut guard) => guard.next_timer_expiry(),
+        Err(error) => error.into_inner().next_timer_expiry(),
+    };
+    let Ok(recorded) = recorded else {
+        return;
+    };
+    let _discarded = lock_or_recover(&shared.timers).tick_at(recorded.now);
+    expire_timers(shared, recorded.expired);
+}
+
 /// Process expired timers: update the process code position to the timeout
 /// label and move the process from the wait set to the woken list.
 pub(super) fn tick_timers(shared: &SharedState) {
     let expired = lock_or_recover(&shared.timers).tick();
+    expire_timers(shared, expired);
+}
+
+fn expire_timers(shared: &SharedState, expired: Vec<crate::timer::ExpiredTimer>) {
     for timer in expired {
         let pid = timer.target_pid;
         mutate_process(shared, pid, |process| {

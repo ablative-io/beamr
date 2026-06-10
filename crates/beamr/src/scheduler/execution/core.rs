@@ -343,8 +343,22 @@ pub(in crate::scheduler) fn execute_slice(
             let _t = process.transition_to(ProcessStatus::Waiting);
             SliceOutcome::Wait(take_process(process))
         }
-        Ok(ExecutionResult::DirtyCall { entry, args, kind }) => {
-            if let Err(error) = submit_dirty_call(shared, process, entry, args, kind) {
+        Ok(ExecutionResult::DirtyCall {
+            entry,
+            args,
+            module,
+            function,
+            arity,
+            kind,
+        }) => {
+            if let Err(error) = submit_dirty_call(
+                shared,
+                process,
+                entry,
+                args,
+                (module, function, arity),
+                kind,
+            ) {
                 shared.exit_errors.insert(process.pid(), error.into());
                 return exit_process(shared, process, ExitReason::Error);
             }
@@ -434,8 +448,31 @@ fn submit_dirty_call(
     process: &Process,
     entry: NativeEntry,
     args: Vec<Term>,
+    mfa: (Atom, Atom, u8),
     kind: DirtySchedulerKind,
 ) -> Result<(), DirtySubmissionError> {
+    if let Some(driver) = &shared.replay_driver {
+        let (module, function, arity) = mfa;
+        let recorded = match driver.lock() {
+            Ok(mut guard) => guard.next_native_call(process.pid(), module, function, arity),
+            Err(error) => {
+                error
+                    .into_inner()
+                    .next_native_call(process.pid(), module, function, arity)
+            }
+        }
+        .map_err(|_| DirtySubmissionError::ReplayMismatch)?;
+        shared.dirty_results.insert(
+            process.pid(),
+            DirtyResult {
+                result: recorded.outcome.result,
+                exception_class: recorded.outcome.exception_class,
+                exception_stacktrace: recorded.outcome.exception_stacktrace,
+            },
+        );
+        let _resumed = timer_integration::resume_suspended(shared, process.pid());
+        return Ok(());
+    }
     let mut context =
         ProcessContext::with_timer_services(process.pid(), Arc::clone(&shared.timers));
     let services = supervision_integration::build_native_services(shared, process.namespace_id());
@@ -451,6 +488,7 @@ fn submit_dirty_call(
     context.set_process_info_facility(services.process_info_facility);
     context.set_code_management_facility(services.code_management_facility);
     context.set_system_info_facility(services.system_info_facility);
+    context.set_replay_driver(services.replay_driver);
     if let Some(sink) = services.io_sink {
         context.set_io_sink(sink);
     }
@@ -498,6 +536,7 @@ fn submit_dirty_call(
 enum DirtySubmissionError {
     PoolUnavailable,
     CompletionBridgeSpawn,
+    ReplayMismatch,
 }
 
 impl From<DirtySubmissionError> for crate::error::ExecError {
