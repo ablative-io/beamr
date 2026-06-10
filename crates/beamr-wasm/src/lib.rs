@@ -22,7 +22,10 @@ use beamr::native::{
 use beamr::scheduler::{WasmAsyncCompletion, WasmRunSummary, WasmScheduler};
 use beamr::term::json::term_to_value;
 use beamr::term::{Term, format::format_term};
-use convert::{js_value_to_owned_term, terms_from_json_array, terms_to_js_array};
+use convert::{
+    js_value_to_owned_term, js_value_to_term_in_context, term_to_js_value, terms_from_json_array,
+    terms_to_js_array,
+};
 use js_sys::{Function, Promise, Reflect};
 use serde_json::{Value, json};
 use wasm_bindgen::JsCast;
@@ -45,6 +48,7 @@ pub struct WasmVm {
     scheduler: Rc<RefCell<WasmScheduler>>,
     timer_handles: Rc<RefCell<BTreeMap<u64, HostTimer>>>,
     async_bridge: Rc<HostAsyncNifs>,
+    js_callbacks: Rc<HostJsCallbacks>,
 }
 
 #[wasm_bindgen]
@@ -65,7 +69,16 @@ impl WasmVm {
             Arc::clone(&atom_table),
             Rc::downgrade(&scheduler),
         ));
-        let facility: Rc<dyn WasmAsyncNifFacility> = async_bridge.clone();
+        let js_callbacks = Rc::new(HostJsCallbacks::new(
+            Arc::clone(&atom_table),
+            Rc::downgrade(&scheduler),
+        ));
+        let facility: Rc<dyn WasmAsyncNifFacility> = Rc::new(HostWasmFacility {
+            async_nifs: Rc::clone(&async_bridge),
+            js_callbacks: Rc::clone(&js_callbacks),
+            js_callback_module: atom_table.intern("wasm_ffi"),
+            js_callback_function: atom_table.intern("js_callback"),
+        });
         scheduler
             .borrow_mut()
             .set_wasm_async_nif_facility(Some(facility));
@@ -76,6 +89,7 @@ impl WasmVm {
             scheduler,
             timer_handles: Rc::new(RefCell::new(BTreeMap::new())),
             async_bridge,
+            js_callbacks,
         })
     }
 
@@ -96,6 +110,40 @@ impl WasmVm {
             "unresolved": unresolved,
         });
         json_to_js(&result)
+    }
+
+    /// Send a JavaScript value to a BEAM process mailbox by local PID.
+    pub fn send_message(&mut self, pid: u64, value: JsValue) -> Result<(), JsValue> {
+        let message = js_value_to_owned_term(value, &self.atom_table)?;
+        self.scheduler
+            .borrow_mut()
+            .send_owned(pid, &message)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        self.sync_host_timers()?;
+        Ok(())
+    }
+
+    /// Register a JavaScript function for `wasm_ffi:js_callback/{N}` calls.
+    pub fn register_js_callback(&mut self, name: &str, callback: Function) {
+        self.js_callbacks.register(name, callback);
+    }
+
+    /// Register `wasm_ffi:js_callback/Arity` for a previously registered JS callback.
+    ///
+    /// The BEAM call shape is `wasm_ffi:js_callback(Name, Arg1, ..., ArgN)`, so
+    /// the registered native arity must include the leading callback name.
+    pub fn register_js_callback_nif(&mut self, arity: u8) -> Result<(), JsValue> {
+        let module_atom = self.atom_table.intern("wasm_ffi");
+        let function_atom = self.atom_table.intern("js_callback");
+        self.bif_registry
+            .register(
+                module_atom,
+                function_atom,
+                arity,
+                js_callback_nif,
+                Capability::ExternalIo,
+            )
+            .map_err(registration_error_to_js)
     }
 
     /// Register a JavaScript Promise-returning native under module/function/arity.
@@ -238,25 +286,44 @@ impl HostAsyncNifs {
     }
 }
 
-impl WasmAsyncNifFacility for HostAsyncNifs {
+impl HostAsyncNifs {
     fn start_async_nif(
         &self,
         mfa: NativeKey,
         args: &[Term],
         context: &mut beamr::native::ProcessContext<'_>,
     ) -> Result<Term, Term> {
-        let Some(pid) = context.pid() else {
-            return Err(Term::atom(beamr::atom::Atom::BADARG));
-        };
         let Some(callback) = self.callbacks.borrow().get(&mfa).cloned() else {
             return Err(Term::atom(beamr::atom::Atom::UNDEF));
         };
+        self.start_callback(callback, args, context)
+    }
+
+    fn start_callback(
+        &self,
+        callback: Function,
+        args: &[Term],
+        context: &mut beamr::native::ProcessContext<'_>,
+    ) -> Result<Term, Term> {
+        let Some(pid) = context.pid() else {
+            return Err(Term::atom(beamr::atom::Atom::BADARG));
+        };
         let args_array = terms_to_js_array(args, self.atom_table.as_ref())
             .map_err(|_| Term::atom(beamr::atom::Atom::BADARG))?;
-        let promise_value = callback
+        let value = callback
             .call1(&JsValue::UNDEFINED, &args_array)
             .map_err(|_| Term::atom(beamr::atom::Atom::BADARG))?;
-        let promise = Promise::resolve(&promise_value);
+        if is_promise_like(&value) {
+            self.start_promise_completion(pid, Promise::resolve(&value));
+            context.request_suspend(None);
+            Ok(Term::NIL)
+        } else {
+            js_value_to_term_in_context(value, context)
+                .map_err(|_| Term::atom(beamr::atom::Atom::BADARG))
+        }
+    }
+
+    fn start_promise_completion(&self, pid: u64, promise: Promise) {
         let scheduler = self.scheduler.clone();
         let atom_table = Arc::clone(&self.atom_table);
         wasm_bindgen_futures::spawn_local(async move {
@@ -280,9 +347,79 @@ impl WasmAsyncNifFacility for HostAsyncNifs {
                 let _completed = scheduler.borrow_mut().complete_async(pid, completion);
             }
         });
-        context.request_suspend(None);
-        Ok(Term::NIL)
     }
+}
+
+struct HostJsCallbacks {
+    atom_table: Arc<AtomTable>,
+    callbacks: RefCell<BTreeMap<String, Function>>,
+    async_nifs: Rc<HostAsyncNifs>,
+}
+
+impl HostJsCallbacks {
+    fn new(atom_table: Arc<AtomTable>, scheduler: Weak<RefCell<WasmScheduler>>) -> Self {
+        let async_nifs = Rc::new(HostAsyncNifs::new(Arc::clone(&atom_table), scheduler));
+        Self {
+            atom_table,
+            callbacks: RefCell::new(BTreeMap::new()),
+            async_nifs,
+        }
+    }
+
+    fn register(&self, name: &str, callback: Function) {
+        self.callbacks
+            .borrow_mut()
+            .insert(name.to_owned(), callback);
+    }
+
+    fn start_js_callback(
+        &self,
+        args: &[Term],
+        context: &mut beamr::native::ProcessContext<'_>,
+    ) -> Result<Term, Term> {
+        let Some((name_term, callback_args)) = args.split_first() else {
+            return Err(Term::atom(beamr::atom::Atom::BADARG));
+        };
+        let name_value = term_to_js_value(*name_term, self.atom_table.as_ref())
+            .map_err(|_| Term::atom(beamr::atom::Atom::BADARG))?;
+        let Some(name) = name_value.as_string() else {
+            return Err(Term::atom(beamr::atom::Atom::BADARG));
+        };
+        let Some(callback) = self.callbacks.borrow().get(&name).cloned() else {
+            return Err(Term::atom(beamr::atom::Atom::UNDEF));
+        };
+        self.async_nifs
+            .start_callback(callback, callback_args, context)
+    }
+}
+
+struct HostWasmFacility {
+    async_nifs: Rc<HostAsyncNifs>,
+    js_callbacks: Rc<HostJsCallbacks>,
+    js_callback_module: beamr::atom::Atom,
+    js_callback_function: beamr::atom::Atom,
+}
+
+impl WasmAsyncNifFacility for HostWasmFacility {
+    fn start_async_nif(
+        &self,
+        mfa: NativeKey,
+        args: &[Term],
+        context: &mut beamr::native::ProcessContext<'_>,
+    ) -> Result<Term, Term> {
+        if mfa.0 == self.js_callback_module && mfa.1 == self.js_callback_function {
+            self.js_callbacks.start_js_callback(args, context)
+        } else {
+            self.async_nifs.start_async_nif(mfa, args, context)
+        }
+    }
+}
+
+fn js_callback_nif(
+    args: &[Term],
+    context: &mut beamr::native::ProcessContext<'_>,
+) -> Result<Term, Term> {
+    wasm_async_nif_stub(args, context)
 }
 
 fn wasm_async_nif_stub(
@@ -296,6 +433,12 @@ fn wasm_async_nif_stub(
         return Err(Term::atom(beamr::atom::Atom::UNDEF));
     };
     facility.start_async_nif(mfa, args, context)
+}
+
+fn is_promise_like(value: &JsValue) -> bool {
+    Reflect::get(value, &JsValue::from_str("then"))
+        .ok()
+        .is_some_and(|then| then.is_function())
 }
 
 fn register_wasm_safe_bifs(

@@ -10,8 +10,9 @@ use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
 use crate::error::ExecError;
-use crate::ets::copy::OwnedTerm;
+use crate::ets::OwnedTerm;
 use crate::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
+use crate::mailbox::SendError;
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
 use crate::native::{BifRegistryImpl, CapabilitySet, WasmAsyncNifFacility};
@@ -276,20 +277,52 @@ impl WasmScheduler {
         true
     }
 
-    /// Deliver a message to a local process and wake it if it was blocked.
+    /// Deliver an immediate message to a local process and wake it if it was blocked.
     pub fn send(&mut self, pid: u64, message: Term) -> bool {
+        self.enqueue_owned_message(pid, message)
+    }
+
+    /// Deliver an owned host term to a local process and wake it if it was blocked.
+    ///
+    /// Boxed values are first copied into the receiver's heap, preserving the
+    /// normal mailbox ownership contract for messages entering from JavaScript.
+    pub fn send_owned(&mut self, pid: u64, message: &OwnedTerm) -> Result<(), ExecError> {
         let Some(process) = self.processes.get_mut(&pid) else {
+            return Err(ExecError::Badarg);
+        };
+        let sender = process.mailbox().sender();
+        sender
+            .send(message.root(), process.heap_mut())
+            .map_err(send_error_to_exec)?;
+        self.after_successful_enqueue(pid);
+        Ok(())
+    }
+
+    fn enqueue_owned_message(&mut self, pid: u64, message: Term) -> bool {
+        let Some(_process) = self.processes.get(&pid) else {
             return false;
         };
-        process.mailbox_mut().push_owned(message);
-        if let Some(timer_id) = process.receive_timer_ref() {
+        self.enqueue_copied_message(pid, message);
+        true
+    }
+
+    fn enqueue_copied_message(&mut self, pid: u64, message: Term) {
+        if let Some(process) = self.processes.get_mut(&pid) {
+            process.mailbox_mut().push_owned(message);
+        }
+        self.after_successful_enqueue(pid);
+    }
+
+    fn after_successful_enqueue(&mut self, pid: u64) {
+        if let Some(process) = self.processes.get_mut(&pid)
+            && let Some(timer_id) = process.receive_timer_ref()
+        {
             process.set_receive_timer_ref(None);
             self.pending_timer_cancellations.push(timer_id);
         }
         if self.waiting.contains(&pid) {
-            return self.wake(pid);
+            let _woken = self.wake(pid);
         }
-        true
     }
 
     /// Execute at most one ready-queue snapshot. Processes that yield are
@@ -450,6 +483,13 @@ impl WasmScheduler {
                 Some(ExitReason::Error)
             }
         }
+    }
+}
+
+fn send_error_to_exec(error: SendError) -> ExecError {
+    match error {
+        SendError::HeapFull(error) => ExecError::from(error),
+        SendError::InvalidBoxedTerm => ExecError::Badarg,
     }
 }
 

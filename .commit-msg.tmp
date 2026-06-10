@@ -1,1 +1,1 @@
-review: harden wasm JS term conversion
+feat(wasm): support js message send and callbacks

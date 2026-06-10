@@ -4,12 +4,14 @@ use std::sync::Arc;
 use super::*;
 use crate::atom::{Atom, AtomTable};
 use crate::constant_pool::ConstantPool;
+use crate::ets::copy_term_to_ets;
 use crate::loader::{Instruction, LambdaEntry, LineInfo, Literal};
 use crate::module::{Module, ModuleOrigin, ResolvedImport};
-use crate::native::BifRegistryImpl;
+use crate::native::{BifRegistryImpl, ProcessContext};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{CodePosition, ExitReason, Process, ProcessStatus, ReceiveTimeout};
 use crate::term::Term;
+use crate::term::boxed::Tuple;
 
 #[test]
 fn wasm_scheduler_starts_empty_and_runs_idle_round() {
@@ -75,6 +77,48 @@ fn message_before_receive_after_cancels_pending_timer() {
     assert_eq!(resumed.receive_timer_ref(), None);
     assert_eq!(resumed.status(), ProcessStatus::Running);
     assert_eq!(scheduler.ready.pop(), Some(pid));
+}
+
+#[test]
+fn host_send_owned_copies_message_into_receiver_heap_and_wakes() {
+    let (mut scheduler, module) = scheduler_with_test_module();
+    let pid = 47;
+    let mut source = Process::new(900, DEFAULT_HEAP_SIZE);
+    let mut context = ProcessContext::new();
+    context.attach_process(&mut source, 0);
+    let tuple = context
+        .alloc_tuple(&[Term::small_int(1), Term::small_int(2)])
+        .expect("source tuple allocation succeeds");
+    context.detach_process();
+    let owned = copy_term_to_ets(tuple).expect("tuple copies into host-owned storage");
+    let process = waiting_process(pid, module);
+    scheduler.processes.insert(pid, process);
+    scheduler.waiting.insert(pid);
+
+    scheduler
+        .send_owned(pid, &owned)
+        .expect("host-owned term sends to local pid");
+
+    let Some(resumed) = scheduler.processes.get_mut(&pid) else {
+        panic!("process is retained");
+    };
+    let Some(delivered) = resumed.mailbox_mut().current_message() else {
+        panic!("message is visible through normal receive scan");
+    };
+    assert_ne!(delivered, tuple);
+    let delivered_tuple = Tuple::new(delivered).expect("delivered message is tuple-shaped");
+    assert_eq!(delivered_tuple.get(0), Some(Term::small_int(1)));
+    assert_eq!(delivered_tuple.get(1), Some(Term::small_int(2)));
+    assert_eq!(resumed.status(), ProcessStatus::Running);
+    assert_eq!(scheduler.ready.pop(), Some(pid));
+}
+
+#[test]
+fn host_send_owned_rejects_missing_pid() {
+    let (mut scheduler, _module) = scheduler_with_test_module();
+    let owned = copy_term_to_ets(Term::small_int(5)).expect("immediate copies into owned storage");
+
+    assert_eq!(scheduler.send_owned(99, &owned), Err(ExecError::Badarg));
 }
 
 #[test]
