@@ -164,6 +164,7 @@ pub fn handle_native_continuation(
     context.set_pid(Some(process.pid()));
     if let Some(services) = services {
         context.set_nif_private_data(services.nif_private_data.clone());
+        context.set_suspension_registrar(services.suspension_registrar.clone());
     }
     context.attach_process(process, 1);
     let step = match continuation {
@@ -179,10 +180,26 @@ pub fn handle_native_continuation(
         }
     }
     .map_err(|_| ExecError::Badarg)?;
+    // A resuming continuation may legally suspend or trampoline again:
+    // honor the requests it left on the context instead of discarding them
+    // (precedence mirrors call_native_entry: suspend, then trampoline,
+    // then the step result).
+    let suspend = context.take_suspend();
+    let extra_trampoline = context.take_trampoline();
     context.detach_process();
 
+    if let Some(suspend) = suspend {
+        // The process parks at the BIF call instruction under a NEW call
+        // id (request_suspend allocated it from this process). A gated
+        // await's completion becomes the BIF's overall result in x0; a
+        // message-wakeable suspend re-executes the whole native here.
+        return handle_suspend(process, module, suspend);
+    }
     match step {
         ContinuationStep::Done(result) => {
+            if let Some(request) = extra_trampoline {
+                return handle_trampoline(process, module, registry, request);
+            }
             process.set_x_reg(0, result);
             Ok(InstructionOutcome::Continue)
         }
@@ -209,8 +226,10 @@ pub fn handle_suspend(
     _module: &Module,
     suspend: crate::native::SuspendRequest,
 ) -> Result<InstructionOutcome, ExecError> {
-    // Store the current position as the resume point. When the process is
-    // woken (new message arrives), it will re-execute the select BIF call.
+    // Store the current position as the resume point: a receive-style
+    // suspend re-executes the select BIF call on message arrival; a
+    // result-gated host await resumes here when its completion is applied
+    // (or the timeout re-executes the native).
     let resume = process
         .code_position()
         .ok_or(ExecError::InvalidOperand("suspend code position"))?;
@@ -222,6 +241,23 @@ pub fn handle_suspend(
             milliseconds: timeout_ms,
         }));
     }
+
+    // Record the suspension's call identity. For a result-gated await
+    // (wake_on_message=false) only the matching completion, a file-I/O
+    // completion, or the timeout may resume the process; a message-wakeable
+    // suspend (select, marker awaits) re-executes the native on any wake,
+    // but a completion published for THIS call id is still applied exactly
+    // here — or dropped as stale once the suspension is superseded — never
+    // applied blind at a later park position.
+    let call_id = suspend
+        .call_id
+        .unwrap_or_else(|| process.allocate_suspension_call_id());
+    process.set_suspension(Some(crate::process::SuspensionRecord {
+        call_id,
+        kind: crate::process::SuspensionKind::HostAwait,
+        position: Some(resume),
+        wake_on_message: suspend.wake_on_message,
+    }));
 
     // Transition to Waiting state.
     if process.status() == ProcessStatus::New {
@@ -348,6 +384,8 @@ mod tests {
 
         let suspend = crate::native::SuspendRequest {
             timeout_ms: Some(5000),
+            wake_on_message: false,
+            call_id: Some(7),
         };
         let result = handle_suspend(&mut process, &module, suspend).expect("suspend ok");
         assert_eq!(result, InstructionOutcome::Waiting);
@@ -355,6 +393,42 @@ mod tests {
 
         let timeout = process.receive_timeout().expect("timeout set");
         assert_eq!(timeout.milliseconds, 5000);
+        let record = process.suspension().expect("host-await record installed");
+        assert_eq!(record.call_id, 7);
+        assert_eq!(record.kind, crate::process::SuspensionKind::HostAwait);
+        assert_eq!(
+            record.position,
+            Some(CodePosition {
+                module: Atom::OK,
+                instruction_pointer: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn handle_suspend_message_wakeable_installs_record_with_allocated_id() {
+        let module = module(Atom::OK, vec![Instruction::Return]);
+        let mut process = Process::new(1, 32);
+        process.set_code_position(Some(CodePosition {
+            module: Atom::OK,
+            instruction_pointer: 0,
+        }));
+        process
+            .transition_to(ProcessStatus::Running)
+            .expect("start running");
+
+        let suspend = crate::native::SuspendRequest {
+            timeout_ms: None,
+            wake_on_message: true,
+            call_id: None,
+        };
+        let result = handle_suspend(&mut process, &module, suspend).expect("suspend ok");
+        assert_eq!(result, InstructionOutcome::Waiting);
+        assert_eq!(process.status(), ProcessStatus::Waiting);
+        let record = process.suspension().expect("record installed");
+        assert!(record.wake_on_message);
+        assert_eq!(record.call_id, 1, "id allocated from the process counter");
+        assert_eq!(record.kind, crate::process::SuspensionKind::HostAwait);
     }
 
     #[test]
@@ -467,5 +541,153 @@ mod tests {
             process.current_module().map(|module| module.generation()),
             Some(2)
         );
+    }
+
+    fn aion_continuation(
+        resume: fn(
+            crate::native::AionTimeoutContinuation,
+            Term,
+            &mut ProcessContext<'_>,
+        ) -> Result<ContinuationStep, Term>,
+    ) -> crate::native::NativeContinuation {
+        crate::native::NativeContinuation::AionTimeout(crate::native::AionTimeoutContinuation {
+            state_id: 1,
+            resume,
+        })
+    }
+
+    fn resume_requests_await_suspend(
+        _state: crate::native::AionTimeoutContinuation,
+        _closure_result: Term,
+        context: &mut ProcessContext<'_>,
+    ) -> Result<ContinuationStep, Term> {
+        let _call_id = context.request_await_suspend(None);
+        Ok(ContinuationStep::Done(Term::NIL))
+    }
+
+    #[test]
+    fn continuation_resume_can_request_await_suspend() {
+        let module = module(Atom::OK, vec![Instruction::Return]);
+        let mut process = Process::new(1, 32);
+        process.set_code_position(Some(CodePosition {
+            module: Atom::OK,
+            instruction_pointer: 0,
+        }));
+        process
+            .transition_to(ProcessStatus::Running)
+            .expect("start running");
+        process.push_native_continuation(
+            aion_continuation(resume_requests_await_suspend),
+            process.stack().len(),
+        );
+        assert!(process.native_continuation_ready());
+
+        let outcome = handle_native_continuation(&mut process, &module, None, None)
+            .expect("continuation resumes");
+        // The re-suspend request from the resuming continuation is honored
+        // (previously discarded): the process parks under a NEW gated
+        // host-await suspension at the call instruction.
+        assert_eq!(outcome, InstructionOutcome::Waiting);
+        assert_eq!(process.status(), ProcessStatus::Waiting);
+        let record = process.suspension().expect("re-suspend re-armed");
+        assert_eq!(record.call_id, 1);
+        assert!(!record.wake_on_message);
+        assert_eq!(
+            record.position,
+            Some(CodePosition {
+                module: Atom::OK,
+                instruction_pointer: 0,
+            })
+        );
+    }
+
+    fn resume_requests_trampoline(
+        _state: crate::native::AionTimeoutContinuation,
+        closure_result: Term,
+        context: &mut ProcessContext<'_>,
+    ) -> Result<ContinuationStep, Term> {
+        // The fun travels in through x0 (the closure result) so this plain
+        // fn pointer needs no captured state.
+        context.set_trampoline(closure_result, vec![]);
+        Ok(ContinuationStep::Done(Term::NIL))
+    }
+
+    #[test]
+    fn continuation_resume_can_request_a_trampoline() {
+        let atoms = AtomTable::new();
+        let module_atom = atoms.intern("cont_tramp");
+        let callback_atom = atoms.intern("callback@anon");
+        let callback_id = crate::loader::lambda_unique_id(&atoms, module_atom, callback_atom, 0, 0)
+            .expect("callback id");
+        let registry = ModuleRegistry::new();
+        let mut hosting = module(module_atom, vec![Instruction::Label { label: 10 }]);
+        hosting.lambdas.push(LambdaEntry {
+            function: callback_atom,
+            arity: 0,
+            label: 10,
+            num_free: 0,
+            unique_id: callback_id,
+        });
+        let hosting = registry.insert(hosting);
+        let mut closure_words = [0_u64; 7];
+        let fun = write_closure(
+            &mut closure_words,
+            module_atom,
+            0,
+            0,
+            hosting.generation(),
+            callback_id,
+            &[],
+        )
+        .expect("closure");
+
+        let mut process = Process::new(1, 32);
+        process.set_code_position(Some(CodePosition {
+            module: module_atom,
+            instruction_pointer: 0,
+        }));
+        process.set_x_reg(0, fun);
+        process.push_native_continuation(
+            aion_continuation(resume_requests_trampoline),
+            process.stack().len(),
+        );
+
+        let outcome = handle_native_continuation(&mut process, &hosting, Some(&registry), None)
+            .expect("continuation resumes");
+        // The trampoline request from the resuming continuation is honored
+        // (previously discarded): execution jumps into the closure body.
+        assert_eq!(
+            outcome,
+            InstructionOutcome::Jump(CodePosition {
+                module: module_atom,
+                instruction_pointer: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn native_continuation_fires_only_at_its_recorded_position() {
+        let mut process = Process::new(1, 32);
+        process.set_code_position(Some(CodePosition {
+            module: Atom::OK,
+            instruction_pointer: 4,
+        }));
+        process.push_native_continuation(
+            aion_continuation(resume_requests_await_suspend),
+            process.stack().len(),
+        );
+        // Same stack depth at a DIFFERENT position — a re-entered await
+        // elsewhere. Firing here would hand the continuation garbage x0.
+        process.set_code_position(Some(CodePosition {
+            module: Atom::OK,
+            instruction_pointer: 9,
+        }));
+        assert!(!process.native_continuation_ready());
+        // Back at the trampoline's return target: the closure returned.
+        process.set_code_position(Some(CodePosition {
+            module: Atom::OK,
+            instruction_pointer: 4,
+        }));
+        assert!(process.native_continuation_ready());
     }
 }

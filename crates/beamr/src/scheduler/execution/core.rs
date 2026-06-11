@@ -8,8 +8,11 @@ use crate::interpreter::{self, ExecutionResult};
 use crate::io::resource::close_owned_resource_at;
 use crate::native::{ExceptionClass, NativeEntry, ProcessContext};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
-use crate::process::{CodePosition, ExitReason, Process, ProcessStatus};
+use crate::process::{
+    CodePosition, ExitReason, Process, ProcessStatus, SuspensionKind, SuspensionRecord,
+};
 use crate::scheduler::dirty::{DirtyJob, DirtyResult, DirtySchedulerKind, oneshot};
+use crate::scheduler::suspension::{self, SuspensionResultPayload};
 use crate::term::{Term, boxed::BoxedTag};
 use std::sync::Arc;
 
@@ -111,17 +114,32 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
             // recheck below — move it with them.
             #[cfg(test)]
             invoke_park_gap_hook(shared, ParkGap::WaitRegistered, pid);
-            // The recheck must notice BOTH wake sources that can land before
-            // the registration above: a delivered message, and a receive
-            // timer that fired while the slot was Executing or in the
-            // store-to-register gap (expire_timers found nothing in
-            // `waiting`, so only this recheck can schedule the process; the
-            // mark is consumed at the start of the next slice, which applies
-            // the timeout jump). A stale mark costs one benign spurious
-            // wake.
-            if process_has_queued_messages(shared, pid)
-                || timer_integration::has_pending_expired_timer(shared, pid)
-            {
+            // The recheck must notice EVERY wake source that can land before
+            // the registration above: a delivered message, a receive timer
+            // that fired while the slot was Executing or in the
+            // store-to-register gap, and — for a host-await suspension — a
+            // completion published while the slot was Executing
+            // (expire_timers/wake_process found nothing in `waiting`, so
+            // only this recheck can schedule the process; the event is
+            // consumed at the start of the next slice). A stale mark costs
+            // one benign spurious wake. A gated host-await park is treated
+            // exactly like wake_process treats it: a queued message alone
+            // must NOT self-wake it, or the await native would re-execute
+            // and re-submit its host call. Message-wakeable parks (plain
+            // receives, select, marker awaits) additionally self-wake on a
+            // completion published while the slot was Executing.
+            let gated = shared
+                .suspensions
+                .get(&pid)
+                .is_some_and(|mirror| !mirror.wake_on_message);
+            let wake_worthy = if gated {
+                shared.has_consumable_suspension_event(pid)
+            } else {
+                process_has_queued_messages(shared, pid)
+                    || timer_integration::has_pending_expired_timer(shared, pid)
+                    || shared.has_consumable_suspension_event(pid)
+            };
+            if wake_worthy {
                 let self_woke = {
                     let mut ws = lock_or_recover(&shared.wait_set);
                     ws.waiting.remove(&pid).is_some()
@@ -132,12 +150,14 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
             }
         }
         SliceOutcome::Suspended(process) => {
-            // Suspended means a dirty native call is in flight (host-side
-            // request_suspend parks through Waiting/Wait instead). Mailbox
-            // arrivals while a dirty call runs are normal and must NOT
-            // resume the process — only the dirty result may, via the
-            // completion bridge's resume_suspended or, when the result
-            // landed before this registration, the check below.
+            // Suspended means a dirty native call is in flight or the hook
+            // suspended the process (host-side request_suspend parks through
+            // Waiting/Wait instead). Mailbox arrivals while parked here are
+            // normal and must NOT resume the process — only the suspension's
+            // own event may: the dirty completion published under the
+            // suspension's call id, or a matching embedder resume. That
+            // event arrives via resume_suspended or, when it landed before
+            // this registration, the check below.
             store_runnable_process(shared, process);
             if cleanup_if_tombstoned_after_store(shared, pid) {
                 return;
@@ -170,16 +190,18 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
             //    fallback's `waiting` removal finds the pid already moved
             //    to `woken` — a no-op.
             //
-            // The fallback re-verifies the pending result under the wait-set
+            // The fallback re-verifies the pending event under the wait-set
             // lock: if a woken slice already consumed it (and possibly
-            // parked again for a NEW in-flight dirty call), the unpark must
-            // not fire — resuming an in-flight dirty call re-executes the
-            // call instruction in an illegal state.
-            if shared.dirty_results.contains_key(&pid)
+            // parked again under a NEW suspension with a fresh call id),
+            // the unpark must not fire. The event check is identity-keyed,
+            // so a completion for the OLD suspension can never unpark the
+            // NEW one — and even if an interleaving slips a stray unpark
+            // through, the slice-start gate re-parks without executing.
+            if shared.has_consumable_suspension_event(pid)
                 && !timer_integration::resume_suspended(shared, pid)
             {
                 let mut ws = lock_or_recover(&shared.wait_set);
-                if shared.dirty_results.contains_key(&pid)
+                if shared.has_consumable_suspension_event(pid)
                     && let Some(index) = ws.waiting.remove(&pid)
                 {
                     ws.woken.push((pid, index));
@@ -467,7 +489,7 @@ fn execute_slice_with_budget(
             crate::scheduler::exit_capture::capture_term(process.x_reg(0)),
         );
     }
-    if process.transition_to(ProcessStatus::Running).is_err() {
+    if transition_to_running(process).is_err() {
         return SliceOutcome::Exited(
             exit_reason_from_status(process.status()),
             crate::scheduler::exit_capture::capture_term(process.x_reg(0)),
@@ -475,47 +497,52 @@ fn execute_slice_with_budget(
     }
     #[cfg(feature = "telemetry")]
     let span = start_slice_span(shared, process);
-    if let Some((_, dirty_result)) = shared.dirty_results.remove(&process.pid()) {
-        match apply_dirty_result(process, dirty_result) {
-            Ok(InstructionOutcomeAfterDirty::Continue) => {}
-            Ok(InstructionOutcomeAfterDirty::Exit(reason)) => {
-                let outcome = exit_process(shared, process, reason);
-                #[cfg(feature = "telemetry")]
-                finish_slice_span(
-                    shared,
-                    process,
-                    span,
-                    0,
-                    crate::telemetry::spans::SliceSpanOutcome::Exited,
-                );
-                return outcome;
-            }
-            Err(error) => {
-                let pid = process.pid();
-                shared.exit_errors.insert(pid, error);
-                let outcome = exit_process(shared, process, ExitReason::Error);
-                #[cfg(feature = "telemetry")]
-                finish_slice_span(
-                    shared,
-                    process,
-                    span,
-                    0,
-                    crate::telemetry::spans::SliceSpanOutcome::Exited,
-                );
-                return outcome;
-            }
+    // Suspension gate: a result-gated suspension (host await, dirty call,
+    // hook suspend) is consumed here, on the owning thread, only by its
+    // matching event — the completion published under the suspension's call
+    // id, a file-I/O completion, the receive timeout, or a matching embedder
+    // resume. Stale completions are dropped; with nothing consumable the
+    // process re-parks untouched, so a stray wake can never re-execute the
+    // parked call instruction (and double-submit its side effect).
+    match consume_suspension_event(shared, process) {
+        SuspensionGate::Run => {}
+        SuspensionGate::Repark(kind) => {
+            #[cfg(feature = "telemetry")]
+            finish_slice_span(
+                shared,
+                process,
+                span,
+                0,
+                crate::telemetry::spans::SliceSpanOutcome::Waiting,
+            );
+            return repark_suspended(process, kind);
         }
-    }
-    // A receive timer that fired since the last slice is applied here, on
-    // the owning thread: jump to the recorded timeout continuation. Doing
-    // this at slice start (instead of from the timer-expiry thread) means
-    // the jump can never race a slot that is Executing or mid-park, and a
-    // timer that fires while the process handles a non-matching message
-    // still times the receive out on the next slice.
-    timer_integration::apply_expired_receive_timer(shared, process);
-    if let Some((_, result_term)) = shared.async_results.remove(&process.pid()) {
-        process.set_x_reg(0, result_term);
-        advance_past_current_instruction(process);
+        SuspensionGate::Exit(reason) => {
+            let outcome = exit_process(shared, process, reason);
+            #[cfg(feature = "telemetry")]
+            finish_slice_span(
+                shared,
+                process,
+                span,
+                0,
+                crate::telemetry::spans::SliceSpanOutcome::Exited,
+            );
+            return outcome;
+        }
+        SuspensionGate::Error(error) => {
+            let pid = process.pid();
+            shared.exit_errors.insert(pid, error);
+            let outcome = exit_process(shared, process, ExitReason::Error);
+            #[cfg(feature = "telemetry")]
+            finish_slice_span(
+                shared,
+                process,
+                span,
+                0,
+                crate::telemetry::spans::SliceSpanOutcome::Exited,
+            );
+            return outcome;
+        }
     }
     let reduction_budget = recorded_schedule.map_or(DEFAULT_REDUCTION_BUDGET, |recorded| {
         recorded.reduction_budget
@@ -585,7 +612,28 @@ fn execute_slice_with_budget(
         result,
         Ok(ExecutionResult::Yielded) | Ok(ExecutionResult::Waiting)
     ) && timer_integration::invoke_hook(shared, process, reductions) == HookDecision::Suspend
+        // A hook suspend must NOT target an await-parked slice: a Waiting
+        // slice that parked through request_suspend/request_await_suspend
+        // already carries a result-gated suspension record, and installing
+        // the Hook record over it would invalidate the await's call id —
+        // published completions would be dropped as stale and the eventual
+        // embedder resume would re-execute the parked await native,
+        // double-submitting its host side effect. The hook still observes
+        // the slice; its Suspend decision is ignored and the process parks
+        // under the await it requested.
+        && process.suspension().is_none()
     {
+        // Record the hook suspension's identity before parking so an
+        // embedder resume_process targets exactly this suspension and a
+        // resume racing the park gap is consumed by the slice-start gate.
+        let call_id = process.allocate_suspension_call_id();
+        process.set_suspension(Some(SuspensionRecord {
+            call_id,
+            kind: SuspensionKind::Hook,
+            position: process.code_position(),
+            wake_on_message: false,
+        }));
+        shared.register_suspension_mirror(process.pid(), call_id, SuspensionKind::Hook, false);
         let _t = process.transition_to(ProcessStatus::Suspended);
         #[cfg(feature = "telemetry")]
         finish_slice_span(
@@ -631,14 +679,33 @@ fn execute_slice_with_budget(
             arity,
             kind,
         }) => {
+            // Record the dirty call's identity before submission so the
+            // completion bridge publishes its result under this exact call
+            // id and the wake gate holds the process parked meanwhile.
+            let call_id = process.allocate_suspension_call_id();
+            process.set_suspension(Some(SuspensionRecord {
+                call_id,
+                kind: SuspensionKind::DirtyCall,
+                position: process.code_position(),
+                wake_on_message: false,
+            }));
+            shared.register_suspension_mirror(
+                process.pid(),
+                call_id,
+                SuspensionKind::DirtyCall,
+                false,
+            );
             if let Err(error) = submit_dirty_call(
                 shared,
                 process,
+                call_id,
                 entry,
                 args,
                 (module, function, arity),
                 kind,
             ) {
+                let _withdrawn = process.take_suspension();
+                shared.suspensions.remove(&process.pid());
                 shared.exit_errors.insert(process.pid(), error.into());
                 let outcome = exit_process(shared, process, ExitReason::Error);
                 #[cfg(feature = "telemetry")]
@@ -688,6 +755,285 @@ fn execute_slice_with_budget(
             );
             outcome
         }
+    }
+}
+
+/// Move a schedulable process to Running. A Suspended process reaches the
+/// owning thread without the resume flip only on a spurious wake; route it
+/// through Yielded so the lifecycle graph holds (the slice-start gate then
+/// re-parks it unless a consumable event is pending).
+fn transition_to_running(process: &mut Process) -> Result<(), ()> {
+    if process.status() == ProcessStatus::Suspended
+        && process.transition_to(ProcessStatus::Yielded).is_err()
+    {
+        return Err(());
+    }
+    process
+        .transition_to(ProcessStatus::Running)
+        .map_err(|_| ())
+}
+
+/// Decision produced by the slice-start suspension gate.
+enum SuspensionGate {
+    /// No live suspension, or its event was consumed: run the interpreter.
+    Run,
+    /// The suspension has no consumable event: park again untouched.
+    Repark(SuspensionKind),
+    /// Applying a dirty exception unwound the process to an exit.
+    Exit(ExitReason),
+    /// Applying the completion failed.
+    Error(crate::error::ExecError),
+}
+
+/// Consume `process`'s pending suspension event, if any. See the call site
+/// in [`execute_slice_with_budget`] for the protocol contract.
+fn consume_suspension_event(shared: &SharedState, process: &mut Process) -> SuspensionGate {
+    let pid = process.pid();
+    let Some(record) = process.suspension() else {
+        // No live suspension: any published completion or mirror is the
+        // orphan of an abandoned/superseded suspend request — drop it,
+        // then apply a plain receive timer fire.
+        let _stale_mirror = shared.suspensions.remove(&pid);
+        let _orphan_result = shared.suspension_results.remove(&pid);
+        let _jumped = timer_integration::apply_expired_receive_timer(shared, process);
+        return SuspensionGate::Run;
+    };
+    if let Some((_, result)) = shared
+        .suspension_results
+        .remove_if(&pid, |_, result| result.call_id == record.call_id)
+    {
+        let _consumed = process.take_suspension();
+        shared.suspensions.remove(&pid);
+        if record.position != process.code_position() {
+            // The identity matched but the park position moved: a protocol
+            // violation. Refuse to mutate the instruction pointer blind —
+            // that desync is exactly the "invalid operand for instruction
+            // pointer" crash class this gate exists to prevent.
+            debug_assert_eq!(
+                record.position,
+                process.code_position(),
+                "suspension result applied at a different position than it was produced"
+            );
+            return SuspensionGate::Error(crate::error::ExecError::InvalidOperand(
+                "suspension result position",
+            ));
+        }
+        // The completion owns the timed-await lifecycle: clear the timeout
+        // metadata so a raced timer fire is dropped as stale and a later
+        // plain wait cannot arm a timer at this stale resume position.
+        process.set_receive_timeout(None);
+        process.set_receive_timer_ref(None);
+        let _stale_marks = shared.expired_receive_timers.remove(&pid);
+        return match result.payload {
+            SuspensionResultPayload::Host(term) => {
+                process.set_x_reg(0, term);
+                advance_past_current_instruction(process);
+                SuspensionGate::Run
+            }
+            SuspensionResultPayload::Dirty(mut dirty_result) => {
+                // Follow-up requests from the dirty native (B-5b): a
+                // re-suspend re-parks at the dirty call instruction under a
+                // NEW host-await suspension; a trampoline sets up the
+                // requested closure call. Only honored on the Ok path (the
+                // exception wins, matching call_native_entry).
+                if dirty_result.result.is_ok() {
+                    if let Some(suspend) = dirty_result.suspend.take() {
+                        return apply_dirty_suspend(shared, process, suspend);
+                    }
+                    if let Some(trampoline) = dirty_result.trampoline.take() {
+                        return apply_dirty_trampoline(shared, process, trampoline);
+                    }
+                }
+                match apply_dirty_result(process, *dirty_result) {
+                    Ok(InstructionOutcomeAfterDirty::Continue) => SuspensionGate::Run,
+                    Ok(InstructionOutcomeAfterDirty::Exit(reason)) => SuspensionGate::Exit(reason),
+                    Err(error) => SuspensionGate::Error(error),
+                }
+            }
+        };
+    }
+    // A published completion that did not match above is stale — produced
+    // for an earlier suspension whose await already timed out — and must
+    // never be applied. (remove_if keeps a *matching* completion that lands
+    // concurrently: its wake re-schedules this process.)
+    let _stale_result = shared
+        .suspension_results
+        .remove_if(&pid, |_, result| result.call_id != record.call_id);
+    match record.kind {
+        SuspensionKind::HostAwait => {
+            if shared.file_io_results.contains_key(&pid) {
+                // A ring completion resumes the await by re-executing the
+                // native at the park position; the native consumes it via
+                // take_file_io_completion. The suspension itself is done.
+                let _consumed = process.take_suspension();
+                shared.suspensions.remove(&pid);
+                process.set_receive_timeout(None);
+                process.set_receive_timer_ref(None);
+                let _stale_marks = shared.expired_receive_timers.remove(&pid);
+                SuspensionGate::Run
+            } else if timer_integration::apply_expired_receive_timer(shared, process) {
+                // Timed out: the native re-executes at the recorded timeout
+                // position. receive_timeout stays set so the native observes
+                // receive_timeout_expired and reports the timeout. This
+                // suspension is superseded; its late completion becomes an
+                // orphan and is dropped, never applied.
+                let _consumed = process.take_suspension();
+                shared.suspensions.remove(&pid);
+                SuspensionGate::Run
+            } else if record.wake_on_message {
+                // Message-wakeable suspend (select, marker awaits): any
+                // wake re-executes the re-entrant native, which scans the
+                // mailbox and may suspend again under a NEW call id. The
+                // current suspension ends here; a completion later
+                // published for it is stale and will be dropped.
+                let _consumed = process.take_suspension();
+                shared.suspensions.remove(&pid);
+                SuspensionGate::Run
+            } else {
+                SuspensionGate::Repark(SuspensionKind::HostAwait)
+            }
+        }
+        SuspensionKind::DirtyCall => SuspensionGate::Repark(SuspensionKind::DirtyCall),
+        SuspensionKind::Hook => {
+            let matching_resume = shared.pending_resumes.remove_if(&pid, |_, resume| {
+                *resume == suspension::RESUME_ANY_HOOK || *resume == record.call_id
+            });
+            if matching_resume.is_some() {
+                let _consumed = process.take_suspension();
+                shared.suspensions.remove(&pid);
+                let _jumped = timer_integration::apply_expired_receive_timer(shared, process);
+                SuspensionGate::Run
+            } else {
+                // A resume targeting an older hook suspension is stale.
+                let _stale_resume = shared.pending_resumes.remove_if(&pid, |_, resume| {
+                    *resume != suspension::RESUME_ANY_HOOK && *resume != record.call_id
+                });
+                SuspensionGate::Repark(SuspensionKind::Hook)
+            }
+        }
+    }
+}
+
+/// Park a gated process again without running it: back to Waiting (host
+/// awaits park through the Wait arm) or Suspended (dirty calls and hook
+/// suspends park through the Suspended arm).
+fn repark_suspended(process: &mut Process, kind: SuspensionKind) -> SliceOutcome {
+    match kind {
+        SuspensionKind::HostAwait => {
+            let _t = process.transition_to(ProcessStatus::Waiting);
+            SliceOutcome::Wait(take_process(process))
+        }
+        SuspensionKind::DirtyCall | SuspensionKind::Hook => {
+            let _t = process.transition_to(ProcessStatus::Suspended);
+            SliceOutcome::Suspended(take_process(process))
+        }
+    }
+}
+
+/// Re-park a process whose dirty native requested suspension: install a NEW
+/// host-await suspension at the (unadvanced) dirty call instruction. The
+/// completion arrives through the pid-resolved `Scheduler::wake_with_result`
+/// (or `wake_with_result_for` once the embedder learns the id), the optional
+/// timeout re-executes the dirty call, and — for a message-wakeable request —
+/// any message re-executes the (re-entrant) dirty call.
+fn apply_dirty_suspend(
+    shared: &SharedState,
+    process: &mut Process,
+    suspend: crate::native::SuspendRequest,
+) -> SuspensionGate {
+    let Some(position) = process.code_position() else {
+        return SuspensionGate::Error(crate::error::ExecError::InvalidOperand(
+            "dirty suspend code position",
+        ));
+    };
+    if let Some(timeout_ms) = suspend.timeout_ms {
+        process.set_receive_timeout(Some(crate::process::ReceiveTimeout {
+            timeout_position: position,
+            milliseconds: timeout_ms,
+        }));
+    }
+    // A detached dirty context cannot allocate from the process counter;
+    // the id is allocated here, on the owning thread.
+    let call_id = suspend
+        .call_id
+        .unwrap_or_else(|| process.allocate_suspension_call_id());
+    process.set_suspension(Some(SuspensionRecord {
+        call_id,
+        kind: SuspensionKind::HostAwait,
+        position: Some(position),
+        wake_on_message: suspend.wake_on_message,
+    }));
+    shared.register_suspension_mirror(
+        process.pid(),
+        call_id,
+        SuspensionKind::HostAwait,
+        suspend.wake_on_message,
+    );
+    SuspensionGate::Repark(SuspensionKind::HostAwait)
+}
+
+/// Set up the closure call a dirty native requested: copy the owned fun and
+/// arguments onto the resuming process heap and run the normal trampoline
+/// path (which pushes the continuation under the suspension protocol's
+/// position-gated readiness check).
+fn apply_dirty_trampoline(
+    shared: &SharedState,
+    process: &mut Process,
+    trampoline: crate::scheduler::dirty::OwnedDirtyTrampoline,
+) -> SuspensionGate {
+    let registry = namespace_registry(shared, process.namespace_id())
+        .unwrap_or_else(|| Arc::clone(&shared.module_registry));
+    let Some(position) = process.code_position() else {
+        return SuspensionGate::Error(crate::error::ExecError::InvalidOperand(
+            "dirty trampoline code position",
+        ));
+    };
+    let module = if let Some(current) = process
+        .current_module()
+        .filter(|m| m.name == position.module)
+    {
+        Arc::clone(current)
+    } else if let Some(module) = registry.lookup(position.module) {
+        module
+    } else {
+        return SuspensionGate::Error(crate::error::ExecError::InvalidOperand(
+            "dirty trampoline module",
+        ));
+    };
+    let badarg = |_| crate::error::ExecError::Badarg;
+    let fun = match trampoline
+        .fun
+        .copy_to_heap(process.heap_mut())
+        .map_err(badarg)
+    {
+        Ok(fun) => fun,
+        Err(error) => return SuspensionGate::Error(error),
+    };
+    let mut args = Vec::with_capacity(trampoline.args.len());
+    for arg in &trampoline.args {
+        match arg.copy_to_heap(process.heap_mut()).map_err(badarg) {
+            Ok(arg) => args.push(arg),
+            Err(error) => return SuspensionGate::Error(error),
+        }
+    }
+    match crate::interpreter::opcodes::trampoline::handle_trampoline(
+        process,
+        &module,
+        Some(&registry),
+        crate::native::TrampolineRequest {
+            fun,
+            args,
+            continuation: Some(trampoline.continuation),
+        },
+    ) {
+        // Jump: the closure entry becomes the slice's starting position.
+        Ok(crate::interpreter::InstructionOutcome::Jump(target)) => {
+            process.set_code_position(Some(target));
+            SuspensionGate::Run
+        }
+        // Yield: handle_trampoline already stored the target position.
+        Ok(_) => SuspensionGate::Run,
+        Err(error) => SuspensionGate::Error(error),
     }
 }
 
@@ -858,6 +1204,7 @@ fn exception_class_atom(class: ExceptionClass) -> Atom {
 fn submit_dirty_call(
     shared: &Arc<SharedState>,
     process: &Process,
+    call_id: u64,
     entry: NativeEntry,
     args: Vec<Term>,
     mfa: (Atom, Atom, u8),
@@ -874,14 +1221,17 @@ fn submit_dirty_call(
             }
         }
         .map_err(DirtySubmissionError::ReplayMismatch)?;
-        shared.dirty_results.insert(
+        let _published = shared.publish_suspension_result(
             process.pid(),
-            DirtyResult {
+            call_id,
+            SuspensionResultPayload::Dirty(Box::new(DirtyResult {
                 result: recorded.outcome.result,
                 exception_class: recorded.outcome.exception_class,
                 exception_stacktrace: recorded.outcome.exception_stacktrace,
                 owned_result: None,
-            },
+                suspend: None,
+                trampoline: None,
+            })),
         );
         let _resumed = timer_integration::resume_suspended(shared, process.pid());
         return Ok(());
@@ -903,6 +1253,7 @@ fn submit_dirty_call(
     context.set_system_info_facility(services.system_info_facility);
     context.set_replay_driver(services.replay_driver);
     context.set_nif_private_data(services.nif_private_data);
+    context.set_suspension_registrar(services.suspension_registrar);
     if let Some(sink) = services.io_sink {
         context.set_io_sink(sink);
     }
@@ -916,18 +1267,17 @@ fn submit_dirty_call(
         context,
         result_sender,
     };
-    // Mark the call in flight before the pool can start it: while the mark is
-    // present without a result, `wake_process` leaves the process parked so a
-    // mailbox arrival cannot schedule a slice that re-executes the call
-    // instruction (and double-submits the dirty call).
-    shared.dirty_in_flight.insert(pid);
+    // The caller registered the DirtyCall suspension mirror before this
+    // submission: while no completion is published under its call id,
+    // `wake_process` leaves the process parked so a mailbox arrival cannot
+    // schedule a slice that re-executes the call instruction (and
+    // double-submits the dirty call).
     if match kind {
         DirtySchedulerKind::Cpu => shared.dirty_cpu.submit(job),
         DirtySchedulerKind::Io => shared.dirty_io.submit(job),
     }
     .is_err()
     {
-        shared.dirty_in_flight.remove(&pid);
         return Err(DirtySubmissionError::PoolUnavailable);
     }
 
@@ -942,18 +1292,22 @@ fn submit_dirty_call(
                     owned_result: None,
                     exception_class: ExceptionClass::Error,
                     exception_stacktrace: Term::NIL,
+                    suspend: None,
+                    trampoline: None,
                 },
             };
-            // The result must be visible before the in-flight mark clears: a
-            // `wake_process` that observes the cleared mark must find the
-            // result so the resumed slice applies it instead of re-executing
-            // the call instruction.
-            shared_for_completion.dirty_results.insert(pid, result);
-            shared_for_completion.dirty_in_flight.remove(&pid);
+            // Published under the submitting call's id: the owning thread
+            // applies it only while this exact suspension is current, and
+            // `publish_suspension_result`'s liveness double-check removes
+            // the entry if the process exited concurrently.
+            let _published = shared_for_completion.publish_suspension_result(
+                pid,
+                call_id,
+                SuspensionResultPayload::Dirty(Box::new(result)),
+            );
             let _resumed = timer_integration::resume_suspended(&shared_for_completion, pid);
         });
     if bridge.is_err() {
-        shared.dirty_in_flight.remove(&pid);
         return Err(DirtySubmissionError::CompletionBridgeSpawn);
     }
     Ok(())
@@ -1006,6 +1360,10 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     wait_set.woken.retain(|(woken_pid, _)| *woken_pid != pid);
     drop(wait_set);
     let _stale_marks = shared.expired_receive_timers.remove(&pid);
+    // Purge every (pid, *) suspension structure — mirrors, published
+    // completions, sticky resumes, file-I/O completions — so a dead pid can
+    // neither leak entries nor have a late completion misattributed.
+    shared.purge_suspension_state(pid);
 }
 
 fn close_owned_fd_resources_on_exit(shared: &SharedState, pid: u64) {

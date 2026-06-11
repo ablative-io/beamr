@@ -1083,7 +1083,9 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         exit_results: DashMap::new(),
         exit_errors: DashMap::new(),
         exit_exceptions: DashMap::new(),
-        async_results: DashMap::new(),
+        suspensions: DashMap::new(),
+        suspension_results: DashMap::new(),
+        pending_resumes: DashMap::new(),
         link_set: Mutex::new(LinkSet::new()),
         monitor_set: Mutex::new(MonitorSet::new()),
         hook: Hook::new(),
@@ -1107,8 +1109,6 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
         park_gap_hook: Mutex::new(None),
-        dirty_results: DashMap::new(),
-        dirty_in_flight: DashSet::new(),
         file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
@@ -1436,7 +1436,9 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         exit_results: DashMap::new(),
         exit_errors: DashMap::new(),
         exit_exceptions: DashMap::new(),
-        async_results: DashMap::new(),
+        suspensions: DashMap::new(),
+        suspension_results: DashMap::new(),
+        pending_resumes: DashMap::new(),
         link_set: Mutex::new(LinkSet::new()),
         monitor_set: Mutex::new(MonitorSet::new()),
         hook: Hook::new(),
@@ -1462,8 +1464,6 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         park_gap_hook: Mutex::new(None),
         dirty_cpu: crate::scheduler::dirty::DirtyPool::new("test-cpu", 1),
         dirty_io: crate::scheduler::dirty::DirtyPool::new("test-io", 1),
-        dirty_results: DashMap::new(),
-        dirty_in_flight: DashSet::new(),
         file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
@@ -1660,6 +1660,57 @@ fn fired_timer_mark_for_a_dead_pid_does_not_orphan() {
             .map(|marks| marks.clone()),
         Some(vec![8]),
         "mark for a live pid must survive"
+    );
+    scheduler.shutdown();
+}
+
+#[test]
+fn file_io_result_for_a_dead_pid_does_not_orphan() {
+    let registry = Arc::new(ModuleRegistry::new());
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        registry,
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    let shared = &scheduler.shared;
+
+    fn file_completion(op_id: u64) -> crate::native::FileIoCompletion {
+        crate::native::FileIoCompletion {
+            op_id,
+            continuation: crate::native::FileIoContinuation::Open,
+            completion: crate::io::ring::IoCompletion {
+                op_id,
+                result: Err(std::io::Error::other("dead pid race")),
+            },
+        }
+    }
+
+    // A pid absent from the process table models the I/O drain losing the
+    // race: it removed the pending entry while the process was alive, then
+    // exit cleanup purged the table and the pid's results before the
+    // insert. Pids are never reused, so without the post-insert
+    // double-check the result would orphan forever.
+    let dead_pid = 4244;
+    execution::deliver_file_io_result(shared, dead_pid, file_completion(1));
+    assert!(
+        shared.file_io_results.get(&dead_pid).is_none(),
+        "file-I/O result for a dead pid must be removed by the double-check"
+    );
+
+    // A live pid keeps its result for the owning thread to consume.
+    let live_pid = 4245;
+    shared.process_table.spawn_with_pid(live_pid);
+    execution::deliver_file_io_result(shared, live_pid, file_completion(2));
+    assert_eq!(
+        shared
+            .file_io_results
+            .get(&live_pid)
+            .map(|entry| entry.op_id),
+        Some(2),
+        "file-I/O result for a live pid must survive"
     );
     scheduler.shutdown();
 }
@@ -1897,16 +1948,29 @@ fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
         {
             return;
         }
-        shared.dirty_results.insert(
+        // Publish exactly the way the completion bridge does: under the
+        // in-flight dirty call's id, read from the suspension mirror the
+        // submission registered.
+        let call_id = shared
+            .suspensions
+            .get(&pid)
+            .map(|mirror| mirror.call_id)
+            .expect("dirty suspension mirror registered before park");
+        let published = shared.publish_suspension_result(
             pid,
-            DirtyResult {
-                result: Ok(Term::small_int(7)),
-                owned_result: None,
-                exception_class: crate::native::ExceptionClass::Error,
-                exception_stacktrace: Term::NIL,
-            },
+            call_id,
+            crate::scheduler::suspension::SuspensionResultPayload::Dirty(Box::new(
+                crate::scheduler::dirty::DirtyResult {
+                    result: Ok(Term::small_int(7)),
+                    owned_result: None,
+                    exception_class: crate::native::ExceptionClass::Error,
+                    exception_stacktrace: Term::NIL,
+                    suspend: None,
+                    trampoline: None,
+                },
+            )),
         );
-        shared.dirty_in_flight.remove(&pid);
+        assert!(published, "in-gap publish matches the current suspension");
         resumed_by_hook.store(
             timer_integration::resume_suspended(shared, pid),
             Ordering::Release,
@@ -2076,5 +2140,776 @@ fn timer_expiry_after_wait_registration_schedules_the_process_once() {
         .get(&pid)
         .map(|result| result.root());
     assert_eq!(exit_value, Some(Term::atom(Atom::TRUE)));
+    scheduler.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Call-identity-gated suspension protocol: results are keyed by (pid, call
+// id) and applied only at the suspension that produced them; gated host
+// awaits are never woken (or re-executed) by plain messages; resumes are
+// identity-gated and sticky.
+// ---------------------------------------------------------------------------
+
+fn native_call_module(
+    registry: &ModuleRegistry,
+    name: Atom,
+    function: crate::native::NativeFn,
+    dirty_kind: Option<crate::scheduler::dirty::DirtySchedulerKind>,
+) -> Arc<Module> {
+    let mut module = test_module(
+        name,
+        vec![
+            Instruction::CallExt {
+                arity: Operand::Unsigned(0),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Return,
+        ],
+    );
+    module.resolved_imports.push(crate::module::ResolvedImport {
+        module: name,
+        function: name,
+        arity: 0,
+        target: crate::module::ResolvedImportTarget::Native(crate::native::NativeEntry {
+            function,
+            dirty_kind,
+            capability: Capability::Pure,
+        }),
+    });
+    registry.insert(module)
+}
+
+fn single_thread_scheduler(registry: &Arc<ModuleRegistry>) -> Scheduler {
+    Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            dirty_cpu_threads: Some(1),
+            dirty_io_threads: Some(1),
+            dirty_queue_depth: Some(8),
+            ..SchedulerConfig::default()
+        },
+        Arc::clone(registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"))
+}
+
+fn exit_value(scheduler: &Scheduler, pid: u64) -> Option<Term> {
+    scheduler
+        .shared
+        .exit_results
+        .get(&pid)
+        .map(|result| result.root())
+}
+
+// --- Defect 1: the query-re-entry shape. A timed gated await times out and
+// re-submits under a new call id; the ORIGINAL call's late result must be
+// dropped, and only the new call's result resumes the process. ---
+
+static REENTRY_RUNS: AtomicUsize = AtomicUsize::new(0);
+static REENTRY_FIRST_ID: AtomicU64 = AtomicU64::new(0);
+static REENTRY_SECOND_ID: AtomicU64 = AtomicU64::new(0);
+
+fn reentry_timed_await_native(
+    _args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    match REENTRY_RUNS.fetch_add(1, Ordering::AcqRel) {
+        0 => {
+            let call_id = context
+                .request_await_suspend(Some(40))
+                .expect("attached process allocates a call id");
+            REENTRY_FIRST_ID.store(call_id, Ordering::Release);
+            Ok(Term::NIL)
+        }
+        1 => {
+            // Timeout re-entry: the protocol hands the timeout to the
+            // native, which clears it and re-submits under a NEW call id.
+            assert!(
+                context.receive_timeout_expired(),
+                "second run must be the timeout re-entry"
+            );
+            context.clear_receive_timeout();
+            let call_id = context
+                .request_await_suspend(None)
+                .expect("attached process allocates a call id");
+            REENTRY_SECOND_ID.store(call_id, Ordering::Release);
+            Ok(Term::NIL)
+        }
+        _ => {
+            // A third execution means a stale completion re-executed the
+            // await: the exact double-submit defect. Make it visible in the
+            // exit value.
+            Ok(Term::small_int(666))
+        }
+    }
+}
+
+#[test]
+fn stale_result_for_a_superseded_await_is_dropped_not_applied() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("reentry_await");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = native_call_module(&registry, module_name, reentry_timed_await_native, None);
+    let scheduler = single_thread_scheduler(&registry);
+
+    let pid = scheduler.spawn_process(&module);
+    // Let the await time out and re-submit under a new call id.
+    wait_until(10_000, || REENTRY_SECOND_ID.load(Ordering::Acquire) != 0);
+    let first_id = REENTRY_FIRST_ID.load(Ordering::Acquire);
+    let second_id = REENTRY_SECOND_ID.load(Ordering::Acquire);
+    assert!(first_id != 0 && second_id > first_id);
+
+    // The ORIGINAL call's result arrives late: it must be refused at
+    // publish time and the process must stay parked.
+    assert!(
+        !scheduler.wake_with_result_for(pid, first_id, Term::small_int(1)),
+        "stale completion must be refused"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert!(
+        !scheduler.shared.exit_tombstones.contains_key(&pid),
+        "stale completion must not resume the process"
+    );
+    assert_eq!(REENTRY_RUNS.load(Ordering::Acquire), 2);
+
+    // Only the current call's result resumes the process — applied exactly
+    // once, at the suspension that produced it.
+    assert!(scheduler.wake_with_result_for(pid, second_id, Term::small_int(2)));
+    wait_until(10_000, || {
+        scheduler.shared.exit_tombstones.contains_key(&pid)
+    });
+    assert_eq!(exit_value(&scheduler, pid), Some(Term::small_int(2)));
+    assert_eq!(
+        REENTRY_RUNS.load(Ordering::Acquire),
+        2,
+        "the result resumed the process without re-executing the await"
+    );
+    scheduler.shutdown();
+}
+
+// --- Defect 2: a gated host await has a wake guard — a plain message
+// delivery must neither wake the process nor re-execute the await native.
+// ---
+
+static GUARD_RUNS: AtomicUsize = AtomicUsize::new(0);
+static GUARD_PARKED: AtomicBool = AtomicBool::new(false);
+
+fn guarded_await_native(
+    _args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    GUARD_RUNS.fetch_add(1, Ordering::AcqRel);
+    let _call_id = context.request_await_suspend(None);
+    GUARD_PARKED.store(true, Ordering::Release);
+    Ok(Term::NIL)
+}
+
+#[test]
+fn message_delivery_does_not_wake_or_reexecute_a_gated_await() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("guarded_await");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = native_call_module(&registry, module_name, guarded_await_native, None);
+    let scheduler = single_thread_scheduler(&registry);
+
+    let pid = scheduler.spawn_process(&module);
+    wait_until(10_000, || GUARD_PARKED.load(Ordering::Acquire));
+    // Ensure the park completed (slot stored back as Present).
+    wait_until(10_000, || scheduler.trap_exit(pid).is_some());
+
+    assert!(scheduler.enqueue_atom_message(pid, Atom::OK));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        GUARD_RUNS.load(Ordering::Acquire),
+        1,
+        "a message wake re-executed the gated await native"
+    );
+    assert!(!scheduler.shared.exit_tombstones.contains_key(&pid));
+
+    // The pid-resolved embedder seam completes the await; the native is NOT
+    // re-executed — the result lands in x0 past the call instruction.
+    assert!(scheduler.wake_with_result(pid, Term::small_int(42)));
+    wait_until(10_000, || {
+        scheduler.shared.exit_tombstones.contains_key(&pid)
+    });
+    assert_eq!(exit_value(&scheduler, pid), Some(Term::small_int(42)));
+    assert_eq!(GUARD_RUNS.load(Ordering::Acquire), 1);
+    scheduler.shutdown();
+}
+
+// --- Defect 1/3 cross-protocol: a host result published at a process parked
+// for a DIRTY call must be refused (kind mismatch), and identity-gated
+// resume must refuse to flip an in-flight dirty call. ---
+
+static CROSS_DIRTY_RELEASE: AtomicBool = AtomicBool::new(false);
+static CROSS_DIRTY_RUNS: AtomicUsize = AtomicUsize::new(0);
+
+fn cross_dirty_native(
+    _args: &[Term],
+    _context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    CROSS_DIRTY_RUNS.fetch_add(1, Ordering::AcqRel);
+    while !CROSS_DIRTY_RELEASE.load(Ordering::Acquire) {
+        std::thread::yield_now();
+    }
+    Ok(Term::small_int(7))
+}
+
+#[test]
+fn host_results_and_resumes_cannot_touch_an_in_flight_dirty_call() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("cross_dirty");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = native_call_module(
+        &registry,
+        module_name,
+        cross_dirty_native,
+        Some(crate::scheduler::dirty::DirtySchedulerKind::Cpu),
+    );
+    let scheduler = single_thread_scheduler(&registry);
+
+    let pid = scheduler.spawn_process(&module);
+    wait_until(10_000, || CROSS_DIRTY_RUNS.load(Ordering::Acquire) == 1);
+    wait_until(10_000, || scheduler.trap_exit(pid).is_some());
+
+    // Wrong-kind publish: refused, dropped.
+    assert!(
+        !scheduler.wake_with_result(pid, Term::small_int(1)),
+        "a host result must not target a dirty-call suspension"
+    );
+    // Identity-gated resume: refused (only the dirty completion may resume).
+    assert!(
+        !scheduler.resume_process(pid),
+        "resume_process must not flip an in-flight dirty call"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_eq!(CROSS_DIRTY_RUNS.load(Ordering::Acquire), 1);
+    assert!(!scheduler.shared.exit_tombstones.contains_key(&pid));
+
+    CROSS_DIRTY_RELEASE.store(true, Ordering::Release);
+    wait_until(10_000, || {
+        scheduler.shared.exit_tombstones.contains_key(&pid)
+    });
+    assert_eq!(exit_value(&scheduler, pid), Some(Term::small_int(7)));
+    assert_eq!(
+        CROSS_DIRTY_RUNS.load(Ordering::Acquire),
+        1,
+        "the dirty call was double-submitted"
+    );
+    scheduler.shutdown();
+}
+
+// --- Pre-park publish: a completion published while the requesting slice is
+// still Executing (the mirror is registered at request time) must be found
+// by the Wait arm's recheck — no lost wakeup. ---
+
+static PREPARK_ID: AtomicU64 = AtomicU64::new(0);
+static PREPARK_PUBLISHED: AtomicBool = AtomicBool::new(false);
+
+fn prepark_await_native(
+    _args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    let call_id = context
+        .request_await_suspend(None)
+        .expect("attached process allocates a call id");
+    PREPARK_ID.store(call_id, Ordering::Release);
+    // Hold the slice open until the test has published the completion: the
+    // park sequence must then self-wake on the pending result.
+    while !PREPARK_PUBLISHED.load(Ordering::Acquire) {
+        std::thread::yield_now();
+    }
+    Ok(Term::NIL)
+}
+
+#[test]
+fn completion_published_while_executing_is_not_a_lost_wakeup() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("prepark_await");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = native_call_module(&registry, module_name, prepark_await_native, None);
+    let scheduler = single_thread_scheduler(&registry);
+
+    let pid = scheduler.spawn_process(&module);
+    wait_until(10_000, || PREPARK_ID.load(Ordering::Acquire) != 0);
+    let call_id = PREPARK_ID.load(Ordering::Acquire);
+    // The slot is Executing: the mirror published by request_await_suspend
+    // must already accept the completion.
+    assert!(scheduler.wake_with_result_for(pid, call_id, Term::small_int(11)));
+    PREPARK_PUBLISHED.store(true, Ordering::Release);
+
+    wait_until(10_000, || {
+        scheduler.shared.exit_tombstones.contains_key(&pid)
+    });
+    assert_eq!(exit_value(&scheduler, pid), Some(Term::small_int(11)));
+    scheduler.shutdown();
+}
+
+// --- Defect 4: an embedder resume racing the hook suspension's park gap is
+// sticky — recorded against the suspension and consumed at the next slice,
+// never lost. ---
+
+#[test]
+fn hook_resume_in_the_suspend_park_gap_is_sticky_not_lost() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("hook_gap_loop");
+    let function = atoms.intern("main");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = registry.insert(test_module(
+        module_name,
+        vec![
+            Instruction::FuncInfo {
+                module: Operand::Atom(Some(module_name)),
+                function: Operand::Atom(Some(function)),
+                arity: Operand::Unsigned(0),
+            },
+            Instruction::Label { label: 1 },
+            Instruction::CallOnly {
+                arity: Operand::Unsigned(0),
+                label: Operand::Label(1),
+            },
+        ],
+    ));
+    let scheduler = Arc::new(single_thread_scheduler(&registry));
+    let hook_calls = Arc::new(AtomicUsize::new(0));
+    let hook_calls_by_hook = Arc::clone(&hook_calls);
+    scheduler.hook().register(move |_event| {
+        if hook_calls_by_hook.fetch_add(1, Ordering::AcqRel) == 0 {
+            HookDecision::Suspend
+        } else {
+            HookDecision::Continue
+        }
+    });
+
+    // A helper thread issues resume_process exactly when the park gap hook
+    // fires (slot stored back, wait-set registration not yet done): the
+    // window where the old protocol lost the resume.
+    let (gap_tx, gap_rx) = std::sync::mpsc::channel::<u64>();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<bool>();
+    let gap_tx = Mutex::new(gap_tx);
+    let done_rx = Mutex::new(done_rx);
+    let resumer_scheduler = Arc::clone(&scheduler);
+    let resumer = std::thread::spawn(move || {
+        if let Ok(pid) = gap_rx.recv() {
+            let resumed = resumer_scheduler.resume_process(pid);
+            let _ = done_tx.send(resumed);
+        }
+    });
+    let fired = Arc::new(AtomicBool::new(false));
+    let fired_by_hook = Arc::clone(&fired);
+    *lock_or_recover(&scheduler.shared.park_gap_hook) = Some(Box::new(move |shared, gap, pid| {
+        if gap != ParkGap::SuspendStored
+            || pid == shared.standard_io_pid
+            || fired_by_hook.swap(true, Ordering::AcqRel)
+        {
+            return;
+        }
+        // Run the embedder resume synchronously inside the gap.
+        let _ = lock_or_recover(&gap_tx).send(pid);
+        // The resume cannot unpark a pid that is not registered yet; what
+        // matters is that it is recorded (sticky) and consumed below.
+        let _resumed_in_gap = lock_or_recover(&done_rx).recv();
+    }));
+
+    let pid = scheduler.spawn_process(&module);
+    // The sticky resume must let the process run again (hook called at
+    // least twice) instead of sleeping forever.
+    wait_until(10_000, || hook_calls.load(Ordering::Acquire) >= 2);
+    assert!(fired.load(Ordering::Acquire), "park gap was exercised");
+    scheduler
+        .shared
+        .exit_tombstones
+        .insert(pid, ExitReason::Kill);
+    scheduler.shutdown();
+    resumer.join().expect("resumer thread");
+}
+
+// --- Defect 5: process exit purges every (pid, *) suspension structure. ---
+
+static PURGE_PARKED: AtomicBool = AtomicBool::new(false);
+
+fn purge_await_native(
+    _args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    let _call_id = context.request_await_suspend(None);
+    PURGE_PARKED.store(true, Ordering::Release);
+    Ok(Term::NIL)
+}
+
+#[test]
+fn cleanup_exited_process_purges_all_suspension_state() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("purge_await");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = native_call_module(&registry, module_name, purge_await_native, None);
+    let scheduler = single_thread_scheduler(&registry);
+
+    let pid = scheduler.spawn_process(&module);
+    wait_until(10_000, || PURGE_PARKED.load(Ordering::Acquire));
+    wait_until(10_000, || scheduler.trap_exit(pid).is_some());
+    assert!(scheduler.shared.suspensions.contains_key(&pid));
+
+    // Leave a published-but-unconsumed completion behind, then kill the
+    // process externally: everything keyed by the pid must be purged.
+    assert!(scheduler.wake_with_result(pid, Term::small_int(5)));
+    scheduler.terminate_process(pid, ExitReason::Kill);
+    wait_until(10_000, || {
+        !scheduler.shared.suspensions.contains_key(&pid)
+            && !scheduler.shared.suspension_results.contains_key(&pid)
+    });
+    assert!(!scheduler.shared.pending_resumes.contains_key(&pid));
+    assert!(!scheduler.shared.file_io_results.contains_key(&pid));
+    assert!(!scheduler.shared.expired_receive_timers.contains_key(&pid));
+    scheduler.shutdown();
+}
+
+// --- Defect 8 (result-vs-timeout race): when a completion and the timeout
+// fire together, the completion wins, the timeout metadata is fully cleared
+// (no bogus timer can re-arm at the stale position), and the native never
+// re-runs. ---
+
+static RACE_RUNS: AtomicUsize = AtomicUsize::new(0);
+static RACE_ID: AtomicU64 = AtomicU64::new(0);
+
+fn race_timed_await_native(
+    _args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    RACE_RUNS.fetch_add(1, Ordering::AcqRel);
+    let call_id = context
+        .request_await_suspend(Some(1))
+        .expect("attached process allocates a call id");
+    RACE_ID.store(call_id, Ordering::Release);
+    Ok(Term::NIL)
+}
+
+#[test]
+fn result_beats_timeout_and_clears_the_timed_await_metadata() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("race_timed_await");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = native_call_module(&registry, module_name, race_timed_await_native, None);
+    let scheduler = single_thread_scheduler(&registry);
+
+    // In the WaitStored park gap (timer registered, pid not yet in the wait
+    // set): publish the completion AND force the 1ms receive timer to fire,
+    // so both events are pending when the process next runs. The slice-start
+    // gate must apply the completion, drop the timer mark as stale, and
+    // clear receive_timeout so no later wait can arm a bogus timer at the
+    // stale resume position.
+    let fired = Arc::new(AtomicBool::new(false));
+    let fired_by_hook = Arc::clone(&fired);
+    *lock_or_recover(&scheduler.shared.park_gap_hook) = Some(Box::new(move |shared, gap, pid| {
+        if gap != ParkGap::WaitStored
+            || pid == shared.standard_io_pid
+            || fired_by_hook.swap(true, Ordering::AcqRel)
+        {
+            return;
+        }
+        let call_id = RACE_ID.load(Ordering::Acquire);
+        assert!(shared.publish_suspension_result(
+            pid,
+            call_id,
+            crate::scheduler::suspension::SuspensionResultPayload::Host(Term::small_int(33)),
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        timer_integration::tick_timers(shared);
+    }));
+
+    let pid = scheduler.spawn_process(&module);
+    wait_until(10_000, || {
+        scheduler.shared.exit_tombstones.contains_key(&pid)
+    });
+    assert!(fired.load(Ordering::Acquire), "park gap was exercised");
+    assert_eq!(exit_value(&scheduler, pid), Some(Term::small_int(33)));
+    assert_eq!(
+        RACE_RUNS.load(Ordering::Acquire),
+        1,
+        "the timeout re-executed an await whose completion already arrived"
+    );
+    scheduler.shutdown();
+}
+
+// --- Reviewer fix F1: publish_suspension_result resolves concurrent
+// publishers newest-id-wins inside the result-slot lock, so a publisher
+// that passed the pre-check and then stalled across a timeout re-entry can
+// never clobber the fresher completion published meanwhile. ---
+
+#[test]
+fn stale_publisher_cannot_clobber_a_fresher_completion() {
+    let registry = Arc::new(ModuleRegistry::new());
+    let scheduler = single_thread_scheduler(&registry);
+    let shared = &scheduler.shared;
+    let host = |value: i64| {
+        crate::scheduler::suspension::SuspensionResultPayload::Host(Term::small_int(value))
+    };
+    let pid = 4246;
+    shared.process_table.spawn_with_pid(pid);
+
+    // Newer replaces older: a stale unconsumed id-1 entry is overwritten by
+    // the re-suspension's id-2 completion.
+    shared.register_suspension_mirror(pid, 1, crate::process::SuspensionKind::HostAwait, false);
+    assert!(shared.publish_suspension_result(pid, 1, host(1)));
+    shared.register_suspension_mirror(pid, 2, crate::process::SuspensionKind::HostAwait, false);
+    assert!(
+        shared.publish_suspension_result(pid, 2, host(2)),
+        "the fresher completion must replace the stale entry"
+    );
+    assert_eq!(
+        shared
+            .suspension_results
+            .get(&pid)
+            .map(|entry| entry.call_id),
+        Some(2)
+    );
+
+    // Older never replaces newer. This models publisher A passing the id-1
+    // pre-check, stalling, and inserting only after the await timed out,
+    // re-suspended as id 2, and publisher B's id-2 completion landed (the
+    // doc-comment interleaving). The stalled pre-check is pinned by
+    // re-registering the id-1 mirror; the resolution inside the result-slot
+    // lock must still refuse the older id and keep B's entry.
+    shared.register_suspension_mirror(pid, 1, crate::process::SuspensionKind::HostAwait, false);
+    assert!(
+        !shared.publish_suspension_result(pid, 1, host(1)),
+        "a stale publisher must report failure instead of clobbering"
+    );
+    assert_eq!(
+        shared
+            .suspension_results
+            .get(&pid)
+            .map(|entry| entry.call_id),
+        Some(2),
+        "the fresher completion must survive the stale publisher"
+    );
+    scheduler.shutdown();
+}
+
+// --- Reviewer fix F2: a hook returning Suspend on the slice that just
+// parked a result-gated await must be ignored — installing the Hook record
+// would invalidate the await's call id, drop its completion, and re-execute
+// the parked native on the eventual resume. ---
+
+static HOOK_STOMP_RUNS: AtomicUsize = AtomicUsize::new(0);
+static HOOK_STOMP_ID: AtomicU64 = AtomicU64::new(0);
+
+fn hook_stomp_await_native(
+    _args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    HOOK_STOMP_RUNS.fetch_add(1, Ordering::AcqRel);
+    let call_id = context
+        .request_await_suspend(None)
+        .expect("attached process allocates a call id");
+    HOOK_STOMP_ID.store(call_id, Ordering::Release);
+    Ok(Term::NIL)
+}
+
+#[test]
+fn hook_suspend_does_not_stomp_an_await_parked_slice() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("hook_stomp_await");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = native_call_module(&registry, module_name, hook_stomp_await_native, None);
+    let scheduler = single_thread_scheduler(&registry);
+
+    // Return Suspend exactly on the gated await's parking slice. The native
+    // stores its call id before returning, and on the single scheduler
+    // thread the hook runs synchronously at the end of that same slice, so
+    // the first hook invocation observing the id is the await's own slice.
+    let hook_suspended = Arc::new(AtomicBool::new(false));
+    let hook_latch = Arc::clone(&hook_suspended);
+    scheduler.hook().register(move |_event| {
+        if HOOK_STOMP_ID.load(Ordering::Acquire) != 0 && !hook_latch.swap(true, Ordering::AcqRel) {
+            HookDecision::Suspend
+        } else {
+            HookDecision::Continue
+        }
+    });
+
+    let pid = scheduler.spawn_process(&module);
+    wait_until(10_000, || hook_suspended.load(Ordering::Acquire));
+    wait_until(10_000, || {
+        lock_or_recover(&scheduler.shared.wait_set)
+            .waiting
+            .contains_key(&pid)
+    });
+    assert_eq!(
+        scheduler
+            .shared
+            .suspensions
+            .get(&pid)
+            .map(|mirror| mirror.kind),
+        Some(crate::process::SuspensionKind::HostAwait),
+        "the hook suspend stomped the await's suspension record"
+    );
+
+    // The await's completion still applies, and the native never re-runs.
+    let call_id = HOOK_STOMP_ID.load(Ordering::Acquire);
+    assert!(
+        scheduler.wake_with_result_for(pid, call_id, Term::small_int(77)),
+        "the await's published completion must still be accepted"
+    );
+    wait_until(10_000, || {
+        scheduler.shared.exit_tombstones.contains_key(&pid)
+    });
+    assert_eq!(exit_value(&scheduler, pid), Some(Term::small_int(77)));
+    assert_eq!(
+        HOOK_STOMP_RUNS.load(Ordering::Acquire),
+        1,
+        "the hook stomp re-executed the parked await native"
+    );
+    scheduler.shutdown();
+}
+
+// --- Defect 6 (B-5b): a dirty native can re-suspend as a host await and can
+// trampoline a closure — its follow-up requests are honored instead of being
+// discarded by the bridge. ---
+
+static DIRTY_RESUSPEND_RUNS: AtomicUsize = AtomicUsize::new(0);
+static DIRTY_RESUSPEND_PARKED: AtomicBool = AtomicBool::new(false);
+
+fn dirty_resuspend_native(
+    _args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    DIRTY_RESUSPEND_RUNS.fetch_add(1, Ordering::AcqRel);
+    // Detached context: the call id is allocated later, on the owning
+    // thread, when the suspend request is applied.
+    assert_eq!(context.request_await_suspend(None), None);
+    DIRTY_RESUSPEND_PARKED.store(true, Ordering::Release);
+    Ok(Term::NIL)
+}
+
+#[test]
+fn dirty_native_can_resuspend_as_a_gated_host_await() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("dirty_resuspend");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = native_call_module(
+        &registry,
+        module_name,
+        dirty_resuspend_native,
+        Some(crate::scheduler::dirty::DirtySchedulerKind::Cpu),
+    );
+    let scheduler = single_thread_scheduler(&registry);
+
+    let pid = scheduler.spawn_process(&module);
+    wait_until(10_000, || DIRTY_RESUSPEND_PARKED.load(Ordering::Acquire));
+    // Wait for the re-suspension to become current: a HostAwait mirror
+    // replaces the DirtyCall mirror once the owning thread applies the
+    // dirty native's suspend request.
+    wait_until(10_000, || {
+        scheduler
+            .shared
+            .suspensions
+            .get(&pid)
+            .is_some_and(|mirror| mirror.kind == crate::process::SuspensionKind::HostAwait)
+    });
+    // A message must not wake the gated re-suspension (the dirty call
+    // instruction would re-submit the dirty native).
+    assert!(scheduler.enqueue_atom_message(pid, Atom::OK));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_eq!(DIRTY_RESUSPEND_RUNS.load(Ordering::Acquire), 1);
+    assert!(!scheduler.shared.exit_tombstones.contains_key(&pid));
+
+    // The pid-resolved completion resumes it with the awaited value.
+    assert!(scheduler.wake_with_result(pid, Term::small_int(55)));
+    wait_until(10_000, || {
+        scheduler.shared.exit_tombstones.contains_key(&pid)
+    });
+    assert_eq!(exit_value(&scheduler, pid), Some(Term::small_int(55)));
+    assert_eq!(
+        DIRTY_RESUSPEND_RUNS.load(Ordering::Acquire),
+        1,
+        "the dirty native was re-submitted"
+    );
+    scheduler.shutdown();
+}
+
+fn dirty_trampoline_resume(
+    _state: crate::native::AionTimeoutContinuation,
+    closure_result: Term,
+    _context: &mut crate::native::ProcessContext<'_>,
+) -> Result<crate::native::stdlib_stubs::maps_bifs::ContinuationStep, Term> {
+    Ok(crate::native::stdlib_stubs::maps_bifs::ContinuationStep::Done(closure_result))
+}
+
+fn dirty_trampoline_native(
+    args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    let fun = args.first().copied().expect("closure argument");
+    context.set_continuation_trampoline(
+        fun,
+        vec![],
+        crate::native::NativeContinuation::AionTimeout(crate::native::AionTimeoutContinuation {
+            state_id: 1,
+            resume: dirty_trampoline_resume,
+        }),
+    );
+    Ok(Term::NIL)
+}
+
+#[test]
+fn dirty_native_can_trampoline_a_closure() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("dirty_trampoline");
+    let callback_atom = atoms.intern("dirty_cb@anon");
+    let callback_id = crate::loader::lambda_unique_id(&atoms, module_name, callback_atom, 0, 0)
+        .expect("callback id");
+    let registry = Arc::new(ModuleRegistry::new());
+    let mut module = test_module(
+        module_name,
+        vec![
+            // Build the closure for lambda 0 into x0, hand it to the dirty
+            // native, return its (trampolined) result.
+            Instruction::MakeFun {
+                operands: vec![Operand::Unsigned(0)],
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Return,
+            // Closure body: return 88.
+            Instruction::Label { label: 5 },
+            Instruction::Move {
+                source: Operand::Unsigned(88),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+    );
+    module.lambdas.push(crate::loader::LambdaEntry {
+        function: callback_atom,
+        arity: 0,
+        label: 5,
+        num_free: 0,
+        unique_id: callback_id,
+    });
+    module.resolved_imports.push(crate::module::ResolvedImport {
+        module: module_name,
+        function: module_name,
+        arity: 1,
+        target: crate::module::ResolvedImportTarget::Native(crate::native::NativeEntry {
+            function: dirty_trampoline_native,
+            dirty_kind: Some(crate::scheduler::dirty::DirtySchedulerKind::Cpu),
+            capability: Capability::Pure,
+        }),
+    });
+    let module = registry.insert(module);
+    let scheduler = single_thread_scheduler(&registry);
+
+    let pid = scheduler.spawn_process(&module);
+    wait_until(10_000, || {
+        scheduler.shared.exit_tombstones.contains_key(&pid)
+    });
+    assert_eq!(
+        exit_value(&scheduler, pid),
+        Some(Term::small_int(88)),
+        "the dirty native's trampolined closure result is the call's result"
+    );
     scheduler.shutdown();
 }
