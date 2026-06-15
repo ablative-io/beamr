@@ -51,6 +51,18 @@ enum InFlightOp {
         path: CString,
         stat: Box<libc::statx>,
     },
+    SendMsg {
+        data: Vec<u8>,
+        addr_storage: Box<libc::sockaddr_storage>,
+        iov: Box<libc::iovec>,
+        msg: Box<libc::msghdr>,
+    },
+    RecvMsg {
+        buffer: Vec<u8>,
+        addr_storage: Box<libc::sockaddr_storage>,
+        iov: Box<libc::iovec>,
+        msg: Box<libc::msghdr>,
+    },
     Ready {
         result: io::Result<IoResult>,
     },
@@ -387,6 +399,61 @@ fn build_entry(op_id: u64, op: IoOp) -> io::Result<(io_uring::squeue::Entry, InF
             op_id,
             std::fs::rename(source, destination).map(|()| IoResult::Completed),
         )),
+        IoOp::SendMsg { fd, data, addr } => {
+            let (raw_addr, addr_len) = socket_addr_to_raw(addr);
+            let addr_storage = Box::new(raw_addr);
+            let iov = Box::new(libc::iovec {
+                iov_base: data.as_ptr().cast_mut().cast(),
+                iov_len: data.len(),
+            });
+            // SAFETY: zeroed msghdr is filled with valid pointers to heap-stable boxes below.
+            let mut msg: Box<libc::msghdr> = Box::new(unsafe { mem::zeroed() });
+            msg.msg_name = (&*addr_storage as *const libc::sockaddr_storage)
+                .cast_mut()
+                .cast();
+            msg.msg_namelen = addr_len;
+            msg.msg_iov = &*iov as *const libc::iovec as *mut libc::iovec;
+            msg.msg_iovlen = 1;
+            let entry = opcode::SendMsg::new(types::Fd(fd), &*msg)
+                .build()
+                .user_data(op_id);
+            Ok((
+                entry,
+                InFlightOp::SendMsg {
+                    data,
+                    addr_storage,
+                    iov,
+                    msg,
+                },
+            ))
+        }
+        IoOp::RecvMsg { fd, buf_len } => {
+            let mut buffer = vec![0_u8; buf_len];
+            // SAFETY: zeroed storage is populated by the kernel on successful completion.
+            let mut addr_storage = Box::new(unsafe { mem::zeroed::<libc::sockaddr_storage>() });
+            let iov = Box::new(libc::iovec {
+                iov_base: buffer.as_mut_ptr().cast(),
+                iov_len: buffer.len(),
+            });
+            // SAFETY: zeroed msghdr is filled with valid pointers to heap-stable boxes below.
+            let mut msg: Box<libc::msghdr> = Box::new(unsafe { mem::zeroed() });
+            msg.msg_name = (&mut *addr_storage as *mut libc::sockaddr_storage).cast();
+            msg.msg_namelen = mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
+            msg.msg_iov = &*iov as *const libc::iovec as *mut libc::iovec;
+            msg.msg_iovlen = 1;
+            let entry = opcode::RecvMsg::new(types::Fd(fd), &mut *msg)
+                .build()
+                .user_data(op_id);
+            Ok((
+                entry,
+                InFlightOp::RecvMsg {
+                    buffer,
+                    addr_storage,
+                    iov,
+                    msg,
+                },
+            ))
+        }
         IoOp::Nop => Ok((opcode::Nop::new().build().user_data(op_id), InFlightOp::Nop)),
     }
 }
@@ -435,6 +502,20 @@ fn decode_completion(op_id: u64, result: i32, op: InFlightOp) -> IoCompletion {
         InFlightOp::Fsync => Ok(IoResult::Synced),
         InFlightOp::Openat { path: _path } => Ok(IoResult::Opened(result)),
         InFlightOp::Statx { path: _path, stat } => Ok(IoResult::StatResult(statx_to_data(&stat))),
+        InFlightOp::SendMsg { .. } => Ok(IoResult::DatagramSent(result as usize)),
+        InFlightOp::RecvMsg {
+            mut buffer,
+            addr_storage,
+            ..
+        } => {
+            let bytes = result as usize;
+            buffer.truncate(bytes);
+            sockaddr_to_addr(&addr_storage).map(|addr| IoResult::DatagramReceived {
+                bytes,
+                data: buffer,
+                addr,
+            })
+        }
         InFlightOp::Ready { result } => result,
         InFlightOp::Nop => Ok(IoResult::Completed),
     };
