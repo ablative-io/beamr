@@ -356,10 +356,12 @@ fn build_entry(op_id: u64, op: IoOp) -> io::Result<(io_uring::squeue::Entry, InF
             let path = path_to_cstring(&path)?;
             // SAFETY: zeroed statx buffer is initialized by the kernel on successful completion.
             let mut stat = Box::new(unsafe { mem::zeroed::<libc::statx>() });
-            let entry =
-                opcode::Statx::new(types::Fd(dir_fd), path.as_ptr(), flags, mask, &mut *stat)
-                    .build()
-                    .user_data(op_id);
+            let statxbuf = (&mut *stat as *mut libc::statx).cast::<types::statx>();
+            let entry = opcode::Statx::new(types::Fd(dir_fd), path.as_ptr(), statxbuf)
+                .flags(flags)
+                .mask(mask)
+                .build()
+                .user_data(op_id);
             Ok((entry, InFlightOp::Statx { path, stat }))
         }
         IoOp::ListDir { path } => Ok(ready_result(
