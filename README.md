@@ -121,7 +121,7 @@ The `meridian_ffi` functions are native Rust BIFs registered in beamr — they'r
 
 ```
 crates/
-  beamr/              Core VM library (~22k lines of Rust)
+  beamr/              Core VM library (~108k lines of Rust)
     src/
       atom/           Atom table — interned strings with fast integer lookup
       gc/             Generational copying garbage collector (minor + major)
@@ -140,6 +140,15 @@ crates/
       supervision/    OTP-style links, monitors, exit signal propagation
       term/           Tagged term representation (integers, atoms, binaries,
                       tuples, lists, maps, pids, floats, closures)
+      jit/            Cranelift-backed JIT (+ AOT cache, profiler, safepoints)
+      distribution/   Distributed-Erlang support (OTP 23+ handshake, control
+                      messages, remote links/monitors, process groups)
+      etf/            External Term Format (ETF) encode/decode
+      ets/            ETS in-memory tables (set, ordered_set, bag, match specs)
+      io/             I/O backend with an io_uring ring on Linux
+      replay/         Deterministic record/replay + step debugger
+      telemetry/      OpenTelemetry-style spans, metrics, lifecycle events
+      capability/     Capability-based security layer (sandbox + audit)
     tests/            Integration tests (OTP loading, GC, supervision, e2e)
 
   beamr-cli/          Command-line .beam runner
@@ -159,6 +168,14 @@ The Meridian integration layer (`beamr-meridian`) lives in the [yggdrasil](https
 - **200+ native BIFs**: Covering erlang, lists, maps, string, binary, io, math, unicode, rand, uri, and all Gleam stdlib FFI modules
 - **JSON**: Native OTP 27 `json` module (`decode/1`, `encode/1`, `encode_integer/1`, `encode_float/1`, `encode_binary/1`) so `gleam_json` works out of the box; Term to `serde_json::Value` bridging remains behind the `json` feature flag
 - **Async NIF support**: `wake_with_result` for suspending a BEAM process and delivering results from host-side async operations
+- **JIT compilation**: Cranelift-backed JIT with hot-function profiling, an AOT code cache, and safepoint-based deoptimization
+- **Distributed Erlang**: OTP 23+ distribution handshake, control messages, remote links/monitors, and process groups
+- **ETF**: External Term Format encode/decode for term serialization and distribution
+- **ETS**: In-memory tables (`set`, `ordered_set`, `bag`) with match-spec query support
+- **io_uring I/O**: I/O backend with an io_uring ring on Linux (with a portable fallback)
+- **Record/replay**: Deterministic execution recording, replay, and a step debugger
+- **Telemetry**: OpenTelemetry-style spans, metrics, and process lifecycle events
+- **Capability security**: Capability-based sandbox and audit layer enforced through native BIF dispatch
 - **Zero unresolved imports**: All `gleam_otp` `.beam` modules load cleanly
 
 ## Testing
@@ -184,6 +201,8 @@ Key architectural choices are documented as ADRs in `docs/adr/`:
 | 009 | Reduction boundary hook is a registration point |
 | 010 | Dirty scheduler pool for long-running operations |
 | 011 | Lock-free mailbox implementation |
+
+Several major subsystems — the JIT, distribution, record/replay, the io_uring I/O backend, and the capability security layer — post-date the current ADRs and are not yet covered by an ADR.
 
 ## License
 
