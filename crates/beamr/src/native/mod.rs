@@ -35,6 +35,8 @@
 //! build cons cells. Binary data has the same hazard: do not hold a slice borrowed
 //! from a heap binary across `alloc_binary`; either copy bytes into owned Rust
 //! memory before allocating, or re-borrow from the re-read rooted `Term` after GC.
+#[cfg(feature = "threads")]
+pub mod actor;
 pub mod bifs;
 pub mod capability;
 pub mod code_management_bifs;

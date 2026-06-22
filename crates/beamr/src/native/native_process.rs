@@ -199,6 +199,25 @@ impl<'a> NativeContext<'a> {
         }
     }
 
+    /// Allocate a tuple of `elements` on this process's heap and return the
+    /// tuple term, or `None` when the heap is full.
+    ///
+    /// This is the allocation primitive an
+    /// [`crate::native::actor::ActorMessage`] encode implementation uses to
+    /// build a compound message of immediates/scalars. Every `element` MUST be
+    /// an immediate (small integer, atom, local pid) or a heap term already
+    /// rooted on this process's heap: the native slice performs no garbage
+    /// collection, so this allocator neither triggers a GC nor needs to root
+    /// its arguments. Raw closures with free variables must NOT be exchanged
+    /// this way (the pre-existing ETF closure-encoding limitation documented on
+    /// this module); actors exchange immediates/refs/scalars only.
+    #[must_use]
+    pub fn alloc_tuple(&mut self, elements: &[Term]) -> Option<Term> {
+        let words = 1usize.checked_add(elements.len())?;
+        let slice = self.process.heap_mut().alloc_slice(words).ok()?;
+        crate::term::boxed::write_tuple(slice, elements)
+    }
+
     /// Spawn a native child from `factory`, optionally linking it to this
     /// process, delegating to the same [`SpawnFacility`] the scheduler uses.
     pub fn spawn_native(

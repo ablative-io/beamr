@@ -40,3 +40,12 @@ pub mod telemetry;
 pub mod term;
 #[cfg(feature = "threads")]
 pub mod timer;
+
+// Ergonomic native-actor surface (NATIVE-003), re-exported at the crate root so
+// downstream crates depend only on `beamr::` — not on scheduler internals.
+#[cfg(feature = "threads")]
+pub use native::actor::{
+    Actor, ActorContext, ActorError, ActorMessage, ActorRef, SenderHandle, spawn_actor,
+};
+#[cfg(feature = "threads")]
+pub use native::native_process::{NativeContext, NativeHandler, NativeOutcome};
