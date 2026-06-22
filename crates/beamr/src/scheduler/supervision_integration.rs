@@ -763,13 +763,13 @@ impl crate::native::local_send::LocalSendFacility for SchedulerLocalSendFacility
         &self,
         request: crate::native::local_send::LocalSendRequest<'_>,
     ) -> Result<(), crate::native::local_send::LocalSendError> {
-        // Self-send is handled in-hand by `messaging::send` against the sender's
-        // own body (its slot is Executing during its slice), so the facility is
-        // never asked to deliver to the sender's own slot.
-        debug_assert_ne!(
-            request.target_pid, request.sender_pid,
-            "self-send must be handled in-hand, never routed through the facility"
-        );
+        // Self-send from the BYTECODE path is handled in-hand by
+        // `messaging::send` against the sender's own body and never reaches the
+        // facility. A NATIVE self-send (NATIVE-001 R7), by contrast, is routed
+        // here deliberately: the sender's slot is `Executing` during its slice,
+        // so the message lands in `pending_local_messages` and is merged into
+        // the mailbox at store-back (visible on the next slice) — exactly the
+        // existing Executing-slot deferral, with no native-specific code path.
         let Some(entry) = self.shared.process_bodies.get(&request.target_pid) else {
             // Absent/dead pid: silent drop, matching BEAM semantics.
             return Ok(());
@@ -1211,6 +1211,66 @@ impl SpawnFacility for SchedulerSpawnFacility {
             entry.module.name,
             function,
             arity,
+        );
+
+        Ok(child_pid)
+    }
+
+    fn spawn_native(
+        &self,
+        caller_pid: u64,
+        factory: crate::native::native_process::NativeHandlerFactory,
+        link_to: Option<u64>,
+    ) -> Result<u64, SpawnError> {
+        // Mirror `spawn`, but build a native `Process` (no bytecode setup, no
+        // instruction pointer) carrying the handler the factory produces.
+        let namespace_id = self.caller_namespace(caller_pid);
+        let group_leader = self.caller_group_leader(caller_pid);
+        let capabilities = self.caller_capabilities(caller_pid);
+
+        let child_pid = self
+            .shared
+            .next_pid
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.shared.process_table.spawn_with_pid(child_pid);
+
+        let mut child = Process::with_capabilities(child_pid, DEFAULT_HEAP_SIZE, capabilities);
+        child.set_group_leader(group_leader);
+        child.set_namespace_id(namespace_id);
+        child.set_priority(Priority::Normal);
+        child.set_native_body(crate::native::native_process::NativeBody::new(factory));
+
+        if let Some(parent_pid) = link_to {
+            let child_linked = child.add_link(parent_pid);
+            let parent_linked = add_link_to_slot(&self.shared, parent_pid, child_pid);
+            if child_linked && parent_linked {
+                #[cfg(feature = "telemetry")]
+                crate::telemetry::lifecycle::record_process_linked(parent_pid, child_pid);
+            }
+        }
+
+        self.shared.process_bodies.insert(
+            child_pid,
+            std::sync::Mutex::new(ProcessSlot::Present(ScheduledProcess(child))),
+        );
+
+        self.shared
+            .spawn_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        {
+            let mut ws = lock_or_recover(&self.shared.wait_set);
+            ws.woken.push((child_pid, 0));
+        }
+        self.shared.wake_condvar.notify_all();
+
+        #[cfg(feature = "telemetry")]
+        crate::telemetry::lifecycle::record_process_spawned(
+            &self.shared.atom_table,
+            child_pid,
+            caller_pid,
+            Atom::NIL,
+            Atom::NIL,
+            0,
         );
 
         Ok(child_pid)

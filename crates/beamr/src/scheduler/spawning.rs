@@ -205,6 +205,41 @@ impl Scheduler {
         }))
     }
 
+    /// Spawn a native process whose body is the handler produced by `factory`.
+    ///
+    /// The handler runs as a first-class, scheduler-supervised process (real
+    /// pid, mailbox, send/receive) through the same machinery as a bytecode
+    /// process — it is dispatched to `run_native_slice` instead of the
+    /// interpreter. Returns the new pid.
+    pub fn spawn_native(
+        &self,
+        factory: crate::native::native_process::NativeHandlerFactory,
+    ) -> Result<u64, ExecError> {
+        let facility = supervision_integration::SchedulerSpawnFacility {
+            shared: Arc::clone(&self.shared),
+            namespace_id: NamespaceId::DEFAULT,
+        };
+        crate::native::SpawnFacility::spawn_native(&facility, 0, factory, None)
+            .map_err(|_| ExecError::Badarg)
+    }
+
+    /// Spawn a native process linked to `parent_pid`.
+    pub fn spawn_native_link(
+        &self,
+        parent_pid: u64,
+        factory: crate::native::native_process::NativeHandlerFactory,
+    ) -> Result<u64, ExecError> {
+        let parent_namespace = self
+            .process_namespace(parent_pid)
+            .unwrap_or(NamespaceId::DEFAULT);
+        let facility = supervision_integration::SchedulerSpawnFacility {
+            shared: Arc::clone(&self.shared),
+            namespace_id: parent_namespace,
+        };
+        crate::native::SpawnFacility::spawn_native(&facility, parent_pid, factory, Some(parent_pid))
+            .map_err(|_| ExecError::Badarg)
+    }
+
     /// Spawn a process and link it to `parent_pid`.
     pub fn spawn_link(
         &self,

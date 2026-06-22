@@ -50,7 +50,13 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
     let Some(mut process) = take_runnable_process(shared, pid) else {
         return;
     };
-    let outcome = if shared.replay_mode {
+    let outcome = if process.is_native() {
+        // Native dispatch seam (NATIVE-001): a process carrying a Rust handler
+        // runs the handler instead of the bytecode interpreter. The replay and
+        // bytecode branches below are untouched, and the Requeue / Wait /
+        // Suspended / Exited handling that follows is shared by both paths.
+        super::native_slice::run_native_slice(shared, &mut process)
+    } else if shared.replay_mode {
         let Some(recorded_schedule) = take_replay_schedule(shared, pid, my_index) else {
             store_runnable_process(shared, process);
             cleanup_exited_process(shared, pid, ExitReason::Error);
