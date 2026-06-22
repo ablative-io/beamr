@@ -51,6 +51,26 @@ pub trait SpawnFacility: Send + Sync {
         link_to: Option<u64>,
     ) -> Result<u64, SpawnError>;
 
+    /// Request creation of a new *native* process whose body is the handler
+    /// produced by `factory`.
+    ///
+    /// `factory` is invoked once to build the initial handler and retained on
+    /// the process for restart (NATIVE-002). If `link_to` is `Some(parent_pid)`
+    /// a bidirectional link is established before the child can execute.
+    ///
+    /// The default implementation refuses (it exists so non-scheduler test
+    /// mocks need not implement native spawning); the real scheduler facility
+    /// overrides it.
+    fn spawn_native(
+        &self,
+        caller_pid: u64,
+        factory: crate::native::native_process::NativeHandlerFactory,
+        link_to: Option<u64>,
+    ) -> Result<u64, SpawnError> {
+        let _ = (caller_pid, factory, link_to);
+        Err(SpawnError::UnresolvedMfa)
+    }
+
     /// Request creation of a new process and atomically establish a monitor
     /// from `caller_pid` to the child before the child can execute.
     fn spawn_monitor(

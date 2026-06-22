@@ -60,6 +60,7 @@ pub mod links;
 pub mod local_send;
 #[cfg(feature = "fs")]
 pub mod meridian_ffi;
+pub mod native_process;
 pub mod otp_stubs;
 pub mod process_bifs;
 pub mod process_info_bifs;

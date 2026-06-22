@@ -21,6 +21,7 @@ use crate::mailbox::Mailbox;
 use crate::module::Module;
 use crate::namespace::NamespaceId;
 use crate::native::NativeContinuation;
+use crate::native::native_process::NativeBody;
 use crate::process::heap::Heap;
 use crate::process::stack::Stack;
 use crate::term::{Term, boxed::BoxedTag, compare};
@@ -175,6 +176,9 @@ pub struct Process {
     monitors: Vec<Monitor>,
     trap_exit: bool,
     group_leader: Term,
+    /// Optional native handler body. `Some` exactly for native processes
+    /// (Shape B). Excluded from structural [`Clone`] — a clone is non-native.
+    native: Option<NativeBody>,
     not_send_sync: PhantomData<Rc<()>>,
 }
 
@@ -220,6 +224,10 @@ impl Clone for Process {
             monitors: self.monitors.clone(),
             trap_exit: self.trap_exit,
             group_leader: self.group_leader,
+            // A `Box<dyn NativeHandler>` is not `Clone`, so a structural clone
+            // is deliberately non-native. See the `Process::clone` audit note
+            // in `is_native` — no live scheduler path clones a native process.
+            native: None,
             not_send_sync: PhantomData,
         };
         clone.rebase_roots_from(self);
@@ -280,6 +288,7 @@ impl Process {
             monitors: Vec::new(),
             trap_exit: false,
             group_leader: Self::initial_group_leader(pid),
+            native: None,
             not_send_sync: PhantomData,
         }
     }
@@ -402,6 +411,38 @@ impl Process {
     /// Mutable placeholder mailbox access for message enqueue/receive support.
     pub fn mailbox_mut(&mut self) -> &mut Mailbox {
         &mut self.mailbox
+    }
+
+    /// True exactly when this process carries a native handler body (Shape B).
+    ///
+    /// A native process never sets a code position, x-registers, or stack;
+    /// those stay default/empty and its scheduler machinery (status graph,
+    /// `ProcessMetadata` swap, park-gap, exit-tombstones) is reused unchanged.
+    ///
+    /// `Process::clone` AUDIT (NATIVE-001 R2): the structural `Clone` impl
+    /// sets `native: None`, so a clone is always non-native. This is safe
+    /// because no live scheduler path clones a native process: spawn inserts a
+    /// freshly built `Process` (never a clone); the store/take slot swap moves
+    /// the `Process` by value through `std::mem::take` / `ProcessSlot`, never
+    /// cloning it; and replay does not snapshot process bodies. A native
+    /// restart (NATIVE-002) rebuilds the handler via the retained factory,
+    /// never by cloning a handler instance — so a clone can never silently
+    /// drop a live handler and leave a dead no-op process.
+    #[must_use]
+    pub fn is_native(&self) -> bool {
+        self.native.is_some()
+    }
+
+    /// Install a native handler body, making this a native process. Called by
+    /// the scheduler's `spawn_native` before the process is made runnable.
+    pub(crate) fn set_native_body(&mut self, body: NativeBody) {
+        self.native = Some(body);
+    }
+
+    /// Mutable access to the native body, for `run_native_slice` to take the
+    /// handler out for a slice (and the restart path to reach the factory).
+    pub(crate) fn native_body_mut(&mut self) -> Option<&mut NativeBody> {
+        self.native.as_mut()
     }
 
     /// Store `value` under `key` in the process dictionary.
