@@ -111,6 +111,23 @@ impl Scheduler {
         }
     }
 
+    /// Non-blocking read of a dead process's exit reason.
+    ///
+    /// Returns `Some(reason)` when an exit tombstone exists for `pid`, and
+    /// `None` when the process is still live, never existed, or otherwise has
+    /// no tombstone. Unlike [`Scheduler::run_until_exit`], this never blocks
+    /// and never waits for the process to exit.
+    ///
+    /// The read is non-consuming: the tombstone is left in place, so this can
+    /// be called repeatedly and does not disturb `run_until_exit` or any other
+    /// reader. Exit tombstones are written once at process teardown and are
+    /// never removed for the lifetime of the scheduler, so a peek after a
+    /// process has exited reliably observes the reason — including for a
+    /// process terminated externally via [`Scheduler::terminate_process`].
+    pub fn peek_exit_reason(&self, pid: u64) -> Option<ExitReason> {
+        self.shared.exit_tombstones.get(&pid).map(|entry| *entry)
+    }
+
     /// Retrieve the execution error that caused a process to exit, if any.
     pub fn take_exit_error(&self, pid: u64) -> Option<ExecError> {
         self.shared.exit_errors.remove(&pid).map(|(_, e)| e)
