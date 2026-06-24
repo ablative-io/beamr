@@ -289,6 +289,7 @@ fn make_shared_state() -> Arc<SharedState> {
         hook: crate::hook::Hook::new(),
         distribution,
         distribution_connections,
+        dist_sender: None,
         control_router: crate::distribution::remote_link::ControlRouter::new(),
         process_registry: DashMap::new(),
         timers: Arc::new(std::sync::Mutex::new(crate::timer::TimerWheel::new())),

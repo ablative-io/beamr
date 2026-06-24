@@ -21,6 +21,7 @@ use crate::distribution::DistributionConfig;
 use crate::distribution::connection::ConnectionManager;
 use crate::distribution::pg::PgRegistry;
 use crate::distribution::remote_link::ControlRouter;
+use crate::distribution::sender::DistSender;
 use crate::distribution::{DEFAULT_NODE_NAME, NetKernel, Node};
 pub use wasm::{WasmAsyncCompletion, WasmRunSummary, WasmScheduledTimer, WasmScheduler};
 
@@ -175,6 +176,10 @@ pub(super) struct SharedState {
     hook: Hook,
     distribution: DistributionConfig,
     distribution_connections: ConnectionManager,
+    /// Async outbound distribution sender. `None` under replay (no runtime).
+    /// Holds the `ConnectionManager`, never `Arc<SharedState>`, so it does not
+    /// form a reference cycle with the scheduler.
+    dist_sender: Option<DistSender>,
     control_router: ControlRouter,
     process_registry: DashMap<crate::atom::Atom, u64>,
     timers: Arc<Mutex<TimerWheel>>,
@@ -615,6 +620,18 @@ impl Scheduler {
         let distribution = config.distribution.unwrap_or_default();
         let distribution_connections =
             ConnectionManager::new(Arc::clone(&atom_table), Arc::clone(&distribution.resolver));
+        // Build the async outbound distribution sender (skipped under replay,
+        // which has no runtime). Bind its owned runtime handle to the connection
+        // manager so the read/accept tasks are driven in production, where there
+        // is no ambient tokio runtime.
+        let dist_sender = if replay_enabled {
+            None
+        } else {
+            DistSender::new(distribution_connections.clone())
+        };
+        if let Some(sender) = &dist_sender {
+            distribution_connections.set_runtime_handle(sender.handle());
+        }
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
         let file_io_ring: Arc<dyn CompletionRing> = if replay_enabled {
@@ -679,6 +696,7 @@ impl Scheduler {
             hook: Hook::new(),
             distribution,
             distribution_connections,
+            dist_sender,
             control_router: ControlRouter::new(),
             process_registry: DashMap::new(),
             timers: Arc::new(Mutex::new(TimerWheel::new())),

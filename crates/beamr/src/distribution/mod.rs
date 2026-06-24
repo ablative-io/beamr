@@ -12,6 +12,7 @@ mod node;
 pub mod pg;
 pub mod remote_link;
 pub mod resolver;
+pub mod sender;
 
 pub use connection::ConnectionManager;
 pub use node::{DEFAULT_NODE_NAME, Node};
@@ -33,10 +34,32 @@ pub struct DistributionConfig {
 }
 
 /// Synchronous net-kernel facade used by native BIFs.
+///
+/// Owns a multi-thread tokio [`Runtime`] (shared across clones via `Arc`) used to
+/// drive blocking `connect_node` calls from synchronous BIF code. Like the
+/// outbound [`DistSender`](crate::distribution::sender), this runtime must never
+/// be dropped from within an async context — a tokio `Runtime` drop blocks and
+/// panics there. `SharedState` owns this `NetKernel`, and `SharedState` itself
+/// can drop inside a `#[tokio::test]` async context, so [`Drop`] moves the
+/// runtime drop onto a dedicated `std::thread` (see the impl below).
 #[derive(Clone)]
 pub struct NetKernel {
     connections: ConnectionManager,
     runtime: Option<Arc<Runtime>>,
+}
+
+impl Drop for NetKernel {
+    fn drop(&mut self) {
+        // Move the (potentially blocking) runtime drop OFF any async context. The
+        // `Arc` shutdown only blocks when THIS is the last reference; spawning a
+        // plain `std::thread` to own the drop guarantees that, when it is the
+        // last reference, the blocking `Runtime` shutdown runs on a non-async
+        // thread and can never panic. When other clones remain, the spawned-thread
+        // drop is just a cheap `Arc` refcount decrement.
+        if let Some(runtime) = self.runtime.take() {
+            thread::spawn(move || drop(runtime));
+        }
+    }
 }
 
 impl NetKernel {

@@ -17,7 +17,10 @@ use beamr::distribution::pg::RemoteMember;
 use beamr::distribution::resolver::{NodeResolver, ResolveError, ResolveFuture};
 use beamr::module::ModuleRegistry;
 use beamr::native::BifRegistryImpl;
+use beamr::process::ExitReason;
 use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::term::Term;
+use beamr::{Actor, ActorContext, ActorMessage, NativeContext, spawn_actor};
 
 #[derive(Default)]
 struct DynamicResolver {
@@ -66,6 +69,43 @@ fn scheduler(
         Arc::new(beamr::native::AllCapabilitiesPolicy),
     )
     .expect("scheduler starts")
+}
+
+fn scheduler_arc(
+    node_name: &str,
+    resolver: Arc<DynamicResolver>,
+    atom_table: Arc<AtomTable>,
+) -> Arc<Scheduler> {
+    Arc::new(scheduler(node_name, resolver, atom_table))
+}
+
+/// A minimal actor that never exits on its own. Used as a real
+/// scheduler-supervised process whose lifetime the test controls via
+/// `exit_signal`, so its exit deterministically drives `cleanup_exited_process`.
+struct Idle;
+
+/// Trivial unit message carried by the idle actor (never sent in these tests).
+#[derive(Clone)]
+struct Ping;
+
+impl ActorMessage for Ping {
+    fn encode(&self, _ctx: &mut NativeContext<'_>) -> Option<Term> {
+        Some(Term::NIL)
+    }
+    fn decode(_term: Term) -> Option<Self> {
+        Some(Self)
+    }
+}
+
+impl Actor for Idle {
+    type Call = Ping;
+    type Reply = Ping;
+    type Cast = Ping;
+
+    fn handle_call(&mut self, _request: Ping, _ctx: &mut ActorContext<'_, '_>) -> Ping {
+        Ping
+    }
+    fn handle_cast(&mut self, _request: Ping, _ctx: &mut ActorContext<'_, '_>) {}
 }
 
 /// Poll `predicate` for up to ~1s, sleeping between attempts.
@@ -156,6 +196,190 @@ async fn pg_join_visible_on_peer_and_purged_on_node_down() {
     );
     let purged = eventually(|| registry_b.remote_members(scope, group).is_empty()).await;
     assert!(purged, "B should purge A's remote members on node-down");
+
+    listen_a.shutdown();
+    listen_b.shutdown();
+    node_a.shutdown();
+    node_b.shutdown();
+}
+
+/// The async sender is CONNECTED-ONLY: it never triggers an inline reconnect.
+///
+/// A joins a member while it has NO connection to B. The join returns promptly
+/// and B never observes that member over the full poll window (the update is
+/// dropped, not buffered). After A then connects to B and joins a *second*
+/// member, B sees ONLY the second member — proving the first was never replayed
+/// from a buffer.
+#[tokio::test]
+async fn pg_join_is_connected_only_and_not_replayed() {
+    let resolver = Arc::new(DynamicResolver::default());
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let node_a = scheduler(
+        "a@127.0.0.1",
+        Arc::clone(&resolver),
+        Arc::clone(&atom_table),
+    );
+    let node_b = scheduler(
+        "b@127.0.0.1",
+        Arc::clone(&resolver),
+        Arc::clone(&atom_table),
+    );
+
+    let listen_a = node_a
+        .distribution_connections()
+        .listen("127.0.0.1:0".parse().expect("address parses"))
+        .await
+        .expect("node A listens");
+    let listen_b = node_b
+        .distribution_connections()
+        .listen("127.0.0.1:0".parse().expect("address parses"))
+        .await
+        .expect("node B listens");
+    resolver.insert("a@127.0.0.1", listen_a.local_addr());
+    resolver.insert("b@127.0.0.1", listen_b.local_addr());
+
+    let a_node_atom = node_a.local_node().name;
+    node_b
+        .distribution_connections()
+        .register_inbound_identifier(move |_| Some(a_node_atom));
+
+    let scope = node_a.pg_registry().default_scope();
+    let group = atom_table.intern("connected_only");
+    let first_pid = 11_u64;
+    let second_pid = 22_u64;
+
+    // A has NO connection to B yet. This join must not reach B and must return
+    // promptly (no inline connect from the send path).
+    node_a.pg_registry().join(scope, group, first_pid);
+
+    let first_member = RemoteMember {
+        node: a_node_atom,
+        pid_number: first_pid,
+        serial: 0,
+    };
+    let registry_b = node_b.pg_registry();
+    // Over the full window B must never see the first member.
+    let leaked = eventually(|| {
+        registry_b
+            .remote_members(scope, group)
+            .contains(&first_member)
+    })
+    .await;
+    assert!(
+        !leaked,
+        "a join with no connection must not reach B (connected-only, no inline reconnect)"
+    );
+
+    // Now connect A -> B and join a second member.
+    node_a
+        .distribution_connections()
+        .connect("b@127.0.0.1")
+        .await
+        .expect("A connects to B");
+    node_a.pg_registry().join(scope, group, second_pid);
+
+    let second_member = RemoteMember {
+        node: a_node_atom,
+        pid_number: second_pid,
+        serial: 0,
+    };
+    let saw_second = eventually(|| {
+        registry_b
+            .remote_members(scope, group)
+            .contains(&second_member)
+    })
+    .await;
+    assert!(saw_second, "B should observe the second (connected) join");
+
+    // The first member must NOT have been buffered and replayed on connect.
+    assert!(
+        !registry_b
+            .remote_members(scope, group)
+            .contains(&first_member),
+        "the pre-connection join must not be replayed from a buffer"
+    );
+
+    listen_a.shutdown();
+    listen_b.shutdown();
+    node_a.shutdown();
+    node_b.shutdown();
+}
+
+/// A real scheduler-supervised process that is a pg member, when terminated,
+/// drives `cleanup_exited_process`: A's local membership empties (sync local
+/// purge) and the leave is propagated so B drops the remote member (async).
+#[tokio::test]
+async fn process_exit_purges_local_and_propagates_leave() {
+    let resolver = Arc::new(DynamicResolver::default());
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let node_a = scheduler_arc(
+        "a@127.0.0.1",
+        Arc::clone(&resolver),
+        Arc::clone(&atom_table),
+    );
+    let node_b = scheduler(
+        "b@127.0.0.1",
+        Arc::clone(&resolver),
+        Arc::clone(&atom_table),
+    );
+
+    let listen_a = node_a
+        .distribution_connections()
+        .listen("127.0.0.1:0".parse().expect("address parses"))
+        .await
+        .expect("node A listens");
+    let listen_b = node_b
+        .distribution_connections()
+        .listen("127.0.0.1:0".parse().expect("address parses"))
+        .await
+        .expect("node B listens");
+    resolver.insert("a@127.0.0.1", listen_a.local_addr());
+    resolver.insert("b@127.0.0.1", listen_b.local_addr());
+
+    let a_node_atom = node_a.local_node().name;
+    node_b
+        .distribution_connections()
+        .register_inbound_identifier(move |_| Some(a_node_atom));
+
+    node_a
+        .distribution_connections()
+        .connect("b@127.0.0.1")
+        .await
+        .expect("A connects to B");
+
+    // Spawn a REAL process on A and make it a pg member.
+    let actor = spawn_actor(&node_a, || Idle).expect("spawn idle actor");
+    let member_pid = actor.pid;
+    let scope = node_a.pg_registry().default_scope();
+    let group = atom_table.intern("supervised");
+    node_a.pg_registry().join(scope, group, member_pid);
+
+    let expected = RemoteMember {
+        node: a_node_atom,
+        pid_number: member_pid,
+        serial: 0,
+    };
+    let registry_a = node_a.pg_registry();
+    let registry_b = node_b.pg_registry();
+    assert!(
+        eventually(|| registry_b.remote_members(scope, group).contains(&expected)).await,
+        "B should observe the live process as a remote member"
+    );
+
+    // Terminate the process. The exit path runs the synchronous local purge and
+    // propagates the leave asynchronously through the installed sender.
+    node_a
+        .exit_signal(0, member_pid, ExitReason::Kill)
+        .expect("exit signal delivered");
+
+    assert!(
+        eventually(|| registry_a.local_members(scope, group).is_empty()).await,
+        "A's local membership should empty after the process exits"
+    );
+    assert!(
+        eventually(|| !registry_b.remote_members(scope, group).contains(&expected)).await,
+        "B should drop the remote member after the process exits on A"
+    );
 
     listen_a.shutdown();
     listen_b.shutdown();

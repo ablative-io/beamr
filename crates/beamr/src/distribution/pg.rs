@@ -250,22 +250,33 @@ impl PgRegistry {
         }
     }
 
+    /// Remove a local process from every scope/group locally, returning the
+    /// `Leave` updates for each group it was actually in.
+    ///
+    /// This performs the synchronous local purge only — it does **not**
+    /// broadcast. It holds the `PgState` lock solely for the in-memory mutation
+    /// and returns after dropping the guard, so it is safe to call on a latency-
+    /// sensitive path (such as process exit). The caller is responsible for
+    /// propagating the returned updates.
+    pub fn remove_pid_from_all_scopes_local(&self, pid: u64) -> Vec<PgUpdate> {
+        let mut state = self.lock_state();
+        let mut updates = Vec::new();
+        for ((scope, group), members) in &mut state.groups {
+            if members.local.remove(&pid) {
+                updates.push(PgUpdate::Leave {
+                    scope: *scope,
+                    group: *group,
+                    pid,
+                });
+            }
+        }
+        drop(state);
+        updates
+    }
+
     /// Remove a local process from every scope/group, broadcasting each actual leave.
     pub fn remove_pid_from_all_scopes(&self, pid: u64) {
-        let updates = {
-            let mut state = self.lock_state();
-            let mut updates = Vec::new();
-            for ((scope, group), members) in &mut state.groups {
-                if members.local.remove(&pid) {
-                    updates.push(PgUpdate::Leave {
-                        scope: *scope,
-                        group: *group,
-                        pid,
-                    });
-                }
-            }
-            updates
-        };
+        let updates = self.remove_pid_from_all_scopes_local(pid);
         let propagation = self.propagation();
         for update in updates {
             propagation.broadcast(update);

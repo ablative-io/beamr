@@ -11,6 +11,7 @@ use dashmap::DashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::runtime::Handle;
 use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 
@@ -54,6 +55,10 @@ pub enum ConnectionDownReason {
     ReadError,
     /// A write operation reported an error.
     WriteError,
+    /// A write exceeded its deadline (peer connected but not reading; kernel
+    /// send buffer full). Treated as a terminal write failure by the outbound
+    /// sender so a wedged peer cannot stall the shared drain.
+    WriteTimeout,
     /// The local node explicitly closed the connection.
     ManualDisconnect,
 }
@@ -183,6 +188,17 @@ impl DistConnection {
         result
     }
 
+    /// Mark this connection down because a write exceeded its deadline.
+    ///
+    /// The outbound sender's drain bounds each `write_raw` with a timeout so a
+    /// wedged peer cannot stall propagation for the whole cluster. On timeout the
+    /// write future is dropped without `write_raw` observing a failure, so the
+    /// drain calls this to drive the same connection-down path (hook + remote
+    /// purge) a genuine write error would. Idempotent via the inner `mark_down`.
+    pub fn mark_down_write_timeout(self: &Arc<Self>) {
+        self.mark_down(ConnectionDownReason::WriteTimeout);
+    }
+
     fn mark_down(self: &Arc<Self>, reason: ConnectionDownReason) {
         if self.down.swap(true, Ordering::AcqRel) {
             return;
@@ -235,6 +251,31 @@ struct ConnectionManagerInner {
     inbound_identifier: RwLock<Option<Arc<InboundIdentifier>>>,
     control_frame_handler: RwLock<Option<Arc<ControlFrameHandler>>>,
     pending_inbound: DashMap<SocketAddr, TcpStream>,
+    /// Runtime handle that drives the read/accept tasks. In production the
+    /// scheduler binds the [`DistSender`](crate::distribution::sender::DistSender)
+    /// runtime here so the receive side is driven even though no ambient runtime
+    /// exists. When unset (e.g. `#[tokio::test]`), the tasks fall back to the
+    /// ambient runtime via bare `tokio::spawn`.
+    runtime_handle: RwLock<Option<Handle>>,
+}
+
+impl ConnectionManagerInner {
+    /// Spawn `future` on the bound runtime handle when one is set, else on the
+    /// ambient runtime. Used for the read/accept lifecycle tasks.
+    fn spawn_lifecycle<F>(&self, future: F) -> JoinHandle<()>
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let handle = self
+            .runtime_handle
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        match handle {
+            Some(handle) => handle.spawn(future),
+            None => tokio::spawn(future),
+        }
+    }
 }
 
 impl ConnectionManagerInner {
@@ -285,8 +326,23 @@ impl ConnectionManager {
                 inbound_identifier: RwLock::new(None),
                 control_frame_handler: RwLock::new(None),
                 pending_inbound: DashMap::new(),
+                runtime_handle: RwLock::new(None),
             }),
         }
+    }
+
+    /// Bind a tokio runtime handle for the read/accept lifecycle tasks.
+    ///
+    /// The scheduler calls this with the owned `DistSender` runtime handle so the
+    /// receive side is driven in production (where no ambient runtime exists).
+    /// Must be called before any connection is established; existing tasks keep
+    /// the runtime they were spawned on.
+    pub fn set_runtime_handle(&self, handle: Handle) {
+        *self
+            .inner
+            .runtime_handle
+            .write()
+            .unwrap_or_else(|error| error.into_inner()) = Some(handle);
     }
 
     /// Return the configured outbound TCP connection timeout.
@@ -423,7 +479,7 @@ impl ConnectionManager {
         let shutdown = Arc::new(Notify::new());
         let task_shutdown = Arc::clone(&shutdown);
         let manager = self.clone();
-        let task = tokio::spawn(async move {
+        let task = self.inner.spawn_lifecycle(async move {
             manager.accept_loop(listener, task_shutdown).await;
         });
         Ok(AcceptHandle {
@@ -492,7 +548,7 @@ impl ConnectionManager {
 
     fn spawn_read_lifecycle(&self, connection: Arc<DistConnection>, mut read_half: OwnedReadHalf) {
         let manager = Arc::clone(&self.inner);
-        tokio::spawn(async move {
+        self.inner.spawn_lifecycle(async move {
             loop {
                 let mut header = [0_u8; 8];
                 match read_half.read_exact(&mut header).await {

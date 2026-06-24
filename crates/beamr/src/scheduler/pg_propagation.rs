@@ -16,13 +16,13 @@
 //! per-broadcast; if the scheduler has been dropped the upgrade fails and the
 //! broadcast is a no-op.
 
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 
 use crate::distribution::control::encode_pg_update_frame;
 use crate::distribution::pg::{PgPropagation, PgUpdate};
+use crate::distribution::sender::DistOutbound;
 
 use super::SharedState;
-use super::supervision_integration::block_on_distribution_send;
 
 /// Production [`PgPropagation`] backend: encodes membership updates as
 /// `PG_UPDATE` control frames and sends them to every connected node.
@@ -38,6 +38,10 @@ impl PgPropagation for SchedulerPgPropagation {
         let Some(shared) = self.shared.upgrade() else {
             return;
         };
+        // Under replay there is no sender (no runtime); broadcasting is a no-op.
+        let Some(sender) = &shared.dist_sender else {
+            return;
+        };
         // Encode the member as an external PID carrying our local node name so
         // the receiver records a fully-attributed RemoteMember.
         let local_node = shared.local_node.name;
@@ -49,20 +53,19 @@ impl PgPropagation for SchedulerPgPropagation {
             // node-down purge, and `!`-style sends are infallible in BEAM.
             return;
         };
-        // Snapshot the connected nodes and send to each. `connected_nodes()` and
-        // `block_on_distribution_send` are called with no PgState/propagation lock
-        // held (the registry drops its guards before invoking `broadcast`), so a
-        // blocking send here cannot deadlock the registry.
+        // Share the encoded frame across the fan-out so each connected node
+        // clones the `Arc` handle, not the bytes.
+        let frame: Arc<[u8]> = Arc::from(frame.into_boxed_slice());
+        // ENQUEUE to every currently-connected node and return immediately. The
+        // owned-runtime drain task performs the actual TCP I/O, so a slow or dead
+        // peer never blocks this scheduler worker thread. `connected_nodes()` is
+        // called with no PgState/propagation lock held (the registry drops its
+        // guards before invoking `broadcast`).
         for node in shared.distribution_connections.connected_nodes() {
-            let Some(node_name) = shared.atom_table.resolve(node) else {
-                continue;
-            };
-            let _ = block_on_distribution_send(
-                &shared.distribution_connections,
+            sender.enqueue(DistOutbound::ToNode {
                 node,
-                node_name,
-                &frame,
-            );
+                frame: Arc::clone(&frame),
+            });
         }
     }
 }
