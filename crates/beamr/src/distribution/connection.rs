@@ -17,11 +17,17 @@ use tokio::task::JoinHandle;
 
 use crate::atom::{Atom, AtomTable};
 use crate::distribution::handshake::{
-    HandshakeNode, initiate_handshake_async, respond_handshake_async,
+    HandshakeError, HandshakeNode, SimultaneousDecision, initiate_handshake_async,
+    respond_handshake_async_with,
 };
 use crate::distribution::resolver::NodeResolver;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Default whole-handshake deadline. Mirrors [`DEFAULT_CONNECT_TIMEOUT`]: any
+/// finite value removes the deadlock; 5s tolerates a loaded peer without wedging
+/// a cluster (DISTRIBUTION-HANDSHAKE-DESIGN.md D3).
+const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Error returned while creating an outbound distribution TCP connection.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,6 +38,11 @@ pub enum ConnectError {
     ConnectionRefused,
     /// Resolution succeeded but the TCP connect did not finish before the configured timeout.
     Timeout,
+    /// The responder answered the simultaneous-connect tie-break with `nok`: the
+    /// peer is keeping the reciprocal (its own outbound) link, so this outbound is
+    /// a benign abort, NOT a failure. The caller should treat the pair as
+    /// connected via the reciprocal link and must not retry-storm (HS-3, §3.2).
+    SimultaneousAbort,
     /// TCP connection failed for an I/O reason other than refusal.
     Io(String),
 }
@@ -42,6 +53,8 @@ impl fmt::Display for ConnectError {
             Self::ResolveFailure => formatter.write_str("distribution node resolution failed"),
             Self::ConnectionRefused => formatter.write_str("distribution TCP connection refused"),
             Self::Timeout => formatter.write_str("distribution TCP connection timed out"),
+            Self::SimultaneousAbort => formatter
+                .write_str("distribution outbound aborted by simultaneous-connect tie-break"),
             Self::Io(error) => write!(formatter, "distribution TCP connection failed: {error}"),
         }
     }
@@ -246,9 +259,19 @@ impl Drop for AcceptHandle {
 
 struct ConnectionManagerInner {
     connections: DashMap<Atom, Arc<DistConnection>>,
+    /// Peer-name atoms with an in-flight OUTBOUND dial (the `Connecting` state,
+    /// DISTRIBUTION-HANDSHAKE-DESIGN.md §3.1). Recorded before the outbound
+    /// handshake awaits so a concurrent inbound responder can detect the
+    /// simultaneous case and apply the name-comparison tie-break (HS-3, §3.2).
+    connecting: DashMap<Atom, ()>,
     atom_table: Arc<AtomTable>,
     resolver: Arc<dyn NodeResolver + Send + Sync>,
     connect_timeout: Duration,
+    /// Whole-handshake deadline applied around the OTP exchange on both the
+    /// outbound `connect` and the inbound accept-side responder. Bounds a stalled
+    /// or malicious peer so `connect` always returns and no responder task parks
+    /// forever (DISTRIBUTION-HANDSHAKE-DESIGN.md HS-1, D3).
+    handshake_timeout: Duration,
     connection_down_hook: ConnectionDownHook,
     control_frame_handler: RwLock<Option<Arc<ControlFrameHandler>>>,
     /// Shared handshake secret. Both peers must agree on this value or the OTP
@@ -300,6 +323,30 @@ impl ConnectionManagerInner {
     fn gen_challenge(&self) -> u32 {
         rand::random::<u32>()
     }
+
+    /// Decide the OTP status an inbound responder should emit for a peer whose
+    /// advertised name is `peer_name` (HS-3, D1 — OTP verbatim).
+    ///
+    /// With no competing local outbound to that peer, continue normally. If a
+    /// local outbound dial to the same peer name is in flight, break the tie by
+    /// literal name comparison: the higher-named node's OUTBOUND survives, so the
+    /// responder on the lower-named node continues this inbound
+    /// (`ContinueSimultaneous`, when `peer_name > local_name`) and the responder
+    /// on the higher-named node rejects it (`Reject`, when `local_name > peer_name`)
+    /// to keep its own outbound. Distinct cluster members have unique names, so
+    /// equality cannot occur; if it ever did, `Continue` plus the install-time
+    /// dedup (HS-2) is the backstop.
+    fn decide_inbound_status(&self, peer_name: &str) -> SimultaneousDecision {
+        let peer_atom = self.atom_table.intern(peer_name);
+        if !self.connecting.contains_key(&peer_atom) {
+            return SimultaneousDecision::Continue;
+        }
+        match peer_name.cmp(self.local_node_name.as_str()) {
+            std::cmp::Ordering::Greater => SimultaneousDecision::ContinueSimultaneous,
+            std::cmp::Ordering::Less => SimultaneousDecision::Reject,
+            std::cmp::Ordering::Equal => SimultaneousDecision::Continue,
+        }
+    }
 }
 
 impl ConnectionManagerInner {
@@ -317,6 +364,30 @@ impl ConnectionManagerInner {
             self.connection_down_hook
                 .invoke(ConnectionDownEvent { node, reason });
         }
+    }
+}
+
+/// RAII marker that records an in-flight outbound dial in the manager's
+/// `connecting` set and clears it on drop, on every `connect` exit path (HS-3).
+struct ConnectingGuard {
+    inner: Arc<ConnectionManagerInner>,
+    peer: Atom,
+}
+
+impl ConnectingGuard {
+    fn new(inner: &Arc<ConnectionManagerInner>, peer_name: &str) -> Self {
+        let peer = inner.atom_table.intern(peer_name);
+        inner.connecting.insert(peer, ());
+        Self {
+            inner: Arc::clone(inner),
+            peer,
+        }
+    }
+}
+
+impl Drop for ConnectingGuard {
+    fn drop(&mut self) {
+        self.inner.connecting.remove(&self.peer);
     }
 }
 
@@ -363,9 +434,11 @@ impl ConnectionManager {
         Self {
             inner: Arc::new(ConnectionManagerInner {
                 connections: DashMap::new(),
+                connecting: DashMap::new(),
                 atom_table,
                 resolver,
                 connect_timeout,
+                handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
                 connection_down_hook: ConnectionDownHook::new(),
                 control_frame_handler: RwLock::new(None),
                 cookie: cookie.into(),
@@ -394,6 +467,27 @@ impl ConnectionManager {
     #[must_use]
     pub fn connect_timeout(&self) -> Duration {
         self.inner.connect_timeout
+    }
+
+    /// Return the configured whole-handshake deadline.
+    #[must_use]
+    pub fn handshake_timeout(&self) -> Duration {
+        self.inner.handshake_timeout
+    }
+
+    /// Override the whole-handshake deadline on a freshly-built manager.
+    ///
+    /// Builder-style: must be called before the manager is cloned or any
+    /// connection is started, while its `inner` is still uniquely owned. Returns
+    /// `self` unchanged if the manager has already been shared (a clone exists),
+    /// since the deadline is read by in-flight handshakes and cannot be mutated
+    /// race-free afterward.
+    #[must_use]
+    pub fn with_handshake_timeout(mut self, handshake_timeout: Duration) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.handshake_timeout = handshake_timeout;
+        }
+        self
     }
 
     /// Return a clone of the connection-down callback slot.
@@ -452,6 +546,11 @@ impl ConnectionManager {
     }
 
     /// Idempotently connect to a node-name atom, returning `false` for transport failures.
+    ///
+    /// A simultaneous-connect `nok` abort ([`ConnectError::SimultaneousAbort`]) is
+    /// treated as success, not a failure: the peer is keeping the reciprocal link,
+    /// so the pair is (or is about to be) connected and the caller must not
+    /// retry-storm (HS-3).
     pub async fn connect_node(&self, node: Atom) -> bool {
         if self.get_connection(node).is_some() {
             return true;
@@ -459,7 +558,10 @@ impl ConnectionManager {
         let Some(node_name) = self.inner.atom_table.resolve(node).map(str::to_owned) else {
             return false;
         };
-        self.connect(&node_name).await.is_ok()
+        matches!(
+            self.connect(&node_name).await,
+            Ok(_) | Err(ConnectError::SimultaneousAbort)
+        )
     }
 
     /// Manually disconnect an active node and emit the connection-down hook once.
@@ -493,18 +595,31 @@ impl ConnectionManager {
     /// Start a dedicated asynchronous TCP accept loop for this manager.
     pub async fn listen(&self, listen_addr: SocketAddr) -> io::Result<AcceptHandle> {
         let listener = TcpListener::bind(listen_addr).await?;
-        let local_addr = listener.local_addr()?;
+        Ok(self.listen_with(listener))
+    }
+
+    /// Start a dedicated asynchronous TCP accept loop on a pre-bound listener.
+    ///
+    /// Separated from [`listen`](Self::listen) so callers that must bind the
+    /// listener before the manager exists (e.g. to publish the chosen port into a
+    /// resolver) can reuse the same accept-loop spawn. The accept loop runs on the
+    /// bound runtime handle via [`ConnectionManagerInner::spawn_lifecycle`].
+    #[must_use]
+    pub fn listen_with(&self, listener: TcpListener) -> AcceptHandle {
+        let local_addr = listener
+            .local_addr()
+            .unwrap_or_else(|_| SocketAddr::from(([0, 0, 0, 0], 0)));
         let shutdown = Arc::new(Notify::new());
         let task_shutdown = Arc::clone(&shutdown);
         let manager = self.clone();
         let task = self.inner.spawn_lifecycle(async move {
             manager.accept_loop(listener, task_shutdown).await;
         });
-        Ok(AcceptHandle {
+        AcceptHandle {
             local_addr,
             shutdown,
             task,
-        })
+        }
     }
 
     /// Resolve `node_name`, open a TCP connection, run the OTP distribution
@@ -538,27 +653,96 @@ impl ConnectionManager {
         let peer_addr = stream.peer_addr().unwrap_or(addr);
 
         let local = self.inner.handshake_node()?;
-        let result = initiate_handshake_async(
-            &mut stream,
-            &local,
-            &self.inner.cookie,
-            self.inner.gen_challenge(),
+        // Mark this peer name as having an in-flight outbound BEFORE the handshake
+        // awaits, so a concurrent inbound responder can detect the simultaneous
+        // case and apply the tie-break (HS-3). The guard clears the mark on every
+        // exit path. The dialed `node_name` is the peer's authenticated name in a
+        // by-name cluster mesh (haematite FullMesh), which is what the peer
+        // advertises and what its responder compares against.
+        let _connecting = ConnectingGuard::new(&self.inner, node_name);
+        // Bound the whole handshake so a stalled or malicious peer can never park
+        // this call forever; `connect` is now guaranteed to return within
+        // handshake_timeout (HS-1). On elapse the stream is dropped, closing the
+        // TCP connection.
+        let result = match tokio::time::timeout(
+            self.inner.handshake_timeout,
+            initiate_handshake_async(
+                &mut stream,
+                &local,
+                &self.inner.cookie,
+                self.inner.gen_challenge(),
+            ),
         )
         .await
-        .map_err(|error| ConnectError::Io(error.to_string()))?;
-        // Drop the stream here on the (already-handled) error paths above closes
-        // the TCP connection; on success the authenticated remote name becomes
-        // the connection-table key.
+        {
+            Ok(Ok(result)) => result,
+            Ok(Err(HandshakeError::BadStatus(status))) if status == "nok" => {
+                // The peer kept the reciprocal link via the tie-break. Benign:
+                // drop our stream and report a non-failure abort so the caller
+                // does not retry-storm.
+                return Err(ConnectError::SimultaneousAbort);
+            }
+            Ok(Err(error)) => return Err(ConnectError::Io(error.to_string())),
+            Err(_) => return Err(ConnectError::Io(HandshakeError::Timeout.to_string())),
+        };
+        // Dropping the stream on the error paths above closes the TCP connection;
+        // on success the authenticated remote name becomes the connection-table
+        // key.
         let node = self.inner.atom_table.intern(result.remote_name());
         Ok(self.register_connection(node, peer_addr, stream))
     }
 
+    /// Install an authenticated link, deduplicating against an existing `Up`
+    /// connection for the same peer name (HS-2).
+    ///
+    /// Two simultaneous handshakes (one inbound, one outbound) for the same pair
+    /// can both reach this point. A blind `insert` would clobber the first link's
+    /// `Arc<DistConnection>` in the table while leaving its read task running on an
+    /// orphaned socket. Instead this uses the entry API to atomically check for a
+    /// live existing link: if one is present, the newcomer is the loser — its
+    /// stream is dropped (closing the TCP connection) and its read task is never
+    /// spawned, and the existing survivor is returned. A stale entry whose
+    /// connection has already gone down is replaced (the reconnect path). This
+    /// guarantees the invariant: at most one live `Up` connection per peer name.
     fn register_connection(
         &self,
         node: Atom,
         peer_addr: SocketAddr,
         stream: TcpStream,
     ) -> Arc<DistConnection> {
+        use dashmap::mapref::entry::Entry;
+
+        match self.inner.connections.entry(node) {
+            Entry::Occupied(mut occupied) => {
+                if !occupied.get().is_down() {
+                    // A live link already won this pair. Drop the loser's stream
+                    // (closing its TCP connection) and do NOT spawn its reader.
+                    drop(stream);
+                    return Arc::clone(occupied.get());
+                }
+                // The existing entry is a dead link awaiting reap; replace it.
+                let (connection, read_half) = self.build_connection(node, peer_addr, stream);
+                occupied.insert(Arc::clone(&connection));
+                self.spawn_read_lifecycle(Arc::clone(&connection), read_half);
+                connection
+            }
+            Entry::Vacant(vacant) => {
+                let (connection, read_half) = self.build_connection(node, peer_addr, stream);
+                vacant.insert(Arc::clone(&connection));
+                self.spawn_read_lifecycle(Arc::clone(&connection), read_half);
+                connection
+            }
+        }
+    }
+
+    /// Split a stream into a [`DistConnection`] and its read half, without
+    /// touching the connection table. Shared by both `register_connection` arms.
+    fn build_connection(
+        &self,
+        node: Atom,
+        peer_addr: SocketAddr,
+        stream: TcpStream,
+    ) -> (Arc<DistConnection>, OwnedReadHalf) {
         let (read_half, write_half) = stream.into_split();
         let connection = Arc::new(DistConnection::new(
             node,
@@ -566,9 +750,7 @@ impl ConnectionManager {
             write_half,
             Arc::downgrade(&self.inner),
         ));
-        self.inner.connections.insert(node, Arc::clone(&connection));
-        self.spawn_read_lifecycle(Arc::clone(&connection), read_half);
-        connection
+        (connection, read_half)
     }
 
     /// Register a pre-connected standard stream for native BIF unit tests.
@@ -662,19 +844,30 @@ impl ConnectionManager {
                 Ok(local) => local,
                 Err(_) => return,
             };
-            match respond_handshake_async(
-                &mut stream,
-                &local,
-                &manager.inner.cookie,
-                manager.inner.gen_challenge(),
+            // Bound the responder so a stalled or malicious peer can never park
+            // this spawned task forever; on elapse the stream is dropped, closing
+            // the TCP connection (HS-1). The decider resolves a simultaneous
+            // connect by the name-comparison tie-break against the local outbound
+            // state (HS-3); on `nok` the responder aborts and the reciprocal
+            // outbound is the survivor.
+            let decider = |peer_name: &str| manager.inner.decide_inbound_status(peer_name);
+            let outcome = tokio::time::timeout(
+                manager.inner.handshake_timeout,
+                respond_handshake_async_with(
+                    &mut stream,
+                    &local,
+                    &manager.inner.cookie,
+                    manager.inner.gen_challenge(),
+                    decider,
+                ),
             )
-            .await
-            {
-                Ok(result) => {
+            .await;
+            match outcome {
+                Ok(Ok(result)) => {
                     let node = manager.inner.atom_table.intern(result.remote_name());
                     manager.register_connection(node, peer_addr, stream);
                 }
-                Err(_) => {
+                Ok(Err(_)) | Err(_) => {
                     drop(stream);
                 }
             }
@@ -684,9 +877,14 @@ impl ConnectionManager {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Barrier, mpsc};
+    use std::thread;
+    use std::time::Instant;
 
     use tokio::net::TcpListener;
+    use tokio::runtime::Builder;
     use tokio::task::JoinHandle;
 
     use super::*;
@@ -914,6 +1112,54 @@ mod tests {
         drop(client);
     }
 
+    /// HS-1: an outbound `connect` to a peer that accepts the TCP connection but
+    /// never speaks the handshake must return a handshake-timeout error within the
+    /// configured handshake deadline, not hang. This is the bounded-return
+    /// contract that lets the haematite-side retry above the seam make progress.
+    #[tokio::test]
+    async fn connect_returns_timeout_when_peer_never_handshakes() {
+        // A bare listener that accepts then stays silent (no responder).
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap_or_else(|error| panic!("failed to bind local listener: {error}"));
+        let addr = listener
+            .local_addr()
+            .unwrap_or_else(|error| panic!("failed to inspect local listener: {error}"));
+        let _silent_accept = tokio::spawn(async move {
+            // Accept and hold the stream open without ever writing a handshake byte.
+            if let Ok((stream, _peer)) = listener.accept().await {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                drop(stream);
+            }
+        });
+
+        let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::from([(
+            "silent@127.0.0.1".to_string(),
+            addr,
+        )])));
+        let manager =
+            manager_with_resolver(resolver).with_handshake_timeout(Duration::from_secs(1));
+
+        let started = std::time::Instant::now();
+        let result =
+            tokio::time::timeout(Duration::from_secs(15), manager.connect("silent@127.0.0.1"))
+                .await;
+
+        let outcome = result
+            .expect("connect must return within the handshake deadline, not hang")
+            .map(|_connection| ());
+        assert!(
+            matches!(outcome, Err(ConnectError::Io(_))),
+            "a non-speaking peer must surface as a connect error, got {outcome:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "connect should return near the 1s handshake deadline, took {:?}",
+            started.elapsed()
+        );
+        assert_eq!(manager.connection_count(), 0);
+    }
+
     #[tokio::test]
     async fn connect_node_is_idempotent_and_lists_node() {
         let listener = TcpListener::bind("127.0.0.1:0")
@@ -1106,5 +1352,432 @@ mod tests {
 
         assert!(manager.get_connection(node).is_none());
         assert_eq!(callback_count.load(Ordering::SeqCst), 1);
+    }
+
+    /// HS-3 (tie-break direction, D1): with a competing local outbound recorded,
+    /// the responder emits `nok` when the local name is greater than the peer's,
+    /// and `ok_simultaneous` when the peer's name is greater — matching OTP's
+    /// literal name comparison. Drives the real accept loop so it exercises the
+    /// production decider (`decide_inbound_status`), forcing the `connecting`
+    /// marker that signals an in-flight outbound.
+    #[tokio::test]
+    async fn hs3_responder_rejects_when_local_name_is_greater() {
+        // local = "zeta..." (greater); inbound peer = "alpha..." (lesser).
+        let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::new()));
+        let manager = ConnectionManager::new(
+            Arc::new(AtomTable::with_common_atoms()),
+            resolver,
+            TEST_COOKIE,
+            "zeta@127.0.0.1",
+            1,
+        );
+        let accept = manager
+            .listen("127.0.0.1:0".parse().expect("parse listen addr"))
+            .await
+            .expect("start accept loop");
+
+        // Simulate an in-flight local outbound to the inbound peer's name so the
+        // decider sees the simultaneous case.
+        let peer_atom = manager.inner.atom_table.intern("alpha@127.0.0.1");
+        manager.inner.connecting.insert(peer_atom, ());
+
+        let mut client = TcpStream::connect(accept.local_addr())
+            .await
+            .expect("inbound peer connects");
+        let client_node = HandshakeNode::with_default_flags("alpha@127.0.0.1", 5)
+            .expect("client node name valid");
+        let result = crate::distribution::handshake::initiate_handshake_async(
+            &mut client,
+            &client_node,
+            TEST_COOKIE,
+            42,
+        )
+        .await;
+
+        // local(zeta) > peer(alpha) => responder sends `nok`, the initiator sees
+        // a BadStatus("nok") abort, and no inbound link is registered.
+        assert_eq!(
+            result.expect_err("initiator must see the nok rejection"),
+            HandshakeError::BadStatus("nok".into())
+        );
+        assert!(
+            manager.get_connection(peer_atom).is_none(),
+            "a rejected inbound must not register a connection"
+        );
+        drop(accept);
+    }
+
+    /// Spawn a one-shot responder on `listener` that always answers the status
+    /// step with `nok`, modelling a peer that keeps its reciprocal outbound.
+    fn spawn_nok_responder(listener: TcpListener) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            let Ok((mut stream, _peer)) = listener.accept().await else {
+                return;
+            };
+            let local = HandshakeNode::with_default_flags("peer@127.0.0.1", 9)
+                .expect("responder node valid");
+            let _ = crate::distribution::handshake::respond_handshake_async_with(
+                &mut stream,
+                &local,
+                TEST_COOKIE,
+                3,
+                |_peer_name| SimultaneousDecision::Reject,
+            )
+            .await;
+        })
+    }
+
+    /// HS-3 (benign abort): an outbound `connect` that receives `nok` returns
+    /// `ConnectError::SimultaneousAbort` (not an Io failure), and `connect_node`
+    /// folds that into success so the caller does not retry-storm.
+    #[tokio::test]
+    async fn hs3_outbound_nok_is_a_benign_simultaneous_abort() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind nok responder");
+        let addr = listener.local_addr().expect("inspect listener");
+        let _responder = spawn_nok_responder(listener);
+
+        let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::from([(
+            "peer@127.0.0.1".to_string(),
+            addr,
+        )])));
+        let manager = manager_with_resolver(resolver);
+
+        let outcome = manager.connect("peer@127.0.0.1").await.map(|_| ());
+        assert!(
+            matches!(outcome, Err(ConnectError::SimultaneousAbort)),
+            "nok must surface as a benign SimultaneousAbort, got {outcome:?}"
+        );
+        assert_eq!(manager.connection_count(), 0);
+    }
+
+    /// HS-3: `connect_node` treats a `nok` simultaneous abort as success.
+    #[tokio::test]
+    async fn hs3_connect_node_treats_nok_abort_as_success() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind nok responder");
+        let addr = listener.local_addr().expect("inspect listener");
+        let _responder = spawn_nok_responder(listener);
+
+        let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::from([(
+            "peer@127.0.0.1".to_string(),
+            addr,
+        )])));
+        let manager = manager_with_resolver(resolver);
+        let node = manager.inner.atom_table.intern("peer@127.0.0.1");
+
+        assert!(
+            manager.connect_node(node).await,
+            "connect_node must treat a nok abort as success (no retry-storm)"
+        );
+        // The abort registers no connection; the reciprocal inbound is the link.
+        assert_eq!(manager.connection_count(), 0);
+    }
+
+    /// HS-2: two simultaneous installs for the same peer name must leave exactly
+    /// one live link, and the loser's socket must be closed (its reader is never
+    /// spawned, so it cannot linger as an orphan on a half-link). The winner is
+    /// the first-installed connection; the second install returns that same Arc
+    /// and drops its own stream, which the loser's peer observes as EOF.
+    #[tokio::test]
+    async fn hs2_two_simultaneous_installs_keep_exactly_one_no_orphan_reader() {
+        let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::new()));
+        let manager = manager_with_resolver(resolver);
+        let node = manager.inner.atom_table.intern("peer@127.0.0.1");
+
+        // Two independent connected socket pairs standing in for the inbound and
+        // outbound halves of a simultaneous connect. The client ends let us
+        // observe whether each server end stays open or is closed.
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind helper listener");
+        let addr = listener.local_addr().expect("inspect helper listener");
+
+        let mut client_first = TcpStream::connect(addr)
+            .await
+            .expect("client_first connects");
+        let (server_first, _) = listener.accept().await.expect("accept server_first");
+        let mut client_second = TcpStream::connect(addr)
+            .await
+            .expect("client_second connects");
+        let (server_second, _) = listener.accept().await.expect("accept server_second");
+
+        let winner = manager.register_connection(node, addr, server_first);
+        let returned = manager.register_connection(node, addr, server_second);
+
+        // Exactly one table entry, and the second install returned the winner.
+        assert_eq!(manager.connection_count(), 1);
+        assert!(
+            Arc::ptr_eq(&winner, &returned),
+            "the second install must return the existing survivor, not a new link"
+        );
+        assert!(Arc::ptr_eq(
+            &winner,
+            &manager
+                .get_connection(node)
+                .expect("survivor must be in the table"),
+        ));
+
+        // The winner's socket stays open: a write reaches its peer.
+        winner
+            .write_raw(&[0_u8; 8])
+            .await
+            .expect("winner link must remain writable");
+        let mut header = [0_u8; 8];
+        client_first
+            .read_exact(&mut header)
+            .await
+            .expect("winner's peer must receive the keepalive frame");
+
+        // The loser's socket was closed (stream dropped, no reader spawned), so
+        // its peer observes EOF rather than a live, orphaned half-link.
+        let mut byte = [0_u8; 1];
+        let eof = tokio::time::timeout(Duration::from_secs(5), client_second.read(&mut byte))
+            .await
+            .expect("loser's socket should close promptly, not hang")
+            .expect("reading the closed loser socket should not error");
+        assert_eq!(eof, 0, "the loser's socket must be closed (EOF)");
+    }
+
+    type Resolver = Arc<dyn NodeResolver + Send + Sync>;
+
+    /// HS-0 (deterministic root-cause oracle): an inbound peer completes the TCP
+    /// connect then sends nothing, so the accept-side responder's first read sits
+    /// on an untimed `read_exact`. Pre-HS-1 that responder task never resolves and
+    /// the silent peer's socket stays open forever — the canonical handshake hang
+    /// that, multiplied across a `>=3`-node mesh of blocking dials, wedges a
+    /// cluster. After HS-1 the responder hits the whole-handshake deadline, the
+    /// server drops the stream, and the silent peer observes EOF.
+    ///
+    /// The oracle drives the REAL `ConnectionManager` accept loop (so it exercises
+    /// the production timeout path, not a test-local wrapper) with a short
+    /// handshake deadline, then reads the silent peer's socket under an inner
+    /// bound. Pre-HS-1 the read never returns and the bound fires → failure,
+    /// demonstrating the hang. Post-HS-1 the read returns EOF promptly → pass. A
+    /// whole-test wall-clock watchdog guards against any hang escaping the bound.
+    #[test]
+    fn hs0_silent_peer_handshake_terminates_and_does_not_hang() {
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            run_silent_peer_scenario();
+            let _ = done_tx.send(());
+        });
+        match done_rx.recv_timeout(Duration::from_secs(45)) {
+            Ok(()) => worker.join().expect("HS-0 worker thread should not panic"),
+            Err(_) => panic!(
+                "HS-0 DEADLOCK: a silent peer's inbound handshake never terminated \
+                 (untimed read parked the responder forever)"
+            ),
+        }
+    }
+
+    fn run_silent_peer_scenario() {
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build handshake runtime");
+        runtime.block_on(async {
+            let resolver: Resolver = Arc::new(StaticResolver::new(HashMap::new()));
+            // Short handshake deadline so the post-fix path resolves quickly; the
+            // pre-fix path has no deadline at all and hangs regardless.
+            let manager = ConnectionManager::new(
+                Arc::new(AtomTable::with_common_atoms()),
+                resolver,
+                TEST_COOKIE,
+                "server@127.0.0.1",
+                1,
+            )
+            .with_handshake_timeout(Duration::from_secs(2));
+            let accept = manager
+                .listen("127.0.0.1:0".parse().expect("parse listen addr"))
+                .await
+                .expect("start accept loop");
+
+            // Silent peer: connect, then never send a single byte. The accept loop
+            // spawns a responder that blocks on the first handshake read.
+            let mut silent = TcpStream::connect(accept.local_addr())
+                .await
+                .expect("silent peer connects");
+
+            // Pre-HS-1 the responder never times out, so the server never closes
+            // the socket and this read blocks forever (caught by the inner bound).
+            // Post-HS-1 the responder hits the deadline, the server drops the
+            // stream, and this read returns EOF (Ok(0)).
+            let mut byte = [0_u8; 1];
+            let read = tokio::time::timeout(Duration::from_secs(15), silent.read(&mut byte)).await;
+
+            let read = read.expect(
+                "silent peer's socket was never closed: the inbound responder \
+                 parked on an untimed handshake read (HS-1 not in effect)",
+            );
+            assert_eq!(
+                read.expect("reading the closed socket should not error"),
+                0,
+                "expected EOF after the responder timed out and dropped the stream"
+            );
+
+            // No connection should have been registered for the silent peer.
+            assert_eq!(manager.connection_count(), 0);
+            drop(accept);
+        });
+    }
+
+    /// HS-0 (convergence): a 3-node full mesh, every node dialing its two peers
+    /// simultaneously (barrier-released) from synchronous threads via
+    /// `runtime.block_on` — the haematite seam. Each node's accept/responder
+    /// tasks share its single worker. After HS-3 exactly one link survives per
+    /// pair (no last-writer-wins clobber) and that link is usable in both
+    /// directions. Pre-fix this can deadlock or leave mismatched half-links;
+    /// run under a hard watchdog so a hang fails the test.
+    #[test]
+    fn hs0_three_node_simultaneous_dial_mesh_forms_without_deadlock() {
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            run_three_node_mesh();
+            let _ = done_tx.send(());
+        });
+        match done_rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(()) => worker.join().expect("mesh worker thread should not panic"),
+            Err(_) => panic!(
+                "HS-0 DEADLOCK: 3-node simultaneous-dial mesh did not converge \
+                 within the watchdog window (connect never returned)"
+            ),
+        }
+    }
+
+    fn run_three_node_mesh() {
+        let names = ["alpha@127.0.0.1", "bravo@127.0.0.1", "charlie@127.0.0.1"];
+        // Bind every listener first so the shared resolver maps all names.
+        let mut prepared = Vec::new();
+        let mut address_map = HashMap::new();
+        for name in names {
+            let runtime = Arc::new(
+                Builder::new_multi_thread()
+                    .worker_threads(1)
+                    .enable_all()
+                    .build()
+                    .expect("build single-worker node runtime"),
+            );
+            let listener = runtime
+                .block_on(TcpListener::bind("127.0.0.1:0"))
+                .expect("bind node listener");
+            address_map.insert(name.to_string(), listener.local_addr().expect("addr"));
+            prepared.push((name, runtime, listener));
+        }
+        let resolver: Resolver = Arc::new(StaticResolver::new(address_map));
+
+        let mut nodes = Vec::new();
+        for (name, runtime, listener) in prepared {
+            let manager = ConnectionManager::new(
+                Arc::new(AtomTable::with_common_atoms()),
+                Arc::clone(&resolver),
+                TEST_COOKIE,
+                name,
+                1,
+            );
+            manager.set_runtime_handle(runtime.handle().clone());
+            // Count control frames this node's read loops actually deliver. A
+            // delivered frame proves the link is whole: the socket this node holds
+            // for the peer is the same one the peer reads from. The pre-HS-2/3
+            // last-writer-wins clobber can orphan one socket's reader, so a frame
+            // written to the surviving write half is never observed here.
+            let received = Arc::new(AtomicUsize::new(0));
+            let received_for_handler = Arc::clone(&received);
+            manager.register_control_frame_handler(move |_control, _payload| {
+                received_for_handler.fetch_add(1, Ordering::SeqCst);
+            });
+            let accept = runtime.block_on(async { manager.listen_with(listener) });
+            nodes.push((name, manager, runtime, accept, received));
+        }
+
+        // 3 nodes x 2 peers = 6 dialing threads, released together.
+        let barrier = Arc::new(Barrier::new(6));
+        let mut dialers = Vec::new();
+        for (name, manager, runtime, _accept, _received) in &nodes {
+            for peer in names {
+                if peer == *name {
+                    continue;
+                }
+                let manager = manager.clone();
+                let runtime = Arc::clone(runtime);
+                let barrier = Arc::clone(&barrier);
+                let peer_name = peer.to_string();
+                dialers.push(thread::spawn(move || {
+                    barrier.wait();
+                    let _ = runtime.block_on(manager.connect(&peer_name));
+                }));
+            }
+        }
+        for dialer in dialers {
+            dialer
+                .join()
+                .expect("dialer thread should not panic (connect must return)");
+        }
+
+        // Exactly one link per pair on every node. Poll: the losing inbound may
+        // still be tearing down when the winning `connect` returns.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if nodes
+                .iter()
+                .all(|(_, manager, _, _, _)| manager.connection_count() == 2)
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "mesh did not converge to one link per pair: counts = {:?}",
+                nodes
+                    .iter()
+                    .map(|(_, manager, _, _, _)| manager.connection_count())
+                    .collect::<Vec<_>>()
+            );
+            thread::sleep(Duration::from_millis(25));
+        }
+
+        // Every directed edge must carry a frame end-to-end. Each node writes one
+        // 8-byte zero header (a zero-length control+payload frame) to each peer
+        // link; each node must then OBSERVE the two frames its peers sent it. A
+        // clobbered half-link silently drops the frame, so the receiver's count
+        // stays below 2 and this fails — the deterministic pre-fix symptom.
+        for (name, manager, runtime, _accept, _received) in &nodes {
+            for peer in names {
+                if peer == *name {
+                    continue;
+                }
+                let peer_atom = manager.inner.atom_table.intern(peer);
+                let connection = manager
+                    .get_connection(peer_atom)
+                    .unwrap_or_else(|| panic!("{name} has no link to {peer}"));
+                runtime
+                    .block_on(connection.write_raw(&[0_u8; 8]))
+                    .unwrap_or_else(|error| {
+                        panic!("{name} -> {peer} surviving link not writable: {error}")
+                    });
+            }
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if nodes
+                .iter()
+                .all(|(_, _, _, _, received)| received.load(Ordering::SeqCst) >= 2)
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "mesh links are not whole bidirectionally: per-node received \
+                 frame counts = {:?} (expected >= 2 each)",
+                nodes
+                    .iter()
+                    .map(|(_, _, _, _, received)| received.load(Ordering::SeqCst))
+                    .collect::<Vec<_>>()
+            );
+            thread::sleep(Duration::from_millis(25));
+        }
     }
 }
