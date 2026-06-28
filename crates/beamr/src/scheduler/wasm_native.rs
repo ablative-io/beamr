@@ -22,6 +22,7 @@
 //! `Arc<Mutex<…>>` purely to satisfy the `Send + Sync` facility bounds — the
 //! lock is uncontended because everything runs on one thread.
 
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use crate::atom::Atom;
@@ -35,6 +36,7 @@ use crate::native::spawn::{
 use crate::native::{CapabilitySet, LocalSendError, LocalSendFacility, LocalSendRequest};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{ExitReason, Priority, Process, ProcessStatus};
+use crate::supervision::link;
 use crate::term::Term;
 
 use super::{WasmRunSummary, WasmScheduler};
@@ -246,6 +248,10 @@ impl WasmScheduler {
                 }
                 NativeSliceResult::Stop(reason) => {
                     let result = capture_exit_result(&process);
+                    // WR-5: propagate the exit to linked processes BEFORE
+                    // terminating (which clears the link set), then drop the
+                    // process and record its exit.
+                    self.propagate_native_exit(&mut process, reason);
                     process.terminate(reason);
                     self.record_native_exit(pid, reason, result);
                     exited.push(pid);
@@ -289,6 +295,9 @@ impl WasmScheduler {
             }
             NativeSliceResult::Stop(reason) => {
                 let result = capture_exit_result(&process);
+                // WR-5: propagate to linked processes before termination clears
+                // the link set, then drop and record the exit.
+                self.propagate_native_exit(&mut process, reason);
                 process.terminate(reason);
                 self.record_native_exit(pid, reason, result);
                 summary.exited.push(pid);
@@ -317,8 +326,14 @@ impl WasmScheduler {
             next_pid: Arc::clone(&self.shared_next_pid),
         });
 
+        // WR-4: hand the slice the scheduler's shared native timer wheel so
+        // `NativeContext::send_after`/`schedule` build real `Deliver` timers
+        // (instead of the `None`/inert wheel of the WR-0 spike). The replay
+        // driver stays `None`: replay is `threads`-gated and not part of the
+        // cooperative wasm runtime (design §8 open question 3).
+        let timers = Arc::clone(&self.native_timers);
         let outcome = {
-            let mut context = NativeContext::new(process, local_send, spawn, None, None);
+            let mut context = NativeContext::new(process, local_send, spawn, None, Some(timers));
             handler.handle(&mut context)
         };
 
@@ -326,7 +341,7 @@ impl WasmScheduler {
             body.handler = Some(handler);
         }
 
-        self.apply_deferred_effects(&effects);
+        self.apply_deferred_effects(process, &effects);
 
         match outcome {
             NativeOutcome::Continue => NativeSliceResult::Continue,
@@ -337,12 +352,23 @@ impl WasmScheduler {
 
     /// Drain the slice's effect buffer: materialize spawned children and
     /// deliver queued local sends against this scheduler's own state.
-    fn apply_deferred_effects(&mut self, effects: &SharedEffects) {
+    ///
+    /// `running` is the process whose handler produced these effects. It has
+    /// been removed from `self.processes` for the slice's duration, so the
+    /// parent side of any `link_to` link must be added to it here directly
+    /// rather than via the process map (a deferred spawn's `link_to` is always
+    /// the caller, i.e. the running process — that is the only pid a handler can
+    /// pass through `spawn_native`).
+    fn apply_deferred_effects(&mut self, running: &mut Process, effects: &SharedEffects) {
         let drained = {
             let mut guard = lock(effects);
             std::mem::take(&mut *guard)
         };
+        let running_pid = running.pid();
         for spawn in drained.spawns {
+            if spawn.link_to == Some(running_pid) {
+                let _linked = running.add_link(spawn.pid);
+            }
             self.materialize_native_child(spawn);
         }
         for send in drained.sends {
@@ -352,19 +378,92 @@ impl WasmScheduler {
     }
 
     /// Build the `Process` for a deferred native spawn and make it runnable.
+    ///
+    /// When `link_to` is set, the child→parent half of the link is recorded on
+    /// the child here. The parent→child half is added in
+    /// [`WasmScheduler::apply_deferred_effects`] when the parent is the running
+    /// process (the only possible `link_to` target for a handler-initiated
+    /// spawn); a `link_to` naming any other resident process is linked here too,
+    /// mirroring the threaded `spawn_native` bidirectional link establishment.
     fn materialize_native_child(&mut self, spawn: DeferredSpawn) {
         let DeferredSpawn {
             pid,
             factory,
-            link_to: _link_to,
+            link_to,
         } = spawn;
         let mut process = Process::with_capabilities(pid, DEFAULT_HEAP_SIZE, CapabilitySet::all());
         process.set_group_leader(Term::pid(pid));
         process.set_priority(Priority::Normal);
         process.set_native_body(NativeBody::new(factory));
+        if let Some(parent_pid) = link_to {
+            let _child_linked = process.add_link(parent_pid);
+            if let Some(parent) = self.processes.get_mut(&parent_pid) {
+                let _parent_linked = parent.add_link(pid);
+            }
+        }
         self.ready.push(pid, process.priority());
         self.processes.insert(pid, process);
     }
+
+    /// WR-5: propagate `exiting`'s exit to its linked processes using BEAM link
+    /// semantics, cascading transitively through chains of non-trapping links —
+    /// the cooperative analogue of the threaded
+    /// [`LinkRegistry::process_exited`](crate::supervision::link::LinkRegistry::process_exited)
+    /// worklist.
+    ///
+    /// Seeded with `exiting`'s links, the worklist processes one `(source,
+    /// target, reason)` edge at a time. For each target (skipping any already
+    /// gone from the process table, so cycles and shared targets are visited at
+    /// most once):
+    /// - the reverse link is severed first, so the dead source is never
+    ///   re-signalled;
+    /// - a process that should die (`should_die_from_signal`: an untrappable
+    ///   `Kill`, or any abnormal reason while not trapping) is removed from the
+    ///   process table and every ready/waiting set, its exit recorded with the
+    ///   terminal reason, and ITS OWN links enqueued so the cascade continues
+    ///   from it. Removing it (rather than terminating in place) is essential:
+    ///   the turn loops skip a popped pid whose entry is gone from the table, so
+    ///   a stale ready entry cannot re-enter a dead process's handler;
+    /// - a trapping survivor receives an `{'EXIT', source, reason}` message (the
+    ///   same builder the threaded path uses) carrying the ORIGINAL reason, and
+    ///   is woken if parked so a supervisor can decide to restart.
+    fn propagate_native_exit(&mut self, exiting: &mut Process, reason: ExitReason) {
+        let mut cascade: VecDeque<(u64, u64, ExitReason)> = exiting
+            .take_links()
+            .into_iter()
+            .map(|linked_pid| (exiting.pid(), linked_pid, reason))
+            .collect();
+
+        while let Some((source_pid, linked_pid, signal_reason)) = cascade.pop_front() {
+            let Some(target) = self.processes.get_mut(&linked_pid) else {
+                continue;
+            };
+            // Sever the reverse link first so the dead source is never re-signalled.
+            let _unlinked = target.remove_link(source_pid);
+
+            if link::should_die_from_signal(target, signal_reason) {
+                let terminal = link::terminal_reason(signal_reason);
+                // Take the dying target's own links to continue the cascade, then
+                // remove it from scheduling entirely.
+                let onward = target.take_links();
+                target.terminate(terminal);
+                cascade.extend(onward.into_iter().map(|next| (linked_pid, next, terminal)));
+                self.processes.remove(&linked_pid);
+                self.waiting.remove(&linked_pid);
+                self.record_native_exit(linked_pid, terminal, undefined_result());
+            } else if target.trap_exit() {
+                link::enqueue_exit_message_pub(target, source_pid, signal_reason);
+                // Wake the (possibly parked) supervisor so it runs and sees the
+                // `{'EXIT', …}` message; a no-op if it was already runnable.
+                let _woken = self.wake(linked_pid);
+            }
+        }
+    }
+}
+
+/// Exit result for a process killed by link propagation (it produced no x(0)).
+fn undefined_result() -> OwnedTerm {
+    OwnedTerm::immediate(Term::atom(Atom::UNDEFINED))
 }
 
 /// Move a schedulable native process to `Running`, mirroring the threaded
