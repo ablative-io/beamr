@@ -209,6 +209,12 @@ pub struct DistConnection {
     /// by the read loop (any data frame OR keepalive). Read by the net-tick to
     /// detect a silently-partitioned peer via a missed deadline.
     last_inbound_millis: AtomicU64,
+    /// Fired by `mark_down` so the read loop wakes and exits promptly instead of
+    /// blocking on `read_exact` until the peer happens to close. This drops the
+    /// read half (closing the socket) the moment the link is retired — e.g. when
+    /// a simultaneous-connect canonical winner displaces this non-canonical link,
+    /// so its socket cannot linger as an orphaned half-link.
+    shutdown: Arc<Notify>,
 }
 
 impl DistConnection {
@@ -226,6 +232,7 @@ impl DistConnection {
             manager,
             created_at: Instant::now(),
             last_inbound_millis: AtomicU64::new(0),
+            shutdown: Arc::new(Notify::new()),
         }
     }
 
@@ -297,6 +304,9 @@ impl DistConnection {
         if self.down.swap(true, Ordering::AcqRel) {
             return;
         }
+        // Wake the read loop so it exits and drops its read half (closing the
+        // socket) without waiting for the peer to close first.
+        self.shutdown.notify_waiters();
         if let Some(manager) = self.manager.upgrade() {
             manager.connection_down(self.node, self, reason);
         }
@@ -342,7 +352,17 @@ struct ConnectionManagerInner {
     /// DISTRIBUTION-HANDSHAKE-DESIGN.md §3.1). Recorded before the outbound
     /// handshake awaits so a concurrent inbound responder can detect the
     /// simultaneous case and apply the name-comparison tie-break (HS-3, §3.2).
-    connecting: DashMap<Atom, ()>,
+    ///
+    /// The value is an abort flag for that outbound. When this node is the
+    /// lower-named peer it keeps the reciprocal INBOUND (the responder decides
+    /// `ContinueSimultaneous`) and must retire its own competing outbound rather
+    /// than letting both install and collide in the HS-2 dedup — a collision
+    /// whose loser-socket drop can tear down the peer's surviving link, leaving
+    /// the pair with zero links and no re-dial. The decider sets this flag; the
+    /// outbound `connect` checks it after the handshake and bows out cleanly
+    /// (`SimultaneousAbort`) if set (§3.2, point 2: "mark the local outbound to
+    /// abort").
+    connecting: DashMap<Atom, Arc<AtomicBool>>,
     atom_table: Arc<AtomTable>,
     resolver: Arc<dyn NodeResolver + Send + Sync>,
     connect_timeout: Duration,
@@ -422,13 +442,45 @@ impl ConnectionManagerInner {
     /// dedup (HS-2) is the backstop.
     fn decide_inbound_status(&self, peer_name: &str) -> SimultaneousDecision {
         let peer_atom = self.atom_table.intern(peer_name);
-        if !self.connecting.contains_key(&peer_atom) {
+        let Some(abort) = self
+            .connecting
+            .get(&peer_atom)
+            .map(|entry| Arc::clone(&entry))
+        else {
             return SimultaneousDecision::Continue;
-        }
+        };
         match peer_name.cmp(self.local_node_name.as_str()) {
-            std::cmp::Ordering::Greater => SimultaneousDecision::ContinueSimultaneous,
+            std::cmp::Ordering::Greater => {
+                // This (lower-named) node keeps the inbound. Retire its own
+                // competing outbound so it does not also install and collide in
+                // the HS-2 dedup (§3.2: "mark the local outbound to abort").
+                abort.store(true, Ordering::SeqCst);
+                SimultaneousDecision::ContinueSimultaneous
+            }
             std::cmp::Ordering::Less => SimultaneousDecision::Reject,
             std::cmp::Ordering::Equal => SimultaneousDecision::Continue,
+        }
+    }
+
+    /// The connection direction that survives a simultaneous connect for `peer`,
+    /// computed identically on both nodes by literal name comparison: the
+    /// higher-named node's OUTBOUND wins (equivalently, the lower-named node's
+    /// INBOUND). This is the install-time backstop that makes
+    /// [`ConnectionManager::register_connection`] timing-independent even when the
+    /// in-handshake HS-3 tie-break window is missed. The pathological equal-name
+    /// case (distinct cluster members never collide) falls to `Inbound`, an
+    /// arbitrary-but-consistent local choice; the per-pair agreement that matters
+    /// is preserved because names are unique.
+    fn canonical_direction(&self, peer: Atom) -> LinkDirection {
+        let Some(peer_name) = self.atom_table.resolve(peer) else {
+            // Unknown peer name: no competing direction can be reasoned about, so
+            // treat the incoming link as the canonical one (install it).
+            return LinkDirection::Inbound;
+        };
+        if self.local_node_name.as_str() > peer_name {
+            LinkDirection::Outbound
+        } else {
+            LinkDirection::Inbound
         }
     }
 }
@@ -451,21 +503,43 @@ impl ConnectionManagerInner {
     }
 }
 
+/// Which side opened a TCP connection, used by the install-time canonical
+/// dedup ([`ConnectionManagerInner::canonical_direction`]) to resolve a
+/// simultaneous connect deterministically on both nodes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LinkDirection {
+    /// This node dialed the peer (`connect`).
+    Outbound,
+    /// This node accepted the peer's dial (`handle_accepted`).
+    Inbound,
+}
+
 /// RAII marker that records an in-flight outbound dial in the manager's
 /// `connecting` set and clears it on drop, on every `connect` exit path (HS-3).
 struct ConnectingGuard {
     inner: Arc<ConnectionManagerInner>,
     peer: Atom,
+    /// Set by a concurrent inbound responder (the tie-break) to tell this
+    /// outbound to bow out so the reciprocal inbound is the sole survivor.
+    abort: Arc<AtomicBool>,
 }
 
 impl ConnectingGuard {
     fn new(inner: &Arc<ConnectionManagerInner>, peer_name: &str) -> Self {
         let peer = inner.atom_table.intern(peer_name);
-        inner.connecting.insert(peer, ());
+        let abort = Arc::new(AtomicBool::new(false));
+        inner.connecting.insert(peer, Arc::clone(&abort));
         Self {
             inner: Arc::clone(inner),
             peer,
+            abort,
         }
+    }
+
+    /// Whether a concurrent inbound responder has claimed the reciprocal link,
+    /// asking this outbound to abort (HS-3 tie-break, §3.2).
+    fn is_aborted(&self) -> bool {
+        self.abort.load(Ordering::SeqCst)
     }
 }
 
@@ -811,51 +885,88 @@ impl ConnectionManager {
         // Dropping the stream on the error paths above closes the TCP connection;
         // on success the authenticated remote name becomes the connection-table
         // key.
+        //
+        // Tie-break, install side: if our concurrent inbound responder already
+        // decided to keep the reciprocal inbound link for this peer (we are the
+        // lower-named node, HS-3 §3.2), retire this outbound instead of also
+        // installing it. Two installs for one peer would otherwise collide in the
+        // HS-2 dedup, and the loser-socket drop can tear down the peer's surviving
+        // link, leaving the pair with zero links and no re-dial. Dropping the
+        // stream closes this TCP connection; the reciprocal inbound is the
+        // survivor, so this is a benign `SimultaneousAbort`, not a failure.
+        if _connecting.is_aborted() {
+            drop(stream);
+            return Err(ConnectError::SimultaneousAbort);
+        }
         let node = self.inner.atom_table.intern(result.remote_name());
-        Ok(self.register_connection(node, peer_addr, stream))
+        Ok(self.register_connection(node, peer_addr, stream, LinkDirection::Outbound))
     }
 
     /// Install an authenticated link, deduplicating against an existing `Up`
-    /// connection for the same peer name (HS-2).
+    /// connection for the same peer name (HS-2) by the deterministic
+    /// canonical-direction rule.
     ///
     /// Two simultaneous handshakes (one inbound, one outbound) for the same pair
-    /// can both reach this point. A blind `insert` would clobber the first link's
-    /// `Arc<DistConnection>` in the table while leaving its read task running on an
-    /// orphaned socket. Instead this uses the entry API to atomically check for a
-    /// live existing link: if one is present, the newcomer is the loser — its
-    /// stream is dropped (closing the TCP connection) and its read task is never
-    /// spawned, and the existing survivor is returned. A stale entry whose
-    /// connection has already gone down is replaced (the reconnect path). This
-    /// guarantees the invariant: at most one live `Up` connection per peer name.
+    /// can both reach this point — and on a busy host BOTH outbounds can finish
+    /// and register before either inbound responder is scheduled, so the HS-3
+    /// in-handshake tie-break window is missed entirely. A first-registered-wins
+    /// dedup then resolves the collision differently on the two nodes (whichever
+    /// direction happened to register first locally), so each node can drop the
+    /// very socket its peer is keeping — leaving the pair with zero live links and
+    /// no re-dial.
+    ///
+    /// The fix is timing-independent: for any pair both nodes agree, by literal
+    /// name comparison, that the survivor is the HIGHER-named node's OUTBOUND
+    /// connection (equivalently the lower-named node's inbound) — the same single
+    /// TCP socket on both ends. Each node keeps only its canonical-direction link
+    /// and drops the other, so the canonical socket is never torn down by either
+    /// side and exactly one live link remains per pair.
     fn register_connection(
         &self,
         node: Atom,
         peer_addr: SocketAddr,
         stream: TcpStream,
+        direction: LinkDirection,
     ) -> Arc<DistConnection> {
         use dashmap::mapref::entry::Entry;
 
-        match self.inner.connections.entry(node) {
+        let canonical = self.inner.canonical_direction(node);
+        // The connection installed (if any) plus the displaced link to retire
+        // AFTER the entry guard is released — `mark_down` re-enters this same
+        // `connections` map, so calling it while holding the entry lock would
+        // deadlock on the shard.
+        let (installed, read_half, displaced) = match self.inner.connections.entry(node) {
             Entry::Occupied(mut occupied) => {
-                if !occupied.get().is_down() {
-                    // A live link already won this pair. Drop the loser's stream
-                    // (closing its TCP connection) and do NOT spawn its reader.
+                if !occupied.get().is_down() && direction != canonical {
+                    // A live link exists and this newcomer is the non-canonical
+                    // direction: it loses. Drop its stream (closing its TCP
+                    // connection) and do NOT spawn its reader.
                     drop(stream);
                     return Arc::clone(occupied.get());
                 }
-                // The existing entry is a dead link awaiting reap; replace it.
+                // Either the existing entry is a dead link awaiting reap, or this
+                // newcomer is the canonical-direction survivor displacing a
+                // non-canonical link. Install this one and retire the old.
+                let previous = Arc::clone(occupied.get());
                 let (connection, read_half) = self.build_connection(node, peer_addr, stream);
                 occupied.insert(Arc::clone(&connection));
-                self.spawn_read_lifecycle(Arc::clone(&connection), read_half);
-                connection
+                (connection, read_half, Some(previous))
             }
             Entry::Vacant(vacant) => {
                 let (connection, read_half) = self.build_connection(node, peer_addr, stream);
                 vacant.insert(Arc::clone(&connection));
-                self.spawn_read_lifecycle(Arc::clone(&connection), read_half);
-                connection
+                (connection, read_half, None)
             }
+        };
+        // Entry guard dropped: safe to re-enter the map. The displaced link's
+        // `connection_down` ptr-eq guard sees the freshly inserted entry (not the
+        // displaced one), so it does not evict the survivor; it only wakes the old
+        // link's read loop to drop its socket.
+        if let Some(previous) = displaced {
+            previous.mark_down(ConnectionDownReason::ReadError);
         }
+        self.spawn_read_lifecycle(Arc::clone(&installed), read_half);
+        installed
     }
 
     /// Split a stream into a [`DistConnection`] and its read half, without
@@ -886,7 +997,10 @@ impl ConnectionManager {
     ) -> io::Result<Arc<DistConnection>> {
         stream.set_nonblocking(true)?;
         let stream = TcpStream::from_std(stream)?;
-        Ok(self.register_connection(node, peer_addr, stream))
+        // Test helper: a single pre-connected stream per node into a vacant slot,
+        // so the direction only selects the install arm; `Inbound` always installs
+        // here.
+        Ok(self.register_connection(node, peer_addr, stream, LinkDirection::Inbound))
     }
 
     fn spawn_read_lifecycle(&self, connection: Arc<DistConnection>, mut read_half: OwnedReadHalf) {
@@ -894,10 +1008,29 @@ impl ConnectionManager {
         connection.note_inbound_activity();
         self.spawn_heartbeat(Arc::clone(&connection));
         let manager = Arc::clone(&self.inner);
+        let shutdown = Arc::clone(&connection.shutdown);
         self.inner.spawn_lifecycle(async move {
+            // A single long-lived `Notified` future, registered before the first
+            // read. `notify_waiters` wakes already-registered waiters, so creating
+            // it up front (and re-polling it via `&mut` each iteration) closes the
+            // lost-wakeup window a per-iteration `notified()` would leave between
+            // the down-check and the await.
+            let notified = shutdown.notified();
+            tokio::pin!(notified);
             loop {
                 let mut header = [0_u8; 8];
-                match read_half.read_exact(&mut header).await {
+                // Race the header read against a shutdown so a retired link (e.g.
+                // displaced by a simultaneous-connect canonical winner) drops its
+                // read half promptly instead of parking until the peer closes.
+                if connection.is_down() {
+                    break;
+                }
+                let read_header = tokio::select! {
+                    biased;
+                    () = &mut notified => break,
+                    result = read_half.read_exact(&mut header) => result,
+                };
+                match read_header {
                     Ok(0) => {
                         connection.mark_down(ConnectionDownReason::PeerClosed);
                         break;
@@ -1029,7 +1162,7 @@ impl ConnectionManager {
             match outcome {
                 Ok(Ok(result)) => {
                     let node = manager.inner.atom_table.intern(result.remote_name());
-                    manager.register_connection(node, peer_addr, stream);
+                    manager.register_connection(node, peer_addr, stream, LinkDirection::Inbound);
                 }
                 Ok(Err(_)) | Err(_) => {
                     drop(stream);
@@ -1562,7 +1695,10 @@ mod tests {
         // Simulate an in-flight local outbound to the inbound peer's name so the
         // decider sees the simultaneous case.
         let peer_atom = manager.inner.atom_table.intern("alpha@127.0.0.1");
-        manager.inner.connecting.insert(peer_atom, ());
+        manager
+            .inner
+            .connecting
+            .insert(peer_atom, Arc::new(AtomicBool::new(false)));
 
         let mut client = TcpStream::connect(accept.local_addr())
             .await
@@ -1660,10 +1796,15 @@ mod tests {
     }
 
     /// HS-2: two simultaneous installs for the same peer name must leave exactly
-    /// one live link, and the loser's socket must be closed (its reader is never
-    /// spawned, so it cannot linger as an orphan on a half-link). The winner is
-    /// the first-installed connection; the second install returns that same Arc
-    /// and drops its own stream, which the loser's peer observes as EOF.
+    /// one live link — the CANONICAL-direction one — regardless of arrival order,
+    /// and the loser's socket must be closed (no orphan reader on a half-link).
+    ///
+    /// `local@` < `peer@`, so the canonical survivor is this node's INBOUND
+    /// (the higher-named peer's outbound). The non-canonical OUTBOUND half is
+    /// installed FIRST here; the canonical inbound must then displace it — proving
+    /// the survivor is chosen by name comparison, not by who registered first.
+    /// Both nodes apply the same rule, so the same single TCP socket survives on
+    /// both ends and a pair can never lose both links.
     #[tokio::test]
     async fn hs2_two_simultaneous_installs_keep_exactly_one_no_orphan_reader() {
         let resolver = Arc::new(StaticResolver::new(std::collections::HashMap::new()));
@@ -1678,23 +1819,28 @@ mod tests {
             .expect("bind helper listener");
         let addr = listener.local_addr().expect("inspect helper listener");
 
-        let mut client_first = TcpStream::connect(addr)
+        // First (non-canonical) install: the OUTBOUND half.
+        let mut client_outbound = TcpStream::connect(addr)
             .await
-            .expect("client_first connects");
-        let (server_first, _) = listener.accept().await.expect("accept server_first");
-        let mut client_second = TcpStream::connect(addr)
+            .expect("client_outbound connects");
+        let (server_outbound, _) = listener.accept().await.expect("accept server_outbound");
+        // Second (canonical) install: the INBOUND half, which must win.
+        let mut client_inbound = TcpStream::connect(addr)
             .await
-            .expect("client_second connects");
-        let (server_second, _) = listener.accept().await.expect("accept server_second");
+            .expect("client_inbound connects");
+        let (server_inbound, _) = listener.accept().await.expect("accept server_inbound");
 
-        let winner = manager.register_connection(node, addr, server_first);
-        let returned = manager.register_connection(node, addr, server_second);
+        let displaced =
+            manager.register_connection(node, addr, server_outbound, LinkDirection::Outbound);
+        let winner =
+            manager.register_connection(node, addr, server_inbound, LinkDirection::Inbound);
 
-        // Exactly one table entry, and the second install returned the winner.
+        // Exactly one table entry, and it is the canonical (inbound) winner, not
+        // the first-installed outbound.
         assert_eq!(manager.connection_count(), 1);
         assert!(
-            Arc::ptr_eq(&winner, &returned),
-            "the second install must return the existing survivor, not a new link"
+            !Arc::ptr_eq(&winner, &displaced),
+            "the canonical inbound must displace the non-canonical outbound"
         );
         assert!(Arc::ptr_eq(
             &winner,
@@ -1709,19 +1855,21 @@ mod tests {
             .await
             .expect("winner link must remain writable");
         let mut header = [0_u8; 8];
-        client_first
+        client_inbound
             .read_exact(&mut header)
             .await
             .expect("winner's peer must receive the keepalive frame");
 
-        // The loser's socket was closed (stream dropped, no reader spawned), so
-        // its peer observes EOF rather than a live, orphaned half-link.
+        // The displaced link's read half was torn down (no orphan reader). Drop
+        // the last `DistConnection` Arc so its write half also closes, then the
+        // peer observes EOF rather than a live, orphaned half-link.
+        drop(displaced);
         let mut byte = [0_u8; 1];
-        let eof = tokio::time::timeout(Duration::from_secs(5), client_second.read(&mut byte))
+        let eof = tokio::time::timeout(Duration::from_secs(5), client_outbound.read(&mut byte))
             .await
-            .expect("loser's socket should close promptly, not hang")
-            .expect("reading the closed loser socket should not error");
-        assert_eq!(eof, 0, "the loser's socket must be closed (EOF)");
+            .expect("displaced socket should close promptly, not hang")
+            .expect("reading the closed displaced socket should not error");
+        assert_eq!(eof, 0, "the displaced link's socket must be closed (EOF)");
     }
 
     /// Accept inbound streams on `listener` in a loop, completing the OTP
