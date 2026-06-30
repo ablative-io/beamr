@@ -342,7 +342,17 @@ struct ConnectionManagerInner {
     /// DISTRIBUTION-HANDSHAKE-DESIGN.md §3.1). Recorded before the outbound
     /// handshake awaits so a concurrent inbound responder can detect the
     /// simultaneous case and apply the name-comparison tie-break (HS-3, §3.2).
-    connecting: DashMap<Atom, ()>,
+    ///
+    /// The value is an abort flag for that outbound. When this node is the
+    /// lower-named peer it keeps the reciprocal INBOUND (the responder decides
+    /// `ContinueSimultaneous`) and must retire its own competing outbound rather
+    /// than letting both install and collide in the HS-2 dedup — a collision
+    /// whose loser-socket drop can tear down the peer's surviving link, leaving
+    /// the pair with zero links and no re-dial. The decider sets this flag; the
+    /// outbound `connect` checks it after the handshake and bows out cleanly
+    /// (`SimultaneousAbort`) if set (§3.2, point 2: "mark the local outbound to
+    /// abort").
+    connecting: DashMap<Atom, Arc<AtomicBool>>,
     atom_table: Arc<AtomTable>,
     resolver: Arc<dyn NodeResolver + Send + Sync>,
     connect_timeout: Duration,
@@ -422,11 +432,17 @@ impl ConnectionManagerInner {
     /// dedup (HS-2) is the backstop.
     fn decide_inbound_status(&self, peer_name: &str) -> SimultaneousDecision {
         let peer_atom = self.atom_table.intern(peer_name);
-        if !self.connecting.contains_key(&peer_atom) {
+        let Some(abort) = self.connecting.get(&peer_atom).map(|entry| Arc::clone(&entry)) else {
             return SimultaneousDecision::Continue;
-        }
+        };
         match peer_name.cmp(self.local_node_name.as_str()) {
-            std::cmp::Ordering::Greater => SimultaneousDecision::ContinueSimultaneous,
+            std::cmp::Ordering::Greater => {
+                // This (lower-named) node keeps the inbound. Retire its own
+                // competing outbound so it does not also install and collide in
+                // the HS-2 dedup (§3.2: "mark the local outbound to abort").
+                abort.store(true, Ordering::SeqCst);
+                SimultaneousDecision::ContinueSimultaneous
+            }
             std::cmp::Ordering::Less => SimultaneousDecision::Reject,
             std::cmp::Ordering::Equal => SimultaneousDecision::Continue,
         }
@@ -456,16 +472,27 @@ impl ConnectionManagerInner {
 struct ConnectingGuard {
     inner: Arc<ConnectionManagerInner>,
     peer: Atom,
+    /// Set by a concurrent inbound responder (the tie-break) to tell this
+    /// outbound to bow out so the reciprocal inbound is the sole survivor.
+    abort: Arc<AtomicBool>,
 }
 
 impl ConnectingGuard {
     fn new(inner: &Arc<ConnectionManagerInner>, peer_name: &str) -> Self {
         let peer = inner.atom_table.intern(peer_name);
-        inner.connecting.insert(peer, ());
+        let abort = Arc::new(AtomicBool::new(false));
+        inner.connecting.insert(peer, Arc::clone(&abort));
         Self {
             inner: Arc::clone(inner),
             peer,
+            abort,
         }
+    }
+
+    /// Whether a concurrent inbound responder has claimed the reciprocal link,
+    /// asking this outbound to abort (HS-3 tie-break, §3.2).
+    fn is_aborted(&self) -> bool {
+        self.abort.load(Ordering::SeqCst)
     }
 }
 
@@ -811,6 +838,19 @@ impl ConnectionManager {
         // Dropping the stream on the error paths above closes the TCP connection;
         // on success the authenticated remote name becomes the connection-table
         // key.
+        //
+        // Tie-break, install side: if our concurrent inbound responder already
+        // decided to keep the reciprocal inbound link for this peer (we are the
+        // lower-named node, HS-3 §3.2), retire this outbound instead of also
+        // installing it. Two installs for one peer would otherwise collide in the
+        // HS-2 dedup, and the loser-socket drop can tear down the peer's surviving
+        // link, leaving the pair with zero links and no re-dial. Dropping the
+        // stream closes this TCP connection; the reciprocal inbound is the
+        // survivor, so this is a benign `SimultaneousAbort`, not a failure.
+        if _connecting.is_aborted() {
+            drop(stream);
+            return Err(ConnectError::SimultaneousAbort);
+        }
         let node = self.inner.atom_table.intern(result.remote_name());
         Ok(self.register_connection(node, peer_addr, stream))
     }
@@ -1562,7 +1602,10 @@ mod tests {
         // Simulate an in-flight local outbound to the inbound peer's name so the
         // decider sees the simultaneous case.
         let peer_atom = manager.inner.atom_table.intern("alpha@127.0.0.1");
-        manager.inner.connecting.insert(peer_atom, ());
+        manager
+            .inner
+            .connecting
+            .insert(peer_atom, Arc::new(AtomicBool::new(false)));
 
         let mut client = TcpStream::connect(accept.local_addr())
             .await
