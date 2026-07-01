@@ -381,5 +381,8 @@ fn write_raw_word(ptr: *const u64, offset: usize, value: u64) {
     unsafe { *(ptr as *mut u64).add(offset) = value }
 }
 
-#[cfg(test)]
+// The GC unit tests build FD resources via `crate::io::resource`, which is
+// `threads`-gated; the suite is therefore only available in a threaded build.
+// (Cooperative/wasm builds have no `io` module — see `lib.rs`.)
+#[cfg(all(test, feature = "threads"))]
 pub(crate) mod tests;

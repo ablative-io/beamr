@@ -1,7 +1,6 @@
 use super::*;
 use crate::atom::{Atom, AtomTable};
 use crate::capability::Sandbox;
-use crate::distribution::remote_link::{DistributionControlFacility, RemoteLinkError};
 use crate::native::links::{LinkError, LinkFacility, LinkRecord};
 use crate::native::spawn::{
     SpawnError, SpawnFacility, SpawnMonitorResult, SpawnOptions, SpawnOptionsResult, SpawnRecord,
@@ -1817,6 +1816,15 @@ fn remote_spawn_ctx(
 }
 
 // ---- Remote link mock and tests ----
+//
+// The `distribution` module (and its `DistributionControlFacility` /
+// `RemoteLinkError` types) is `net`-gated, so this whole block is gated to
+// match. The remaining `process_bifs` tests compile in a threadless/cooperative
+// build.
+#[cfg(feature = "net")]
+mod remote_link {
+use super::*;
+use crate::distribution::remote_link::{DistributionControlFacility, RemoteLinkError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum DistributionRecord {
@@ -1945,4 +1953,5 @@ fn unlink_remote_pid_routes_through_distribution_control() {
             },
         }]
     );
+}
 }

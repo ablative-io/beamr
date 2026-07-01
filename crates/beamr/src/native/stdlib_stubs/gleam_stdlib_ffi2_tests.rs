@@ -22,15 +22,21 @@ fn binary(bytes: &[u8]) -> Term {
     binary::write_binary(heap, bytes).expect("binary")
 }
 
+// `crate::io::IoSink` (and `ProcessContext::set_io_sink`) is `threads`-gated;
+// this sink-backed print test is gated to match so the rest of the suite
+// compiles in a threadless/cooperative build.
+#[cfg(feature = "threads")]
 #[derive(Default)]
 struct RecordingSink(Mutex<Vec<u8>>);
 
+#[cfg(feature = "threads")]
 impl crate::io::IoSink for RecordingSink {
     fn write(&self, bytes: &[u8]) {
         self.0.lock().expect("sink lock").extend_from_slice(bytes);
     }
 }
 
+#[cfg(feature = "threads")]
 #[test]
 fn print_wrappers_write_to_configured_sink_and_return_nil() {
     let sink = Arc::new(RecordingSink::default());

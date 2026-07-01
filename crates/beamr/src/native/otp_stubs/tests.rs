@@ -331,6 +331,9 @@ fn ensure_all_started_reports_loaded_and_missing_modules() {
     assert!(erlang_stubs::bif_ensure_all_started(&[Term::small_int(1)], &mut context).is_err());
 }
 
+// `gate3_bifs` is `threads`-gated; these two BIF tests are gated to match so the
+// otp_stubs suite still compiles in a threadless/cooperative build.
+#[cfg(feature = "threads")]
 #[test]
 fn erlang_not_negates_booleans() {
     use crate::native::gate3_bifs::bif_not;
@@ -347,6 +350,7 @@ fn erlang_not_negates_booleans() {
     assert!(bif_not(&[Term::atom(Atom::OK)], &mut context).is_err());
 }
 
+#[cfg(feature = "threads")]
 #[test]
 fn erlang_length_counts_empty_list() {
     use crate::native::gate3_bifs::bif_length;

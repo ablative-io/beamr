@@ -4,6 +4,10 @@ use crate::capability::{
     CapabilityAuditEvent, CapabilityAuditSink, Sandbox, StderrViolationHandler, ViolationHandler,
 };
 use crate::error::ExecError;
+// The JIT cache/compiler types exist only in a `jit` build; the one test that
+// exercises JIT-cached dispatch (and its helper) is gated to match, so the rest
+// of the interpreter suite compiles in a threadless/cooperative build too.
+#[cfg(feature = "jit")]
 use crate::jit::{JitCache, JitCacheKey, JitCompiler, JitSettings};
 use crate::loader::decode::BinaryOp;
 use crate::loader::decode::compact::Operand;
@@ -79,6 +83,7 @@ fn empty_native_services() -> NativeServices {
     NativeServices::default()
 }
 
+#[cfg(feature = "jit")]
 fn native_services_with_jit_cache(jit_cache: Arc<JitCache>) -> NativeServices {
     NativeServices {
         jit_cache: Some(jit_cache),
@@ -257,6 +262,7 @@ fn external_return_restores_caller_version_and_qualified_self_call_upgrades() {
     assert_eq!(process.x_reg(0), Term::small_int(2));
 }
 
+#[cfg(feature = "jit")]
 #[test]
 fn interpreter_local_call_dispatches_to_jit_cached_target() {
     let mut target_module = module(
