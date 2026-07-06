@@ -1,8 +1,14 @@
 //! Per-thread priority run queues backed by lock-free work-stealing deques.
 //!
-//! The owning scheduler thread pushes and pops from the back (LIFO for cache
-//! locality). Stealers pop from the front (FIFO for fairness). Process IDs are
-//! queued rather than process bodies because `Process` is intentionally `!Send`.
+//! Owner pops and steals are both FIFO: within a priority lane, co-resident
+//! runnable processes round-robin. The owner pop MUST NOT be LIFO — a process
+//! that requeues itself every slice (a busy-polling native handler returning
+//! `NativeOutcome::Continue`) would be re-popped immediately after its own
+//! push, starving every other pid on that thread's queue indefinitely: a
+//! starved pid is runnable (not in the wait set), so message-delivery wakes
+//! no-op on it, and mid-slice the owner's queue holds a single pid, which
+//! `steal_half_from` refuses to steal. Process IDs are queued rather than
+//! process bodies because `Process` is intentionally `!Send`.
 
 use std::cell::Cell;
 
@@ -44,10 +50,10 @@ impl RunQueue {
     #[must_use]
     pub fn with_low_fairness_window(low_fairness_window: usize) -> Self {
         Self {
-            max: Worker::new_lifo(),
-            high: Worker::new_lifo(),
-            normal: Worker::new_lifo(),
-            low: Worker::new_lifo(),
+            max: Worker::new_fifo(),
+            high: Worker::new_fifo(),
+            normal: Worker::new_fifo(),
+            low: Worker::new_fifo(),
             low_fairness_window,
             non_low_pops_since_low: Cell::new(0),
         }
@@ -227,15 +233,18 @@ mod tests {
     }
 
     #[test]
-    fn owner_pop_is_lifo_within_priority() {
+    fn owner_pop_is_fifo_within_priority() {
+        // FIFO is load-bearing: a self-requeueing (busy-poll) process must go
+        // to the back so co-resident runnable processes round-robin instead
+        // of starving (see the module docs).
         let queue = RunQueue::new();
         queue.push(1);
         queue.push(2);
         queue.push(3);
 
-        assert_eq!(queue.pop(), Some(3));
-        assert_eq!(queue.pop(), Some(2));
         assert_eq!(queue.pop(), Some(1));
+        assert_eq!(queue.pop(), Some(2));
+        assert_eq!(queue.pop(), Some(3));
     }
 
     #[test]
