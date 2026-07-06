@@ -3292,3 +3292,124 @@ fn run_until_exit_correct_under_tombstone_cap_pressure() {
 
     scheduler.shutdown();
 }
+
+// --- Native busy-poll run-queue fairness (live message-loss defect) ---
+//
+// A native handler that drains its mailbox and returns
+// `NativeOutcome::Continue` every slice (the liminal ConnectionProcess shape:
+// drain `ctx.recv()`, poll a non-blocking socket, requeue on WouldBlock) is
+// permanently runnable. Under a LIFO owner pop, the Requeue arm pushed the
+// just-run pid on top of its own queue and the very next `queue.pop()` took
+// it right back, so every OTHER pid on that thread's queue never got a
+// slice. A message enqueued to such a starved process was delivered into its
+// mailbox (`enqueue_atom_message` returned true) but never observed:
+// `wake_process` is a no-op for a runnable pid (it is not in the wait set),
+// and the steal path cannot rescue it either (mid-slice the owner's queue
+// holds a single pid, which `steal_half_from` refuses to steal). These tests
+// pin the FIFO owner pop that makes co-resident runnable processes
+// round-robin.
+
+struct BusyPollHandler {
+    received: Arc<Mutex<Vec<Term>>>,
+    slices: Arc<AtomicUsize>,
+}
+
+impl crate::native::native_process::NativeHandler for BusyPollHandler {
+    fn handle(
+        &mut self,
+        ctx: &mut crate::native::native_process::NativeContext<'_>,
+    ) -> crate::native::native_process::NativeOutcome {
+        self.slices.fetch_add(1, Ordering::AcqRel);
+        while let Some(message) = ctx.recv() {
+            lock_or_recover(&self.received).push(message);
+        }
+        crate::native::native_process::NativeOutcome::Continue
+    }
+}
+
+type BusyPoller = (u64, Arc<Mutex<Vec<Term>>>, Arc<AtomicUsize>);
+
+fn spawn_busy_pollers(scheduler: &Scheduler, count: usize) -> Vec<BusyPoller> {
+    (0..count)
+        .map(|_| {
+            let received = Arc::new(Mutex::new(Vec::new()));
+            let slices = Arc::new(AtomicUsize::new(0));
+            let factory_received = Arc::clone(&received);
+            let factory_slices = Arc::clone(&slices);
+            let pid = scheduler
+                .spawn_native(Box::new(move || {
+                    Box::new(BusyPollHandler {
+                        received: Arc::clone(&factory_received),
+                        slices: Arc::clone(&factory_slices),
+                    })
+                }))
+                .unwrap_or_else(|error| panic!("spawn native busy poller: {error:?}"));
+            (pid, received, slices)
+        })
+        .collect()
+}
+
+fn all_observed_atom(pollers: &[BusyPoller], atom: Atom) -> bool {
+    pollers
+        .iter()
+        .all(|(_, received, _)| lock_or_recover(received).contains(&Term::atom(atom)))
+}
+
+#[test]
+fn message_to_a_colocated_busy_poll_native_process_is_observed() {
+    // One scheduler thread owning TWO permanently-runnable native processes:
+    // the exact starvation shape. The message must reach both handlers.
+    let registry = Arc::new(ModuleRegistry::new());
+    let scheduler = single_thread_scheduler(&registry);
+    let pollers = spawn_busy_pollers(&scheduler, 2);
+
+    // Steady state: the thread is running busy-poll slices.
+    wait_until(10_000, || {
+        pollers
+            .iter()
+            .any(|(_, _, slices)| slices.load(Ordering::Acquire) > 100)
+    });
+
+    for (pid, _, _) in &pollers {
+        assert!(
+            scheduler.enqueue_atom_message(*pid, Atom::OK),
+            "enqueue to live busy poller must succeed"
+        );
+    }
+    wait_until(2_000, || all_observed_atom(&pollers, Atom::OK));
+    scheduler.shutdown();
+}
+
+#[test]
+fn messages_to_saturated_busy_poll_native_processes_are_all_observed() {
+    // More permanently-runnable native processes than scheduler threads, so
+    // every thread owns at least two and no thread ever idles (the saturated
+    // production shape: no thread parks, so nobody even attempts a steal).
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(4),
+            dirty_cpu_threads: Some(1),
+            dirty_io_threads: Some(1),
+            dirty_queue_depth: Some(8),
+            ..SchedulerConfig::default()
+        },
+        Arc::new(ModuleRegistry::new()),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    let pollers = spawn_busy_pollers(&scheduler, 12);
+
+    wait_until(10_000, || {
+        pollers
+            .iter()
+            .any(|(_, _, slices)| slices.load(Ordering::Acquire) > 100)
+    });
+
+    for (pid, _, _) in &pollers {
+        assert!(
+            scheduler.enqueue_atom_message(*pid, Atom::OK),
+            "enqueue to live busy poller must succeed"
+        );
+    }
+    wait_until(2_000, || all_observed_atom(&pollers, Atom::OK));
+    scheduler.shutdown();
+}
