@@ -48,6 +48,16 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
         return;
     }
     let Some(mut process) = take_runnable_process(shared, pid) else {
+        // DIAGNOSTIC (lost-dispatch hunt): the pid was popped from a run
+        // queue but its body slot is not Present. A live process table entry
+        // here means the pid is silently dropped from scheduling — exactly
+        // the wedge under investigation. Stderr on purpose: beamr has no
+        // tracing dep and the deploy captures stderr into server.log.
+        if shared.process_table.get(pid).is_some() {
+            eprintln!(
+                "beamr-diagnostic: run_process pid={pid} popped but body not Present (thread {my_index}); pid dropped from run queue"
+            );
+        }
         return;
     };
     let outcome = if process.is_native() {
