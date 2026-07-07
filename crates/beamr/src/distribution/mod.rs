@@ -2,6 +2,7 @@
 
 pub mod atom_cache;
 pub mod connection;
+pub mod connection_events;
 pub mod control;
 pub mod control_lifecycle;
 pub mod control_monitor;
