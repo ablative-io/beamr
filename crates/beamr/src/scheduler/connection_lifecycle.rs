@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, Weak};
 
-use super::SharedState;
+use super::{SharedState, supervision_integration};
 use crate::distribution::connection_events::ConnectionEvent;
 
 /// Register the scheduler's composed connection-event subscriber. Called once
@@ -37,9 +37,8 @@ pub(super) fn register_scheduler_connection_subscriber(shared: &Arc<SharedState>
 ///      constructed in production; every `::new` site is test code. Wire only
 ///      after a registry lands on `SharedState`.]
 ///   3. [seam: dead-node control-lane cleanup — work item A.]
-///   4. [seam: noconnection delivery to every local process remote-linked to
-///      the node (`supervision_integration::connection_down`) — wired by the
-///      next commit in this series.]
+///   4. noconnection delivery to every local process remote-linked to the
+///      node (`supervision_integration::connection_down`).
 ///
 /// Up is reserved for work item A control-lane (re)initialization; the match
 /// is exhaustive WITHOUT a `_` arm (non_exhaustive is inert in-crate; a
@@ -48,6 +47,7 @@ pub(super) fn handle_connection_event(shared: &Arc<SharedState>, event: Connecti
     match event {
         ConnectionEvent::Down(down) => {
             shared.pg_registry.purge_remote_node(down.node);
+            supervision_integration::connection_down(shared, down.node);
         }
         ConnectionEvent::Up(_) => {}
     }

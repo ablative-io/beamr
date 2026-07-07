@@ -1358,6 +1358,9 @@ impl IoWakeTarget for SharedState {
 mod closure_spawn_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
+mod connection_lifecycle_tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
 mod supervision_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]

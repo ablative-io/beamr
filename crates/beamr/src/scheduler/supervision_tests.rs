@@ -23,7 +23,7 @@ use crate::supervision::monitor::MonitorSet;
 use crate::term::boxed::{self, Tuple};
 
 /// Helper: insert a running process into shared state with the given pid.
-fn insert_process(shared: &SharedState, pid: u64) -> u64 {
+pub(super) fn insert_process(shared: &SharedState, pid: u64) -> u64 {
     insert_process_in(shared, pid, NamespaceId::DEFAULT)
 }
 
@@ -43,7 +43,7 @@ fn insert_process_in(shared: &SharedState, pid: u64, namespace: NamespaceId) -> 
 }
 
 /// Helper: read a tuple from the front of a process's mailbox.
-fn read_mailbox_tuple(shared: &SharedState, pid: u64) -> Option<Vec<Term>> {
+pub(super) fn read_mailbox_tuple(shared: &SharedState, pid: u64) -> Option<Vec<Term>> {
     let entry = shared.process_bodies.get(&pid)?;
     let mut slot = lock_or_recover(&entry);
     let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot else {
@@ -60,7 +60,7 @@ fn read_mailbox_tuple(shared: &SharedState, pid: u64) -> Option<Vec<Term>> {
 }
 
 /// Helper: check if a process is still in the process table.
-fn is_alive(shared: &SharedState, pid: u64) -> bool {
+pub(super) fn is_alive(shared: &SharedState, pid: u64) -> bool {
     shared.process_table.get(pid).is_some()
 }
 
@@ -80,7 +80,7 @@ fn add_link(shared: &SharedState, a: u64, b: u64) {
     }
 }
 
-fn add_remote_link(shared: &SharedState, pid: u64, remote: RemotePid) {
+pub(super) fn add_remote_link(shared: &SharedState, pid: u64, remote: RemotePid) {
     let entry = shared
         .process_bodies
         .get(&pid)
@@ -93,7 +93,7 @@ fn add_remote_link(shared: &SharedState, pid: u64, remote: RemotePid) {
 }
 
 /// Helper: set trap_exit on a process.
-fn set_trap_exit(shared: &SharedState, pid: u64, value: bool) {
+pub(super) fn set_trap_exit(shared: &SharedState, pid: u64, value: bool) {
     if let Some(entry) = shared.process_bodies.get(&pid) {
         let mut slot = lock_or_recover(&entry);
         if let ProcessSlot::Present(ScheduledProcess(p)) = &mut *slot {
@@ -126,7 +126,7 @@ fn add_monitor(shared: &SharedState, watcher_pid: u64, target_pid: u64) -> u64 {
     reference
 }
 
-fn make_executing(shared: &SharedState, pid: u64) -> Process {
+pub(super) fn make_executing(shared: &SharedState, pid: u64) -> Process {
     let entry = shared
         .process_bodies
         .get(&pid)
@@ -246,7 +246,7 @@ fn ets_metadata_with_heir(
     metadata
 }
 
-fn make_shared_state() -> Arc<SharedState> {
+pub(super) fn make_shared_state() -> Arc<SharedState> {
     let module_registry = Arc::new(ModuleRegistry::new());
     let namespace_store = DashMap::new();
     namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));

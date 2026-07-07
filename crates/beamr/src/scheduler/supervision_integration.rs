@@ -274,7 +274,11 @@ pub(super) fn remove_remote_link(shared: &SharedState, local_pid: u64, remote: R
     }
 }
 
-#[allow(dead_code)] // Called by distribution connection layer and tests
+/// Apply one remote exit signal to a local target. Reached from the
+/// connection-event hub: `ConnectionEventHub::dispatch` →
+/// `connection_lifecycle::handle_connection_event` → [`connection_down`] →
+/// here, once per remote link on the dead node. Work item A adds the wire
+/// EXIT decode path as a second caller.
 pub(crate) fn process_remote_exit_signal(
     shared: &SharedState,
     source_pid: RemotePid,
@@ -323,7 +327,12 @@ pub(crate) fn process_remote_exit_signal(
     }
 }
 
-#[allow(dead_code)] // Called by distribution connection layer and tests
+/// Deliver a `noconnection` exit signal to every local process remote-linked
+/// to `node`. Reached from the connection-event hub:
+/// `ConnectionEventHub::dispatch` →
+/// `connection_lifecycle::handle_connection_event` → here, strictly after the
+/// pg purge so a trap-exit handler receiving `{'EXIT', _, noconnection}` never
+/// observes the dead node's members.
 pub(crate) fn connection_down(shared: &SharedState, node: Atom) {
     let affected: Vec<(u64, RemotePid)> = shared
         .process_bodies
