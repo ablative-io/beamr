@@ -501,7 +501,7 @@ mod tests {
         );
 
         let entry = registry.lookup(erlang, plus, 2).expect("registered BIF");
-        assert_eq!(entry.function as usize, forty_two as usize);
+        assert_eq!(entry.function as usize, forty_two as *const () as usize);
         assert!(entry.dirty_kind.is_none());
         assert_eq!(entry.capability, Capability::Pure);
         assert!(registry.lookup(erlang, unknown, 0).is_none());
@@ -579,8 +579,8 @@ mod tests {
         let nif_entry = nif_registry
             .lookup(erlang, plus, 2)
             .expect("registered NIF");
-        assert_eq!(bif_entry.function as usize, forty_two as usize);
-        assert_eq!(nif_entry.function as usize, thirteen as usize);
+        assert_eq!(bif_entry.function as usize, forty_two as *const () as usize);
+        assert_eq!(nif_entry.function as usize, thirteen as *const () as usize);
     }
 
     #[test]
@@ -604,11 +604,11 @@ mod tests {
 
         let shadowed = lookup_native(&bif_registry, &nif_registry, erlang, plus, 2)
             .expect("BIF should win over colliding NIF");
-        assert_eq!(shadowed.function as usize, forty_two as usize);
+        assert_eq!(shadowed.function as usize, forty_two as *const () as usize);
 
         let host_entry = lookup_native(&bif_registry, &nif_registry, erlang, host_only, 0)
             .expect("host-only NIF should resolve after BIF miss");
-        assert_eq!(host_entry.function as usize, thirteen as usize);
+        assert_eq!(host_entry.function as usize, thirteen as *const () as usize);
     }
 
     #[test]
@@ -664,7 +664,7 @@ mod tests {
     fn dirty_nif_cpu_constructor_sets_cpu_dirty_kind() {
         let entry = DirtyNif::cpu(forty_two);
 
-        assert_eq!(entry.function as usize, forty_two as usize);
+        assert_eq!(entry.function as usize, forty_two as *const () as usize);
         assert_eq!(entry.dirty_kind, Some(DirtySchedulerKind::Cpu));
         assert_eq!(entry.capability, Capability::ExternalIo);
     }
@@ -673,7 +673,7 @@ mod tests {
     fn dirty_nif_io_constructor_sets_io_dirty_kind() {
         let entry = DirtyNif::io(thirteen);
 
-        assert_eq!(entry.function as usize, thirteen as usize);
+        assert_eq!(entry.function as usize, thirteen as *const () as usize);
         assert_eq!(entry.dirty_kind, Some(DirtySchedulerKind::Io));
         assert_eq!(entry.capability, Capability::ExternalIo);
     }
@@ -715,10 +715,10 @@ mod tests {
         let io_entry = registry
             .lookup(host_module, io_work, 0)
             .expect("host IO dirty NIF");
-        assert_eq!(cpu_entry.function as usize, forty_two as usize);
+        assert_eq!(cpu_entry.function as usize, forty_two as *const () as usize);
         assert_eq!(cpu_entry.dirty_kind, Some(DirtySchedulerKind::Cpu));
         assert_eq!(cpu_entry.capability, Capability::Pure);
-        assert_eq!(io_entry.function as usize, thirteen as usize);
+        assert_eq!(io_entry.function as usize, thirteen as *const () as usize);
         assert_eq!(io_entry.dirty_kind, Some(DirtySchedulerKind::Io));
         assert_eq!(io_entry.capability, Capability::ExternalIo);
     }
