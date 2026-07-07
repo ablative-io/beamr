@@ -16,6 +16,9 @@ pub mod resolver;
 pub mod sender;
 
 pub use connection::ConnectionManager;
+pub use connection_events::{
+    ConnectionEvent, ConnectionGeneration, NodeDown, NodeUp, SubscriberId,
+};
 pub use node::{DEFAULT_NODE_NAME, Node};
 
 use std::collections::HashMap;
@@ -153,5 +156,7 @@ impl fmt::Debug for DistributionConfig {
     }
 }
 
+#[cfg(test)]
+mod connection_events_tests;
 #[cfg(test)]
 mod pg_tests;

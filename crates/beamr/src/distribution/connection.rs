@@ -4,7 +4,7 @@ use std::fmt;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::{Arc, OnceLock, RwLock, Weak};
 use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
@@ -82,6 +82,10 @@ impl std::error::Error for ConnectError {}
 
 pub use super::connection_events::{ConnectionDownEvent, ConnectionDownHook, ConnectionDownReason};
 
+use super::connection_events::{
+    ConnectionEvent, ConnectionEventHub, ConnectionGeneration, NodeUp, SubscriberId,
+};
+
 type ControlFrameHandler = dyn Fn(&[u8], &[u8]) + Send + Sync + 'static;
 
 /// Proactive net-tick (heartbeat) configuration for idle distribution links.
@@ -135,6 +139,17 @@ pub struct DistConnection {
     /// a simultaneous connect, while a lone re-dial (any direction, no canonical
     /// incumbent) still installs normally.
     direction: LinkDirection,
+    /// Session generation this socket serves (immutable; inherited across
+    /// simultaneous-connect displacement).
+    generation: ConnectionGeneration,
+    /// Peer incarnation from the authenticated handshake (0 = handshake-less
+    /// test helper sentinel).
+    peer_creation: u32,
+    /// Reason recorded by `mark_down` BEFORE the down flag flips, so any
+    /// observer of `is_down() == true` reads `Some` (set → swap(AcqRel) gives
+    /// happens-before). First-set-wins on a `mark_down` race: both reasons are
+    /// genuine.
+    down_reason: OnceLock<ConnectionDownReason>,
 }
 
 impl DistConnection {
@@ -144,6 +159,8 @@ impl DistConnection {
         writer: OwnedWriteHalf,
         manager: Weak<ConnectionManagerInner>,
         direction: LinkDirection,
+        generation: ConnectionGeneration,
+        peer_creation: u32,
     ) -> Self {
         Self {
             node,
@@ -155,6 +172,9 @@ impl DistConnection {
             last_inbound_millis: AtomicU64::new(0),
             shutdown: Arc::new(Notify::new()),
             direction,
+            generation,
+            peer_creation,
+            down_reason: OnceLock::new(),
         }
     }
 
@@ -191,6 +211,28 @@ impl DistConnection {
         self.peer_addr
     }
 
+    /// Session generation this socket serves (immutable; inherited across
+    /// simultaneous-connect displacement).
+    #[must_use]
+    pub fn generation(&self) -> ConnectionGeneration {
+        self.generation
+    }
+
+    /// Peer incarnation from the authenticated handshake (0 = handshake-less
+    /// test helper sentinel).
+    #[must_use]
+    pub fn peer_creation(&self) -> u32 {
+        self.peer_creation
+    }
+
+    /// Test-only: flip the down flag WITHOUT running the reap path, holding a
+    /// down-but-unreaped entry in the table (the HS-4 re-dial race window that
+    /// normally lasts only between `mark_down` and `connection_down`).
+    #[cfg(test)]
+    pub(crate) fn force_down_without_reap(&self) {
+        self.down.store(true, Ordering::Release);
+    }
+
     /// Return true after this connection has observed a terminal read/write failure.
     #[must_use]
     pub fn is_down(&self) -> bool {
@@ -223,6 +265,7 @@ impl DistConnection {
     }
 
     fn mark_down(self: &Arc<Self>, reason: ConnectionDownReason) {
+        let _ = self.down_reason.set(reason);
         if self.down.swap(true, Ordering::AcqRel) {
             return;
         }
@@ -293,7 +336,10 @@ struct ConnectionManagerInner {
     /// or malicious peer so `connect` always returns and no responder task parks
     /// forever (DISTRIBUTION-HANDSHAKE-DESIGN.md HS-1, D3).
     handshake_timeout: Duration,
-    connection_down_hook: ConnectionDownHook,
+    /// Connection lifecycle event hub: multi-subscriber Up/Down delivery,
+    /// per-peer session generations, and the legacy single-slot down callback
+    /// (which fires LAST, Down only).
+    events: ConnectionEventHub,
     control_frame_handler: RwLock<Option<Arc<ControlFrameHandler>>>,
     /// Shared handshake secret. Both peers must agree on this value or the OTP
     /// challenge/response is rejected and the connection is dropped.
@@ -414,13 +460,29 @@ impl ConnectionManagerInner {
         connection: &Arc<DistConnection>,
         reason: ConnectionDownReason,
     ) {
-        let removed = self
-            .connections
-            .remove_if(&node, |_, current| Arc::ptr_eq(current, connection))
-            .is_some();
+        use dashmap::mapref::entry::Entry;
+        let removed = match self.connections.entry(node) {
+            Entry::Occupied(occupied) if Arc::ptr_eq(occupied.get(), connection) => {
+                // Enqueue UNDER the entry guard: a racing register_connection
+                // for this node blocks on the entry until we release, so its
+                // Up(g+1) can never be queued ahead of this Down(g). The
+                // enqueue precedes `remove` only because dashmap's
+                // `OccupiedEntry::remove(self)` consumes the guard;
+                // INV-DOWN-VISIBILITY still holds because a concurrent
+                // dispatcher's `get_connection` blocks on the shard lock this
+                // entry holds until the removal completes.
+                self.events
+                    .enqueue(ConnectionEvent::down(node, connection.generation(), reason));
+                occupied.remove();
+                true
+            }
+            _ => false,
+        };
+        // Guard released. Deliver with no locks held (same discipline the old
+        // hook.invoke had, now ORDERED against concurrent installs and
+        // SYNCHRONOUS: when this returns, every subscriber has run).
         if removed {
-            self.connection_down_hook
-                .invoke(ConnectionDownEvent { node, reason });
+            self.events.dispatch();
         }
     }
 }
@@ -519,7 +581,7 @@ impl ConnectionManager {
                 resolver,
                 connect_timeout,
                 handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
-                connection_down_hook: ConnectionDownHook::new(),
+                events: ConnectionEventHub::new(),
                 control_frame_handler: RwLock::new(None),
                 cookie: cookie.into(),
                 local_node_name: local_node_name.into(),
@@ -586,18 +648,71 @@ impl ConnectionManager {
         self
     }
 
-    /// Return a clone of the connection-down callback slot.
+    /// Return a clone of the legacy connection-down callback slot.
+    ///
+    /// 0.11-compat surface: the slot is replace-on-register, fires LAST
+    /// (after every hub subscriber), and only for Down. New consumers should
+    /// prefer [`subscribe_connection_events`](Self::subscribe_connection_events).
     #[must_use]
     pub fn connection_down_hook(&self) -> ConnectionDownHook {
-        self.inner.connection_down_hook.clone()
+        self.inner.events.legacy_down_hook()
     }
 
-    /// Register or replace the connection-down callback.
+    /// Register or replace the legacy connection-down callback.
+    ///
+    /// 0.11-compat surface: replace-on-register, fires LAST (after every hub
+    /// subscriber), Down only. New consumers should prefer
+    /// [`subscribe_connection_events`](Self::subscribe_connection_events).
     pub fn register_connection_down<F>(&self, callback: F)
     where
         F: Fn(ConnectionDownEvent) + Send + Sync + 'static,
     {
-        self.inner.connection_down_hook.register(callback);
+        self.inner.events.legacy_down_hook().register(callback);
+    }
+
+    /// Subscribe to connection lifecycle events (Up + Down). Unlimited
+    /// subscribers, invoked in registration order; see the module-level
+    /// "Delivery and ordering contract" in
+    /// [`connection_events`](super::connection_events). Callbacks must not
+    /// block, must not perform socket I/O, and must capture `Weak` (never
+    /// `Arc`) handles to anything owning this manager.
+    pub fn subscribe_connection_events<F>(&self, callback: F) -> SubscriberId
+    where
+        F: Fn(ConnectionEvent) + Send + Sync + 'static,
+    {
+        self.inner.events.subscribe(callback)
+    }
+
+    /// Remove a subscription. `false` if the id was not (or no longer)
+    /// registered.
+    pub fn unsubscribe_connection_events(&self, id: SubscriberId) -> bool {
+        self.inner.events.unsubscribe(id)
+    }
+
+    /// Snapshot of live connections as their in-force [`NodeUp`] rows (down
+    /// links excluded). Per-peer-consistent; no cross-peer atomicity.
+    /// Late-subscriber recipe: subscribe FIRST, then snapshot, then per peer
+    /// keep the row/event with the highest generation — generation is the
+    /// dedupe key. No replay.
+    #[must_use]
+    pub fn connected_peers(&self) -> Vec<NodeUp> {
+        self.inner
+            .connections
+            .iter()
+            .filter(|entry| !entry.value().is_down())
+            .map(|entry| NodeUp {
+                node: *entry.key(),
+                generation: entry.value().generation(),
+                peer_creation: entry.value().peer_creation(),
+            })
+            .collect()
+    }
+
+    /// Last generation ever assigned for `node` (even if currently down);
+    /// `None` if this manager never installed a connection to `node`.
+    #[must_use]
+    pub fn last_peer_generation(&self, node: Atom) -> Option<ConnectionGeneration> {
+        self.inner.events.last_generation(node)
     }
 
     /// Register a handler for framed distribution control messages read from active links.
@@ -821,7 +936,13 @@ impl ConnectionManager {
             return Err(ConnectError::SimultaneousAbort);
         }
         let node = self.inner.atom_table.intern(result.remote_name());
-        Ok(self.register_connection(node, peer_addr, stream, LinkDirection::Outbound))
+        Ok(self.register_connection(
+            node,
+            peer_addr,
+            stream,
+            LinkDirection::Outbound,
+            result.remote_creation(),
+        ))
     }
 
     /// Install an authenticated link, deduplicating against an existing `Up`
@@ -853,6 +974,7 @@ impl ConnectionManager {
         peer_addr: SocketAddr,
         stream: TcpStream,
         direction: LinkDirection,
+        peer_creation: u32,
     ) -> Arc<DistConnection> {
         use dashmap::mapref::entry::Entry;
 
@@ -879,25 +1001,83 @@ impl ConnectionManager {
                 // canonical winner, or a lone re-dial superseding a stale link).
                 // Install this one and retire the old.
                 let previous = Arc::clone(incumbent);
-                let (connection, read_half) =
-                    self.build_connection(node, peer_addr, stream, direction);
+                // Sample the down flag ONCE: it can flip concurrently, and the
+                // generation choice and the Down+Up emission must agree.
+                let previous_down = previous.is_down();
+                let generation = if previous_down {
+                    // HS-4 re-dial window: the incumbent went down but its own
+                    // `connection_down` has not (or will not, having lost the
+                    // ptr-eq race after this replacement) removed the entry.
+                    // Close the old session HERE, under the same entry guard
+                    // any competing emission site needs, so its Down is never
+                    // lost and always precedes the new session's Up.
+                    self.inner.events.enqueue(ConnectionEvent::down(
+                        node,
+                        previous.generation(),
+                        // No unwrap: the fallback is reachable only when a test
+                        // flips `down` directly without `mark_down` recording a
+                        // reason.
+                        previous
+                            .down_reason
+                            .get()
+                            .copied()
+                            .unwrap_or(ConnectionDownReason::ReadError),
+                    ));
+                    self.inner.events.next_generation(node)
+                } else {
+                    // Live non-canonical displacement: same logical session, so
+                    // the newcomer inherits the generation and no event fires.
+                    previous.generation()
+                };
+                let (connection, read_half) = self.build_connection(
+                    node,
+                    peer_addr,
+                    stream,
+                    direction,
+                    generation,
+                    peer_creation,
+                );
                 occupied.insert(Arc::clone(&connection));
+                if previous_down {
+                    self.inner
+                        .events
+                        .enqueue(ConnectionEvent::up(node, generation, peer_creation));
+                }
                 (connection, read_half, Some(previous))
             }
             Entry::Vacant(vacant) => {
-                let (connection, read_half) =
-                    self.build_connection(node, peer_addr, stream, direction);
-                vacant.insert(Arc::clone(&connection));
+                let generation = self.inner.events.next_generation(node);
+                let (connection, read_half) = self.build_connection(
+                    node,
+                    peer_addr,
+                    stream,
+                    direction,
+                    generation,
+                    peer_creation,
+                );
+                let entry_ref = vacant.insert(Arc::clone(&connection));
+                // Enqueue AFTER the table mutation, still under the entry
+                // guard: no event can be delivered while the table does not
+                // yet reflect it (INV-UP-VISIBILITY).
+                self.inner
+                    .events
+                    .enqueue(ConnectionEvent::up(node, generation, peer_creation));
+                drop(entry_ref);
                 (connection, read_half, None)
             }
         };
         // Entry guard dropped: safe to re-enter the map. The displaced link's
         // `connection_down` ptr-eq guard sees the freshly inserted entry (not the
-        // displaced one), so it does not evict the survivor; it only wakes the old
-        // link's read loop to drop its socket.
+        // displaced one), so it does not evict the survivor (and enqueues no
+        // event); it only wakes the old link's read loop to drop its socket.
         if let Some(previous) = displaced {
             previous.mark_down(ConnectionDownReason::ReadError);
         }
+        // Deliver BEFORE the read lifecycle spawns: no generation-g inbound
+        // frame can reach the control-frame handler before Up(g) delivery
+        // completes (INV-FRAME-ORDER), and a queued prior Down's cleanup has
+        // run before the new generation's read loop exists.
+        self.inner.events.dispatch();
         self.spawn_read_lifecycle(Arc::clone(&installed), read_half);
         installed
     }
@@ -910,6 +1090,8 @@ impl ConnectionManager {
         peer_addr: SocketAddr,
         stream: TcpStream,
         direction: LinkDirection,
+        generation: ConnectionGeneration,
+        peer_creation: u32,
     ) -> (Arc<DistConnection>, OwnedReadHalf) {
         let (read_half, write_half) = stream.into_split();
         let connection = Arc::new(DistConnection::new(
@@ -918,6 +1100,8 @@ impl ConnectionManager {
             write_half,
             Arc::downgrade(&self.inner),
             direction,
+            generation,
+            peer_creation,
         ));
         (connection, read_half)
     }
@@ -934,8 +1118,9 @@ impl ConnectionManager {
         let stream = TcpStream::from_std(stream)?;
         // Test helper: a single pre-connected stream per node into a vacant slot,
         // so the direction only selects the install arm; `Inbound` always installs
-        // here.
-        Ok(self.register_connection(node, peer_addr, stream, LinkDirection::Inbound))
+        // here. `peer_creation` is 0, the documented "no handshake" sentinel: this
+        // helper skips the handshake, so there is no peer incarnation to surface.
+        Ok(self.register_connection(node, peer_addr, stream, LinkDirection::Inbound, 0))
     }
 
     fn spawn_read_lifecycle(&self, connection: Arc<DistConnection>, mut read_half: OwnedReadHalf) {
@@ -1100,7 +1285,13 @@ impl ConnectionManager {
             match outcome {
                 Ok(Ok(result)) => {
                     let node = manager.inner.atom_table.intern(result.remote_name());
-                    manager.register_connection(node, peer_addr, stream, LinkDirection::Inbound);
+                    manager.register_connection(
+                        node,
+                        peer_addr,
+                        stream,
+                        LinkDirection::Inbound,
+                        result.remote_creation(),
+                    );
                 }
                 Ok(Err(_)) | Err(_) => {
                     drop(stream);
@@ -1769,9 +1960,9 @@ mod tests {
         let (server_inbound, _) = listener.accept().await.expect("accept server_inbound");
 
         let displaced =
-            manager.register_connection(node, addr, server_outbound, LinkDirection::Outbound);
+            manager.register_connection(node, addr, server_outbound, LinkDirection::Outbound, 0);
         let winner =
-            manager.register_connection(node, addr, server_inbound, LinkDirection::Inbound);
+            manager.register_connection(node, addr, server_inbound, LinkDirection::Inbound, 0);
 
         // Exactly one table entry, and it is the canonical (inbound) winner, not
         // the first-installed outbound.

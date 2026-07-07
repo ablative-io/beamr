@@ -51,6 +51,8 @@ pub struct PurgeResult {
 // subsystems, and `std::thread`/`Condvar`, none of which exist on wasm32.
 // ---------------------------------------------------------------------------
 #[cfg(feature = "threads")]
+mod connection_lifecycle;
+#[cfg(feature = "threads")]
 pub mod dirty;
 #[cfg(feature = "threads")]
 mod execution;
@@ -868,16 +870,11 @@ impl Scheduler {
             .set_propagation(Arc::new(pg_propagation::SchedulerPgPropagation {
                 shared: Arc::downgrade(&shared),
             }));
-        // On node failure, drop every remote pg member that belonged to the lost
-        // node so group membership reflects the surviving cluster.
-        let pg_down_weak = Arc::downgrade(&shared);
-        shared
-            .distribution_connections
-            .register_connection_down(move |event| {
-                if let Some(shared) = pg_down_weak.upgrade() {
-                    shared.pg_registry.purge_remote_node(event.node);
-                }
-            });
+        // On node failure, the composed connection-event subscriber drops every
+        // remote pg member that belonged to the lost node so group membership
+        // reflects the surviving cluster. Registered at construction, before
+        // any embedder can subscribe (INV-SCHED-FIRST).
+        connection_lifecycle::register_scheduler_connection_subscriber(&shared);
         if !shared.replay_mode
             && let (Some(ring), Some(registry)) = (&shared.io_ring, &shared.io_registry)
         {
