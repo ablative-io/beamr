@@ -16,8 +16,12 @@
 //! - **INV-EXACTLY-ONCE** — exactly one Up per generation; exactly one Down
 //!   per generation delivered while the manager lives, EXCEPT a session still
 //!   live at manager teardown, which gets no Down (parity with the legacy
-//!   hook: manager drop never synthesized events). Socket displacement during
-//!   simultaneous connect is invisible (same session; generation inherited).
+//!   hook: manager drop never synthesized events). Socket displacement by the
+//!   SAME peer incarnation (simultaneous connect) is invisible (same session;
+//!   generation inherited); a live link displaced by a NEW peer incarnation —
+//!   a restarted peer re-dialing past a stale link — is a session boundary
+//!   and delivers Down(g) then Up(g+1), so `peer_creation` really does change
+//!   iff the peer VM restarted.
 //! - **INV-TOTAL-ORDER** — all subscribers observe all events in one global
 //!   sequence (single-drainer queue). Within one event: subscribers in
 //!   registration order, then the legacy down-slot last (Down only, 0.11

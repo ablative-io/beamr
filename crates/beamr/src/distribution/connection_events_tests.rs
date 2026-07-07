@@ -390,6 +390,83 @@ async fn displacement_inherits_generation_and_emits_no_events() {
     assert_eq!(survivor.generation(), second.generation());
 }
 
+/// A restarted peer whose re-dial lands while the stale incumbent still looks
+/// live (no FIN reached us; heartbeat deadline not yet hit) is a session
+/// boundary, not a socket swap: the differing handshake `peer_creation` is
+/// the discriminator, and swallowing it would leave the dead incarnation's
+/// cleanup (pg purge, noconnection delivery) unfired forever.
+#[tokio::test]
+async fn live_displacement_by_new_peer_creation_emits_down_then_up() {
+    // local > alpha, so the Inbound incumbent installed by the test helper is
+    // non-canonical: displaceable while still live.
+    let manager = manager_named("local@127.0.0.1");
+    let node = manager.atom_table().intern("alpha@127.0.0.1");
+
+    let (server_first, _peer_first, addr_first) = socket_pair();
+    let first = manager
+        .register_test_connection_with_creation(node, addr_first, server_first, 41)
+        .expect("install first incarnation");
+    assert!(!first.is_down(), "the stale incumbent still looks live");
+    let log = new_event_log();
+    let log_for_subscriber = Arc::clone(&log);
+    manager.subscribe_connection_events(move |event| push_event(&log_for_subscriber, event));
+
+    let (server_second, _peer_second, addr_second) = socket_pair();
+    let second = manager
+        .register_test_connection_with_creation(node, addr_second, server_second, 42)
+        .expect("install restarted incarnation");
+
+    assert_eq!(
+        snapshot(&log),
+        vec![
+            // The stale link never reported a failure, so the closed session
+            // carries the same ReadError the displaced socket is retired with.
+            ConnectionEvent::down(node, generation(1), ConnectionDownReason::ReadError),
+            ConnectionEvent::up(node, generation(2), 42),
+        ],
+        "a changed peer_creation across a live displacement is a peer bounce: \
+         Down(g_old) then Up(g_new), exactly once each"
+    );
+    assert!(first.is_down(), "the displaced stale socket is retired");
+    assert_eq!(
+        second.generation(),
+        generation(2),
+        "the restarted incarnation opens a NEW session"
+    );
+    assert_eq!(second.peer_creation(), 42);
+    assert_eq!(manager.connection_count(), 1);
+    assert_eq!(manager.last_peer_generation(node), Some(generation(2)));
+}
+
+/// The complement: a live displacement by the SAME nonzero incarnation (a
+/// simultaneous-connect socket swap) stays invisible — generation inherited,
+/// zero events — so the bounce discriminator fires only on a real restart.
+#[tokio::test]
+async fn live_displacement_same_nonzero_peer_creation_inherits_and_emits_nothing() {
+    let manager = manager_named("local@127.0.0.1");
+    let node = manager.atom_table().intern("alpha@127.0.0.1");
+
+    let (server_first, _peer_first, addr_first) = socket_pair();
+    let first = manager
+        .register_test_connection_with_creation(node, addr_first, server_first, 41)
+        .expect("install first socket");
+    let log = new_event_log();
+    let log_for_subscriber = Arc::clone(&log);
+    manager.subscribe_connection_events(move |event| push_event(&log_for_subscriber, event));
+
+    let (server_second, _peer_second, addr_second) = socket_pair();
+    let second = manager
+        .register_test_connection_with_creation(node, addr_second, server_second, 41)
+        .expect("install same-incarnation socket");
+
+    assert!(
+        snapshot(&log).is_empty(),
+        "same-incarnation socket displacement is one logical session: no events"
+    );
+    assert_eq!(second.generation(), first.generation());
+    assert_eq!(manager.last_peer_generation(node), Some(generation(1)));
+}
+
 #[tokio::test]
 async fn inv_up_visibility_up_callback_observes_installed_connection() {
     let manager = manager_named("local@127.0.0.1");

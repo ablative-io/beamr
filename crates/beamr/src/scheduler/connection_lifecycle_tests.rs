@@ -238,6 +238,67 @@ fn probe_after_scheduler_observes_post_purge_state_and_delivered_noconnection() 
     );
 }
 
+/// Scenario 7, R2 regression (scheduler half): a legacy
+/// `register_connection_down` registrant added AFTER the scheduler's composed
+/// subscriber (the earliest an embedder can register) still fires — AND both
+/// internal effects, pg purge and noconnection delivery, still happen.
+/// Pre-hub, the pg purge lived in the replace-on-register slot, so this exact
+/// registration silently evicted the scheduler's node-death cleanup.
+#[test]
+fn r2_late_legacy_registrant_leaves_purge_and_noconnection_intact() {
+    let shared = make_shared_state();
+    register_scheduler_connection_subscriber(&shared);
+    let runtime = runtime_backing(&shared);
+    let _context = runtime.enter();
+
+    let node = shared.atom_table.intern("peer@127.0.0.1");
+    let scope = shared.atom_table.intern("pg");
+    let group = shared.atom_table.intern("workers");
+    shared
+        .pg_registry
+        .apply_remote_join(scope, group, node, 55, 0);
+
+    let target = insert_process(&shared, 1);
+    set_trap_exit(&shared, target, true);
+    let remote = RemotePid {
+        node,
+        pid_number: 10,
+        serial: 0,
+    };
+    add_remote_link(&shared, target, remote);
+
+    // The R2 hazard: a legacy registration landing after construction.
+    let legacy_seen: Arc<Mutex<Vec<(Atom, ConnectionDownReason)>>> =
+        Arc::new(Mutex::new(Vec::new()));
+    let legacy_seen_for_slot = Arc::clone(&legacy_seen);
+    shared
+        .distribution_connections
+        .register_connection_down(move |event| {
+            legacy_seen_for_slot
+                .lock()
+                .expect("legacy log lock")
+                .push((event.node, event.reason));
+        });
+
+    let peer = install_peer(&shared, node);
+    assert!(shared.distribution_connections.disconnect_node(node));
+    drop(peer);
+
+    // INV-SYNC: every effect is observable the moment disconnect_node returns.
+    assert_eq!(
+        *legacy_seen.lock().expect("legacy log lock"),
+        vec![(node, ConnectionDownReason::ManualDisconnect)],
+        "the late legacy registrant still fires, 0.11 shape"
+    );
+    assert!(
+        shared.pg_registry.remote_members(scope, group).is_empty(),
+        "pg purge still ran despite the legacy registration"
+    );
+    let tuple = read_mailbox_tuple(&shared, target).expect("noconnection EXIT still delivered");
+    assert_noconnection_exit(&tuple, remote);
+    assert!(is_alive(&shared, target), "trapping target survives");
+}
+
 /// Scenario 6ii: redelivery idempotence at the subscriber seam. Driving
 /// `handle_connection_event(Down)` twice for one node produces exactly one
 /// noconnection EXIT — the applier removes the remote link on first delivery,

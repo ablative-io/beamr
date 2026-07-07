@@ -461,29 +461,32 @@ impl ConnectionManagerInner {
         reason: ConnectionDownReason,
     ) {
         use dashmap::mapref::entry::Entry;
-        let removed = match self.connections.entry(node) {
-            Entry::Occupied(occupied) if Arc::ptr_eq(occupied.get(), connection) => {
-                // Enqueue UNDER the entry guard: a racing register_connection
-                // for this node blocks on the entry until we release, so its
-                // Up(g+1) can never be queued ahead of this Down(g). The
-                // enqueue precedes `remove` only because dashmap's
-                // `OccupiedEntry::remove(self)` consumes the guard;
-                // INV-DOWN-VISIBILITY still holds because a concurrent
-                // dispatcher's `get_connection` blocks on the shard lock this
-                // entry holds until the removal completes.
-                self.events
-                    .enqueue(ConnectionEvent::down(node, connection.generation(), reason));
-                occupied.remove();
-                true
-            }
-            _ => false,
-        };
+        if let Entry::Occupied(occupied) = self.connections.entry(node)
+            && Arc::ptr_eq(occupied.get(), connection)
+        {
+            // Enqueue UNDER the entry guard: a racing register_connection
+            // for this node blocks on the entry until we release, so its
+            // Up(g+1) can never be queued ahead of this Down(g). The
+            // enqueue precedes `remove` only because dashmap's
+            // `OccupiedEntry::remove(self)` consumes the guard;
+            // INV-DOWN-VISIBILITY still holds because a concurrent
+            // dispatcher's `get_connection` blocks on the shard lock this
+            // entry holds until the removal completes.
+            self.events
+                .enqueue(ConnectionEvent::down(node, connection.generation(), reason));
+            occupied.remove();
+        }
         // Guard released. Deliver with no locks held (same discipline the old
         // hook.invoke had, now ORDERED against concurrent installs and
-        // SYNCHRONOUS: when this returns, every subscriber has run).
-        if removed {
-            self.events.dispatch();
-        }
+        // SYNCHRONOUS: when this returns, every subscriber has run). Dispatch
+        // even when the ptr-eq LOST: the winner (an HS-4 re-dial that replaced
+        // this socket) enqueued this session's Down under the entry guard we
+        // just contended on but may not have DELIVERED it yet — returning
+        // without draining would let our caller (e.g. `disconnect_node`)
+        // return before the Down its own `mark_down` caused was delivered,
+        // breaking INV-SYNC. When the queue is already empty this is a cheap
+        // bounce off the dispatch gate.
+        self.events.dispatch();
     }
 }
 
@@ -1004,6 +1007,19 @@ impl ConnectionManager {
                 // Sample the down flag ONCE: it can flip concurrently, and the
                 // generation choice and the Down+Up emission must agree.
                 let previous_down = previous.is_down();
+                // A LIVE incumbent displaced by a NEW peer incarnation is a
+                // peer bounce, not a socket swap: the old incarnation died
+                // without a FIN/RST reaching us (silent partition, power loss,
+                // kill-9 + fast restart) and the restarted peer re-dialed
+                // while the stale link still looked live. That is a session
+                // boundary — inheriting the generation here would swallow the
+                // bounce forever (no pg purge, no noconnection delivery, no
+                // peer_creation change on any Up). 0 is the handshake-less
+                // test-helper sentinel, never a discriminator.
+                let peer_bounced = !previous_down
+                    && previous.peer_creation() != 0
+                    && peer_creation != 0
+                    && previous.peer_creation() != peer_creation;
                 let generation = if previous_down {
                     // HS-4 re-dial window: the incumbent went down but its own
                     // `connection_down` has not (or will not, having lost the
@@ -1024,9 +1040,23 @@ impl ConnectionManager {
                             .unwrap_or(ConnectionDownReason::ReadError),
                     ));
                     self.inner.events.next_generation(node)
+                } else if peer_bounced {
+                    // Close the old incarnation's session under the same entry
+                    // guard the HS-4 arm uses, so the Down is never lost and
+                    // always precedes the new session's Up. The stale link
+                    // never reported a failure (no reason recorded), so the
+                    // reason is ReadError — matching the retirement reason the
+                    // displaced socket itself is marked down with below.
+                    self.inner.events.enqueue(ConnectionEvent::down(
+                        node,
+                        previous.generation(),
+                        ConnectionDownReason::ReadError,
+                    ));
+                    self.inner.events.next_generation(node)
                 } else {
-                    // Live non-canonical displacement: same logical session, so
-                    // the newcomer inherits the generation and no event fires.
+                    // Live same-incarnation displacement (simultaneous
+                    // connect): same logical session, so the newcomer inherits
+                    // the generation and no event fires.
                     previous.generation()
                 };
                 let (connection, read_half) = self.build_connection(
@@ -1038,7 +1068,7 @@ impl ConnectionManager {
                     peer_creation,
                 );
                 occupied.insert(Arc::clone(&connection));
-                if previous_down {
+                if previous_down || peer_bounced {
                     self.inner
                         .events
                         .enqueue(ConnectionEvent::up(node, generation, peer_creation));
@@ -1069,7 +1099,10 @@ impl ConnectionManager {
         // Entry guard dropped: safe to re-enter the map. The displaced link's
         // `connection_down` ptr-eq guard sees the freshly inserted entry (not the
         // displaced one), so it does not evict the survivor (and enqueues no
-        // event); it only wakes the old link's read loop to drop its socket.
+        // event); it wakes the old link's read loop to drop its socket, and its
+        // unconditional dispatch may deliver the events this install queued —
+        // harmless: same thread, same order, still before the read lifecycle
+        // spawns below.
         if let Some(previous) = displaced {
             previous.mark_down(ConnectionDownReason::ReadError);
         }
@@ -1107,6 +1140,10 @@ impl ConnectionManager {
     }
 
     /// Register a pre-connected standard stream for native BIF unit tests.
+    ///
+    /// `peer_creation` is 0, the documented "no handshake" sentinel: this
+    /// helper skips the handshake, so there is no peer incarnation to surface
+    /// (and the peer-bounce discriminator never fires on the sentinel).
     #[cfg(test)]
     pub(crate) fn register_test_connection(
         &self,
@@ -1114,13 +1151,30 @@ impl ConnectionManager {
         peer_addr: SocketAddr,
         stream: std::net::TcpStream,
     ) -> io::Result<Arc<DistConnection>> {
+        self.register_test_connection_with_creation(node, peer_addr, stream, 0)
+    }
+
+    /// [`Self::register_test_connection`] with an explicit `peer_creation`,
+    /// for tests exercising the peer-bounce (creation-mismatch) install arm.
+    #[cfg(test)]
+    pub(crate) fn register_test_connection_with_creation(
+        &self,
+        node: Atom,
+        peer_addr: SocketAddr,
+        stream: std::net::TcpStream,
+        peer_creation: u32,
+    ) -> io::Result<Arc<DistConnection>> {
         stream.set_nonblocking(true)?;
         let stream = TcpStream::from_std(stream)?;
-        // Test helper: a single pre-connected stream per node into a vacant slot,
-        // so the direction only selects the install arm; `Inbound` always installs
-        // here. `peer_creation` is 0, the documented "no handshake" sentinel: this
-        // helper skips the handshake, so there is no peer incarnation to surface.
-        Ok(self.register_connection(node, peer_addr, stream, LinkDirection::Inbound, 0))
+        // Test helper: a pre-connected stream, no handshake, so the direction
+        // only selects the install arm; `Inbound` here.
+        Ok(self.register_connection(
+            node,
+            peer_addr,
+            stream,
+            LinkDirection::Inbound,
+            peer_creation,
+        ))
     }
 
     fn spawn_read_lifecycle(&self, connection: Arc<DistConnection>, mut read_half: OwnedReadHalf) {
@@ -1154,10 +1208,6 @@ impl ConnectionManager {
                     result = read_half.read_exact(&mut header) => result,
                 };
                 match read_header {
-                    Ok(0) => {
-                        connection.mark_down(ConnectionDownReason::PeerClosed);
-                        break;
-                    }
                     Ok(_) => {
                         // Any inbound bytes (data frame OR keepalive) refresh the
                         // net-tick liveness clock for this link.
@@ -1186,6 +1236,17 @@ impl ConnectionManager {
                             let (control, payload) = frame.split_at(control_len);
                             handler(control, payload);
                         }
+                    }
+                    // `read_exact` never returns `Ok(0)`: EOF surfaces as an
+                    // `UnexpectedEof` error. At the header read — the frame
+                    // boundary — that is the peer closing its side (FIN), not
+                    // a read fault, so it maps to `PeerClosed`, keeping that
+                    // variant's documented meaning reachable. (EOF mid-header
+                    // is indistinguishable here and also maps to `PeerClosed`;
+                    // either way the peer's side of the socket is gone.)
+                    Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                        connection.mark_down(ConnectionDownReason::PeerClosed);
+                        break;
                     }
                     Err(_) => {
                         connection.mark_down(ConnectionDownReason::ReadError);
