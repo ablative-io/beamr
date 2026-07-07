@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 #[cfg(feature = "net")]
-use crate::distribution::control_monitor::RemotePid;
+use crate::process::RemotePid;
 use crate::{
     atom::Atom,
     process::{ExitReason, Monitor, Process},

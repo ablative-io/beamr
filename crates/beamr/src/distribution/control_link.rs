@@ -552,6 +552,22 @@ mod tests {
     }
 
     #[test]
+    fn control_op_mapping_is_exact() {
+        assert_eq!(ControlOp::from_opcode(1), Some(ControlOp::Link));
+        assert_eq!(ControlOp::from_opcode(2), Some(ControlOp::Send));
+        assert_eq!(ControlOp::from_opcode(3), Some(ControlOp::Exit));
+        assert_eq!(ControlOp::from_opcode(4), Some(ControlOp::Unlink));
+        assert_eq!(ControlOp::from_opcode(6), Some(ControlOp::RegSend));
+        assert_eq!(ControlOp::from_opcode(8), Some(ControlOp::Exit2));
+        assert_eq!(ControlOp::from_opcode(19), Some(ControlOp::MonitorP));
+        assert_eq!(ControlOp::from_opcode(20), Some(ControlOp::DemonitorP));
+        assert_eq!(ControlOp::from_opcode(21), Some(ControlOp::MonitorPExit));
+        assert_eq!(ControlOp::from_opcode(29), Some(ControlOp::SpawnRequest));
+        assert_eq!(ControlOp::from_opcode(31), Some(ControlOp::SpawnReply));
+        assert_eq!(ControlOp::from_opcode(255), None);
+    }
+
+    #[test]
     fn control_op_round_trips_all_tabled_opcodes() {
         for op in [
             ControlOp::Link,
