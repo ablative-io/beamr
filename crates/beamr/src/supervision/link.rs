@@ -177,8 +177,7 @@ pub(crate) fn should_die_from_signal(target: &Process, reason: ExitReason) -> bo
 /// to processes that have `trap_exit` enabled. Falls back to terminating
 /// the process with `Error` if heap allocation fails.
 pub fn enqueue_exit_message_pub(target: &mut Process, source_pid: u64, reason: ExitReason) {
-    let source = Ok(Term::pid(source_pid));
-    if enqueue_exit_message_with_source(target, source, reason).is_err() {
+    if enqueue_exit_message(target, source_pid, reason).is_err() {
         target.terminate(ExitReason::Error);
     }
 }
@@ -189,52 +188,75 @@ pub fn enqueue_remote_exit_message_pub(
     source_pid: RemotePid,
     reason: ExitReason,
 ) {
-    let source = source_pid_term(target, source_pid);
-    if enqueue_exit_message_with_source(target, source, reason).is_err() {
+    if enqueue_remote_exit_message(target, source_pid, reason).is_err() {
         target.terminate(ExitReason::Error);
     }
 }
 
-fn source_pid_term(target: &mut Process, source_pid: RemotePid) -> Result<Term, ()> {
+/// The boxed external source pid and the exit tuple are carved out of ONE
+/// reservation and ONE contiguous allocation: between writing the pid and
+/// writing the tuple that makes it reachable, the pid is held only in a Rust
+/// local — it is not a GC root — so no collection may run in that window. A
+/// second `ensure_space` there would be unsound even with space apparently
+/// available (virtual-binary pressure can force a collection regardless),
+/// reclaiming the pid words from under the local and leaving a dangling
+/// `From` in the delivered `{'EXIT', From, Reason}` tuple.
+fn enqueue_remote_exit_message(
+    target: &mut Process,
+    source_pid: RemotePid,
+    reason: ExitReason,
+) -> Result<(), ()> {
     const EXTERNAL_PID_WORDS: usize = 4;
-    crate::gc::ensure_space(target, EXTERNAL_PID_WORDS, 256).map_err(|_| ())?;
+    crate::gc::ensure_space(target, EXTERNAL_PID_WORDS + EXIT_TUPLE_WORDS, 256).map_err(|_| ())?;
     let words = target
         .heap_mut()
-        .alloc_slice(EXTERNAL_PID_WORDS)
+        .alloc_slice(EXTERNAL_PID_WORDS + EXIT_TUPLE_WORDS)
         .map_err(|_| ())?;
-    boxed::write_external_pid(
-        words,
+    let (pid_words, tuple_words) = words.split_at_mut(EXTERNAL_PID_WORDS);
+    let source = boxed::write_external_pid(
+        pid_words,
         source_pid.node,
         source_pid.pid_number,
         source_pid.serial,
     )
-    .ok_or(())
+    .ok_or(())?;
+    let elements = [
+        Term::atom(Atom::EXIT),
+        source,
+        terminal_reason(reason).as_term(),
+    ];
+    let message = boxed::write_tuple(tuple_words, &elements).ok_or(())?;
+    target.mailbox_mut().push_owned(message);
+    Ok(())
 }
+
+const EXIT_TUPLE_WORDS: usize = 4;
 
 fn enqueue_exit_message(
     target: &mut Process,
     source_pid: u64,
     reason: ExitReason,
 ) -> Result<(), ()> {
-    let source = Ok(Term::pid(source_pid));
-    enqueue_exit_message_with_source(target, source, reason)
+    enqueue_exit_message_with_source(target, Term::pid(source_pid), reason)
 }
 
 fn enqueue_exit_message_with_source(
     target: &mut Process,
-    source_pid: Result<Term, ()>,
+    source_pid: Term,
     reason: ExitReason,
 ) -> Result<(), ()> {
-    const EXIT_TUPLE_WORDS: usize = 4;
-
     // Route heap growth through the GC: `ensure_space` runs minor/major
     // collection (moving live young-generation data into old space and
     // rewriting roots) BEFORE growing the nursery. Calling
     // `grow_to_next_capacity` directly here would swap in a fresh empty region
     // without copying live data, leaving registers, prior mailbox messages, and
     // stack slots dangling. See `gc::ensure_space` and `heap.rs` region invariant.
+    //
+    // `source_pid` must be an IMMEDIATE term (a local pid): the collection this
+    // may run does not forward a term held only in a Rust local. Boxed source
+    // pids go through `enqueue_remote_exit_message`, which reserves for the pid
+    // and the tuple together.
     crate::gc::ensure_space(target, EXIT_TUPLE_WORDS, 256).map_err(|_| ())?;
-    let source_pid = source_pid?;
 
     let elements = [
         Term::atom(Atom::EXIT),
@@ -542,6 +564,58 @@ mod tests {
         let tuple = mailbox_tuple(&mut watcher);
         assert_eq!(tuple.get(0), Some(Term::atom(Atom::EXIT)));
         assert_eq!(tuple.get(1).and_then(Term::as_pid), Some(2));
+    }
+
+    /// Remote-exit delivery under nursery pressure: with 4..=7 free words the
+    /// old two-step path (allocate the boxed source pid, THEN `ensure_space`
+    /// for the tuple) collected between the two allocations. The freshly
+    /// written external pid was held only in a Rust local — not a GC root —
+    /// so the minor collection reclaimed its words and the delivered
+    /// `{'EXIT', From, Reason}` tuple carried a dangling `From`. The single
+    /// combined reservation collects (if at all) BEFORE the pid is written.
+    #[test]
+    fn remote_exit_on_near_full_heap_keeps_the_source_pid_intact() {
+        let mut watcher = Process::new(1, 32);
+        watcher
+            .transition_to(ProcessStatus::Running)
+            .unwrap_or_else(|error| panic!("process starts: {error}"));
+        watcher.set_trap_exit(true);
+
+        // Live young term rooted via X0: proves any collection forwards roots.
+        let live = alloc_young_tuple(&mut watcher, &[Term::small_int(111), Term::small_int(222)]);
+        watcher.set_x_reg(0, live);
+
+        // Leave exactly 7 free words: enough for the 4-word external pid, not
+        // enough for the 4-word exit tuple after it — the trigger window.
+        while watcher.heap().available() >= 8 {
+            let _ = watcher.heap_mut().alloc(1);
+        }
+        assert_eq!(watcher.heap().available(), 7);
+
+        let source = RemotePid {
+            node: Atom::OK,
+            pid_number: 77,
+            serial: 0,
+        };
+        enqueue_remote_exit_message_pub(&mut watcher, source, ExitReason::Error);
+
+        assert_eq!(watcher.status(), ProcessStatus::Running);
+        let tuple = mailbox_tuple(&mut watcher);
+        assert_eq!(tuple.arity(), 3);
+        assert_eq!(tuple.get(0), Some(Term::atom(Atom::EXIT)));
+        let from = tuple
+            .get(1)
+            .and_then(crate::term::boxed::ExternalPid::new)
+            .unwrap_or_else(|| panic!("From must be a live external pid, not a dangling pointer"));
+        assert_eq!(from.node(), Some(Atom::OK));
+        assert_eq!(from.pid_number(), 77);
+        assert_eq!(tuple.get(2), Some(Term::atom(Atom::ERROR)));
+
+        // The previously-live X0 tuple also survived any collection intact.
+        let recovered =
+            Tuple::new(watcher.x_reg(0)).unwrap_or_else(|| panic!("X0 is still a tuple"));
+        assert_eq!(recovered.get(0), Some(Term::small_int(111)));
+        assert_eq!(recovered.get(1), Some(Term::small_int(222)));
     }
 
     #[test]

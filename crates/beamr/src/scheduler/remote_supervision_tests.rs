@@ -14,7 +14,7 @@ use super::connection_lifecycle_tests::{
 use super::remote_supervision::{RemoteExitKind, apply_inbound_link};
 use super::supervision_integration::{
     SchedulerDistributionControlFacility, SchedulerDistributionSendFacility, establish_remote_link,
-    register_distribution_control_handler,
+    register_distribution_control_handler, remove_remote_link,
 };
 use super::supervision_tests::{
     add_remote_link, insert_process, is_alive, make_executing, make_shared_state,
@@ -705,7 +705,15 @@ fn facility_link_and_unlink_ride_the_wire_and_track_the_local_half() {
         Ok(()),
         "duplicate link_remote is idempotent success (T-4)"
     );
-    assert_eq!(remote_links_of(&shared, caller), vec![target]);
+    assert_eq!(
+        remote_links_of(&shared, caller),
+        vec![RemotePid {
+            serial: 0,
+            ..target
+        }],
+        "the stored half-link is the serial-0 wire identity the peer's \
+         EXIT/UNLINK `from` will carry (DC-4 equality gate)"
+    );
 
     let (control, payload) = read_peer_frame(&mut peer);
     assert_eq!(
@@ -1345,4 +1353,222 @@ fn control_overflow_to_healthy_peer_converges_to_noconnection_blip() {
             .is_none(),
         "the healthy pair is down pending redial"
     );
+}
+
+/// Store-back reconciliation (DC-4): a wire EXIT(3) consumed by the Executing
+/// arm removes the link from `ProcessMetadata`, and the store-back merge must
+/// NOT resurrect it from the checked-out `Process` copy — a resurrected entry
+/// would let the later node-down backstop double-fire the exit signal for the
+/// same link.
+#[test]
+fn executing_link_removal_survives_store_back_without_double_fire() {
+    let shared = make_shared_state();
+    let peer_node = shared.atom_table.intern("peer@test");
+    let target = insert_process(&shared, 1);
+    set_trap_exit(&shared, target, true);
+    let from = RemotePid {
+        node: peer_node,
+        pid_number: 42,
+        serial: 0,
+    };
+    add_remote_link(&shared, target, from);
+    let process = make_executing(&shared, target);
+
+    // Wire EXIT(3) lands while the target is Executing: the DC-4 gate
+    // consumes the link in metadata.
+    supervision_integration::process_remote_exit_signal(
+        &shared,
+        from,
+        target,
+        ExitReason::Error,
+        RemoteExitKind::LinkExit,
+    );
+    store_runnable_process(&shared, process);
+
+    assert!(
+        remote_links_of(&shared, target).is_empty(),
+        "the consumed link must not be resurrected at store-back"
+    );
+    assert_eq!(
+        mailbox_message_count(&shared, target),
+        1,
+        "the trapped EXIT materialized at store-back"
+    );
+
+    // The connection later drops: the backstop must find nothing — exactly
+    // one of {wire EXIT(3), noconnection} per link (DC-4).
+    supervision_integration::connection_down(&shared, peer_node);
+    assert_eq!(
+        mailbox_message_count(&shared, target),
+        1,
+        "no second signal for the same link after the node-down backstop"
+    );
+}
+
+/// Store-back reconciliation, `unlink/1` walk: a process calling unlink on a
+/// remote pid is by construction Executing during its own BIF, so the removal
+/// lands in `ProcessMetadata`. If store-back resurrected it, the local
+/// half-link would persist forever and the next node-down would deliver a
+/// spurious noconnection kill to the process that unlinked.
+#[test]
+fn unlink_while_executing_survives_store_back_without_spurious_noconnection() {
+    let shared = make_shared_state();
+    let peer_node = shared.atom_table.intern("peer@test");
+    let target = insert_process(&shared, 1);
+    let from = RemotePid {
+        node: peer_node,
+        pid_number: 42,
+        serial: 0,
+    };
+    add_remote_link(&shared, target, from);
+    let process = make_executing(&shared, target);
+
+    assert!(remove_remote_link(&shared, target, from));
+    store_runnable_process(&shared, process);
+    assert!(
+        remote_links_of(&shared, target).is_empty(),
+        "the unlinked half must stay removed after store-back"
+    );
+
+    supervision_integration::connection_down(&shared, peer_node);
+    assert!(
+        is_alive(&shared, target),
+        "a node-down after unlink must not kill the non-trapping ex-linker"
+    );
+}
+
+/// Inbound LINK racing a write-side down: a down initiated outside the read
+/// loop (write timeout, control-lane overflow, heartbeat deadline,
+/// `disconnect_node`) runs the backstop scan on the marking thread with no
+/// ordering against a concurrent `apply_inbound_link`. When the link is
+/// established after the scan already completed (modelled here by applying
+/// with no connection installed at all), the post-establish recheck must
+/// deliver the noconnection the backstop missed instead of leaking a link no
+/// future down event will ever sever.
+#[test]
+fn inbound_link_after_a_write_side_down_is_noconnectioned_not_leaked() {
+    let shared = make_shared_state();
+    let peer_node = shared.atom_table.intern("peer@test");
+    let target = insert_process(&shared, 1);
+    set_trap_exit(&shared, target, true);
+    let from = RemotePid {
+        node: peer_node,
+        pid_number: 42,
+        serial: 0,
+    };
+
+    apply_inbound_link(&shared, from, target);
+
+    assert!(
+        remote_links_of(&shared, target).is_empty(),
+        "the link must not outlive the dead session it arrived on"
+    );
+    let tuple = read_mailbox_tuple(&shared, target).expect("noconnection EXIT");
+    assert_noconnection_exit(&tuple, from);
+    assert!(is_alive(&shared, target), "trapping target survives");
+}
+
+/// A nonzero embedder-supplied `RemotePid.serial` is normalized to the wire
+/// link identity (serial 0) at establishment, so the peer's later EXIT —
+/// whose `from` is always minted with serial 0 — hits the DC-4 equality gate
+/// instead of silently no-oping and losing the death signal until node-down.
+#[test]
+fn nonzero_embedder_serial_cannot_dodge_the_wire_exit_gate() {
+    let shared = make_shared_state_with_dist_sender();
+    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let _context = handle.enter();
+
+    let peer_node = shared.atom_table.intern("peer@test");
+    let caller = insert_process(&shared, 1);
+    set_trap_exit(&shared, caller, true);
+    let peer = install_peer(&shared, peer_node);
+    let facility = control_facility(&shared);
+
+    assert_eq!(
+        facility.link_remote(
+            caller,
+            RemotePid {
+                node: peer_node,
+                pid_number: 7,
+                serial: 3,
+            }
+        ),
+        Ok(())
+    );
+
+    // The peer's pid 7 dies; its wire EXIT mints from = (peer, 7, serial 0).
+    let frame = encode_exit_frame(
+        ControlOp::Exit,
+        peer_node,
+        7,
+        RemotePid {
+            node: shared.local_node.name,
+            pid_number: caller,
+            serial: 0,
+        },
+        ExitReason::Error,
+        &shared.atom_table,
+    )
+    .expect("exit frame encodes");
+    assert_eq!(dispatch_wire_frame(&shared, peer_node, &frame), Ok(true));
+
+    assert!(
+        remote_links_of(&shared, caller).is_empty(),
+        "the serial-0 wire EXIT must sever the stored link"
+    );
+    assert_eq!(
+        mailbox_message_count(&shared, caller),
+        1,
+        "the death signal was delivered, not gated out"
+    );
+    drop(peer);
+}
+
+/// Endpoint pids beyond the wire's NEW_PID_EXT u32 fields are refused at the
+/// send boundary: `link_remote` maps them to `BadTarget` (with the half-link
+/// unwound) and the fire-and-forget senders drop, instead of the encode
+/// failure tearing the whole pinned connection down per control — the churn
+/// loop a long-lived node would enter once its pid counter passes 2^32.
+#[test]
+fn pids_beyond_the_wire_u32_range_are_refused_not_a_connection_teardown() {
+    let shared = make_shared_state_with_dist_sender();
+    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let _context = handle.enter();
+
+    let peer_node = shared.atom_table.intern("peer@test");
+    let caller = insert_process(&shared, 1);
+    let peer = install_peer(&shared, peer_node);
+    let facility = control_facility(&shared);
+    let oversized = RemotePid {
+        node: peer_node,
+        pid_number: u64::from(u32::MAX) + 1,
+        serial: 0,
+    };
+
+    assert_eq!(
+        facility.link_remote(caller, oversized),
+        Err(RemoteLinkError::BadTarget),
+        "an unencodable target pid is BadTarget"
+    );
+    assert!(
+        remote_links_of(&shared, caller).is_empty(),
+        "no immortal half-link is left behind"
+    );
+    assert_eq!(
+        facility.exit_remote(caller, oversized, ExitReason::Error),
+        Ok(()),
+        "EXIT2 stays best-effort Ok"
+    );
+    assert_eq!(facility.unlink_remote(caller, oversized), Ok(()));
+
+    let connection = shared
+        .distribution_connections
+        .get_connection(peer_node)
+        .expect("the connection must survive the refused controls");
+    assert!(
+        !connection.is_down(),
+        "an unencodable pid is refused at the send boundary, not converted \
+         into a whole-connection teardown"
+    );
+    drop(peer);
 }

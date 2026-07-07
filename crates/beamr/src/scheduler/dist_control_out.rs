@@ -7,9 +7,11 @@
 //! via `control_link` and `DistSender::enqueue_control`. A full lane needs no
 //! handling by the caller: `enqueue_control` has already marked the pinned
 //! connection down (`ControlOverflow`), and the inline down-hook's
-//! noconnection backstop supplies the signals (DC-1(b)/DC-3). An encode
-//! failure — unreachable for atom/u64 inputs — also downs the pinned
-//! connection: DC-1 has no silent arm.
+//! noconnection backstop supplies the signals (DC-1(b)/DC-3). Pid components
+//! beyond the wire's u32 range are refused at this boundary
+//! ([`wire_encodable`]); an encode failure past that guard — unreachable for
+//! the inputs this module produces — still downs the pinned connection: DC-1
+//! has no silent arm.
 //!
 //! Replay mode (`dist_sender` is `None`): LINK fails `NoConnection`;
 //! UNLINK/EXIT/EXIT2 no-op — distribution is globally off in replay.
@@ -33,12 +35,19 @@ use super::SharedState;
 /// LINK would create an immortal local half-link — no connection means no
 /// down event and therefore no cleanup, ever. No auto-dial (C7; explicit
 /// `connect_node` is the embedder pattern; the OTP auto-connect divergence is
-/// recorded in the wire spec).
+/// recorded in the wire spec). An endpoint pid beyond the wire's u32 range ⇒
+/// `Err(BadTarget)` ([`wire_encodable`]).
 pub(super) fn send_link(
     shared: &SharedState,
     caller_pid: u64,
     target: RemotePid,
 ) -> Result<(), RemoteLinkError> {
+    if !wire_encodable(caller_pid, target) {
+        // A link whose endpoints cannot ride the wire could never be severed
+        // by a wire EXIT — refuse it here instead of letting the encode
+        // failure down the whole connection.
+        return Err(RemoteLinkError::BadTarget);
+    }
     let Some(sender) = &shared.dist_sender else {
         return Err(RemoteLinkError::NoConnection);
     };
@@ -63,6 +72,12 @@ pub(super) fn send_link(
 /// delivered (or will deliver) noconnection for every link to us (DC-3, both
 /// sides), which severs the remote half too.
 pub(super) fn send_unlink(shared: &SharedState, caller_pid: u64, target: RemotePid) {
+    if !wire_encodable(caller_pid, target) {
+        // No remote link can exist between wire-unencodable endpoints
+        // (`send_link` refuses them; inbound endpoints decode from u32 wire
+        // fields), so there is nothing to unlink — dropping is not lossy.
+        return;
+    }
     let Some(sender) = &shared.dist_sender else {
         return;
     };
@@ -114,6 +129,15 @@ fn send_exit(
     target: RemotePid,
     reason: ExitReason,
 ) {
+    if !wire_encodable(from_pid, target) {
+        // EXIT (op 3): defensive only — link endpoints are wire-encodable by
+        // construction (`send_link` refuses oversized pids; inbound endpoints
+        // decode from u32 wire fields), so no link-exit can reach this arm.
+        // EXIT2 (op 8): best-effort fire-and-forget (ruling 7) — dropping an
+        // undeliverable signal is its contract; tearing the connection down
+        // per control is not.
+        return;
+    }
     let Some(sender) = &shared.dist_sender else {
         return;
     };
@@ -129,6 +153,18 @@ fn send_exit(
         &shared.atom_table,
     );
     enqueue_pinned(sender, connection, frame);
+}
+
+/// Whether both endpoint pids fit the wire's NEW_PID_EXT `u32` fields
+/// (`encode_external_pid` rejects larger components). Without this boundary
+/// guard, once a long-lived node's monotonic pid counter passes 2^32, every
+/// control naming such a pid would fail encode and tear the pinned connection
+/// down — a connect/noconnection/redial churn loop while the caller sees
+/// success.
+fn wire_encodable(from_pid: u64, target: RemotePid) -> bool {
+    u32::try_from(from_pid).is_ok()
+        && u32::try_from(target.pid_number).is_ok()
+        && u32::try_from(target.serial).is_ok()
 }
 
 /// Hand one encoded control to the lane against its pinned connection.
@@ -148,9 +184,11 @@ fn enqueue_pinned(
             });
         }
         Err(_) => {
-            // Unreachable for atom/u64 inputs, but DC-1 has no silent arm: a
-            // control that cannot be encoded must down the pinned connection
-            // so the noconnection backstop supplies the death signal.
+            // Unreachable for the inputs this module produces (pids are
+            // guarded by `wire_encodable`; node and reason atoms come from
+            // the interned table), but DC-1 has no silent arm: a control that
+            // cannot be encoded must down the pinned connection so the
+            // noconnection backstop supplies the death signal.
             connection.mark_down_control_overflow();
         }
     }

@@ -1028,9 +1028,13 @@ impl Scheduler {
     /// Records the local half-link and sends a wire LINK over the already
     /// established connection to `remote.node` (no auto-dial: connect first,
     /// then link). Errors: [`RemoteLinkError::BadTarget`] when `local_pid` is
-    /// dead or absent, [`RemoteLinkError::NoConnection`] when no connection to
-    /// `remote.node` exists — in which case no local half-link is left behind.
-    /// Delegates to the same facility the `link/1` BIF uses.
+    /// dead or absent, or when a `remote` pid component exceeds the wire's
+    /// u32 range; [`RemoteLinkError::NoConnection`] when no connection to
+    /// `remote.node` exists — in either error case no local half-link is left
+    /// behind. `remote.serial` is normalized to 0 (the wire link identity):
+    /// the peer mints every EXIT/UNLINK `from` pid with serial 0, so a
+    /// nonzero serial could never match the stored link when the exit signal
+    /// arrives. Delegates to the same facility the `link/1` BIF uses.
     pub fn link_remote(&self, local_pid: u64, remote: RemotePid) -> Result<(), RemoteLinkError> {
         let facility = supervision_integration::SchedulerDistributionControlFacility {
             shared: Arc::clone(&self.shared),
@@ -1042,7 +1046,9 @@ impl Scheduler {
     ///
     /// Removes the local half-link and sends a best-effort wire UNLINK (an
     /// absent connection drops it — the peer's own down handling severs its
-    /// half). Delegates to the same facility the `unlink/1` BIF uses.
+    /// half). `remote.serial` is normalized to 0, mirroring
+    /// [`Scheduler::link_remote`], so a nonzero serial cannot miss the stored
+    /// half-link. Delegates to the same facility the `unlink/1` BIF uses.
     pub fn unlink_remote(&self, local_pid: u64, remote: RemotePid) -> Result<(), RemoteLinkError> {
         let facility = supervision_integration::SchedulerDistributionControlFacility {
             shared: Arc::clone(&self.shared),

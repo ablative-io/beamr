@@ -331,6 +331,19 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
             for linked_pid in &metadata.links {
                 process.add_link(*linked_pid);
             }
+            // Remote links: metadata is authoritative in BOTH directions.
+            // While the slot is Executing every remote-link mutation — the
+            // caller's own link/unlink BIFs, inbound wire LINK/UNLINK/EXIT,
+            // and the noconnection backstop — lands on
+            // `metadata.remote_links` (the checked-out `Process` copy is
+            // never touched), so an add-only merge would resurrect entries
+            // the DC-4 exactly-once gate already consumed, double-firing the
+            // exit signal on the next connection down and undoing unlink/1.
+            for remote_link in process.remote_links().to_vec() {
+                if !metadata.remote_links.contains(&remote_link) {
+                    process.remove_remote_link(remote_link);
+                }
+            }
             for remote_link in &metadata.remote_links {
                 process.add_remote_link(*remote_link);
             }

@@ -90,6 +90,14 @@ pub(super) fn register_distribution_control_handler(shared: &Arc<SharedState>) {
     shared
         .distribution_connections
         .register_control_frame_handler_with_origin(move |origin, control, payload| {
+            if control.is_empty() && payload.is_empty() {
+                // Keepalive: the all-zero 8-byte header reaches the handler as
+                // an empty control + payload. It is liveness traffic (already
+                // consumed by the read loop's inbound-activity refresh), not a
+                // control frame — decoding it would fail and count every
+                // healthy heartbeat as a dropped "dispatch" frame in telemetry.
+                return;
+            }
             let Some(shared) = shared_for_handler.upgrade() else {
                 // Scheduler dropped: there is nothing left to deliver to.
                 return;
@@ -2047,6 +2055,16 @@ pub(super) struct SchedulerDistributionControlFacility {
 
 impl DistributionControlFacility for SchedulerDistributionControlFacility {
     fn link_remote(&self, caller_pid: u64, target: RemotePid) -> Result<(), RemoteLinkError> {
+        // Store and send the serial-0 identity: the peer's decode drops the
+        // `to` serial and it mints every later EXIT/UNLINK `from` as
+        // (node, pid_number, serial 0), so a link stored with a nonzero
+        // embedder-supplied serial could never be severed by the wire EXIT
+        // equality gate (DC-4) — the death signal would be silently lost
+        // until node-down.
+        let target = RemotePid {
+            serial: 0,
+            ..target
+        };
         if self.shared.process_table.get(caller_pid).is_none() {
             return Err(RemoteLinkError::BadTarget);
         }
@@ -2057,7 +2075,8 @@ impl DistributionControlFacility for SchedulerDistributionControlFacility {
         // and the inline down-hook fires on this thread, `connection_down`
         // must observe the just-established link to convert it to
         // noconnection. The connection precondition surfaces as `send_link`'s
-        // `NoConnection`; on that arm the just-established local half-link is
+        // `NoConnection` (and a pid outside the wire's u32 range as
+        // `BadTarget`); on those arms the just-established local half-link is
         // unwound — an unconnected LINK would otherwise be immortal (no
         // connection ⇒ no down event ⇒ no cleanup, ever). If the inline hook
         // already consumed the link, the unwind is a no-op.
@@ -2069,6 +2088,12 @@ impl DistributionControlFacility for SchedulerDistributionControlFacility {
     }
 
     fn unlink_remote(&self, caller_pid: u64, target: RemotePid) -> Result<(), RemoteLinkError> {
+        // Serial-0 identity, mirroring `link_remote`: the stored half-link is
+        // always serial 0, so a nonzero embedder serial must not miss it.
+        let target = RemotePid {
+            serial: 0,
+            ..target
+        };
         let _ = remove_remote_link(&self.shared, caller_pid, target);
         dist_control_out::send_unlink(&self.shared, caller_pid, target);
         Ok(())

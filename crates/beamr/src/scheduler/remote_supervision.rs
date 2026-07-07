@@ -169,6 +169,18 @@ pub(crate) fn connection_down(shared: &SharedState, node: Atom) {
 /// half-link forever. An Executing-but-tombstoned target links successfully
 /// and self-heals at store-back: `cleanup_exited_process` → `propagate_exit`
 /// sends the linker a wire EXIT with the true terminal reason.
+///
+/// After establishing, the origin's connection is rechecked — the inbound
+/// mirror of `link_remote`'s establish-then-send unwind. The noconnection
+/// backstop only converts links its scan can SEE, and a down initiated
+/// outside the read loop (write timeout, control-lane overflow, heartbeat
+/// deadline, `disconnect_node`) dispatches on the marking thread with no
+/// ordering against this apply: its scan may complete between the frame's
+/// arrival and our establishment, leaving a link no future down event would
+/// ever sever — and no wire EXIT either, since the peer's own down handling
+/// consumed its half. If the connection is gone or down by the time the link
+/// exists, deliver the noconnection it missed; when the backstop DID observe
+/// the link, the DC-4 `LinkExit` gate makes this delivery a no-op.
 pub(super) fn apply_inbound_link(shared: &SharedState, from: RemotePid, to_pid: u64) {
     if !establish_remote_link(shared, to_pid, from) {
         let reason = shared
@@ -177,6 +189,20 @@ pub(super) fn apply_inbound_link(shared: &SharedState, from: RemotePid, to_pid: 
             .map(link::terminal_reason)
             .unwrap_or(ExitReason::NoProc);
         dist_control_out::send_exit_linked(shared, to_pid, from, reason);
+        return;
+    }
+    let connection_live = shared
+        .distribution_connections
+        .get_connection(from.node)
+        .is_some_and(|connection| !connection.is_down());
+    if !connection_live {
+        process_remote_exit_signal(
+            shared,
+            from,
+            to_pid,
+            ExitReason::NoConnection,
+            RemoteExitKind::LinkExit,
+        );
     }
 }
 
