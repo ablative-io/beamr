@@ -118,6 +118,11 @@ pub enum ConnectionDownReason {
     /// connection-event hub fires (pg-purge, noconnection delivery, embedder
     /// subscribers). Monitor-DOWN is work item A.
     HeartbeatTimeout,
+    /// The must-deliver control lane overflowed against this connection: the
+    /// peer cannot absorb pending LINK/EXIT controls, so it is treated as down
+    /// and the noconnection backstop supplies the coarsened signals (DC-1/DC-3,
+    /// `DIST-CONTROL-WIRE-SPEC.md` §5).
+    ControlOverflow,
 }
 
 /// Event emitted when a connection is removed from the active connection table.

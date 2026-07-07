@@ -264,6 +264,20 @@ impl DistConnection {
         self.mark_down(ConnectionDownReason::WriteTimeout);
     }
 
+    /// Mark this connection down because the must-deliver control lane
+    /// overflowed against it.
+    ///
+    /// Called by `DistSender::enqueue_control` when the bounded control lane is
+    /// full: a peer that cannot absorb that many pending LINK/EXIT controls is
+    /// effectively down (DC-1), so instead of dropping the control silently the
+    /// pinned connection is torn down and the connection-down hook's
+    /// noconnection backstop supplies the coarsened signals. Also the sink for
+    /// control encode failures (DC-1 has no silent arm). Idempotent via the
+    /// inner `mark_down`.
+    pub(crate) fn mark_down_control_overflow(self: &Arc<Self>) {
+        self.mark_down(ConnectionDownReason::ControlOverflow);
+    }
+
     fn mark_down(self: &Arc<Self>, reason: ConnectionDownReason) {
         let _ = self.down_reason.set(reason);
         if self.down.swap(true, Ordering::AcqRel) {
