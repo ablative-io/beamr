@@ -97,7 +97,7 @@ use crate::distribution::connection::{ConnectionManager, HeartbeatConfig};
 #[cfg(feature = "threads")]
 use crate::distribution::pg::PgRegistry;
 #[cfg(feature = "threads")]
-use crate::distribution::remote_link::ControlRouter;
+use crate::distribution::remote_link::{DistributionControlFacility, RemoteLinkError};
 #[cfg(feature = "threads")]
 use crate::distribution::sender::DistSender;
 #[cfg(feature = "threads")]
@@ -130,7 +130,7 @@ use crate::native::{
 #[cfg(feature = "threads")]
 use crate::process::registry::ProcessTable;
 #[cfg(feature = "threads")]
-use crate::process::{ExitReason, Process, ProcessStatus};
+use crate::process::{ExitReason, Process, ProcessStatus, RemotePid};
 #[cfg(feature = "threads")]
 use crate::replay::{ReplayDriver, ReplayLog};
 #[cfg(feature = "threads")]
@@ -285,7 +285,6 @@ pub(super) struct SharedState {
     /// Holds the `ConnectionManager`, never `Arc<SharedState>`, so it does not
     /// form a reference cycle with the scheduler.
     dist_sender: Option<DistSender>,
-    control_router: ControlRouter,
     process_registry: DashMap<crate::atom::Atom, u64>,
     timers: Arc<Mutex<TimerWheel>>,
     /// Receive timers that fired but could not be applied in place: pid →
@@ -830,7 +829,6 @@ impl Scheduler {
             distribution,
             distribution_connections,
             dist_sender,
-            control_router: ControlRouter::new(),
             process_registry: DashMap::new(),
             timers: Arc::new(Mutex::new(TimerWheel::new())),
             expired_receive_timers: DashMap::new(),
@@ -1023,6 +1021,33 @@ impl Scheduler {
         crate::native::supervision::SupervisionFacility::exit_signal(
             &facility, from_pid, target_pid, reason,
         )
+    }
+    /// Establish a cross-node link between local `local_pid` and `remote`,
+    /// the embedding-side equivalent of `link/1` on an external pid.
+    ///
+    /// Records the local half-link and sends a wire LINK over the already
+    /// established connection to `remote.node` (no auto-dial: connect first,
+    /// then link). Errors: [`RemoteLinkError::BadTarget`] when `local_pid` is
+    /// dead or absent, [`RemoteLinkError::NoConnection`] when no connection to
+    /// `remote.node` exists — in which case no local half-link is left behind.
+    /// Delegates to the same facility the `link/1` BIF uses.
+    pub fn link_remote(&self, local_pid: u64, remote: RemotePid) -> Result<(), RemoteLinkError> {
+        let facility = supervision_integration::SchedulerDistributionControlFacility {
+            shared: Arc::clone(&self.shared),
+        };
+        facility.link_remote(local_pid, remote)
+    }
+    /// Remove a cross-node link between local `local_pid` and `remote`, the
+    /// embedding-side equivalent of `unlink/1` on an external pid.
+    ///
+    /// Removes the local half-link and sends a best-effort wire UNLINK (an
+    /// absent connection drops it — the peer's own down handling severs its
+    /// half). Delegates to the same facility the `unlink/1` BIF uses.
+    pub fn unlink_remote(&self, local_pid: u64, remote: RemotePid) -> Result<(), RemoteLinkError> {
+        let facility = supervision_integration::SchedulerDistributionControlFacility {
+            shared: Arc::clone(&self.shared),
+        };
+        facility.unlink_remote(local_pid, remote)
     }
     #[must_use]
     pub fn process_namespace(&self, pid: u64) -> Option<NamespaceId> {

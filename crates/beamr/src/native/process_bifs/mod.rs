@@ -239,6 +239,11 @@ fn priority_to_atom(context: &ProcessContext, priority: Priority) -> Result<Atom
 ///
 /// Note: the returned reference is currently a small integer, not a boxed
 /// reference term, because BIFs cannot allocate boxed terms on the process heap.
+///
+/// External pids deliberately badarg (`as_pid()` is `None` for boxed pids):
+/// remote monitors are staged behind the reserved `BEAMR_MONITOR` opcode and
+/// lift this gate only when the node-down DOWN purge lands with them — a loud,
+/// correct failure until then (wire spec §1.3/D3).
 pub fn bif_monitor(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [type_term, pid_term] = args else {
         return Err(badarg());
@@ -257,6 +262,10 @@ pub fn bif_monitor(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
 }
 
 /// erlang:demonitor/1 — remove a monitor identified by its reference.
+///
+/// References naming remote monitors cannot exist yet: `bif_monitor` badargs
+/// on external pids until the `BEAMR_MONITOR` stage lands (wire spec §1.3/D3),
+/// so this intentionally handles local monitor references only.
 pub fn bif_demonitor(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [ref_term] = args else {
         return Err(badarg());
@@ -284,18 +293,39 @@ pub fn bif_exit_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, T
 }
 
 /// erlang:exit/2 — send an exit signal to a target process.
+///
+/// External pids route through the distribution control facility as a wire
+/// EXIT2, which is best-effort fire-and-forget: `exit/2` returns `true` even
+/// when the signal is undeliverable (OTP parity; OTP's auto-connect
+/// divergence is recorded in the wire spec, ruling 7).
 pub fn bif_exit(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [pid_term, reason_term] = args else {
         return Err(badarg());
     };
-    let target_pid = pid_term.as_pid().ok_or_else(badarg)?;
+    let target = PidRef::new(*pid_term).ok_or_else(badarg)?;
     let caller_pid = context.pid().ok_or_else(badarg)?;
     let reason = exit_reason_from_term(*reason_term)?;
-    let facility = context.supervision_facility().ok_or_else(badarg)?;
-    facility
-        .exit_signal(caller_pid, target_pid, reason)
-        .map_err(|_| badarg())?;
-    Ok(Term::atom(Atom::TRUE))
+    match target {
+        PidRef::Local(target_pid) => {
+            let facility = context.supervision_facility().ok_or_else(badarg)?;
+            facility
+                .exit_signal(caller_pid, target_pid, reason)
+                .map_err(|_| badarg())?;
+            Ok(Term::atom(Atom::TRUE))
+        }
+        #[cfg(feature = "net")]
+        PidRef::Remote(_) => {
+            let remote = target.remote_pid().ok_or_else(badarg)?;
+            let facility = context.distribution_control_facility().ok_or_else(badarg)?;
+            let _ = facility.exit_remote(caller_pid, remote, reason);
+            // exit/2 returns true even when undeliverable (ruling 7).
+            Ok(Term::atom(Atom::TRUE))
+        }
+        // No distribution layer in the cooperative build: the signal is
+        // undeliverable, and exit/2 still returns true (best-effort, ruling 7).
+        #[cfg(not(feature = "net"))]
+        PidRef::Remote(_) => Ok(Term::atom(Atom::TRUE)),
+    }
 }
 
 fn exit_reason_from_term(term: Term) -> Result<ExitReason, Term> {

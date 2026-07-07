@@ -247,7 +247,7 @@ fn ets_metadata_with_heir(
 }
 
 pub(super) fn make_shared_state() -> Arc<SharedState> {
-    build_shared_state(false)
+    build_shared_state(false, "local@test")
 }
 
 /// [`make_shared_state`] plus a live [`DistSender`] (its owned runtime drives
@@ -255,10 +255,17 @@ pub(super) fn make_shared_state() -> Arc<SharedState> {
 /// connections' read loops) and a resolvable `local_node` name — the pieces
 /// wire-level outbound-control tests need.
 pub(super) fn make_shared_state_with_dist_sender() -> Arc<SharedState> {
-    build_shared_state(true)
+    build_shared_state(true, "local@test")
 }
 
-fn build_shared_state(with_dist_sender: bool) -> Arc<SharedState> {
+/// [`make_shared_state_with_dist_sender`] under an explicit node name, for
+/// tests that stand up TWO shared states as distinct nodes on a socket pair
+/// (each side's origin/misaddressing checks need the names to differ).
+pub(super) fn make_shared_state_with_dist_sender_named(node_name: &str) -> Arc<SharedState> {
+    build_shared_state(true, node_name)
+}
+
+fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedState> {
     let module_registry = Arc::new(ModuleRegistry::new());
     let namespace_store = DashMap::new();
     namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
@@ -275,7 +282,7 @@ fn build_shared_state(with_dist_sender: bool) -> Arc<SharedState> {
         Arc::clone(&atom_table),
         Arc::clone(&distribution.resolver),
         distribution.cookie.clone(),
-        "local@test",
+        node_name,
         0,
     );
     let dist_sender = if with_dist_sender {
@@ -287,7 +294,7 @@ fn build_shared_state(with_dist_sender: bool) -> Arc<SharedState> {
         None
     };
     let local_node = if with_dist_sender {
-        crate::distribution::Node::new(atom_table.intern("local@test"), 0)
+        crate::distribution::Node::new(atom_table.intern(node_name), 0)
     } else {
         crate::distribution::Node::new(crate::atom::Atom::new(0), 0)
     };
@@ -296,7 +303,7 @@ fn build_shared_state(with_dist_sender: bool) -> Arc<SharedState> {
             Arc::clone(&atom_table),
             distribution.resolver.clone(),
             distribution.cookie.clone(),
-            "local@test",
+            node_name,
             0,
         ),
     ));
@@ -328,7 +335,6 @@ fn build_shared_state(with_dist_sender: bool) -> Arc<SharedState> {
         distribution,
         distribution_connections,
         dist_sender,
-        control_router: crate::distribution::remote_link::ControlRouter::new(),
         process_registry: DashMap::new(),
         timers: Arc::new(std::sync::Mutex::new(crate::timer::TimerWheel::new())),
         expired_receive_timers: DashMap::new(),
@@ -904,28 +910,45 @@ fn sentinel_links_merge_into_body_on_store_back() {
     assert!(process_links_contain(&shared, pid, linked));
 }
 
+/// A remote-linked process dying puts a real EXIT(3) control on the wire:
+/// `cleanup_exited_process` → `propagate_exit` → `send_remote_exit` →
+/// `dist_control_out::send_exit_linked` → control lane → the peer socket,
+/// where the frame decodes as `ControlMessage::Exit` with `from` = the local
+/// node's serial-0 pid, `to` = the linked remote endpoint, and the terminal
+/// reason. (Formerly asserted against the never-drained `ControlRouter`
+/// buffer, retired with the wire path.)
 #[test]
 fn remote_link_exit_sends_exit_control() {
-    let shared = make_shared_state();
+    let shared = make_shared_state_with_dist_sender();
+    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let _context = handle.enter();
+
+    let peer_node = shared.atom_table.intern("peer@test");
     let pid = insert_process(&shared, 1);
     let remote = RemotePid {
-        node: Atom::OK,
+        node: peer_node,
         pid_number: 42,
         serial: 7,
     };
     add_remote_link(&shared, pid, remote);
+    let mut peer = super::connection_lifecycle_tests::install_peer(&shared, peer_node);
 
     cleanup_exited_process(&shared, pid, ExitReason::Error);
 
-    let messages = shared.control_router.messages();
-    assert_eq!(messages.len(), 1);
+    let (control, payload) = super::remote_supervision_tests::read_peer_frame(&mut peer);
     assert_eq!(
-        messages[0].op,
-        crate::distribution::control_link::ControlOp::Exit
+        crate::distribution::control::decode_control(&control, &shared.atom_table),
+        Ok(crate::distribution::control::ControlMessage::Exit {
+            from: RemotePid {
+                node: shared.local_node.name,
+                pid_number: pid,
+                serial: 0,
+            },
+            to_pid: remote.pid_number,
+            reason: ExitReason::Error,
+        })
     );
-    assert_eq!(messages[0].from.pid_number, pid);
-    assert_eq!(messages[0].to, remote);
-    assert_eq!(messages[0].reason, Some(ExitReason::Error));
+    assert_eq!(payload, vec![131, 106], "link controls carry payload = NIL");
 }
 
 #[test]

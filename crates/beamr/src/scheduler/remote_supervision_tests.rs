@@ -9,15 +9,17 @@ use std::time::{Duration, Instant};
 
 use super::connection_lifecycle::register_scheduler_connection_subscriber;
 use super::connection_lifecycle_tests::{
-    assert_noconnection_exit, install_peer, mailbox_message_count,
+    assert_noconnection_exit, install_peer, mailbox_message_count, socket_pair,
 };
 use super::remote_supervision::{RemoteExitKind, apply_inbound_link};
 use super::supervision_integration::{
-    SchedulerDistributionSendFacility, establish_remote_link, register_distribution_control_handler,
+    SchedulerDistributionControlFacility, SchedulerDistributionSendFacility, establish_remote_link,
+    register_distribution_control_handler,
 };
 use super::supervision_tests::{
     add_remote_link, insert_process, is_alive, make_executing, make_shared_state,
-    make_shared_state_with_dist_sender, read_mailbox_tuple, set_trap_exit,
+    make_shared_state_with_dist_sender, make_shared_state_with_dist_sender_named,
+    read_mailbox_tuple, set_trap_exit,
 };
 use super::*;
 use crate::atom::Atom;
@@ -27,6 +29,8 @@ use crate::distribution::control::{
 use crate::distribution::control_link::{
     ControlOp, ControlSinks, dispatch_frame, encode_exit_frame, encode_link_frame,
 };
+use crate::distribution::remote_link::{DistributionControlFacility, RemoteLinkError};
+use crate::distribution::sender::ControlOutbound;
 use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
 use crate::process::{ExitReason, RemotePid};
 use crate::scheduler::execution::{
@@ -86,7 +90,7 @@ fn add_local_link(shared: &SharedState, a: u64, b: u64) {
 
 /// Read one `[control_len|payload_len]`-framed message from the peer side of
 /// a test socket; returns `(control, payload)` ETF bytes.
-fn read_peer_frame(peer: &mut std::net::TcpStream) -> (Vec<u8>, Vec<u8>) {
+pub(super) fn read_peer_frame(peer: &mut std::net::TcpStream) -> (Vec<u8>, Vec<u8>) {
     peer.set_read_timeout(Some(Duration::from_secs(10)))
         .expect("peer read timeout");
     let mut header = [0_u8; 8];
@@ -653,4 +657,692 @@ fn manual_disconnect_from_plain_thread_delivers_noconnection() {
     assert_noconnection_exit(&tuple, remote);
     assert!(is_alive(&shared, target), "trapping target survives");
     drop(peer);
+}
+
+/// All mailbox messages of a Present process, in mailbox order.
+fn mailbox_terms(shared: &SharedState, pid: u64) -> Vec<Term> {
+    let entry = shared
+        .process_bodies
+        .get(&pid)
+        .unwrap_or_else(|| panic!("process {pid} exists"));
+    let mut slot = lock_or_recover(&entry);
+    let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot else {
+        panic!("process {pid} is present");
+    };
+    process.mailbox_mut().drain_arrival();
+    process.mailbox().scan_iter().copied().collect()
+}
+
+fn control_facility(shared: &Arc<SharedState>) -> SchedulerDistributionControlFacility {
+    SchedulerDistributionControlFacility {
+        shared: Arc::clone(shared),
+    }
+}
+
+/// Scenario 1 (outbound half) + T-4: `link_remote` establishes the local
+/// half-link and puts a real LINK control on the wire — with the serial-0
+/// local `from` a later EXIT's equality gate needs — re-linking is idempotent
+/// success, and `unlink_remote` removes the half and sends UNLINK.
+#[test]
+fn facility_link_and_unlink_ride_the_wire_and_track_the_local_half() {
+    let shared = make_shared_state_with_dist_sender();
+    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let _context = handle.enter();
+
+    let peer_node = shared.atom_table.intern("peer@test");
+    let caller = insert_process(&shared, 1);
+    let mut peer = install_peer(&shared, peer_node);
+    let target = RemotePid {
+        node: peer_node,
+        pid_number: 42,
+        serial: 3,
+    };
+    let facility = control_facility(&shared);
+
+    assert_eq!(facility.link_remote(caller, target), Ok(()));
+    assert_eq!(
+        facility.link_remote(caller, target),
+        Ok(()),
+        "duplicate link_remote is idempotent success (T-4)"
+    );
+    assert_eq!(remote_links_of(&shared, caller), vec![target]);
+
+    let (control, payload) = read_peer_frame(&mut peer);
+    assert_eq!(
+        decode_control(&control, &shared.atom_table),
+        Ok(ControlMessage::Link {
+            from: RemotePid {
+                node: shared.local_node.name,
+                pid_number: caller,
+                serial: 0,
+            },
+            to_pid: target.pid_number,
+        })
+    );
+    assert_eq!(payload, vec![131, 106], "link controls carry payload = NIL");
+    // The duplicate link_remote also rode the wire (the peer applies it
+    // idempotently, ruling 2); skip past it to reach the UNLINK.
+    let _duplicate_link = read_peer_frame(&mut peer);
+
+    assert_eq!(facility.unlink_remote(caller, target), Ok(()));
+    assert!(remote_links_of(&shared, caller).is_empty());
+    let (control, _payload) = read_peer_frame(&mut peer);
+    assert_eq!(
+        decode_control(&control, &shared.atom_table),
+        Ok(ControlMessage::Unlink {
+            from: RemotePid {
+                node: shared.local_node.name,
+                pid_number: caller,
+                serial: 0,
+            },
+            to_pid: target.pid_number,
+        })
+    );
+}
+
+/// `link_remote` preconditions: a dead caller is `BadTarget`; an unconnected
+/// target node is `NoConnection` (no auto-dial, C7) and must not leave an
+/// immortal local half-link behind. `exit_remote` stays `Ok` regardless —
+/// EXIT2 is best-effort fire-and-forget (ruling 7).
+#[test]
+fn facility_link_remote_preconditions_and_best_effort_exit2() {
+    let shared = make_shared_state_with_dist_sender();
+    let unconnected = shared.atom_table.intern("unconnected@test");
+    let target = RemotePid {
+        node: unconnected,
+        pid_number: 42,
+        serial: 0,
+    };
+    let facility = control_facility(&shared);
+
+    assert_eq!(
+        facility.link_remote(999, target),
+        Err(RemoteLinkError::BadTarget),
+        "a dead caller cannot link"
+    );
+
+    let caller = insert_process(&shared, 1);
+    assert_eq!(
+        facility.link_remote(caller, target),
+        Err(RemoteLinkError::NoConnection),
+        "no connection means no LINK — connect first, then link"
+    );
+    assert!(
+        remote_links_of(&shared, caller).is_empty(),
+        "the NoConnection arm must not leave an immortal half-link"
+    );
+
+    assert_eq!(
+        facility.exit_remote(caller, target, ExitReason::Error),
+        Ok(()),
+        "exit/2 is best-effort: undeliverable is still Ok (ruling 7)"
+    );
+    assert_eq!(
+        facility.unlink_remote(caller, target),
+        Ok(()),
+        "unlink to an unconnected node drops the control and succeeds"
+    );
+}
+
+/// Scenario 3, outbound halves: a linked process dying of Kill leaves the node
+/// as a wire EXIT carrying `killed` (pre-terminalized by `propagate_exit`),
+/// while `exit_remote(.., Kill)` emits an EXIT2 carrying RAW `kill` — the
+/// receiver-side untrappable form.
+#[test]
+fn kill_crosses_the_wire_as_killed_but_exit2_carries_raw_kill() {
+    let shared = make_shared_state_with_dist_sender();
+    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let _context = handle.enter();
+
+    let peer_node = shared.atom_table.intern("peer@test");
+    let dying = insert_process(&shared, 1);
+    let target = RemotePid {
+        node: peer_node,
+        pid_number: 42,
+        serial: 0,
+    };
+    add_remote_link(&shared, dying, target);
+    let mut peer = install_peer(&shared, peer_node);
+
+    cleanup_exited_process(&shared, dying, ExitReason::Kill);
+    let (control, _payload) = read_peer_frame(&mut peer);
+    assert_eq!(
+        decode_control(&control, &shared.atom_table),
+        Ok(ControlMessage::Exit {
+            from: RemotePid {
+                node: shared.local_node.name,
+                pid_number: dying,
+                serial: 0,
+            },
+            to_pid: target.pid_number,
+            reason: ExitReason::Killed,
+        }),
+        "link EXIT is pre-terminalized: kill leaves the node as killed"
+    );
+
+    let caller = insert_process(&shared, 2);
+    let facility = control_facility(&shared);
+    assert_eq!(
+        facility.exit_remote(caller, target, ExitReason::Kill),
+        Ok(())
+    );
+    let (control, _payload) = read_peer_frame(&mut peer);
+    assert_eq!(
+        decode_control(&control, &shared.atom_table),
+        Ok(ControlMessage::Exit2 {
+            from: RemotePid {
+                node: shared.local_node.name,
+                pid_number: caller,
+                serial: 0,
+            },
+            to_pid: target.pid_number,
+            reason: ExitReason::Kill,
+        }),
+        "EXIT2 carries the raw reason — kill stays untrappable at the receiver"
+    );
+}
+
+/// Scenario 3, receive half: an inbound link EXIT carrying `killed` (the
+/// pre-terminalized form) IS trappable — parity with the local
+/// `killed_signal_is_trappable_by_linked_process`.
+#[test]
+fn wire_killed_reason_is_trappable_by_the_linked_target() {
+    let shared = make_shared_state_with_dist_sender();
+    let peer_node = shared.atom_table.intern("peer@test");
+    let target = insert_process(&shared, 1);
+    set_trap_exit(&shared, target, true);
+    let from = RemotePid {
+        node: peer_node,
+        pid_number: 42,
+        serial: 0,
+    };
+    add_remote_link(&shared, target, from);
+
+    let frame = encode_exit_frame(
+        ControlOp::Exit,
+        peer_node,
+        42,
+        RemotePid {
+            node: shared.local_node.name,
+            pid_number: target,
+            serial: 0,
+        },
+        ExitReason::Killed,
+        &shared.atom_table,
+    )
+    .expect("exit frame encodes");
+    assert_eq!(dispatch_wire_frame(&shared, peer_node, &frame), Ok(true));
+
+    let tuple = read_mailbox_tuple(&shared, target).expect("killed EXIT tuple");
+    assert_eq!(tuple.len(), 3);
+    assert_eq!(tuple[0], Term::atom(Atom::EXIT));
+    assert_eq!(
+        tuple[2],
+        Term::atom(Atom::KILLED),
+        "reason is killed, not kill"
+    );
+    assert!(is_alive(&shared, target), "killed is trappable");
+}
+
+/// Scenario 2, in-crate half: a wire EXIT carrying `normal` never kills a
+/// non-trapping target (no message either), and a trapping target receives
+/// `{'EXIT', _, normal}` — C3 includes Normal for trappers.
+#[test]
+fn wire_normal_exit_spares_non_trapper_and_traps_as_normal_tuple() {
+    let shared = make_shared_state_with_dist_sender();
+    let peer_node = shared.atom_table.intern("peer@test");
+    let quiet = insert_process(&shared, 1);
+    let trapper = insert_process(&shared, 2);
+    set_trap_exit(&shared, trapper, true);
+    let from = RemotePid {
+        node: peer_node,
+        pid_number: 42,
+        serial: 0,
+    };
+    add_remote_link(&shared, quiet, from);
+    add_remote_link(&shared, trapper, from);
+
+    for target in [quiet, trapper] {
+        let frame = encode_exit_frame(
+            ControlOp::Exit,
+            peer_node,
+            42,
+            RemotePid {
+                node: shared.local_node.name,
+                pid_number: target,
+                serial: 0,
+            },
+            ExitReason::Normal,
+            &shared.atom_table,
+        )
+        .expect("exit frame encodes");
+        assert_eq!(dispatch_wire_frame(&shared, peer_node, &frame), Ok(true));
+    }
+
+    assert!(is_alive(&shared, quiet), "a normal remote exit never kills");
+    assert_eq!(mailbox_message_count(&shared, quiet), 0);
+    let tuple = read_mailbox_tuple(&shared, trapper).expect("normal EXIT tuple");
+    assert_eq!(tuple.len(), 3);
+    assert_eq!(tuple[0], Term::atom(Atom::EXIT));
+    assert_eq!(tuple[2], Term::atom(Atom::NORMAL));
+    assert!(is_alive(&shared, trapper));
+}
+
+/// Scenario 6, forward order (in-crate half): the wire EXIT lands first and
+/// consumes the link; the node death that follows finds no link left, so the
+/// noconnection backstop no-ops — exactly one `{'EXIT', _, _}` (DC-4).
+#[test]
+fn wire_exit_then_connection_down_delivers_exactly_one_signal() {
+    let shared = make_shared_state_with_dist_sender();
+    let peer_node = shared.atom_table.intern("peer@test");
+    let target = insert_process(&shared, 1);
+    set_trap_exit(&shared, target, true);
+    let from = RemotePid {
+        node: peer_node,
+        pid_number: 42,
+        serial: 0,
+    };
+    add_remote_link(&shared, target, from);
+
+    let frame = encode_exit_frame(
+        ControlOp::Exit,
+        peer_node,
+        42,
+        RemotePid {
+            node: shared.local_node.name,
+            pid_number: target,
+            serial: 0,
+        },
+        ExitReason::Error,
+        &shared.atom_table,
+    )
+    .expect("exit frame encodes");
+    assert_eq!(dispatch_wire_frame(&shared, peer_node, &frame), Ok(true));
+    assert_eq!(mailbox_message_count(&shared, target), 1);
+
+    supervision_integration::connection_down(&shared, peer_node);
+
+    assert_eq!(
+        mailbox_message_count(&shared, target),
+        1,
+        "the backstop must not re-signal a link the wire EXIT consumed (DC-4)"
+    );
+    let tuple = read_mailbox_tuple(&shared, target).expect("wire EXIT tuple");
+    assert_eq!(tuple[2], Term::atom(Atom::ERROR));
+    assert!(is_alive(&shared, target));
+}
+
+/// Scenario 1, in-crate half over a real socket: messages the (test-driven)
+/// peer sends before its death all precede the EXIT in the target's mailbox —
+/// the receive-side face of DC-6 (one socket, frames applied serially) — and
+/// the trapping target gets exactly one `{'EXIT', <ext-pid>, error}` 3-tuple.
+#[test]
+fn presend_messages_precede_wire_exit_and_trapping_target_survives() {
+    let shared = make_shared_state_with_dist_sender();
+    register_distribution_control_handler(&shared);
+    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let _context = handle.enter();
+
+    let peer_node = shared.atom_table.intern("peer@test");
+    let target = insert_process(&shared, 1);
+    set_trap_exit(&shared, target, true);
+    let from = RemotePid {
+        node: peer_node,
+        pid_number: 42,
+        serial: 0,
+    };
+    add_remote_link(&shared, target, from);
+    let mut peer = install_peer(&shared, peer_node);
+
+    let mut heap = [0_u64; 4];
+    let to = write_external_pid(&mut heap, shared.local_node.name, target, 0)
+        .expect("external pid fits");
+    let count = 8_usize;
+    for index in 0..count {
+        let frame = encode_send_frame(
+            Term::atom(Atom::OK),
+            to,
+            Term::small_int(index as i64),
+            &shared.atom_table,
+        )
+        .expect("send frame encodes");
+        peer.write_all(&frame).expect("send frame writes");
+    }
+    let exit = encode_exit_frame(
+        ControlOp::Exit,
+        peer_node,
+        42,
+        RemotePid {
+            node: shared.local_node.name,
+            pid_number: target,
+            serial: 0,
+        },
+        ExitReason::Error,
+        &shared.atom_table,
+    )
+    .expect("exit frame encodes");
+    peer.write_all(&exit).expect("exit frame writes");
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while mailbox_message_count(&shared, target) < count + 1 {
+        assert!(
+            Instant::now() < deadline,
+            "pre-death sends + EXIT never all arrived"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    let terms = mailbox_terms(&shared, target);
+    assert_eq!(
+        terms.len(),
+        count + 1,
+        "exactly one EXIT after the payloads"
+    );
+    for (index, term) in terms[..count].iter().enumerate() {
+        assert_eq!(
+            *term,
+            Term::small_int(index as i64),
+            "pre-death sends stay ahead of the EXIT and in order"
+        );
+    }
+    let tuple = crate::term::boxed::Tuple::new(terms[count]).expect("EXIT is a tuple");
+    assert_eq!(tuple.arity(), 3);
+    assert_eq!(tuple.get(0), Some(Term::atom(Atom::EXIT)));
+    let source = ExternalPid::new(tuple.get(1).unwrap_or(Term::NIL)).expect("remote source pid");
+    assert_eq!(source.node(), Some(peer_node));
+    assert_eq!(source.pid_number(), 42);
+    assert_eq!(tuple.get(2), Some(Term::atom(Atom::ERROR)));
+    assert!(is_alive(&shared, target), "trapping target survives");
+}
+
+/// The `Scheduler::{link_remote, unlink_remote}` embedder API delegates to the
+/// distribution control facility with its preconditions intact.
+#[test]
+fn scheduler_link_remote_and_unlink_remote_delegate_with_preconditions() {
+    let scheduler = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
+        .expect("scheduler starts");
+    let node = scheduler.shared.atom_table.intern("unconnected@test");
+    let remote = RemotePid {
+        node,
+        pid_number: 7,
+        serial: 0,
+    };
+
+    assert_eq!(
+        scheduler.link_remote(4242, remote),
+        Err(RemoteLinkError::BadTarget),
+        "a dead caller is BadTarget"
+    );
+
+    let pid = insert_process(&scheduler.shared, 4242);
+    assert_eq!(
+        scheduler.link_remote(pid, remote),
+        Err(RemoteLinkError::NoConnection),
+        "no connection and no auto-dial"
+    );
+    assert!(
+        remote_links_of(&scheduler.shared, pid).is_empty(),
+        "the NoConnection arm must not leave an immortal half-link"
+    );
+
+    add_remote_link(&scheduler.shared, pid, remote);
+    assert_eq!(scheduler.unlink_remote(pid, remote), Ok(()));
+    assert!(remote_links_of(&scheduler.shared, pid).is_empty());
+    scheduler.shutdown();
+}
+
+/// T-2 (DC-4, the R1 kill-shot): a 2000-process exit storm between two real
+/// shared-state "nodes" on one socket pair — far past the 256-slot control
+/// lane by construction — converges to EXACTLY one `{'EXIT', _, R}` per link,
+/// each R ∈ {error, noconnection}: wire EXITs that rode generation G before
+/// any overflow, and the noconnection backstop for everything after DC-1(b)
+/// downed it. Nothing is lost, nothing is double-signalled.
+#[test]
+fn exit_storm_delivers_exactly_one_signal_per_link_across_nodes() {
+    const STORM: u64 = 2000;
+    const BASE: u64 = 1000;
+    let shared_a = make_shared_state_with_dist_sender_named("a@test");
+    let shared_b = make_shared_state_with_dist_sender_named("b@test");
+    register_distribution_control_handler(&shared_b);
+    register_scheduler_connection_subscriber(&shared_a);
+    register_scheduler_connection_subscriber(&shared_b);
+
+    let node_b_on_a = shared_a.atom_table.intern("b@test");
+    let node_a_on_b = shared_b.atom_table.intern("a@test");
+    let (server, client, addr) = socket_pair();
+    {
+        let handle = shared_a
+            .dist_sender
+            .as_ref()
+            .expect("dist sender a")
+            .handle();
+        let _context = handle.enter();
+        shared_a
+            .distribution_connections
+            .register_test_connection(node_b_on_a, addr, server)
+            .expect("register a->b connection");
+    }
+    {
+        let handle = shared_b
+            .dist_sender
+            .as_ref()
+            .expect("dist sender b")
+            .handle();
+        let _context = handle.enter();
+        shared_b
+            .distribution_connections
+            .register_test_connection(node_a_on_b, addr, client)
+            .expect("register b->a connection");
+    }
+
+    for index in 0..STORM {
+        let a_pid = insert_process(&shared_a, BASE + index);
+        add_remote_link(
+            &shared_a,
+            a_pid,
+            RemotePid {
+                node: node_b_on_a,
+                pid_number: BASE + index,
+                serial: 0,
+            },
+        );
+        let b_pid = insert_process(&shared_b, BASE + index);
+        set_trap_exit(&shared_b, b_pid, true);
+        add_remote_link(
+            &shared_b,
+            b_pid,
+            RemotePid {
+                node: node_a_on_b,
+                pid_number: BASE + index,
+                serial: 0,
+            },
+        );
+    }
+
+    // The burst. If the lane overflows mid-loop, the inline down-hook runs
+    // right here on this thread and the remaining sends drop (no connection)
+    // — their signals must arrive via B's own EOF backstop instead.
+    for index in 0..STORM {
+        cleanup_exited_process(&shared_a, BASE + index, ExitReason::Error);
+    }
+
+    // HS-5-style watchdog: convergence bounded by a deadline, not a sleep.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let total: usize = (0..STORM)
+            .map(|index| mailbox_message_count(&shared_b, BASE + index))
+            .sum();
+        if total >= STORM as usize {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "exit storm never converged: {total}/{STORM} signals delivered"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Settle briefly so a hypothetical late duplicate would be caught below.
+    std::thread::sleep(Duration::from_millis(100));
+
+    let mut wire_exits = 0_usize;
+    let mut coarsened = 0_usize;
+    for index in 0..STORM {
+        let pid = BASE + index;
+        assert_eq!(
+            mailbox_message_count(&shared_b, pid),
+            1,
+            "exactly one exit signal per link (DC-4), pid {pid}"
+        );
+        let tuple = read_mailbox_tuple(&shared_b, pid).expect("exit tuple");
+        assert_eq!(tuple.len(), 3);
+        assert_eq!(tuple[0], Term::atom(Atom::EXIT));
+        if tuple[2] == Term::atom(Atom::ERROR) {
+            wire_exits += 1;
+        } else if tuple[2] == Term::atom(Atom::NOCONNECTION) {
+            coarsened += 1;
+        } else {
+            panic!("unexpected exit reason {:?} for pid {pid}", tuple[2]);
+        }
+        assert!(is_alive(&shared_b, pid), "trapping target survives");
+    }
+    assert_eq!(wire_exits + coarsened, STORM as usize);
+    if coarsened > 0 {
+        // Overflow path: the pinned generation is down on A immediately, and
+        // B converges via EOF within a bounded window (DC-1 both-sides).
+        assert!(
+            shared_a
+                .distribution_connections
+                .get_connection(node_b_on_a)
+                .is_none(),
+            "overflow must purge the pinned connection on the sending side"
+        );
+        let eof_deadline = Instant::now() + Duration::from_secs(30);
+        while shared_b
+            .distribution_connections
+            .get_connection(node_a_on_b)
+            .is_some()
+        {
+            assert!(
+                Instant::now() < eof_deadline,
+                "B never observed the downed pair via EOF"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+/// T-8 (ruling 8, the accepted cross-peer blast radius, pinned): with the
+/// shared control lane wedged full behind a never-reading peer, a control to
+/// a HEALTHY peer overflows and downs the healthy pin — and the inline hook
+/// converts the caller's links to `noconnection` before the facility call
+/// returns. Correctness holds (no lost signal, DC-1/DC-3); the healthy pair
+/// is merely down pending redial — an availability blip.
+#[test]
+fn control_overflow_to_healthy_peer_converges_to_noconnection_blip() {
+    let shared = make_shared_state_with_dist_sender();
+    register_scheduler_connection_subscriber(&shared);
+    let sender = shared.dist_sender.as_ref().expect("dist sender");
+    let handle = sender.handle();
+    let _context = handle.enter();
+
+    let wedged_node = shared.atom_table.intern("wedged@test");
+    let healthy_node = shared.atom_table.intern("healthy@test");
+    // Held but NEVER read: writes to it park once the kernel buffers fill.
+    let wedged_peer = install_peer(&shared, wedged_node);
+    let _healthy_peer = install_peer(&shared, healthy_node);
+    let wedged = shared
+        .distribution_connections
+        .get_connection(wedged_node)
+        .expect("wedged connection is in the table");
+
+    let watcher = insert_process(&shared, 1);
+    set_trap_exit(&shared, watcher, true);
+    let healthy_remote = RemotePid {
+        node: healthy_node,
+        pid_number: 9,
+        serial: 0,
+    };
+    add_remote_link(&shared, watcher, healthy_remote);
+
+    // Park the drain: one oversized control to the never-reading peer blocks
+    // `write_all` until WRITE_TIMEOUT (5 s), and the lane fills behind it.
+    let mut big = vec![0_u8; 16 * 1024 * 1024];
+    big[0] = 1;
+    let control_len = u32::try_from(big.len()).expect("control fits u32");
+    let mut big_frame = Vec::with_capacity(8 + big.len());
+    big_frame.extend_from_slice(&control_len.to_be_bytes());
+    big_frame.extend_from_slice(&0_u32.to_be_bytes());
+    big_frame.extend_from_slice(&big);
+    sender
+        .enqueue_control(ControlOutbound {
+            connection: Arc::clone(&wedged),
+            frame: Arc::from(big_frame.into_boxed_slice()),
+        })
+        .expect("first control accepted into an empty lane");
+    // The drain has begun (and therefore parked on) the oversized write once
+    // the peer side observes its first byte — everything below happens well
+    // inside the 5 s window during which the drain frees no lane slot.
+    wedged_peer
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("peer read timeout");
+    let mut probe = [0_u8; 1];
+    assert_eq!(
+        wedged_peer
+            .peek(&mut probe)
+            .expect("drain begins the wedged write"),
+        1
+    );
+
+    // Fill the lane behind the parked write. The first Overflow marks the
+    // WEDGED pin down (its own DC-1(b)) and proves the lane is full.
+    let filler: Arc<[u8]> = Arc::from(vec![0_u8; 8].into_boxed_slice());
+    let mut overflowed = false;
+    for _ in 0..=crate::distribution::sender::DIST_CONTROL_QUEUE_CAP {
+        match sender.enqueue_control(ControlOutbound {
+            connection: Arc::clone(&wedged),
+            frame: Arc::clone(&filler),
+        }) {
+            Ok(()) => {}
+            Err(_) => {
+                overflowed = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        overflowed,
+        "filling behind a parked write must fill the lane"
+    );
+    assert!(wedged.is_down(), "overflow downs its own pinned connection");
+    assert_eq!(
+        mailbox_message_count(&shared, watcher),
+        0,
+        "the healthy link is untouched so far"
+    );
+
+    // The accepted-risk moment: a control to the HEALTHY peer hits the full
+    // shared lane. INV-SYNC on the hook chain means the noconnection is in
+    // the watcher's mailbox before exit_remote returns.
+    let facility = control_facility(&shared);
+    assert_eq!(
+        facility.exit_remote(watcher, healthy_remote, ExitReason::Error),
+        Ok(()),
+        "EXIT2 stays best-effort Ok even when it overflows"
+    );
+
+    let tuple = read_mailbox_tuple(&shared, watcher).expect("noconnection EXIT");
+    assert_noconnection_exit(&tuple, healthy_remote);
+    assert_eq!(
+        mailbox_message_count(&shared, watcher),
+        1,
+        "blip, not a storm"
+    );
+    assert!(is_alive(&shared, watcher), "trapping watcher survives");
+    assert!(
+        shared
+            .distribution_connections
+            .get_connection(healthy_node)
+            .is_none(),
+        "the healthy pair is down pending redial"
+    );
 }

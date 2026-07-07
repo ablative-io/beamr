@@ -35,7 +35,10 @@ use crate::term::pid_ref::PidRef;
 
 use super::execution::{cleanup_exited_process, wake_process};
 use super::spawning::SpawnRequest;
-use super::{ProcessSlot, ScheduledProcess, SharedState, lock_or_recover, namespace_registry};
+use super::{
+    ProcessSlot, ScheduledProcess, SharedState, dist_control_out, lock_or_recover,
+    namespace_registry,
+};
 
 /// Propagate exit signals through links and deliver DOWN messages through
 /// monitors when a process exits. Uses a worklist pattern to handle cascade
@@ -306,9 +309,7 @@ pub(super) fn remove_remote_link(shared: &SharedState, local_pid: u64, remote: R
 pub(crate) use super::remote_supervision::{connection_down, process_remote_exit_signal};
 
 fn send_remote_exit(shared: &SharedState, caller_pid: u64, target: RemotePid, reason: ExitReason) {
-    shared
-        .control_router
-        .send_exit(shared.local_node.name, caller_pid, target, reason);
+    dist_control_out::send_exit_linked(shared, caller_pid, target, reason);
 }
 
 /// Deliver a single exit signal to a linked process. Returns any cascade
@@ -2052,32 +2053,37 @@ impl DistributionControlFacility for SchedulerDistributionControlFacility {
         if !establish_remote_link(&self.shared, caller_pid, target) {
             return Err(RemoteLinkError::BadTarget);
         }
-        self.shared
-            .control_router
-            .send_link(self.shared.local_node.name, caller_pid, target);
+        // ESTABLISH-THEN-SEND order is load-bearing: if the enqueue overflows
+        // and the inline down-hook fires on this thread, `connection_down`
+        // must observe the just-established link to convert it to
+        // noconnection. The connection precondition surfaces as `send_link`'s
+        // `NoConnection`; on that arm the just-established local half-link is
+        // unwound — an unconnected LINK would otherwise be immortal (no
+        // connection ⇒ no down event ⇒ no cleanup, ever). If the inline hook
+        // already consumed the link, the unwind is a no-op.
+        if let Err(error) = dist_control_out::send_link(&self.shared, caller_pid, target) {
+            let _ = remove_remote_link(&self.shared, caller_pid, target);
+            return Err(error);
+        }
         Ok(())
     }
 
     fn unlink_remote(&self, caller_pid: u64, target: RemotePid) -> Result<(), RemoteLinkError> {
-        remove_remote_link(&self.shared, caller_pid, target);
-        self.shared
-            .control_router
-            .send_unlink(self.shared.local_node.name, caller_pid, target);
+        let _ = remove_remote_link(&self.shared, caller_pid, target);
+        dist_control_out::send_unlink(&self.shared, caller_pid, target);
         Ok(())
     }
 
+    /// The EXIT2 (`exit/2`) path: best-effort fire-and-forget (ruling 7) —
+    /// delivered iff the pinned connection stays up; always `Ok(())`, exactly
+    /// as OTP's `exit/2` returns `true` even when undeliverable.
     fn exit_remote(
         &self,
         caller_pid: u64,
         target: RemotePid,
         reason: ExitReason,
     ) -> Result<(), RemoteLinkError> {
-        self.shared.control_router.send_exit(
-            self.shared.local_node.name,
-            caller_pid,
-            target,
-            reason,
-        );
+        dist_control_out::send_exit2(&self.shared, caller_pid, target, reason);
         Ok(())
     }
 }

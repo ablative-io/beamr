@@ -1946,3 +1946,41 @@ fn unlink_remote_pid_routes_through_distribution_control() {
         }]
     );
 }
+
+#[test]
+fn exit_remote_pid_routes_through_distribution_control_and_returns_true() {
+    let (f, mut ctx) = remote_link_ctx(1);
+    let remote = remote_pid_term(Atom::OK, 42, 7);
+
+    assert_eq!(
+        bif_exit(&[remote, Term::atom(Atom::KILL)], &mut ctx),
+        Ok(Term::atom(Atom::TRUE)),
+        "exit/2 returns true even for a remote target (best-effort, ruling 7)"
+    );
+
+    assert_eq!(
+        f.records(),
+        vec![DistributionRecord::Exit {
+            caller_pid: 1,
+            target: RemotePid {
+                node: Atom::OK,
+                pid_number: 42,
+                serial: 7,
+            },
+            reason: ExitReason::Kill,
+        }]
+    );
+}
+
+#[test]
+fn exit_remote_pid_without_facility_is_badarg() {
+    // Mirrors `remote_spawn_badarg_without_facility`: routing exists but the
+    // context carries no distribution control facility.
+    let mut ctx = ProcessContext::new();
+    ctx.set_pid(Some(1));
+    let remote = remote_pid_term(Atom::OK, 42, 7);
+    assert_eq!(
+        bif_exit(&[remote, Term::atom(Atom::KILL)], &mut ctx),
+        Err(badarg())
+    );
+}
