@@ -692,6 +692,39 @@ impl ConnectionManager {
         self.inner.events.unsubscribe(id)
     }
 
+    /// Subscribe to connection lifecycle events with synthetic catch-up: the
+    /// blessed late-subscriber path (INV-NO-REPLAY). Before this method
+    /// returns, `callback` is invoked on the calling thread with a synthetic
+    /// [`ConnectionEvent::Up`]`(node, generation, peer_creation)` for every
+    /// currently live peer (down links excluded), then registered. Snapshot,
+    /// synthetic delivery, and registration all happen while holding the
+    /// event-dispatch gate, so no real event interleaves between them: the
+    /// subscriber observes a per-node stream satisfying INV-ALTERNATION from
+    /// its first synthetic Up, missing no session and seeing none twice.
+    ///
+    /// The synthetic Ups are subscriber-local catch-up: they are delivered to
+    /// THIS callback only and are NOT part of the global event order other
+    /// subscribers saw (nothing is replayed to, or duplicated for, anyone
+    /// else). See the "Delivery and ordering contract" in
+    /// [`connection_events`](super::connection_events).
+    ///
+    /// Do NOT call this from inside a subscriber callback on the same
+    /// manager: the reentrancy check then registers and returns the
+    /// subscription WITHOUT any synthetic events (no race-free snapshot
+    /// exists mid-drain, and blocking would self-deadlock). Callback
+    /// discipline is as
+    /// [`subscribe_connection_events`](Self::subscribe_connection_events):
+    /// must not block, must not perform socket I/O, and must capture `Weak`
+    /// (never `Arc`) handles to anything owning this manager.
+    pub fn subscribe_connection_events_with_snapshot<F>(&self, callback: F) -> SubscriberId
+    where
+        F: Fn(ConnectionEvent) + Send + Sync + 'static,
+    {
+        self.inner
+            .events
+            .subscribe_with_snapshot(callback, || self.connected_peers())
+    }
+
     /// Snapshot of live connections as their in-force [`NodeUp`] rows (down
     /// links excluded). Per-peer-consistent; no cross-peer atomicity.
     /// Late-subscriber recipe: subscribe FIRST, then snapshot, then per peer
@@ -966,8 +999,12 @@ impl ConnectionManager {
     /// connection (equivalently the lower-named node's inbound) — the same single
     /// TCP socket on both ends. The dedup keyed on the incumbent's stored
     /// [`LinkDirection`]: a newcomer loses ONLY to a LIVE incumbent of the
-    /// canonical direction; otherwise it installs, displacing a down or
-    /// non-canonical incumbent. So during a simultaneous connect each node keeps
+    /// canonical direction carrying the same peer incarnation; otherwise it
+    /// installs, displacing a down, non-canonical, or stale-incarnation
+    /// incumbent (a nonzero `peer_creation` mismatch proves the peer
+    /// restarted — a session boundary the tie-break must not shield, so the
+    /// old session closes with Down(g) and the newcomer opens Up(g+1)). So
+    /// during a simultaneous connect each node keeps
     /// only its canonical-direction link (the canonical socket is never torn down
     /// by either side), while a LONE re-dial — which only ever meets a stale,
     /// non-canonical, or absent incumbent — always re-establishes the link.
@@ -989,37 +1026,47 @@ impl ConnectionManager {
         let (installed, read_half, displaced) = match self.inner.connections.entry(node) {
             Entry::Occupied(mut occupied) => {
                 let incumbent = occupied.get();
-                if !incumbent.is_down() && incumbent.direction == canonical {
-                    // A LIVE incumbent of the canonical direction already holds
-                    // this pair — it is the rightful survivor on both nodes, so
-                    // this newcomer loses regardless of its own direction. Drop its
-                    // stream (closing the TCP connection) and do NOT spawn a reader.
-                    // (A lone re-dial never hits this: the only live incumbent it
-                    // could meet is a stale non-canonical link, handled below.)
+                // A nonzero-creation mismatch proves the incumbent serves a
+                // DEAD peer incarnation: the peer restarted (its old
+                // incarnation died without a FIN/RST reaching us — silent
+                // partition, power loss, kill-9 + fast restart) and this
+                // newcomer is the restarted VM's dial. The canonical
+                // tie-break below exists to resolve SAME-incarnation
+                // simultaneous connects; it must never shield a stale
+                // incarnation, so a creation-mismatch newcomer always
+                // installs. 0 is the handshake-less test-helper sentinel,
+                // never a discriminator.
+                let creation_mismatch = incumbent.peer_creation() != 0
+                    && peer_creation != 0
+                    && incumbent.peer_creation() != peer_creation;
+                if !incumbent.is_down() && incumbent.direction == canonical && !creation_mismatch {
+                    // A LIVE incumbent of the canonical direction, serving the
+                    // same peer incarnation as far as the handshake can tell,
+                    // already holds this pair — it is the rightful survivor on
+                    // both nodes, so this newcomer loses regardless of its own
+                    // direction. Drop its stream (closing the TCP connection)
+                    // and do NOT spawn a reader. (A lone re-dial never hits
+                    // this: the only live incumbent it could meet is a stale
+                    // non-canonical link or a stale incarnation, both handled
+                    // below.)
                     drop(stream);
                     return Arc::clone(incumbent);
                 }
-                // The incumbent is down (reap/reconnect) OR a non-canonical link
+                // The incumbent is down (reap/reconnect), a non-canonical link
                 // this newcomer is entitled to replace (a simultaneous-connect
-                // canonical winner, or a lone re-dial superseding a stale link).
-                // Install this one and retire the old.
+                // canonical winner, or a lone re-dial superseding a stale
+                // link), OR a stale incarnation losing to the restarted peer's
+                // dial. Install this one and retire the old.
                 let previous = Arc::clone(incumbent);
                 // Sample the down flag ONCE: it can flip concurrently, and the
                 // generation choice and the Down+Up emission must agree.
                 let previous_down = previous.is_down();
-                // A LIVE incumbent displaced by a NEW peer incarnation is a
-                // peer bounce, not a socket swap: the old incarnation died
-                // without a FIN/RST reaching us (silent partition, power loss,
-                // kill-9 + fast restart) and the restarted peer re-dialed
-                // while the stale link still looked live. That is a session
-                // boundary — inheriting the generation here would swallow the
-                // bounce forever (no pg purge, no noconnection delivery, no
-                // peer_creation change on any Up). 0 is the handshake-less
-                // test-helper sentinel, never a discriminator.
-                let peer_bounced = !previous_down
-                    && previous.peer_creation() != 0
-                    && peer_creation != 0
-                    && previous.peer_creation() != peer_creation;
+                // A LIVE incumbent displaced by a NEW peer incarnation —
+                // canonical or not — is a peer bounce, not a socket swap.
+                // That is a session boundary: inheriting the generation here
+                // would swallow the bounce forever (no pg purge, no
+                // noconnection delivery, no peer_creation change on any Up).
+                let peer_bounced = !previous_down && creation_mismatch;
                 let generation = if previous_down {
                     // HS-4 re-dial window: the incumbent went down but its own
                     // `connection_down` has not (or will not, having lost the

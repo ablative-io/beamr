@@ -999,3 +999,359 @@ async fn inv_frame_order_up_delivered_before_first_inbound_frame() {
         "Up(g) delivery must complete before the first generation-g frame"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Canonical-arm peer-bounce boundary
+// ---------------------------------------------------------------------------
+
+/// Mirror of the displacement-arm bounce boundary: even when the LIVE
+/// incumbent holds the canonical direction (the arm where newcomers lose), a
+/// nonzero-creation mismatch proves it a stale incarnation — the peer
+/// restarted — so the newcomer installs as a session boundary: Down(g_old)
+/// then Up(g_new), and the stale socket is retired.
+#[tokio::test]
+async fn canonical_incumbent_displaced_by_new_peer_creation_emits_down_then_up() {
+    // peer > local, so the canonical direction is Inbound and the Inbound
+    // incumbent installed by the test helper is live AND canonical.
+    let manager = manager_named("local@127.0.0.1");
+    let node = manager.atom_table().intern("peer@127.0.0.1");
+
+    let (server_first, _peer_first, addr_first) = socket_pair();
+    let first = manager
+        .register_test_connection_with_creation(node, addr_first, server_first, 41)
+        .expect("install first incarnation");
+    assert!(!first.is_down(), "the stale incumbent still looks live");
+    let log = new_event_log();
+    let log_for_subscriber = Arc::clone(&log);
+    manager.subscribe_connection_events(move |event| push_event(&log_for_subscriber, event));
+
+    let (server_second, _peer_second, addr_second) = socket_pair();
+    let second = manager
+        .register_test_connection_with_creation(node, addr_second, server_second, 42)
+        .expect("install restarted incarnation");
+
+    assert!(
+        !Arc::ptr_eq(&first, &second),
+        "the restarted peer's dial must displace the live canonical incumbent"
+    );
+    assert_eq!(
+        snapshot(&log),
+        vec![
+            // The stale link never reported a failure, so the closed session
+            // carries the same ReadError the displaced socket is retired with.
+            ConnectionEvent::down(node, generation(1), ConnectionDownReason::ReadError),
+            ConnectionEvent::up(node, generation(2), 42),
+        ],
+        "a creation mismatch is a session boundary even against a canonical incumbent"
+    );
+    assert!(first.is_down(), "the displaced stale socket is retired");
+    assert_eq!(second.generation(), generation(2));
+    assert_eq!(second.peer_creation(), 42);
+    assert_eq!(manager.connection_count(), 1);
+    let survivor = manager
+        .get_connection(node)
+        .expect("survivor stays installed");
+    assert!(Arc::ptr_eq(&survivor, &second));
+}
+
+/// The complement: same-creation and sentinel-zero newcomers keep losing to a
+/// live canonical incumbent exactly as before — no displacement, no events —
+/// and a sentinel-zero INCUMBENT is equally non-discriminating.
+#[tokio::test]
+async fn canonical_incumbent_still_wins_against_same_or_sentinel_creation() {
+    let manager = manager_named("local@127.0.0.1");
+    let node = manager.atom_table().intern("peer@127.0.0.1");
+
+    let (server_first, _peer_first, addr_first) = socket_pair();
+    let first = manager
+        .register_test_connection_with_creation(node, addr_first, server_first, 41)
+        .expect("install canonical incumbent");
+    let log = new_event_log();
+    let log_for_subscriber = Arc::clone(&log);
+    manager.subscribe_connection_events(move |event| push_event(&log_for_subscriber, event));
+
+    // Same nonzero incarnation: a simultaneous-connect echo, not a bounce.
+    let (server_same, _peer_same, addr_same) = socket_pair();
+    let same = manager
+        .register_test_connection_with_creation(node, addr_same, server_same, 41)
+        .expect("register same-creation newcomer");
+    assert!(Arc::ptr_eq(&same, &first), "same-creation newcomer loses");
+
+    // Sentinel-zero newcomer: 0 never discriminates.
+    let (server_zero, _peer_zero, addr_zero) = socket_pair();
+    let zero = manager
+        .register_test_connection_with_creation(node, addr_zero, server_zero, 0)
+        .expect("register sentinel-creation newcomer");
+    assert!(Arc::ptr_eq(&zero, &first), "sentinel-zero newcomer loses");
+
+    assert!(
+        !first.is_down(),
+        "the canonical incumbent survives untouched"
+    );
+    assert!(snapshot(&log).is_empty(), "losing newcomers emit no events");
+    assert_eq!(first.generation(), generation(1));
+
+    // Sentinel-zero incumbent, nonzero newcomer: still no discriminator, so
+    // the live canonical incumbent keeps winning.
+    let node_other = manager.atom_table().intern("other@127.0.0.1");
+    let (server_other, _peer_other, addr_other) = socket_pair();
+    let sentinel_incumbent = manager
+        .register_test_connection_with_creation(node_other, addr_other, server_other, 0)
+        .expect("install sentinel-creation incumbent");
+    let (server_late, _peer_late, addr_late) = socket_pair();
+    let late = manager
+        .register_test_connection_with_creation(node_other, addr_late, server_late, 42)
+        .expect("register nonzero newcomer against sentinel incumbent");
+    assert!(
+        Arc::ptr_eq(&late, &sentinel_incumbent),
+        "a nonzero newcomer cannot bounce a sentinel-creation incumbent"
+    );
+    assert!(!sentinel_incumbent.is_down());
+    assert_eq!(manager.connection_count(), 2);
+    assert_eq!(
+        snapshot(&log),
+        vec![ConnectionEvent::up(node_other, generation(1), 0)],
+        "only the sentinel incumbent's own install emitted an event"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// subscribe_connection_events_with_snapshot
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn snapshot_subscribe_delivers_synthetic_ups_before_any_subsequent_real_event() {
+    let manager = manager_named("local@127.0.0.1");
+    let node_a = manager.atom_table().intern("anode@127.0.0.1");
+    let node_b = manager.atom_table().intern("bnode@127.0.0.1");
+    let (_connection_a, _peer_a) = install(&manager, "anode@127.0.0.1");
+    let (_connection_b, _peer_b) = install(&manager, "bnode@127.0.0.1");
+
+    let log = new_event_log();
+    let log_for_subscriber = Arc::clone(&log);
+    let id = manager.subscribe_connection_events_with_snapshot(move |event| {
+        push_event(&log_for_subscriber, event)
+    });
+
+    // The synthetic catch-up was delivered synchronously, before the
+    // subscribe call returned.
+    let catch_up = snapshot(&log);
+    assert_eq!(catch_up.len(), 2, "one synthetic Up per live peer");
+    let mut nodes: Vec<Atom> = catch_up.iter().map(ConnectionEvent::node).collect();
+    nodes.sort_by_key(|node| node.index());
+    let mut expected = vec![node_a, node_b];
+    expected.sort_by_key(|node| node.index());
+    assert_eq!(nodes, expected);
+    for event in &catch_up {
+        assert_eq!(
+            *event,
+            ConnectionEvent::up(event.node(), generation(1), 0),
+            "each catch-up row is the peer's in-force NodeUp"
+        );
+    }
+
+    assert!(manager.disconnect_node(node_a));
+    let events = snapshot(&log);
+    assert_eq!(events.len(), 3);
+    assert_eq!(
+        events[2],
+        ConnectionEvent::down(
+            node_a,
+            generation(1),
+            ConnectionDownReason::ManualDisconnect
+        ),
+        "real events land strictly after the synthetic catch-up"
+    );
+    assert!(
+        manager.unsubscribe_connection_events(id),
+        "the returned id identifies a live subscription"
+    );
+}
+
+#[tokio::test]
+async fn synthetic_catch_up_is_invisible_to_other_subscribers() {
+    let manager = manager_named("local@127.0.0.1");
+    let node = manager.atom_table().intern("peer@127.0.0.1");
+
+    let early_log = new_event_log();
+    let early_for_subscriber = Arc::clone(&early_log);
+    manager.subscribe_connection_events(move |event| push_event(&early_for_subscriber, event));
+    let (_connection, _peer) = install(&manager, "peer@127.0.0.1");
+    assert_eq!(
+        snapshot(&early_log),
+        vec![ConnectionEvent::up(node, generation(1), 0)]
+    );
+
+    let late_log = new_event_log();
+    let late_for_subscriber = Arc::clone(&late_log);
+    manager.subscribe_connection_events_with_snapshot(move |event| {
+        push_event(&late_for_subscriber, event)
+    });
+
+    assert_eq!(
+        snapshot(&late_log),
+        vec![ConnectionEvent::up(node, generation(1), 0)],
+        "the late subscriber catches up on the in-force session"
+    );
+    assert_eq!(
+        snapshot(&early_log),
+        vec![ConnectionEvent::up(node, generation(1), 0)],
+        "the synthetic Up is subscriber-local: nothing is replayed to others"
+    );
+
+    assert!(manager.disconnect_node(node));
+    assert_eq!(snapshot(&early_log).len(), 2);
+    assert_eq!(snapshot(&late_log).len(), 2);
+}
+
+/// A subscriber registering via the snapshot path DURING active churn misses
+/// no session and double-sees none: its per-node stream starts at an Up
+/// (synthetic or real), alternates Up/Down, and — because generations are
+/// assigned densely — covers every generation from the first seen through the
+/// last (a gap would be a missed session, a repeat a double-see).
+#[test]
+fn snapshot_subscriber_during_churn_misses_nothing_and_double_sees_nothing() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .expect("build test runtime");
+    let manager = manager_named("local@127.0.0.1");
+    manager.set_runtime_handle(runtime.handle().clone());
+    let _context = runtime.enter();
+    let node = manager.atom_table().intern("zeta@127.0.0.1");
+
+    let barrier = Arc::new(std::sync::Barrier::new(2));
+    let churn = {
+        let manager = manager.clone();
+        let barrier = Arc::clone(&barrier);
+        let handle = runtime.handle().clone();
+        std::thread::spawn(move || {
+            let _context = handle.enter();
+            // Keep peer sockets alive so EOF downs do not race the manual
+            // disconnects.
+            let mut peers = Vec::new();
+            for iteration in 0..60 {
+                if iteration == 10 {
+                    // Release the main thread to subscribe mid-churn.
+                    barrier.wait();
+                }
+                let (server, client, addr) = socket_pair();
+                manager
+                    .register_test_connection(node, addr, server)
+                    .expect("churn install");
+                peers.push(client);
+                manager.disconnect_node(node);
+            }
+            peers
+        })
+    };
+
+    barrier.wait();
+    let log = new_event_log();
+    let log_for_subscriber = Arc::clone(&log);
+    manager.subscribe_connection_events_with_snapshot(move |event| {
+        push_event(&log_for_subscriber, event)
+    });
+    let _peers = churn.join().expect("churn thread must not panic");
+    // One final post-churn session guarantees the subscriber observed
+    // something even if the subscription raced past the churn entirely.
+    let (server, _client, addr) = socket_pair();
+    manager
+        .register_test_connection(node, addr, server)
+        .expect("final install");
+    manager.disconnect_node(node);
+
+    let events = snapshot(&log);
+    assert!(!events.is_empty());
+    assert!(
+        matches!(events.first(), Some(ConnectionEvent::Up(_))),
+        "the stream must start with an Up (synthetic catch-up or the next real session)"
+    );
+    let mut open: Option<ConnectionGeneration> = None;
+    let mut last_closed: Option<ConnectionGeneration> = None;
+    for event in &events {
+        assert_eq!(event.node(), node);
+        match event {
+            ConnectionEvent::Up(up) => {
+                assert_eq!(
+                    open,
+                    None,
+                    "Up({}) delivered while a generation is still open (double-see)",
+                    up.generation.get()
+                );
+                if let Some(closed) = last_closed {
+                    assert_eq!(
+                        up.generation.get(),
+                        closed.get() + 1,
+                        "generations are dense: a gap is a missed session"
+                    );
+                }
+                open = Some(up.generation);
+            }
+            ConnectionEvent::Down(down) => {
+                assert_eq!(
+                    open,
+                    Some(down.generation),
+                    "Down({}) must close the currently open generation",
+                    down.generation.get()
+                );
+                last_closed = Some(down.generation);
+                open = None;
+            }
+        }
+    }
+    assert_eq!(open, None, "the final session closed");
+    assert_eq!(
+        last_closed,
+        manager.last_peer_generation(node),
+        "the subscriber observed every session through the very last one"
+    );
+}
+
+/// Calling the snapshot-subscribe path from INSIDE a subscriber callback on
+/// the same manager must not deadlock: the reentrancy check registers the
+/// subscription WITHOUT synthetic catch-up (the documented degradation), and
+/// the subscription is live for subsequent real events.
+#[tokio::test]
+async fn reentrant_snapshot_subscribe_from_callback_registers_without_synthetics() {
+    let manager = manager_named("local@127.0.0.1");
+    let node_x = manager.atom_table().intern("xnode@127.0.0.1");
+    let node_y = manager.atom_table().intern("ynode@127.0.0.1");
+    let (_connection_x, _peer_x) = install(&manager, "xnode@127.0.0.1");
+    let (_connection_y, _peer_y) = install(&manager, "ynode@127.0.0.1");
+
+    let inner_log = new_event_log();
+    let manager_for_subscriber = manager.clone();
+    let inner_log_for_subscriber = Arc::clone(&inner_log);
+    manager.subscribe_connection_events(move |event| {
+        if let ConnectionEvent::Down(down) = event
+            && down.node == node_x
+        {
+            // ynode is live: a non-reentrant call would deliver its synthetic
+            // Up. Reentrantly, registration must return immediately (no gate
+            // deadlock) and deliver nothing.
+            let inner_log_for_inner = Arc::clone(&inner_log_for_subscriber);
+            manager_for_subscriber.subscribe_connection_events_with_snapshot(move |event| {
+                push_event(&inner_log_for_inner, event);
+            });
+        }
+    });
+
+    assert!(manager.disconnect_node(node_x));
+    assert!(
+        snapshot(&inner_log).is_empty(),
+        "reentrant registration delivers no synthetic catch-up (ynode was live)"
+    );
+
+    assert!(manager.disconnect_node(node_y));
+    assert_eq!(
+        snapshot(&inner_log),
+        vec![ConnectionEvent::down(
+            node_y,
+            generation(1),
+            ConnectionDownReason::ManualDisconnect
+        )],
+        "the reentrant subscription is live for subsequent real events"
+    );
+}

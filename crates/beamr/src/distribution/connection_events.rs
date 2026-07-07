@@ -21,7 +21,11 @@
 //!   generation inherited); a live link displaced by a NEW peer incarnation —
 //!   a restarted peer re-dialing past a stale link — is a session boundary
 //!   and delivers Down(g) then Up(g+1), so `peer_creation` really does change
-//!   iff the peer VM restarted.
+//!   iff the peer VM restarted. This holds regardless of the canonical
+//!   direction tie-break: that tie-break resolves only SAME-incarnation
+//!   simultaneous connects and never shields a stale incarnation, so a
+//!   bounced newcomer installs (with Down(g) then Up(g+1)) even against a
+//!   live canonical incumbent.
 //! - **INV-TOTAL-ORDER** — all subscribers observe all events in one global
 //!   sequence (single-drainer queue). Within one event: subscribers in
 //!   registration order, then the legacy down-slot last (Down only, 0.11
@@ -70,8 +74,14 @@
 //!   legacy slot, and any trap-exit process receiving
 //!   `{'EXIT', _, noconnection}` therefore always observe post-purge pg
 //!   state.
-//! - **INV-NO-REPLAY** — no replay for late subscribers; reconcile via
-//!   subscribe-then-`connected_peers()`, max-by-generation per peer.
+//! - **INV-NO-REPLAY** — no replay of the real event history for late
+//!   subscribers. The blessed late-subscriber path is
+//!   `ConnectionManager::subscribe_connection_events_with_snapshot`, which
+//!   delivers a subscriber-local synthetic `Up` per live peer under the
+//!   dispatch gate before registering, so the subscription starts from a
+//!   race-free snapshot. The manual recipe — subscribe via
+//!   `subscribe_connection_events`, then `connected_peers()`,
+//!   max-by-generation per peer — remains valid.
 //!
 //! One parity caveat: on simultaneous-connect displacement, frames in the
 //! displaced socket's kernel buffer are dropped with no event, and no Up
@@ -433,6 +443,92 @@ impl ConnectionEventHub {
         // a poisoned pass cannot wedge reentrancy detection for this thread
         // forever.
         let _owner = OwnerGuard::set(&self.dispatch_owner, me);
+        self.drain_queue();
+        // _owner resets dispatch_owner to None, then _gate releases.
+    }
+
+    /// Register `callback` with subscriber-local synthetic catch-up. MUST be
+    /// called with NO manager locks held (it blocks on the dispatch gate).
+    ///
+    /// Under the gate: pending queued events are first delivered to the
+    /// EXISTING subscribers (and the queue re-checked after each `live_peers`
+    /// snapshot, so a queued real `Up(g)` whose install the snapshot already
+    /// reflects is never also synthesized); then `callback` alone is invoked
+    /// with a synthetic `Up` per snapshot row; then it is registered. Because
+    /// the gate is held throughout, no real event interleaves between the
+    /// snapshot and the registration — the subscriber's per-node stream
+    /// satisfies INV-ALTERNATION from its first synthetic Up. The synthetic
+    /// Ups never enter the queue: other subscribers do not observe them.
+    ///
+    /// Called reentrantly (from inside a subscriber callback on the draining
+    /// thread), this registers and returns WITHOUT synthetic events: blocking
+    /// on the gate would self-deadlock, and no race-free snapshot exists
+    /// mid-drain.
+    pub(crate) fn subscribe_with_snapshot<F>(
+        &self,
+        callback: F,
+        live_peers: impl Fn() -> Vec<NodeUp>,
+    ) -> SubscriberId
+    where
+        F: Fn(ConnectionEvent) + Send + Sync + 'static,
+    {
+        let me = std::thread::current().id();
+        {
+            let owner = self
+                .dispatch_owner
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if *owner == Some(me) {
+                // Reentrant: register plain, no catch-up (documented above).
+                return self.subscribe(callback);
+            }
+        } // owner lock released before blocking on the gate
+        let _gate = self
+            .dispatch_gate
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let _owner = OwnerGuard::set(&self.dispatch_owner, me);
+        // Drain until a snapshot is taken with the queue observed empty
+        // afterwards. Enqueues happen under the connections entry guard for
+        // the event's node, after the table mutation, and the snapshot's
+        // shard reads block on that guard — so any table state the snapshot
+        // reflects has its event queued BEFORE this emptiness check. A
+        // non-empty queue therefore means the snapshot may already reflect a
+        // queued-but-undelivered event (which would be both synthesized and
+        // redelivered): deliver and snapshot again.
+        let rows = loop {
+            self.drain_queue();
+            let rows = live_peers();
+            let queue_empty = self
+                .queue
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_empty();
+            if queue_empty {
+                break rows;
+            }
+        };
+        let callback: Arc<ConnectionEventCallback> = Arc::new(callback);
+        for row in rows {
+            callback(ConnectionEvent::Up(row));
+        }
+        let id = SubscriberId(self.next_subscriber_id.fetch_add(1, Ordering::Relaxed));
+        self.subscribers
+            .write()
+            .unwrap_or_else(|error| error.into_inner())
+            .push((id, Arc::clone(&callback)));
+        // Deliver anything enqueued meanwhile (including by a catch-up
+        // callback that triggered a transition) before releasing the gate,
+        // preserving INV-SYNC; such events postdate the snapshot, so the new
+        // subscriber receiving them here is the correct order, not a replay.
+        self.drain_queue();
+        id
+    }
+
+    /// Deliver every queued event to the current subscribers (then the legacy
+    /// slot, Down only). MUST be called only while holding `dispatch_gate`
+    /// with `dispatch_owner` recorded for this thread.
+    fn drain_queue(&self) {
         loop {
             let event = {
                 let mut queue = self.queue.lock().unwrap_or_else(|error| error.into_inner());
@@ -460,7 +556,6 @@ impl ConnectionEventHub {
                 });
             }
         }
-        // _owner resets dispatch_owner to None, then _gate releases.
     }
 }
 
