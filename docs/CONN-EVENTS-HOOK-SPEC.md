@@ -947,3 +947,37 @@ structurally; independently rejected); `#[deprecated]` on `register_connection_d
 decision, blocked on the `-D warnings` allow-bypass rule); formal event replay for late
 subscribers (INV-NO-REPLAY + snapshot recipe instead); cross-manager reentrancy support (H9,
 doc-forbidden until an embedder needs it).
+
+## 11. As-built addendum (2026-07-07, release 0.13.0 — records where the landed code deviates; the deviations are normative)
+
+The hook series landed as commits 7f36c6f, cae33a2, 00bf105, 2585381, ec5d7f8
+plus the A0 follow-ups in d528abd. Adversarial review confirmed two majors in
+this spec's own text; the fixes below supersede the conflicting sections.
+
+- **Peer-bounce session boundary (supersedes §3.3's arm table):** BOTH the
+  live-displacement arm AND the canonical-lose arm now treat a nonzero
+  `creation` change as a session boundary — `NodeDown(old)` + `NodeUp(new)`
+  are emitted, pg groups purge, and `noconnection` reaches linked processes.
+  As specced, a restarted peer re-dialing before its old socket died was
+  coalesced silently into the stale session (no Down, no Up, no purge, no
+  noconnection). The canonical-arm half landed in A0 (d528abd) with the
+  `creation_mismatch` computation hoisted above the canonical-lose early
+  return.
+- **Unconditional dispatch (supersedes the §3.4 snippet):** `connection_down`
+  dispatches the hub queue unconditionally, not only when a subscriber list is
+  non-empty — the spec's own snippet had an INV-SYNC hole (an event could sit
+  queued past the function's return).
+- **PeerClosed mapping:** a header-read `UnexpectedEof` maps to
+  `ConnectionDownReason::PeerClosed`; the spec's original trigger condition
+  was unreachable under tokio EOF semantics.
+- **Snapshot-at-subscribe (extends §3.2, requested by haematite #146):**
+  `subscribe_connection_events_with_snapshot` synthesizes catch-up `NodeUp`s
+  for live sessions under the dispatch gate, with a drain-until-empty loop
+  before the snapshot and one post-registration drain — without the drains,
+  an enqueued-but-undispatched event whose table transition is already
+  visible would double-see or orphan. A reentrantly-registered snapshot
+  subscriber can observe a Down with no preceding Up (documented degradation,
+  test-pinned; rustdoc forbids the pattern).
+- **Real sizes:** connection.rs grew to ~850 code lines / ~2785 raw — the
+  spec's net-shrink expectation did not survive the hub + snapshot + bounce
+  arms. Over the 500-code-line advisory cap; acknowledged, split deferred.

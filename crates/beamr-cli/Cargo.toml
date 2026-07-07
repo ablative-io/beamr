@@ -13,4 +13,4 @@ name = "beamr"
 path = "src/main.rs"
 
 [dependencies]
-beamr = { version = "0.12.1", path = "../beamr" }
+beamr = { version = "0.13.0", path = "../beamr" }

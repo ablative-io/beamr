@@ -16,3 +16,4 @@ Numbered decisions for beamr. Once recorded, a decision is the reference
 | [009](009-hook-is-registration.md) | Reduction hook is a registration point | Accepted |
 | [010](010-dirty-scheduler-pool.md) | Dirty schedulers are a separate thread pool | Accepted |
 | [011](011-lockfree-mailbox.md) | Mailbox uses lock-free MPSC | Accepted |
+| [012](012-must-deliver-control-lane.md) | Supervision controls ride a must-deliver lane | Accepted |

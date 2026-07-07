@@ -875,3 +875,69 @@ hook migration (`global.rs`, currently never called); multi-subscriber hook + co
 (hazard 6); local `process_exit_signal` Executing double-cascade hazard (hazard 7 — separate
 ruling); local exit/2 kill-clears-trap cosmetic divergence (ruling 4 — no observable effect);
 telemetry counter naming for dropped control frames (additive, non-blocking).
+
+## 15. As-built addendum (2026-07-07, release 0.13.0 — records where the landed code deviates; the deviations are normative)
+
+The wire series landed as commits d528abd (A0 hub follow-ups), 92db922 (§12.1
+codec), 2143c01 (§12.2 control lane), cc15d72 (§12.3 inbound apply), 6bd97c8
+(§12.4 outbound wire), 7604683 (§12.5 orphan deletion), 02500c1 (§12.6 e2e +
+ATOM_CACHE), and f6421fc (adversarial-review fixes). Deviations and rulings:
+
+- **Node-less-pid semantics (amends §3.1):** the as-built ETF codec has no
+  node-less pid representation — local pids encode as NEW_PID_EXT carrying
+  `nonode@nohost`. That name is the node-less marker: rejected as
+  `InvalidControl` in either field of ops 1/3/4/8, exempted from
+  `MisAddressed` in the SEND arm (legacy tolerance, T-6). The literal
+  PidRef-node-None checks remain as wire-unreachable defense-in-depth.
+  `NONODE_NOHOST` became `pub(crate)`.
+- **Serial normalization (amends §1 "To = RemotePid verbatim"):**
+  `link_remote`/`unlink_remote` normalize `RemotePid.serial` to 0 at the
+  facility boundary; a nonzero embedder serial otherwise breaks the DC-4
+  remove-gate equality when the peer's EXIT mints serial 0 (review finding).
+  Encoders unchanged; the wire carries the serial-0 identity.
+- **NoConnection unwind (amends §3.7):** `link_remote`'s NoConnection arm
+  unwinds the just-established local half-link before returning — a literal
+  reading left the immortal half-link §3.5 names as the hazard.
+- **Inbound post-establish recheck (extends §3.8):** `apply_inbound_link`
+  rechecks the origin connection after establishing; if absent/down it
+  delivers the missed `noconnection` (the DC-4 gate keeps both race orders
+  exactly-once). Closes the inbound mirror of the outbound unwind against
+  write-side downs (WriteTimeout/ControlOverflow/disconnect_node), whose
+  backstop scan is NOT ordered after the read loop.
+- **Store-back reconciliation (new, critical review finding):**
+  `store_runnable_process`'s remote_links merge was add-only — removals
+  recorded against an Executing process's metadata were resurrected,
+  double-firing DC-4 and making `unlink/1` on a remote pid a no-op. The merge
+  now reconciles removals with metadata authoritative, mirroring the monitors
+  merge. The local `links` add-only merge is pre-existing (hazard 7, separate
+  ruling).
+- **GC rooting (new, review finding):** remote EXIT delivery to a trapping
+  target allocates the external source pid and exit tuple as ONE contiguous
+  8-word allocation behind one `ensure_space` — the two-step form left the
+  pid unrooted across a GC-capable reservation.
+- **u32 pid ceiling (amends §3.5 "unreachable" claim):** `wire_encodable`
+  guards the senders; `send_link` maps oversized pids to
+  `RemoteLinkError::BadTarget`, `send_unlink`/`send_exit` drop (no such link
+  can exist / ruling-7 best-effort). The encode-failure connection-down arm
+  remains as backstop and its rustdoc is now accurate.
+- **Keepalive exclusion:** the scheduler control handler early-returns on
+  empty control+payload so heartbeats do not increment
+  `beamr.distribution.control_frames_dropped` (handler-side deliberately —
+  the read loop's zero-length forwarding is hub-series-tested behavior).
+- **Real sizes (supersedes §2's table for changelog/citation purposes; code
+  lines excl. tests, at 02500c1):** control_link.rs 326; dist_control_out.rs
+  101; remote_supervision.rs 145 (establish/remove stayed in
+  supervision_integration.rs behind the re-export shim); sender.rs 77→128;
+  connection.rs 831→850; control.rs 507→480; supervision_integration.rs
+  1921→1852. control_lifecycle.rs was 513 lines at deletion, not 563.
+- **Open (confirmed by review, deferred for design rulings):**
+  (W2) generation-unpinned noconnection backstop — a link established
+  against live g+1 during the Down(g) dispatch window is spuriously severed;
+  the fix needs per-link session pinning through spec'd public API shapes
+  (§3.3's handler signature, Process remote_links storage). (W3) the
+  Executing should-die arm's ETS-heir transfer locks a second slot under the
+  target's slot lock — pre-existing ABBA class (D9 byte-matches the local
+  idiom); fix belongs inside shared_exit_tombstone/transfer.
+  Also: `--no-default-features` check is red with 1020 pre-existing no-std
+  errors throughout the series (count-identical at every baseline) — §12's
+  gate leg is waived, not green; restoring no-std is a separate work item.

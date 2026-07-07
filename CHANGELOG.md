@@ -1,5 +1,111 @@
 # Changelog
 
+## 0.13.0
+
+Distribution grows real cross-node supervision: LINK/UNLINK/EXIT/EXIT2 now
+travel the wire (previously only SEND/REG_SEND/PG_UPDATE did — cross-node
+links compiled but never delivered a death signal), backed by a
+multi-subscriber connection-event hub and a generation-pinned must-deliver
+control lane. Specs: `docs/CONN-EVENTS-HOOK-SPEC.md` and
+`docs/DIST-CONTROL-WIRE-SPEC.md` (each carries an as-built addendum recording
+where the landed code deviates); decision record: ADR-012.
+
+### Added
+
+- Connection-event hub (`docs/CONN-EVENTS-HOOK-SPEC.md`):
+  `ConnectionManager::subscribe_connection_events` /
+  `subscribe_connection_events_with_snapshot` / `unsubscribe_connection_events`
+  deliver generation-tagged `NodeUp`/`NodeDown` events to any number of
+  subscribers with per-node alternation and exactly-once-per-session
+  guarantees. `NodeUp` carries `peer_creation` so subscribers can distinguish a
+  peer VM restart (all remote pids dead) from a connection blip (pids
+  survive). The snapshot variant synthesizes catch-up `NodeUp`s for
+  already-live sessions under a stitch-race-free gate — subscribing late
+  misses nothing and double-sees nothing. Dispatch is synchronous on the
+  transition thread (events are facts by the time `register_connection` /
+  `connection_down` returns) with owner-thread reentrancy; the pre-existing
+  single replace-on-register hook slot is now a compatibility facade over the
+  hub (registered last, byte-stable semantics for 0.11-era embedders).
+- A peer VM restart that re-dials before the old socket dies (live
+  displacement or canonical-arm bounce with a changed `creation`) now closes
+  the old session properly: `NodeDown(old)` + `NodeUp(new)` both fire, pg
+  groups are purged, and `noconnection` reaches linked processes — previously
+  the redial coalesced silently into the stale session.
+- Cross-node link supervision on the wire (`docs/DIST-CONTROL-WIRE-SPEC.md`):
+  OTP control opcodes LINK=1, EXIT=3, UNLINK=4, EXIT2=8 encode/decode and
+  deliver. `Scheduler::link_remote` / `unlink_remote` establish and sever
+  links whose EXIT signals actually cross the wire; exit reasons map per OTP
+  semantics (`kill` crosses as `killed` on link-EXIT, raw on EXIT2), trapping
+  targets receive `{'EXIT', From, Reason}` with a correctly-built external-pid
+  source, and delivery contracts DC-1..DC-6 pin exactly-once semantics: for
+  every established link, a dying peer process yields exactly one of {wire
+  EXIT, `noconnection` backstop} — never zero, never two.
+- Must-deliver control lane: link controls ride a dedicated 256-slot
+  generation-pinned queue with a biased drain (controls before data). The lane
+  cannot silently drop: overflow marks the pinned connection down
+  (`ConnectionDownReason::ControlOverflow`, new variant) so the `noconnection`
+  backstop delivers what the wire could not. This replaces the data path's
+  silent-drop-at-1024 behavior for supervision traffic.
+- `ExitReason::NoProc`; `RemotePid` link endpoints normalize `serial` to 0 at
+  the facility boundary (documented on `link_remote`) so an
+  embedder-constructed nonzero serial cannot dodge the EXIT-delivery equality
+  gate.
+- Telemetry counter `beamr.distribution.control_frames_dropped` (reason
+  attribute) for malformed/misaddressed inbound control frames; heartbeat
+  keepalives are excluded.
+
+### Fixed
+
+- Remote-link removals recorded while the target process was mid-slice
+  (Executing) were silently resurrected at store-back — the checkout merge was
+  add-only. Consequences before the fix: `unlink/1` on a remote pid was a
+  deterministic local no-op, and the exactly-once EXIT gate could double-fire
+  (a second spurious `noconnection` after a real wire EXIT, killing a
+  non-trapping process that had survived a `normal` exit). Store-back now
+  reconciles removals with metadata authoritative, mirroring the monitors
+  merge.
+- Remote EXIT delivery to a trapping process built the external source pid,
+  then crossed a GC-capable allocation without rooting it — under nursery
+  pressure the delivered `{'EXIT', From, Reason}` tuple held a dangling `From`.
+  The pid and tuple are now one contiguous allocation behind one reservation.
+- An inbound LINK racing a write-side connection-down (write timeout, control
+  overflow, `disconnect_node`) could establish a link the backstop scan had
+  already passed — the death signal was lost forever. The apply now rechecks
+  the origin connection post-establish and delivers the missed `noconnection`
+  (the exactly-once gate keeps both race orders single-delivery).
+- Local pids beyond the wire's u32 range are refused at `link_remote`
+  (`RemoteLinkError::BadTarget`) instead of tearing the whole connection down
+  on every outbound control after the pid counter passes 2^32.
+
+### Removed
+
+- The orphaned test-only control planes `distribution/control_lifecycle.rs`
+  and `distribution/control_monitor.rs` (never wired to the wire; their
+  numeric opcode-table test moved to `control_link.rs`) and the scheduler's
+  `ControlRouter` (accumulated EXITs into a never-drained queue). The landed
+  wire path replaces all three.
+- `DistributionFlags::offered()` no longer advertises `ATOM_CACHE` — the codec
+  never implemented cache references, so offering it invited undecodable
+  frames from spec-conforming peers. Accepting it from peers is unchanged.
+
+### Known limitations (deliberate, recorded)
+
+- Remote monitors stay at local-only semantics this release: `BEAMR_MONITOR`
+  opcode 102 is reserved in the codec and rejected on the wire; the monitor
+  stage needs external-pid plumbing at the BIF layer first (spec §1.3).
+- Links are node-keyed, not generation-keyed: a link established in the
+  narrow window while a `NodeDown(g)` is dispatching after a redial installed
+  session g+1 can be spuriously severed. The fix needs per-link session
+  pinning through public API shapes — deferred for a design ruling rather
+  than rushed (DIST-CONTROL-WIRE-SPEC as-built addendum, finding W2).
+- The kill-9 verification harness (true SIGKILL of a subprocess peer, as
+  opposed to in-process socket-drop e2e — which this release does test) is
+  deferred to a follow-up work item.
+- `cargo check -p beamr --no-default-features` is red with 1020 pre-existing
+  no-std errors, byte-count-identical from baseline ec5d7f8 through this
+  release — the series introduced no new breakage, but that gate leg is
+  waived, not green. Restoring no-std is a separate work item.
+
 ## 0.12.1
 
 ### Fixed
