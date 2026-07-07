@@ -24,6 +24,11 @@ impl DistributionFlags {
     /// Node is published in EPMD.
     pub const PUBLISHED: Self = Self(0x1);
     /// Node supports atom cache references.
+    ///
+    /// Known but deliberately NOT offered (D8): beamr's data plane cannot
+    /// decode atom-cache references, and flag negotiation is an intersection,
+    /// so leaving it out is cross-version safe. The const is kept as the wire
+    /// name of the capability.
     pub const ATOM_CACHE: Self = Self(0x2);
     /// Node supports extended reference identifiers.
     pub const EXTENDED_REFERENCES: Self = Self(0x4);
@@ -41,10 +46,13 @@ impl DistributionFlags {
     pub const EMPTY: Self = Self(0);
 
     /// Returns the default capability set offered by beamr for this handshake.
+    ///
+    /// `ATOM_CACHE` is deliberately absent: the data plane cannot decode
+    /// atom-cache references, and negotiation intersects both offers, so a
+    /// peer that offers it simply never sees it negotiated (D8).
     pub const fn offered() -> Self {
         Self(
             Self::PUBLISHED.0
-                | Self::ATOM_CACHE.0
                 | Self::EXTENDED_REFERENCES.0
                 | Self::EXTENDED_PIDS.0
                 | Self::UTF8_ATOMS.0
@@ -838,6 +846,23 @@ mod tests {
     const COOKIE: &str = "beam-cookie";
     const INITIATOR_CHALLENGE: u32 = 1_010_101;
     const RESPONDER_CHALLENGE: u32 = 2_020_202;
+
+    /// D8 pin: `ATOM_CACHE` is never offered — the data plane cannot decode
+    /// atom-cache references — while the const survives as the capability's
+    /// wire name and the required set stays within the offer. The
+    /// `negotiated_flags() == offered()` round-trip assertions below therefore
+    /// also prove no session ever negotiates the atom cache.
+    #[test]
+    fn offered_flags_exclude_atom_cache() {
+        assert!(
+            !DistributionFlags::offered().contains_all(DistributionFlags::ATOM_CACHE),
+            "ATOM_CACHE must not be offered (D8: the data plane cannot decode cache refs)"
+        );
+        assert!(
+            DistributionFlags::offered().contains_all(DistributionFlags::required()),
+            "the offer must always cover the required set"
+        );
+    }
 
     #[test]
     fn complete_handshake_between_two_local_nodes() {
