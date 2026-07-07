@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1
+
+### Fixed
+
+- Run-queue priority lanes pop FIFO from the owner side instead of LIFO. A permanently-runnable native process (one that returns `NativeOutcome::Continue` every slice — a busy-poll connection loop, for example) was re-popped immediately after its own requeue, forever: every other pid on that scheduler thread starved indefinitely, work stealing could not rescue them (the owner's queue never exposed more than one item outside a nanoseconds-wide window), and messages delivered to a starved pid sat in its mailbox unobserved while `wake_process` correctly no-opped (the pid was runnable the whole time, not waiting). With N scheduler threads and more than N spinning natives, exactly N processes made progress. Both published crates.io releases 0.11.0 and 0.12.0 ship the LIFO lanes — consumers running busy-poll natives on a shared scheduler should upgrade. Regression-pinned under the real supervised spawn path with spawn/exit churn.
+
 ## 0.12.0
 
 ### Added
