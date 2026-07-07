@@ -11,7 +11,9 @@ use std::io::Write;
 use super::tags;
 
 const MAX_ETF_DEPTH: usize = 256;
-const NONODE_NOHOST: &str = "nonode@nohost";
+/// Node name written for local (node-less) pids/ports/references on the wire;
+/// the addressed control decode treats it as the node-less marker.
+pub(crate) const NONODE_NOHOST: &str = "nonode@nohost";
 const IOVEC_BINARY_REFERENCE_THRESHOLD: usize = 64;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

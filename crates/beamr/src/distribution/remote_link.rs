@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::atom::Atom;
-use crate::distribution::control_lifecycle::ControlOp;
+use crate::distribution::control_link::ControlOp;
 use crate::process::{ExitReason, RemotePid};
 
 /// Error returned by outbound distribution control operations.

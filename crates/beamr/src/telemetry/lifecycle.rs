@@ -251,9 +251,11 @@ fn atom_name(atom_table: &AtomTable, atom: Atom) -> String {
 const fn exit_class(reason: ExitReason) -> &'static str {
     match reason {
         ExitReason::Normal => "normal",
-        ExitReason::Kill | ExitReason::Killed | ExitReason::Error | ExitReason::NoConnection => {
-            "error"
-        }
+        ExitReason::Kill
+        | ExitReason::Killed
+        | ExitReason::Error
+        | ExitReason::NoConnection
+        | ExitReason::NoProc => "error",
     }
 }
 

@@ -237,6 +237,9 @@ pub enum ExitReason {
     Error,
     /// Distribution connection to a linked or monitored remote process was lost.
     NoConnection,
+    /// The target process was already dead when a distribution request
+    /// (e.g. an inbound LINK) reached it.
+    NoProc,
 }
 
 impl ExitReason {
@@ -249,6 +252,7 @@ impl ExitReason {
             Self::Killed => Atom::KILLED,
             Self::Error => Atom::ERROR,
             Self::NoConnection => Atom::NOCONNECTION,
+            Self::NoProc => Atom::NOPROC,
         }
     }
 

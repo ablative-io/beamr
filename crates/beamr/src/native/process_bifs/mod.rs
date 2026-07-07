@@ -306,6 +306,7 @@ fn exit_reason_from_term(term: Term) -> Result<ExitReason, Term> {
         Atom::KILLED => Ok(ExitReason::Killed),
         Atom::ERROR => Ok(ExitReason::Error),
         Atom::NOCONNECTION => Ok(ExitReason::NoConnection),
+        Atom::NOPROC => Ok(ExitReason::NoProc),
         _ => Err(badarg()),
     }
 }

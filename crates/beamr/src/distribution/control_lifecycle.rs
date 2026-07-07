@@ -12,60 +12,10 @@ use crate::{
     term::{Term, boxed::Tuple, pid_ref::PidRef},
 };
 
-/// Distribution control operation codes understood by beamr.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(i64)]
-pub enum ControlOp {
-    /// LINK: `{1, FromPid, ToPid}`.
-    Link = 1,
-    /// SEND: `{2, Cookie, ToPid}`.
-    Send = 2,
-    /// EXIT: `{3, FromPid, ToPid, Reason}`.
-    Exit = 3,
-    /// UNLINK: `{4, FromPid, ToPid}`.
-    Unlink = 4,
-    /// REG_SEND: `{6, FromPid, Cookie, ToName}`.
-    RegSend = 6,
-    /// EXIT2: `{8, FromPid, ToPid, Reason}`.
-    Exit2 = 8,
-    /// MONITOR_P: `{19, FromPid, ToPid, Ref}`.
-    MonitorP = 19,
-    /// DEMONITOR_P: `{20, FromPid, ToPid, Ref}`.
-    DemonitorP = 20,
-    /// MONITOR_P_EXIT: `{21, FromPid, ToPid, Ref, Reason}`.
-    MonitorPExit = 21,
-    /// SPAWN_REQUEST: `{29, ...}`.
-    SpawnRequest = 29,
-    /// SPAWN_REPLY: `{31, ...}`.
-    SpawnReply = 31,
-}
-
-impl ControlOp {
-    /// Decode a numeric control opcode.
-    #[must_use]
-    pub const fn from_opcode(opcode: i64) -> Option<Self> {
-        match opcode {
-            1 => Some(Self::Link),
-            2 => Some(Self::Send),
-            3 => Some(Self::Exit),
-            4 => Some(Self::Unlink),
-            6 => Some(Self::RegSend),
-            8 => Some(Self::Exit2),
-            19 => Some(Self::MonitorP),
-            20 => Some(Self::DemonitorP),
-            21 => Some(Self::MonitorPExit),
-            29 => Some(Self::SpawnRequest),
-            31 => Some(Self::SpawnReply),
-            _ => None,
-        }
-    }
-
-    /// Numeric opcode written on the wire.
-    #[must_use]
-    pub const fn opcode(self) -> i64 {
-        self as i64
-    }
-}
+// `ControlOp` moved to `control_link` (its permanent home alongside the wire
+// codec); this re-export keeps the old path compiling until this module is
+// retired.
+pub use crate::distribution::control_link::ControlOp;
 
 /// Collision-safe process identity for distribution lifecycle state.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

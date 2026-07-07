@@ -889,7 +889,7 @@ fn remote_link_exit_sends_exit_control() {
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0].op,
-        crate::distribution::control_lifecycle::ControlOp::Exit
+        crate::distribution::control_link::ControlOp::Exit
     );
     assert_eq!(messages[0].from.pid_number, pid);
     assert_eq!(messages[0].to, remote);

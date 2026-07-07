@@ -4,12 +4,13 @@
 use std::fmt;
 
 use crate::atom::{Atom, AtomTable};
+use crate::distribution::control_link;
 use crate::distribution::pg::PgUpdate;
-use crate::etf::decode::{DecodeError, decode_term};
+use crate::etf::decode::DecodeError;
 use crate::etf::encode::{EncodeError, encode_term};
 use crate::native::ProcessContext;
 use crate::native::spawn::{SpawnError, SpawnFacility, SpawnOptions};
-use crate::process::Process;
+use crate::process::{ExitReason, Process, RemotePid};
 use crate::term::Term;
 use crate::term::boxed::{Cons, Tuple};
 use crate::term::pid_ref::PidRef;
@@ -24,7 +25,7 @@ pub const REG_SEND: i64 = 6;
 ///
 /// The OTP distribution protocol assigns control opcodes 1..=31 (the highest
 /// understood by beamr is `SPAWN_REPLY = 31`, see
-/// [`control_lifecycle::ControlOp::from_opcode`]). `101` is well above that
+/// [`control_link::ControlOp::from_opcode`]). `101` is well above that
 /// range and is not used by OTP, so it cannot collide with a standard control
 /// message. It is deliberately beamr-private: a stock Erlang/OTP node would
 /// never emit it, and a beamr node ignores any opcode it does not recognise,
@@ -115,6 +116,38 @@ pub enum ControlMessage {
         /// Member PID serial on the originating node.
         serial: u64,
     },
+    /// `{1, FromExtPid, ToExtPid}` — establish a remote link on local `to_pid`.
+    Link {
+        /// Remote endpoint requesting the link.
+        from: RemotePid,
+        /// Local target PID number (extracted from the addressed `to` pid).
+        to_pid: u64,
+    },
+    /// `{4, FromExtPid, ToExtPid}` — remove a remote link from local `to_pid`.
+    Unlink {
+        /// Remote endpoint removing the link.
+        from: RemotePid,
+        /// Local target PID number (extracted from the addressed `to` pid).
+        to_pid: u64,
+    },
+    /// `{3, FromExtPid, ToExtPid, ReasonAtom}` — link-exit signal (op 3).
+    Exit {
+        /// Remote endpoint that died while linked to `to_pid`.
+        from: RemotePid,
+        /// Local target PID number (extracted from the addressed `to` pid).
+        to_pid: u64,
+        /// Terminal exit reason carried on the wire.
+        reason: ExitReason,
+    },
+    /// `{8, FromExtPid, ToExtPid, ReasonAtom}` — `exit/2` signal (op 8).
+    Exit2 {
+        /// Remote caller of `exit/2`.
+        from: RemotePid,
+        /// Local target PID number (extracted from the addressed `to` pid).
+        to_pid: u64,
+        /// Raw exit reason carried on the wire (MAY be `kill`).
+        reason: ExitReason,
+    },
 }
 
 /// Scheduler-side sink for inbound process-group membership controls.
@@ -136,8 +169,10 @@ pub enum ControlError {
     InvalidFrame,
     /// ETF decoding failed.
     Decode(DecodeError),
-    /// Control tuple shape was not SEND or REG_SEND.
+    /// Control tuple shape did not match any understood control operation.
     InvalidControl,
+    /// Frame's target pid names another node (R6).
+    MisAddressed,
 }
 
 impl From<DecodeError> for ControlError {
@@ -221,7 +256,7 @@ pub fn encode_pg_update_frame(
     encode_frame(control, Term::NIL, atom_table)
 }
 
-fn encode_frame(
+pub(crate) fn encode_frame(
     control: Term,
     message: Term,
     atom_table: &AtomTable,
@@ -263,37 +298,19 @@ pub fn split_frame(frame: &[u8]) -> Result<(&[u8], &[u8]), ControlError> {
 }
 
 /// Decode a control ETF term.
+///
+/// Compatibility wrapper: decodes without a local-node identity, so no
+/// [`ControlError::MisAddressed`] validation applies. Full addressed decode
+/// lives in [`control_link::decode_control_addressed`].
 pub fn decode_control(
     control_etf: &[u8],
     atom_table: &AtomTable,
 ) -> Result<ControlMessage, ControlError> {
-    let mut process = Process::new(0, 64);
-    let mut context = ProcessContext::new();
-    context.attach_process(&mut process, 0);
-    let term = decode_term(control_etf, &mut context, atom_table)?;
-    let tuple = Tuple::new(term).ok_or(ControlError::InvalidControl)?;
-    match tuple.get(0).and_then(Term::as_small_int) {
-        Some(SEND) if tuple.arity() == 3 => {
-            let to = tuple.get(2).ok_or(ControlError::InvalidControl)?;
-            let to_pid = PidRef::new(to)
-                .ok_or(ControlError::InvalidControl)?
-                .pid_number();
-            Ok(ControlMessage::Send { to_pid })
-        }
-        Some(REG_SEND) if tuple.arity() == 4 => {
-            let to_name = tuple
-                .get(3)
-                .and_then(Term::as_atom)
-                .ok_or(ControlError::InvalidControl)?;
-            Ok(ControlMessage::RegSend { to_name })
-        }
-        Some(PG_UPDATE) if tuple.arity() == 5 => decode_pg_update(&tuple),
-        _ => Err(ControlError::InvalidControl),
-    }
+    control_link::decode_control_addressed(control_etf, atom_table, None)
 }
 
 /// Decode a `{101, Tag, Scope, Group, MemberExternalPid}` control tuple.
-fn decode_pg_update(tuple: &Tuple) -> Result<ControlMessage, ControlError> {
+pub(crate) fn decode_pg_update(tuple: &Tuple) -> Result<ControlMessage, ControlError> {
     let tag = tuple
         .get(1)
         .and_then(Term::as_small_int)
@@ -334,6 +351,12 @@ fn decode_pg_update(tuple: &Tuple) -> Result<ControlMessage, ControlError> {
 }
 
 /// Handle an incoming frame by decoding the control term and delivering the payload.
+///
+/// Compatibility wrapper over [`control_link::dispatch_frame`] with no link
+/// sink and no origin/local-node identity. Behavior delta from the pre-codec
+/// version: LINK/UNLINK/EXIT/EXIT2 frames (opcodes 1/3/4/8) now decode and
+/// return `Ok(false)` (dropped, no sink) instead of
+/// `Err(`[`ControlError::InvalidControl`]`)`.
 pub fn handle_frame(
     control_etf: &[u8],
     payload_etf: &[u8],
@@ -342,44 +365,19 @@ pub fn handle_frame(
     registry: Option<&dyn ControlRegistry>,
     pg: Option<&dyn PgDelivery>,
 ) -> Result<bool, ControlError> {
-    match decode_control(control_etf, atom_table)? {
-        ControlMessage::Send { to_pid } => Ok(delivery.deliver_payload(to_pid, payload_etf)),
-        ControlMessage::RegSend { to_name } => {
-            let Some(registry) = registry else {
-                return Ok(false);
-            };
-            let Some(pid) = registry.whereis(to_name) else {
-                return Ok(false);
-            };
-            Ok(delivery.deliver_payload(pid, payload_etf))
-        }
-        ControlMessage::PgJoin {
-            scope,
-            group,
-            node,
-            pid_number,
-            serial,
-        } => {
-            let Some(pg) = pg else {
-                return Ok(false);
-            };
-            pg.apply_pg_join(scope, group, node, pid_number, serial);
-            Ok(true)
-        }
-        ControlMessage::PgLeave {
-            scope,
-            group,
-            node,
-            pid_number,
-            serial,
-        } => {
-            let Some(pg) = pg else {
-                return Ok(false);
-            };
-            pg.apply_pg_leave(scope, group, node, pid_number, serial);
-            Ok(true)
-        }
-    }
+    control_link::dispatch_frame(
+        control_etf,
+        payload_etf,
+        atom_table,
+        &control_link::ControlSinks {
+            delivery,
+            registry,
+            pg,
+            links: None,
+            origin_node: None,
+            local_node: None,
+        },
+    )
 }
 
 // ── SPAWN_REQUEST / SPAWN_REPLY ─────────────────────────────────────────────
@@ -675,6 +673,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use crate::etf::decode::decode_term;
 
     struct TestDelivery {
         messages: Mutex<HashMap<u64, Vec<Term>>>,
@@ -787,9 +786,7 @@ mod tests {
         // The chosen opcode must not collide with any standard OTP control op
         // (the table tops out at SPAWN_REPLY = 31), so `from_opcode` rejects it.
         const _: () = assert!(PG_UPDATE > SPAWN_REPLY);
-        assert!(
-            crate::distribution::control_lifecycle::ControlOp::from_opcode(PG_UPDATE).is_none()
-        );
+        assert!(crate::distribution::control_link::ControlOp::from_opcode(PG_UPDATE).is_none());
     }
 
     #[test]
