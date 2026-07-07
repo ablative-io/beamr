@@ -16,6 +16,7 @@ struct Instruments {
     gc_duration: Histogram<f64>,
     messages_sent: Counter<u64>,
     messages_dropped: Counter<u64>,
+    control_frames_dropped: Counter<u64>,
     memory_heap_words: Gauge<u64>,
     process_message_queue_len: Gauge<u64>,
     process_reductions: Counter<u64>,
@@ -62,6 +63,14 @@ impl Instruments {
                      mailbox failure on the deferred cross-heap path)",
                 )
                 .with_unit("{message}")
+                .build(),
+            control_frames_dropped: meter
+                .u64_counter("beamr.distribution.control_frames_dropped")
+                .with_description(
+                    "Total inbound distribution control frames dropped without \
+                     application (malformed, misaddressed, or otherwise rejected)",
+                )
+                .with_unit("{frame}")
                 .build(),
             memory_heap_words: meter
                 .u64_gauge("beamr.memory.heap_words")
@@ -158,6 +167,16 @@ pub(crate) fn record_message_sent() {
 pub(crate) fn record_message_dropped(reason: &'static str) {
     instruments()
         .messages_dropped
+        .add(1, &[KeyValue::new("reason", reason)]);
+}
+
+/// Record one inbound distribution control frame dropped without application
+/// (decode failure, misaddressing, or forged origin). Dropping is the
+/// contract — the read loop must survive hostile frames — but a drop should
+/// never be invisible in production.
+pub(crate) fn record_control_frame_dropped(reason: &'static str) {
+    instruments()
+        .control_frames_dropped
         .add(1, &[KeyValue::new("reason", reason)]);
 }
 

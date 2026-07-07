@@ -247,10 +247,29 @@ fn ets_metadata_with_heir(
 }
 
 pub(super) fn make_shared_state() -> Arc<SharedState> {
+    build_shared_state(false)
+}
+
+/// [`make_shared_state`] plus a live [`DistSender`] (its owned runtime drives
+/// the control-lane drain and, via the shared runtime handle, any test
+/// connections' read loops) and a resolvable `local_node` name — the pieces
+/// wire-level outbound-control tests need.
+pub(super) fn make_shared_state_with_dist_sender() -> Arc<SharedState> {
+    build_shared_state(true)
+}
+
+fn build_shared_state(with_dist_sender: bool) -> Arc<SharedState> {
     let module_registry = Arc::new(ModuleRegistry::new());
     let namespace_store = DashMap::new();
     namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
-    let atom_table = Arc::new(crate::atom::AtomTable::new());
+    // The wire variant needs resolvable common atoms (exit-reason atoms are
+    // encoded by name), matching production; the base fixture keeps the
+    // historical empty table so existing atom-index assumptions hold.
+    let atom_table = Arc::new(if with_dist_sender {
+        crate::atom::AtomTable::with_common_atoms()
+    } else {
+        crate::atom::AtomTable::new()
+    });
     let distribution = DistributionConfig::default();
     let distribution_connections = crate::distribution::connection::ConnectionManager::new(
         Arc::clone(&atom_table),
@@ -259,6 +278,19 @@ pub(super) fn make_shared_state() -> Arc<SharedState> {
         "local@test",
         0,
     );
+    let dist_sender = if with_dist_sender {
+        let sender =
+            DistSender::new(distribution_connections.clone()).expect("dist sender runtime builds");
+        distribution_connections.set_runtime_handle(sender.handle());
+        Some(sender)
+    } else {
+        None
+    };
+    let local_node = if with_dist_sender {
+        crate::distribution::Node::new(atom_table.intern("local@test"), 0)
+    } else {
+        crate::distribution::Node::new(crate::atom::Atom::new(0), 0)
+    };
     let net_kernel = Arc::new(crate::distribution::NetKernel::new(
         crate::distribution::connection::ConnectionManager::new(
             Arc::clone(&atom_table),
@@ -295,7 +327,7 @@ pub(super) fn make_shared_state() -> Arc<SharedState> {
         hook: crate::hook::Hook::new(),
         distribution,
         distribution_connections,
-        dist_sender: None,
+        dist_sender,
         control_router: crate::distribution::remote_link::ControlRouter::new(),
         process_registry: DashMap::new(),
         timers: Arc::new(std::sync::Mutex::new(crate::timer::TimerWheel::new())),
@@ -325,7 +357,7 @@ pub(super) fn make_shared_state() -> Arc<SharedState> {
             Arc::from(crate::io::create_ring(RingConfig::default())),
             &crate::atom::AtomTable::new(),
         ),
-        local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
+        local_node,
         net_kernel,
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
@@ -908,7 +940,13 @@ fn remote_exit_to_trapping_process_enqueues_remote_exit_tuple() {
     add_remote_link(&shared, target, remote);
     set_trap_exit(&shared, target, true);
 
-    supervision_integration::process_remote_exit_signal(&shared, remote, target, ExitReason::Error);
+    supervision_integration::process_remote_exit_signal(
+        &shared,
+        remote,
+        target,
+        ExitReason::Error,
+        remote_supervision::RemoteExitKind::LinkExit,
+    );
 
     let tuple = read_mailbox_tuple(&shared, target).expect("remote EXIT message");
     assert_eq!(tuple.len(), 3);

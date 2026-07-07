@@ -12,7 +12,6 @@ use super::ScheduledProcess;
 
 /// Source endpoint for a pending trapped EXIT message.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[allow(dead_code)]
 pub(super) enum PendingExitSource {
     /// Local immediate PID source.
     Local(u64),
@@ -81,8 +80,13 @@ impl ProcessMetadata {
         }
     }
 
-    pub(super) fn remove_remote_link(&mut self, pid: RemotePid) {
+    /// Remove a remote link entry; `true` iff an entry was actually removed
+    /// (the DC-4 exactly-once gate for link exits, mirroring
+    /// `Process::remove_remote_link`).
+    pub(super) fn remove_remote_link(&mut self, pid: RemotePid) -> bool {
+        let before = self.remote_links.len();
         self.remote_links.retain(|linked_pid| *linked_pid != pid);
+        before != self.remote_links.len()
     }
 
     pub(super) fn add_monitor(&mut self, monitor: Monitor) {

@@ -116,7 +116,7 @@ pub enum ConnectionDownReason {
     /// keepalive) within the configured liveness deadline: the peer is silently
     /// partitioned (no FIN/RST), so the link is marked down so the
     /// connection-event hub fires (pg-purge, noconnection delivery, embedder
-    /// subscribers). Monitor-DOWN is work item A.
+    /// subscribers). Remote-monitor DOWN purge lands with the monitor stage.
     HeartbeatTimeout,
     /// The must-deliver control lane overflowed against this connection: the
     /// peer cannot absorb pending LINK/EXIT controls, so it is treated as down

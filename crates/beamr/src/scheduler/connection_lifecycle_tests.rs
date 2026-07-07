@@ -25,7 +25,7 @@ use crate::term::boxed::ExternalPid;
 
 /// A connected localhost socket pair: (server end for the manager, client end
 /// held by the test as the "peer", the server's address).
-fn socket_pair() -> (std::net::TcpStream, std::net::TcpStream, SocketAddr) {
+pub(super) fn socket_pair() -> (std::net::TcpStream, std::net::TcpStream, SocketAddr) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind socket pair listener");
     let addr = listener.local_addr().expect("socket pair local addr");
     let client = std::net::TcpStream::connect(addr).expect("connect socket pair client");
@@ -51,7 +51,7 @@ fn runtime_backing(shared: &SharedState) -> tokio::runtime::Runtime {
 /// Install a handshake-less real-socket connection for `node`; returns the
 /// peer-side socket (kept open by the caller so the read loop does not
 /// immediately observe EOF). Must run inside a tokio runtime context.
-fn install_peer(shared: &SharedState, node: Atom) -> std::net::TcpStream {
+pub(super) fn install_peer(shared: &SharedState, node: Atom) -> std::net::TcpStream {
     let (server, client, addr) = socket_pair();
     let _connection = shared
         .distribution_connections
@@ -60,7 +60,7 @@ fn install_peer(shared: &SharedState, node: Atom) -> std::net::TcpStream {
     client
 }
 
-fn mailbox_message_count(shared: &SharedState, pid: u64) -> usize {
+pub(super) fn mailbox_message_count(shared: &SharedState, pid: u64) -> usize {
     let entry = shared
         .process_bodies
         .get(&pid)
@@ -82,7 +82,7 @@ fn noconnection_down(node: Atom) -> ConnectionEvent {
 }
 
 /// Assert `tuple` is `{'EXIT', ExternalPid(remote), noconnection}`.
-fn assert_noconnection_exit(tuple: &[Term], remote: RemotePid) {
+pub(super) fn assert_noconnection_exit(tuple: &[Term], remote: RemotePid) {
     assert_eq!(tuple.len(), 3, "remote EXIT message is a 3-tuple");
     assert_eq!(tuple[0], Term::atom(Atom::EXIT));
     let source = ExternalPid::new(tuple[1]).expect("remote source pid");

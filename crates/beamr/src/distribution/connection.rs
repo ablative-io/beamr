@@ -86,7 +86,7 @@ use super::connection_events::{
     ConnectionEvent, ConnectionEventHub, ConnectionGeneration, NodeUp, SubscriberId,
 };
 
-type ControlFrameHandler = dyn Fn(&[u8], &[u8]) + Send + Sync + 'static;
+type ControlFrameHandler = dyn Fn(Atom, &[u8], &[u8]) + Send + Sync + 'static;
 
 /// Proactive net-tick (heartbeat) configuration for idle distribution links.
 ///
@@ -766,9 +766,29 @@ impl ConnectionManager {
     }
 
     /// Register a handler for framed distribution control messages read from active links.
+    ///
+    /// Legacy shape without the frame's origin; the body wraps
+    /// [`Self::register_control_frame_handler_with_origin`] and drops the
+    /// origin argument. Kept byte-identical for 0.11 embedders.
     pub fn register_control_frame_handler<F>(&self, handler: F)
     where
         F: Fn(&[u8], &[u8]) + Send + Sync + 'static,
+    {
+        self.register_control_frame_handler_with_origin(move |_origin, control, payload| {
+            handler(control, payload);
+        });
+    }
+
+    /// Register a handler for framed distribution control messages read from
+    /// active links, receiving the authenticated origin with each frame.
+    ///
+    /// The origin is the connection's node atom — the authenticated handshake
+    /// name that keys the connection table — passed by the read loop so the
+    /// handler can reject link controls whose `from` field forges another
+    /// peer's identity.
+    pub fn register_control_frame_handler_with_origin<F>(&self, handler: F)
+    where
+        F: Fn(Atom, &[u8], &[u8]) + Send + Sync + 'static,
     {
         let mut slot = self
             .inner
@@ -1295,7 +1315,7 @@ impl ConnectionManager {
                             .clone();
                         if let Some(handler) = handler {
                             let (control, payload) = frame.split_at(control_len);
-                            handler(control, payload);
+                            handler(connection.node, control, payload);
                         }
                     }
                     // `read_exact` never returns `Ok(0)`: EOF surfaces as an

@@ -86,7 +86,7 @@ pub(super) fn register_distribution_control_handler(shared: &Arc<SharedState>) {
     let shared_for_handler = Arc::downgrade(shared);
     shared
         .distribution_connections
-        .register_control_frame_handler(move |control, payload| {
+        .register_control_frame_handler_with_origin(move |origin, control, payload| {
             let Some(shared) = shared_for_handler.upgrade() else {
                 // Scheduler dropped: there is nothing left to deliver to.
                 return;
@@ -94,14 +94,29 @@ pub(super) fn register_distribution_control_handler(shared: &Arc<SharedState>) {
             let facility = SchedulerDistributionSendFacility {
                 shared: Arc::clone(&shared),
             };
-            let _ = crate::distribution::control::handle_frame(
+            let sinks = crate::distribution::control_link::ControlSinks {
+                delivery: &facility,
+                registry: Some(&facility),
+                pg: Some(&facility),
+                links: Some(&facility),
+                // The authenticated handshake name that keys the connection
+                // table: a link control whose `from.node` differs is a forgery
+                // and is dropped inside `dispatch_frame`.
+                origin_node: Some(origin),
+                local_node: Some(shared.local_node.name),
+            };
+            if let Err(_error) = crate::distribution::control_link::dispatch_frame(
                 control,
                 payload,
                 &shared.atom_table,
-                &facility,
-                Some(&facility),
-                Some(&facility),
-            );
+                &sinks,
+            ) {
+                // A malformed, misaddressed, or otherwise rejected frame is
+                // dropped without killing the read loop (scenario 9) — but
+                // never invisibly.
+                #[cfg(feature = "telemetry")]
+                crate::telemetry::metrics::record_control_frame_dropped("dispatch");
+            }
         });
 }
 
@@ -240,6 +255,13 @@ pub(super) fn take_remote_links_from(shared: &SharedState, pid: u64) -> Vec<Remo
     Vec::new()
 }
 
+/// Record a remote link on a local process. `false` means dead or absent
+/// target ONLY: a duplicate link is idempotent success (OTP parity, ruling 2),
+/// so callers may key a noproc reply / `BadTarget` on the return value. The
+/// status check happens under the slot lock — no TOCTOU. An
+/// Executing-but-tombstoned target is deliberately linked (ruling 3): at
+/// store-back the tombstone cleanup runs `propagate_exit`, which sends the
+/// linker a wire EXIT with the true terminal reason — self-healing.
 pub(super) fn establish_remote_link(
     shared: &SharedState,
     local_pid: u64,
@@ -250,7 +272,13 @@ pub(super) fn establish_remote_link(
     };
     let mut slot = lock_or_recover(&entry);
     match &mut *slot {
-        ProcessSlot::Present(ScheduledProcess(process)) => process.add_remote_link(remote),
+        ProcessSlot::Present(ScheduledProcess(process)) => {
+            if matches!(process.status(), ProcessStatus::Exited(_)) {
+                return false;
+            }
+            let _ = process.add_remote_link(remote); // duplicate = idempotent success
+            true
+        }
         ProcessSlot::Executing(metadata) => {
             metadata.add_remote_link(remote);
             true
@@ -266,103 +294,16 @@ pub(super) fn remove_remote_link(shared: &SharedState, local_pid: u64, remote: R
     let mut slot = lock_or_recover(&entry);
     match &mut *slot {
         ProcessSlot::Present(ScheduledProcess(process)) => process.remove_remote_link(remote),
-        ProcessSlot::Executing(metadata) => {
-            metadata.remove_remote_link(remote);
-            true
-        }
+        ProcessSlot::Executing(metadata) => metadata.remove_remote_link(remote),
         ProcessSlot::Absent => false,
     }
 }
 
-/// Apply one remote exit signal to a local target. Reached from the
-/// connection-event hub: `ConnectionEventHub::dispatch` →
-/// `connection_lifecycle::handle_connection_event` → [`connection_down`] →
-/// here, once per remote link on the dead node. Work item A adds the wire
-/// EXIT decode path as a second caller.
-pub(crate) fn process_remote_exit_signal(
-    shared: &SharedState,
-    source_pid: RemotePid,
-    target_pid: u64,
-    reason: ExitReason,
-) {
-    let Some(entry) = shared.process_bodies.get(&target_pid) else {
-        return;
-    };
-    let mut slot = lock_or_recover(&entry);
-    match &mut *slot {
-        ProcessSlot::Present(ScheduledProcess(target)) => {
-            if matches!(target.status(), ProcessStatus::Exited(_)) {
-                return;
-            }
-            target.remove_remote_link(source_pid);
-            let should_die =
-                reason == ExitReason::Kill || (reason != ExitReason::Normal && !target.trap_exit());
-            if should_die {
-                let propagated_reason = link::terminal_reason(reason);
-                target.terminate(propagated_reason);
-                drop(slot);
-                drop(entry);
-                cleanup_exited_process(shared, target_pid, propagated_reason);
-            } else if target.trap_exit() {
-                link::enqueue_remote_exit_message_pub(target, source_pid, reason);
-                drop(slot);
-                drop(entry);
-                wake_process(shared, target_pid);
-            }
-        }
-        ProcessSlot::Executing(metadata) => {
-            metadata.remove_remote_link(source_pid);
-            if metadata.trap_exit {
-                metadata
-                    .pending_exit_messages
-                    .push((PendingExitSource::Remote(source_pid), reason));
-                drop(slot);
-                drop(entry);
-                wake_process(shared, target_pid);
-            } else if reason != ExitReason::Normal {
-                shared.insert_exit_tombstone(target_pid, link::terminal_reason(reason));
-            }
-        }
-        ProcessSlot::Absent => {}
-    }
-}
-
-/// Deliver a `noconnection` exit signal to every local process remote-linked
-/// to `node`. Reached from the connection-event hub:
-/// `ConnectionEventHub::dispatch` →
-/// `connection_lifecycle::handle_connection_event` → here, strictly after the
-/// pg purge so a trap-exit handler receiving `{'EXIT', _, noconnection}` never
-/// observes the dead node's members.
-pub(crate) fn connection_down(shared: &SharedState, node: Atom) {
-    let affected: Vec<(u64, RemotePid)> = shared
-        .process_bodies
-        .iter()
-        .flat_map(|entry| {
-            let pid = *entry.key();
-            let slot = lock_or_recover(entry.value());
-            match &*slot {
-                ProcessSlot::Present(ScheduledProcess(process)) => process
-                    .remote_links()
-                    .iter()
-                    .copied()
-                    .filter(|remote| remote.node == node)
-                    .map(|remote| (pid, remote))
-                    .collect::<Vec<_>>(),
-                ProcessSlot::Executing(metadata) => metadata
-                    .remote_links
-                    .iter()
-                    .copied()
-                    .filter(|remote| remote.node == node)
-                    .map(|remote| (pid, remote))
-                    .collect::<Vec<_>>(),
-                ProcessSlot::Absent => Vec::new(),
-            }
-        })
-        .collect();
-    for (local_pid, remote_pid) in affected {
-        process_remote_exit_signal(shared, remote_pid, local_pid, ExitReason::NoConnection);
-    }
-}
+// The remote-supervision appliers live in `remote_supervision.rs` (moved out
+// to keep this file inside the per-file line budget); re-exported here so the
+// connection-event subscriber (`connection_lifecycle::handle_connection_event`)
+// and existing tests keep their `supervision_integration::` paths.
+pub(crate) use super::remote_supervision::{connection_down, process_remote_exit_signal};
 
 fn send_remote_exit(shared: &SharedState, caller_pid: u64, target: RemotePid, reason: ExitReason) {
     shared
@@ -658,8 +599,8 @@ pub(super) fn build_native_services(
 
 // ── Facility implementations ────────────────────────────────────────────────
 
-struct SchedulerDistributionSendFacility {
-    shared: Arc<SharedState>,
+pub(super) struct SchedulerDistributionSendFacility {
+    pub(super) shared: Arc<SharedState>,
 }
 
 impl DistributionSendFacility for SchedulerDistributionSendFacility {
@@ -2290,7 +2231,7 @@ impl SupervisionFacility for SchedulerSupervisionFacility {
     }
 }
 
-fn shared_exit_tombstone(shared: &SharedState, pid: u64, reason: ExitReason) {
+pub(super) fn shared_exit_tombstone(shared: &SharedState, pid: u64, reason: ExitReason) {
     shared.insert_exit_tombstone(pid, reason);
     let _deleted_tables = shared.transfer_or_delete_tables_owned_by(pid);
     let mut ls = lock_or_recover(&shared.link_set);

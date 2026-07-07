@@ -55,6 +55,8 @@ mod connection_lifecycle;
 #[cfg(feature = "threads")]
 pub mod dirty;
 #[cfg(feature = "threads")]
+mod dist_control_out;
+#[cfg(feature = "threads")]
 mod execution;
 #[cfg(feature = "threads")]
 mod exit_tombstones;
@@ -64,6 +66,8 @@ mod module_management;
 mod pg_propagation;
 #[cfg(feature = "threads")]
 mod process_slot;
+#[cfg(feature = "threads")]
+mod remote_supervision;
 #[cfg(feature = "threads")]
 pub mod run_queue;
 #[cfg(feature = "threads")]
@@ -1359,6 +1363,9 @@ mod closure_spawn_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod connection_lifecycle_tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
+mod remote_supervision_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod supervision_tests;
