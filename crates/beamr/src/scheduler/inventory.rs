@@ -10,6 +10,7 @@
 
 use super::SharedState;
 use super::dirty::DirtyPool;
+use super::ring_service::{RingService, StandardIoService};
 use super::service::{ServiceInstanceId, ServiceMode, ServiceModeLabel};
 
 /// Service label: the dirty CPU pool.
@@ -81,15 +82,12 @@ pub struct ServicePolicyLine {
 /// (spec §5). Held so `service_inventory()` reports a *stable* identity across
 /// calls, and so a service shared into another scheduler reports the same one.
 ///
-/// The dirty pools are NOT here: each [`DirtyPool`] mints and carries its own
-/// [`ServiceInstanceId`], so a Disabled pool reports the
-/// [`DISABLED`](ServiceInstanceId::DISABLED) sentinel through its
-/// [`ServiceMode`] rather than a live id minted for a pool that was never
-/// built (spec §3.2/§5).
+/// The dirty pools and the three IO rings are NOT here: each mints and carries
+/// its own [`ServiceInstanceId`] through its [`ServiceMode`], so a Disabled slot
+/// reports the [`DISABLED`](ServiceInstanceId::DISABLED) sentinel and a Shared
+/// ring propagates the owner's id — rather than a live id minted here for a
+/// service that was never built on this scheduler (spec §3.2–§3.5/§5).
 pub(super) struct ServiceInstances {
-    pub(super) file_io_ring: ServiceInstanceId,
-    pub(super) standard_io_ring: ServiceInstanceId,
-    pub(super) generic_io_ring: ServiceInstanceId,
     pub(super) dist_sender: ServiceInstanceId,
     pub(super) net_kernel: ServiceInstanceId,
     /// Whether the generic-IO completion bridge was part of the construction
@@ -100,20 +98,13 @@ pub(super) struct ServiceInstances {
 }
 
 impl ServiceInstances {
-    /// Mint identities for every service slot. `generic_io_present`/
-    /// `dist_sender_present` gate the two slots that are legitimately absent
-    /// today (generic IO off by default; the sender skipped under replay): an
-    /// absent slot gets the [`DISABLED`](ServiceInstanceId::DISABLED) sentinel,
-    /// never a live identity.
-    pub(super) fn mint(
-        generic_io_present: bool,
-        generic_bridge_requested: bool,
-        dist_sender_present: bool,
-    ) -> Self {
+    /// Mint identities for the still-eager distribution runtimes.
+    /// `dist_sender_present` gates the sender (skipped under replay): an absent
+    /// slot gets the [`DISABLED`](ServiceInstanceId::DISABLED) sentinel, never a
+    /// live identity. `generic_bridge_requested` records whether the generic
+    /// ring's completion bridge was built.
+    pub(super) fn mint(dist_sender_present: bool, generic_bridge_requested: bool) -> Self {
         Self {
-            file_io_ring: ServiceInstanceId::mint(),
-            standard_io_ring: ServiceInstanceId::mint(),
-            generic_io_ring: presence_id(generic_io_present),
             dist_sender: presence_id(dist_sender_present),
             net_kernel: ServiceInstanceId::mint(),
             generic_bridge_requested,
@@ -173,6 +164,53 @@ fn dirty_pool_entry(service: &'static str, mode: &ServiceMode<DirtyPool>) -> Ser
     }
 }
 
+/// A completion ring's line, read through its [`ServiceMode`] (spec §3.3/§3.5).
+/// An `Owned` or `Shared` ring reports its requested-vs-live thread split and
+/// the instance id it carries — a `Shared` ring propagates the owner's id, so
+/// two schedulers reporting the same shared ring dedup in the process-wide
+/// aggregate. A `Disabled` slot reports the §5 disabled entry.
+fn ring_entry(service: &'static str, mode: &ServiceMode<RingService>) -> ServiceInventoryEntry {
+    match mode.service() {
+        Some(ring) => {
+            let thread_names = ring.worker_thread_names();
+            ServiceInventoryEntry {
+                service,
+                mode: mode.label(),
+                instance: mode.instance_id(),
+                configured: ring.requested_worker_count(),
+                actual: thread_names.len(),
+                thread_names,
+                fd_classes: Vec::new(),
+            }
+        }
+        None => disabled_entry(service),
+    }
+}
+
+/// The standard-IO ring's line, read through its [`ServiceMode`] (spec §3.4).
+/// `Owned` reports the group-leader server's ring worker split; `Disabled` (no
+/// ring, no process 0) reports the §5 disabled entry.
+fn standard_io_entry(
+    service: &'static str,
+    mode: &ServiceMode<StandardIoService>,
+) -> ServiceInventoryEntry {
+    match mode.service() {
+        Some(standard) => {
+            let thread_names = standard.server().worker_thread_names();
+            ServiceInventoryEntry {
+                service,
+                mode: mode.label(),
+                instance: mode.instance_id(),
+                configured: standard.server().requested_worker_count(),
+                actual: thread_names.len(),
+                thread_names,
+                fd_classes: Vec::new(),
+            }
+        }
+        None => disabled_entry(service),
+    }
+}
+
 /// A disabled service line: no instance, no threads, no fds.
 fn disabled_entry(service: &'static str) -> ServiceInventoryEntry {
     ServiceInventoryEntry {
@@ -196,23 +234,12 @@ pub(super) fn build_service_inventory(shared: &SharedState) -> Vec<ServiceInvent
 
     entries.push(dirty_pool_entry(DIRTY_CPU, &shared.dirty_cpu));
     entries.push(dirty_pool_entry(DIRTY_IO, &shared.dirty_io));
-    entries.push(owned_entry(
-        FILE_IO_RING,
-        instances.file_io_ring,
-        shared.file_io_ring.requested_worker_count(),
-        shared.file_io_ring.worker_thread_names(),
-    ));
-    entries.push(owned_entry(
-        STANDARD_IO_RING,
-        instances.standard_io_ring,
-        shared._standard_io_server.requested_worker_count(),
-        shared._standard_io_server.worker_thread_names(),
-    ));
+    entries.push(ring_entry(FILE_IO_RING, &shared.file_io_ring));
+    entries.push(standard_io_entry(STANDARD_IO_RING, &shared.standard_io));
 
     // Generic IO ring + its completion bridge, folded into one line (spec §1
-    // row 6). Off by default: `config.io: None` is a true absence, reported
-    // Disabled.
-    match &shared.io_ring {
+    // row 6). Off by default: `config.io: None` is a true absence (Disabled).
+    match shared.io_ring.service() {
         Some(ring) => {
             let mut names = ring.worker_thread_names();
             // `configured` counts the bridge from the CONSTRUCTION request
@@ -224,12 +251,15 @@ pub(super) fn build_service_inventory(shared: &SharedState) -> Vec<ServiceInvent
             if super::lock_or_recover(&shared.io_bridge).is_some() {
                 names.push(crate::io::bridge::IO_COMPLETION_THREAD_NAME.to_owned());
             }
-            entries.push(owned_entry(
-                GENERIC_IO_RING,
-                instances.generic_io_ring,
+            entries.push(ServiceInventoryEntry {
+                service: GENERIC_IO_RING,
+                mode: shared.io_ring.label(),
+                instance: shared.io_ring.instance_id(),
                 configured,
-                names,
-            ));
+                actual: names.len(),
+                thread_names: names,
+                fd_classes: Vec::new(),
+            });
         }
         None => entries.push(disabled_entry(GENERIC_IO_RING)),
     }

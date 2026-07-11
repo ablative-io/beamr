@@ -11,7 +11,6 @@ use dashmap::{DashMap, DashSet};
 use super::*;
 use crate::atom::Atom;
 use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
-use crate::io::RingConfig;
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, FdState, write_fd_resource};
 use crate::process::registry::ProcessTable;
 use crate::process::{ProcessStatus, RemotePid};
@@ -308,8 +307,7 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         ),
     ));
 
-    let service_instances =
-        super::inventory::ServiceInstances::mint(false, false, dist_sender.is_some());
+    let service_instances = super::inventory::ServiceInstances::mint(dist_sender.is_some(), false);
     Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
@@ -349,7 +347,7 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         timers: Arc::new(std::sync::Mutex::new(crate::timer::TimerWheel::new())),
         expired_receive_timers: DashMap::new(),
         output_sink: std::sync::Mutex::new(Arc::new(crate::io::NullSink)),
-        io_ring: None,
+        io_ring: super::service::ServiceMode::Disabled,
         io_registry: None,
         io_bridge: std::sync::Mutex::new(None),
         io_facility: None,
@@ -365,7 +363,7 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         suspension_mirror_registrations: AtomicU64::new(0),
         dirty_suspension_allocations: AtomicU64::new(0),
         park_gap_hook: Mutex::new(None),
-        file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
+        file_io_ring: super::service::ServiceMode::Disabled,
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
         file_io_results: DashMap::new(),
@@ -373,11 +371,7 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         standard_io_pid: u64::MAX,
         service_instances,
         dirty_completion_spawns: AtomicU64::new(0),
-        _standard_io_server: crate::io::StandardIoServer::new(
-            u64::MAX,
-            Arc::from(crate::io::create_ring(RingConfig::default())),
-            &crate::atom::AtomTable::new(),
-        ),
+        standard_io: super::service::ServiceMode::Disabled,
         local_node,
         net_kernel,
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
