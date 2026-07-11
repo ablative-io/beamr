@@ -239,7 +239,8 @@ fn generation_monotonic_across_reconnect_and_down_synchronous_with_disconnect() 
                 Arc::clone(&atom_table),
             );
             let listen_b = node_b
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .listen("127.0.0.1:0".parse().expect("listen address parses"))
                 .await
                 .expect("node B listens");
@@ -247,10 +248,15 @@ fn generation_monotonic_across_reconnect_and_down_synchronous_with_disconnect() 
             let a_atom = node_a.local_node().name;
 
             // Embedder-style probe on B records every hub event for A.
-            let log = subscribe_probe(&node_b.distribution_connections());
+            let log = subscribe_probe(
+                &node_b
+                    .try_distribution_connections()
+                    .expect("distribution owned"),
+            );
 
             node_a
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .connect("b@127.0.0.1")
                 .await
                 .expect("A connects to B");
@@ -265,7 +271,10 @@ fn generation_monotonic_across_reconnect_and_down_synchronous_with_disconnect() 
             // caused has already been delivered to every subscriber — assert
             // immediately, with no `eventually`.
             assert!(
-                node_b.distribution_connections().disconnect_node(a_atom),
+                node_b
+                    .try_distribution_connections()
+                    .expect("distribution owned")
+                    .disconnect_node(a_atom),
                 "B disconnects A"
             );
             assert_eq!(
@@ -276,7 +285,8 @@ fn generation_monotonic_across_reconnect_and_down_synchronous_with_disconnect() 
 
             // Reconnect: the next session opens a strictly greater generation.
             node_a
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .connect("b@127.0.0.1")
                 .await
                 .expect("A re-dials B");
@@ -333,17 +343,23 @@ fn peer_bounce_changes_peer_creation_on_next_up() {
                 Arc::clone(&atom_table),
             );
             let listen_b = node_b
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .listen("127.0.0.1:0".parse().expect("listen address parses"))
                 .await
                 .expect("node B listens");
             resolver.insert("b@127.0.0.1", listen_b.local_addr());
             let a_atom = node_a.local_node().name;
 
-            let log = subscribe_probe(&node_b.distribution_connections());
+            let log = subscribe_probe(
+                &node_b
+                    .try_distribution_connections()
+                    .expect("distribution owned"),
+            );
 
             node_a
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .connect("b@127.0.0.1")
                 .await
                 .expect("A connects to B");
@@ -357,7 +373,10 @@ fn peer_bounce_changes_peer_creation_on_next_up() {
             // Close the session, then restart A as a NEW VM incarnation: same
             // node name, different creation.
             assert!(
-                node_b.distribution_connections().disconnect_node(a_atom),
+                node_b
+                    .try_distribution_connections()
+                    .expect("distribution owned")
+                    .disconnect_node(a_atom),
                 "B disconnects A"
             );
             node_a.shutdown();
@@ -368,7 +387,8 @@ fn peer_bounce_changes_peer_creation_on_next_up() {
                 Arc::clone(&atom_table),
             );
             node_a_restarted
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .connect("b@127.0.0.1")
                 .await
                 .expect("restarted A dials B");
@@ -442,7 +462,8 @@ fn h1_regression_purge_for_old_generation_precedes_new_generations_read_loop() {
                 Arc::clone(&atom_table),
             );
             let listen_b = node_b
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .listen("127.0.0.1:0".parse().expect("listen address parses"))
                 .await
                 .expect("node B listens");
@@ -456,7 +477,11 @@ fn h1_regression_purge_for_old_generation_precedes_new_generations_read_loop() {
             // Recording probe first, so the event history is pinned; the
             // staller below registers after it (and both after the
             // scheduler's composed subscriber, registered at construction).
-            let log = subscribe_probe(&node_b.distribution_connections());
+            let log = subscribe_probe(
+                &node_b
+                    .try_distribution_connections()
+                    .expect("distribution owned"),
+            );
 
             // Stalling probe: parks the FIRST Down-for-A drain until released.
             // This deliberately violates INV-SUB-DISCIPLINE (a test
@@ -469,7 +494,8 @@ fn h1_regression_purge_for_old_generation_precedes_new_generations_read_loop() {
             let staller_release = Arc::clone(&release);
             let staller_once = Arc::clone(&stalled_once);
             node_b
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .subscribe_connection_events(move |event| {
                     if event.node() == a_atom
                         && event.down_reason().is_some()
@@ -485,7 +511,8 @@ fn h1_regression_purge_for_old_generation_precedes_new_generations_read_loop() {
 
             // Session g1: A connects and joins a member; B observes it.
             node_a
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .connect("b@127.0.0.1")
                 .await
                 .expect("A connects to B");
@@ -506,7 +533,9 @@ fn h1_regression_purge_for_old_generation_precedes_new_generations_read_loop() {
 
             // Tear the link down from another thread; its dispatch stalls in
             // the probe with the gate held.
-            let b_connections = node_b.distribution_connections();
+            let b_connections = node_b
+                .try_distribution_connections()
+                .expect("distribution owned");
             let disconnector = thread::spawn(move || {
                 assert!(b_connections.disconnect_node(a_atom), "B disconnects A");
             });
@@ -525,7 +554,8 @@ fn h1_regression_purge_for_old_generation_precedes_new_generations_read_loop() {
             // generation g2 and enqueues Up(g2), but its dispatch blocks on
             // the gate — and A immediately joins a fresh member on g2.
             node_a
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .connect("b@127.0.0.1")
                 .await
                 .expect("A re-dials B while the drain is stalled");
@@ -617,7 +647,8 @@ fn embedder_probe_alongside_scheduler_subscriber_leaves_pg_semantics_unchanged()
                 Arc::clone(&atom_table),
             );
             let listen_b = node_b
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .listen("127.0.0.1:0".parse().expect("listen address parses"))
                 .await
                 .expect("node B listens");
@@ -631,12 +662,17 @@ fn embedder_probe_alongside_scheduler_subscriber_leaves_pg_semantics_unchanged()
             // Embedder-style probe: records events AND, at each Down-for-A
             // delivery, whether B's pg view of A was already purged. Captures
             // a Weak registry handle per INV-SUB-DISCIPLINE.
-            let log = subscribe_probe(&node_b.distribution_connections());
+            let log = subscribe_probe(
+                &node_b
+                    .try_distribution_connections()
+                    .expect("distribution owned"),
+            );
             let purged_at_down: Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(Vec::new()));
             let probe_purged = Arc::clone(&purged_at_down);
             let probe_registry = Arc::downgrade(&registry_b);
             node_b
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .subscribe_connection_events(move |event| {
                     if event.node() == a_atom
                         && event.down_reason().is_some()
@@ -652,7 +688,8 @@ fn embedder_probe_alongside_scheduler_subscriber_leaves_pg_semantics_unchanged()
             // pg semantics with the probe attached: a join on A is visible on
             // B, exactly as without the probe.
             node_a
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .connect("b@127.0.0.1")
                 .await
                 .expect("A connects to B");
@@ -677,7 +714,10 @@ fn embedder_probe_alongside_scheduler_subscriber_leaves_pg_semantics_unchanged()
             // (INV-SYNC) — assert with no polling — and unchanged in the
             // probe's presence.
             assert!(
-                node_b.distribution_connections().disconnect_node(a_atom),
+                node_b
+                    .try_distribution_connections()
+                    .expect("distribution owned")
+                    .disconnect_node(a_atom),
                 "B disconnects A"
             );
             assert!(

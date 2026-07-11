@@ -47,9 +47,13 @@
 //! The single drain prefers the control lane (`tokio::select!` with `biased`):
 //! controls are small and latency-sensitive, and preferring them empties the
 //! bounded lane fastest. Accepted v1 blast radius: a wedged peer can hold the
-//! drain up to [`WRITE_TIMEOUT`], during which a control to a HEALTHY peer may
-//! overflow, marking the healthy peer down — a spurious noconnection + redial
-//! (availability blip), never a lost signal.
+//! drain up to [`WRITE_TIMEOUT`] — or until the wedged connection itself is
+//! marked down (its own lane overflow, the net-tick), whichever comes first:
+//! `mark_down`'s socket shutdown errors the parked write immediately, so the
+//! drain recovers without waiting out the timer (commit 4). Within that
+//! window a control to a HEALTHY peer may still overflow, marking the healthy
+//! peer down — a spurious noconnection + redial (availability blip), never a
+//! lost signal.
 //!
 //! ## Generation pinning — DC-2
 //!
@@ -63,14 +67,16 @@
 //!
 //! ## Async-safe runtime drop
 //!
-//! The owned tokio [`Runtime`] performs a BLOCKING shutdown when dropped and
-//! panics ("Cannot drop a runtime in a context where blocking is not allowed")
-//! if that drop happens inside an async context. Because the last [`DistSender`]
-//! `Arc` can resolve anywhere — a scheduler worker, the main thread, or a
-//! `#[tokio::test]` task — `DistSenderInner` holds the runtime in an `Option` and
-//! its [`Drop`] moves the shutdown onto a dedicated `std::thread`. The blocking
-//! drop therefore always runs off any async context and can never panic,
-//! independent of where the final reference was released.
+//! The owned tokio [`Runtime`] performs a BLOCKING shutdown when dropped —
+//! joining the "beamr-dist-send" worker — and both panics inside an async
+//! context and self-deadlocks if awaited from its OWN worker. Because the last
+//! [`DistSender`] `Arc` can resolve anywhere — a scheduler worker, the main
+//! thread, a `#[tokio::test]` task, or a task on this very runtime —
+//! `DistSenderInner` holds the runtime in a `Mutex<Option<_>>` and hands
+//! teardown to [`join_runtime_drop`](crate::distribution::join_runtime_drop),
+//! which joins the worker before returning from every context except this
+//! runtime's own thread (the only place a join must deadlock — there it falls
+//! back to `shutdown_background`).
 //!
 //! ## Wedged-peer write deadline
 //!
@@ -80,7 +86,7 @@
 //! elapse the connection is marked down (firing the connection-down hook and
 //! remote-node purge) and the drain proceeds.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::runtime::{Handle, Runtime};
@@ -89,6 +95,7 @@ use tokio::task::JoinHandle;
 
 use crate::atom::Atom;
 use crate::distribution::connection::{ConnectionManager, DistConnection};
+use crate::distribution::join_runtime_drop;
 
 /// OS thread name of the sender's single tokio worker.
 ///
@@ -119,7 +126,7 @@ pub const DIST_CONTROL_QUEUE_CAP: usize = 256;
 /// down (firing the connection-down hook and remote-node purge) and the drain
 /// moves on. Sized generously relative to control-frame size so a merely-slow
 /// (not wedged) peer is not spuriously torn down.
-const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A unit of outbound distribution work.
 ///
@@ -170,40 +177,49 @@ struct DistSenderInner {
     /// [`DistSender::handle`], the connection manager's read/accept tasks.
     /// Dropped when the last [`DistSender`] clone drops.
     ///
-    /// Stored as `Option` so [`Drop`] can `take()` it and move the (blocking)
-    /// runtime shutdown onto a dedicated `std::thread`. Dropping a tokio
-    /// `Runtime` performs a BLOCKING shutdown and panics if it happens inside an
-    /// async context; the dedicated-thread idiom guarantees the drop always runs
-    /// off any async context — whether the last `Arc` resolves on a scheduler
-    /// worker, the main thread, or inside a `#[tokio::test]` task. Always `Some`
-    /// for a live `DistSenderInner`; only `None` transiently during `drop`.
-    runtime: Option<Runtime>,
+    /// Held in a `Mutex<Option<_>>` so [`DistSender::shutdown`] can `take()` it
+    /// through a shared `&self` and hand it to
+    /// [`join_runtime_drop`](crate::distribution::join_runtime_drop), which
+    /// joins the "beamr-dist-send" worker before returning from every context
+    /// except this runtime's own thread (where any join self-deadlocks and
+    /// teardown falls back to `shutdown_background`). The take happens in its
+    /// own statement so this mutex is NEVER held across the join —
+    /// [`DistSender::worker_thread_names`] locks it from worker-side contexts.
+    /// `Some` for a live sender; `None` once shut down (or transiently in
+    /// `drop`).
+    runtime: Mutex<Option<Runtime>>,
     /// Cached handle to `runtime`, kept independently of the `Option` so
     /// [`DistSender::handle`] never has to inspect (or risk a `None` from) the
-    /// drop-only `runtime` field. Cloning a `Handle` does not keep the runtime
-    /// alive, so this does not interfere with the dedicated-thread drop.
+    /// shutdown-consumed `runtime` field. Cloning a `Handle` does not keep the
+    /// runtime alive, so this does not interfere with the teardown.
     handle: Handle,
     /// Drain task handle, used to abort the loop on shutdown before the runtime
     /// is dropped.
     drain: JoinHandle<()>,
+    /// This instance's runtime mark (see `mint_runtime_mark`), stamped on its
+    /// worker and blocking-pool threads — `join_runtime_drop`'s per-INSTANCE
+    /// self-runtime detector.
+    mark: u64,
 }
 
 impl Drop for DistSenderInner {
     fn drop(&mut self) {
         // Abort the drain loop so the runtime has no in-flight task to wind down.
-        // `shutdown()` is the public path and is idempotent (a second abort is a
-        // no-op); calling it here also covers the case where the last `Arc`
-        // resolves without a prior explicit `shutdown()`.
+        // `shutdown()` is the primary path and is idempotent (a second abort is a
+        // no-op); calling it here also covers a sender dropped without a prior
+        // explicit `shutdown()`.
         self.drain.abort();
-        // Move the blocking runtime shutdown OFF any async context. A tokio
-        // `Runtime` drop blocks and panics ("Cannot drop a runtime in a context
-        // where blocking is not allowed") if performed from within an async
-        // context. Spawning a plain `std::thread` to own the drop guarantees it
-        // runs on a non-async thread, so it can never panic regardless of where
-        // the final `Arc` was released.
-        if let Some(runtime) = self.runtime.take() {
-            std::thread::spawn(move || drop(runtime));
-        }
+        // Safety net for a sender never explicitly shut down: joined whenever a
+        // join cannot deadlock (see `join_runtime_drop`). After an explicit
+        // `shutdown()` the runtime is already `None`, so this is a no-op.
+        // `get_mut` touches no lock, so the guard-across-join deadlock shape
+        // can't occur here.
+        let runtime = self
+            .runtime
+            .get_mut()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        join_runtime_drop(runtime, self.mark);
     }
 }
 
@@ -223,12 +239,14 @@ impl DistSender {
     /// drain task. Returns `None` only if the runtime could not be created.
     #[must_use]
     pub fn new(connections: ConnectionManager) -> Option<Self> {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
+        let mark = crate::distribution::mint_runtime_mark();
+        let mut builder = tokio::runtime::Builder::new_multi_thread();
+        builder
             .worker_threads(1)
             .thread_name(DIST_SEND_THREAD_NAME)
-            .enable_all()
-            .build()
-            .ok()?;
+            .enable_all();
+        crate::distribution::stamp_runtime_threads(&mut builder, mark);
+        let runtime = builder.build().ok()?;
         let (tx, mut rx) = mpsc::channel::<DistOutbound>(DIST_SEND_QUEUE_CAP);
         let (control_tx, mut control_rx) = mpsc::channel::<ControlOutbound>(DIST_CONTROL_QUEUE_CAP);
         // The drain closure captures ONLY `connections` (an
@@ -306,7 +324,8 @@ impl DistSender {
             tx,
             control_tx,
             inner: Arc::new(DistSenderInner {
-                runtime: Some(runtime),
+                runtime: Mutex::new(Some(runtime)),
+                mark,
                 handle,
                 drain,
             }),
@@ -323,12 +342,24 @@ impl DistSender {
 
     /// OS thread names of the sender's runtime workers (spec §5 inventory).
     ///
-    /// A live sender owns exactly one worker, named [`DIST_SEND_THREAD_NAME`].
-    /// The lazily-spawned blocking pool is not live at rest, so it is not
-    /// reported.
+    /// A live sender owns exactly one worker, named [`DIST_SEND_THREAD_NAME`];
+    /// after [`shutdown`](Self::shutdown) has joined the runtime the slot is
+    /// empty, so this reports zero — the post-shutdown inventory is truthful
+    /// rather than claiming a worker that no longer exists. The lazily-spawned
+    /// blocking pool is not live at rest, so it is not reported.
     #[must_use]
     pub fn worker_thread_names(&self) -> Vec<String> {
-        vec![DIST_SEND_THREAD_NAME.to_owned()]
+        if self
+            .inner
+            .runtime
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .is_some()
+        {
+            vec![DIST_SEND_THREAD_NAME.to_owned()]
+        } else {
+            Vec::new()
+        }
     }
 
     /// Enqueue an outbound frame. NON-BLOCKING: on a full or closed queue the
@@ -358,10 +389,26 @@ impl DistSender {
         }
     }
 
-    /// Abort the drain task. Called during scheduler shutdown before worker
-    /// threads are joined; the owned runtime is then dropped with `SharedState`.
+    /// Stop the sender: abort the drain task, then synchronously JOIN the owned
+    /// "beamr-dist-send" runtime worker before returning (spec §4). Aborting the
+    /// drain first leaves the runtime with no in-flight task; taking and dropping
+    /// the runtime on a dedicated joined thread aborts the connection read/accept
+    /// and heartbeat tasks it drives and winds the worker down off any async
+    /// context. Idempotent: a second call finds the runtime already taken and is
+    /// a no-op (a repeated `drain.abort()` is harmless).
     pub fn shutdown(&self) {
         self.inner.drain.abort();
+        // Take the runtime in its OWN statement so the mutex guard drops before
+        // the blocking join: `worker_thread_names()` (inventory) locks this
+        // same mutex, and a worker-side task blocked on it while shutdown waits
+        // for that worker is a lock-inversion deadlock.
+        let runtime = self
+            .inner
+            .runtime
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        join_runtime_drop(runtime, self.inner.mark);
     }
 }
 
@@ -1005,5 +1052,306 @@ mod tests {
         );
         sender.shutdown();
         drop(sender);
+    }
+
+    #[test]
+    fn disconnect_all_closes_a_connection_whose_writer_is_wedged() {
+        // Round-2 major 1: closure must NOT depend on the writer mutex. A huge
+        // write to a peer that never reads blocks holding the mutex;
+        // `disconnect_all`'s socket-level shutdown(2) on the owned dup must
+        // error that write out promptly and FIN the peer anyway. Pre-fix, the
+        // try_lock close is skipped and the write blocks forever.
+        use std::io::Read;
+
+        let (manager, atom_table) = manager();
+        let sender = DistSender::new(manager.clone()).expect("sender builds");
+        manager.set_runtime_handle(sender.handle());
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let mut client = std::net::TcpStream::connect(addr).expect("connect");
+        let (server, _) = listener.accept().expect("accept");
+        let node = atom_table.intern("peer@wedged");
+        let connection = {
+            let handle = sender.handle();
+            let _context = handle.enter();
+            manager
+                .register_test_connection(node, addr, server)
+                .expect("register test connection")
+        };
+
+        let (write_tx, write_rx) = std::sync::mpsc::channel();
+        let write_connection = Arc::clone(&connection);
+        sender.handle().spawn(async move {
+            // Far beyond any default kernel buffer, and the peer never reads:
+            // this write blocks mid-poll holding the writer mutex.
+            let payload = vec![0u8; 16 * 1024 * 1024];
+            let result = write_connection.write_raw(&payload).await;
+            let _ = write_tx.send(result.is_err());
+        });
+        // Let the write reach its blocked state before teardown contends.
+        std::thread::sleep(Duration::from_millis(300));
+
+        manager.disconnect_all();
+
+        assert!(
+            write_rx
+                .recv_timeout(Duration::from_secs(10))
+                .expect("the wedged write must finish once the socket is shut down"),
+            "the wedged write reports an error after socket shutdown"
+        );
+        assert!(manager.connected_nodes().is_empty());
+        client
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("set read timeout");
+        let mut buffer = [0u8; 64];
+        loop {
+            // Drain whatever landed before the shutdown; EOF/reset is the pin.
+            match client.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(_) => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => break,
+                Err(error) => panic!("peer expected EOF, read failed: {error}"),
+            }
+        }
+        sender.shutdown();
+    }
+
+    #[test]
+    fn worker_side_inventory_during_shutdown_does_not_deadlock() {
+        // Round-2 major 2: shutdown must not hold the runtime mutex across the
+        // blocking join. A worker-side task reading `worker_thread_names()`
+        // (the inventory path) while shutdown waits for that worker was a
+        // lock-inversion deadlock.
+        let (manager, _atom_table) = manager();
+        let sender = DistSender::new(manager).expect("sender builds");
+        let probe = sender.clone();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (names_tx, names_rx) = std::sync::mpsc::channel();
+        sender.handle().spawn(async move {
+            let _ = started_tx.send(());
+            // Synchronous sleep: keeps the worker busy mid-poll while the
+            // shutdown thread takes the runtime slot, so the names read below
+            // contends with the join, not with the take.
+            std::thread::sleep(Duration::from_millis(100));
+            let _ = names_tx.send(probe.worker_thread_names());
+        });
+        started_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("worker task starts");
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let owner = sender.clone();
+        let shutdown_thread = std::thread::spawn(move || {
+            owner.shutdown();
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("shutdown must not deadlock against a worker-side inventory read");
+        let _ = shutdown_thread.join();
+        names_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the worker-side inventory read completes");
+    }
+
+    #[test]
+    fn shutdown_from_an_unrelated_runtime_still_joins_the_worker() {
+        // Round-2 major 3: only the TRUE self-runtime case may fall back to a
+        // non-joining teardown. From an unrelated tokio runtime, shutdown must
+        // remain join-complete — pinned by time: the worker is deliberately
+        // busy in a synchronous sleep, so a joined shutdown cannot return
+        // before that sleep finishes, while a background fallback returns
+        // immediately.
+        let (manager, _atom_table) = manager();
+        let sender = DistSender::new(manager).expect("sender builds");
+        let (busy_tx, busy_rx) = std::sync::mpsc::channel();
+        sender.handle().spawn(async move {
+            let _ = busy_tx.send(());
+            std::thread::sleep(Duration::from_millis(1200));
+        });
+        busy_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("busy task starts");
+
+        let unrelated = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("unrelated runtime builds");
+        let for_shutdown = sender.clone();
+        let started = std::time::Instant::now();
+        unrelated.block_on(async move {
+            for_shutdown.shutdown();
+        });
+        assert!(
+            started.elapsed() >= Duration::from_millis(800),
+            "shutdown from an unrelated runtime must JOIN the busy worker \
+             (returned in {:?} — the background fallback)",
+            started.elapsed()
+        );
+        drop(unrelated);
+    }
+
+    #[test]
+    fn teardown_dup_is_cloexec_and_released_at_mark_down() {
+        // Round-3 major 3: the dup must be atomically CLOEXEC (the
+        // authenticated socket must not leak into children) and must be
+        // RELEASED at mark_down — a retained Arc<DistConnection> holds no
+        // dead descriptor after teardown.
+        let (manager, atom_table) = manager();
+        let sender = DistSender::new(manager.clone()).expect("sender builds");
+        manager.set_runtime_handle(sender.handle());
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let _client = std::net::TcpStream::connect(addr).expect("connect");
+        let (server, _) = listener.accept().expect("accept");
+        let node = atom_table.intern("peer@cloexec");
+        let connection = {
+            let handle = sender.handle();
+            let _context = handle.enter();
+            manager
+                .register_test_connection(node, addr, server)
+                .expect("register test connection")
+        };
+        assert_eq!(
+            connection.teardown_fd_cloexec(),
+            Some(true),
+            "the teardown dup is created atomically CLOEXEC"
+        );
+        manager.disconnect_node(node);
+        assert_eq!(
+            connection.teardown_fd_cloexec(),
+            None,
+            "mark_down releases the dup even while this Arc is retained"
+        );
+        sender.shutdown();
+    }
+
+    #[test]
+    fn teardown_dup_failure_refuses_the_connection() {
+        // Round-3 major 3: a connection whose teardown dup cannot be created
+        // must be REFUSED, never installed with a degraded closure guarantee.
+        let (manager, atom_table) = manager();
+        let sender = DistSender::new(manager.clone()).expect("sender builds");
+        manager.set_runtime_handle(sender.handle());
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let _client = std::net::TcpStream::connect(addr).expect("connect");
+        let (server, _) = listener.accept().expect("accept");
+        let node = atom_table.intern("peer@dupfail");
+        crate::distribution::connection::FAIL_TEARDOWN_DUP_FOR_TEST.with(|flag| flag.set(true));
+        let refused = {
+            let handle = sender.handle();
+            let _context = handle.enter();
+            manager.register_test_connection(node, addr, server)
+        };
+        crate::distribution::connection::FAIL_TEARDOWN_DUP_FOR_TEST.with(|flag| flag.set(false));
+        assert!(refused.is_err(), "dup failure refuses the install");
+        assert!(
+            manager.get_connection(node).is_none(),
+            "a refused connection is never tabled"
+        );
+        sender.shutdown();
+    }
+
+    #[test]
+    fn cross_scheduler_same_named_worker_still_joins_the_other_runtime() {
+        // Round-3 major 2: every sender worker shares the "beamr-dist-send"
+        // name, so identity must be per-INSTANCE (the runtime mark) — shutdown
+        // of sender A from sender B's same-named worker must take the JOINED
+        // path. Pinned by time: A's worker is busy in a synchronous sleep, so
+        // a joined shutdown cannot return before that sleep ends, while the
+        // (wrong) background path returns immediately.
+        let (manager_a, _t1) = manager();
+        let sender_a = DistSender::new(manager_a).expect("sender A builds");
+        let (manager_b, _t2) = manager();
+        let sender_b = DistSender::new(manager_b).expect("sender B builds");
+
+        let (busy_tx, busy_rx) = std::sync::mpsc::channel();
+        sender_a.handle().spawn(async move {
+            let _ = busy_tx.send(());
+            std::thread::sleep(Duration::from_millis(1200));
+        });
+        busy_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("A's busy task starts");
+
+        let (elapsed_tx, elapsed_rx) = std::sync::mpsc::channel();
+        let a_for_b = sender_a.clone();
+        sender_b.handle().spawn(async move {
+            let started = std::time::Instant::now();
+            a_for_b.shutdown();
+            let _ = elapsed_tx.send(started.elapsed());
+        });
+        let elapsed = elapsed_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("A's shutdown from B's worker completes");
+        assert!(
+            elapsed >= Duration::from_millis(800),
+            "shutdown from another scheduler's same-named worker must JOIN \
+             (returned in {elapsed:?} — the self-runtime background fallback)"
+        );
+        sender_b.shutdown();
+    }
+
+    #[test]
+    fn shutdown_from_the_senders_own_blocking_pool_does_not_deadlock() {
+        // Round-3 major 2, the other half: the runtime mark is stamped on the
+        // blocking pool too, so shutdown from the sender's own spawn_blocking
+        // thread takes the non-deadlocking background path.
+        let (manager, _atom_table) = manager();
+        let sender = DistSender::new(manager).expect("sender builds");
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let own = sender.clone();
+        sender.handle().spawn_blocking(move || {
+            own.shutdown();
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("shutdown on the sender's own blocking pool must complete, not deadlock");
+    }
+
+    #[test]
+    fn shutdown_from_the_senders_own_runtime_worker_does_not_deadlock() {
+        // The runtime handle is public, so a task ON the sender's sole worker
+        // can trigger shutdown. A blocking join there is a self-join cycle
+        // (the worker waits for the helper, the helper waits for the worker);
+        // `join_runtime_drop` must detect the async context and fall back to
+        // `shutdown_background`. Bounded by the harness only through the
+        // channel timeout below — a regression hangs the recv, not the suite.
+        let (manager, _table) = manager();
+        let sender = DistSender::new(manager).unwrap_or_else(|| panic!("sender builds"));
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let on_runtime = sender.clone();
+        sender.handle().spawn(async move {
+            on_runtime.shutdown();
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("shutdown on the sender's own worker must complete, not deadlock");
+        // The owner path stays idempotent afterward.
+        sender.shutdown();
+        assert!(sender.worker_thread_names().is_empty());
+    }
+
+    #[test]
+    fn final_clone_drop_on_the_senders_own_runtime_worker_does_not_deadlock() {
+        // Same cycle through the Drop safety net: the LAST clone dropping
+        // inside one of the runtime's own tasks must not block that worker on
+        // its own exit.
+        let (manager, _table) = manager();
+        let sender = DistSender::new(manager).unwrap_or_else(|| panic!("sender builds"));
+        let handle = sender.handle().clone();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        handle.spawn(async move {
+            drop(sender);
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("final-clone drop on the sender's own worker must complete, not deadlock");
     }
 }

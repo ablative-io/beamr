@@ -161,24 +161,42 @@ fn default_distribution_config_resolves_nothing() {
     assert!(SchedulerConfig::default().distribution.is_none());
     assert_eq!(SchedulerConfig::default().jit_threshold, None);
 
-    let scheduler = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-        .expect("scheduler should start");
+    // Honest None (spec §3.6): the default profile builds NO distribution, so
+    // the config accessor is absent rather than exposing a default resolver.
+    let default_scheduler =
+        Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
+            .expect("scheduler should start");
     assert_eq!(
-        scheduler.jit_profiler().current_threshold(),
+        default_scheduler.jit_profiler().current_threshold(),
         crate::jit::DEFAULT_JIT_THRESHOLD
     );
+    assert!(
+        default_scheduler.try_distribution_config().is_none(),
+        "distribution: None ⇒ no config to read"
+    );
+    default_scheduler.shutdown();
 
+    // The empty-resolver behavior this test implicitly pinned now lives on the
+    // explicit Some(config) profile it was assuming (spec §6).
+    let dist_scheduler = Scheduler::new(
+        SchedulerConfig {
+            distribution: Some(crate::distribution::DistributionConfig::default()),
+            ..SchedulerConfig::default()
+        },
+        Arc::new(ModuleRegistry::new()),
+    )
+    .expect("scheduler should start");
     assert_eq!(
         block_on_ready(
-            scheduler
-                .distribution_config()
+            dist_scheduler
+                .try_distribution_config()
+                .expect("distribution owned")
                 .resolver
                 .resolve("missing@localhost")
         ),
         Err(ResolveError::NotFound)
     );
-
-    scheduler.shutdown();
+    dist_scheduler.shutdown();
 }
 
 #[test]
@@ -1141,23 +1159,16 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
     let module_name = atoms.intern("slice_pin");
     let registry = Arc::new(ModuleRegistry::new());
     let atom_table = Arc::new(crate::atom::AtomTable::new());
-    let distribution = DistributionConfig::default();
-    let distribution_connections = crate::distribution::connection::ConnectionManager::new(
-        Arc::clone(&atom_table),
-        Arc::clone(&distribution.resolver),
-        distribution.cookie.clone(),
-        "local@test",
-        0,
-    );
-    let net_kernel = Arc::new(crate::distribution::NetKernel::new(
-        crate::distribution::connection::ConnectionManager::new(
+    // One owned distribution bundle, no outbound sender (spec §3.6).
+    let distribution = super::service::ServiceMode::Owned(
+        super::distribution_service::DistributionService::build(
+            DistributionConfig::default(),
             Arc::clone(&atom_table),
-            distribution.resolver.clone(),
-            distribution.cookie.clone(),
             "local@test",
             0,
+            false,
         ),
-    ));
+    );
     let module_v1 = registry.insert(test_module(
         module_name,
         vec![
@@ -1205,8 +1216,6 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         monitor_set: Mutex::new(MonitorSet::new()),
         hook: Hook::new(),
         distribution,
-        distribution_connections,
-        dist_sender: None,
         process_registry: DashMap::new(),
         timers: Arc::new(Mutex::new(TimerWheel::new())),
         expired_receive_timers: DashMap::new(),
@@ -1233,11 +1242,10 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
-        service_instances: super::inventory::ServiceInstances::mint(false, false),
+        service_instances: super::inventory::ServiceInstances::mint(false),
         dirty_completion_spawns: AtomicU64::new(0),
         standard_io: super::service::ServiceMode::Disabled,
         local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
-        net_kernel,
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
         replay_driver: None,
@@ -1528,13 +1536,15 @@ fn process_info_reads_executing_process_metadata() {
 #[test]
 fn tombstone_after_wait_store_prevents_wait_parking() {
     let atom_table = Arc::new(crate::atom::AtomTable::new());
-    let distribution = DistributionConfig::default();
-    let distribution_connections = crate::distribution::connection::ConnectionManager::new(
-        Arc::clone(&atom_table),
-        Arc::clone(&distribution.resolver),
-        distribution.cookie.clone(),
-        "local@test",
-        0,
+    // One owned distribution bundle, no outbound sender (spec §3.6).
+    let distribution = super::service::ServiceMode::Owned(
+        super::distribution_service::DistributionService::build(
+            DistributionConfig::default(),
+            Arc::clone(&atom_table),
+            "local@test",
+            0,
+            false,
+        ),
     );
     let shared = Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
@@ -1564,8 +1574,6 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         monitor_set: Mutex::new(MonitorSet::new()),
         hook: Hook::new(),
         distribution,
-        distribution_connections,
-        dist_sender: None,
         process_registry: DashMap::new(),
         timers: Arc::new(Mutex::new(TimerWheel::new())),
         expired_receive_timers: DashMap::new(),
@@ -1598,22 +1606,10 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
-        service_instances: super::inventory::ServiceInstances::mint(false, false),
+        service_instances: super::inventory::ServiceInstances::mint(false),
         dirty_completion_spawns: AtomicU64::new(0),
         standard_io: super::service::ServiceMode::Disabled,
         local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
-        net_kernel: {
-            let dist = DistributionConfig::default();
-            let at = Arc::new(crate::atom::AtomTable::new());
-            let cm = crate::distribution::connection::ConnectionManager::new(
-                at,
-                dist.resolver.clone(),
-                dist.cookie.clone(),
-                "local@test",
-                0,
-            );
-            Arc::new(crate::distribution::NetKernel::new(cm))
-        },
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
         replay_driver: None,
@@ -4074,4 +4070,57 @@ fn busy_poll_natives_all_progress_under_heavy_concurrent_churn() {
         );
     }
     scheduler.shutdown();
+}
+
+#[test]
+fn shutdown_closes_active_distribution_connections_before_returning() {
+    // Spec §3.6 connection-complete shutdown: `Scheduler::shutdown()` must
+    // close every active distribution connection — peer sees EOF, table
+    // empties — not merely join the runtime workers. Regression pin for the
+    // teardown that left retained write halves (and their sockets) alive
+    // until the last `Arc<DistConnection>` dropped.
+    use std::io::Read;
+
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            distribution: Some(crate::distribution::DistributionConfig::default()),
+            ..SchedulerConfig::default()
+        },
+        Arc::new(ModuleRegistry::new()),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+
+    let manager = scheduler.shared.distribution_connections_or_panic().clone();
+    let node = scheduler.shared.atom_table.intern("peer@teardown");
+    let (server, mut client, addr) = super::connection_lifecycle_tests::socket_pair();
+    {
+        let handle = scheduler.shared.dist_sender_or_panic().handle();
+        let _context = handle.enter();
+        manager
+            .register_test_connection(node, addr, server)
+            .unwrap_or_else(|error| panic!("register test connection: {error}"));
+    }
+    assert_eq!(manager.connected_nodes(), vec![node]);
+
+    scheduler.shutdown();
+
+    // Table emptied and Down delivered by the time shutdown returns (INV-SYNC
+    // via disconnect_all); the peer's blocking read observes EOF (FIN from the
+    // taken write half), bounded only as a hang guard.
+    assert!(
+        manager.connected_nodes().is_empty(),
+        "shutdown must remove every active connection from the table"
+    );
+    client
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap_or_else(|error| panic!("set read timeout: {error}"));
+    let mut buffer = [0u8; 8];
+    match client.read(&mut buffer) {
+        Ok(0) => {}
+        Ok(n) => panic!("peer expected EOF, read {n} bytes"),
+        // A reset also proves the socket is torn down.
+        Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => {}
+        Err(error) => panic!("peer expected EOF, read failed: {error}"),
+    }
 }

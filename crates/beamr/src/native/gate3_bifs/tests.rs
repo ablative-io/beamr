@@ -378,11 +378,32 @@ fn is_alive_false_for_default_node_name() {
 }
 
 #[test]
-fn is_alive_true_for_real_node_name() {
+fn is_alive_false_for_real_node_name_without_distribution_service() {
+    // A custom node name with `distribution: None` keeps its identity passively
+    // (spec §3.6): no distribution service exists, so the node is NOT alive —
+    // every actual distribution operation would answer false/[]/noconnection.
     let table = Arc::new(AtomTable::with_common_atoms());
     let mut ctx = ProcessContext::new();
     ctx.set_atom_table(Some(Arc::clone(&table)));
     ctx.set_local_node(Some(Node::new(table.intern("beamr@test"), 0)));
+
+    assert_eq!(bif_is_alive_0(&[], &mut ctx), Ok(Term::atom(Atom::FALSE)));
+}
+
+#[test]
+fn is_alive_true_for_real_node_name_with_distribution_service() {
+    let table = Arc::new(AtomTable::with_common_atoms());
+    let manager = ConnectionManager::new(
+        Arc::clone(&table),
+        Arc::new(StaticResolver::new(std::collections::HashMap::new())),
+        "test-cookie",
+        "beamr@test",
+        0,
+    );
+    let mut ctx = ProcessContext::new();
+    ctx.set_atom_table(Some(Arc::clone(&table)));
+    ctx.set_local_node(Some(Node::new(table.intern("beamr@test"), 0)));
+    ctx.set_net_kernel(Some(Arc::new(NetKernel::new(manager))));
 
     assert_eq!(bif_is_alive_0(&[], &mut ctx), Ok(Term::atom(Atom::TRUE)));
 }

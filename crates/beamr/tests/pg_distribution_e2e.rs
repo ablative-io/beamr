@@ -141,12 +141,14 @@ async fn pg_join_visible_on_peer_and_purged_on_node_down() {
     );
 
     let listen_a = node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("listen address parses"))
         .await
         .expect("node A listens");
     let listen_b = node_b
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("listen address parses"))
         .await
         .expect("node B listens");
@@ -160,7 +162,8 @@ async fn pg_join_visible_on_peer_and_purged_on_node_down() {
 
     // Establish A -> B so A's broadcast has a connected node to transmit to.
     node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("b@127.0.0.1")
         .await
         .expect("A connects to B");
@@ -188,7 +191,8 @@ async fn pg_join_visible_on_peer_and_purged_on_node_down() {
     // every remote member that belonged to A.
     assert!(
         node_b
-            .distribution_connections()
+            .try_distribution_connections()
+            .expect("distribution owned")
             .disconnect_node(a_node_atom)
     );
     let purged = eventually(|| registry_b.remote_members(scope, group).is_empty()).await;
@@ -223,12 +227,14 @@ async fn pg_join_is_connected_only_and_not_replayed() {
     );
 
     let listen_a = node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node A listens");
     let listen_b = node_b
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node B listens");
@@ -267,7 +273,8 @@ async fn pg_join_is_connected_only_and_not_replayed() {
 
     // Now connect A -> B and join a second member.
     node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("b@127.0.0.1")
         .await
         .expect("A connects to B");
@@ -319,12 +326,14 @@ async fn process_exit_purges_local_and_propagates_leave() {
     );
 
     let listen_a = node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node A listens");
     let listen_b = node_b
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node B listens");
@@ -335,7 +344,8 @@ async fn process_exit_purges_local_and_propagates_leave() {
     let a_node_atom = node_a.local_node().name;
 
     node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("b@127.0.0.1")
         .await
         .expect("A connects to B");
@@ -403,17 +413,20 @@ async fn pg_join_broadcasts_to_every_connected_node() {
     );
 
     let listen_a = node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node A listens");
     let listen_b = node_b
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node B listens");
     let listen_c = node_c
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node C listens");
@@ -425,12 +438,14 @@ async fn pg_join_broadcasts_to_every_connected_node() {
     let a_node_atom = node_a.local_node().name;
 
     node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("b@127.0.0.1")
         .await
         .expect("A connects to B");
     node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("c@127.0.0.1")
         .await
         .expect("A connects to C");
@@ -481,12 +496,14 @@ async fn reconnection_down_up_rejoin_reestablishes_membership_without_stale_resu
     );
 
     let listen_a = node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node A listens");
     let listen_b = node_b
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node B listens");
@@ -498,7 +515,8 @@ async fn reconnection_down_up_rejoin_reestablishes_membership_without_stale_resu
 
     // Phase 1 — UP: A connects to B and joins a member; B observes it.
     node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("b@127.0.0.1")
         .await
         .expect("A connects to B (initial)");
@@ -526,7 +544,8 @@ async fn reconnection_down_up_rejoin_reestablishes_membership_without_stale_resu
     // members and B no longer lists A as connected.
     assert!(
         node_b
-            .distribution_connections()
+            .try_distribution_connections()
+            .expect("distribution owned")
             .disconnect_node(a_node_atom),
         "B disconnects A"
     );
@@ -536,7 +555,8 @@ async fn reconnection_down_up_rejoin_reestablishes_membership_without_stale_resu
     );
     assert!(
         eventually(|| !node_b
-            .distribution_connections()
+            .try_distribution_connections()
+            .expect("distribution owned")
             .connected_nodes()
             .contains(&a_node_atom))
         .await,
@@ -546,14 +566,16 @@ async fn reconnection_down_up_rejoin_reestablishes_membership_without_stale_resu
     // Phase 3 — REJOIN: A re-dials B and joins a NEW member. The fresh link must
     // re-establish membership exactly as a first-time join would.
     node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("b@127.0.0.1")
         .await
         .expect("A re-dials B after the drop");
     // The re-dial reinstates the link in both directions' connection tables.
     assert!(
         eventually(|| node_a
-            .distribution_connections()
+            .try_distribution_connections()
+            .expect("distribution owned")
             .connected_nodes()
             .contains(&b_node_atom))
         .await,
@@ -608,12 +630,14 @@ async fn pg_local_leave_transmits_and_removes_remote_member() {
     );
 
     let listen_a = node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node A listens");
     let listen_b = node_b
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("address parses"))
         .await
         .expect("node B listens");
@@ -624,7 +648,8 @@ async fn pg_local_leave_transmits_and_removes_remote_member() {
     let a_node_atom = node_a.local_node().name;
 
     node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("b@127.0.0.1")
         .await
         .expect("A connects to B");

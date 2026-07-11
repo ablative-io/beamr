@@ -106,11 +106,15 @@ impl Scheduler {
         // joining it here makes that inventory truthful.
         self.shared.file_io_ring.shutdown_owned();
         self.shared.standard_io.shutdown_owned();
-        // Abort the distribution drain task before joining worker threads. The
-        // owned runtime is dropped later when `SharedState` drops.
-        if let Some(sender) = &self.shared.dist_sender {
-            sender.shutdown();
-        }
+        // Distribution bundle, owner-only (spec §3.6/§4): an Owned bundle aborts
+        // the drain and the connection read/accept/heartbeat lifecycle tasks, then
+        // synchronously JOINS BOTH tokio runtime workers ("beamr-dist-send" and
+        // "beamr-net-kernel") before returning — replacing the former abort-only
+        // stop that left the runtimes to a last-Arc Drop. A Disabled bundle
+        // no-ops. Idempotent: a second shutdown finds both runtimes already taken.
+        // `shutdown_owned` leaves the slot readable so the post-shutdown inventory
+        // truthfully reports zero live runtime workers (commit-3 semantics).
+        self.shared.distribution.shutdown_owned();
         self.shared.shutdown.store(true, Ordering::Release);
         self.shared.wake_condvar.notify_all();
         let mut threads = lock_or_recover(&self.threads);

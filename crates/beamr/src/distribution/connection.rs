@@ -3,6 +3,10 @@
 use std::fmt;
 use std::io;
 use std::net::SocketAddr;
+#[cfg(unix)]
+use std::os::fd::OwnedFd;
+#[cfg(unix)]
+use std::sync::Mutex as StdMutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock, Weak};
 use std::time::{Duration, Instant};
@@ -119,7 +123,26 @@ impl HeartbeatConfig {
 pub struct DistConnection {
     node: Atom,
     peer_addr: SocketAddr,
-    writer: Mutex<OwnedWriteHalf>,
+    /// `Some` while the write direction is open; taken (sending FIN — dropping
+    /// an `OwnedWriteHalf` shuts down the write direction of the shared stream)
+    /// by `mark_down`/`write_raw` once the connection is down, so a retained
+    /// `Arc<DistConnection>` cannot keep the socket's write half alive after
+    /// teardown (spec §3.6 connection-complete shutdown).
+    writer: Mutex<Option<OwnedWriteHalf>>,
+    /// CLOEXEC duplicate of the socket's fd, owned by this connection, so
+    /// `mark_down` can `shutdown(2)` the socket WITHOUT the writer mutex:
+    /// `shutdown` acts on the socket (shared by every descriptor), the wire
+    /// closes (FIN) and any write blocked on it errors immediately, even while
+    /// a blocked or aborted-mid-poll write holds the writer mutex. Owning a
+    /// dup (not the raw fd) makes this immune to fd reuse; taken (descriptor
+    /// RELEASED) by the first `mark_down`, so a retained
+    /// `Arc<DistConnection>` holds no dead descriptor after teardown. Costs
+    /// one fd per live connection (§6 resource-budget line, routed to the
+    /// pair). Duplication failure at construction REFUSES the connection — a
+    /// connection that cannot guarantee teardown is not installed. The mutex
+    /// is uncontended in practice (construction and one mark_down).
+    #[cfg(unix)]
+    socket_fd: StdMutex<Option<OwnedFd>>,
     down: AtomicBool,
     manager: Weak<ConnectionManagerInner>,
     /// Monotonic base for this connection's inbound-liveness clock.
@@ -152,20 +175,64 @@ pub struct DistConnection {
     down_reason: OnceLock<ConnectionDownReason>,
 }
 
+/// A stream paired with its pre-created teardown dup: the fallible
+/// duplication happens BEFORE the connection-table entry lock, so the install
+/// arms stay infallible and a dup failure refuses the connection outright
+/// (spec §3.6 — a connection that cannot guarantee mutex-independent closure
+/// is not installed).
+struct PreparedSocket {
+    stream: TcpStream,
+    /// Atomically-CLOEXEC dup of the socket fd — the authenticated
+    /// distribution socket must not leak into spawned child processes.
+    #[cfg(unix)]
+    teardown_fd: OwnedFd,
+}
+
+impl PreparedSocket {
+    fn prepare(stream: TcpStream) -> io::Result<Self> {
+        #[cfg(all(test, unix))]
+        if FAIL_TEARDOWN_DUP_FOR_TEST.with(std::cell::Cell::get) {
+            return Err(io::Error::other("teardown dup failure injected"));
+        }
+        #[cfg(unix)]
+        let teardown_fd = rustix::io::fcntl_dupfd_cloexec(&stream, 0).map_err(io::Error::from)?;
+        Ok(Self {
+            stream,
+            #[cfg(unix)]
+            teardown_fd,
+        })
+    }
+}
+
+// Test-only fault injection for `PreparedSocket::prepare`: thread-local so a
+// parallel test run cannot poison unrelated registrations.
+#[cfg(all(test, unix))]
+thread_local! {
+    pub(crate) static FAIL_TEARDOWN_DUP_FOR_TEST: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
 impl DistConnection {
+    /// Split a [`PreparedSocket`] into a connection (owning the write half
+    /// plus the pre-created teardown dup) and its read half.
     fn new(
         node: Atom,
         peer_addr: SocketAddr,
-        writer: OwnedWriteHalf,
+        socket: PreparedSocket,
         manager: Weak<ConnectionManagerInner>,
         direction: LinkDirection,
         generation: ConnectionGeneration,
         peer_creation: u32,
-    ) -> Self {
-        Self {
+    ) -> (Self, OwnedReadHalf) {
+        #[cfg(unix)]
+        let teardown_fd = socket.teardown_fd;
+        let (read_half, writer) = socket.stream.into_split();
+        let connection = Self {
             node,
             peer_addr,
-            writer: Mutex::new(writer),
+            writer: Mutex::new(Some(writer)),
+            #[cfg(unix)]
+            socket_fd: StdMutex::new(Some(teardown_fd)),
             down: AtomicBool::new(false),
             manager,
             created_at: Instant::now(),
@@ -175,7 +242,23 @@ impl DistConnection {
             generation,
             peer_creation,
             down_reason: OnceLock::new(),
-        }
+        };
+        (connection, read_half)
+    }
+
+    /// Test-only visibility for the teardown dup: `Some(is_cloexec)` while the
+    /// dup is held, `None` once released by `mark_down`.
+    #[cfg(all(test, unix))]
+    pub(crate) fn teardown_fd_cloexec(&self) -> Option<bool> {
+        self.socket_fd
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|fd| {
+                rustix::io::fcntl_getfd(fd)
+                    .map(|flags| flags.contains(rustix::io::FdFlags::CLOEXEC))
+                    .unwrap_or(false)
+            })
     }
 
     /// Record that inbound bytes were just observed, refreshing liveness.
@@ -245,7 +328,22 @@ impl DistConnection {
     pub async fn write_raw(self: &Arc<Self>, bytes: &[u8]) -> io::Result<()> {
         let result = {
             let mut writer = self.writer.lock().await;
-            writer.write_all(bytes).await
+            let result = match writer.as_mut() {
+                Some(writer) => writer.write_all(bytes).await,
+                // Write half already taken by teardown: the connection is down.
+                None => Err(io::Error::from(io::ErrorKind::NotConnected)),
+            };
+            // Close-under-the-held-lock when the connection went down while this
+            // write held it: `mark_down`'s own `try_lock` close is skipped in
+            // that interleaving, and this check runs strictly after the down
+            // store (Acquire/Release), so one of the two paths always takes the
+            // half. (A write future aborted at runtime-join drops its lock
+            // without reaching here — that residual half closes when the last
+            // `Arc<DistConnection>` drops, the pre-teardown behavior.)
+            if self.is_down() {
+                writer.take();
+            }
+            result
         };
         if result.is_err() {
             self.mark_down(ConnectionDownReason::WriteError);
@@ -286,6 +384,31 @@ impl DistConnection {
         // Wake the read loop so it exits and drops its read half (closing the
         // socket) without waiting for the peer to close first.
         self.shutdown.notify_waiters();
+        // Close the WIRE now, independent of the writer mutex: `shutdown(2)` on
+        // our owned dup acts on the socket itself — FIN to the peer, and any
+        // write blocked on this socket (a wedged peer holding the mutex, or a
+        // write about to be aborted mid-poll) errors immediately instead of
+        // holding the connection open. This is the §3.6 closure guarantee; the
+        // half-takes below are resource release, not the correctness mechanism.
+        // The dup is TAKEN here (descriptor released at once) — a retained
+        // `Arc<DistConnection>` must not hold a dead fd until it drops.
+        #[cfg(unix)]
+        if let Some(fd) = self
+            .socket_fd
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+        {
+            // ENOTCONN (already reset by the peer) is fine — the wire is down.
+            let _ = rustix::net::shutdown(&fd, rustix::net::Shutdown::Both);
+        }
+        // Release the write half when uncontended; a write holding the lock has
+        // just been errored out by the socket shutdown and its own post-write
+        // `is_down` check (ordered after our `down.swap` per Acquire/Release)
+        // takes the half on its way out.
+        if let Ok(mut writer) = self.writer.try_lock() {
+            writer.take();
+        }
         if let Some(manager) = self.manager.upgrade() {
             manager.connection_down(self.node, self, reason);
         }
@@ -374,6 +497,12 @@ struct ConnectionManagerInner {
     /// the net-tick (links are then only marked down on read EOF/error or a write
     /// timeout, the pre-net-tick behaviour).
     heartbeat: Option<HeartbeatConfig>,
+    /// Count of proactive net-tick (heartbeat) tasks spawned since construction,
+    /// one per established link when the net-tick is enabled. Reported as the
+    /// distribution bundle's heartbeat task-class policy line (spec §3.7/§5) —
+    /// heartbeats are async tasks with no OS thread, so they are inventoried as a
+    /// counter, never a thread line.
+    heartbeat_tasks_spawned: AtomicU64,
 }
 
 impl ConnectionManagerInner {
@@ -605,6 +734,7 @@ impl ConnectionManager {
                 local_creation,
                 runtime_handle: RwLock::new(None),
                 heartbeat: None,
+                heartbeat_tasks_spawned: AtomicU64::new(0),
             }),
         }
     }
@@ -804,6 +934,20 @@ impl ConnectionManager {
         self.inner.connections.len()
     }
 
+    /// Whether the proactive net-tick (heartbeat) is enabled on this manager.
+    #[must_use]
+    pub fn heartbeat_enabled(&self) -> bool {
+        self.inner.heartbeat.is_some()
+    }
+
+    /// Count of proactive net-tick (heartbeat) tasks spawned since construction
+    /// (spec §3.7/§5). One per established link when the net-tick is enabled;
+    /// zero when it is disabled or no link has yet been established.
+    #[must_use]
+    pub fn heartbeat_tasks_spawned(&self) -> u64 {
+        self.inner.heartbeat_tasks_spawned.load(Ordering::Relaxed)
+    }
+
     /// The atom table this manager keys its connection table by.
     ///
     /// Connections are keyed by the peer's authenticated handshake name interned
@@ -875,6 +1019,29 @@ impl ConnectionManager {
         };
         connection.mark_down(ConnectionDownReason::ManualDisconnect);
         true
+    }
+
+    /// Tear down every active connection and abort every in-flight outbound
+    /// dial — the scheduler-shutdown half of §3.6's connection-complete
+    /// teardown. Each active connection goes through the ordinary `mark_down`
+    /// path (`ManualDisconnect`: the local node is explicitly closing), so its
+    /// write half closes immediately (FIN), its read loop is woken to exit, the
+    /// table entry is removed, and the Down event is DELIVERED before this
+    /// returns (INV-SYNC). In-flight dials get their HS-3 abort flag set; the
+    /// dial's own exit paths retire it.
+    pub fn disconnect_all(&self) {
+        for entry in &self.inner.connecting {
+            entry.value().store(true, Ordering::Release);
+        }
+        let nodes: Vec<Atom> = self
+            .inner
+            .connections
+            .iter()
+            .map(|entry| *entry.key())
+            .collect();
+        for node in nodes {
+            self.disconnect_node(node);
+        }
     }
 
     /// Create a manager and start a dedicated asynchronous TCP accept loop.
@@ -1006,13 +1173,14 @@ impl ConnectionManager {
             return Err(ConnectError::SimultaneousAbort);
         }
         let node = self.inner.atom_table.intern(result.remote_name());
-        Ok(self.register_connection(
+        self.register_connection(
             node,
             peer_addr,
             stream,
             LinkDirection::Outbound,
             result.remote_creation(),
-        ))
+        )
+        .map_err(|error| ConnectError::Io(error.to_string()))
     }
 
     /// Install an authenticated link, deduplicating against an existing `Up`
@@ -1049,9 +1217,13 @@ impl ConnectionManager {
         stream: TcpStream,
         direction: LinkDirection,
         peer_creation: u32,
-    ) -> Arc<DistConnection> {
+    ) -> io::Result<Arc<DistConnection>> {
         use dashmap::mapref::entry::Entry;
 
+        // The fallible half FIRST, before the entry lock: a connection whose
+        // teardown dup cannot be created (fd exhaustion) is REFUSED here —
+        // never installed with a degraded closure guarantee (spec §3.6).
+        let socket = PreparedSocket::prepare(stream)?;
         let canonical = self.inner.canonical_direction(node);
         // The connection installed (if any) plus the displaced link to retire
         // AFTER the entry guard is released — `mark_down` re-enters this same
@@ -1083,8 +1255,8 @@ impl ConnectionManager {
                     // this: the only live incumbent it could meet is a stale
                     // non-canonical link or a stale incarnation, both handled
                     // below.)
-                    drop(stream);
-                    return Arc::clone(incumbent);
+                    drop(socket);
+                    return Ok(Arc::clone(incumbent));
                 }
                 // The incumbent is down (reap/reconnect), a non-canonical link
                 // this newcomer is entitled to replace (a simultaneous-connect
@@ -1143,7 +1315,7 @@ impl ConnectionManager {
                 let (connection, read_half) = self.build_connection(
                     node,
                     peer_addr,
-                    stream,
+                    socket,
                     direction,
                     generation,
                     peer_creation,
@@ -1161,7 +1333,7 @@ impl ConnectionManager {
                 let (connection, read_half) = self.build_connection(
                     node,
                     peer_addr,
-                    stream,
+                    socket,
                     direction,
                     generation,
                     peer_creation,
@@ -1193,7 +1365,7 @@ impl ConnectionManager {
         // run before the new generation's read loop exists.
         self.inner.events.dispatch();
         self.spawn_read_lifecycle(Arc::clone(&installed), read_half);
-        installed
+        Ok(installed)
     }
 
     /// Split a stream into a [`DistConnection`] and its read half, without
@@ -1202,22 +1374,21 @@ impl ConnectionManager {
         &self,
         node: Atom,
         peer_addr: SocketAddr,
-        stream: TcpStream,
+        socket: PreparedSocket,
         direction: LinkDirection,
         generation: ConnectionGeneration,
         peer_creation: u32,
     ) -> (Arc<DistConnection>, OwnedReadHalf) {
-        let (read_half, write_half) = stream.into_split();
-        let connection = Arc::new(DistConnection::new(
+        let (connection, read_half) = DistConnection::new(
             node,
             peer_addr,
-            write_half,
+            socket,
             Arc::downgrade(&self.inner),
             direction,
             generation,
             peer_creation,
-        ));
-        (connection, read_half)
+        );
+        (Arc::new(connection), read_half)
     }
 
     /// Register a pre-connected standard stream for native BIF unit tests.
@@ -1249,13 +1420,13 @@ impl ConnectionManager {
         let stream = TcpStream::from_std(stream)?;
         // Test helper: a pre-connected stream, no handshake, so the direction
         // only selects the install arm; `Inbound` here.
-        Ok(self.register_connection(
+        self.register_connection(
             node,
             peer_addr,
             stream,
             LinkDirection::Inbound,
             peer_creation,
-        ))
+        )
     }
 
     fn spawn_read_lifecycle(&self, connection: Arc<DistConnection>, mut read_half: OwnedReadHalf) {
@@ -1351,6 +1522,9 @@ impl ConnectionManager {
         let Some(config) = self.inner.heartbeat else {
             return;
         };
+        self.inner
+            .heartbeat_tasks_spawned
+            .fetch_add(1, Ordering::Relaxed);
         self.inner.spawn_lifecycle(async move {
             let mut ticker = tokio::time::interval(config.interval);
             // The first tick fires immediately; skip it so the seeded inbound
@@ -1427,7 +1601,10 @@ impl ConnectionManager {
             match outcome {
                 Ok(Ok(result)) => {
                     let node = manager.inner.atom_table.intern(result.remote_name());
-                    manager.register_connection(
+                    // A refused install (teardown-dup failure under fd
+                    // exhaustion) drops the stream: the peer sees EOF and may
+                    // redial once descriptors free up.
+                    let _ = manager.register_connection(
                         node,
                         peer_addr,
                         stream,
@@ -2101,10 +2278,12 @@ mod tests {
             .expect("client_inbound connects");
         let (server_inbound, _) = listener.accept().await.expect("accept server_inbound");
 
-        let displaced =
-            manager.register_connection(node, addr, server_outbound, LinkDirection::Outbound, 0);
-        let winner =
-            manager.register_connection(node, addr, server_inbound, LinkDirection::Inbound, 0);
+        let displaced = manager
+            .register_connection(node, addr, server_outbound, LinkDirection::Outbound, 0)
+            .expect("outbound installs");
+        let winner = manager
+            .register_connection(node, addr, server_inbound, LinkDirection::Inbound, 0)
+            .expect("inbound installs");
 
         // Exactly one table entry, and it is the canonical (inbound) winner, not
         // the first-installed outbound.

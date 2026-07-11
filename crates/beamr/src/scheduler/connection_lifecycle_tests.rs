@@ -43,7 +43,7 @@ fn runtime_backing(shared: &SharedState) -> tokio::runtime::Runtime {
         .build()
         .expect("build test runtime");
     shared
-        .distribution_connections
+        .distribution_connections_or_panic()
         .set_runtime_handle(runtime.handle().clone());
     runtime
 }
@@ -54,7 +54,7 @@ fn runtime_backing(shared: &SharedState) -> tokio::runtime::Runtime {
 pub(super) fn install_peer(shared: &SharedState, node: Atom) -> std::net::TcpStream {
     let (server, client, addr) = socket_pair();
     let _connection = shared
-        .distribution_connections
+        .distribution_connections_or_panic()
         .register_test_connection(node, addr, server)
         .expect("register test connection");
     client
@@ -207,7 +207,7 @@ fn probe_after_scheduler_observes_post_purge_state_and_delivered_noconnection() 
     let observed_for_probe = Arc::clone(&observed);
     let weak = Arc::downgrade(&shared);
     shared
-        .distribution_connections
+        .distribution_connections_or_panic()
         .subscribe_connection_events(move |event| {
             let ConnectionEvent::Down(_) = event else {
                 return;
@@ -221,7 +221,11 @@ fn probe_after_scheduler_observes_post_purge_state_and_delivered_noconnection() 
             *observed_for_probe.lock().expect("observed lock") = Some((members, delivered));
         });
 
-    assert!(shared.distribution_connections.disconnect_node(node));
+    assert!(
+        shared
+            .distribution_connections_or_panic()
+            .disconnect_node(node)
+    );
     drop(peer);
 
     let (members, delivered) = observed
@@ -272,7 +276,7 @@ fn r2_late_legacy_registrant_leaves_purge_and_noconnection_intact() {
         Arc::new(Mutex::new(Vec::new()));
     let legacy_seen_for_slot = Arc::clone(&legacy_seen);
     shared
-        .distribution_connections
+        .distribution_connections_or_panic()
         .register_connection_down(move |event| {
             legacy_seen_for_slot
                 .lock()
@@ -281,7 +285,11 @@ fn r2_late_legacy_registrant_leaves_purge_and_noconnection_intact() {
         });
 
     let peer = install_peer(&shared, node);
-    assert!(shared.distribution_connections.disconnect_node(node));
+    assert!(
+        shared
+            .distribution_connections_or_panic()
+            .disconnect_node(node)
+    );
     drop(peer);
 
     // INV-SYNC: every effect is observable the moment disconnect_node returns.

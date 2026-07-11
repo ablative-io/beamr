@@ -276,38 +276,26 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
     } else {
         crate::atom::AtomTable::new()
     });
-    let distribution = DistributionConfig::default();
-    let distribution_connections = crate::distribution::connection::ConnectionManager::new(
-        Arc::clone(&atom_table),
-        Arc::clone(&distribution.resolver),
-        distribution.cookie.clone(),
-        node_name,
-        0,
+    // One owned distribution bundle (spec §3.6): a single heartbeat-enabled
+    // manager backs the sender AND the net-kernel facade — no second manager.
+    // The outbound sender is built only for the wire variant (`with_dist_sender`),
+    // mirroring the historical fixture split.
+    let distribution = super::service::ServiceMode::Owned(
+        super::distribution_service::DistributionService::build(
+            DistributionConfig::default(),
+            Arc::clone(&atom_table),
+            node_name,
+            0,
+            with_dist_sender,
+        ),
     );
-    let dist_sender = if with_dist_sender {
-        let sender =
-            DistSender::new(distribution_connections.clone()).expect("dist sender runtime builds");
-        distribution_connections.set_runtime_handle(sender.handle());
-        Some(sender)
-    } else {
-        None
-    };
     let local_node = if with_dist_sender {
         crate::distribution::Node::new(atom_table.intern(node_name), 0)
     } else {
         crate::distribution::Node::new(crate::atom::Atom::new(0), 0)
     };
-    let net_kernel = Arc::new(crate::distribution::NetKernel::new(
-        crate::distribution::connection::ConnectionManager::new(
-            Arc::clone(&atom_table),
-            distribution.resolver.clone(),
-            distribution.cookie.clone(),
-            node_name,
-            0,
-        ),
-    ));
 
-    let service_instances = super::inventory::ServiceInstances::mint(dist_sender.is_some(), false);
+    let service_instances = super::inventory::ServiceInstances::mint(false);
     Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
@@ -341,8 +329,6 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         monitor_set: std::sync::Mutex::new(MonitorSet::new()),
         hook: crate::hook::Hook::new(),
         distribution,
-        distribution_connections,
-        dist_sender,
         process_registry: DashMap::new(),
         timers: Arc::new(std::sync::Mutex::new(crate::timer::TimerWheel::new())),
         expired_receive_timers: DashMap::new(),
@@ -373,7 +359,6 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         dirty_completion_spawns: AtomicU64::new(0),
         standard_io: super::service::ServiceMode::Disabled,
         local_node,
-        net_kernel,
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
         replay_driver: None,
@@ -929,7 +914,7 @@ fn sentinel_links_merge_into_body_on_store_back() {
 #[test]
 fn remote_link_exit_sends_exit_control() {
     let shared = make_shared_state_with_dist_sender();
-    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let handle = shared.dist_sender_or_panic().handle();
     let _context = handle.enter();
 
     let peer_node = shared.atom_table.intern("peer@test");

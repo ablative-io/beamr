@@ -192,8 +192,8 @@ pub(super) fn apply_inbound_link(shared: &SharedState, from: RemotePid, to_pid: 
         return;
     }
     let connection_live = shared
-        .distribution_connections
-        .get_connection(from.node)
+        .distribution()
+        .and_then(|dist| dist.connections().get_connection(from.node))
         .is_some_and(|connection| !connection.is_down());
     if !connection_live {
         process_remote_exit_signal(

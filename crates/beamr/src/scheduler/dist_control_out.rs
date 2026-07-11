@@ -48,12 +48,16 @@ pub(super) fn send_link(
         // failure down the whole connection.
         return Err(RemoteLinkError::BadTarget);
     }
-    let Some(sender) = &shared.dist_sender else {
+    // Distribution Disabled (no bundle) or replay (no sender) ⇒ NoConnection.
+    let Some(dist) = shared.distribution() else {
+        return Err(RemoteLinkError::NoConnection);
+    };
+    let Some(sender) = dist.sender() else {
         return Err(RemoteLinkError::NoConnection);
     };
     // DC-2 pin: resolve once, at enqueue; the drain writes only to this
     // connection generation and skips it once down.
-    let Some(connection) = shared.distribution_connections.get_connection(target.node) else {
+    let Some(connection) = dist.connections().get_connection(target.node) else {
         return Err(RemoteLinkError::NoConnection);
     };
     let frame = encode_link_frame(
@@ -78,10 +82,13 @@ pub(super) fn send_unlink(shared: &SharedState, caller_pid: u64, target: RemoteP
         // fields), so there is nothing to unlink — dropping is not lossy.
         return;
     }
-    let Some(sender) = &shared.dist_sender else {
+    let Some(dist) = shared.distribution() else {
         return;
     };
-    let Some(connection) = shared.distribution_connections.get_connection(target.node) else {
+    let Some(sender) = dist.sender() else {
+        return;
+    };
+    let Some(connection) = dist.connections().get_connection(target.node) else {
         return;
     };
     let frame = encode_unlink_frame(
@@ -138,10 +145,13 @@ fn send_exit(
         // per control is not.
         return;
     }
-    let Some(sender) = &shared.dist_sender else {
+    let Some(dist) = shared.distribution() else {
         return;
     };
-    let Some(connection) = shared.distribution_connections.get_connection(target.node) else {
+    let Some(sender) = dist.sender() else {
+        return;
+    };
+    let Some(connection) = dist.connections().get_connection(target.node) else {
         return;
     };
     let frame = encode_exit_frame(
