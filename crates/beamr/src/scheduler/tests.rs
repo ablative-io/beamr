@@ -1204,6 +1204,7 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
+        observed_park_timeout_millis: AtomicU64::new(0),
         park_gap_hook: Mutex::new(None),
         file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
         file_io_pending: DashMap::new(),
@@ -1211,6 +1212,8 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
+        service_instances: super::inventory::ServiceInstances::mint(false, false, false),
+        dirty_completion_spawns: AtomicU64::new(0),
         _standard_io_server: crate::io::StandardIoServer::new(
             u64::MAX,
             Arc::from(crate::io::create_ring(RingConfig::default())),
@@ -1562,6 +1565,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
+        observed_park_timeout_millis: AtomicU64::new(0),
         park_gap_hook: Mutex::new(None),
         dirty_cpu: crate::scheduler::dirty::DirtyPool::new("test-cpu", 1),
         dirty_io: crate::scheduler::dirty::DirtyPool::new("test-io", 1),
@@ -1571,6 +1575,8 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
+        service_instances: super::inventory::ServiceInstances::mint(false, false, false),
+        dirty_completion_spawns: AtomicU64::new(0),
         _standard_io_server: crate::io::StandardIoServer::new(
             u64::MAX,
             Arc::from(crate::io::create_ring(RingConfig::default())),

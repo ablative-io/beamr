@@ -164,6 +164,7 @@ pub struct DirtyPool {
     shutdown: AtomicBool,
     threads: Mutex<Vec<JoinHandle<()>>>,
     worker_names: Vec<String>,
+    requested_threads: usize,
 }
 
 impl DirtyPool {
@@ -217,6 +218,7 @@ impl DirtyPool {
             shutdown: AtomicBool::new(false),
             threads: Mutex::new(threads),
             worker_names,
+            requested_threads: pool_thread_count,
         }
     }
 
@@ -285,6 +287,36 @@ impl DirtyPool {
     #[must_use]
     pub fn worker_names(&self) -> &[String] {
         &self.worker_names
+    }
+
+    /// Names of worker OS threads LIVE right now — the `actual` half of the
+    /// service inventory's requested-vs-live split (spec §5).
+    ///
+    /// Liveness comes from synchronized JOIN-HANDLE state, not the shutdown
+    /// request flag: the flag is raised before the joins run (an in-flight
+    /// dirty call can hold a join open arbitrarily long), so flag-gating
+    /// would report zero while workers are still live. Locking the handles
+    /// makes a mid-shutdown caller wait for the joins instead, and
+    /// `is_finished` drops a worker that panicked early. `shutdown()` drains
+    /// the handle vector under this same lock, so callers only ever observe
+    /// all-handles-present or fully-drained, never a partial join.
+    #[must_use]
+    pub fn live_worker_names(&self) -> Vec<String> {
+        let threads = lock_or_recover(&self.threads);
+        self.worker_names
+            .iter()
+            .zip(threads.iter())
+            .filter(|(_, handle)| !handle.is_finished())
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /// Worker threads this pool was ASKED to run (after the `.max(1)`
+    /// coercion), independent of how many spawned successfully or remain
+    /// live — the `configured` half of the same split.
+    #[must_use]
+    pub fn requested_threads(&self) -> usize {
+        self.requested_threads
     }
 
     /// Whether shutdown has been requested.
@@ -428,6 +460,66 @@ mod tests {
         pool.shutdown();
         assert!(pool.is_shutdown());
         pool.shutdown();
+    }
+
+    /// `live_worker_names` reports join-handle liveness, never the shutdown
+    /// request flag: with a worker deliberately blocked in a dirty task, a
+    /// shutdown in progress must not produce a false zero — a concurrent
+    /// probe blocks on the handle lock until the join completes and then
+    /// observes the fully-drained state, and before shutdown the blocked
+    /// worker still counts as live.
+    #[test]
+    fn live_worker_names_track_joins_not_the_shutdown_flag() {
+        use super::DirtyTask;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let pool = Arc::new(DirtyPool::with_queue_depth("dirty-live", 1, 1));
+        let release = Arc::new(AtomicBool::new(false));
+
+        let release_for_task = Arc::clone(&release);
+        pool.submit_task(DirtyTask::new(move || {
+            while !release_for_task.load(Ordering::Acquire) {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }))
+        .expect("task submitted");
+
+        // The worker is (or is about to be) blocked in the task; it is LIVE.
+        assert_eq!(pool.live_worker_names(), vec!["dirty-live-0".to_owned()]);
+
+        // Start shutdown; it raises the flag immediately but stays in the
+        // join (holding the handle lock) until the task releases. Wait until
+        // the join loop provably holds the lock, then probe: the probe must
+        // BLOCK rather than report a false zero — under flag-gated liveness
+        // it would return [] instantly while the worker is still live.
+        let pool_for_shutdown = Arc::clone(&pool);
+        let shutdown = std::thread::spawn(move || pool_for_shutdown.shutdown());
+        loop {
+            match pool.threads.try_lock() {
+                Err(std::sync::TryLockError::WouldBlock) => break,
+                Ok(guard) => drop(guard),
+                Err(std::sync::TryLockError::Poisoned(error)) => {
+                    panic!("handle lock poisoned: {error}")
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let pool_for_probe = Arc::clone(&pool);
+        let probe = std::thread::spawn(move || pool_for_probe.live_worker_names());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(
+            !probe.is_finished(),
+            "the probe must wait for the join, never report a false zero"
+        );
+
+        release.store(true, Ordering::Release);
+        shutdown.join().expect("shutdown joins");
+        assert!(
+            probe.join().expect("probe joins").is_empty(),
+            "a probe concurrent with shutdown reports the joined state"
+        );
+        assert!(pool.live_worker_names().is_empty());
     }
 
     #[test]

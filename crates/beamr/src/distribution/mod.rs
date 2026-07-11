@@ -32,6 +32,15 @@ pub use resolver::{NodeResolver, ResolveError, ResolveFuture, Resolver, StaticRe
 /// Default distribution authentication cookie used when none is configured.
 pub const DEFAULT_COOKIE: &str = "beamr-cookie";
 
+/// OS thread name of the net-kernel runtime's single worker.
+///
+/// The runtime is built without an explicit `thread_name`, so tokio applies its
+/// default (`tokio-rt-worker`, `runtime/builder.rs`) — this constant records
+/// that default so the OS thread probe and the service inventory (spec §5)
+/// attribute the worker correctly. A distinct beamr-prefixed name is commit 4
+/// work (spec §5 naming defect).
+pub const NET_KERNEL_THREAD_NAME: &str = "tokio-rt-worker";
+
 /// Configuration for beamr distribution services.
 #[derive(Clone)]
 pub struct DistributionConfig {
@@ -91,6 +100,19 @@ impl NetKernel {
     #[must_use]
     pub fn connection_manager(&self) -> &ConnectionManager {
         &self.connections
+    }
+
+    /// OS thread names of the net-kernel runtime workers (spec §5 inventory).
+    ///
+    /// One worker, named [`NET_KERNEL_THREAD_NAME`], when the runtime built;
+    /// empty when it could not (then `connect_node` returns `false`). The
+    /// lazily-spawned blocking pool is not live at rest, so it is not reported.
+    #[must_use]
+    pub fn worker_thread_names(&self) -> Vec<String> {
+        match self.runtime {
+            Some(_) => vec![NET_KERNEL_THREAD_NAME.to_owned()],
+            None => Vec::new(),
+        }
     }
 
     /// Connect to `node`, mapping all connection failures to `false`.

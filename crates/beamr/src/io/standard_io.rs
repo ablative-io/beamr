@@ -61,6 +61,22 @@ impl StandardIoServer {
         self.pid
     }
 
+    /// OS thread names of the backing completion ring's LIVE worker pool.
+    ///
+    /// The standard-IO ring is owned inside this server, so the service
+    /// inventory (spec §5) reads its worker names through here.
+    #[must_use]
+    pub fn worker_thread_names(&self) -> Vec<String> {
+        self.ring.worker_thread_names()
+    }
+
+    /// Worker threads the backing ring was asked to run (spec §5
+    /// `configured`).
+    #[must_use]
+    pub fn requested_worker_count(&self) -> usize {
+        self.ring.requested_worker_count()
+    }
+
     /// Drain and handle all currently arrived `io_request` messages.
     pub fn run_available(&self, process: &mut Process, messages: &dyn IoMessageFacility) {
         process.mailbox_mut().drain_arrival();
