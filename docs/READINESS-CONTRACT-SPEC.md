@@ -510,6 +510,13 @@ shape decision and carry their own tests independent of §3.
   and active connections: drain semantics preserved, all connections
   deregistered (R4), no marker delivered post-shutdown, all threads joined
   (OS-visible), no leaked registrations (table empty assertion).
+  **Shutdown symmetry (normative, advisory-1):** a parked connection must
+  never need to run a final slice for scheduler shutdown to complete —
+  teardown of a parked process is entirely supervisor/reaper-owned (the R4
+  principle applied to shutdown), and any "wake everything so it can clean
+  itself up" design is forbidden as a shutdown-hang class. T5 asserts this
+  by parking connections that are never woken and requiring shutdown to
+  complete anyway.
 - **T6 — Duplicate/coalesced markers**: inject N markers for one event;
   exactly one drain pass, no duplicate frame application, no counter
   inflation (R6).
