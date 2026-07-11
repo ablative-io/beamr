@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "description": "Repository scouting result grounded in exact source evidence.",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "map",
+    "entry_points",
+    "dependencies",
+    "risks",
+    "questions",
+    "recommended_next_steps",
+    "verification"
+  ],
+  "properties": {
+    "summary": { "type": "string" },
+    "map": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["area", "paths", "responsibility", "evidence"],
+        "properties": {
+          "area": { "type": "string" },
+          "paths": { "type": "array", "items": { "type": "string" } },
+          "responsibility": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "entry_points": { "type": "array", "items": { "type": "string" } },
+    "dependencies": { "type": "array", "items": { "type": "string" } },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "questions": { "type": "array", "items": { "type": "string" } },
+    "recommended_next_steps": { "type": "array", "items": { "type": "string" } },
+    "verification": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "description": "Independent review result with findings first and explicit evidence.",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "findings",
+    "questions",
+    "summary",
+    "residual_risks",
+    "verification"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["ready", "ready_with_comments", "not_ready", "needs_information"]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "title", "location", "evidence", "impact", "recommendation"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["blocker", "major", "minor", "note"] },
+          "title": { "type": "string" },
+          "location": {
+            "type": "string",
+            "description": "Repository-relative file:line, or empty when no source location applies."
+          },
+          "evidence": { "type": "string" },
+          "impact": { "type": "string" },
+          "recommendation": { "type": "string" }
+        }
+      }
+    },
+    "questions": { "type": "array", "items": { "type": "string" } },
+    "summary": { "type": "string" },
+    "residual_risks": { "type": "array", "items": { "type": "string" } },
+    "verification": { "type": "array", "items": { "type": "string" } }
+  }
+}
