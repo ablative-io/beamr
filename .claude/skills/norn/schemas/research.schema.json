@@ -1,50 +1,53 @@
 {
-  "type": "object",
-  "description": "Evidence-backed research result with explicit uncertainty.",
-  "additionalProperties": false,
-  "required": [
-    "answer",
-    "claims",
-    "options",
-    "recommendation",
-    "unknowns",
-    "questions",
-    "verification"
-  ],
-  "properties": {
-    "answer": { "type": "string" },
-    "claims": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["claim", "status", "evidence", "source", "confidence"],
-        "properties": {
-          "claim": { "type": "string" },
-          "status": { "type": "string", "enum": ["confirmed", "contradicted", "uncertain"] },
-          "evidence": { "type": "string" },
-          "source": { "type": "string" },
-          "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
-        }
-      }
-    },
-    "options": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["option", "advantages", "risks", "fit"],
-        "properties": {
-          "option": { "type": "string" },
-          "advantages": { "type": "array", "items": { "type": "string" } },
-          "risks": { "type": "array", "items": { "type": "string" } },
-          "fit": { "type": "string" }
-        }
-      }
-    },
-    "recommendation": { "type": "string" },
-    "unknowns": { "type": "array", "items": { "type": "string" } },
-    "questions": { "type": "array", "items": { "type": "string" } },
-    "verification": { "type": "array", "items": { "type": "string" } }
-  }
+	"type": "object",
+	"description": "Evidence-backed research result with explicit uncertainty.",
+	"additionalProperties": false,
+	"required": [
+		"answer",
+		"claims",
+		"options",
+		"recommendation",
+		"unknowns",
+		"questions",
+		"verification"
+	],
+	"properties": {
+		"answer": { "type": "string" },
+		"claims": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["claim", "status", "evidence", "source", "confidence"],
+				"properties": {
+					"claim": { "type": "string" },
+					"status": {
+						"type": "string",
+						"enum": ["confirmed", "contradicted", "uncertain"]
+					},
+					"evidence": { "type": "string" },
+					"source": { "type": "string" },
+					"confidence": { "type": "string", "enum": ["high", "medium", "low"] }
+				}
+			}
+		},
+		"options": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["option", "advantages", "risks", "fit"],
+				"properties": {
+					"option": { "type": "string" },
+					"advantages": { "type": "array", "items": { "type": "string" } },
+					"risks": { "type": "array", "items": { "type": "string" } },
+					"fit": { "type": "string" }
+				}
+			}
+		},
+		"recommendation": { "type": "string" },
+		"unknowns": { "type": "array", "items": { "type": "string" } },
+		"questions": { "type": "array", "items": { "type": "string" } },
+		"verification": { "type": "array", "items": { "type": "string" } }
+	}
 }

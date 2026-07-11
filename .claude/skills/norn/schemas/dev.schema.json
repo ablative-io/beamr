@@ -1,49 +1,52 @@
 {
-  "type": "object",
-  "description": "Auditable development handoff describing actual changes and verification.",
-  "additionalProperties": false,
-  "required": [
-    "status",
-    "summary",
-    "changes",
-    "verification",
-    "remaining_work",
-    "questions",
-    "session_notes"
-  ],
-  "properties": {
-    "status": {
-      "type": "string",
-      "enum": ["completed", "partial", "blocked", "no_changes_needed"]
-    },
-    "summary": { "type": "string" },
-    "changes": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["path", "description"],
-        "properties": {
-          "path": { "type": "string" },
-          "description": { "type": "string" }
-        }
-      }
-    },
-    "verification": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["command", "result", "evidence"],
-        "properties": {
-          "command": { "type": "string" },
-          "result": { "type": "string", "enum": ["passed", "failed", "not_run"] },
-          "evidence": { "type": "string" }
-        }
-      }
-    },
-    "remaining_work": { "type": "array", "items": { "type": "string" } },
-    "questions": { "type": "array", "items": { "type": "string" } },
-    "session_notes": { "type": "array", "items": { "type": "string" } }
-  }
+	"type": "object",
+	"description": "Auditable development handoff describing actual changes and verification.",
+	"additionalProperties": false,
+	"required": [
+		"status",
+		"summary",
+		"changes",
+		"verification",
+		"remaining_work",
+		"questions",
+		"session_notes"
+	],
+	"properties": {
+		"status": {
+			"type": "string",
+			"enum": ["completed", "partial", "blocked", "no_changes_needed"]
+		},
+		"summary": { "type": "string" },
+		"changes": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["path", "description"],
+				"properties": {
+					"path": { "type": "string" },
+					"description": { "type": "string" }
+				}
+			}
+		},
+		"verification": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["command", "result", "evidence"],
+				"properties": {
+					"command": { "type": "string" },
+					"result": {
+						"type": "string",
+						"enum": ["passed", "failed", "not_run"]
+					},
+					"evidence": { "type": "string" }
+				}
+			}
+		},
+		"remaining_work": { "type": "array", "items": { "type": "string" } },
+		"questions": { "type": "array", "items": { "type": "string" } },
+		"session_notes": { "type": "array", "items": { "type": "string" } }
+	}
 }
