@@ -1,7 +1,9 @@
 # Embedder Composition Spec — Scheduler Services
 
-**Status:** DRAFT v0 — for review by Vesper Lynd; certification by the pair
-(Vesper Lynd + Waffles the Terrible) before implementation.
+**Status:** DESIGN OF RECORD — approved 2026-07-11 by both halves of the
+certifying pair independently (Vesper Lynd: APPROVED, two advisories;
+Waffles the Terrible: APPROVED, one condition + signing note; both folded at
+this head, Q-A..Q-F ruled). Implementation unblocked per §11.
 **Author:** Artemis Peach (beamr).
 **Provenance:** docs/stack-review/AION-HOST-RESOURCE-INCIDENT-2026-07-11.md
 (the required-work list §"Required Beamr work" and acceptance gates are this
@@ -135,6 +137,16 @@ means no message can wake it. Therefore:
   explicit error while an unrelated process on the same scheduler makes
   progress (extends `tests/dirty_scheduler.rs:152-228` [scout]).
 
+Precision (review note, 2026-07-11): the current code already withdraws the
+suspension and exits the process on submit failure
+(`execution/core.rs:739-742`), so refusal-before-registration is a
+**tightening, not a live-bug fix**. The full ordering requirement, stated
+normatively: refusal precedes suspension registration AND pool submit AND
+bridge spawn. Today failure paths exist after each of those steps, and the
+bridge-spawn-failure path (`execution/core.rs:1448`) returns `Err` after the
+job was already submitted — that pre-existing edge is what this ordering
+rule retires.
+
 ### 3.3 File-IO ring
 
 `ServiceMode<CompletionRing>`. Disabled: the file facility is absent from
@@ -240,6 +252,22 @@ VM's measured floor (certifying-pair ruling, 2026-07-11), so this item can
 move independently without invalidating a signed T1. The floor itself gets a
 Q1 line and a permanent assertion either way (§9).
 
+**Ruling (Q-F, certifying pair, 2026-07-11): HYBRID.** Commit 1 pins the
+5ms floor as a signed bound (option 3 — immediate rule-2 compliance, §7
+methodology). Tickless (option 1) proceeds as its **own named commit** in
+this workstream, gated on a wake-edge enumeration section that receives the
+same review treatment the readiness contract got. If the enumeration finds
+an event source that cannot get a clean wake edge, adaptive backoff
+(option 2) is the recorded fallback — decided in the open, not a silent
+compromise. **Signing note (Waffles the Terrible):** what the pair signs is
+the FORMULA and its per-host instantiation — wakes/sec/worker × total
+workers across all schedulers in the process — not a bare "5ms"; the
+aggregate is where the original sin lived, and a per-worker number without
+its multiplier is half a bound. The instantiation names its inputs from the
+inventory API itself (total workers = what `service_inventory()` reports,
+not what a config file claims — Vesper Lynd's sharpening), so the signed
+number and the enforcement mechanism cannot drift apart.
+
 ### 3.9 Readiness service (companion spec)
 
 READINESS-CONTRACT-SPEC §3 shape (b) — now CERTIFIED as the shape of
@@ -265,6 +293,18 @@ shared is a 6× spread on the incident host. Ruling proposed by this spec:
   thread total), so the signed bound is auditable per deployment: N
   schedulers ⇒ N poll threads under all-Owned, exactly 1 under Shared.
 
+**Shared-delivery gate (certification condition, Waffles the Terrible,
+2026-07-11):** the routing claim above ("registrations carry the delivering
+scheduler's identity so markers route home") gets its own acceptance gate —
+the readiness §3.6 gate set was written when the service faced one
+scheduler. New gate: two schedulers on one Shared poll thread, markers
+provably delivered to the correct scheduler's process, **including after one
+scheduler shuts down** — the surviving scheduler's registrations keep
+routing correctly and zero markers route to the dead one. This is the same
+identity machinery as §4 step 3 / assertion 5, tested from the delivery
+end; it joins the readiness spec's §3.6 gate list when the service
+implementation lands (contract §7 sequencing unchanged).
+
 ## 4. Shutdown — ownership-ordered, join-complete
 
 Deterministic order (rewriting `execution.rs:69-93`):
@@ -272,11 +312,18 @@ Deterministic order (rewriting `execution.rs:69-93`):
 1. Stop intake: refuse new registrations/submissions on every owned service.
 2. Stop completion/lifecycle tasks (bridge, readiness poll thread, listener
    accept tasks if scheduler-owned — Q-C, dist drain/heartbeat).
-3. `shutdown_if_owned` each backend: dirty pools, file ring, standard ring
+3. **Deregister this scheduler's live registrations from every `Shared`
+   service** (readiness fds, shared-ring pending completions) before joining
+   workers — releasing a handle (step 6) does not remove registrations, and
+   a shared service still holding registrations that route markers or
+   completions to a dead scheduler is exactly the fragility class the
+   generation tokens exist for (review advisory 2, 2026-07-11; the
+   VM-side complement of the consumer's per-connection dereg discipline).
+4. `shutdown_if_owned` each backend: dirty pools, file ring, standard ring
    (new), generic ring, distribution bundle **including synchronous runtime
    worker joins**.
-4. Signal + join normal workers.
-5. `Shared` handles: released, never stopped.
+5. Signal + join normal workers.
+6. `Shared` handles: released, never stopped.
 
 Gate (incident doc): *shutdown joins exactly the resources owned by that
 scheduler* — asserted by the inventory probe (§5) immediately after
@@ -289,6 +336,10 @@ scheduler; a co-resident scheduler's shared services are untouched.
 pub struct ServiceInventoryEntry {
     pub service: &'static str,        // "dirty-cpu", "file-io-ring", ...
     pub mode: ServiceModeLabel,       // Disabled | Owned | Shared
+    pub instance: ServiceInstanceId,  // process-wide identity of the underlying
+                                      // service instance: two entries (from any
+                                      // schedulers) with equal `instance` ARE the
+                                      // same service — makes Shared dedup mechanical
     pub configured: usize,            // requested worker count
     pub actual: usize,                // live OS threads right now
     pub thread_names: Vec<String>,    // exact OS names, service-distinct
@@ -296,6 +347,11 @@ pub struct ServiceInventoryEntry {
 }
 pub fn Scheduler::service_inventory(&self) -> Vec<ServiceInventoryEntry>;
 ```
+
+`ServiceInstanceId` is an opaque process-unique token minted at service
+construction (Owned and Shared alike); cloning a `Shared` handle propagates
+the token, so co-resident schedulers report the same identity for the same
+underlying service and the Q2 process-wide dedup (§9) is a plain group-by.
 
 - Every ring gets a **service-distinct thread-name prefix** (fixing the
   three-way `beamr-io-thread-pool-*` collision); NetKernel's runtime gets a
@@ -315,9 +371,14 @@ pub fn Scheduler::service_inventory(&self) -> Vec<ServiceInventoryEntry>;
    site (the two-site acceptance line).
 4. Post-shutdown: zero owned beamr-attributed threads (OS probe).
 5. Two schedulers sharing a ring/pool: no double-join, no cross-shutdown;
-   shared service survives one scheduler's death.
+   shared service survives one scheduler's death **with zero registrations
+   still targeting the dead scheduler** (readiness fds, shared-ring pending
+   completions) — survival isn't the bar, no-delivery-to-the-dead is
+   (review advisory 2, 2026-07-11).
 6. `service_inventory()` agrees with the OS probe on every profile in the
-   test matrix.
+   test matrix; **process-wide**, the deduped aggregate — Owned entries plus
+   each distinct Shared `instance` counted ONCE — agrees with the OS probe
+   across co-resident schedulers (review advisory 1, 2026-07-11).
 
 ## 6. Compatibility & behavior-change ledger
 
@@ -379,16 +440,22 @@ that adds service #31.
 - **Q1 (idle cost):** a minimal-profile scheduler: N requested normal
   workers, zero ancillary threads, zero fds beyond stdio the embedder gave
   it, zero disk/fsyncs — **plus, honestly stated: the idle tick (§3.8), up
-  to ~200 wakes/sec/worker until Q-F lands or is signed as a bound.** The
-  tick is this doc's own by-design cost and gets the full Q4 treatment; a
-  "parked worker costs nothing" claim is NOT made until the tick is tickless
-  or signed. Pinned by assertion 1 plus a new idle-wake-rate assertion.
+  to ~200 wakes/sec/worker — signed as a bound in commit 1 per the Q-F
+  ruling, tickless as the named follow-on.** The tick is this doc's own
+  by-design cost and gets the full Q4 treatment; a "parked worker costs
+  nothing" claim is NOT made until the tick is tickless. Pinned by assertion 1 plus a new idle-wake-rate assertion.
   Full-runtime profile: today's budget, now explicit, enumerated by
   `service_inventory()` and asserted against the OS.
-- **Q2 (aggregate ceiling):** the inventory IS the enforcement: aggregate =
-  Σ inventory entries, asserted per profile; sharing exists precisely so N
-  schedulers stop paying N× (one ring/pool serves many). No service infers
-  size from the host. The readiness service's Q2 story is in its own spec.
+- **Q2 (aggregate ceiling):** the inventory IS the enforcement: per
+  scheduler, aggregate = Σ that scheduler's inventory entries;
+  **process-wide, aggregate = Σ Owned entries + each distinct Shared
+  service-instance counted ONCE** (Σ over all entries would count a shared
+  4-thread ring N times across N schedulers — review advisory 1,
+  2026-07-11). The `instance` identity on each entry (§5) makes the dedup
+  mechanical, and assertion 6 asserts the deduped aggregate against the OS
+  probe. Sharing exists precisely so N schedulers stop paying N× (one
+  ring/pool serves many). No service infers size from the host. The
+  readiness service's Q2 story is in its own spec.
 - **Q3 (quiescence test):** assertions 1–6 (§5), all new with this diff, all
   mechanical against `service_inventory()` + the OS probe, all failing if Q1
   or Q2 were wrong.
@@ -399,36 +466,40 @@ that adds service #31.
   Terrible), Tom briefed. The legacy `Scheduler::new` profile carries the
   same numbers for one release as a migration bridge — same three citations.
 
-## 10. Open questions routed with this draft
+## 10. Open questions — RULED (certifying pair, 2026-07-11; both passes
+independent, verdicts merged)
 
-- **Q-A** Normal workers outside the ServiceMode model (§2.3) — confirm.
-- **Q-B** Refusal surface naming: `DirtySubmitError::Disabled` + a
-  service-unavailable ExecError vs a BEAM-visible error atom (`enotsup`?);
-  same decision for file/standard IO and the absent-listener error. My
-  recommendation: typed Rust errors at the embedder API, `noconnection`/
-  existing atoms preserved at the BIF surface (no new BEAM-visible atoms
-  this round).
-- **Q-C** Listener/AcceptHandle ownership under owned distribution: today
-  caller-owned, unjoined by Scheduler (`mod.rs:1126-1138`). Recommendation:
-  scheduler-owned when distribution is Owned, joined in §4 step 2.
-- **Q-D** Transient dirty-completion threads: refuse-when-disabled +
-  inventory-as-policy this round; shared completion mechanism as follow-up.
-- **Q-E** `threads`-without-`net` support policy: document as unsupported
-  (compile error today), don't fix this round.
-- **Q-F** Idle-tick remedy (§3.8): deadline-aware tickless idle vs adaptive
-  backoff vs signed 5ms bound. My recommendation: option 1 (tickless) as its
-  own commit in this workstream — it is the same "sleeping costs nothing"
-  principle the whole campaign runs on, applied to the VM's own heart, and
-  the wake-edge enumeration it needs is exactly the discipline the readiness
-  contract just established. If certification judges it too large for this
-  round, option 3 signs the bound now and option 1 becomes the named
-  follow-up.
+- **Q-A — RULED: CONFIRMED.** Normal workers stay outside the ServiceMode
+  model (§2.3). A zero-worker scheduler is meaningless and the park
+  semantics assume workers exist.
+- **Q-B — RULED: recommendation stands.** Typed Rust errors at the embedder
+  API (`DirtySubmitError::Disabled` + service-unavailable ExecError, and
+  the analogous surfaces for file/standard IO and the absent listener);
+  existing atoms preserved at the BIF surface; no new BEAM-visible atoms
+  this round.
+- **Q-C — RULED: agreed.** Scheduler-owned listener when distribution is
+  Owned, joined in §4 step 2 (today caller-owned, unjoined —
+  `mod.rs:1126-1138`).
+- **Q-D — RULED: agreed.** Refuse-when-disabled + inventory-as-policy this
+  round; shared completion mechanism as a named follow-up. The burst-thread
+  policy carries a counter so lens Q2 sees it.
+- **Q-E — RULED: agreed.** `threads`-without-`net` documented as
+  unsupported; this work must not deepen the mismatch.
+- **Q-F — RULED: HYBRID** (full text in §3.8). Commit 1 signs the 5ms floor
+  as a bound (formula + inventory-sourced per-host instantiation); tickless
+  proceeds as its own named commit gated on a contract-grade wake-edge
+  enumeration; adaptive backoff is the recorded fallback if any source
+  can't get a clean wake edge. T1 stays a delta assertion throughout.
 
 ## 11. Sequencing
 
-1. This doc through review (Vesper) + certification (pair).
+1. ~~This doc through review (Vesper) + certification (pair)~~ — DONE
+   2026-07-11: approved by both halves independently; advisories and
+   conditions folded at this head.
 2. Commit 1: `ServiceMode` + inventory API + OS probe + assertions on
-   CURRENT behavior (pins the as-built budget; proves the probe).
+   CURRENT behavior (pins the as-built budget; proves the probe) **+ the
+   signed 5ms idle-tick bound per the Q-F ruling** (formula +
+   inventory-sourced instantiation, §3.8).
 3. Commit 2: dirty pools (zero-thread + refusal) — the gated-suspension
    safety is the scariest arm, it goes first with its gate.
 4. Commit 3: IO rings (file/standard/generic) + naming prefixes + process-0
@@ -437,6 +508,10 @@ that adds service #31.
    None, teardown rewrite, runtime joins.
 6. Commit 5: `with_services` + profiles + CLI migration + accessor staging.
 7. Commit 6: readiness service lands against this model per its own spec's
-   sequencing (after the joint contract certifies).
+   sequencing (after the joint contract's §2.5 pinning suite is green on
+   main), carrying the Shared-delivery gate (§3.9).
+8. Named follow-on commit (this workstream, not this round's tail): tickless
+   idle per the Q-F ruling — wake-edge enumeration section first, reviewed
+   at contract grade; adaptive backoff recorded as fallback.
 Each commit through the full gate bar + norn review passes; the branch lands
 by review, never exploratory on main.
