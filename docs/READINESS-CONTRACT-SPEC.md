@@ -111,6 +111,18 @@ The consumer's slice shape, both shapes:
 Markers are idempotent: N readiness events may coalesce to one marker plus one
 drain; the drain loop, not the marker count, is the unit of progress.
 
+**Scope of the final probe (pinning-suite finding, 2026-07-11):** step 3 is
+load-bearing ONLY for consumer-owned event sources — socket buffers,
+subscription inboxes, reply queues — whose state can change mid-slice
+invisibly to the VM. It is structurally incapable of observing VM-mailbox
+markers: a marker delivered mid-slice lands in `pending_io_messages` and
+merges into the mailbox only at store-back (`execution/core.rs:394`), so no
+same-slice recv/probe can see it. Mailbox markers are protected by C1's
+store-back merge + recheck, not by the probe. Consumers must NOT add a
+mailbox re-probe to step 3 and believe it is the safety mechanism — it would
+be dead code that misattributes where the guarantee lives. The §2.5 suite
+pins both mechanisms independently.
+
 A bare `wake_notifier`/`wake_process` without a durable marker is **forbidden**
 as a readiness signal (no-op on a not-yet-registered pid;
 `scheduler/execution.rs:311-337`).
