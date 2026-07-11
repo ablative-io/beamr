@@ -68,6 +68,8 @@ mod inventory;
 mod ring_service;
 #[cfg(feature = "threads")]
 mod service;
+#[cfg(feature = "threads")]
+mod services;
 #[cfg(all(feature = "threads", any(test, feature = "test-support")))]
 pub mod thread_probe;
 #[cfg(feature = "threads")]
@@ -80,6 +82,8 @@ pub use inventory::{ServiceInventoryEntry, ServicePolicyLine, deduped_thread_agg
 pub use service::{
     ServiceIdentity, ServiceInstanceId, ServiceMode, ServiceModeLabel, ShutdownService,
 };
+#[cfg(feature = "threads")]
+pub use services::{SchedulerServices, SharedIoRing, WithServicesError};
 #[cfg(feature = "threads")]
 mod module_management;
 #[cfg(feature = "threads")]
@@ -190,10 +194,14 @@ enum ReplayMode {
 }
 
 /// Sentinel [`SharedState::standard_io_pid`] when the standard-IO ring is
-/// `Disabled` (spec §3.4): no process 0 is registered, so no live pid can
-/// match. Distinct from any allocatable pid (allocation starts at 1).
+/// `Disabled` (spec §3.4): no process 0 is registered, so no live pid matches.
+/// [`Term::PID_MAX`] rather than `u64::MAX` because the sentinel is also used
+/// as the dead GROUP LEADER of top-level processes — it must be representable
+/// as an immediate pid term (`Term::pid` debug-asserts the payload range).
+/// Pid allocation starts at 1 and increments; reaching this value would take
+/// ~2^61 spawns, the same practical-impossibility class as `u64::MAX`.
 #[cfg(feature = "threads")]
-const NO_STANDARD_IO_PID: u64 = u64::MAX;
+const NO_STANDARD_IO_PID: u64 = crate::term::Term::PID_MAX;
 
 #[cfg(feature = "threads")]
 #[derive(Clone, Default)]
@@ -337,6 +345,21 @@ pub(super) struct SharedState {
     /// date. Reported as a policy line, not a thread line (§5); incremented
     /// once per dirty call, so it is negligible on the dirty submit path.
     dirty_completion_spawns: AtomicU64,
+    /// Admission + join state for dirty completion bridges (spec §4 step 3),
+    /// ONE mutex so intake closure and reservation are LINEARIZED: a dirty
+    /// call reserves (refused if closed) before any suspension side effect,
+    /// the reservation converts to a retained `JoinHandle` at bridge spawn,
+    /// and shutdown closes intake, waits out the reservations, and OS-JOINS
+    /// every bridge handle — a bridge can neither spawn behind the drain nor
+    /// outlive it.
+    dirty_completions: Mutex<DirtyCompletionRegistry>,
+    dirty_completions_changed: Condvar,
+    /// Dropping this sender closes the channel every completion bridge
+    /// selects on ([`dirty::oneshot::Receiver::recv_or_shutdown`]), waking
+    /// them all to exit WITHOUT delivering. `None` once shutdown has drained.
+    dirty_completion_shutdown_tx: Mutex<Option<crossbeam_channel::Sender<()>>>,
+    /// The receiver half each completion bridge clones and selects on.
+    dirty_completion_shutdown_rx: crossbeam_channel::Receiver<()>,
     replay_driver: Option<Arc<Mutex<ReplayDriver>>>,
     replay_mode: bool,
     pub(super) nif_private_data: Option<Arc<dyn std::any::Any + Send + Sync>>,
@@ -406,7 +429,138 @@ impl TelemetryMetricState {
 }
 
 #[cfg(feature = "threads")]
+#[derive(Default)]
+struct DirtyCompletionRegistry {
+    /// Set by the shutdown drain; reservations are refused from here on.
+    closed: bool,
+    /// Admissions that have not yet published a bridge handle or released.
+    reserved: usize,
+    /// Retained bridge thread handles, OS-joined by the drain; finished
+    /// handles are reaped opportunistically at each publish.
+    bridges: Vec<std::thread::JoinHandle<()>>,
+}
+
+/// RAII teardown-admission token (spec §4 step 3), LINEARIZED with the
+/// shutdown drain under one lock. Two uses:
+///
+/// - A dirty submission acquires one BEFORE any suspension side effect and
+///   CONVERTS it (via [`publish`](Self::publish)) into a retained, joinable
+///   bridge handle at spawn; every pre-spawn error path releases it via
+///   `Drop`.
+/// - A mutating facility operation (spawn family, io-message delivery, link)
+///   acquires one and HOLDS it across its whole mutation, releasing via
+///   `Drop` — so a mutation admitted before the drain closes intake finishes
+///   BEFORE shutdown returns (the drain waits), and one attempted after
+///   refuses. A snapshot predicate cannot give this guarantee: it admits a
+///   delayed mutation that lands after shutdown has returned.
+#[cfg(feature = "threads")]
+pub(in crate::scheduler) struct DirtyCompletionReservation {
+    shared: Arc<SharedState>,
+    published: bool,
+}
+
+#[cfg(feature = "threads")]
+impl DirtyCompletionReservation {
+    /// Convert this reservation into a retained bridge handle.
+    pub(in crate::scheduler) fn publish(mut self, handle: std::thread::JoinHandle<()>) {
+        let mut registry = lock_or_recover(&self.shared.dirty_completions);
+        registry.reserved = registry.reserved.saturating_sub(1);
+        // Opportunistic reap: completed bridges cost one `is_finished` check
+        // here, so the retained vec tracks in-flight bridges, not history.
+        let retained = std::mem::take(&mut registry.bridges);
+        for bridge in retained {
+            if bridge.is_finished() {
+                let _ = bridge.join();
+            } else {
+                registry.bridges.push(bridge);
+            }
+        }
+        registry.bridges.push(handle);
+        drop(registry);
+        self.shared.dirty_completions_changed.notify_all();
+        self.published = true;
+    }
+}
+
+#[cfg(feature = "threads")]
+impl Drop for DirtyCompletionReservation {
+    fn drop(&mut self) {
+        if self.published {
+            return;
+        }
+        let mut registry = lock_or_recover(&self.shared.dirty_completions);
+        registry.reserved = registry.reserved.saturating_sub(1);
+        drop(registry);
+        self.shared.dirty_completions_changed.notify_all();
+    }
+}
+
 impl SharedState {
+    /// Reserve admission for one dirty submission, refused once intake is
+    /// closed. Closure and reservation share ONE lock, so a reservation
+    /// cannot slip behind the shutdown drain: the drain marks `closed` and
+    /// waits out every earlier reservation under the same mutex.
+    pub(in crate::scheduler) fn try_reserve_dirty_completion(
+        self: &Arc<Self>,
+    ) -> Option<DirtyCompletionReservation> {
+        let mut registry = lock_or_recover(&self.dirty_completions);
+        if registry.closed {
+            return None;
+        }
+        registry.reserved += 1;
+        drop(registry);
+        Some(DirtyCompletionReservation {
+            shared: Arc::clone(self),
+            published: false,
+        })
+    }
+
+    /// The shutdown channel each completion bridge selects on.
+    pub(in crate::scheduler) fn dirty_completion_shutdown_channel(
+        &self,
+    ) -> crossbeam_channel::Receiver<()> {
+        self.dirty_completion_shutdown_rx.clone()
+    }
+
+    /// §4 step 3 for the dirty pools: close intake (linearized with
+    /// reservation — no new bridge can spawn behind this), wake every bridge
+    /// by closing the shutdown channel, wait out in-flight reservations
+    /// (each either releases on an error path or publishes its bridge
+    /// handle), then OS-JOIN every bridge. Bounded: woken bridges exit
+    /// without waiting for their jobs. After this returns, no bridge THREAD
+    /// of this scheduler exists at the OS level, so nothing can deliver a
+    /// completion into the scheduler being torn down. Idempotent.
+    pub(in crate::scheduler) fn drain_dirty_completions(&self) {
+        let mut registry = lock_or_recover(&self.dirty_completions);
+        registry.closed = true;
+        drop(registry);
+        drop(lock_or_recover(&self.dirty_completion_shutdown_tx).take());
+        let mut registry = lock_or_recover(&self.dirty_completions);
+        while registry.reserved > 0 {
+            registry = self
+                .dirty_completions_changed
+                .wait(registry)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        let bridges = std::mem::take(&mut registry.bridges);
+        drop(registry);
+        for bridge in bridges {
+            // A joined bridge has fully exited at the OS level; a panic
+            // payload has nothing to recover during teardown.
+            let _ = bridge.join();
+        }
+    }
+
+    /// Unjoined-bridge count: in-flight reservations plus retained handles
+    /// (finished handles are reaped opportunistically at each publish).
+    /// 0 after a drained shutdown. Reached via
+    /// [`Scheduler::dirty_completions_live_count`].
+    #[cfg(any(test, feature = "test-support"))]
+    fn dirty_completions_live_count(&self) -> usize {
+        let registry = lock_or_recover(&self.dirty_completions);
+        registry.reserved + registry.bridges.len()
+    }
+
     /// The owned distribution bundle, or `None` when distribution is `Disabled`
     /// (spec §3.6). Every distribution read path — pg propagation, outbound
     /// controls, remote-send, the net-kernel facade — routes through this so a
@@ -700,15 +854,80 @@ impl Scheduler {
         self.shared.delete_table(id)
     }
 
+    /// Construct a scheduler on the **legacy profile** (spec §2.2/§6).
+    ///
+    /// Maps to [`SchedulerServices::from_config`]: every ancillary service is
+    /// resolved from the matching [`SchedulerConfig`] knob, preserving today's
+    /// per-knob defaults for one release as a migration bridge. Those defaults
+    /// are EAGER — a dirty CPU pool sized to `num_cpus`, a dirty IO pool of
+    /// [`DEFAULT_DIRTY_IO_THREADS`](dirty::DEFAULT_DIRTY_IO_THREADS), a live
+    /// file-IO ring and a live standard-IO ring with process 0 — so a scheduler
+    /// built this way pays for roughly a dozen ancillary threads whether or not
+    /// it uses them (spec §1). Distribution, however, follows `config` honestly:
+    /// `config.distribution: None` (the default) builds NEITHER distribution
+    /// runtime (spec §3.6, commit-4 change). Embedders that want a specific
+    /// service footprint should use [`Scheduler::with_services`] with
+    /// [`SchedulerServices::minimal`] / [`SchedulerServices::full_runtime`]
+    /// instead; this constructor is retained for source compatibility and will
+    /// keep the legacy defaults for one release (see CHANGELOG migration note).
     pub fn new(
         config: SchedulerConfig,
         module_registry: Arc<ModuleRegistry>,
     ) -> Result<Self, String> {
-        Self::with_code_server(
+        Self::with_services_and_code_server(
             config,
+            SchedulerServices::from_config(),
             module_registry,
             Arc::new(AtomTable::with_common_atoms()),
             Arc::new(BifRegistryImpl::new()),
+        )
+    }
+
+    /// The additive composition entrypoint (spec §2.2): build a scheduler whose
+    /// ancillary services are exactly what `services` asks for, with `config`
+    /// supplying the non-service knobs (thread count, node identity, queue
+    /// depth, telemetry, private data). An explicit service choice WINS over the
+    /// matching legacy `config` knob; a `FromConfig` choice defers to it (see
+    /// [`SchedulerServices`] for the precedence rule and the profiles).
+    ///
+    /// Returns `Err` naming the offending service when the composition requests
+    /// a capability this release cannot deliver safely — currently a shared
+    /// file/generic IO ring, whose cross-scheduler routing lands with the §3.9
+    /// gate in commit 6 ([`WithServicesError`]). Validate ahead of construction
+    /// with [`SchedulerServices::validate`].
+    pub fn with_services(
+        config: SchedulerConfig,
+        services: SchedulerServices,
+        module_registry: Arc<ModuleRegistry>,
+    ) -> Result<Self, String> {
+        Self::with_services_and_code_server(
+            config,
+            services,
+            module_registry,
+            Arc::new(AtomTable::with_common_atoms()),
+            Arc::new(BifRegistryImpl::new()),
+        )
+    }
+
+    /// [`Scheduler::with_services`] sharing an explicit atom table and BIF
+    /// registry (the load-time state the modules were compiled against), the
+    /// composition analogue of [`Scheduler::with_code_server`].
+    pub fn with_services_and_code_server(
+        config: SchedulerConfig,
+        services: SchedulerServices,
+        module_registry: Arc<ModuleRegistry>,
+        atom_table: Arc<AtomTable>,
+        bif_registry: Arc<BifRegistryImpl>,
+    ) -> Result<Self, String> {
+        services.validate().map_err(|error| error.to_string())?;
+        Self::construct_with_services(
+            config,
+            services,
+            module_registry,
+            atom_table,
+            bif_registry,
+            Arc::new(AllCapabilitiesPolicy),
+            ReplayMode::Live,
         )
     }
 
@@ -749,6 +968,7 @@ impl Scheduler {
     ) -> Result<Self, String> {
         Self::construct_with_services(
             config,
+            SchedulerServices::from_config(),
             module_registry,
             atom_table,
             bif_registry,
@@ -764,6 +984,7 @@ impl Scheduler {
     ) -> Result<Self, String> {
         Self::construct_with_services(
             config,
+            SchedulerServices::from_config(),
             module_registry,
             Arc::new(AtomTable::with_common_atoms()),
             Arc::new(BifRegistryImpl::new()),
@@ -774,6 +995,7 @@ impl Scheduler {
 
     fn construct_with_services(
         config: SchedulerConfig,
+        services: SchedulerServices,
         module_registry: Arc<ModuleRegistry>,
         atom_table: Arc<AtomTable>,
         bif_registry: Arc<BifRegistryImpl>,
@@ -793,20 +1015,23 @@ impl Scheduler {
         let dirty_queue_depth = config
             .dirty_queue_depth
             .unwrap_or(dirty::DEFAULT_DIRTY_QUEUE_DEPTH);
-        // A zero-thread REQUEST (`Some(0)`) disables the pool outright: it holds
-        // no channel and no workers, so a later dirty dispatch is refused before
-        // any suspension is registered (spec §3.2/§6). `None` keeps the legacy
-        // default; `Some(n>0)` owns a pool of `n`. The `.max(1)` inside
-        // `with_queue_depth` still floors a nonzero request, but a zero request
-        // never constructs a pool.
-        let dirty_cpu = build_dirty_pool(
+        // Dirty pools resolve from the composition choice, falling back to the
+        // legacy `dirty_*_threads` knob (spec §2.2 precedence). `FromConfig`/
+        // `Some(0)` still disables (no channel, no workers — refusal before any
+        // suspension, spec §3.2/§6); an explicit `Owned(n)` overrides the knob;
+        // an explicit `Shared` pool is injected and NEVER joined here (spec
+        // §2.1 — safe now because dirty completion routes by the oneshot the
+        // submission carries, not by any per-scheduler table).
+        let dirty_cpu = resolve_dirty_pool(
             "dirty-cpu",
+            &services.dirty_cpu,
             config.dirty_cpu_threads,
             num_cpus::get(),
             dirty_queue_depth,
         );
-        let dirty_io = build_dirty_pool(
+        let dirty_io = resolve_dirty_pool(
             "dirty-io",
+            &services.dirty_io,
             config.dirty_io_threads,
             dirty::DEFAULT_DIRTY_IO_THREADS,
             dirty_queue_depth,
@@ -821,22 +1046,33 @@ impl Scheduler {
         #[cfg(not(feature = "telemetry"))]
         let _telemetry_sample_interval = config.telemetry_sample_interval;
         let jit_cache = Arc::new(JitCache::new());
-        let io_runtime = if replay_enabled {
+        // Generic ring config resolves from the composition choice, falling back
+        // to `config.io` (spec §2.2 precedence / §3.5). Replay never builds a
+        // live ring (commit-3 precedent). A `Shared` generic ring was already
+        // refused by `validate()` before construction, so it cannot reach here.
+        let generic_ring_config: Option<RingConfig> = if replay_enabled {
             None
         } else {
-            config.io.map(|ring_config| {
-                let ring: Arc<dyn CompletionRing> = Arc::from(create_ring_with_prefix(
-                    ring_config,
-                    GENERIC_IO_RING_THREAD_PREFIX,
-                ));
-                let registry = Arc::new(PendingIoRegistry::default());
-                let facility: Arc<dyn IoFacility> = Arc::new(CompletionRingIoFacility::new(
-                    Arc::clone(&ring),
-                    Arc::clone(&registry),
-                ));
-                (ring, registry, facility)
-            })
+            match &services.generic_io {
+                services::GenericRingChoice::FromConfig => config.io,
+                services::GenericRingChoice::Disabled | services::GenericRingChoice::Shared(_) => {
+                    None
+                }
+                services::GenericRingChoice::Owned(ring_config) => Some(*ring_config),
+            }
         };
+        let io_runtime = generic_ring_config.map(|ring_config| {
+            let ring: Arc<dyn CompletionRing> = Arc::from(create_ring_with_prefix(
+                ring_config,
+                GENERIC_IO_RING_THREAD_PREFIX,
+            ));
+            let registry = Arc::new(PendingIoRegistry::default());
+            let facility: Arc<dyn IoFacility> = Arc::new(CompletionRingIoFacility::new(
+                Arc::clone(&ring),
+                Arc::clone(&registry),
+            ));
+            (ring, registry, facility)
+        });
         // Generic ring ownership (spec §3.5): `Disabled` (byte-identical to the
         // former `None` — no facility, no bridge) when unconfigured, `Owned`
         // when built here. The completion bridge and pending registry stay
@@ -849,56 +1085,96 @@ impl Scheduler {
             ),
             None => (ServiceMode::Disabled, None, None),
         };
-        // Distribution bundle (spec §3.6): `Owned` when configured, `Disabled`
-        // — NEITHER runtime exists — when `config.distribution` is `None`. This
-        // is the honest-absence contract: `SchedulerConfig::default()` carries no
-        // distribution, so the default profile builds no distribution runtimes;
-        // the full-runtime profile and the CLI opt in with `Some(config)`. The
-        // ONE heartbeat-enabled manager the bundle builds backs listener/send/pg/
-        // control traffic AND the net-kernel facade (the second disjoint manager
-        // is deleted — the two-site acceptance line). The proactive net-tick
-        // detects a silently-partitioned peer (no FIN/RST) within the liveness
-        // deadline so the connection-down / pg-purge / monitor-DOWN machinery
-        // fires instead of the link hanging "up" forever. Replay drops only the
-        // outbound sender (no runtime, no outbound traffic).
+        // Distribution bundle (spec §3.6): resolves from the composition choice,
+        // falling back to `config.distribution` (spec §2.2 precedence). `Owned`
+        // builds ONE heartbeat-enabled manager backing listener/send/pg/control
+        // traffic AND the net-kernel facade (the second disjoint manager is
+        // deleted — the two-site acceptance line); `Disabled` builds NEITHER
+        // runtime (honest absence — `SchedulerConfig::default()` carries no
+        // distribution, so the legacy/default profile builds none; full-runtime
+        // and the CLI opt in). The proactive net-tick detects a silently-
+        // partitioned peer (no FIN/RST) within the liveness deadline so the
+        // connection-down / pg-purge / monitor-DOWN machinery fires instead of
+        // the link hanging "up" forever.
+        //
+        // Replay ⇒ Disabled bundle (pair ruling, commit 5): under replay the
+        // bundle is effectively absent — NEITHER runtime is built, not just the
+        // sender. This resolves the commit-4 inconsistency (replay skipped only
+        // the sender yet still built the net-kernel runtime, whose live
+        // `connect_node` dial performed real IO behind a disabled facade — the
+        // exact commit-3 anti-pattern). No replay path reads live distribution
+        // state; every distribution BIF already collapses to absence
+        // (noconnection / false / []). The one flip is `is_alive/0`, which under
+        // replay now reports `false` — spec-§3.6-consistent for a node with no
+        // distribution service. See CHANGELOG and this commit's report.
         let dist_node_name = config.node_name.as_deref().unwrap_or(DEFAULT_NODE_NAME);
         let dist_creation = config.creation.unwrap_or(0);
-        let distribution: ServiceMode<DistributionService> = match config.distribution {
+        let distribution_config: Option<DistributionConfig> = if replay_enabled {
+            None
+        } else {
+            match &services.distribution {
+                services::DistributionChoice::FromConfig => config.distribution.clone(),
+                services::DistributionChoice::Disabled => None,
+                services::DistributionChoice::Owned(dist_config) => Some(dist_config.clone()),
+            }
+        };
+        let distribution: ServiceMode<DistributionService> = match distribution_config {
             Some(dist_config) => ServiceMode::Owned(DistributionService::build(
                 dist_config,
                 Arc::clone(&atom_table),
                 dist_node_name,
                 dist_creation,
-                !replay_enabled,
+                // Owned distribution is only ever built live here (the replay
+                // arm forced `None` above), so the outbound sender is always
+                // wanted when a bundle exists.
+                true,
             )),
             None => ServiceMode::Disabled,
         };
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
-        // File-IO ring (spec §3.3): `Disabled` under replay — the file facility
-        // is then absent from native services, so file submission refuses
-        // before registering any suspension — and `Owned` in live mode with a
-        // service-distinct thread name.
-        let file_io_ring: ServiceMode<RingService> = if replay_enabled {
-            ServiceMode::Disabled
-        } else {
+        // File-IO ring (spec §3.3): resolves from the composition choice,
+        // falling back to the legacy default (spec §2.2 precedence). `Disabled`
+        // — under replay (the file facility is then absent from native services,
+        // so file submission refuses before registering any suspension) OR an
+        // explicit `Disabled`/`minimal()` request — and `Owned` (a live ring
+        // with the service-distinct thread name) for `FromConfig`/`Owned` in
+        // live mode. A `Shared` file ring was refused by `validate()` before
+        // construction, so it cannot reach here.
+        let file_io_owned = !replay_enabled
+            && match &services.file_io {
+                services::FileRingChoice::FromConfig | services::FileRingChoice::Owned => true,
+                services::FileRingChoice::Disabled | services::FileRingChoice::Shared(_) => false,
+            };
+        let file_io_ring: ServiceMode<RingService> = if file_io_owned {
             ServiceMode::Owned(RingService::new(Arc::from(create_ring_with_prefix(
                 RingConfig::default(),
                 FILE_IO_RING_THREAD_PREFIX,
             ))))
-        };
-        // Standard-IO ring + group-leader server (spec §3.4): `Disabled` under
-        // replay (no ring, no process 0 — never a live ring behind a disabled
-        // facade), `Owned` in live mode. `standard_io_pid` follows: process 0
-        // when Owned, the no-such-pid sentinel when Disabled.
-        let standard_io_pid = if replay_enabled {
-            NO_STANDARD_IO_PID
         } else {
-            0u64
-        };
-        let standard_io: ServiceMode<StandardIoService> = if replay_enabled {
             ServiceMode::Disabled
+        };
+        // Standard-IO ring + group-leader server (spec §3.4): resolves from the
+        // composition choice, falling back to the legacy default. `Disabled` —
+        // under replay OR an explicit `Disabled`/`minimal()` request — means NO
+        // ring and NO process 0 (never a live ring behind a disabled facade,
+        // whose completion poll loop would hang a normal worker forever); `Owned`
+        // registers process 0. `standard_io_pid` follows: process 0 when Owned,
+        // the no-such-pid sentinel otherwise. `minimal()` makes the Disabled
+        // arm reachable on a LIVE scheduler for the first time (spec §3.4).
+        let standard_io_owned = !replay_enabled
+            && match &services.standard_io {
+                services::StandardRingChoice::FromConfig | services::StandardRingChoice::Owned => {
+                    true
+                }
+                services::StandardRingChoice::Disabled => false,
+            };
+        let standard_io_pid = if standard_io_owned {
+            0u64
         } else {
+            NO_STANDARD_IO_PID
+        };
+        let standard_io: ServiceMode<StandardIoService> = if standard_io_owned {
             let standard_io_ring: Arc<dyn CompletionRing> = Arc::from(create_ring_with_prefix(
                 RingConfig::default(),
                 STANDARD_IO_RING_THREAD_PREFIX,
@@ -908,6 +1184,8 @@ impl Scheduler {
                 standard_io_ring,
                 atom_table.as_ref(),
             )))
+        } else {
+            ServiceMode::Disabled
         };
         // The local node identity is retained and PASSIVE regardless of whether
         // distribution is owned (spec §3.6): `node/0` reports it even when the
@@ -919,6 +1197,11 @@ impl Scheduler {
         // recorded here; the bridge is requested exactly when the generic registry
         // was built (spec §5).
         let service_instances = inventory::ServiceInstances::mint(io_registry.is_some());
+        // Zero-capacity channel closed (sender dropped) by
+        // `drain_dirty_completions`: every completion bridge selects on the
+        // receiver, so closing it wakes them all to exit without delivering.
+        let (dirty_completion_shutdown_tx, dirty_completion_shutdown_rx) =
+            crossbeam_channel::bounded::<()>(0);
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
@@ -968,6 +1251,10 @@ impl Scheduler {
             standard_io_pid,
             service_instances,
             dirty_completion_spawns: AtomicU64::new(0),
+            dirty_completions: Mutex::new(DirtyCompletionRegistry::default()),
+            dirty_completions_changed: Condvar::new(),
+            dirty_completion_shutdown_tx: Mutex::new(Some(dirty_completion_shutdown_tx)),
+            dirty_completion_shutdown_rx,
             replay_driver,
             replay_mode: replay_enabled,
             nif_private_data: config.nif_private_data,
@@ -1409,6 +1696,14 @@ impl Scheduler {
     /// bracket the whole sequence, so the §3.2 refusal gates catch a check
     /// that regresses to anywhere inside it. Test-only instrumentation
     /// (`test-support`), absent from production builds.
+    /// Live dirty completion-bridge threads this scheduler has spawned —
+    /// 0 after a drained shutdown (spec §4 step 3). Test-support instrument.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn dirty_completions_live_count(&self) -> usize {
+        self.shared.dirty_completions_live_count()
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
     pub fn dirty_suspension_allocation_count(&self) -> u64 {
@@ -1436,6 +1731,35 @@ fn configured_thread_count(override_count: Option<usize>) -> usize {
 /// `Some(0)` → `Disabled` (no channel, no workers); `Some(n>0)` → `Owned(n)`;
 /// `None` → `Owned(default_threads)`. A zero request never constructs a pool,
 /// so a disabled dirty dispatch has nothing to submit into.
+/// Resolve a dirty pool slot from its composition choice (spec §2.2/§3.2).
+///
+/// `FromConfig` defers to the legacy `dirty_*_threads` knob; `Disabled` owns
+/// nothing; `Owned(n)` builds `n` workers (`n == 0` disables, matching the
+/// `Some(0)` knob semantics); `Shared` injects an embedder-owned pool this
+/// scheduler uses but NEVER joins (spec §2.1). The `Shared` arm is safe now
+/// because dirty completion routes by the oneshot the submission carries — the
+/// pool worker never consults a per-scheduler table — so one pool can back two
+/// schedulers without the cross-scheduler routing the rings still lack.
+#[cfg(feature = "threads")]
+fn resolve_dirty_pool(
+    name: &str,
+    choice: &services::DirtyChoice,
+    config_knob: Option<usize>,
+    default_threads: usize,
+    queue_depth: usize,
+) -> ServiceMode<DirtyPool> {
+    match choice {
+        services::DirtyChoice::FromConfig => {
+            build_dirty_pool(name, config_knob, default_threads, queue_depth)
+        }
+        services::DirtyChoice::Disabled => ServiceMode::Disabled,
+        services::DirtyChoice::Owned(workers) => {
+            build_dirty_pool(name, Some(*workers), default_threads, queue_depth)
+        }
+        services::DirtyChoice::Shared(pool) => ServiceMode::Shared(Arc::clone(pool)),
+    }
+}
+
 #[cfg(feature = "threads")]
 fn build_dirty_pool(
     name: &str,

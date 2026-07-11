@@ -28,13 +28,11 @@ pub use crate::scheduler::DirtySchedulerKind;
 
 /// Minimal oneshot result channel used by dirty jobs.
 pub mod oneshot {
-    use std::sync::mpsc;
-
     /// Sends a single value to the matching [`Receiver`].
-    pub struct Sender<T>(mpsc::SyncSender<T>);
+    pub struct Sender<T>(crossbeam_channel::Sender<T>);
 
     /// Receives a single value from the matching [`Sender`].
-    pub struct Receiver<T>(mpsc::Receiver<T>);
+    pub struct Receiver<T>(crossbeam_channel::Receiver<T>);
 
     /// Error returned when the oneshot receiver has been dropped.
     pub struct SendError<T>(pub T);
@@ -43,10 +41,22 @@ pub mod oneshot {
     #[derive(Debug, Copy, Clone, Eq, PartialEq)]
     pub struct RecvError;
 
+    /// Outcome of an interruptible wait ([`Receiver::recv_or_shutdown`]).
+    pub enum RecvOutcome<T> {
+        /// The dirty worker delivered its result.
+        Value(T),
+        /// The sender was dropped without sending (worker died mid-job).
+        SenderDropped,
+        /// The scheduler-side shutdown channel closed first: the owning
+        /// scheduler is tearing down, so the waiter must exit WITHOUT
+        /// delivering (spec §4 step 3 — no delivery to a dead scheduler).
+        Shutdown,
+    }
+
     /// Creates a single-use channel.
     #[must_use]
     pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
-        let (sender, receiver) = mpsc::sync_channel(1);
+        let (sender, receiver) = crossbeam_channel::bounded(1);
         (Sender(sender), Receiver(receiver))
     }
 
@@ -61,6 +71,26 @@ pub mod oneshot {
         /// Blocks until the result arrives or the sender is dropped.
         pub fn recv(self) -> Result<T, RecvError> {
             self.0.recv().map_err(|_| RecvError)
+        }
+
+        /// Blocks until the result arrives, the sender is dropped, or
+        /// `shutdown` closes — whichever comes first. `shutdown` is the
+        /// scheduler's dirty-completion shutdown channel: it closes exactly
+        /// once, when the owning scheduler drains its completion bridges at
+        /// teardown, so a bridge parked on a long (or embedder-owned,
+        /// possibly never-finishing) shared-pool job wakes and exits instead
+        /// of retaining the dead scheduler (spec §4 step 3).
+        pub fn recv_or_shutdown(
+            self,
+            shutdown: &crossbeam_channel::Receiver<()>,
+        ) -> RecvOutcome<T> {
+            crossbeam_channel::select! {
+                recv(self.0) -> result => match result {
+                    Ok(value) => RecvOutcome::Value(value),
+                    Err(_) => RecvOutcome::SenderDropped,
+                },
+                recv(shutdown) -> _ => RecvOutcome::Shutdown,
+            }
         }
     }
 }

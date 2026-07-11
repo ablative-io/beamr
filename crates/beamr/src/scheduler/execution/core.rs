@@ -753,7 +753,20 @@ fn execute_slice_with_budget(
                 DirtySchedulerKind::Cpu => shared.dirty_cpu.service().is_some(),
                 DirtySchedulerKind::Io => shared.dirty_io.service().is_some(),
             };
-            if !target_available {
+            // Admission reservation, LINEARIZED with intake closure (spec §4
+            // step 1/3): the reservation and the shutdown drain's close share
+            // one lock, so a submission cannot be admitted behind the drain.
+            // Reserved (or refused) HERE, before the call-id allocation below,
+            // so the §3.2 refusal-before-suspension ordering (and its counter
+            // gates) hold for this arm too. The reservation is an RAII token:
+            // released on every error path below, converted into a retained,
+            // OS-joinable bridge handle at spawn.
+            let reservation = if target_available {
+                shared.try_reserve_dirty_completion()
+            } else {
+                None
+            };
+            let Some(reservation) = reservation else {
                 shared
                     .exit_errors
                     .insert(process.pid(), DirtySubmissionError::Disabled(kind).into());
@@ -767,7 +780,7 @@ fn execute_slice_with_budget(
                     crate::telemetry::spans::SliceSpanOutcome::Exited,
                 );
                 return outcome;
-            }
+            };
             // Record the dirty call's identity before submission so the
             // completion bridge publishes its result under this exact call
             // id and the wake gate holds the process parked meanwhile.
@@ -800,11 +813,14 @@ fn execute_slice_with_budget(
             if let Err(error) = submit_dirty_call(
                 shared,
                 process,
-                call_id,
-                entry,
-                args,
-                (module, function, arity),
-                kind,
+                DirtyInvocation {
+                    call_id,
+                    entry,
+                    args,
+                    mfa: (module, function, arity),
+                    kind,
+                },
+                reservation,
             ) {
                 let _withdrawn = process.take_suspension();
                 shared.suspensions.remove(&process.pid());
@@ -1409,15 +1425,28 @@ fn exception_class_atom(class: ExceptionClass) -> Atom {
     }
 }
 
-fn submit_dirty_call(
-    shared: &Arc<SharedState>,
-    process: &Process,
+/// One admitted dirty native invocation, bundled for `submit_dirty_call`.
+struct DirtyInvocation {
     call_id: u64,
     entry: NativeEntry,
     args: Vec<Term>,
     mfa: (Atom, Atom, u8),
     kind: DirtySchedulerKind,
+}
+
+fn submit_dirty_call(
+    shared: &Arc<SharedState>,
+    process: &Process,
+    invocation: DirtyInvocation,
+    reservation: crate::scheduler::DirtyCompletionReservation,
 ) -> Result<(), DirtySubmissionError> {
+    let DirtyInvocation {
+        call_id,
+        entry,
+        args,
+        mfa,
+        kind,
+    } = invocation;
     if let Some(driver) = &shared.replay_driver {
         let (module, function, arity) = mfa;
         let recorded = match driver.lock() {
@@ -1495,33 +1524,50 @@ fn submit_dirty_call(
     }
 
     let shared_for_completion = Arc::clone(shared);
+    let shutdown_rx = shared.dirty_completion_shutdown_channel();
     let bridge = std::thread::Builder::new()
         .name(format!("dirty-complete-{pid}"))
         .spawn(move || {
-            let result = match result_receiver.recv() {
-                Ok(result) => result,
-                Err(_closed) => DirtyResult {
-                    result: Err(Term::atom(Atom::ERROR)),
-                    owned_result: None,
-                    exception_class: ExceptionClass::Error,
-                    exception_stacktrace: Term::NIL,
-                    suspend: None,
-                    trampoline: None,
-                },
-            };
-            // Published under the submitting call's id: the owning thread
-            // applies it only while this exact suspension is current, and
-            // `publish_suspension_result`'s liveness double-check removes
-            // the entry if the process exited concurrently.
-            let _published = shared_for_completion.publish_suspension_result(
-                pid,
-                call_id,
-                SuspensionResultPayload::Dirty(Box::new(result)),
-            );
-            let _resumed = timer_integration::resume_suspended(&shared_for_completion, pid);
+            use crate::scheduler::dirty::oneshot::RecvOutcome;
+            match result_receiver.recv_or_shutdown(&shutdown_rx) {
+                RecvOutcome::Shutdown => {
+                    // Scheduler teardown won the race: exit WITHOUT delivering
+                    // (the pool worker's later send fails harmlessly on the
+                    // dropped receiver) and release this bridge's SharedState
+                    // now, not at job completion — the job may be running on
+                    // an embedder-owned shared pool with no completion bound.
+                }
+                outcome => {
+                    let result = match outcome {
+                        RecvOutcome::Value(result) => result,
+                        _ => DirtyResult {
+                            result: Err(Term::atom(Atom::ERROR)),
+                            owned_result: None,
+                            exception_class: ExceptionClass::Error,
+                            exception_stacktrace: Term::NIL,
+                            suspend: None,
+                            trampoline: None,
+                        },
+                    };
+                    // Published under the submitting call's id: the owning
+                    // thread applies it only while this exact suspension is
+                    // current, and `publish_suspension_result`'s liveness
+                    // double-check removes the entry if the process exited
+                    // concurrently.
+                    let _published = shared_for_completion.publish_suspension_result(
+                        pid,
+                        call_id,
+                        SuspensionResultPayload::Dirty(Box::new(result)),
+                    );
+                    let _resumed = timer_integration::resume_suspended(&shared_for_completion, pid);
+                }
+            }
         });
-    if bridge.is_err() {
-        return Err(DirtySubmissionError::CompletionBridgeSpawn);
+    // Convert the admission reservation into a retained, OS-joinable handle;
+    // a failed spawn drops the reservation instead (releasing the admission).
+    match bridge {
+        Ok(handle) => reservation.publish(handle),
+        Err(_) => return Err(DirtySubmissionError::CompletionBridgeSpawn),
     }
     // Count the transient completion thread for the inventory policy line (§5).
     shared

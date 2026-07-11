@@ -983,6 +983,12 @@ struct SchedulerIoMessageFacility {
 impl IoMessageFacility for SchedulerIoMessageFacility {
     fn send_message(&self, sender_pid: u64, target_pid: u64, message: Term) -> bool {
         let _ = sender_pid;
+        // Teardown-admission (spec §4 step 3): no delivery into a scheduler
+        // that is being (or has been) torn down; held across the delivery so
+        // an admitted send lands before shutdown returns.
+        let Some(_admission) = self.shared.try_reserve_dirty_completion() else {
+            return false;
+        };
         let Some(entry) = self.shared.process_bodies.get(&target_pid) else {
             return false;
         };
@@ -1160,6 +1166,17 @@ impl crate::native::ProcessInfoFacility for SchedulerProcessInfoFacility {
 }
 
 /// Real `SpawnFacility` backed by the scheduler's shared state.
+/// Test-only control for the admitted-spawn/shutdown interleaving pin:
+/// holds the `Arc::as_ptr` of the ONE `SharedState` whose spawns should park
+/// at the admission gate (0 = disabled), so a parallel test's spawn on a
+/// different scheduler can neither park nor satisfy the acknowledgment.
+#[cfg(test)]
+pub(super) static SPAWN_HOLD_TARGET: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+#[cfg(test)]
+pub(super) static SPAWN_HELD_AT_GATE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 pub(super) struct SchedulerSpawnFacility {
     pub(super) shared: Arc<SharedState>,
     pub(super) namespace_id: NamespaceId,
@@ -1200,6 +1217,8 @@ impl SpawnFacility for SchedulerSpawnFacility {
         args: Vec<Term>,
         link_to: Option<u64>,
     ) -> Result<u64, SpawnError> {
+        let _admission = self.admit_or_refuse()?;
+        self.admission_test_gate();
         let namespace_id = self.caller_namespace(caller_pid);
         let group_leader = self.caller_group_leader(caller_pid);
         let capabilities = self.caller_capabilities(caller_pid);
@@ -1286,6 +1305,7 @@ impl SpawnFacility for SchedulerSpawnFacility {
         factory: crate::native::native_process::NativeHandlerFactory,
         link_to: Option<u64>,
     ) -> Result<u64, SpawnError> {
+        let _admission = self.admit_or_refuse()?;
         // Mirror `spawn`, but build a native `Process` (no bytecode setup, no
         // instruction pointer) carrying the handler the factory produces.
         let namespace_id = self.caller_namespace(caller_pid);
@@ -1357,6 +1377,7 @@ impl SpawnFacility for SchedulerSpawnFacility {
         lambda_index: u32,
         link_to: Option<u64>,
     ) -> Result<u64, SpawnError> {
+        let _admission = self.admit_or_refuse()?;
         let namespace_id = self.caller_namespace(caller_pid);
         let group_leader = self.caller_group_leader(caller_pid);
         let capabilities = self.caller_capabilities(caller_pid);
@@ -1463,6 +1484,38 @@ impl SpawnFacility for SchedulerSpawnFacility {
 }
 
 impl SchedulerSpawnFacility {
+    /// Teardown-admission gate (spec §4 step 3), shared by EVERY spawn entry
+    /// point: an in-flight dirty native on an embedder-owned SHARED pool holds
+    /// this facility past the owner's shutdown — no spawn path may allocate a
+    /// pid or touch process state for a dead scheduler. Returns an RAII token
+    /// the caller HOLDS across its whole mutation: admission is linearized
+    /// with the shutdown drain (one lock), so an admitted spawn completes
+    /// BEFORE shutdown returns and a later one refuses — a snapshot check
+    /// would admit a delayed spawn that mutates after shutdown has returned.
+    fn admit_or_refuse(&self) -> Result<crate::scheduler::DirtyCompletionReservation, SpawnError> {
+        self.shared
+            .try_reserve_dirty_completion()
+            .ok_or(SpawnError::SchedulerTearingDown)
+    }
+
+    /// Test-only barrier immediately after spawn admission: lets a test hold
+    /// an ADMITTED spawn while it starts shutdown, proving the drain waits.
+    /// Instance-scoped: parks ONLY spawns on the SharedState the test armed,
+    /// so parallel tests neither stall here nor satisfy the acknowledgment.
+    #[cfg(test)]
+    fn admission_test_gate(&self) {
+        let me = std::sync::Arc::as_ptr(&self.shared) as usize;
+        if SPAWN_HOLD_TARGET.load(std::sync::atomic::Ordering::Acquire) == me {
+            SPAWN_HELD_AT_GATE.store(true, std::sync::atomic::Ordering::Release);
+            while SPAWN_HOLD_TARGET.load(std::sync::atomic::Ordering::Acquire) == me {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        }
+    }
+
+    #[cfg(not(test))]
+    fn admission_test_gate(&self) {}
+
     fn spawn_mfa_with_monitor(
         &self,
         caller_pid: u64,
@@ -1470,6 +1523,7 @@ impl SchedulerSpawnFacility {
         function: Atom,
         args: Vec<Term>,
     ) -> Result<SpawnMonitorResult, SpawnError> {
+        let _admission = self.admit_or_refuse()?;
         let namespace_id = self.caller_namespace(caller_pid);
         let group_leader = self.caller_group_leader(caller_pid);
         let capabilities = self.caller_capabilities(caller_pid);
@@ -1529,6 +1583,7 @@ impl SchedulerSpawnFacility {
         args: Vec<Term>,
         options: SpawnOptions,
     ) -> Result<SpawnOptionsResult, SpawnError> {
+        let _admission = self.admit_or_refuse()?;
         let namespace_id = self.caller_namespace(caller_pid);
         let group_leader = self.caller_group_leader(caller_pid);
         let capabilities = options
@@ -1573,6 +1628,7 @@ impl SchedulerSpawnFacility {
         lambda_index: u32,
         options: SpawnOptions,
     ) -> Result<SpawnOptionsResult, SpawnError> {
+        let _admission = self.admit_or_refuse()?;
         let namespace_id = self.caller_namespace(caller_pid);
         let group_leader = self.caller_group_leader(caller_pid);
         let capabilities = options
@@ -1682,6 +1738,7 @@ impl SchedulerSpawnFacility {
         module: Atom,
         lambda_index: u32,
     ) -> Result<SpawnMonitorResult, SpawnError> {
+        let _admission = self.admit_or_refuse()?;
         let namespace_id = self.caller_namespace(caller_pid);
         let group_leader = self.caller_group_leader(caller_pid);
         let registry = namespace_registry(&self.shared, namespace_id)
@@ -1796,7 +1853,12 @@ impl SchedulerSpawnFacility {
                 ProcessSlot::Absent => {}
             }
         }
-        match Term::try_pid(caller_pid) {
+        // No live caller: this is a synthetic/root spawn (e.g. the public
+        // `spawn_native` uses caller pid 0). Seed it exactly like a top-level
+        // bytecode spawn — process 0 when the standard ring is Owned, the
+        // no-such-pid sentinel when Disabled (spec §3.4) — never the absent
+        // caller's own pid, which would resurrect the self-leader hang shape.
+        match Term::try_pid(self.shared.standard_io_pid) {
             Some(pid_term) => pid_term,
             None => Term::NIL,
         }
@@ -2063,6 +2125,10 @@ pub(super) struct SchedulerLinkFacility {
 
 impl LinkFacility for SchedulerLinkFacility {
     fn link(&self, caller_pid: u64, target_pid: u64) -> Result<(), LinkError> {
+        // Teardown-admission (spec §4 step 3), held across the link mutation.
+        let Some(_admission) = self.shared.try_reserve_dirty_completion() else {
+            return Err(LinkError::NoProc);
+        };
         if caller_pid == target_pid {
             return Ok(());
         }

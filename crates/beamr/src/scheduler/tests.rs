@@ -177,12 +177,12 @@ fn default_distribution_config_resolves_nothing() {
     default_scheduler.shutdown();
 
     // The empty-resolver behavior this test implicitly pinned now lives on the
-    // explicit Some(config) profile it was assuming (spec §6).
-    let dist_scheduler = Scheduler::new(
-        SchedulerConfig {
-            distribution: Some(crate::distribution::DistributionConfig::default()),
-            ..SchedulerConfig::default()
-        },
+    // explicit full-runtime profile it was assuming (spec §6): full_runtime()
+    // turns distribution on with a default config, exactly the state this pin
+    // needs.
+    let dist_scheduler = Scheduler::with_services(
+        SchedulerConfig::default(),
+        SchedulerServices::full_runtime(),
         Arc::new(ModuleRegistry::new()),
     )
     .expect("scheduler should start");
@@ -1058,11 +1058,18 @@ fn shutdown_is_idempotent() {
 #[test]
 fn scheduler_shared_state_drops_without_leak() {
     let registry = Arc::new(ModuleRegistry::new());
-    let scheduler = Scheduler::new(
+    // Moved to the full-runtime profile (spec §6): the leak site is the
+    // distribution control-frame handler, which only exists on a scheduler that
+    // OWNS a distribution bundle. Since commit 4, `SchedulerConfig::default()`
+    // builds no distribution, so `Scheduler::new` here would leave the cycle
+    // site unbuilt and this pin could never fail. `full_runtime()` owns the
+    // bundle, so the cycle site is genuinely exercised.
+    let scheduler = Scheduler::with_services(
         SchedulerConfig {
             thread_count: Some(2),
             ..SchedulerConfig::default()
         },
+        SchedulerServices::full_runtime(),
         registry,
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
@@ -1072,6 +1079,11 @@ fn scheduler_shared_state_drops_without_leak() {
     assert!(
         !scheduler.shared.replay_mode,
         "test must run a non-replay scheduler (replay skips the control handler)"
+    );
+    assert!(
+        scheduler.try_distribution_config().is_some(),
+        "full_runtime() must own the distribution bundle whose control-frame \
+         handler is the leak site under test"
     );
 
     // Downgrade to a Weak so this test holds NO strong reference of its own.
@@ -1179,6 +1191,8 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
             },
         ],
     ));
+    let (dirty_completion_shutdown_tx, dirty_completion_shutdown_rx) =
+        crossbeam_channel::bounded::<()>(0);
     let shared = Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
@@ -1244,6 +1258,10 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         standard_io_pid: u64::MAX,
         service_instances: super::inventory::ServiceInstances::mint(false),
         dirty_completion_spawns: AtomicU64::new(0),
+        dirty_completions: Mutex::new(super::DirtyCompletionRegistry::default()),
+        dirty_completions_changed: Condvar::new(),
+        dirty_completion_shutdown_tx: Mutex::new(Some(dirty_completion_shutdown_tx)),
+        dirty_completion_shutdown_rx,
         standard_io: super::service::ServiceMode::Disabled,
         local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
@@ -1321,10 +1339,22 @@ fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
         .get(&namespace)
         .map(|entry| Arc::clone(&entry))
         .unwrap_or_else(|| panic!("namespace registry exists"));
-    let mut module = test_module(module_name, vec![Instruction::Label { label: 7 }]);
+    // The child PARKS on Wait (label 7): its body persists for the namespace
+    // and link assertions without racing the live worker. (This test formerly
+    // used shutdown-as-barrier and spawned afterwards; post-shutdown spawns
+    // are now REFUSED by the §4 teardown gate, so the barrier is the parked
+    // child instead.)
+    let mut module = test_module(
+        module_name,
+        vec![
+            Instruction::Label { label: 7 },
+            Instruction::Wait {
+                fail: Operand::Label(7),
+            },
+        ],
+    );
     module.exports.insert((function, 0), 7);
     let module = namespace_registry.insert(module);
-    scheduler.shutdown();
     let parent = scheduler.spawn_test_process_in(namespace, Arc::clone(&module));
 
     let process = take_runnable_process(&scheduler.shared, parent)
@@ -1339,6 +1369,24 @@ fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
     assert!(process_links_contain(&scheduler.shared, parent, child));
     store_runnable_process(&scheduler.shared, process);
     assert!(scheduler.is_linked(parent, child));
+    scheduler.shutdown();
+}
+
+/// Wait (bounded) until `pid` is Present and parked Waiting — used by tests
+/// whose children park on a `Wait` instruction so their bodies stay stably
+/// inspectable with the worker live (post-shutdown spawns are refused by the
+/// §4 teardown gate, so shutdown-as-barrier-then-spawn is no longer legal).
+fn wait_until_parked(shared: &SharedState, pid: u64) {
+    wait_until(10_000, || {
+        shared.process_bodies.get(&pid).is_some_and(|entry| {
+            let slot = lock_or_recover(&entry);
+            matches!(
+                &*slot,
+                ProcessSlot::Present(ScheduledProcess(process))
+                    if process.status() == ProcessStatus::Waiting
+            )
+        })
+    });
 }
 
 #[test]
@@ -1346,7 +1394,15 @@ fn spawn_facility_options_apply_link_monitor_priority_and_heap_before_wake() {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("spawn_opt_scheduler");
     let function = atoms.intern("main");
-    let mut module = test_module(module_name, vec![Instruction::Label { label: 7 }]);
+    let mut module = test_module(
+        module_name,
+        vec![
+            Instruction::Label { label: 7 },
+            Instruction::Wait {
+                fail: Operand::Label(7),
+            },
+        ],
+    );
     module.exports.insert((function, 0), 7);
     let registry = Arc::new(ModuleRegistry::new());
     let module = registry.insert(module);
@@ -1358,7 +1414,6 @@ fn spawn_facility_options_apply_link_monitor_priority_and_heap_before_wake() {
         Arc::clone(&registry),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
-    scheduler.shutdown();
     let parent = scheduler.spawn_test_process_in(NamespaceId::DEFAULT, Arc::clone(&module));
     let facility = supervision_integration::SchedulerSpawnFacility {
         shared: Arc::clone(&scheduler.shared),
@@ -1380,6 +1435,8 @@ fn spawn_facility_options_apply_link_monitor_priority_and_heap_before_wake() {
             },
         )
         .unwrap_or_else(|error| panic!("spawn_with_options succeeds: {error:?}"));
+    // The child parks on Wait; from then on its body is stably Present.
+    wait_until_parked(&scheduler.shared, result.pid);
 
     assert!(scheduler.is_linked(parent, result.pid));
     let parent_entry = scheduler
@@ -1424,6 +1481,9 @@ fn spawn_facility_options_apply_link_monitor_priority_and_heap_before_wake() {
                 && monitor.watcher() == parent
                 && monitor.target() == result.pid)
     );
+    drop(child_slot);
+    drop(child_entry);
+    scheduler.shutdown();
 }
 
 #[test]
@@ -1431,7 +1491,15 @@ fn spawn_facility_restricts_child_to_explicit_capabilities() {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("spawn_opt_capability_scheduler");
     let function = atoms.intern("main");
-    let mut module = test_module(module_name, vec![Instruction::Label { label: 7 }]);
+    let mut module = test_module(
+        module_name,
+        vec![
+            Instruction::Label { label: 7 },
+            Instruction::Wait {
+                fail: Operand::Label(7),
+            },
+        ],
+    );
     module.exports.insert((function, 0), 7);
     let registry = Arc::new(ModuleRegistry::new());
     let module = registry.insert(module);
@@ -1443,7 +1511,6 @@ fn spawn_facility_restricts_child_to_explicit_capabilities() {
         Arc::clone(&registry),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
-    scheduler.shutdown();
     let parent = scheduler.spawn_test_process_in(NamespaceId::DEFAULT, Arc::clone(&module));
     let facility = supervision_integration::SchedulerSpawnFacility {
         shared: Arc::clone(&scheduler.shared),
@@ -1463,6 +1530,8 @@ fn spawn_facility_restricts_child_to_explicit_capabilities() {
             },
         )
         .unwrap_or_else(|error| panic!("spawn_with_options succeeds: {error:?}"));
+    // The child parks on Wait; from then on its body is stably Present.
+    wait_until_parked(&scheduler.shared, result.pid);
 
     let child_entry = scheduler
         .shared
@@ -1546,6 +1615,8 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
             false,
         ),
     );
+    let (dirty_completion_shutdown_tx, dirty_completion_shutdown_rx) =
+        crossbeam_channel::bounded::<()>(0);
     let shared = Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
@@ -1608,6 +1679,10 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         standard_io_pid: u64::MAX,
         service_instances: super::inventory::ServiceInstances::mint(false),
         dirty_completion_spawns: AtomicU64::new(0),
+        dirty_completions: Mutex::new(super::DirtyCompletionRegistry::default()),
+        dirty_completions_changed: Condvar::new(),
+        dirty_completion_shutdown_tx: Mutex::new(Some(dirty_completion_shutdown_tx)),
+        dirty_completion_shutdown_rx,
         standard_io: super::service::ServiceMode::Disabled,
         local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
@@ -4123,4 +4198,496 @@ fn shutdown_closes_active_distribution_connections_before_returning() {
         Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => {}
         Err(error) => panic!("peer expected EOF, read failed: {error}"),
     }
+}
+
+// ── Commit-5 round-1 pins ───────────────────────────────────────────────────
+
+/// Round-1 major 2 (group leader): a top-level process answers to process 0 —
+/// the standard-IO server — when the standard ring is Owned, and to the
+/// no-such-pid sentinel when it is Disabled, so `io:*` takes the
+/// `{error,noproc}` send-failure arm instead of self-queueing an io_request
+/// and parking forever.
+static GL_PROBE_SEEN: AtomicUsize = AtomicUsize::new(0);
+static GL_PROBE_LEADER: AtomicU64 = AtomicU64::new(0);
+
+fn gl_probe_native(
+    _args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    // Report the attached process's OWN group leader from inside the native —
+    // the body slot is Executing while this runs, so an outside probe cannot
+    // read it, but the context can.
+    let leader = context
+        .group_leader()
+        .ok()
+        .and_then(|term| term.as_pid())
+        .unwrap_or(u64::MAX - 1);
+    GL_PROBE_LEADER.store(leader, Ordering::Release);
+    GL_PROBE_SEEN.fetch_add(1, Ordering::AcqRel);
+    Ok(Term::atom(Atom::OK))
+}
+
+/// Round-1 major 2 (group leader): a top-level process answers to process 0 —
+/// the standard-IO server — when the standard ring is Owned, and to the
+/// no-such-pid sentinel when it is Disabled, so `io:*` takes the
+/// `{error,noproc}` send-failure arm instead of self-queueing an io_request
+/// and parking forever.
+#[test]
+fn top_level_group_leader_is_process_zero_when_owned_and_sentinel_when_disabled() {
+    let registry = Arc::new(ModuleRegistry::new());
+    let atoms = AtomTable::new();
+    let name = atoms.intern("gl_probe");
+    let module = native_call_module(&registry, name, gl_probe_native, None);
+    GL_PROBE_SEEN.store(0, Ordering::Release);
+
+    // Legacy/default profile: standard ring Owned, process 0 registered.
+    let owned = single_thread_scheduler(&registry);
+    let _owned_pid = owned.spawn_process(&module);
+    wait_until(10_000, || GL_PROBE_SEEN.load(Ordering::Acquire) == 1);
+    assert_eq!(
+        GL_PROBE_LEADER.load(Ordering::Acquire),
+        0,
+        "top-level processes answer to process 0 when the standard ring is Owned"
+    );
+    // A message SEND to the group leader genuinely lands (process 0 exists
+    // and has a mailbox; enqueue keys on the same process_bodies lookup the
+    // io-message facility uses) — the positive control for the noproc pin.
+    assert!(
+        owned.enqueue_atom_message(0, Atom::OK),
+        "a message to process 0 is deliverable on the Owned profile"
+    );
+    owned.shutdown();
+
+    // minimal(): no standard ring, no process 0 — the leader is the sentinel,
+    // and a send to it FAILS, which is exactly the io_bifs noproc arm.
+    let minimal = Scheduler::with_services(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        SchedulerServices::minimal(),
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("minimal scheduler starts: {error}"));
+    let _minimal_pid = minimal.spawn_process(&module);
+    wait_until(10_000, || GL_PROBE_SEEN.load(Ordering::Acquire) == 2);
+    assert_eq!(
+        GL_PROBE_LEADER.load(Ordering::Acquire),
+        NO_STANDARD_IO_PID,
+        "with the standard ring Disabled the leader is the no-such-pid sentinel"
+    );
+    assert!(
+        !minimal.enqueue_atom_message(NO_STANDARD_IO_PID, Atom::OK),
+        "a send to the sentinel leader FAILS — io:* takes the {{error,noproc}} \
+         arm before any suspension instead of parking forever"
+    );
+    minimal.shutdown();
+}
+
+static SHARED_DRAIN_ENTERED: AtomicUsize = AtomicUsize::new(0);
+static SHARED_DRAIN_RELEASE: AtomicBool = AtomicBool::new(false);
+
+/// 0 = unset; 1 = refused with SchedulerTearingDown; 2 = anything else.
+static SHARED_DRAIN_SPAWN_OUTCOME: AtomicUsize = AtomicUsize::new(0);
+
+fn shared_drain_blocking_native(
+    _args: &[Term],
+    context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    SHARED_DRAIN_ENTERED.fetch_add(1, Ordering::AcqRel);
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while !SHARED_DRAIN_RELEASE.load(Ordering::Acquire) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "shared-drain native never released"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // The owning scheduler has SHUT DOWN by the time the release fires (the
+    // test orders it so): a mutation through the retained facilities must be
+    // REFUSED with the teardown error, before MFA resolution.
+    let outcome = context.spawn_facility().map(|facility| {
+        facility.spawn(
+            context.pid().unwrap_or(0),
+            Atom::OK,
+            Atom::OK,
+            Vec::new(),
+            None,
+        )
+    });
+    let recorded = match outcome {
+        Some(Err(crate::native::spawn::SpawnError::SchedulerTearingDown)) => 1,
+        _ => 2,
+    };
+    SHARED_DRAIN_SPAWN_OUTCOME.store(recorded, Ordering::Release);
+    Ok(Term::atom(Atom::OK))
+}
+
+fn shared_drain_quick_native(
+    _args: &[Term],
+    _context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    Ok(Term::atom(Atom::OK))
+}
+
+/// Round-1 major 1 (§4 step 3): a scheduler sharing an embedder-owned dirty
+/// pool must JOIN its completion bridges at shutdown even while a shared-pool
+/// job is still running — shutdown returns bounded, no bridge thread remains,
+/// no completion is delivered into the dead scheduler, and the pool keeps
+/// serving a co-resident scheduler. Verified failing (shutdown hung on the
+/// blocked bridge / bridge outlived shutdown) with the drain reverted.
+#[test]
+fn shutdown_drains_completion_bridges_while_a_shared_pool_job_is_still_running() {
+    // TWO workers: A's job blocks one; the second keeps serving B while A's
+    // job is still parked, so the pool-stays-functional half asserts under the
+    // strongest condition (the blocked job still occupying a worker).
+    let pool = Arc::new(DirtyPool::with_queue_depth("shared-dirty-drain", 2, 8));
+    let registry = Arc::new(ModuleRegistry::new());
+    let atoms = AtomTable::new();
+    let blocking_name = atoms.intern("shared_drain_blocking");
+    let quick_name = atoms.intern("shared_drain_quick");
+    let blocking_module = native_call_module(
+        &registry,
+        blocking_name,
+        shared_drain_blocking_native,
+        Some(DirtySchedulerKind::Cpu),
+    );
+    let quick_module = native_call_module(
+        &registry,
+        quick_name,
+        shared_drain_quick_native,
+        Some(DirtySchedulerKind::Cpu),
+    );
+
+    SHARED_DRAIN_ENTERED.store(0, Ordering::Release);
+    SHARED_DRAIN_RELEASE.store(false, Ordering::Release);
+    SHARED_DRAIN_SPAWN_OUTCOME.store(0, Ordering::Release);
+
+    let scheduler_a = Scheduler::with_services(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler A starts: {error}"));
+    let scheduler_b = Scheduler::with_services(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler B starts: {error}"));
+
+    // A's dirty job enters the shared pool and BLOCKS there.
+    let blocked_pid = scheduler_a.spawn_process(&blocking_module);
+    let entered_deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while SHARED_DRAIN_ENTERED.load(Ordering::Acquire) != 1 {
+        if std::time::Instant::now() >= entered_deadline {
+            panic!(
+                "job never entered: tombstoned={} exit_reason={:?} exit_error={:?}",
+                scheduler_a
+                    .shared
+                    .exit_tombstones
+                    .contains_key(&blocked_pid),
+                scheduler_a.peek_exit_reason(blocked_pid),
+                scheduler_a.take_exit_error(blocked_pid),
+            );
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    // Shutdown must return while the job is STILL blocked: the drain wakes the
+    // bridge (which exits without delivering) rather than waiting for the job.
+    let weak_a = Arc::downgrade(&scheduler_a.shared);
+    let started = std::time::Instant::now();
+    scheduler_a.shutdown();
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "shutdown must not wait for the shared-pool job"
+    );
+    assert_eq!(
+        scheduler_a.dirty_completions_live_count(),
+        0,
+        "no completion bridge of the dead scheduler survives its shutdown"
+    );
+    assert!(
+        !SHARED_DRAIN_RELEASE.load(Ordering::Acquire),
+        "the job is still blocked — the bridge exited without it"
+    );
+    drop(scheduler_a);
+
+    // The pool is untouched: B still submits and completes dirty work.
+    let b_pid = scheduler_b.spawn_process(&quick_module);
+    wait_until(10_000, || {
+        scheduler_b.shared.exit_tombstones.contains_key(&b_pid)
+    });
+    assert_eq!(
+        scheduler_b.peek_exit_reason(b_pid),
+        Some(ExitReason::Normal)
+    );
+
+    // Release A's job. The worker's send lands on a dropped receiver and is
+    // discarded; the native's post-release spawn attempt through its retained
+    // facility must be REFUSED with the teardown error (round-2 major 3), and
+    // A's process table must not grow.
+    let shared_a = weak_a.upgrade().expect("job still retains A's state");
+    let processes_before = shared_a.process_bodies.len();
+    SHARED_DRAIN_RELEASE.store(true, Ordering::Release);
+    wait_until(10_000, || {
+        SHARED_DRAIN_SPAWN_OUTCOME.load(Ordering::Acquire) != 0
+    });
+    assert_eq!(
+        SHARED_DRAIN_SPAWN_OUTCOME.load(Ordering::Acquire),
+        1,
+        "a post-shutdown spawn from the surviving dirty native is refused \
+         with SchedulerTearingDown"
+    );
+    assert_eq!(
+        shared_a.process_bodies.len(),
+        processes_before,
+        "the refused spawn created no process in the dead scheduler"
+    );
+    drop(shared_a);
+    wait_until(10_000, || weak_a.upgrade().is_none());
+    scheduler_b.shutdown();
+}
+
+/// Round-2 minor: the public `spawn_native` root (synthetic caller 0) is
+/// seeded from `standard_io_pid` exactly like a top-level bytecode spawn —
+/// process 0 when Owned, the no-such-pid sentinel when Disabled — never the
+/// absent caller's own pid.
+#[test]
+fn spawn_native_root_leader_matches_the_standard_io_pid() {
+    let registry = Arc::new(ModuleRegistry::new());
+
+    let owned = single_thread_scheduler(&registry);
+    let received = Arc::new(Mutex::new(Vec::new()));
+    let slices = Arc::new(AtomicUsize::new(0));
+    let (factory_received, factory_slices) = (Arc::clone(&received), Arc::clone(&slices));
+    let owned_pid = owned
+        .spawn_native(Box::new(move || {
+            Box::new(BusyPollHandler {
+                received: Arc::clone(&factory_received),
+                slices: Arc::clone(&factory_slices),
+            })
+        }))
+        .unwrap_or_else(|error| panic!("spawn native: {error:?}"));
+    wait_until(10_000, || {
+        owned.test_group_leader(owned_pid) == Some(Term::pid(0))
+    });
+    owned.shutdown();
+
+    let minimal = Scheduler::with_services(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        SchedulerServices::minimal(),
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("minimal scheduler starts: {error}"));
+    let received = Arc::new(Mutex::new(Vec::new()));
+    let slices = Arc::new(AtomicUsize::new(0));
+    let (factory_received, factory_slices) = (Arc::clone(&received), Arc::clone(&slices));
+    let minimal_pid = minimal
+        .spawn_native(Box::new(move || {
+            Box::new(BusyPollHandler {
+                received: Arc::clone(&factory_received),
+                slices: Arc::clone(&factory_slices),
+            })
+        }))
+        .unwrap_or_else(|error| panic!("spawn native: {error:?}"));
+    wait_until(10_000, || {
+        minimal.test_group_leader(minimal_pid) == Some(Term::pid(NO_STANDARD_IO_PID))
+    });
+    minimal.shutdown();
+}
+
+/// Round-3 major: EVERY `SpawnFacility` method refuses after teardown — not
+/// just `spawn`. A dirty native surviving on an embedder-owned shared pool
+/// can reach any of them through its retained context.
+#[test]
+fn every_spawn_facility_method_refuses_after_teardown() {
+    use crate::native::SpawnFacility as _;
+    use crate::native::spawn::SpawnError;
+
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("teardown_refusal");
+    let function = atoms.intern("main");
+    let mut module = test_module(module_name, vec![Instruction::Label { label: 7 }]);
+    module.exports.insert((function, 0), 7);
+    let registry = Arc::new(ModuleRegistry::new());
+    let _module = registry.insert(module);
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    scheduler.shutdown();
+
+    let facility = supervision_integration::SchedulerSpawnFacility {
+        shared: Arc::clone(&scheduler.shared),
+        namespace_id: NamespaceId::DEFAULT,
+    };
+    let processes_before = scheduler.shared.process_bodies.len();
+
+    assert_eq!(
+        facility.spawn(1, module_name, function, Vec::new(), None),
+        Err(SpawnError::SchedulerTearingDown)
+    );
+    let received = Arc::new(Mutex::new(Vec::new()));
+    let slices = Arc::new(AtomicUsize::new(0));
+    let (factory_received, factory_slices) = (Arc::clone(&received), Arc::clone(&slices));
+    assert_eq!(
+        facility.spawn_native(
+            1,
+            Box::new(move || {
+                Box::new(BusyPollHandler {
+                    received: Arc::clone(&factory_received),
+                    slices: Arc::clone(&factory_slices),
+                })
+            }),
+            None
+        ),
+        Err(SpawnError::SchedulerTearingDown)
+    );
+    assert!(matches!(
+        facility.spawn_monitor(1, module_name, function, Vec::new()),
+        Err(SpawnError::SchedulerTearingDown)
+    ));
+    assert!(matches!(
+        facility.spawn_lambda(1, module_name, 0, None),
+        Err(SpawnError::SchedulerTearingDown)
+    ));
+    assert!(matches!(
+        facility.spawn_lambda_monitor(1, module_name, 0),
+        Err(SpawnError::SchedulerTearingDown)
+    ));
+    assert!(matches!(
+        facility.spawn_with_options(
+            1,
+            module_name,
+            function,
+            Vec::new(),
+            SpawnOptions::default()
+        ),
+        Err(SpawnError::SchedulerTearingDown)
+    ));
+    assert!(matches!(
+        facility.spawn_lambda_with_options(1, module_name, 0, SpawnOptions::default()),
+        Err(SpawnError::SchedulerTearingDown)
+    ));
+
+    assert_eq!(
+        scheduler.shared.process_bodies.len(),
+        processes_before,
+        "no refused spawn path touched process state"
+    );
+}
+
+/// Round-4 major: spawn admission is LINEARIZED with teardown, not a
+/// snapshot. A spawn HELD immediately after admission (test barrier) forces
+/// the interleaving Sol found: shutdown must WAIT for the admitted spawn (its
+/// mutation lands before shutdown returns), and the next spawn refuses. In no
+/// case does process state change after shutdown has returned.
+#[test]
+fn shutdown_waits_for_an_admitted_spawn_and_refuses_the_next() {
+    use crate::native::SpawnFacility as _;
+    use crate::native::spawn::SpawnError;
+
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("admitted_spawn");
+    let function = atoms.intern("main");
+    let mut module = test_module(
+        module_name,
+        vec![
+            Instruction::Label { label: 7 },
+            Instruction::Wait {
+                fail: Operand::Label(7),
+            },
+        ],
+    );
+    module.exports.insert((function, 0), 7);
+    let registry = Arc::new(ModuleRegistry::new());
+    let _module = registry.insert(module);
+    let scheduler = Arc::new(
+        Scheduler::new(
+            SchedulerConfig {
+                thread_count: Some(1),
+                ..SchedulerConfig::default()
+            },
+            Arc::clone(&registry),
+        )
+        .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
+    );
+
+    // RAII reset: the hold target is cleared even if an assertion below
+    // unwinds, so a failure here cannot park other tests' spawns.
+    struct HoldReset;
+    impl Drop for HoldReset {
+        fn drop(&mut self) {
+            supervision_integration::SPAWN_HOLD_TARGET.store(0, Ordering::Release);
+        }
+    }
+    let _hold_reset = HoldReset;
+    supervision_integration::SPAWN_HELD_AT_GATE.store(false, Ordering::Release);
+    supervision_integration::SPAWN_HOLD_TARGET
+        .store(Arc::as_ptr(&scheduler.shared) as usize, Ordering::Release);
+
+    let facility = supervision_integration::SchedulerSpawnFacility {
+        shared: Arc::clone(&scheduler.shared),
+        namespace_id: NamespaceId::DEFAULT,
+    };
+    let spawn_thread =
+        std::thread::spawn(move || facility.spawn(1, module_name, function, Vec::new(), None));
+    wait_until(10_000, || {
+        supervision_integration::SPAWN_HELD_AT_GATE.load(Ordering::Acquire)
+    });
+
+    // Shutdown starts while the ADMITTED spawn is held at the barrier: the
+    // drain must wait for it, not return around it.
+    let shutdown_done = Arc::new(AtomicBool::new(false));
+    let (shutdown_scheduler, shutdown_flag) = (Arc::clone(&scheduler), Arc::clone(&shutdown_done));
+    let shutdown_thread = std::thread::spawn(move || {
+        shutdown_scheduler.shutdown();
+        shutdown_flag.store(true, Ordering::Release);
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        !shutdown_done.load(Ordering::Acquire),
+        "shutdown must WAIT for the admitted spawn, not return around it"
+    );
+
+    // Release the admitted spawn: it completes (its mutation lands BEFORE
+    // shutdown returns), then shutdown finishes.
+    supervision_integration::SPAWN_HOLD_TARGET.store(0, Ordering::Release);
+    let spawned = spawn_thread
+        .join()
+        .unwrap_or_else(|_| panic!("spawn thread joins"))
+        .unwrap_or_else(|error| panic!("the admitted spawn completes: {error:?}"));
+    shutdown_thread
+        .join()
+        .unwrap_or_else(|_| panic!("shutdown thread joins"));
+    assert!(shutdown_done.load(Ordering::Acquire));
+    assert!(
+        scheduler.shared.process_bodies.contains_key(&spawned),
+        "the admitted spawn's process exists — its mutation preceded shutdown's return"
+    );
+
+    // And the NEXT spawn refuses: intake is closed.
+    let facility = supervision_integration::SchedulerSpawnFacility {
+        shared: Arc::clone(&scheduler.shared),
+        namespace_id: NamespaceId::DEFAULT,
+    };
+    assert_eq!(
+        facility.spawn(1, module_name, function, Vec::new(), None),
+        Err(SpawnError::SchedulerTearingDown)
+    );
 }
