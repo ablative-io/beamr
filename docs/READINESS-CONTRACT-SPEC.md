@@ -128,12 +128,14 @@ as a readiness signal (no-op on a not-yet-registered pid;
 
 ## 3. Shape (b): the beamr readiness service
 
-> Sections 3.1–3.6 are the beamr-side design. Items marked ⏳ await the
-> enif_select evidence pack (norn research, in flight) — the trigger model,
-> stop lifecycle, and fd-reuse guards deliberately steal OTP's scar tissue
-> rather than rediscovering it.
+> Sections 3.1–3.6 are the beamr-side design. The OTP prior art cited below
+> is from the enif_select/driver_select evidence pack produced by GPT-5.6-Sol
+> research session `233a223e-c3e0-4b79-9aba-bf617d8d40b5` (envelope retained
+> at `~/.norn/delegations/claude-research.ue74HX`; OTP claims pinned to
+> upstream commit 9c288883, each with source/doc line citations in the pack).
+> Design-decisive claims were spot-checked against the cited OTP sources.
 
-### 3.1 API sketch (subject to ⏳ evidence)
+### 3.1 API sketch
 
 ```rust
 // Feature "readiness" (name TBD), on Scheduler or a service handle:
@@ -146,17 +148,40 @@ fn readiness_register(
 ) -> Result<ReadinessToken, ReadinessError>;
 
 fn readiness_rearm(&self, token: &ReadinessToken, interest: Interest) -> Result<(), ReadinessError>;
+/// Returns only once the registration can deliver no further marker —
+/// the deregister-ACK the close safety of §3.4 builds on.
 fn readiness_deregister(&self, token: ReadinessToken);
 ```
 
-- **One-shot delivery** (⏳ confirm against enif_select): each arm fires at
-  most one marker; the consumer re-arms per C4. One-shot removes the
-  level-triggered storm class and makes marker idempotence trivial.
+- **One-shot delivery — confirmed as OTP's normative contract**: one
+  notification per selected direction per registration; another notification
+  requires another select call (erl_nif docs, enif_select; ERTS separates
+  requested `events` from armed `active_events` and clears triggered bits
+  before send). The consumer loop OTP prescribes is exactly C4: drain to
+  WouldBlock → re-arm → park. One-shot removes the level-triggered storm
+  class and makes marker idempotence trivial. (OTP later moved hot fds to a
+  non-ONESHOT internal pollset purely as a syscall optimization while
+  preserving the externally-one-shot semantic — the optimization lesson: keep
+  any fast path invisible behind the one-in-flight contract.)
+- **Deregistration is an acknowledged operation** (the ERL_NIF_SELECT_STOP
+  lesson): OTP treats stop as a handshake — cancel directions, eject the fd
+  from pollsets (waking the poller if it might still hold the fd), and only
+  then dissolve the fd relation, via a direct or deferred stop callback.
+  beamr's equivalent: `readiness_deregister` returns only after the poll
+  thread can no longer emit an event for that token (deferred-ack path when
+  the poller is mid-poll). Close-before-dereg-ack is the documented consumer
+  violation R5 guards against.
 - `ReadinessToken` carries a **generation** minted at register time; stale
   events for a dead generation are dropped in the service, never delivered
-  (§3.4).
+  (§3.4). The atom marker is the public contract; the token is the internal
+  registration identity — matching OTP's split between the delivered message
+  (`{select, Obj, Ref, ready_*}` / caller-chosen term) and the VM-side
+  per-fd state that actually gates delivery. A durable atom is valid as the
+  message precisely because R6 makes it idempotent ("at least one readiness
+  fact is pending", not "one atom per kernel event").
 - Delivery is exactly `enqueue_atom_message(pid, marker)` — the service adds
-  no new delivery machinery and inherits C1–C3 verbatim.
+  no new delivery machinery and inherits C1–C3 verbatim. (OTP's equivalent
+  drop-if-recipient-dead behavior at send time is what C3 already gives us.)
 
 ### 3.2 Ownership under the composition model
 
@@ -185,30 +210,62 @@ part of the 0.13.0 e2e work). Requirements:
   the service must not depend on that for correctness).
 - Drop-without-shutdown must not leak the thread (same posture as the
   NetKernel drop fix at 103e5fd).
-- ⏳ OTP's ordering of poll-set teardown relative to schedulers.
+- **OTP offers no reusable prior art here — deliberately diverge.** ERTS
+  poll threads run an infinite loop and pollsets have no destruction
+  sequence; whole-VM halt relies on OS-process exit to reclaim them. That is
+  unavailable to a reusable embedded `Scheduler`, so the ordering above is
+  ours to own, with one hard rule the evidence pack makes explicit: the
+  reactor must be stopped and joined **before** the scheduler shutdown flag
+  is set and workers are joined, so `enqueue_atom_message` can never fire
+  into a torn-down process table. The compatible insertion point is the
+  existing ownership-ordered teardown in `execution.rs:69-93` (rewritten by
+  the composition spec §4), ahead of worker join.
 
-### 3.4 fd-reuse and stale-delivery safety ⏳
+### 3.4 fd-reuse and stale-delivery safety
 
 The hazard: consumer closes fd N (or crashes), kernel recycles N for an
 unrelated socket, a stale poll event for old-N delivers a marker to the old
 registration's pid.
 
-- Registrations are keyed by generation token, not fd number; events resolve
-  through the live-registration table and stale generations drop.
-- **Deregister-before-close is the documented consumer obligation** (the
-  enif_select STOP lesson, ⏳ exact semantics); the service additionally
-  guards: close-vs-poll races on a still-registered fd must produce at worst a
-  spurious marker for the OLD registration (idempotent, C4), never a marker
-  for an unrelated new one.
-- ⏳ OTP's historical bugs here and the guard they settled on.
+- Registrations are keyed by generation token, not fd number; on every poll
+  event the service requires `(slot, generation, pid, interest)` to match the
+  live record before enqueueing — stale generations drop in the service,
+  never delivered.
+- **This is a deliberate improvement over OTP, not a transcription.** OTP
+  attaches no generation to the fd: its guard is serialized per-fd state
+  (selected vs active masks, owner identity, steal/deselect cleanup) **plus
+  the client obeying STOP-before-close** — close behind ERTS's back and
+  fd-keyed state cannot distinguish old fd 42 from new fd 42. The area's
+  history is a fragility ledger (bad-fd handling fixed during enif_select's
+  own development; cleared-one-shot results filtered; fallback-stop
+  corrected; scheduler-local select state needing two later cleanup fixes;
+  a hot-fd migration heuristic keyed only by fd regressing under concurrent
+  accept and gaining owner-awareness in OTP PR #10323). Generation tokens
+  close the whole class structurally instead of per-bug.
+- **Deregister-ACK-before-close is the documented consumer obligation**
+  (§3.1; R5 enforces it in liminal); the service additionally guards:
+  close-vs-poll races on a still-registered fd produce at worst a spurious
+  marker for the OLD registration (idempotent, C4/R6), never a marker for an
+  unrelated new one — the generation check makes this a structural property,
+  and the §3.6 recycle-storm gate plus liminal's T4 pin it from both sides.
 
 ### 3.5 Process-death deregistration
 
-Registrations owned by a dead pid are reaped: (a) lazily, on the next event
-for that registration (C3 already makes delivery harmless; the reap bounds
-table growth — a rule-5 answer, not just hygiene); and (b) eagerly if the
-composition work exposes a process-exit hook the service can subscribe to
-without new coupling. ⏳ OTP reaps via the owner-death path — confirm shape.
+Registrations owned by a dead pid are reaped **eagerly at the centralized
+exit path**: `cleanup_exited_process` already closes process-owned fd
+resources before removing the process body (`execution/core.rs:1478-1536`),
+and readiness cancellation slots there — cancel (with ack) BEFORE the fd
+close, which also discharges the §3.4 obligation on the crash path where no
+consumer code runs. Lazy reaping on next event remains as the backstop (C3
+makes delivery harmless; the reap bounds table growth — a rule-5 answer).
+
+This deliberately diverges from OTP, where a registration is NOT owned by
+the recipient process — it rides the NIF resource, ERTS merely drops the
+pending message if the recipient died, and leak prevention is delegated to
+the client via `enif_monitor_process` + a down callback. beamr's pids own
+their registrations directly; the VM cleans up, not the embedder. (Hermes'
+R4 externally-killed-pid finding is the same principle on the consumer side:
+dereg must never require the dead process to run a slice.)
 
 ### 3.6 Acceptance gates (shape b)
 
@@ -221,6 +278,10 @@ without new coupling. ⏳ OTP reaps via the owner-death path — confirm shape.
 - Shutdown under load with live registrations: clean join, no post-shutdown
   delivery, no leaked thread (OS-visible).
 - Every C1–C4 pinning test passes with the service as the marker source.
+- The one-shot + generation semantics are asserted at the VM contract level
+  on BOTH backends we ship (kqueue via mio on macOS, epoll on Linux) — OTP's
+  OpenBSD non-one-shot pollset bug is the lesson: never infer backend
+  uniformity from the abstraction; test the contract, not the backend.
 - Q1–Q4 lens answers in this doc match measured behavior.
 
 ## 4. Shape (a): embedder-owned reactor — fallback argument
