@@ -405,11 +405,19 @@ shape decision and carry their own tests independent of §3.
 > liminal-side gates; each is a permanent rule-1 assertion, not
 > incident-scoped.
 
-- **T1 — The 11-idle-worker soak** (the incident's own gate): 11 registered,
-  connected, idle worker connections; process CPU returns to host baseline
-  over the soak window at the threshold certified by the pair and briefed to
-  Tom; every parked connection's R7 slice counter is static for the entire
-  window. Runs on macOS (the incident host) as the operational gate.
+- **T1 — The 11-idle-worker soak** (the incident's own gate), shaped as a
+  **delta assertion** per the certifying pair (2026-07-11): measure the
+  server at true baseline (zero connections) and with 11 registered,
+  connected, idle workers, over the same soak window with recorded
+  methodology (duration, sampling source, host state) so the delta is
+  reproducible rather than a one-shot reading. Certify that liminal's
+  contribution ABOVE the VM's own idle floor is ~zero; every parked
+  connection's R7 slice counter is static for the entire window. The floor
+  itself (beamr's ~5 ms scheduler tick, ~4,800 wakes/s at perfect idle on
+  the incident host) is a first-class Q1 item owned by the beamr
+  composition lane, with its own bound and sign-off. The delta stays true
+  when the floor moves, so a signed T1 survives the floor being cheapened
+  later. Runs on macOS (the incident host) as the operational gate.
 - **T2 — Parked-wake matrix**: for each R1 wake source (inbound bytes → Pong
   round-trip; server push → correlated reply completes; publish →
   subscription Deliver arrives; EOF/HUP → dereg + teardown; blocked-then-
