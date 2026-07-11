@@ -79,12 +79,14 @@ async fn loopback_cross_node_pid_send_round_trip() {
         Arc::clone(&atom_table),
     );
     let listen_a = node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("listen address parses"))
         .await
         .expect("node A listens");
     let listen_b = node_b
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("listen address parses"))
         .await
         .expect("node B listens");
@@ -111,7 +113,8 @@ async fn loopback_cross_node_pid_send_round_trip() {
     )
     .expect("frame to B encodes");
     let conn_to_b = node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("b@127.0.0.1")
         .await
         .expect("A connects to B");
@@ -136,7 +139,8 @@ async fn loopback_cross_node_pid_send_round_trip() {
     )
     .expect("frame to A encodes");
     let conn_to_a = node_b
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("a@127.0.0.1")
         .await
         .expect("B connects to A");

@@ -284,6 +284,12 @@ fn execute_module(
     let scheduler = Scheduler::with_code_server(
         SchedulerConfig {
             thread_count: Some(1),
+            // Opt into full-runtime distribution explicitly. `distribution: None`
+            // is now honest absence (spec §3.6) — the default no longer builds a
+            // distribution runtime — so the CLI requests it to keep its
+            // user-visible behavior (a full standalone VM) unchanged; the
+            // profile-based CLI migration is commit 5.
+            distribution: Some(beamr::distribution::DistributionConfig::default()),
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),

@@ -249,7 +249,8 @@ async fn connect_duo() -> Duo {
         Arc::clone(&atom_table),
     );
     let listen_b = node_b
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .listen("127.0.0.1:0".parse().expect("listen address parses"))
         .await
         .expect("node B listens");
@@ -258,7 +259,8 @@ async fn connect_duo() -> Duo {
     let b_atom = node_b.local_node().name;
 
     node_a
-        .distribution_connections()
+        .try_distribution_connections()
+        .expect("distribution owned")
         .connect("b@127.0.0.1")
         .await
         .expect("A connects to B");
@@ -267,7 +269,8 @@ async fn connect_duo() -> Duo {
     assert!(
         eventually(|| {
             node_b
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .connected_nodes()
                 .contains(&a_atom)
         })
@@ -512,7 +515,8 @@ fn node_death_delivers_noconnection_to_every_remote_linked_process() {
             assert!(
                 eventually(|| {
                     !node_a
-                        .distribution_connections()
+                        .try_distribution_connections()
+                        .expect("distribution owned")
                         .connected_nodes()
                         .contains(&b_atom)
                 })
@@ -655,7 +659,8 @@ fn consumed_link_is_not_resignalled_as_noconnection_by_node_death() {
             assert!(
                 eventually(|| {
                     !node_a
-                        .distribution_connections()
+                        .try_distribution_connections()
+                        .expect("distribution owned")
                         .connected_nodes()
                         .contains(&b_atom)
                 })
@@ -690,7 +695,8 @@ fn read_loop_survives_hostile_frame_and_subsequent_frames_deliver() {
             garbage.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
             let b_to_a = duo
                 .node_b
-                .distribution_connections()
+                .try_distribution_connections()
+                .expect("distribution owned")
                 .get_connection(duo.a_atom)
                 .expect("B holds a connection to A");
             b_to_a

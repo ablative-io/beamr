@@ -114,7 +114,7 @@ pub(super) fn read_peer_frame(peer: &mut std::net::TcpStream) -> (Vec<u8>, Vec<u
 fn inbound_link_over_real_socket_survives_hostile_frame_and_establishes_link() {
     let shared = make_shared_state_with_dist_sender();
     register_distribution_control_handler(&shared);
-    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let handle = shared.dist_sender_or_panic().handle();
     let _context = handle.enter();
 
     let peer_node = shared.atom_table.intern("peer@test");
@@ -167,7 +167,7 @@ fn inbound_link_over_real_socket_survives_hostile_frame_and_establishes_link() {
 #[test]
 fn duplicate_link_is_idempotent_and_link_to_dead_pid_replies_exit() {
     let shared = make_shared_state_with_dist_sender();
-    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let handle = shared.dist_sender_or_panic().handle();
     let _context = handle.enter();
 
     let peer_node = shared.atom_table.intern("peer@test");
@@ -628,7 +628,7 @@ fn manual_disconnect_from_plain_thread_delivers_noconnection() {
     add_remote_link(&shared, target, remote);
 
     let peer = {
-        let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+        let handle = shared.dist_sender_or_panic().handle();
         let _context = handle.enter();
         install_peer(&shared, node)
     };
@@ -637,7 +637,7 @@ fn manual_disconnect_from_plain_thread_delivers_noconnection() {
     let worker = std::thread::spawn(move || {
         assert!(
             shared_for_thread
-                .distribution_connections
+                .distribution_connections_or_panic()
                 .disconnect_node(node),
             "disconnect_node finds the installed connection"
         );
@@ -686,7 +686,7 @@ fn control_facility(shared: &Arc<SharedState>) -> SchedulerDistributionControlFa
 #[test]
 fn facility_link_and_unlink_ride_the_wire_and_track_the_local_half() {
     let shared = make_shared_state_with_dist_sender();
-    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let handle = shared.dist_sender_or_panic().handle();
     let _context = handle.enter();
 
     let peer_node = shared.atom_table.intern("peer@test");
@@ -799,7 +799,7 @@ fn facility_link_remote_preconditions_and_best_effort_exit2() {
 #[test]
 fn kill_crosses_the_wire_as_killed_but_exit2_carries_raw_kill() {
     let shared = make_shared_state_with_dist_sender();
-    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let handle = shared.dist_sender_or_panic().handle();
     let _context = handle.enter();
 
     let peer_node = shared.atom_table.intern("peer@test");
@@ -988,7 +988,7 @@ fn wire_exit_then_connection_down_delivers_exactly_one_signal() {
 fn presend_messages_precede_wire_exit_and_trapping_target_survives() {
     let shared = make_shared_state_with_dist_sender();
     register_distribution_control_handler(&shared);
-    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let handle = shared.dist_sender_or_panic().handle();
     let _context = handle.enter();
 
     let peer_node = shared.atom_table.intern("peer@test");
@@ -1119,26 +1119,18 @@ fn exit_storm_delivers_exactly_one_signal_per_link_across_nodes() {
     let node_a_on_b = shared_b.atom_table.intern("a@test");
     let (server, client, addr) = socket_pair();
     {
-        let handle = shared_a
-            .dist_sender
-            .as_ref()
-            .expect("dist sender a")
-            .handle();
+        let handle = shared_a.dist_sender_or_panic().handle();
         let _context = handle.enter();
         shared_a
-            .distribution_connections
+            .distribution_connections_or_panic()
             .register_test_connection(node_b_on_a, addr, server)
             .expect("register a->b connection");
     }
     {
-        let handle = shared_b
-            .dist_sender
-            .as_ref()
-            .expect("dist sender b")
-            .handle();
+        let handle = shared_b.dist_sender_or_panic().handle();
         let _context = handle.enter();
         shared_b
-            .distribution_connections
+            .distribution_connections_or_panic()
             .register_test_connection(node_a_on_b, addr, client)
             .expect("register b->a connection");
     }
@@ -1219,14 +1211,14 @@ fn exit_storm_delivers_exactly_one_signal_per_link_across_nodes() {
         // B converges via EOF within a bounded window (DC-1 both-sides).
         assert!(
             shared_a
-                .distribution_connections
+                .distribution_connections_or_panic()
                 .get_connection(node_b_on_a)
                 .is_none(),
             "overflow must purge the pinned connection on the sending side"
         );
         let eof_deadline = Instant::now() + Duration::from_secs(30);
         while shared_b
-            .distribution_connections
+            .distribution_connections_or_panic()
             .get_connection(node_a_on_b)
             .is_some()
         {
@@ -1245,23 +1237,35 @@ fn exit_storm_delivers_exactly_one_signal_per_link_across_nodes() {
 /// converts the caller's links to `noconnection` before the facility call
 /// returns. Correctness holds (no lost signal, DC-1/DC-3); the healthy pair
 /// is merely down pending redial — an availability blip.
+///
+/// The lane is filled behind the parked write with controls pinned to a THIRD
+/// connection, so the first overflow downs that filler pin — NOT the parked
+/// writer. (Downing the parked writer shuts its socket down and unparks the
+/// drain — the commit-4 improvement pinned by the next test — which would
+/// dissolve the full-lane condition this test exists to exercise.)
 #[test]
 fn control_overflow_to_healthy_peer_converges_to_noconnection_blip() {
     let shared = make_shared_state_with_dist_sender();
     register_scheduler_connection_subscriber(&shared);
-    let sender = shared.dist_sender.as_ref().expect("dist sender");
+    let sender = shared.dist_sender_or_panic();
     let handle = sender.handle();
     let _context = handle.enter();
 
     let wedged_node = shared.atom_table.intern("wedged@test");
     let healthy_node = shared.atom_table.intern("healthy@test");
+    let filler_node = shared.atom_table.intern("filler@test");
     // Held but NEVER read: writes to it park once the kernel buffers fill.
     let wedged_peer = install_peer(&shared, wedged_node);
     let _healthy_peer = install_peer(&shared, healthy_node);
+    let _filler_peer = install_peer(&shared, filler_node);
     let wedged = shared
-        .distribution_connections
+        .distribution_connections_or_panic()
         .get_connection(wedged_node)
         .expect("wedged connection is in the table");
+    let filler_pin = shared
+        .distribution_connections_or_panic()
+        .get_connection(filler_node)
+        .expect("filler connection is in the table");
 
     let watcher = insert_process(&shared, 1);
     set_trap_exit(&shared, watcher, true);
@@ -1301,13 +1305,15 @@ fn control_overflow_to_healthy_peer_converges_to_noconnection_blip() {
         1
     );
 
-    // Fill the lane behind the parked write. The first Overflow marks the
-    // WEDGED pin down (its own DC-1(b)) and proves the lane is full.
+    // Fill the lane behind the parked write with FILLER-pinned controls. The
+    // first Overflow marks the FILLER pin down (its own DC-1(b)) and proves
+    // the lane is full — while the wedged pin stays up, so its parked write
+    // keeps the drain parked and the lane stays full.
     let filler: Arc<[u8]> = Arc::from(vec![0_u8; 8].into_boxed_slice());
     let mut overflowed = false;
     for _ in 0..=crate::distribution::sender::DIST_CONTROL_QUEUE_CAP {
         match sender.enqueue_control(ControlOutbound {
-            connection: Arc::clone(&wedged),
+            connection: Arc::clone(&filler_pin),
             frame: Arc::clone(&filler),
         }) {
             Ok(()) => {}
@@ -1321,7 +1327,14 @@ fn control_overflow_to_healthy_peer_converges_to_noconnection_blip() {
         overflowed,
         "filling behind a parked write must fill the lane"
     );
-    assert!(wedged.is_down(), "overflow downs its own pinned connection");
+    assert!(
+        filler_pin.is_down(),
+        "overflow downs its own pinned connection"
+    );
+    assert!(
+        !wedged.is_down(),
+        "the parked writer stays up, keeping the drain parked"
+    );
     assert_eq!(
         mailbox_message_count(&shared, watcher),
         0,
@@ -1348,10 +1361,184 @@ fn control_overflow_to_healthy_peer_converges_to_noconnection_blip() {
     assert!(is_alive(&shared, watcher), "trapping watcher survives");
     assert!(
         shared
-            .distribution_connections
+            .distribution_connections_or_panic()
             .get_connection(healthy_node)
             .is_none(),
         "the healthy pair is down pending redial"
+    );
+}
+
+/// The commit-4 shrink of T-8's blast radius, pinned: downing the connection
+/// whose write is PARKED (here via its own lane overflow) shuts the socket
+/// down at `mark_down`, so the parked write errors IMMEDIATELY — the drain
+/// recovers well inside WRITE_TIMEOUT and a subsequent control to a healthy
+/// peer is WRITTEN, not overflowed into a spurious noconnection. Pre-commit-4
+/// the drain stayed parked for the full 5 s WRITE_TIMEOUT and the healthy
+/// peer took the blip.
+#[test]
+fn downing_the_parked_writer_unparks_the_drain_before_write_timeout() {
+    use std::io::Read;
+
+    let shared = make_shared_state_with_dist_sender();
+    register_scheduler_connection_subscriber(&shared);
+    let sender = shared.dist_sender_or_panic();
+    let handle = sender.handle();
+    let _context = handle.enter();
+
+    let wedged_node = shared.atom_table.intern("wedged2@test");
+    let healthy_node = shared.atom_table.intern("healthy2@test");
+    let mut wedged_peer = install_peer(&shared, wedged_node);
+    let mut healthy_peer = install_peer(&shared, healthy_node);
+    let wedged = shared
+        .distribution_connections_or_panic()
+        .get_connection(wedged_node)
+        .expect("wedged connection is in the table");
+
+    let watcher = insert_process(&shared, 1);
+    set_trap_exit(&shared, watcher, true);
+    let healthy_remote = RemotePid {
+        node: healthy_node,
+        pid_number: 9,
+        serial: 0,
+    };
+    add_remote_link(&shared, watcher, healthy_remote);
+
+    // Park the drain on an oversized write to the never-reading peer.
+    let mut big = vec![0_u8; 16 * 1024 * 1024];
+    big[0] = 1;
+    let control_len = u32::try_from(big.len()).expect("control fits u32");
+    let mut big_frame = Vec::with_capacity(8 + big.len());
+    big_frame.extend_from_slice(&control_len.to_be_bytes());
+    big_frame.extend_from_slice(&0_u32.to_be_bytes());
+    big_frame.extend_from_slice(&big);
+    sender
+        .enqueue_control(ControlOutbound {
+            connection: Arc::clone(&wedged),
+            frame: Arc::from(big_frame.into_boxed_slice()),
+        })
+        .expect("first control accepted into an empty lane");
+    wedged_peer
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("peer read timeout");
+    let mut probe = [0_u8; 1];
+    assert_eq!(
+        wedged_peer
+            .peek(&mut probe)
+            .expect("drain begins the wedged write"),
+        1
+    );
+
+    // Fill the lane with WEDGED-pinned fillers: the first overflow downs the
+    // wedged pin itself — whose mark_down shuts the socket down, erroring the
+    // parked write.
+    let filler: Arc<[u8]> = Arc::from(vec![0_u8; 8].into_boxed_slice());
+    let mut overflowed = false;
+    for _ in 0..=crate::distribution::sender::DIST_CONTROL_QUEUE_CAP {
+        match sender.enqueue_control(ControlOutbound {
+            connection: Arc::clone(&wedged),
+            frame: Arc::clone(&filler),
+        }) {
+            Ok(()) => {}
+            Err(_) => {
+                overflowed = true;
+                break;
+            }
+        }
+    }
+    assert!(overflowed, "filling behind the parked write fills the lane");
+    assert!(wedged.is_down(), "overflow downs its own pinned connection");
+
+    // The parked write errored: the wedged peer observes EOF/RST after
+    // draining whatever landed in its kernel buffer — promptly, not at
+    // WRITE_TIMEOUT.
+    let mut sink = [0_u8; 64 * 1024];
+    loop {
+        match wedged_peer.read(&mut sink) {
+            Ok(0) => break,
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => break,
+            Err(error) => panic!("wedged peer expected EOF, read failed: {error}"),
+        }
+    }
+    // Give the recovered drain a beat to skip the down-pinned fillers (a
+    // handful of microseconds of is_down checks; the margin is host noise).
+    std::thread::sleep(Duration::from_millis(200));
+
+    // The drain has recovered: an EXIT2 to the healthy peer is WRITTEN — no
+    // overflow, no spurious noconnection, connection intact.
+    let facility = control_facility(&shared);
+    assert_eq!(
+        facility.exit_remote(watcher, healthy_remote, ExitReason::Error),
+        Ok(())
+    );
+    healthy_peer
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("healthy read timeout");
+    let mut received = [0_u8; 8];
+    assert!(
+        healthy_peer
+            .read(&mut received)
+            .expect("EXIT2 frame arrives")
+            > 0,
+        "the healthy peer receives the control on the wire"
+    );
+    assert_eq!(
+        mailbox_message_count(&shared, watcher),
+        0,
+        "no spurious noconnection for the healthy link"
+    );
+    assert!(
+        shared
+            .distribution_connections_or_panic()
+            .get_connection(healthy_node)
+            .is_some(),
+        "the healthy connection survives"
+    );
+}
+
+/// Round-3 major 1: the DIRECT (synchronous) remote-send write is bounded by
+/// the same deadline class the drain uses. A peer that is TCP-connected but
+/// never reads would otherwise park the calling scheduler thread indefinitely
+/// — no other machinery ends that wait (the heartbeat's own writes queue
+/// behind the same writer mutex, and inbound keepalives keep inbound liveness
+/// fresh while outbound is wedged). On elapse the connection is retired via
+/// mark_down_write_timeout.
+#[test]
+fn direct_send_to_a_never_reading_peer_is_bounded_and_retires_the_connection() {
+    let shared = make_shared_state_with_dist_sender();
+    register_scheduler_connection_subscriber(&shared);
+    let sender = shared.dist_sender_or_panic();
+    let handle = sender.handle();
+    let _context = handle.enter();
+
+    let wedged_node = shared.atom_table.intern("wedged3@test");
+    // Held but NEVER read: an oversized write parks once kernel buffers fill.
+    let _wedged_peer = install_peer(&shared, wedged_node);
+
+    let frame = vec![0_u8; 16 * 1024 * 1024];
+    let started = Instant::now();
+    let result = supervision_integration::block_on_distribution_send_with_write_deadline(
+        shared.distribution_connections_or_panic(),
+        wedged_node,
+        "wedged3@test",
+        &frame,
+        Duration::from_millis(200),
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(8),
+        "the direct send must return within its deadline class, not hang"
+    );
+    assert_eq!(
+        result,
+        Err(crate::distribution::control::DistributionSendError::NoConnection),
+        "a timed-out direct send reports no-connection"
+    );
+    assert!(
+        shared
+            .distribution_connections_or_panic()
+            .get_connection(wedged_node)
+            .is_none(),
+        "the write timeout retires the wedged connection"
     );
 }
 
@@ -1475,7 +1662,7 @@ fn inbound_link_after_a_write_side_down_is_noconnectioned_not_leaked() {
 #[test]
 fn nonzero_embedder_serial_cannot_dodge_the_wire_exit_gate() {
     let shared = make_shared_state_with_dist_sender();
-    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let handle = shared.dist_sender_or_panic().handle();
     let _context = handle.enter();
 
     let peer_node = shared.atom_table.intern("peer@test");
@@ -1532,7 +1719,7 @@ fn nonzero_embedder_serial_cannot_dodge_the_wire_exit_gate() {
 #[test]
 fn pids_beyond_the_wire_u32_range_are_refused_not_a_connection_teardown() {
     let shared = make_shared_state_with_dist_sender();
-    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let handle = shared.dist_sender_or_panic().handle();
     let _context = handle.enter();
 
     let peer_node = shared.atom_table.intern("peer@test");
@@ -1562,7 +1749,7 @@ fn pids_beyond_the_wire_u32_range_are_refused_not_a_connection_teardown() {
     assert_eq!(facility.unlink_remote(caller, oversized), Ok(()));
 
     let connection = shared
-        .distribution_connections
+        .distribution_connections_or_panic()
         .get_connection(peer_node)
         .expect("the connection must survive the refused controls");
     assert!(
@@ -1581,7 +1768,7 @@ fn pids_beyond_the_wire_u32_range_are_refused_not_a_connection_teardown() {
 #[test]
 fn cascade_killed_process_sends_exit_for_its_remote_link_and_is_finalized() {
     let shared = make_shared_state_with_dist_sender();
-    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let handle = shared.dist_sender_or_panic().handle();
     let _context = handle.enter();
 
     let peer_node = shared.atom_table.intern("peer@test");

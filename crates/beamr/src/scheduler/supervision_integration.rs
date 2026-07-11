@@ -86,9 +86,13 @@ pub(super) fn register_distribution_control_handler(shared: &Arc<SharedState>) {
     // the connection-down hook in `scheduler/mod.rs` (the pg-purge closure): hold
     // a `Weak` and `upgrade()` per inbound frame, dropping the frame if the
     // scheduler has already gone.
+    // No manager to register on when distribution is Disabled (spec §3.6):
+    // inbound control frames cannot arrive without a connection.
+    let Some(dist) = shared.distribution() else {
+        return;
+    };
     let shared_for_handler = Arc::downgrade(shared);
-    shared
-        .distribution_connections
+    dist.connections()
         .register_control_frame_handler_with_origin(move |origin, control, payload| {
             if control.is_empty() && payload.is_empty() {
                 // Keepalive: the all-zero 8-byte header reaches the handler as
@@ -568,9 +572,26 @@ pub(super) fn build_native_services(
                 ring: Arc::clone(ring.ring()),
             }) as Arc<dyn FileIoFacility>
         });
-    let distribution_send: Arc<dyn DistributionSendFacility> =
-        Arc::new(SchedulerDistributionSendFacility {
-            shared: Arc::clone(shared),
+    // Distribution-facing facilities are offered ONLY when the bundle is Owned
+    // (spec §3.6): with distribution Disabled the net-kernel, remote-send, and
+    // control surfaces are absent, so the BIFs take their standalone-node arms
+    // (node ⇒ nonode@nohost, nodes ⇒ [], connect/disconnect ⇒ false, remote
+    // send ⇒ noconnection) instead of touching an absent runtime.
+    let distribution_owned = shared.distribution().is_some();
+    let net_kernel = shared
+        .distribution()
+        .map(|dist| Arc::clone(dist.net_kernel()));
+    let distribution_send: Option<Arc<dyn DistributionSendFacility>> =
+        distribution_owned.then(|| {
+            Arc::new(SchedulerDistributionSendFacility {
+                shared: Arc::clone(shared),
+            }) as Arc<dyn DistributionSendFacility>
+        });
+    let distribution_control_facility: Option<Arc<dyn DistributionControlFacility>> =
+        distribution_owned.then(|| {
+            Arc::new(SchedulerDistributionControlFacility {
+                shared: Arc::clone(shared),
+            }) as Arc<dyn DistributionControlFacility>
         });
     let local_send: Arc<dyn crate::native::local_send::LocalSendFacility> =
         Arc::new(SchedulerLocalSendFacility {
@@ -579,17 +600,15 @@ pub(super) fn build_native_services(
     crate::interpreter::NativeServices {
         atom_table: Some(Arc::clone(&shared.atom_table)),
         local_node: Some(shared.local_node),
-        net_kernel: Some(Arc::clone(&shared.net_kernel)),
-        distribution_send: Some(distribution_send),
+        net_kernel,
+        distribution_send,
         local_send: Some(local_send),
         ets_facility: Some(ets_facility),
         pg_facility: Some(pg_facility),
         timers: Some(Arc::clone(&shared.timers)),
         spawn_facility: Some(spawn),
         link_facility: Some(link),
-        distribution_control_facility: Some(Arc::new(SchedulerDistributionControlFacility {
-            shared: Arc::clone(shared),
-        })),
+        distribution_control_facility,
         group_leader_facility: Some(group_leader),
         supervision_facility: Some(supervision),
         process_info_facility: Some(process_info),
@@ -649,12 +668,13 @@ impl DistributionSendFacility for SchedulerDistributionSendFacility {
             &self.shared.atom_table,
         )
         .map_err(|_| DistributionSendError::Encode)?;
-        block_on_distribution_send(
-            &self.shared.distribution_connections,
-            node,
-            &node_name,
-            &frame,
-        )
+        // This facility is offered only when the bundle is Owned, but route the
+        // manager access through it so absence is `noconnection`, never a panic.
+        let dist = self
+            .shared
+            .distribution()
+            .ok_or(DistributionSendError::NoConnection)?;
+        block_on_distribution_send(dist.connections(), node, &node_name, &frame)
     }
 }
 
@@ -663,6 +683,22 @@ pub(super) fn block_on_distribution_send(
     node: Atom,
     node_name: &str,
     frame: &[u8],
+) -> Result<(), DistributionSendError> {
+    block_on_distribution_send_with_write_deadline(
+        manager,
+        node,
+        node_name,
+        frame,
+        crate::distribution::sender::WRITE_TIMEOUT,
+    )
+}
+
+pub(super) fn block_on_distribution_send_with_write_deadline(
+    manager: &crate::distribution::connection::ConnectionManager,
+    node: Atom,
+    node_name: &str,
+    frame: &[u8],
+    write_deadline: std::time::Duration,
 ) -> Result<(), DistributionSendError> {
     let manager = manager.clone();
     let node_name = node_name.to_owned();
@@ -675,10 +711,23 @@ pub(super) fn block_on_distribution_send(
                 .await
                 .map_err(|_| DistributionSendError::NoConnection)?,
         };
-        connection
-            .write_raw(&frame)
-            .await
-            .map_err(|_| DistributionSendError::NoConnection)
+        // The write is BOUNDED with the same deadline the sender drain uses:
+        // this path blocks a scheduler thread synchronously, and a peer that
+        // is TCP-connected but never reads would otherwise park it
+        // indefinitely — no other machinery can end the wait (the heartbeat's
+        // own writes queue behind this same writer mutex, and inbound
+        // keepalives keep inbound liveness fresh while outbound is wedged).
+        // On elapse the connection is retired through the same
+        // mark_down_write_timeout path the drain uses, whose socket shutdown
+        // also unblocks the erroring write future being dropped here.
+        match tokio::time::timeout(write_deadline, connection.write_raw(&frame)).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(_)) => Err(DistributionSendError::NoConnection),
+            Err(_elapsed) => {
+                connection.mark_down_write_timeout();
+                Err(DistributionSendError::NoConnection)
+            }
+        }
     };
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
         if matches!(

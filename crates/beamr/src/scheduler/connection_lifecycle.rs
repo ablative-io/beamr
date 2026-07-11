@@ -17,9 +17,13 @@ use crate::distribution::connection_events::ConnectionEvent;
 /// capture would leak every scheduler forever (mirror
 /// `register_distribution_control_handler`).
 pub(super) fn register_scheduler_connection_subscriber(shared: &Arc<SharedState>) {
+    // No manager to subscribe to when distribution is Disabled (spec §3.6): the
+    // node-death cleanup this installs has nothing to observe.
+    let Some(dist) = shared.distribution() else {
+        return;
+    };
     let weak: Weak<SharedState> = Arc::downgrade(shared);
-    shared
-        .distribution_connections
+    dist.connections()
         .subscribe_connection_events(move |event| {
             if let Some(shared) = weak.upgrade() {
                 handle_connection_event(&shared, event);

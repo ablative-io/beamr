@@ -10,6 +10,7 @@
 
 use super::SharedState;
 use super::dirty::DirtyPool;
+use super::distribution_service::DistributionService;
 use super::ring_service::{RingService, StandardIoService};
 use super::service::{ServiceInstanceId, ServiceMode, ServiceModeLabel};
 
@@ -23,12 +24,15 @@ pub(super) const FILE_IO_RING: &str = "file-io-ring";
 pub(super) const STANDARD_IO_RING: &str = "standard-io-ring";
 /// Service label: the optional generic-IO ring plus its completion bridge.
 pub(super) const GENERIC_IO_RING: &str = "generic-io-ring";
-/// Service label: the outbound distribution sender runtime.
-pub(super) const DIST_SENDER: &str = "dist-sender";
-/// Service label: the net-kernel runtime.
-pub(super) const NET_KERNEL: &str = "net-kernel";
+/// Service label: the distribution bundle — one coherent service (spec §3.6),
+/// whose §5 line lists BOTH runtime worker names (the outbound sender's and the
+/// net-kernel's) under a single entry.
+pub(super) const DISTRIBUTION: &str = "distribution";
 /// Policy label: the per-dirty-call transient completion thread.
 pub(super) const DIRTY_COMPLETE: &str = "dirty-complete";
+/// Policy label: the per-connection distribution heartbeat (net-tick) task —
+/// an async task with no OS thread, inventoried as a task-class counter (§3.7).
+pub(super) const HEARTBEAT: &str = "heartbeat";
 
 /// One ancillary service's line in the thread inventory (spec §5).
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -74,22 +78,23 @@ pub struct ServicePolicyLine {
     /// The owning service's mode. `Owned` today; the disabled dirty pool
     /// refuses before this thread ever spawns (commit 2, spec §3.2).
     pub mode: ServiceModeLabel,
-    /// Transient OS threads this policy has spawned since construction.
+    /// Transient execution units this policy has spawned since construction.
+    /// The unit is class-specific and named on the policy label: OS threads for
+    /// a thread-class policy (`"dirty-complete"`), async tasks — no OS thread —
+    /// for a task-class policy (`"heartbeat"`, spec §3.7).
     pub spawned_total: u64,
 }
 
-/// Process-unique identities minted for each ancillary service at construction
-/// (spec §5). Held so `service_inventory()` reports a *stable* identity across
-/// calls, and so a service shared into another scheduler reports the same one.
+/// Construction-request facts held so `service_inventory()` reports a *stable*
+/// `configured` count across calls, even after shutdown mutates live state.
 ///
-/// The dirty pools and the three IO rings are NOT here: each mints and carries
-/// its own [`ServiceInstanceId`] through its [`ServiceMode`], so a Disabled slot
-/// reports the [`DISABLED`](ServiceInstanceId::DISABLED) sentinel and a Shared
-/// ring propagates the owner's id — rather than a live id minted here for a
-/// service that was never built on this scheduler (spec §3.2–§3.5/§5).
+/// The dirty pools, the three IO rings, and the distribution bundle are NOT
+/// identified here: each mints and carries its own [`ServiceInstanceId`] through
+/// its [`ServiceMode`], so a Disabled slot reports the
+/// [`DISABLED`](ServiceInstanceId::DISABLED) sentinel and a Shared instance
+/// propagates the owner's id — rather than a live id minted here for a service
+/// that was never built on this scheduler (spec §3.2–§3.6/§5).
 pub(super) struct ServiceInstances {
-    pub(super) dist_sender: ServiceInstanceId,
-    pub(super) net_kernel: ServiceInstanceId,
     /// Whether the generic-IO completion bridge was part of the construction
     /// request (ring present, not replay). Captured here — NOT read from the
     /// live `Option<IoCompletionBridge>` — so the entry's `configured` count
@@ -98,45 +103,12 @@ pub(super) struct ServiceInstances {
 }
 
 impl ServiceInstances {
-    /// Mint identities for the still-eager distribution runtimes.
-    /// `dist_sender_present` gates the sender (skipped under replay): an absent
-    /// slot gets the [`DISABLED`](ServiceInstanceId::DISABLED) sentinel, never a
-    /// live identity. `generic_bridge_requested` records whether the generic
-    /// ring's completion bridge was built.
-    pub(super) fn mint(dist_sender_present: bool, generic_bridge_requested: bool) -> Self {
+    /// Record the construction request. `generic_bridge_requested` captures
+    /// whether the generic ring's completion bridge was built.
+    pub(super) fn mint(generic_bridge_requested: bool) -> Self {
         Self {
-            dist_sender: presence_id(dist_sender_present),
-            net_kernel: ServiceInstanceId::mint(),
             generic_bridge_requested,
         }
-    }
-}
-
-fn presence_id(present: bool) -> ServiceInstanceId {
-    if present {
-        ServiceInstanceId::mint()
-    } else {
-        ServiceInstanceId::DISABLED
-    }
-}
-
-/// An owned, thread-bearing service line. `configured` is the REQUESTED
-/// count, passed explicitly by each arm; `actual` is the live thread names'
-/// length — the two diverge on partial spawn or after the service is joined.
-fn owned_entry(
-    service: &'static str,
-    instance: ServiceInstanceId,
-    configured: usize,
-    thread_names: Vec<String>,
-) -> ServiceInventoryEntry {
-    ServiceInventoryEntry {
-        service,
-        mode: ServiceModeLabel::Owned,
-        instance,
-        configured,
-        actual: thread_names.len(),
-        thread_names,
-        fd_classes: Vec::new(),
     }
 }
 
@@ -211,6 +183,30 @@ fn standard_io_entry(
     }
 }
 
+/// The distribution bundle's line, read through its [`ServiceMode`] (spec §3.6).
+/// An `Owned` bundle reports BOTH runtime workers in one entry — the sender's
+/// "beamr-dist-send" worker and the net-kernel's "beamr-net-kernel" worker —
+/// with `configured` the construction request (stable across shutdown) and
+/// `actual` the live count (zero after the §4 join). A `Disabled` slot (honest
+/// `distribution: None`) reports the §5 disabled entry: no instance, no threads.
+fn distribution_entry(mode: &ServiceMode<DistributionService>) -> ServiceInventoryEntry {
+    match mode.service() {
+        Some(dist) => {
+            let thread_names = dist.runtime_thread_names();
+            ServiceInventoryEntry {
+                service: DISTRIBUTION,
+                mode: mode.label(),
+                instance: mode.instance_id(),
+                configured: dist.configured_runtimes(),
+                actual: thread_names.len(),
+                thread_names,
+                fd_classes: Vec::new(),
+            }
+        }
+        None => disabled_entry(DISTRIBUTION),
+    }
+}
+
 /// A disabled service line: no instance, no threads, no fds.
 fn disabled_entry(service: &'static str) -> ServiceInventoryEntry {
     ServiceInventoryEntry {
@@ -230,7 +226,7 @@ fn disabled_entry(service: &'static str) -> ServiceInventoryEntry {
 /// so the report is what the process actually holds, not what a config claims.
 pub(super) fn build_service_inventory(shared: &SharedState) -> Vec<ServiceInventoryEntry> {
     let instances = &shared.service_instances;
-    let mut entries = Vec::with_capacity(7);
+    let mut entries = Vec::with_capacity(6);
 
     entries.push(dirty_pool_entry(DIRTY_CPU, &shared.dirty_cpu));
     entries.push(dirty_pool_entry(DIRTY_IO, &shared.dirty_io));
@@ -264,27 +260,10 @@ pub(super) fn build_service_inventory(shared: &SharedState) -> Vec<ServiceInvent
         None => entries.push(disabled_entry(GENERIC_IO_RING)),
     }
 
-    // Distribution runtimes. Both are built today even under `distribution:
-    // None` (`unwrap_or_default()`), which is exactly what this pins; they turn
-    // absent in commit 4 (spec §3.6). The sender's `None` arm covers replay
-    // (deliberate absence) AND a runtime-build failure — the two are not
-    // distinguishable here today; the refused-vs-failed split is commit 4
-    // work (spec §3.6/Q-B) where distribution construction is rewritten.
-    match &shared.dist_sender {
-        Some(sender) => entries.push(owned_entry(
-            DIST_SENDER,
-            instances.dist_sender,
-            1,
-            sender.worker_thread_names(),
-        )),
-        None => entries.push(disabled_entry(DIST_SENDER)),
-    }
-    entries.push(owned_entry(
-        NET_KERNEL,
-        instances.net_kernel,
-        1,
-        shared.net_kernel.worker_thread_names(),
-    ));
+    // Distribution bundle — one coherent §5 line whose `thread_names` lists BOTH
+    // runtime workers (spec §3.6): `Owned` when `config.distribution` was `Some`,
+    // `Disabled` (honest absence, NEITHER runtime built) when it was `None`.
+    entries.push(distribution_entry(&shared.distribution));
 
     entries
 }
@@ -327,11 +306,29 @@ pub(super) fn build_service_policies(shared: &SharedState) -> Vec<ServicePolicyL
         } else {
             ServiceModeLabel::Disabled
         };
-    vec![ServicePolicyLine {
-        policy: DIRTY_COMPLETE,
-        mode: dirty_complete_mode,
-        spawned_total: shared
-            .dirty_completion_spawns
-            .load(std::sync::atomic::Ordering::Relaxed),
-    }]
+    // The distribution heartbeat (net-tick) is an async task per connection with
+    // NO OS thread (spec §3.7), so it is a task-class policy line, never a thread
+    // line: `Owned` while an owned bundle has the net-tick enabled, `Disabled`
+    // otherwise (distribution absent, or the net-tick off). `spawned_total`
+    // counts heartbeat tasks spawned to date — zero at rest, one per link.
+    let (heartbeat_mode, heartbeat_spawned) = match shared.distribution.service() {
+        Some(dist) if dist.heartbeat_enabled() => {
+            (shared.distribution.label(), dist.heartbeat_tasks_spawned())
+        }
+        _ => (ServiceModeLabel::Disabled, 0),
+    };
+    vec![
+        ServicePolicyLine {
+            policy: DIRTY_COMPLETE,
+            mode: dirty_complete_mode,
+            spawned_total: shared
+                .dirty_completion_spawns
+                .load(std::sync::atomic::Ordering::Relaxed),
+        },
+        ServicePolicyLine {
+            policy: HEARTBEAT,
+            mode: heartbeat_mode,
+            spawned_total: heartbeat_spawned,
+        },
+    ]
 }

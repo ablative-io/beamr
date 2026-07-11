@@ -258,20 +258,27 @@ pub fn bif_node_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, T
     Err(badarg())
 }
 
-/// erlang:is_alive/0 — true when distribution is configured with a non-default node name.
+/// erlang:is_alive/0 — true when a live distribution service exists AND the
+/// node has a non-default name.
+///
+/// Both halves are required (spec §3.6): a scheduler with `distribution: None`
+/// keeps its node identity passively — a custom `node_name` alone must not
+/// report an alive distributed node when no distribution service exists (every
+/// actual distribution operation would answer `false`/`[]`/`noconnection`).
 pub fn bif_is_alive_0(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     if !args.is_empty() {
         return Err(badarg());
     }
 
-    let alive = context
-        .local_node()
-        .and_then(|node| {
-            context
-                .atom_table()
-                .and_then(|table| table.resolve(node.name))
-        })
-        .is_some_and(|name| name != DEFAULT_NODE_NAME);
+    let alive = context.net_kernel().is_some()
+        && context
+            .local_node()
+            .and_then(|node| {
+                context
+                    .atom_table()
+                    .and_then(|table| table.resolve(node.name))
+            })
+            .is_some_and(|name| name != DEFAULT_NODE_NAME);
     Ok(Term::atom(if alive { Atom::TRUE } else { Atom::FALSE }))
 }
 

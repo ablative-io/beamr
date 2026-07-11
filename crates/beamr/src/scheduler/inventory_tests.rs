@@ -31,16 +31,17 @@ fn entries_by_service(
 /// services with today's counts and today's (not-yet-distinct) thread names.
 #[test]
 fn default_profile_pins_as_built_service_inventory() {
-    // The default config carries no distribution, yet both runtimes are built
-    // (`unwrap_or_default()`); that is precisely what this test pins — they turn
-    // absent in commit 4 (spec §3.6).
+    // The default config carries no distribution, and — the honest-None contract
+    // (spec §3.6) — that now means the bundle is Disabled: NEITHER runtime is
+    // built. Commit 4's change from `unwrap_or_default()`.
     assert!(SchedulerConfig::default().distribution.is_none());
 
     let scheduler = new_default_scheduler();
     let by_service = entries_by_service(&scheduler);
 
     // EXACT service-label set: a new ancillary service cannot ship without
-    // appearing here (and thereby re-answering lens Q1/Q2).
+    // appearing here (and thereby re-answering lens Q1/Q2). Distribution is now
+    // ONE coherent bundle line (spec §3.6), not a dist-sender/net-kernel pair.
     let labels: Vec<&'static str> = scheduler
         .service_inventory()
         .iter()
@@ -54,10 +55,9 @@ fn default_profile_pins_as_built_service_inventory() {
             inventory::FILE_IO_RING,
             inventory::STANDARD_IO_RING,
             inventory::GENERIC_IO_RING,
-            inventory::DIST_SENDER,
-            inventory::NET_KERNEL,
+            inventory::DISTRIBUTION,
         ],
-        "the inventory enumerates exactly the §1 service set, in order"
+        "the inventory enumerates exactly the service set, in order"
     );
 
     // Dirty CPU pool: num_cpus, coerced up by `.max(1)`.
@@ -86,21 +86,27 @@ fn default_profile_pins_as_built_service_inventory() {
     assert_eq!(generic.actual, 0);
     assert!(generic.thread_names.is_empty());
 
-    // Both distribution runtimes exist even under `distribution: None`.
-    let dist_sender = &by_service[inventory::DIST_SENDER];
-    assert_eq!(dist_sender.mode, ServiceModeLabel::Owned);
-    assert_eq!(dist_sender.actual, 1);
+    // Distribution: honest None ⇒ the bundle is Disabled, NEITHER runtime built
+    // (spec §3.6). Zero threads, zero configured, the DISABLED instance sentinel.
+    let distribution = &by_service[inventory::DISTRIBUTION];
+    assert_eq!(distribution.mode, ServiceModeLabel::Disabled);
+    assert_eq!(distribution.actual, 0);
+    assert_eq!(distribution.configured, 0);
+    assert!(distribution.thread_names.is_empty());
     assert_eq!(
-        dist_sender.thread_names,
-        vec![crate::distribution::sender::DIST_SEND_THREAD_NAME.to_owned()]
+        distribution.instance,
+        super::service::ServiceInstanceId::DISABLED
     );
-    let net_kernel = &by_service[inventory::NET_KERNEL];
-    assert_eq!(net_kernel.mode, ServiceModeLabel::Owned);
-    assert_eq!(net_kernel.actual, 1);
-    assert_eq!(
-        net_kernel.thread_names,
-        vec![crate::distribution::NET_KERNEL_THREAD_NAME.to_owned()]
-    );
+
+    // The heartbeat is a task-class policy line (spec §3.7), Disabled here since
+    // distribution is off — never a thread line.
+    let heartbeat = scheduler
+        .service_policies()
+        .into_iter()
+        .find(|line| line.policy == inventory::HEARTBEAT)
+        .expect("heartbeat policy line present");
+    assert_eq!(heartbeat.mode, ServiceModeLabel::Disabled);
+    assert_eq!(heartbeat.spawned_total, 0);
 
     // Two 4-thread fallback rings on non-Linux, now with SERVICE-DISTINCT
     // thread-name prefixes (spec §5): the three-way `beamr-io-thread-pool-*`
@@ -141,6 +147,67 @@ fn default_profile_pins_as_built_service_inventory() {
     }
 
     scheduler.shutdown();
+}
+
+/// Permanent assertion 3 (spec §5), entity-local half: `distribution: None` ⇒
+/// the bundle is Disabled and claims ZERO runtime workers; `Some(config)` ⇒ the
+/// bundle is Owned and claims exactly the two NAMED runtime workers. The
+/// positive control is what makes the negative gate a real pin — if the
+/// instrumentation stopped reporting the runtimes, the Some half would fail. The
+/// exact OS-probe form (no such threads actually live) is the quiet-process
+/// `tests/thread_inventory_distribution.rs`.
+#[test]
+fn distribution_none_disables_the_bundle_and_some_names_both_runtimes() {
+    // Negative gate: None ⇒ Disabled bundle, zero runtimes, heartbeat off.
+    let none = new_default_scheduler();
+    let none_entry = entries_by_service(&none)[inventory::DISTRIBUTION].clone();
+    assert_eq!(none_entry.mode, ServiceModeLabel::Disabled);
+    assert_eq!(none_entry.actual, 0);
+    assert!(none_entry.thread_names.is_empty());
+    none.shutdown();
+
+    // Positive control: Some ⇒ Owned bundle claiming BOTH named runtime workers
+    // in ONE §5 entry (spec §3.6), and the heartbeat policy line goes Owned.
+    let some = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            distribution: Some(crate::distribution::DistributionConfig::default()),
+            ..SchedulerConfig::default()
+        },
+        Arc::new(ModuleRegistry::new()),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    let some_entry = entries_by_service(&some)[inventory::DISTRIBUTION].clone();
+    assert_eq!(some_entry.mode, ServiceModeLabel::Owned);
+    assert_eq!(some_entry.configured, 2);
+    assert_eq!(some_entry.actual, 2);
+    assert!(
+        some_entry
+            .thread_names
+            .contains(&crate::distribution::sender::DIST_SEND_THREAD_NAME.to_owned()),
+        "the sender runtime worker is named in the bundle line: {:?}",
+        some_entry.thread_names
+    );
+    assert!(
+        some_entry
+            .thread_names
+            .contains(&crate::distribution::NET_KERNEL_THREAD_NAME.to_owned()),
+        "the net-kernel runtime worker is named in the bundle line: {:?}",
+        some_entry.thread_names
+    );
+    assert_ne!(
+        some_entry.instance,
+        super::service::ServiceInstanceId::DISABLED
+    );
+
+    let heartbeat = some
+        .service_policies()
+        .into_iter()
+        .find(|line| line.policy == inventory::HEARTBEAT)
+        .expect("heartbeat policy line present");
+    assert_eq!(heartbeat.mode, ServiceModeLabel::Owned);
+
+    some.shutdown();
 }
 
 /// A `dirty_*_threads: Some(0)` REQUEST disables the pool (spec §3.2/§6): the
@@ -345,47 +412,62 @@ fn process_wide_aggregate_dedups_shared_instances_once() {
     second.shutdown();
 }
 
-/// After `shutdown()` the inventory stays truthful in BOTH directions: the
-/// joined services (dirty pools, file ring, AND — new this commit — the
-/// standard-IO ring) report zero live threads, while the services this
-/// commit's shutdown still does NOT stop — both distribution runtimes, the §1
-/// as-built leaks — keep reporting their still-live threads. This pins the
-/// remaining leak set the §4 distribution rewrite retires (commit 4);
-/// `configured` keeps the request either way.
+/// After `shutdown()` the inventory stays truthful in BOTH directions (spec §4):
+/// every joined service — dirty pools, file ring, standard-IO ring, AND now the
+/// distribution bundle's BOTH runtime workers — reports zero live threads, while
+/// `configured` keeps the construction request. This pins the §4 distribution
+/// teardown rewrite: the runtime workers that used to survive `shutdown()` until
+/// the last Arc drop are now JOINED synchronously before it returns.
+///
+/// Uses an explicit distribution profile so the join is exercised (the default
+/// profile is Disabled — zero runtimes to join): the negative "no leak after
+/// shutdown" is only a real pin against a scheduler that actually built them.
 #[test]
-fn post_shutdown_inventory_reports_joined_services_as_zero_and_leaks_as_live() {
-    let scheduler = new_default_scheduler();
+fn post_shutdown_inventory_reports_all_joined_services_as_zero() {
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            distribution: Some(crate::distribution::DistributionConfig::default()),
+            ..SchedulerConfig::default()
+        },
+        Arc::new(ModuleRegistry::new()),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+
     let before = entries_by_service(&scheduler);
+    // The distribution bundle really did build both runtime workers.
+    assert_eq!(
+        before[inventory::DISTRIBUTION].mode,
+        ServiceModeLabel::Owned
+    );
+    assert_eq!(
+        before[inventory::DISTRIBUTION].configured,
+        2,
+        "owned bundle requests the sender + net-kernel runtimes"
+    );
+
     scheduler.shutdown();
     let after = entries_by_service(&scheduler);
 
     // Joined by shutdown(): live count drops to zero, request preserved.
     // (On Linux the file/standard rings are io_uring — zero named workers both
-    // sides.) The standard-IO ring joins HERE now (spec §3.4): its explicit
-    // stop is new this commit, so a post-shutdown inventory is truthful rather
-    // than reporting a worker that outlives shutdown() until the last Arc drop.
+    // sides.) The distribution bundle joins BOTH tokio runtime workers HERE now
+    // (spec §4): a post-shutdown inventory is truthful rather than reporting
+    // workers that outlive shutdown() until the last Arc drop.
     for service in [
         inventory::DIRTY_CPU,
         inventory::DIRTY_IO,
         inventory::FILE_IO_RING,
         inventory::STANDARD_IO_RING,
+        inventory::DISTRIBUTION,
     ] {
         assert_eq!(after[service].actual, 0, "{service} joined at shutdown");
         assert_eq!(after[service].configured, before[service].configured);
     }
-
-    // Still leaked by this commit's shutdown() (distribution rewrite is commit
-    // 4): both runtime workers stay live and are truthfully reported.
-    assert_eq!(
-        after[inventory::NET_KERNEL].actual,
-        1,
-        "net-kernel runtime is not stopped by shutdown() today"
-    );
-    assert_eq!(
-        after[inventory::DIST_SENDER].actual,
-        1,
-        "dist-sender runtime worker survives shutdown() today"
-    );
+    // Double shutdown is idempotent — no panic, no hang, still zero.
+    scheduler.shutdown();
+    let twice = entries_by_service(&scheduler);
+    assert_eq!(twice[inventory::DISTRIBUTION].actual, 0);
 }
 
 /// With generic IO enabled, `configured` is the CONSTRUCTION request — ring

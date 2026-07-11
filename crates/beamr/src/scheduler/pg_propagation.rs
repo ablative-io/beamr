@@ -38,8 +38,12 @@ impl PgPropagation for SchedulerPgPropagation {
         let Some(shared) = self.shared.upgrade() else {
             return;
         };
-        // Under replay there is no sender (no runtime); broadcasting is a no-op.
-        let Some(sender) = &shared.dist_sender else {
+        // No bundle (distribution Disabled) or no sender (replay) ⇒ nothing to
+        // broadcast to; pg stays fully functional locally with zero propagation.
+        let Some(dist) = shared.distribution() else {
+            return;
+        };
+        let Some(sender) = dist.sender() else {
             return;
         };
         // Encode the member as an external PID carrying our local node name so
@@ -61,7 +65,7 @@ impl PgPropagation for SchedulerPgPropagation {
         // peer never blocks this scheduler worker thread. `connected_nodes()` is
         // called with no PgState/propagation lock held (the registry drops its
         // guards before invoking `broadcast`).
-        for node in shared.distribution_connections.connected_nodes() {
+        for node in dist.connections().connected_nodes() {
             sender.enqueue(DistOutbound::ToNode {
                 node,
                 frame: Arc::clone(&frame),

@@ -57,6 +57,8 @@ pub mod dirty;
 #[cfg(feature = "threads")]
 mod dist_control_out;
 #[cfg(feature = "threads")]
+mod distribution_service;
+#[cfg(feature = "threads")]
 mod execution;
 #[cfg(feature = "threads")]
 mod exit_tombstones;
@@ -111,15 +113,13 @@ use crate::atom::AtomTable;
 #[cfg(feature = "threads")]
 use crate::distribution::DistributionConfig;
 #[cfg(feature = "threads")]
-use crate::distribution::connection::{ConnectionManager, HeartbeatConfig};
+use crate::distribution::connection::ConnectionManager;
 #[cfg(feature = "threads")]
 use crate::distribution::pg::PgRegistry;
 #[cfg(feature = "threads")]
 use crate::distribution::remote_link::{DistributionControlFacility, RemoteLinkError};
 #[cfg(feature = "threads")]
-use crate::distribution::sender::DistSender;
-#[cfg(feature = "threads")]
-use crate::distribution::{DEFAULT_NODE_NAME, NetKernel, Node};
+use crate::distribution::{DEFAULT_NODE_NAME, Node};
 
 #[cfg(feature = "threads")]
 use crate::error::ExecError;
@@ -166,8 +166,9 @@ use crossbeam_queue::SegQueue;
 #[cfg(feature = "threads")]
 use dashmap::{DashMap, DashSet};
 #[cfg(feature = "threads")]
-use process_slot::{ProcessMetadata, ProcessSlot};
+use distribution_service::DistributionService;
 #[cfg(feature = "threads")]
+use process_slot::{ProcessMetadata, ProcessSlot};
 use ring_service::{RingService, StandardIoService};
 #[cfg(feature = "threads")]
 use run_queue::{PriorityStealers, RunQueue};
@@ -261,7 +262,6 @@ pub(super) struct SharedState {
     next_namespace_id: AtomicU64,
     atom_table: Arc<AtomTable>,
     local_node: Node,
-    net_kernel: Arc<NetKernel>,
     ets_registry: Arc<EtsRegistry>,
     pg_registry: Arc<PgRegistry>,
     bif_registry: Arc<BifRegistryImpl>,
@@ -303,12 +303,13 @@ pub(super) struct SharedState {
     link_set: Mutex<LinkSet>,
     monitor_set: Mutex<MonitorSet>,
     hook: Hook,
-    distribution: DistributionConfig,
-    distribution_connections: ConnectionManager,
-    /// Async outbound distribution sender. `None` under replay (no runtime).
-    /// Holds the `ConnectionManager`, never `Arc<SharedState>`, so it does not
-    /// form a reference cycle with the scheduler.
-    dist_sender: Option<DistSender>,
+    /// The distribution service bundle (spec §3.6): node config + ONE
+    /// heartbeat-enabled `ConnectionManager` + outbound sender + net-kernel
+    /// facade, held in a `ServiceMode`. `Owned` when `config.distribution` was
+    /// `Some` (both runtimes live), `Disabled` when it was `None` (NEITHER
+    /// runtime exists — honest absence). `Shared` is out of scope v1 (recorded,
+    /// not silently absent). Read through [`SharedState::distribution`].
+    distribution: ServiceMode<DistributionService>,
     process_registry: DashMap<crate::atom::Atom, u64>,
     timers: Arc<Mutex<TimerWheel>>,
     /// Receive timers that fired but could not be applied in place: pid →
@@ -406,6 +407,35 @@ impl TelemetryMetricState {
 
 #[cfg(feature = "threads")]
 impl SharedState {
+    /// The owned distribution bundle, or `None` when distribution is `Disabled`
+    /// (spec §3.6). Every distribution read path — pg propagation, outbound
+    /// controls, remote-send, the net-kernel facade — routes through this so a
+    /// `Disabled` bundle refuses honestly rather than touching an absent runtime.
+    pub(in crate::scheduler) fn distribution(&self) -> Option<&DistributionService> {
+        self.distribution.service()
+    }
+
+    /// Test-only: the owned distribution manager, panicking if `Disabled`. The
+    /// in-crate tests that drive the connection table directly always construct
+    /// an owned bundle.
+    #[cfg(test)]
+    pub(in crate::scheduler) fn distribution_connections_or_panic(&self) -> &ConnectionManager {
+        self.distribution()
+            .expect("distribution owned in test")
+            .connections()
+    }
+
+    /// Test-only: the owned outbound sender, panicking if absent (the wire tests
+    /// construct it via `make_shared_state_with_dist_sender`).
+    #[cfg(test)]
+    pub(in crate::scheduler) fn dist_sender_or_panic(
+        &self,
+    ) -> &crate::distribution::sender::DistSender {
+        self.distribution()
+            .and_then(|dist| dist.sender())
+            .expect("dist sender present in test")
+    }
+
     /// Insert an exit tombstone for `pid`, evicting the oldest tombstone (and
     /// its paired satellite entries) if the bounded store is over capacity.
     ///
@@ -819,37 +849,30 @@ impl Scheduler {
             ),
             None => (ServiceMode::Disabled, None, None),
         };
-        let distribution = config.distribution.unwrap_or_default();
-        let dist_local_node_name = config
-            .node_name
-            .as_deref()
-            .unwrap_or(DEFAULT_NODE_NAME)
-            .to_owned();
-        let dist_local_creation = config.creation.unwrap_or(0);
-        // Enable the proactive net-tick with production defaults so an idle link
-        // to a silently-partitioned peer (no FIN/RST) is detected within the
-        // liveness deadline and the existing connection-down / pg-purge /
-        // monitor-DOWN machinery fires, instead of the link hanging "up" forever.
-        let distribution_connections = ConnectionManager::new(
-            Arc::clone(&atom_table),
-            Arc::clone(&distribution.resolver),
-            distribution.cookie.clone(),
-            dist_local_node_name,
-            dist_local_creation,
-        )
-        .with_heartbeat(HeartbeatConfig::with_defaults());
-        // Build the async outbound distribution sender (skipped under replay,
-        // which has no runtime). Bind its owned runtime handle to the connection
-        // manager so the read/accept tasks are driven in production, where there
-        // is no ambient tokio runtime.
-        let dist_sender = if replay_enabled {
-            None
-        } else {
-            DistSender::new(distribution_connections.clone())
+        // Distribution bundle (spec §3.6): `Owned` when configured, `Disabled`
+        // — NEITHER runtime exists — when `config.distribution` is `None`. This
+        // is the honest-absence contract: `SchedulerConfig::default()` carries no
+        // distribution, so the default profile builds no distribution runtimes;
+        // the full-runtime profile and the CLI opt in with `Some(config)`. The
+        // ONE heartbeat-enabled manager the bundle builds backs listener/send/pg/
+        // control traffic AND the net-kernel facade (the second disjoint manager
+        // is deleted — the two-site acceptance line). The proactive net-tick
+        // detects a silently-partitioned peer (no FIN/RST) within the liveness
+        // deadline so the connection-down / pg-purge / monitor-DOWN machinery
+        // fires instead of the link hanging "up" forever. Replay drops only the
+        // outbound sender (no runtime, no outbound traffic).
+        let dist_node_name = config.node_name.as_deref().unwrap_or(DEFAULT_NODE_NAME);
+        let dist_creation = config.creation.unwrap_or(0);
+        let distribution: ServiceMode<DistributionService> = match config.distribution {
+            Some(dist_config) => ServiceMode::Owned(DistributionService::build(
+                dist_config,
+                Arc::clone(&atom_table),
+                dist_node_name,
+                dist_creation,
+                !replay_enabled,
+            )),
+            None => ServiceMode::Disabled,
         };
-        if let Some(sender) = &dist_sender {
-            distribution_connections.set_runtime_handle(sender.handle());
-        }
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
         // File-IO ring (spec §3.3): `Disabled` under replay — the file facility
@@ -886,26 +909,16 @@ impl Scheduler {
                 atom_table.as_ref(),
             )))
         };
-        let local_node_name = config.node_name.as_deref().unwrap_or(DEFAULT_NODE_NAME);
-        let local_node = Node::new(
-            atom_table.intern(local_node_name),
-            config.creation.unwrap_or(0),
-        );
-        let connection_manager = ConnectionManager::new(
-            Arc::clone(&atom_table),
-            distribution.resolver.clone(),
-            distribution.cookie.clone(),
-            local_node_name.to_owned(),
-            config.creation.unwrap_or(0),
-        );
-        let net_kernel = Arc::new(NetKernel::new(connection_manager));
+        // The local node identity is retained and PASSIVE regardless of whether
+        // distribution is owned (spec §3.6): `node/0` reports it even when the
+        // bundle is `Disabled`. It shares the bundle's node name/creation.
+        let local_node = Node::new(atom_table.intern(dist_node_name), dist_creation);
         let pg_registry = Arc::new(PgRegistry::new(atom_table.as_ref()));
-        // The file/standard/generic rings each mint and carry their own
-        // identity through their `ServiceMode`, so only the still-eager
-        // distribution runtimes need identities minted here; the bridge is
-        // requested exactly when the generic registry was built (spec §5).
-        let service_instances =
-            inventory::ServiceInstances::mint(dist_sender.is_some(), io_registry.is_some());
+        // The distribution bundle and each ring mint and carry their own identity
+        // through their `ServiceMode`, so only the generic-IO bridge flag is
+        // recorded here; the bridge is requested exactly when the generic registry
+        // was built (spec §5).
+        let service_instances = inventory::ServiceInstances::mint(io_registry.is_some());
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
@@ -914,7 +927,6 @@ impl Scheduler {
             next_namespace_id: AtomicU64::new(1),
             atom_table,
             local_node,
-            net_kernel,
             ets_registry: Arc::new(EtsRegistry::new()),
             pg_registry,
             bif_registry,
@@ -945,8 +957,6 @@ impl Scheduler {
             monitor_set: Mutex::new(MonitorSet::new()),
             hook: Hook::new(),
             distribution,
-            distribution_connections,
-            dist_sender,
             process_registry: DashMap::new(),
             timers: Arc::new(Mutex::new(TimerWheel::new())),
             expired_receive_timers: DashMap::new(),
@@ -1289,13 +1299,27 @@ impl Scheduler {
     pub fn timers(&self) -> &Arc<Mutex<TimerWheel>> {
         &self.shared.timers
     }
+    /// The distribution configuration, or `None` when distribution is `Disabled`
+    /// (spec §3.6/§6). Replaces `distribution_config()` per the §6
+    /// keep-old-working amendment: the old `&DistributionConfig` signature cannot
+    /// honestly represent a `Disabled` bundle (there is no config to borrow and
+    /// the no-panic rule forbids the only signature-preserving out), so the break
+    /// is loud and `try_`-named — the old name stays discoverable via the alias.
+    #[doc(alias = "distribution_config")]
     #[must_use]
-    pub fn distribution_config(&self) -> &DistributionConfig {
-        &self.shared.distribution
+    pub fn try_distribution_config(&self) -> Option<&DistributionConfig> {
+        self.shared.distribution().map(DistributionService::config)
     }
+    /// The distribution connection manager, or `None` when distribution is
+    /// `Disabled` (spec §3.6/§6). Replaces `distribution_connections()` per the
+    /// same §6 amendment as [`Self::try_distribution_config`]: a `Disabled`
+    /// bundle has no manager to clone.
+    #[doc(alias = "distribution_connections")]
     #[must_use]
-    pub fn distribution_connections(&self) -> ConnectionManager {
-        self.shared.distribution_connections.clone()
+    pub fn try_distribution_connections(&self) -> Option<ConnectionManager> {
+        self.shared
+            .distribution()
+            .map(|dist| dist.connections().clone())
     }
     /// Start accepting inbound distribution connections on `addr`.
     ///
@@ -1304,11 +1328,21 @@ impl Scheduler {
     /// returned [`AcceptHandle`](crate::distribution::connection::AcceptHandle)
     /// owns the accept loop: the caller must keep it alive, as dropping it aborts
     /// the loop and stops accepting new connections.
+    ///
+    /// Returns [`ErrorKind::Unsupported`](std::io::ErrorKind::Unsupported) when
+    /// distribution is `Disabled` (spec §3.6): there is no manager to listen on,
+    /// surfaced as a typed unavailable error rather than a silent absence.
     pub async fn start_distribution_listener(
         &self,
         addr: std::net::SocketAddr,
     ) -> std::io::Result<crate::distribution::connection::AcceptHandle> {
-        self.shared.distribution_connections.listen(addr).await
+        let Some(dist) = self.shared.distribution() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "distribution is disabled on this scheduler",
+            ));
+        };
+        dist.connections().listen(addr).await
     }
     #[must_use]
     pub fn pg_registry(&self) -> Arc<PgRegistry> {
