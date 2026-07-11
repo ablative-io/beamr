@@ -242,11 +242,28 @@ Q1 line and a permanent assertion either way (§9).
 
 ### 3.9 Readiness service (companion spec)
 
-READINESS-CONTRACT-SPEC §3 shape (b) instantiates this model on day one:
+READINESS-CONTRACT-SPEC §3 shape (b) — now CERTIFIED as the shape of
+record (certifying pair, 2026-07-11) — instantiates this model on day one:
 `ServiceMode<ReadinessService>`, Disabled by default everywhere except
-profiles that request it, one `Owned` poll thread, inventory line, its own
-spec's §3.6 gates. It is the model's first born-composed service and its
-lens answers are already written.
+profiles that request it, inventory line, its own spec's §3.6 gates. It is
+the model's first born-composed service and its lens answers are already
+written.
+
+**Poll-thread multiplicity (certification condition 1):** the signed Q2
+bound must state the multiplicity explicitly, because per-scheduler vs
+shared is a 6× spread on the incident host. Ruling proposed by this spec:
+
+- `Owned` readiness = one poll thread **per scheduler that owns one** — the
+  simple default for single-scheduler embedders.
+- `Shared` readiness = one poll thread **per process**, injected into every
+  scheduler that consumes it — registrations carry the delivering
+  scheduler's identity so markers route home. **Multi-scheduler embedders
+  (the aion shape) get Shared in their profile; the full-runtime profile
+  documents which it picks.**
+- The inventory line reports the multiplicity honestly either way
+  (`mode: Owned` on one scheduler vs `mode: Shared` on N of them, one
+  thread total), so the signed bound is auditable per deployment: N
+  schedulers ⇒ N poll threads under all-Owned, exactly 1 under Shared.
 
 ## 4. Shutdown — ownership-ordered, join-complete
 
@@ -325,6 +342,13 @@ pub fn Scheduler::service_inventory(&self) -> Vec<ServiceInventoryEntry>;
   each moves to the explicit profile it was implicitly assuming.
 
 ## 7. Acceptance gates (supersets the incident doc's list)
+
+**Soak-gate methodology (certification condition 2):** every soak/idle
+gate in this spec states T1-grade methodology — measurement duration,
+sampling source, host state, and a baseline delta rather than an absolute
+ceiling — so certified numbers are reproducible, not one-shot readings.
+This applies to the §3.8 tick-floor measurement, the minimal-profile idle
+assertion, and the readiness service's enabled-idle soak.
 
 All eight incident-doc gates, plus: the two-site distribution absence
 assertion; the gated-suspension-safe dirty refusal (§3.2 gate); the
