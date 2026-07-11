@@ -1396,6 +1396,9 @@ mod closure_spawn_tests;
 mod connection_lifecycle_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
+mod readiness_contract_tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
 mod remote_supervision_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
