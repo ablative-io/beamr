@@ -125,6 +125,13 @@ as a readiness signal (no-op on a not-yet-registered pid;
   marker without wedging anything.
 - Negative: bare wake before wait-set registration is lost (pins WHY the
   contract demands durable markers).
+- **C4's race-closing ordering, deterministic (review advisory 2):** a
+  delivery landing in the exact window between interest-arm and the final
+  probe is not lost — pinned in-crate with a consumer-shaped native process
+  and an injected delivery at that precise interleaving, deterministically
+  (not schedule-hopefully). This is the single most load-bearing line of
+  consumer discipline and it is pinned where the harness can control the
+  interleaving: beamr.
 
 ## 3. Shape (b): the beamr readiness service
 
@@ -208,6 +215,11 @@ part of the 0.13.0 e2e work). Requirements:
   registrations, drain/discard pending events, deregister all, join. No marker
   is delivered after `shutdown` returns (C3 makes late markers harmless, but
   the service must not depend on that for correctness).
+- **Shutdown symmetry of R4's principle (review advisory 1):** a parked
+  connection must NEVER need to run a final slice for scheduler shutdown to
+  complete. Teardown owns deregistration and cleanup itself — it must not
+  wake parked processes "to let them clean up"; that pattern is one careless
+  implementation away from a shutdown hang, and T5 asserts its absence.
 - Drop-without-shutdown must not leak the thread (same posture as the
   NetKernel drop fix at 103e5fd).
 - **OTP offers no reusable prior art here — deliberately diverge.** ERTS
