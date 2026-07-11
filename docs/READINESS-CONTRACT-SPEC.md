@@ -332,11 +332,22 @@ Connection processes park via plain `Wait` only — never a gated suspension
   (ii) EOF/HUP; (iii) control messages incl. server push and shutdown
   (existing control-atom path, already C1-conformant —
   `supervisor.rs:430-447` — preserved unchanged); (iv) a subscription inbox
-  becoming non-empty (R3); (v) outbound-writable after a blocked drain (R2).
-  ⏳ *The full source table is being independently cross-checked by a
-  GPT-5.6-Sol scout pass over the connection lifecycle; this clause finalizes
-  when that lands — any source the scout finds beyond (i)–(v) is added here
-  before the doc routes.*
+  becoming non-empty (R3); (v) outbound-writable after a blocked drain (R2);
+  (vi) **conversation participant replies.** *(vi) was found by the
+  independent Sol scout cross-check (session 02468176), which verified
+  (i)–(v) and exposed what the author missed: today a reply-requested
+  `ConversationMessage` blocks INSIDE the connection slice for up to 5 s
+  (`connection/apply.rs` reply drain) — under the current busy-loop that
+  merely wastes a worker; under parking it is a scheduler-wedge (four
+  concurrent reply waits block all four workers) and a park-correctness
+  hazard. The consumer design therefore converts the reply drain to a
+  pending-reply continuation: the participant's reply delivery fires the
+  connection's marker (same install-before-recheck ordering as R3) and the
+  next slice writes the reply frame. This removes the last bounded-blocking
+  wait from the slice path.* The scout also confirmed both R3 legs: local
+  publish writes the inbox without messaging the connection, and the remote
+  cluster leg wakes only the subscriber process — neither reaches the
+  connection pid today (`delivery.rs:1-9`, `subscription.rs:99-128`).
 - **R2 — Outbound writer tri-state.** `OutboundWriter::drain` currently
   returns the same `Ok(())` for drained-empty and blocked-with-residue
   (`connection/outbound.rs:156-192`). It must distinguish them so WRITABLE
