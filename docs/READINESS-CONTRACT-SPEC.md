@@ -406,9 +406,17 @@ Connection processes park via plain `Wait` only — never a gated suspension
   (existing control-atom path, already C1-conformant —
   `supervisor.rs:430-447` — preserved unchanged); (iv) a subscription inbox
   becoming non-empty (R3); (v) outbound-writable after a blocked drain (R2);
-  (vi) **conversation participant replies.** *(vi) was found by the
-  independent Sol scout cross-check (session 02468176), which verified
-  (i)–(v) and exposed what the author missed: today a reply-requested
+  (vi) **conversation participant replies — reply availability OR
+  reply-deadline expiry.** The expiry half is Waffles the Terrible's
+  certification finding (2026-07-11, adopted joint): the pending-reply
+  timer's expiry must itself deliver the connection's READY marker,
+  because nothing else guarantees a wake — without it a parked connection
+  whose reply times out under zero other traffic never wakes, the client
+  waits indefinitely, and R7's static counter reads the failure as
+  health (a quiescence assertion cannot see a MISSING wake). T2's
+  per-source matrix covers both halves. *The availability half was found
+  by the independent Sol scout cross-check (session 02468176), which
+  verified (i)–(v) and exposed what the author missed: today a reply-requested
   `ConversationMessage` blocks INSIDE the connection slice for up to 5 s
   (`connection/apply.rs` reply drain) — under the current busy-loop that
   merely wastes a worker; under parking it is a scheduler-wedge (four
