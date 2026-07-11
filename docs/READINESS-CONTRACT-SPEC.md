@@ -446,7 +446,13 @@ Connection processes park via plain `Wait` only — never a gated suspension
   must not require the dead process to run a slice; the supervisor/reaper
   owns it); scheduler shutdown (§3.3 ordering). Under shape (b), C3 +
   §3.5 lazy reaping is the backstop, not the mechanism: liminal still owns
-  explicit dereg on every path above.
+  explicit dereg on every path above. Likewise the service's dead-scheduler
+  registration sweep (composition spec advisory 2) and this consumer-side
+  table are **deliberate redundancy, not duplication**: neither side depends
+  on the other's diligence — the consumer deregisters per connection on
+  every termination path; the service sweeps whatever a wedged consumer
+  leaves behind. The consumer design doc records the same statement at its
+  §1.2(5).
 - **R5 — Generation keying.** The connection's registration token (with its
   generation) lives in connection state; a recycled fd or reused pid never
   resolves to a stale registration (§3.4). Deregister-before-close is honored
@@ -513,6 +519,9 @@ shape decision and carry their own tests independent of §3.
   T5 pins the §3.3 shutdown-symmetry rule from the consumer side: it parks
   connections that are NEVER woken and requires shutdown to complete anyway
   — supervisor/reaper-owned teardown, no final slice, per advisory 1.
+  T5's empty-table assertion is the consumer end of R4's deliberate
+  redundancy; the service end (zero registrations targeting a dead
+  scheduler) is gated in the composition spec's strengthened assertion 5.
 - **T6 — Duplicate/coalesced markers**: inject N markers for one event;
   exactly one drain pass, no duplicate frame application, no counter
   inflation (R6).
