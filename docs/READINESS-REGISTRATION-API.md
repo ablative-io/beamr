@@ -514,7 +514,11 @@ The readiness additions:
   `ReadinessCore::deregister_all_for(consumer_id)`: for each record stamped with
   this scheduler's `ServiceConsumerId`, bump the generation, deregister the fd,
   and epoch-handshake once for the batch (§4) so the shared poll thread can emit
-  no further marker to this dying scheduler. `Owned`'s whole thread is joined, so
+  no further marker to this dying scheduler. **The sweep inherits §4.6's FAILED
+  posture: on a FAILED shared service it tombstones the batch and returns
+  WITHOUT the epoch wait (the delivery-order wall makes that airtight) — a
+  panicked shared poll thread must not fail-stuck any consumer scheduler's
+  shutdown (pair condition, folded).** `Owned`'s whole thread is joined, so
   it needs no per-record sweep; a `Disabled` slot no-ops.
 
 Concretely, the step order becomes: … `drain_dirty_completions()` **+
