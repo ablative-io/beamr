@@ -1,6 +1,7 @@
 //! Dirty-CPU JIT compilation job wiring.
 
 use crate::loader::Instruction;
+use crate::scheduler::ServiceMode;
 use crate::scheduler::dirty::{DirtyPool, DirtySubmitError, DirtyTask};
 use std::sync::Arc;
 
@@ -85,6 +86,11 @@ impl CompilationJob {
 }
 
 /// Submits JIT compilation to the dirty CPU pool without blocking the caller.
+///
+/// Source-compatible raw-pool surface: a caller holding a live `&DirtyPool`
+/// has an Owned, enabled pool by construction. Embedders composing with
+/// [`ServiceMode`] should use [`try_submit_jit_compilation`], which carries
+/// the disabled-pool refusal.
 pub fn submit_jit_compilation(
     dirty_cpu: &DirtyPool,
     job: CompilationJob,
@@ -92,15 +98,26 @@ pub fn submit_jit_compilation(
     dirty_cpu.submit_task(DirtyTask::new(move || job.run()))
 }
 
+/// Mode-aware JIT submission: a disabled dirty CPU pool refuses with
+/// [`DirtySubmitError::Disabled`] before enqueueing anything (spec §3.2) —
+/// the same refusal the dirty native dispatch path applies.
+pub fn try_submit_jit_compilation(
+    dirty_cpu: &ServiceMode<DirtyPool>,
+    job: CompilationJob,
+) -> Result<(), DirtySubmitError> {
+    dirty_cpu.submit_task(DirtyTask::new(move || job.run()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CompilationJob, CompilationRequest, submit_jit_compilation};
+    use super::{CompilationJob, CompilationRequest, submit_jit_compilation, try_submit_jit_compilation};
     use crate::atom::Atom;
     use crate::jit::cache::JitCache;
     use crate::jit::compiler::{JitCompiler, JitSettings};
     use crate::jit::profiler::{JitProfiler, RecordResult};
     use crate::loader::Instruction;
-    use crate::scheduler::dirty::DirtyPool;
+    use crate::scheduler::ServiceMode;
+    use crate::scheduler::dirty::{DirtyPool, DirtySubmitError};
     use std::sync::Arc;
     use std::thread;
     use std::time::{Duration, Instant};
@@ -118,7 +135,7 @@ mod tests {
 
     #[test]
     fn empty_return_function_marks_compiled() {
-        let pool = DirtyPool::with_queue_depth("jit-compile-success", 1, 4);
+        let pool = ServiceMode::Owned(DirtyPool::with_queue_depth("jit-compile-success", 1, 4));
         let compiler = Arc::new(JitCompiler::new(JitSettings).unwrap());
         let profiler = Arc::new(JitProfiler::new(1));
         let cache = Arc::new(JitCache::new());
@@ -133,7 +150,7 @@ mod tests {
             Arc::clone(&profiler),
             Arc::clone(&cache),
         );
-        assert_eq!(submit_jit_compilation(&pool, job), Ok(()));
+        assert_eq!(try_submit_jit_compilation(&pool, job), Ok(()));
 
         assert!(wait_until(|| profiler.is_compiled(
             Atom::MODULE,
@@ -142,12 +159,12 @@ mod tests {
         ) && cache
             .lookup(Atom::MODULE, Atom::OK, 0, 1)
             .is_some()));
-        pool.shutdown();
+        drop(pool);
     }
 
     #[test]
     fn unsupported_function_marks_unsupported() {
-        let pool = DirtyPool::with_queue_depth("jit-compile-unsupported", 1, 4);
+        let pool = ServiceMode::Owned(DirtyPool::with_queue_depth("jit-compile-unsupported", 1, 4));
         let compiler = Arc::new(JitCompiler::new(JitSettings).unwrap());
         let profiler = Arc::new(JitProfiler::new(1));
         let cache = Arc::new(JitCache::new());
@@ -172,7 +189,7 @@ mod tests {
             Arc::clone(&profiler),
             Arc::clone(&cache),
         );
-        assert_eq!(submit_jit_compilation(&pool, job), Ok(()));
+        assert_eq!(try_submit_jit_compilation(&pool, job), Ok(()));
 
         assert!(wait_until(|| profiler.is_unsupported(
             Atom::MODULE,
@@ -186,6 +203,29 @@ mod tests {
                 RecordResult::Continue
             );
         }
-        pool.shutdown();
+        drop(pool);
+    }
+
+    /// A disabled dirty CPU pool refuses JIT submission with the typed
+    /// [`DirtySubmitError::Disabled`] before enqueueing anything (spec §3.2):
+    /// the same refusal-before-side-effect discipline as the dirty native path.
+    #[test]
+    fn disabled_pool_refuses_jit_submission() {
+        let pool: ServiceMode<DirtyPool> = ServiceMode::Disabled;
+        let compiler = Arc::new(JitCompiler::new(JitSettings).unwrap());
+        let profiler = Arc::new(JitProfiler::new(1));
+        let cache = Arc::new(JitCache::new());
+        let job = CompilationJob::new(
+            CompilationRequest::new(Atom::MODULE, Atom::OK, 0, 1, vec![Instruction::Return]),
+            compiler,
+            Arc::clone(&profiler),
+            cache,
+        );
+        assert_eq!(
+            try_submit_jit_compilation(&pool, job),
+            Err(DirtySubmitError::Disabled)
+        );
+        // Nothing was compiled or scheduled.
+        assert!(!profiler.is_compiled(Atom::MODULE, Atom::OK, 0));
     }
 }

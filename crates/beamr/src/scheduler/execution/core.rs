@@ -11,7 +11,9 @@ use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{
     CodePosition, ExitReason, Process, ProcessStatus, SuspensionKind, SuspensionRecord,
 };
-use crate::scheduler::dirty::{DirtyJob, DirtyResult, DirtySchedulerKind, oneshot};
+use crate::scheduler::dirty::{
+    DirtyJob, DirtyResult, DirtySchedulerKind, DirtySubmitError, oneshot,
+};
 use crate::scheduler::suspension::{self, SuspensionResultPayload};
 use crate::term::{Term, boxed::BoxedTag};
 use std::sync::Arc;
@@ -710,6 +712,33 @@ fn execute_slice_with_budget(
             arity,
             kind,
         }) => {
+            // Refusal precedes suspension registration AND pool submit AND the
+            // completion-bridge spawn (spec §3.2, normative ordering). A
+            // Disabled pool has no worker to run the job, so a gated suspension
+            // registered against it would never be completed — and per the
+            // readiness contract's C2 scope limit no message can wake it, so
+            // the process would park FOREVER. Refuse here, before any of those
+            // side effects: the process terminates promptly with a typed
+            // service-unavailable error instead.
+            let target_available = match kind {
+                DirtySchedulerKind::Cpu => shared.dirty_cpu.service().is_some(),
+                DirtySchedulerKind::Io => shared.dirty_io.service().is_some(),
+            };
+            if !target_available {
+                shared
+                    .exit_errors
+                    .insert(process.pid(), DirtySubmissionError::Disabled(kind).into());
+                let outcome = exit_process(shared, process, ExitReason::Error);
+                #[cfg(feature = "telemetry")]
+                finish_slice_span(
+                    shared,
+                    process,
+                    span,
+                    reductions,
+                    crate::telemetry::spans::SliceSpanOutcome::Exited,
+                );
+                return outcome;
+            }
             // Record the dirty call's identity before submission so the
             // completion bridge publishes its result under this exact call
             // id and the wake gate holds the process parked meanwhile.
@@ -1410,13 +1439,18 @@ fn submit_dirty_call(
     // `wake_process` leaves the process parked so a mailbox arrival cannot
     // schedule a slice that re-executes the call instruction (and
     // double-submits the dirty call).
-    if match kind {
+    // The DirtyCall arm already refused a Disabled target before registering
+    // the suspension; this facade re-checks so the same refusal holds for any
+    // future caller. A Disabled result maps to the typed service-unavailable
+    // error, never the Badarg that a real submission failure yields.
+    if let Err(error) = match kind {
         DirtySchedulerKind::Cpu => shared.dirty_cpu.submit(job),
         DirtySchedulerKind::Io => shared.dirty_io.submit(job),
-    }
-    .is_err()
-    {
-        return Err(DirtySubmissionError::PoolUnavailable);
+    } {
+        return Err(match error {
+            DirtySubmitError::Disabled => DirtySubmissionError::Disabled(kind),
+            _ => DirtySubmissionError::PoolUnavailable,
+        });
     }
 
     let shared_for_completion = Arc::clone(shared);
@@ -1458,6 +1492,10 @@ fn submit_dirty_call(
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum DirtySubmissionError {
     PoolUnavailable,
+    /// The target dirty pool is disabled on this scheduler (spec §3.2). Kept
+    /// distinct from `PoolUnavailable` so it surfaces as a typed
+    /// service-unavailable error rather than `Badarg`.
+    Disabled(DirtySchedulerKind),
     CompletionBridgeSpawn,
     ReplayMismatch(crate::replay::ReplayMismatch),
 }
@@ -1466,6 +1504,16 @@ impl From<DirtySubmissionError> for crate::error::ExecError {
     fn from(error: DirtySubmissionError) -> Self {
         match error {
             DirtySubmissionError::PoolUnavailable => Self::Badarg,
+            // Distinguishable service-unavailable error at the embedder API
+            // (Q-B): the process still terminates with the existing
+            // `ExitReason::Error` at the BEAM surface (no new BEAM-visible
+            // atom), while `take_exit_error` reports the exact disabled service.
+            DirtySubmissionError::Disabled(kind) => Self::ServiceUnavailable {
+                service: match kind {
+                    DirtySchedulerKind::Cpu => crate::scheduler::inventory::DIRTY_CPU,
+                    DirtySchedulerKind::Io => crate::scheduler::inventory::DIRTY_IO,
+                },
+            },
             DirtySubmissionError::CompletionBridgeSpawn => Self::Badarg,
             DirtySubmissionError::ReplayMismatch(error) => Self::from(error),
         }

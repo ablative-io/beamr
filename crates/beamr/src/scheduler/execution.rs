@@ -83,8 +83,15 @@ impl Scheduler {
         if let Some(ring) = &self.shared.io_ring {
             ring.shutdown();
         }
-        self.shared.dirty_cpu.shutdown();
-        self.shared.dirty_io.shutdown();
+        // Stop the dirty pools through their ServiceMode: an Owned pool joins
+        // its workers, a Disabled slot is a no-op (nothing to join). The full
+        // ownership-ordered teardown rewrite is the §4 work of commits 3-5.
+        if let Some(pool) = self.shared.dirty_cpu.service() {
+            pool.shutdown();
+        }
+        if let Some(pool) = self.shared.dirty_io.service() {
+            pool.shutdown();
+        }
         self.shared.file_io_ring.shutdown();
         // Abort the distribution drain task before joining worker threads. The
         // owned runtime is dropped later when `SharedState` drops.

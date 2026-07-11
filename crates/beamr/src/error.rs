@@ -103,6 +103,17 @@ pub enum ExecError {
     HeapFull { requested: usize, available: usize },
     /// A distributed send could not reach the target node.
     NoConnection,
+    /// An ancillary VM service the process tried to use is disabled on this
+    /// scheduler (spec §3.2, Q-B). Distinct from [`Badarg`](Self::Badarg) so the
+    /// embedder can tell "this scheduler was composed without that service"
+    /// apart from a genuine bad argument; `service` is the inventory label of
+    /// the refused service (e.g. `"dirty-cpu"`). The refusal happens before any
+    /// suspension/queue side effect, so the calling process terminates promptly
+    /// rather than parking forever with no worker to wake it.
+    ServiceUnavailable {
+        /// Inventory label of the disabled service.
+        service: &'static str,
+    },
     /// Replay mode reached a decision point that does not match the recorded log.
     ReplayMismatch(String),
 }
@@ -173,6 +184,9 @@ impl fmt::Display for ExecError {
                 "heap full: requested {requested} words with {available} available"
             ),
             Self::NoConnection => formatter.write_str("distributed send failed: noconnection"),
+            Self::ServiceUnavailable { service } => {
+                write!(formatter, "scheduler service unavailable: {service}")
+            }
             Self::ReplayMismatch(message) => write!(formatter, "replay mismatch: {message}"),
         }
     }

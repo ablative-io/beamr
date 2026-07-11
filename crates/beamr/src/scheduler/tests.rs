@@ -447,9 +447,18 @@ fn scheduler_creates_requested_thread_count_and_names() {
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
     assert_eq!(scheduler.thread_count(), 4);
-    assert_eq!(scheduler.dirty_cpu_pool().thread_count(), num_cpus::get());
     assert_eq!(
-        scheduler.dirty_io_pool().thread_count(),
+        scheduler
+            .try_dirty_cpu_pool()
+            .expect("default profile owns a dirty CPU pool")
+            .thread_count(),
+        num_cpus::get()
+    );
+    assert_eq!(
+        scheduler
+            .try_dirty_io_pool()
+            .expect("default profile owns a dirty IO pool")
+            .thread_count(),
         dirty::DEFAULT_DIRTY_IO_THREADS
     );
     assert_eq!(
@@ -1169,8 +1178,16 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         next_namespace_id: AtomicU64::new(1),
         spawn_counter: AtomicUsize::new(0),
         thread_count: 1,
-        dirty_cpu: dirty::DirtyPool::with_queue_depth("dirty-test-cpu", 1, 1),
-        dirty_io: dirty::DirtyPool::with_queue_depth("dirty-test-io", 1, 1),
+        dirty_cpu: super::service::ServiceMode::Owned(dirty::DirtyPool::with_queue_depth(
+            "dirty-test-cpu",
+            1,
+            1,
+        )),
+        dirty_io: super::service::ServiceMode::Owned(dirty::DirtyPool::with_queue_depth(
+            "dirty-test-io",
+            1,
+            1,
+        )),
         next_pid: AtomicU64::new(0),
         wait_set: Mutex::new(WaitSet::default()),
         wake_condvar: Condvar::new(),
@@ -1567,8 +1584,12 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         idle_parks: AtomicUsize::new(0),
         observed_park_timeout_millis: AtomicU64::new(0),
         park_gap_hook: Mutex::new(None),
-        dirty_cpu: crate::scheduler::dirty::DirtyPool::new("test-cpu", 1),
-        dirty_io: crate::scheduler::dirty::DirtyPool::new("test-io", 1),
+        dirty_cpu: super::service::ServiceMode::Owned(crate::scheduler::dirty::DirtyPool::new(
+            "test-cpu", 1,
+        )),
+        dirty_io: super::service::ServiceMode::Owned(crate::scheduler::dirty::DirtyPool::new(
+            "test-io", 1,
+        )),
         file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
@@ -2128,6 +2149,121 @@ fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
         .get(&pid)
         .map(|result| result.root());
     assert_eq!(exit_value, Some(Term::small_int(7)));
+    scheduler.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Disabled dirty pools: refusal before any side effect (spec §3.2). The
+// gated-suspension hazard is the scariest arm — a suspension registered
+// against a pool with no worker parks the process FOREVER (readiness contract
+// C2: no message can wake a gated await). These pin the refusal-first
+// ordering, the typed service-unavailable surface, and that an unrelated
+// process on the SAME scheduler keeps making progress.
+// ---------------------------------------------------------------------------
+
+static DISABLED_DIRTY_PROBE_RUNS: AtomicUsize = AtomicUsize::new(0);
+static DISABLED_PEER_PROGRESS: AtomicUsize = AtomicUsize::new(0);
+
+fn disabled_dirty_probe_native(
+    _args: &[Term],
+    _context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    // A refused dispatch never reaches this body: the counter proves the pool
+    // was never submitted into.
+    DISABLED_DIRTY_PROBE_RUNS.fetch_add(1, Ordering::AcqRel);
+    Ok(Term::small_int(42))
+}
+
+fn disabled_peer_progress_native(
+    _args: &[Term],
+    _context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    DISABLED_PEER_PROGRESS.fetch_add(1, Ordering::AcqRel);
+    Ok(Term::small_int(7))
+}
+
+#[test]
+fn disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler() {
+    let atoms = AtomTable::new();
+    let registry = Arc::new(ModuleRegistry::new());
+    let dirty_name = atoms.intern("disabled_dirty_cpu");
+    let peer_name = atoms.intern("disabled_dirty_peer");
+    let dirty_module = native_call_module(
+        &registry,
+        dirty_name,
+        disabled_dirty_probe_native,
+        Some(DirtySchedulerKind::Cpu),
+    );
+    let peer_module = native_call_module(&registry, peer_name, disabled_peer_progress_native, None);
+
+    // dirty-cpu explicitly requested OFF; dirty-io stays owned so only the CPU
+    // pool is disabled.
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            dirty_cpu_threads: Some(0),
+            dirty_io_threads: Some(1),
+            dirty_queue_depth: Some(8),
+            ..SchedulerConfig::default()
+        },
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+
+    // Assertion-2 instance: the disabled pool is a §5 Disabled entry — zero
+    // threads, zero fds, DISABLED sentinel instance.
+    let cpu_entry = scheduler
+        .service_inventory()
+        .into_iter()
+        .find(|entry| entry.service == inventory::DIRTY_CPU)
+        .expect("dirty-cpu inventory entry");
+    assert_eq!(cpu_entry.mode, ServiceModeLabel::Disabled);
+    assert_eq!(cpu_entry.actual, 0);
+    assert_eq!(cpu_entry.configured, 0);
+    assert!(cpu_entry.thread_names.is_empty());
+    assert!(cpu_entry.fd_classes.is_empty());
+    assert_eq!(cpu_entry.instance, ServiceInstanceId::DISABLED);
+
+    DISABLED_DIRTY_PROBE_RUNS.store(0, Ordering::Release);
+    DISABLED_PEER_PROGRESS.store(0, Ordering::Release);
+
+    let dirty_pid = scheduler.spawn_process(&dirty_module);
+
+    // The refused process exits PROMPTLY — a park-forever bug would hang this
+    // bounded wait instead of tombstoning.
+    wait_until(5_000, || {
+        scheduler.shared.exit_tombstones.contains_key(&dirty_pid)
+    });
+    assert_eq!(
+        scheduler.peek_exit_reason(dirty_pid),
+        Some(ExitReason::Error)
+    );
+
+    // Typed, distinguishable service-unavailable error (Q-B): NOT Badarg, and
+    // it names the disabled service for the embedder.
+    assert_eq!(
+        scheduler.take_exit_error(dirty_pid),
+        Some(crate::error::ExecError::ServiceUnavailable {
+            service: inventory::DIRTY_CPU
+        }),
+    );
+
+    // Park-forever hazard NEGATIVE: refusal preceded suspension registration,
+    // so no gated suspension survives for the dead pid.
+    assert!(
+        !scheduler.shared.suspensions.contains_key(&dirty_pid),
+        "a refused dirty call must leave no gated suspension behind"
+    );
+
+    // The pool was never submitted into: the native body never ran.
+    assert_eq!(DISABLED_DIRTY_PROBE_RUNS.load(Ordering::Acquire), 0);
+
+    // An unrelated process on the SAME scheduler keeps making progress.
+    let peer_pid = scheduler.spawn_process(&peer_module);
+    let (peer_reason, _peer_result) = scheduler.run_until_exit(peer_pid);
+    assert_eq!(peer_reason, ExitReason::Normal);
+    assert_eq!(DISABLED_PEER_PROGRESS.load(Ordering::Acquire), 1);
+
     scheduler.shutdown();
 }
 
