@@ -389,6 +389,21 @@ underlying service and the Q2 process-wide dedup (§9) is a plain group-by.
   get deprecation notes — removal is a later major (no `#[allow]`s: the
   deprecations must not trip our own `-D warnings` gate, staging plan to be
   proven in the first commit).
+  - **Amendment (pair-ruled at commit 2): the keep-old-working PRINCIPLE.**
+    Keep-old-working applies where the old signature can still be honestly
+    satisfied in every constructible mode. Where absence makes the old
+    signature a lie — a `&T`-returning accessor on a scheduler whose service
+    can now be Disabled — the break is mandatory, loud, and `try_`-named:
+    both candidate shapes are compile-time breaks, but the renamed method
+    fails at the call site with a replacement name that teaches the new
+    contract, while a same-name `Option` return fails one step downstream
+    and teaches nothing. The old name stays discoverable via `#[doc(alias)]`
+    on the `try_` variant. Applied at commit 2:
+    `dirty_cpu_pool()`/`dirty_io_pool()` (returned `&DirtyPool`; a Disabled
+    pool has nothing to return, and the no-panic rule forbids the only
+    signature-preserving out) are REPLACED by
+    `try_dirty_cpu_pool()`/`try_dirty_io_pool()`. Commits 3–5 apply the same
+    test to each accessor they touch instead of re-routing the question.
 - **Behavior changes, stated loudly in CHANGELOG:** `distribution: None`
   becomes absent (default configs lose empty-resolver distribution; CLI opts
   into full-runtime); `dirty_*_threads: Some(0)` becomes Disabled instead of
