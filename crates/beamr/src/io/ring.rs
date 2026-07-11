@@ -158,6 +158,25 @@ pub trait CompletionRing: Send + Sync {
     /// Return the number of operations submitted but not yet completed.
     fn pending_count(&self) -> usize;
 
+    /// OS thread names of this ring's LIVE worker pool, in spawn order.
+    ///
+    /// Empty by default: backends whose completions are serviced by the kernel
+    /// or an inline queue (io_uring, the replay/failed rings) own no named OS
+    /// worker threads. The blocking thread-pool fallback overrides this so the
+    /// service inventory (spec §5) can attribute its workers by name; a
+    /// shut-down pool reports empty.
+    fn worker_thread_names(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Worker threads this ring was ASKED to run, independent of how many
+    /// spawned successfully or remain live — the `configured` half of the
+    /// service inventory's requested-vs-live split (spec §5). Zero by default
+    /// for backends that own no OS worker threads.
+    fn requested_worker_count(&self) -> usize {
+        0
+    }
+
     /// Stop accepting work and cleanly shut down backend workers.
     fn shutdown(&self);
 }

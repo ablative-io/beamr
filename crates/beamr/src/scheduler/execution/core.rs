@@ -1448,6 +1448,10 @@ fn submit_dirty_call(
     if bridge.is_err() {
         return Err(DirtySubmissionError::CompletionBridgeSpawn);
     }
+    // Count the transient completion thread for the inventory policy line (§5).
+    shared
+        .dirty_completion_spawns
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 

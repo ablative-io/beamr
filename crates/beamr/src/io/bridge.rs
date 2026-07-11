@@ -13,6 +13,12 @@ use crate::term::Term;
 
 use super::{CompletionRing, IoCompletion, IoResult};
 
+/// OS thread name of the generic-IO completion bridge poller.
+///
+/// The name the OS thread probe and the service inventory (spec §5) attribute
+/// the bridge poller under.
+pub const IO_COMPLETION_THREAD_NAME: &str = "beamr-io-completion";
+
 /// How an I/O completion should be delivered to the waiting process.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ResultMode {
@@ -82,7 +88,7 @@ impl IoCompletionBridge {
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_for_thread = Arc::clone(&shutdown);
         let handle = std::thread::Builder::new()
-            .name("beamr-io-completion".to_string())
+            .name(IO_COMPLETION_THREAD_NAME.to_string())
             .spawn(move || {
                 while !shutdown_for_thread.load(Ordering::Acquire) {
                     let completions = ring.poll_completions(Duration::from_millis(100));

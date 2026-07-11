@@ -68,8 +68,17 @@ impl Scheduler {
 
     /// Shut down all worker threads after their current time slice.
     pub fn shutdown(&self) {
-        if let Some(bridge) = lock_or_recover(&self.shared.io_bridge).take() {
-            bridge.shutdown();
+        {
+            // Hold the slot lock through the bridge join: the bridge thread
+            // is live until `shutdown()` returns, so releasing the lock after
+            // a bare `take()` would let a concurrent `service_inventory()`
+            // observe a false zero mid-join. Holding it makes the reader wait
+            // for the joined state instead — the same discipline as the
+            // pools' handle locks.
+            let mut bridge_slot = lock_or_recover(&self.shared.io_bridge);
+            if let Some(bridge) = bridge_slot.take() {
+                bridge.shutdown();
+            }
         }
         if let Some(ring) = &self.shared.io_ring {
             ring.shutdown();
@@ -703,14 +712,42 @@ pub(in crate::scheduler) fn priority_for_pid(
     }
 }
 
+/// Idle-park timeout for a normal scheduler worker.
+///
+/// A worker with no runnable process parks on `wake_condvar` for at most this
+/// long before looping again to re-check the two event sources still polled
+/// rather than notified: timer-wheel expiry and IO-ring completions
+/// (spec §3.8). It is the VM's own idle tick. Exposed as a named constant so
+/// the signed §3.8 wake-rate bound reads its floor from source rather than a
+/// duplicated literal; changing it re-signs the bound (Q-F ruling).
+pub const IDLE_PARK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5);
+
+/// Per-worker idle wake rate implied by [`IDLE_PARK_TIMEOUT`], in wakes/sec.
+///
+/// The per-worker half of the signed §3.8 formula. The per-process bound is
+/// this value times the worker count the inventory attributes to the process
+/// — not a config-claimed count — so the signed number and its enforcement
+/// cannot drift (Waffles the Terrible signing note; Vesper Lynd sharpening).
+/// Consumed only by the signed idle-wake assertion, hence test-scoped.
+#[cfg(any(test, feature = "test-support"))]
+pub const IDLE_WAKES_PER_SEC_PER_WORKER: u64 = 1000u64 / IDLE_PARK_TIMEOUT.as_millis() as u64;
+
 fn park_thread(shared: &SharedState) {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     shared.idle_parks.fetch_add(1, Ordering::Relaxed);
     if shared.shutdown.load(Ordering::Acquire) {
         return;
     }
     let guard = lock_or_recover(&shared.wait_set);
-    let timeout = std::time::Duration::from_millis(5);
+    let timeout = IDLE_PARK_TIMEOUT;
+    // Record the SAME local the wait consumes (not the constant): the seam
+    // observes the duration actually passed to `wait_timeout`. If the wait's
+    // argument is ever decoupled from `timeout`, this binding goes unused in
+    // production builds and `-D warnings` fails the gate.
+    #[cfg(any(test, feature = "test-support"))]
+    shared
+        .observed_park_timeout_millis
+        .store(timeout.as_millis() as u64, Ordering::Relaxed);
     #[cfg(feature = "telemetry")]
     let idle_started = Instant::now();
     match shared.wake_condvar.wait_timeout(guard, timeout) {

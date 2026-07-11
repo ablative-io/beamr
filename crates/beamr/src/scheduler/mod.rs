@@ -61,6 +61,22 @@ mod execution;
 #[cfg(feature = "threads")]
 mod exit_tombstones;
 #[cfg(feature = "threads")]
+mod inventory;
+#[cfg(feature = "threads")]
+mod service;
+#[cfg(all(feature = "threads", any(test, feature = "test-support")))]
+pub mod thread_probe;
+#[cfg(feature = "threads")]
+pub use execution::IDLE_PARK_TIMEOUT;
+#[cfg(all(feature = "threads", any(test, feature = "test-support")))]
+pub use execution::IDLE_WAKES_PER_SEC_PER_WORKER;
+#[cfg(feature = "threads")]
+pub use inventory::{ServiceInventoryEntry, ServicePolicyLine, deduped_thread_aggregate};
+#[cfg(feature = "threads")]
+pub use service::{
+    ServiceIdentity, ServiceInstanceId, ServiceMode, ServiceModeLabel, ShutdownService,
+};
+#[cfg(feature = "threads")]
 mod module_management;
 #[cfg(feature = "threads")]
 mod pg_propagation;
@@ -300,6 +316,13 @@ pub(super) struct SharedState {
     io_bridge: Mutex<Option<IoCompletionBridge>>,
     io_facility: Option<Arc<dyn IoFacility>>,
     standard_io_pid: u64,
+    /// Process-unique identities minted for each ancillary service at
+    /// construction, so `service_inventory()` reports a stable identity (§5).
+    service_instances: inventory::ServiceInstances,
+    /// Count of transient `dirty-complete-{pid}` completion threads spawned to
+    /// date. Reported as a policy line, not a thread line (§5); incremented
+    /// once per dirty call, so it is negligible on the dirty submit path.
+    dirty_completion_spawns: AtomicU64,
     replay_driver: Option<Arc<Mutex<ReplayDriver>>>,
     replay_mode: bool,
     pub(super) nif_private_data: Option<Arc<dyn std::any::Any + Send + Sync>>,
@@ -310,8 +333,16 @@ pub(super) struct SharedState {
     #[allow(dead_code)]
     _standard_io_server: StandardIoServer,
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     idle_parks: AtomicUsize,
+
+    /// Millisecond value of the timeout the park primitive most recently
+    /// used, written by every `park_thread` entry. The deterministic linkage
+    /// between the running code and the signed 5ms floor: the bound test
+    /// asserts this equals `IDLE_PARK_TIMEOUT` rather than inferring it from
+    /// a load-sensitive wake rate. 0 = no worker has parked yet.
+    #[cfg(any(test, feature = "test-support"))]
+    observed_park_timeout_millis: AtomicU64,
 
     #[cfg(test)]
     park_gap_hook: Mutex<Option<ParkGapHook>>,
@@ -788,6 +819,11 @@ impl Scheduler {
         let pg_registry = Arc::new(PgRegistry::new(atom_table.as_ref()));
         let standard_io_server =
             StandardIoServer::new(standard_io_pid, standard_io_ring, atom_table.as_ref());
+        let service_instances = inventory::ServiceInstances::mint(
+            io_ring.is_some(),
+            io_ring.is_some() && io_registry.is_some() && !replay_enabled,
+            dist_sender.is_some(),
+        );
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
@@ -838,14 +874,18 @@ impl Scheduler {
             io_bridge: Mutex::new(None),
             io_facility,
             standard_io_pid,
+            service_instances,
+            dirty_completion_spawns: AtomicU64::new(0),
             replay_driver,
             replay_mode: replay_enabled,
             nif_private_data: config.nif_private_data,
             #[cfg(feature = "telemetry")]
             telemetry_metrics: TelemetryMetricState::new(telemetry_sample_interval),
             _standard_io_server: standard_io_server,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             idle_parks: AtomicUsize::new(0),
+            #[cfg(any(test, feature = "test-support"))]
+            observed_park_timeout_millis: AtomicU64::new(0),
             #[cfg(test)]
             park_gap_hook: Mutex::new(None),
         });
@@ -1091,6 +1131,37 @@ impl Scheduler {
     pub fn worker_names(&self) -> &[String] {
         &self.worker_names
     }
+    /// The scheduler's ancillary-service thread inventory (spec §5).
+    ///
+    /// One entry per ancillary service — dirty CPU/IO pools, the file-IO and
+    /// standard-IO rings, the (off-by-default) generic-IO ring, and the
+    /// distribution sender and net-kernel runtimes — each carrying its live OS
+    /// thread names and counts read straight from the service, so the report is
+    /// what the process actually holds. Normal scheduler workers stay outside
+    /// this model (spec §2.3); see [`worker_names`](Self::worker_names). The
+    /// per-dirty-call transient completion thread is a policy, not a thread
+    /// line; see [`service_policies`](Self::service_policies).
+    ///
+    /// **Process-wide dedup (Q2, spec §9):** to aggregate across co-resident
+    /// schedulers, count each `Owned` entry once and each *distinct* `Shared`
+    /// `instance` once — a shared ring serving N schedulers must not be counted
+    /// N times. Grouping entries by [`ServiceInventoryEntry::instance`] makes
+    /// this a plain group-by. In commit 1 every service is `Owned`, so the
+    /// per-scheduler and deduped aggregates coincide.
+    #[must_use]
+    pub fn service_inventory(&self) -> Vec<ServiceInventoryEntry> {
+        inventory::build_service_inventory(&self.shared)
+    }
+    /// The scheduler's transient-thread policy lines (spec §5).
+    ///
+    /// Classes that spawn and join OS threads in bursts — today just the
+    /// per-dirty-call `dirty-complete-{pid}` thread — are reported with a spawn
+    /// counter rather than as a point-in-time thread line, since a live count
+    /// would under-report them.
+    #[must_use]
+    pub fn service_policies(&self) -> Vec<ServicePolicyLine> {
+        inventory::build_service_policies(&self.shared)
+    }
     #[must_use]
     pub fn dirty_cpu_pool(&self) -> &DirtyPool {
         &self.shared.dirty_cpu
@@ -1155,9 +1226,31 @@ impl Scheduler {
     pub fn set_output_sink(&self, sink: Arc<dyn IoSink>) {
         *lock_or_recover(&self.shared.output_sink) = sink;
     }
-    #[cfg(test)]
-    fn idle_park_count(&self) -> usize {
+    /// Cumulative idle parks across this scheduler's normal workers — one per
+    /// `park_thread` entry. The sampling source for the signed §3.8 idle-wake
+    /// bound; test-only instrumentation (`test-support`), absent from
+    /// production builds.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn idle_park_count(&self) -> usize {
         self.shared.idle_parks.load(Ordering::Acquire)
+    }
+    /// The park timeout the workers are ACTUALLY using, in milliseconds —
+    /// `None` until the first park. Deterministic linkage for the signed
+    /// §3.8 floor: asserting this equals [`IDLE_PARK_TIMEOUT`] catches an
+    /// implementation whose wait duration decoupled from the signed
+    /// constant, with zero sensitivity to host load.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn observed_park_timeout_millis(&self) -> Option<u64> {
+        match self
+            .shared
+            .observed_park_timeout_millis
+            .load(Ordering::Acquire)
+        {
+            0 => None,
+            millis => Some(millis),
+        }
     }
 }
 #[cfg(feature = "threads")]
@@ -1394,6 +1487,9 @@ mod closure_spawn_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod connection_lifecycle_tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
+mod inventory_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod readiness_contract_tests;

@@ -84,6 +84,7 @@ name = "beamr"
 version = "0.13.0"
 dependencies = [
  "base64",
+ "beamr",
  "cranelift-codegen",
  "cranelift-frontend",
  "cranelift-jit",

@@ -87,6 +87,8 @@ pub struct ThreadPoolRing {
     job_sender: Sender<WorkerMessage>,
     completion_receiver: Receiver<IoCompletion>,
     workers: Mutex<Vec<JoinHandle<()>>>,
+    worker_names: Vec<String>,
+    requested_workers: usize,
 }
 
 impl ThreadPoolRing {
@@ -102,16 +104,21 @@ impl ThreadPoolRing {
         let (completion_sender, completion_receiver) = crossbeam_channel::unbounded();
         let pending = std::sync::Arc::new(AtomicUsize::new(0));
         let mut workers = Vec::with_capacity(worker_count);
+        let mut worker_names = Vec::with_capacity(worker_count);
 
         for worker_index in 0..worker_count {
             let jobs = job_receiver.clone();
             let completions = completion_sender.clone();
             let pending = std::sync::Arc::clone(&pending);
+            let worker_name = format!("beamr-io-thread-pool-{worker_index}");
             match thread::Builder::new()
-                .name(format!("beamr-io-thread-pool-{worker_index}"))
+                .name(worker_name.clone())
                 .spawn(move || worker_loop(jobs, completions, pending))
             {
-                Ok(handle) => workers.push(handle),
+                Ok(handle) => {
+                    workers.push(handle);
+                    worker_names.push(worker_name);
+                }
                 Err(_spawn_error) => break,
             }
         }
@@ -123,6 +130,8 @@ impl ThreadPoolRing {
             job_sender,
             completion_receiver,
             workers: Mutex::new(workers),
+            worker_names,
+            requested_workers: worker_count,
         }
     }
 }
@@ -160,6 +169,31 @@ impl CompletionRing for ThreadPoolRing {
 
     fn pending_count(&self) -> usize {
         self.pending.load(Ordering::Acquire)
+    }
+
+    fn worker_thread_names(&self) -> Vec<String> {
+        // Liveness from synchronized JOIN-HANDLE state, not the shutdown
+        // request flag: the flag is raised before the joins run, so it would
+        // report zero while workers are still live. Locking the handles makes
+        // a mid-shutdown inventory wait for the joins instead of lying, and
+        // `is_finished` drops a worker that panicked early. `shutdown()` pops
+        // handles from the tail, so the surviving prefix stays name-aligned.
+        // Poison recovery, not poison-as-zero: a panicked holder must not
+        // make live workers vanish from the bill.
+        let workers = match self.workers.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        self.worker_names
+            .iter()
+            .zip(workers.iter())
+            .filter(|(_, handle)| !handle.is_finished())
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    fn requested_worker_count(&self) -> usize {
+        self.requested_workers
     }
 
     fn shutdown(&self) {

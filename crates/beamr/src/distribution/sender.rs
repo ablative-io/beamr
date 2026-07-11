@@ -90,6 +90,12 @@ use tokio::task::JoinHandle;
 use crate::atom::Atom;
 use crate::distribution::connection::{ConnectionManager, DistConnection};
 
+/// OS thread name of the sender's single tokio worker.
+///
+/// Set as the runtime's `thread_name`, so it is also the name the OS thread
+/// probe and the service inventory (spec §5) attribute the worker under.
+pub const DIST_SEND_THREAD_NAME: &str = "beamr-dist-send";
+
 /// Bounded depth of the outbound distribution queue.
 ///
 /// Sized for low-frequency control traffic (pg join/leave). When full, the
@@ -219,7 +225,7 @@ impl DistSender {
     pub fn new(connections: ConnectionManager) -> Option<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
-            .thread_name("beamr-dist-send")
+            .thread_name(DIST_SEND_THREAD_NAME)
             .enable_all()
             .build()
             .ok()?;
@@ -313,6 +319,16 @@ impl DistSender {
     #[must_use]
     pub fn handle(&self) -> Handle {
         self.inner.handle.clone()
+    }
+
+    /// OS thread names of the sender's runtime workers (spec §5 inventory).
+    ///
+    /// A live sender owns exactly one worker, named [`DIST_SEND_THREAD_NAME`].
+    /// The lazily-spawned blocking pool is not live at rest, so it is not
+    /// reported.
+    #[must_use]
+    pub fn worker_thread_names(&self) -> Vec<String> {
+        vec![DIST_SEND_THREAD_NAME.to_owned()]
     }
 
     /// Enqueue an outbound frame. NON-BLOCKING: on a full or closed queue the

@@ -42,6 +42,10 @@ tokio = { version = "1.52.3", features = ["net", "io-util", "time", "rt", "rt-mu
 zstd = { version = "0.13.3", optional = true }
 
 [dev-dependencies]
+# Self-dependency so integration tests (which compile the lib WITHOUT
+# cfg(test)) see the `test-support` instrumentation: the OS thread probe and
+# the idle-park counter behind the signed §3.8 bound.
+beamr = { path = ".", features = ["test-support"] }
 criterion = "0.8.2"
 # The in-memory exporters (`InMemory{Span,Metric,Log}Exporter`) used by the
 # telemetry tests live behind opentelemetry_sdk's own `testing` feature; the
