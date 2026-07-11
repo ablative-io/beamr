@@ -307,14 +307,20 @@ New shape, per C4:
 3. Pump subscriptions into the outbound writer, bounded and headroom-aware
    (existing `DELIVERY_SLICE_BUDGET` + held-delivery machinery, unchanged).
 4. Drain the outbound writer with partial-write tracking (existing).
-5. **If known in-memory work remains** — complete frame in the read buffer,
-   held delivery, outbound residue, queued control — return
-   `NativeOutcome::Continue` (the budget, not readiness, is what stopped us).
-6. Otherwise: arm/re-arm readiness interest (R2), take the **final
-   non-blocking probe** across every work source (socket read, control queue,
-   subscription inboxes), and if the probe is empty return
+5. If work remains that can progress WITHOUT a new external event — complete
+   frame already in the read buffer, queued control, held delivery WITH
+   outbound headroom, outbound residue stopped by the slice budget rather
+   than `WouldBlock` — return `NativeOutcome::Continue`: the budget, not
+   readiness, is what stopped us.
+6. Otherwise every remaining work item is blocked on an external event
+   (empty socket, `WouldBlock`'d writer, empty inboxes): arm/re-arm interest
+   per R2 (READABLE always; WRITABLE iff blocked residue), take the **final
+   non-blocking probe** across the event-free sources (read buffer, control
+   queue, subscription inboxes), and if it observes nothing return
    `NativeOutcome::Wait`. If the probe observes work, drain it or return
-   `Continue` — never `Wait` with known work pending (C4).
+   `Continue` — never `Wait` with known work pending (C4). R2's tri-state is
+   what makes the step-5/step-6 split decidable — the drain's return value
+   IS the budget-vs-`WouldBlock` discriminator.
 
 Connection processes park via plain `Wait` only — never a gated suspension
 (C2 scope limit is a normative obligation on liminal, asserted by test).
