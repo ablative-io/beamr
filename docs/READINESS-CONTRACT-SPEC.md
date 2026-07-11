@@ -229,26 +229,195 @@ without new coupling. ⏳ OTP reaps via the owner-death path — confirm shape.
 > must answer the same §3.3–§3.5 hazards from the liminal side, plus the
 > N-embedders-N-reimplementations aggregate cost under lens Q2.
 
-*(pending)*
+**What (a) is.** Liminal's connection supervisor constructs and owns one
+reactor thread for all connection sockets. It performs kqueue/epoll
+registration through a safe wrapper crate, keys registrations by
+(pid, generation), and delivers readiness exactly as shape (b) does: a durable
+marker via `enqueue_atom_message`. The C1–C4 contract is consumed identically;
+the only difference is which repo owns the poll set.
+
+**Honest merits.**
+1. *No new beamr public API commitment.* The service surface of §3.1 is a
+   forever-API for every future embedder; (a) defers that commitment until a
+   second consumer proves the shape. (Counterweight: frame is already the
+   named second consumer, and aion's worker runtime a third — the "wait for a
+   second consumer" argument is weaker here than it usually is.)
+2. *Consumer-local iteration.* Registration bookkeeping bugs are fixed in
+   liminal's release cadence, not the VM's.
+3. *Blast radius.* A reactor defect degrades liminal-server; a VM-service
+   defect degrades every embedder simultaneously.
+
+**Costs under the agreed decision criteria.**
+1. *Aggregate idle cost (lens Q2 — the decisive one).* Every embedder that
+   holds fds re-implements the poll set: liminal today, frame's node surface
+   next, any future embedder after that. N implementations × one thread each,
+   each needing its own registration table, its own fd-reuse guard, its own
+   shutdown-join story, its own lens answers, its own soak test. Shape (b)
+   answers Q1–Q4 once, in the VM, for everyone forever. Under the campaign's
+   own doctrine, (a) is rule-5 debt issued at architectural interest rates.
+2. *Dependency graph.* mio is already compiled into every beamr net build via
+   tokio; (a) adds a NEW direct dependency to liminal's workspace (mio or
+   polling) to duplicate machinery the graph already contains. Zero-new-deps
+   favors (b) outright.
+3. *Testability of the hard parts.* §3.3 (poll-set vs scheduler shutdown) and
+   §3.4 (fd reuse) need deterministic tests against scheduler internals —
+   park/wake injection points that only beamr's test harness reaches. Under
+   (a), liminal can only test those races schedule-hopefully from outside the
+   VM; under (b) they are in-crate deterministic tests. The hardest
+   correctness obligations land where the test tooling is weakest — the
+   opposite of what we want.
+4. *Shutdown lifecycle is not actually simpler under (a).* The reactor thread
+   must still join deterministically with the beamr scheduler teardown it does
+   not own; (a) moves §3.3 across a repo boundary rather than removing it.
+
+**When (a) wins.** Only if §3.3 cannot be made deterministic inside beamr
+(the poll thread provably cannot join cleanly under the scheduler's existing
+shutdown ordering), or if the certifying pair judges the §3.1 API commitment
+premature despite the named consumers. If (b) fails its §3.6 gates during
+implementation, (a) is the pre-argued fallback and this section becomes the
+implementation spec: same C1–C4 consumption, same §5 consumer discipline,
+same §6 churn gates, with the registration table and generation guard
+implemented in `liminal-server`'s supervisor and inventoried through liminal's
+lens answers.
+
+**Recommendation from the (a) author:** shape (b), unless its §3.6
+shutdown-lifecycle gate fails on the merits. I designed (a) first and
+preferred it for seam-narrowness; the decision criteria — argued from
+"sleeping must cost nothing, everywhere, forever" rather than from Rust
+convention — reverse that preference. Preserving this argument per the §8
+decision record either way.
 
 ## 5. Liminal consumer requirements
 
-> **Owner: Hermes Crumpet.** Registration discipline (register-before-probe,
-> generation keys, dereg on every termination path), bounded-drain-then-Wait
-> slice shape, outbound tri-state + pump inbox-notify (the two shape-invariant
-> liminal-side fixes this contract assumes), TempDir/store lifecycle
-> interactions if any.
+> **Owner: Hermes Crumpet.** Verified against liminal main at 218a378 /
+> published 0.2.3. R-numbers are the consumer-side normative requirements;
+> the liminal design doc implements them and cites this section.
 
-*(pending)*
+### 5.1 The slice shape (replaces the no-sleep Continue discipline)
+
+Current shape (`liminal-server .../connection/process.rs:86-158`): drain
+controls → service socket → pump subscriptions → drain outbound → return
+`Continue` unconditionally. The incident-critical property: idle connections
+are permanently runnable.
+
+New shape, per C4:
+
+1. Drain queued control messages (existing path, already marker-driven).
+2. Service inbound socket work, bounded (existing read/apply budget).
+3. Pump subscriptions into the outbound writer, bounded and headroom-aware
+   (existing `DELIVERY_SLICE_BUDGET` + held-delivery machinery, unchanged).
+4. Drain the outbound writer with partial-write tracking (existing).
+5. **If known in-memory work remains** — complete frame in the read buffer,
+   held delivery, outbound residue, queued control — return
+   `NativeOutcome::Continue` (the budget, not readiness, is what stopped us).
+6. Otherwise: arm/re-arm readiness interest (R2), take the **final
+   non-blocking probe** across every work source (socket read, control queue,
+   subscription inboxes), and if the probe is empty return
+   `NativeOutcome::Wait`. If the probe observes work, drain it or return
+   `Continue` — never `Wait` with known work pending (C4).
+
+Connection processes park via plain `Wait` only — never a gated suspension
+(C2 scope limit is a normative obligation on liminal, asserted by test).
+
+### 5.2 Requirements
+
+- **R1 — Complete wake-source coverage.** A parked connection must be woken
+  by every source that can create work for it: (i) inbound socket bytes;
+  (ii) EOF/HUP; (iii) control messages incl. server push and shutdown
+  (existing control-atom path, already C1-conformant —
+  `supervisor.rs:430-447` — preserved unchanged); (iv) a subscription inbox
+  becoming non-empty (R3); (v) outbound-writable after a blocked drain (R2).
+  ⏳ *The full source table is being independently cross-checked by a
+  GPT-5.6-Sol scout pass over the connection lifecycle; this clause finalizes
+  when that lands — any source the scout finds beyond (i)–(v) is added here
+  before the doc routes.*
+- **R2 — Outbound writer tri-state.** `OutboundWriter::drain` currently
+  returns the same `Ok(())` for drained-empty and blocked-with-residue
+  (`connection/outbound.rs:156-192`). It must distinguish them so WRITABLE
+  interest is armed iff residue remains. Interest is one-shot per §3.1:
+  re-armed on each blocked drain, never held level-triggered.
+- **R3 — Subscription inbox notifier.** The channel core's per-subscriber
+  inbox gains an on-empty-to-non-empty notifier slot, installed by the server
+  at subscribe time, that delivers the connection's durable marker (an
+  `enqueue_atom_message` call — cheap, non-blocking, safe on the publishing
+  actor's slice). Install-before-final-recheck ordering closes the
+  publish-vs-park race from the liminal side (the C1 mid-park recheck closes
+  it from the VM side). The remote/cluster delivery leg
+  (`SubscriberProcess::accept_remote_frame`) fires the same notifier. The old
+  assumption that the connection re-polls every slice
+  (`connection/delivery.rs:1-12`) is deleted with prejudice.
+- **R4 — Registration lifecycle: register once, deregister on every
+  termination path.** Registration happens at connection spawn (post stream
+  handoff). Deregistration is table-driven over the complete termination set,
+  verified against source: EOF/`ReadStatus::Closed`; `ProcessStatus::Close`
+  (client Disconnect, `RespondThenClose`); outbound overflow/write-error
+  teardown; `mark_crashed` paths; `ForceClose` control; **externally-killed
+  pids observed only by `reap_crashed`** (`supervisor.rs` reap loop — dereg
+  must not require the dead process to run a slice; the supervisor/reaper
+  owns it); scheduler shutdown (§3.3 ordering). Under shape (b), C3 +
+  §3.5 lazy reaping is the backstop, not the mechanism: liminal still owns
+  explicit dereg on every path above.
+- **R5 — Generation keying.** The connection's registration token (with its
+  generation) lives in connection state; a recycled fd or reused pid never
+  resolves to a stale registration (§3.4). Deregister-before-close is honored
+  on every path in R4's table.
+- **R6 — Single idempotent marker.** One readiness atom per connection, not
+  one per source. Any marker (or N coalesced markers) triggers one full slice
+  that services ALL work sources (5.1 steps 1–4). Progress is the drain
+  loop's property, not the marker count's (C4). Rationale: eliminates
+  marker-taxonomy races and makes duplicate delivery structurally harmless.
+- **R7 — Quiescence instrumentation.** A test-only per-connection slice
+  counter, exposed for the §6 gates and the 11-idle-worker soak: parked
+  connections' counters must not advance without an event. This is the
+  permanent rule-1 negative assertion for liminal.
+- **R8 — Worker front door parity.** Aion-style push connections (PushClient
+  consumers) use the same slice shape and the same wake sources; the
+  worker-front-door services redesign (liminal workstream, separate doc)
+  changes what services exist behind the connection, not how it parks.
+
+### 5.3 Two shape-invariant liminal fixes this contract assumes
+
+R2 (tri-state) and R3 (inbox notifier) are liminal-side prerequisites under
+BOTH shapes — they are part of the liminal workstream regardless of the
+shape decision and carry their own tests independent of §3.
 
 ## 6. Churn-driven acceptance tests (cross-repo)
 
 > **Owner: Hermes Crumpet** (liminal exercises real sockets), with the beamr
-> deterministic harness from §3.6 as the in-crate floor. Connect/write/
-> disconnect churn beyond worker count; fd-reuse under real kernel recycling;
-> shutdown-lifecycle under churn.
+> deterministic harness from §3.6 as the in-crate floor. These are the
+> liminal-side gates; each is a permanent rule-1 assertion, not
+> incident-scoped.
 
-*(pending)*
+- **T1 — The 11-idle-worker soak** (the incident's own gate): 11 registered,
+  connected, idle worker connections; process CPU returns to host baseline
+  over the soak window at the threshold certified by the pair and briefed to
+  Tom; every parked connection's R7 slice counter is static for the entire
+  window. Runs on macOS (the incident host) as the operational gate.
+- **T2 — Parked-wake matrix**: for each R1 wake source (inbound bytes → Pong
+  round-trip; server push → correlated reply completes; publish →
+  subscription Deliver arrives; EOF/HUP → dereg + teardown; blocked-then-
+  writable → exact residue bytes flush in order): park (counter static),
+  fire the source exactly once, assert exactly one wake, correct behavior,
+  and re-park (counter static again).
+- **T3 — Churn beyond worker count**: connections ≫ scheduler workers (e.g.
+  64 over 4) doing connect/publish/subscribe/disconnect bursts: all
+  correlated replies correct, no starvation, and — the busy-poll regression
+  guard — full quiescence (all counters static) in the gaps between bursts.
+- **T4 — Real-kernel fd reuse**: close connection A and immediately accept
+  connection B (kernel plausibly recycles the fd) under sustained event
+  traffic; assert B never observes a wake or frame attributable to A's
+  registration (generation guard end-to-end). Probabilistic here, repeated;
+  the deterministic variant is beamr's §3.6 recycle-storm test.
+- **T5 — Shutdown under churn**: server shutdown mid-traffic with live parked
+  and active connections: drain semantics preserved, all connections
+  deregistered (R4), no marker delivered post-shutdown, all threads joined
+  (OS-visible), no leaked registrations (table empty assertion).
+- **T6 — Duplicate/coalesced markers**: inject N markers for one event;
+  exactly one drain pass, no duplicate frame application, no counter
+  inflation (R6).
+- **T7 — Slow-reader under park** (extends the existing headroom tests):
+  a parked slow reader with queued outbound wakes only on writable
+  readiness, flushes byte-exact residue, re-parks; never spins.
 
 ## 7. Sequencing
 
@@ -269,8 +438,22 @@ test, or sign-off on the aggregate. The missing control was precisely lens Q2
 what the sum was, and the thread-inventory API plus its permanent negative
 assertions is the gate that would have caught it.
 
-**liminal half:** *(pending — Hermes; the ff8d863 → bb81724 → "busy-polls by
-design" ledger chain, per his own account in-channel.)*
+**liminal half:** the permanent-runnable loop shipped in three self-aware
+steps, none of them ignorant. `ff8d863` (SRV-003 review fixes) replaced a
+10 ms sleep with permanent requeue — a correct fix for the local defect (a
+sleeping connection blocked one of four scheduler threads) that traded it for
+an unbounded global one, and said so in a comment. `bb81724` (H1) then built
+the delivery pump ON the busy loop and cited it as a feature: "no wakeup
+plumbing needed — the connection already runs every slice." The repo ledger
+recorded "busy-polls by design." I wrote the latter two. The missing controls,
+in order of proximity: no idle-cost negative assertion existed anywhere in the
+suite (rule 1 — T1/R7 are that gate now); the adversarial review battery that
+caught six real bugs the same week ran correctness and house-rules lenses only
+— no lens ever asked "what does this cost when idle?" (rule 5 — the
+idle/resource-cost lens is that gate now); and "by design" was accepted as
+authorization with no bound, no test, and no sign-off (rule 2 — the certifying
+pair is that gate now). Documentation of a defect is not authorization for it;
+we documented it twice and called it design both times.
 
 **Decision record:** *(pending — filled when the shape decision is made, with
 the losing shape's argument preserved.)*
