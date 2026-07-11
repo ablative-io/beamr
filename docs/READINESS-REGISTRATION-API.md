@@ -208,16 +208,77 @@ every (re)use of a slot — the same mint-and-carry discipline
 `ServiceInstanceId::mint()` uses for services (service.rs:35), but per
 registration slot rather than per service.
 
-### 1.4 Registration / rearm / dereg — slice-reachable
+**The event→generation binding (first-consumer finding 2), owned here because
+§4.1's structural guarantee stands on it.** A `mio::Token` is one `usize`; the
+encoding is `token = slot(32 bits) | generation_low(32 bits)` — the low 32 bits
+of the record's u64 generation at ARM time. Validation at delivery, under the
+table lock: the slot's record must exist, its FULL current generation's low
+bits must equal the event token's `generation_low`, and its armed bit must be
+set. Truncation posture, stated: a false 32-bit match requires the same slot
+to be re-armed 2^32 times while ONE kernel event sits buffered between the
+poll thread's `poll()` return and its lock acquisition — a window inside a
+single poll iteration, so the wrap is physically unreachable; and even a
+hypothetical false match delivers to the slot's CURRENT record — the correct,
+live pid of the newest registration — which is a spurious durable-marker wake
+the contract already tolerates by design (C2/C4: wake-without-cause is
+harmless; the consumer probes and re-parks). Two independent walls; the
+guarantee needs only one.
 
-The registration surface is reached through the executing process's context, not
-through `&Scheduler`, so it is usable **inside a slice** with no cross-scheduler
-blocking RPC (Hermes point 4; contract C4). The calling scheduler's
-`SharedState` fills in its own route-home automatically — the consumer supplies
-only `(fd, interest, pid, marker)`, matching liminal's `ReadyWaker`
-= `Weak<Scheduler> + pid + atom` (the `Weak<Scheduler>` is what the service
-captures internally as the route-home, §3; that is the only adapter seam and it
-is inside beamr, not on the consumer).
+### 1.4 Registration / rearm / dereg — the embedder-visible surface
+
+Two consumer-visible surfaces, split by calling context (first-consumer
+finding 1):
+
+- **In-slice** (register + rearm, and ONLY these): a facility trait reached
+  through the executing process's `ProcessContext`, following the landed
+  facility pattern (`context.io_message_facility()` etc., native/context —
+  wired by `build_native_services`, supervision_integration.rs). Usable inside
+  a NativeHandler slice with no cross-scheduler blocking RPC (Hermes point 4;
+  contract C4). The calling scheduler's `SharedState` fills in its own
+  route-home automatically — the consumer supplies only
+  `(fd, interest, pid, marker)`.
+- **Host-side** (deregister, and ONLY it): a public method on `Scheduler`,
+  callable from the supervisor/reaper's record-removal path — never required
+  to run on the parked pid or inside any slice (Hermes point 3). v1 posture:
+  dereg is host-side only; rearm is in-slice only (the C4 drain→rearm→probe→
+  Wait loop is a slice loop); register is in-slice (the arming site is the
+  connection's own slice).
+
+```rust
+/// In-slice facility (native/readiness.rs), set on ProcessContext by
+/// build_native_services iff the scheduler's readiness slot is not Disabled.
+pub trait ReadinessFacility: Send + Sync {
+    /// Contract §3.1 registration; semantics identical to
+    /// SharedState::readiness_register below.
+    fn register(
+        &self,
+        fd: RawFd,
+        interest: Interest,
+        pid: u64,
+        marker: Atom,
+    ) -> Result<ReadinessToken, ReadinessError>;
+    /// One-shot re-arm (contract §3.1); in-slice only.
+    fn rearm(&self, token: &ReadinessToken, interest: Interest)
+        -> Result<(), ReadinessError>;
+}
+
+impl ProcessContext {
+    /// None when the scheduler composed readiness Disabled — the typed-absence
+    /// pattern every facility uses (the caller refuses without suspension).
+    pub fn readiness_facility(&self) -> Option<&dyn ReadinessFacility>;
+}
+
+impl Scheduler {
+    /// Host-side ACK'd deregister (contract §3.1/§3.4): supervisor/reaper
+    /// surface, bounded, dead-pid-safe (C3). See §4.2/§4.6 for the bound and
+    /// the failed-thread posture.
+    pub fn readiness_deregister(&self, token: ReadinessToken);
+}
+```
+
+These delegate to the internal `SharedState` seam below (shown for
+implementers; visibility `pub(in crate::scheduler)` — the trait and `Scheduler`
+method above are the API consumers name).
 
 ```rust
 impl SharedState {  // reached via ProcessContext in a slice
@@ -486,10 +547,11 @@ Walk:
    `Registry::deregister`). The record is now `Draining` at G′.
 4. The kernel recycles N for connection B; B registers fd N → a **new** slot S_B
    (or S reused at a further-bumped generation G″), route-home B, pid P_B.
-5. The poll thread finally takes the lock and looks up its buffered event. It
-   carries the generation it observed at arm time (G). It finds either a
-   `Draining`/absent record at S, or S reused at G″ ≠ G — **generation
-   mismatch, dropped.** No marker crosses to P_B.
+5. The poll thread finally takes the lock and looks up its buffered event. The
+   event's token carries `(slot, generation_low)` bound at ARM time (§1.3 —
+   the binding finding 2 demanded be named): G's low bits. It finds either a
+   `Draining`/absent record at S, or S reused at G″ whose low bits ≠ G's —
+   **generation mismatch, dropped.** No marker crosses to P_B.
 
 The guarantee is structural (spec §3.4): the worst case is a spurious marker to
 the OLD pid P_A (idempotent, C4/R6, harmless — and P_A is dead or draining), and
@@ -532,9 +594,17 @@ If `fd` is invalid at `readiness_register` (already closed), mio
 `Registry::register` returns `EBADF` → `ReadinessError::Register { errno }`, no
 record created, caller RUNNABLE (Hermes point 4). If `fd` closes AFTER a
 successful register but before any event, the kernel emits no further readiness
-for it (or an error/HUP event, which the poll thread treats as a readiness that
-delivers the marker — the consumer's next slice observes EOF/`WouldBlock` and
-deregisters via its R4 table). Either way no stale cross-delivery (§4.1).
+for it (or an error/HUP event — see below). Either way no stale cross-delivery
+(§4.1).
+
+**Error/HUP/EOF conditions deliver the marker REGARDLESS of the armed
+direction** (first-consumer minor; incident-doc requirement 1 names
+readable+HUP+error interest): kqueue/epoll report error and hang-up conditions
+unconditionally, and the poll thread treats any such condition on a live
+generation as readiness — the marker fires even if only `READABLE` (or only
+`WRITABLE`) was armed, and the consumer's next slice observes EOF/the error
+from its own nonblocking read and deregisters via its R4 table. A consumer's
+EOF-teardown path may rely on this wake.
 
 ### 4.4 Poll-set membership under scheduler shutdown
 
@@ -561,6 +631,37 @@ name, rather than silently degraded"). `Owned` surfaces it through
 A service that cannot guarantee its lifecycle is not installed.
 
 ---
+
+### 4.6 Poll-thread death — fail LOUD, never fail-stuck (first-consumer finding 3)
+
+Unexpected poll-thread death is a supervision-integrity failure and must be
+observable, not absorbed (the D4 watcher ruling; the vacuum A4 exhibit). The
+posture:
+
+- The poll thread body runs under a panic guard whose unwind path marks the
+  service **FAILED** (an atomic poisoned flag on `ReadinessCore`) before the
+  thread exits. A FAILED service is loud three ways: `register`/`rearm` refuse
+  with a new typed `ReadinessError::ServiceFailed`; the §5 inventory entry
+  reports `actual: 0` against `configured: 1` (the thread-name list is empty —
+  the same truthful-divergence signal every joined/failed service shows); and
+  the first refusal names the condition to the consumer, who owns the fatal-
+  loud decision (the first consumer refuses at birth and would tear down).
+- `readiness_deregister` on a FAILED service tombstones the generation under
+  the table lock and **returns immediately, without the epoch wait** — the
+  wait's only purpose is to bound fd/slot reuse against an in-flight delivery,
+  and no new arming can occur on a FAILED service. This cannot fail-stuck a
+  supervisor teardown on a dead thread.
+- Why tombstone-without-wait is airtight (the pair's precision, adopted): the
+  impossibility of cross-delivery rests on the §3 delivery order — generation
+  check under the table lock → weak upgrade → deliver — being the left-hand
+  wall for EVERY delivery path, **including an event already handed past the
+  poll thread before the panic**. Thread death is circumstance; the generation
+  check is the guarantee. The tombstone bump walls off any subsequent delivery
+  attempt regardless of which thread would have made it.
+
+Gate shape: kill the poll thread (test seam panics it), assert
+`ServiceFailed` refusals, `actual: 0` inventory, and a bounded
+`readiness_deregister` return; positive control on a healthy service.
 
 ## 5. The §5 story — inventory and idle-cost lens
 
@@ -718,20 +819,24 @@ a recommendation.
   `ReadinessCore`; register/rearm/deregister go through the `Registry` under the
   table lock, the Waker bounds the dereg/shutdown handshakes. This keeps "mio via
   the existing lock" (out of scope, §9) intact.
-- **OQ-3 — rename `DirtyCompletionRegistry`.** With §6 broadening its use beyond
-  dirty completions to general teardown admission, the name misleads.
-  *Recommendation:* rename to `TeardownAdmissionRegistry`
-  (and `DirtyCompletionReservation` → `TeardownAdmission`) in this commit, since
-  the broader use lands here; low-risk, `pub(in crate::scheduler)` only
-  (mod.rs:457). If the reviewer prefers to keep the diff focused, defer the
-  rename to a follow-up and keep the misnomer with a doc note.
-- **OQ-4 — `full_runtime()` readiness arm.** §1.2 recommends `Owned` for the
-  single-scheduler full-runtime profile and `Shared` for the aion multi-scheduler
-  profile. Composition spec §3.9 says the full-runtime profile "documents which
-  it picks" but does not fix it. *Recommendation:* `Owned` in `full_runtime()`
-  (a standalone VM is one scheduler); document that multi-scheduler embedders
-  build `SharedReadiness` and inject it. Flag for the reviewer since it is a
-  profile-default commitment.
+- **OQ-3 — rename `DirtyCompletionRegistry`. RESOLVED: YES, this commit** —
+  first consumer and Vesper's half both rule it ("a registry whose name
+  misdescribes its guard set is the pin-that-can't-fail failure mode wearing a
+  name"); Waffles' half pro forma. Rename to `TeardownAdmissionRegistry`
+  (and `DirtyCompletionReservation` → `TeardownAdmission`); low-risk,
+  `pub(in crate::scheduler)` only (mod.rs:457).
+- **OQ-4 — `full_runtime()` readiness arm. RESOLVED: `Owned`** — first
+  consumer no-objection and Vesper's half concur (the standalone-VM reading
+  the pair confirmed for distribution); Waffles' half pro forma.
+  Multi-scheduler embedders build `SharedReadiness` and inject it.
+
+**First-consumer composition, recorded (liminal):** readiness composes `Owned`
+on the CONNECTION scheduler only, `Disabled` on channel/conversation schedulers
+(they own no fds) — no `Shared` needed for liminal v1 in either profile;
+readiness build failure at server startup is fatal-loud on the consumer side (a
+server that cannot park connections is the incident, refused at birth); the
+consumer's D2 census pins will assert the `beamr-readiness-poll` inventory
+line.
 
 ---
 
