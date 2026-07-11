@@ -77,6 +77,15 @@ impl StandardIoServer {
         self.ring.requested_worker_count()
     }
 
+    /// Stop and join the backing completion ring (spec §4). The owning
+    /// scheduler calls this at shutdown so the standard-IO ring's workers are
+    /// joined rather than leaked until the last `Arc` drop, making a
+    /// post-shutdown inventory truthful. Idempotent: the ring's own `shutdown`
+    /// no-ops on a second call.
+    pub fn shutdown(&self) {
+        self.ring.shutdown();
+    }
+
     /// Drain and handle all currently arrived `io_request` messages.
     pub fn run_available(&self, process: &mut Process, messages: &dyn IoMessageFacility) {
         process.mailbox_mut().drain_arrival();

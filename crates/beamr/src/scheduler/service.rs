@@ -136,6 +136,22 @@ impl<T: ShutdownService> ServiceMode<T> {
             ServiceMode::Disabled => {}
         }
     }
+
+    /// Ownership-aware teardown for a slot held behind a shared reference (spec
+    /// §4). Stops and joins the service iff this scheduler OWNS it; a `Shared`
+    /// injection or a `Disabled` slot is a no-op — the owner-only-join guarantee
+    /// without the `&mut` that [`shutdown_if_owned`](Self::shutdown_if_owned)
+    /// needs, so it runs on a `ServiceMode` field of an `Arc<SharedState>`.
+    ///
+    /// It does NOT empty the slot: a post-shutdown inventory still reads the
+    /// (now joined) service and reports its truthful zero live threads, rather
+    /// than a slot that was blanked to `Disabled`. Idempotent for backends whose
+    /// own `shutdown()` is idempotent (every ring here is).
+    pub fn shutdown_owned(&self) {
+        if let ServiceMode::Owned(service) = self {
+            service.shutdown();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -223,6 +239,34 @@ mod tests {
         // A second call is a no-op — the service cannot be stopped twice.
         owned.shutdown_if_owned();
         assert_eq!(shutdowns.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn shutdown_owned_stops_only_owned_and_leaves_the_slot_readable() {
+        // Owned: stopped, and NOT emptied — a post-shutdown reader still sees
+        // the (now joined) service, unlike `shutdown_if_owned`.
+        let (service, shutdowns) = TestService::new();
+        let owned = ServiceMode::Owned(service);
+        owned.shutdown_owned();
+        assert_eq!(shutdowns.load(Ordering::Acquire), 1, "owned stopped");
+        assert_eq!(owned.label(), ServiceModeLabel::Owned, "slot not emptied");
+        assert!(owned.service().is_some());
+
+        // Shared: NEVER stopped here (owner-only join), reference retained.
+        let (shared_service, shared_shutdowns) = TestService::new();
+        let shared = ServiceMode::Shared(Arc::new(shared_service));
+        shared.shutdown_owned();
+        assert_eq!(
+            shared_shutdowns.load(Ordering::Acquire),
+            0,
+            "a shared injection is never stopped by its consumer"
+        );
+        assert_eq!(shared.label(), ServiceModeLabel::Shared);
+
+        // Disabled: no-op.
+        let disabled: ServiceMode<TestService> = ServiceMode::Disabled;
+        disabled.shutdown_owned();
+        assert_eq!(disabled.label(), ServiceModeLabel::Disabled);
     }
 
     #[test]

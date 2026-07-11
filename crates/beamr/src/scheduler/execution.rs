@@ -80,9 +80,12 @@ impl Scheduler {
                 bridge.shutdown();
             }
         }
-        if let Some(ring) = &self.shared.io_ring {
-            ring.shutdown();
-        }
+        // The generic ring is stopped by its OWNER only (spec §3.5/§4): an
+        // Owned ring joins its workers, a Shared injection is left for its
+        // owner, a Disabled slot no-ops. `shutdown_owned` (not `.service()`)
+        // is what makes the Shared case safe — `.service()` would stop a ring
+        // this scheduler does not own.
+        self.shared.io_ring.shutdown_owned();
         // Stop the dirty pools through their ServiceMode: an Owned pool joins
         // its workers, a Disabled slot is a no-op (nothing to join). The full
         // ownership-ordered teardown rewrite is the §4 work of commits 3-5.
@@ -97,7 +100,12 @@ impl Scheduler {
         if let Some(pool) = self.shared.dirty_io.service() {
             pool.shutdown();
         }
-        self.shared.file_io_ring.shutdown();
+        // File and standard rings, owner-only (spec §3.3/§3.4/§4). The standard
+        // ring's stop is NEW this commit: it was previously joined only at the
+        // last `Arc` drop, so a post-shutdown inventory reported a live worker;
+        // joining it here makes that inventory truthful.
+        self.shared.file_io_ring.shutdown_owned();
+        self.shared.standard_io.shutdown_owned();
         // Abort the distribution drain task before joining worker threads. The
         // owned runtime is dropped later when `SharedState` drops.
         if let Some(sender) = &self.shared.dist_sender {
@@ -358,8 +366,13 @@ pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
 }
 
 fn drain_file_io_completions(shared: &SharedState) {
-    for completion in shared
-        .file_io_ring
+    // A Disabled file ring has nothing to poll (spec §3.3): its facility is
+    // absent, so no file op ever registered here.
+    let Some(file_ring) = shared.file_io_ring.service() else {
+        return;
+    };
+    for completion in file_ring
+        .ring()
         .poll_completions(std::time::Duration::from_millis(0))
     {
         let op_id = completion.op_id;
@@ -424,17 +437,18 @@ fn handle_udp_active_completion(
             deliver_udp_active_datagram(shared, &fd, bytes, &data, addr);
             match mode {
                 FdMode::Active => {
-                    let op_id = shared.file_io_ring.submit(crate::io::IoOp::RecvMsg {
+                    if let Some(op_id) = shared.submit_file_ring_op(crate::io::IoOp::RecvMsg {
                         fd: fd.fd(),
                         buf_len: 65_535,
-                    });
-                    shared.file_io_pending.insert(
-                        op_id,
-                        (
-                            fd.controlling_process(),
-                            crate::native::FileIoContinuation::UdpActiveRecv { fd },
-                        ),
-                    );
+                    }) {
+                        shared.file_io_pending.insert(
+                            op_id,
+                            (
+                                fd.controlling_process(),
+                                crate::native::FileIoContinuation::UdpActiveRecv { fd },
+                            ),
+                        );
+                    }
                 }
                 FdMode::ActiveOnce => fd.set_mode(FdMode::Passive),
                 FdMode::Passive => {}
@@ -501,18 +515,19 @@ fn handle_tcp_active_completion(
             deliver_tcp_active_data(shared, &fd, chunk);
             match mode {
                 FdMode::Active => {
-                    let op_id = shared.file_io_ring.submit(crate::io::IoOp::Read {
+                    if let Some(op_id) = shared.submit_file_ring_op(crate::io::IoOp::Read {
                         fd: fd.fd(),
                         buf_len: 64 * 1024,
                         offset: u64::MAX,
-                    });
-                    shared.file_io_pending.insert(
-                        op_id,
-                        (
-                            fd.controlling_process(),
-                            crate::native::FileIoContinuation::TcpActiveRecv { fd },
-                        ),
-                    );
+                    }) {
+                        shared.file_io_pending.insert(
+                            op_id,
+                            (
+                                fd.controlling_process(),
+                                crate::native::FileIoContinuation::TcpActiveRecv { fd },
+                            ),
+                        );
+                    }
                 }
                 FdMode::ActiveOnce => fd.set_mode(FdMode::Passive),
                 FdMode::Passive => {}

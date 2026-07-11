@@ -33,10 +33,58 @@ pub struct RingConfig {
     pub fallback_pool_size: usize,
 }
 
+/// Historical default thread-name prefix for fallback workers whose caller
+/// does not name the service — the prefix every ring used before spec §5
+/// introduced service-distinct names. [`create_ring`] and [`try_create_ring`]
+/// keep this default so pre-§5 embedder call sites stay source-compatible.
+pub const DEFAULT_RING_THREAD_PREFIX: &str = "beamr-io-thread-pool";
+/// Thread-name prefix for the file-IO ring's fallback workers (spec §5).
+///
+/// Each ring gets a service-distinct prefix so the OS-thread probe and the
+/// service inventory can attribute a worker to the right service; before this
+/// the file, standard, and generic rings all named their workers
+/// `beamr-io-thread-pool-*` and collided three ways.
+pub const FILE_IO_RING_THREAD_PREFIX: &str = "beamr-file-io";
+/// Thread-name prefix for the standard-IO ring's fallback workers (spec §5).
+pub const STANDARD_IO_RING_THREAD_PREFIX: &str = "beamr-standard-io";
+/// Thread-name prefix for the generic-IO ring's fallback workers (spec §5).
+pub const GENERIC_IO_RING_THREAD_PREFIX: &str = "beamr-generic-io";
+
 #[cfg(test)]
 mod tests {
     use super::errno_to_atom;
     use crate::atom::Atom;
+
+    /// Compile-pins the pre-§5 embedder surface: both ring factories accept a
+    /// bare `RingConfig` (docs/design/beamr/briefs/B-100.md), and the fallback
+    /// workers keep the historical `beamr-io-thread-pool-*` names embedders
+    /// may already match on.
+    #[test]
+    fn one_argument_ring_factories_stay_source_compatible_with_the_default_prefix() {
+        let config = super::RingConfig {
+            ring_depth: 8,
+            fallback_pool_size: 1,
+        };
+
+        let ring = super::create_ring(config);
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(
+            ring.worker_thread_names(),
+            vec!["beamr-io-thread-pool-0".to_owned()],
+            "one-argument create_ring must keep the historical default \
+             worker prefix"
+        );
+        drop(ring);
+
+        let fallible = super::try_create_ring(config);
+        #[cfg(not(target_os = "linux"))]
+        assert!(
+            fallible.is_ok(),
+            "one-argument try_create_ring must construct the fallback ring"
+        );
+        #[cfg(target_os = "linux")]
+        drop(fallible);
+    }
 
     #[test]
     fn errno_mapping_returns_erlang_reason_atoms() {
@@ -105,12 +153,39 @@ impl Default for RingConfig {
     }
 }
 
-/// Construct the platform-appropriate completion ring.
+/// Construct the platform-appropriate completion ring with the historical
+/// default worker prefix, [`DEFAULT_RING_THREAD_PREFIX`].
+///
+/// Callers that need service-distinct worker names for spec §5 inventory
+/// attribution use [`create_ring_with_prefix`].
 #[must_use]
 pub fn create_ring(config: RingConfig) -> Box<dyn CompletionRing> {
+    create_ring_with_prefix(config, DEFAULT_RING_THREAD_PREFIX)
+}
+
+/// Fallible platform ring construction with the historical default worker
+/// prefix, [`DEFAULT_RING_THREAD_PREFIX`].
+///
+/// Callers that need service-distinct worker names for spec §5 inventory
+/// attribution use [`try_create_ring_with_prefix`].
+pub fn try_create_ring(config: RingConfig) -> std::io::Result<Box<dyn CompletionRing>> {
+    try_create_ring_with_prefix(config, DEFAULT_RING_THREAD_PREFIX)
+}
+
+/// Construct the platform-appropriate completion ring.
+///
+/// `thread_name_prefix` names this ring's fallback worker threads (spec §5) so
+/// the inventory can attribute them to the owning service; it is ignored on
+/// Linux, whose io_uring backend owns no named OS worker threads.
+#[must_use]
+pub fn create_ring_with_prefix(
+    config: RingConfig,
+    thread_name_prefix: &str,
+) -> Box<dyn CompletionRing> {
     #[cfg(target_os = "linux")]
     {
-        match try_create_ring(config) {
+        let _ = thread_name_prefix;
+        match try_create_ring_with_prefix(config, thread_name_prefix) {
             Ok(ring) => ring,
             Err(error) => Box::new(ring::FailedRing::new(error)),
         }
@@ -118,20 +193,33 @@ pub fn create_ring(config: RingConfig) -> Box<dyn CompletionRing> {
 
     #[cfg(not(target_os = "linux"))]
     {
-        Box::new(ThreadPoolRing::new(config.fallback_pool_size))
+        Box::new(ThreadPoolRing::with_prefix(
+            config.fallback_pool_size,
+            thread_name_prefix,
+        ))
     }
 }
 
 /// Fallible platform ring construction for callers that want backend initialization errors.
-pub fn try_create_ring(config: RingConfig) -> std::io::Result<Box<dyn CompletionRing>> {
+///
+/// `thread_name_prefix` names the fallback worker threads (spec §5); ignored on
+/// Linux (io_uring owns no named OS worker threads).
+pub fn try_create_ring_with_prefix(
+    config: RingConfig,
+    thread_name_prefix: &str,
+) -> std::io::Result<Box<dyn CompletionRing>> {
     #[cfg(target_os = "linux")]
     {
+        let _ = thread_name_prefix;
         IoUringRing::new(config.ring_depth).map(|ring| Box::new(ring) as Box<dyn CompletionRing>)
     }
 
     #[cfg(not(target_os = "linux"))]
     {
-        Ok(Box::new(ThreadPoolRing::new(config.fallback_pool_size)))
+        Ok(Box::new(ThreadPoolRing::with_prefix(
+            config.fallback_pool_size,
+            thread_name_prefix,
+        )))
     }
 }
 

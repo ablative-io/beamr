@@ -102,22 +102,37 @@ fn default_profile_pins_as_built_service_inventory() {
         vec![crate::distribution::NET_KERNEL_THREAD_NAME.to_owned()]
     );
 
-    // Two 4-thread fallback rings on non-Linux, both still colliding on
-    // `beamr-io-thread-pool-*` (renaming is commit 3, spec §5). io_uring on
-    // Linux owns no named OS worker threads.
+    // Two 4-thread fallback rings on non-Linux, now with SERVICE-DISTINCT
+    // thread-name prefixes (spec §5): the three-way `beamr-io-thread-pool-*`
+    // collision between the file, standard, and generic rings is gone. This
+    // pins the new names exactly — the exactness does not weaken, only the
+    // label values change (pair-ruled: commit 3 builds against this test and
+    // must not loosen it). io_uring on Linux owns no named OS worker threads.
     let file_ring = &by_service[inventory::FILE_IO_RING];
     let standard_ring = &by_service[inventory::STANDARD_IO_RING];
     assert_eq!(file_ring.mode, ServiceModeLabel::Owned);
     assert_eq!(standard_ring.mode, ServiceModeLabel::Owned);
+    // File and standard rings carry distinct process-wide instance identities.
+    assert_ne!(file_ring.instance, standard_ring.instance);
     #[cfg(not(target_os = "linux"))]
     {
-        let expected_ring_names: Vec<String> = (0..4)
-            .map(|index| format!("beamr-io-thread-pool-{index}"))
+        let expected_file_names: Vec<String> = (0..4)
+            .map(|index| format!("{}-{index}", crate::io::FILE_IO_RING_THREAD_PREFIX))
+            .collect();
+        let expected_standard_names: Vec<String> = (0..4)
+            .map(|index| format!("{}-{index}", crate::io::STANDARD_IO_RING_THREAD_PREFIX))
             .collect();
         assert_eq!(file_ring.actual, 4);
-        assert_eq!(file_ring.thread_names, expected_ring_names);
+        assert_eq!(file_ring.thread_names, expected_file_names);
         assert_eq!(standard_ring.actual, 4);
-        assert_eq!(standard_ring.thread_names, expected_ring_names);
+        assert_eq!(standard_ring.thread_names, expected_standard_names);
+        // The distinct prefixes really are distinct — no shared name survives.
+        assert!(
+            expected_file_names
+                .iter()
+                .all(|name| !expected_standard_names.contains(name)),
+            "file and standard ring worker names must not collide"
+        );
     }
     #[cfg(target_os = "linux")]
     {
@@ -331,11 +346,12 @@ fn process_wide_aggregate_dedups_shared_instances_once() {
 }
 
 /// After `shutdown()` the inventory stays truthful in BOTH directions: the
-/// joined services (dirty pools, file ring) report zero live threads, while
-/// the services today's shutdown does NOT stop — the standard-IO ring and both
-/// distribution runtimes, the §1 as-built leaks — keep reporting their
-/// still-live threads. This pins the leak set the §4 teardown rewrite retires
-/// (commits 3-5); `configured` keeps the request either way.
+/// joined services (dirty pools, file ring, AND — new this commit — the
+/// standard-IO ring) report zero live threads, while the services this
+/// commit's shutdown still does NOT stop — both distribution runtimes, the §1
+/// as-built leaks — keep reporting their still-live threads. This pins the
+/// remaining leak set the §4 distribution rewrite retires (commit 4);
+/// `configured` keeps the request either way.
 #[test]
 fn post_shutdown_inventory_reports_joined_services_as_zero_and_leaks_as_live() {
     let scheduler = new_default_scheduler();
@@ -344,23 +360,22 @@ fn post_shutdown_inventory_reports_joined_services_as_zero_and_leaks_as_live() {
     let after = entries_by_service(&scheduler);
 
     // Joined by shutdown(): live count drops to zero, request preserved.
-    // (On Linux the file ring is io_uring — zero named workers both sides.)
+    // (On Linux the file/standard rings are io_uring — zero named workers both
+    // sides.) The standard-IO ring joins HERE now (spec §3.4): its explicit
+    // stop is new this commit, so a post-shutdown inventory is truthful rather
+    // than reporting a worker that outlives shutdown() until the last Arc drop.
     for service in [
         inventory::DIRTY_CPU,
         inventory::DIRTY_IO,
         inventory::FILE_IO_RING,
+        inventory::STANDARD_IO_RING,
     ] {
         assert_eq!(after[service].actual, 0, "{service} joined at shutdown");
         assert_eq!(after[service].configured, before[service].configured);
     }
 
-    // Leaked by today's shutdown(): still live, truthfully reported.
-    #[cfg(not(target_os = "linux"))]
-    assert_eq!(
-        after[inventory::STANDARD_IO_RING].actual,
-        before[inventory::STANDARD_IO_RING].actual,
-        "standard-IO ring is not stopped by shutdown() today"
-    );
+    // Still leaked by this commit's shutdown() (distribution rewrite is commit
+    // 4): both runtime workers stay live and are truthfully reported.
     assert_eq!(
         after[inventory::NET_KERNEL].actual,
         1,

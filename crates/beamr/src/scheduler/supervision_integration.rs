@@ -554,9 +554,20 @@ pub(super) fn build_native_services(
     });
     let pg_facility: Arc<dyn crate::distribution::pg::PgFacility> =
         Arc::clone(&shared.pg_registry) as _;
-    let file_io_facility: Arc<dyn FileIoFacility> = Arc::new(SchedulerFileIoFacility {
-        shared: Arc::clone(shared),
-    });
+    // The file facility exists only when the file ring is present (spec §3.3).
+    // A Disabled file ring yields no facility, so `submit_file_io` refuses at
+    // the BIF surface (badarg) BEFORE any suspension is registered — the
+    // refusal-first discipline, held here by simply not offering the facility.
+    // §3.3's embedder-typed refusal (Q-B's ServiceUnavailable half) lands with
+    // live-Disabled construction in commit 5: the only Disabled file ring
+    // today is replay, which never runs file natives live.
+    let file_io_facility: Option<Arc<dyn FileIoFacility>> =
+        shared.file_io_ring.service().map(|ring| {
+            Arc::new(SchedulerFileIoFacility {
+                shared: Arc::clone(shared),
+                ring: Arc::clone(ring.ring()),
+            }) as Arc<dyn FileIoFacility>
+        });
     let distribution_send: Arc<dyn DistributionSendFacility> =
         Arc::new(SchedulerDistributionSendFacility {
             shared: Arc::clone(shared),
@@ -593,8 +604,11 @@ pub(super) fn build_native_services(
         io_message_facility: Some(Arc::new(SchedulerIoMessageFacility {
             shared: Arc::clone(shared),
         })),
-        file_io_facility: (!shared.replay_mode).then_some(file_io_facility),
-        tcp_io_facility: (!shared.replay_mode).then(|| {
+        // Both surfaces ride the file ring, so both are absent when it is
+        // Disabled (spec §3.3) — `file_io_facility` is already gated on the
+        // ring above; the TCP surface follows the same condition.
+        file_io_facility,
+        tcp_io_facility: shared.file_io_ring.service().is_some().then(|| {
             Arc::new(SchedulerTcpIoFacility {
                 shared: Arc::clone(shared),
             }) as Arc<dyn crate::native::TcpIoFacility>
@@ -942,6 +956,10 @@ impl IoMessageFacility for SchedulerIoMessageFacility {
 
 struct SchedulerFileIoFacility {
     shared: Arc<SharedState>,
+    /// The file ring captured at build time. The facility is constructed only
+    /// when the file ring is present (spec §3.3), so this is the live Owned or
+    /// Shared ring — never a Disabled slot.
+    ring: Arc<dyn CompletionRing>,
 }
 
 struct SchedulerEtsFacility {
@@ -1001,7 +1019,7 @@ impl EtsFacility for SchedulerEtsFacility {
 
 impl FileIoFacility for SchedulerFileIoFacility {
     fn submit_file_io(&self, pid: u64, op: IoOp, continuation: FileIoContinuation) -> u64 {
-        let op_id = self.shared.file_io_ring.submit(op);
+        let op_id = self.ring.submit(op);
         self.track_submitted_file_io(pid, op_id, continuation);
         op_id
     }
@@ -1047,7 +1065,7 @@ impl FileIoFacility for SchedulerFileIoFacility {
     }
 
     fn ring(&self) -> &dyn CompletionRing {
-        self.shared.file_io_ring.as_ref()
+        self.ring.as_ref()
     }
 }
 
@@ -1061,11 +1079,11 @@ impl crate::native::TcpIoFacility for SchedulerTcpIoFacility {
         socket: Arc<crate::io::resource::FdInner>,
         buf_len: usize,
     ) -> Option<u64> {
-        let op_id = self.shared.file_io_ring.submit(IoOp::Read {
+        let op_id = self.shared.submit_file_ring_op(IoOp::Read {
             fd: socket.fd(),
             buf_len,
             offset: u64::MAX,
-        });
+        })?;
         self.shared.file_io_pending.insert(
             op_id,
             (

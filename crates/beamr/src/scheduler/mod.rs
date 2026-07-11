@@ -63,6 +63,8 @@ mod exit_tombstones;
 #[cfg(feature = "threads")]
 mod inventory;
 #[cfg(feature = "threads")]
+mod ring_service;
+#[cfg(feature = "threads")]
 mod service;
 #[cfg(all(feature = "threads", any(test, feature = "test-support")))]
 pub mod thread_probe;
@@ -129,8 +131,10 @@ use crate::ets::{EtsRegistry, EtsTable, EtsTableId, EtsTableMetadata};
 use crate::hook::Hook;
 #[cfg(feature = "threads")]
 use crate::io::{
-    CompletionRing, CompletionRingIoFacility, IoCompletion, IoCompletionBridge, IoFacility, IoOp,
-    IoSink, IoWakeTarget, NullSink, PendingIoRegistry, RingConfig, StandardIoServer, create_ring,
+    CompletionRing, CompletionRingIoFacility, FILE_IO_RING_THREAD_PREFIX,
+    GENERIC_IO_RING_THREAD_PREFIX, IoCompletion, IoCompletionBridge, IoFacility, IoOp, IoSink,
+    IoWakeTarget, NullSink, PendingIoRegistry, RingConfig, STANDARD_IO_RING_THREAD_PREFIX,
+    StandardIoServer, create_ring_with_prefix,
 };
 #[cfg(feature = "threads")]
 use crate::jit::{DEFAULT_JIT_THRESHOLD, JitCache, JitProfiler};
@@ -164,6 +168,8 @@ use dashmap::{DashMap, DashSet};
 #[cfg(feature = "threads")]
 use process_slot::{ProcessMetadata, ProcessSlot};
 #[cfg(feature = "threads")]
+use ring_service::{RingService, StandardIoService};
+#[cfg(feature = "threads")]
 use run_queue::{PriorityStealers, RunQueue};
 #[cfg(feature = "threads")]
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -182,28 +188,11 @@ enum ReplayMode {
     Replay(ReplayLog),
 }
 
+/// Sentinel [`SharedState::standard_io_pid`] when the standard-IO ring is
+/// `Disabled` (spec §3.4): no process 0 is registered, so no live pid can
+/// match. Distinct from any allocatable pid (allocation starts at 1).
 #[cfg(feature = "threads")]
-#[derive(Default)]
-struct ReplayDisabledRing {
-    next_op_id: AtomicU64,
-}
-
-#[cfg(feature = "threads")]
-impl CompletionRing for ReplayDisabledRing {
-    fn submit(&self, _op: IoOp) -> u64 {
-        self.next_op_id.fetch_add(1, Ordering::Relaxed)
-    }
-
-    fn poll_completions(&self, _timeout: Duration) -> Vec<IoCompletion> {
-        Vec::new()
-    }
-
-    fn pending_count(&self) -> usize {
-        0
-    }
-
-    fn shutdown(&self) {}
-}
+const NO_STANDARD_IO_PID: u64 = u64::MAX;
 
 #[cfg(feature = "threads")]
 #[derive(Clone, Default)]
@@ -302,7 +291,11 @@ pub(super) struct SharedState {
     /// pid → sticky embedder resume for a hook suspension (call id, or
     /// `RESUME_ANY_HOOK` when the resume raced the suspension's creation).
     pending_resumes: DashMap<u64, u64>,
-    file_io_ring: Arc<dyn CompletionRing>,
+    /// File-IO completion ring (spec §3.3). `Owned` in live mode; `Disabled`
+    /// under replay, where the file facility is absent and file submission is
+    /// refused before any suspension. `Shared` is a type capability; the
+    /// injection API is commit 5.
+    file_io_ring: ServiceMode<RingService>,
     file_io_pending: DashMap<u64, (u64, FileIoContinuation)>,
     file_io_orphans: DashMap<u64, IoCompletion>,
     file_io_results: DashMap<u64, FileIoCompletion>,
@@ -326,10 +319,15 @@ pub(super) struct SharedState {
     /// slot that is `Executing` or a park gap.
     expired_receive_timers: DashMap<u64, Vec<u64>>,
     output_sink: Mutex<Arc<dyn IoSink>>,
-    io_ring: Option<Arc<dyn CompletionRing>>,
+    /// Optional generic-IO ring (spec §3.5). `Disabled` (byte-identical to the
+    /// former `None`) when `config.io` is absent; `Owned` when requested.
+    /// `Shared` is a type capability whose injection API is commit 5.
+    io_ring: ServiceMode<RingService>,
     io_registry: Option<Arc<PendingIoRegistry>>,
     io_bridge: Mutex<Option<IoCompletionBridge>>,
     io_facility: Option<Arc<dyn IoFacility>>,
+    /// Group-leader / standard-IO server pid, or [`NO_STANDARD_IO_PID`] when the
+    /// standard ring is `Disabled` (no process 0 registered, spec §3.4).
     standard_io_pid: u64,
     /// Process-unique identities minted for each ancillary service at
     /// construction, so `service_inventory()` reports a stable identity (§5).
@@ -344,9 +342,11 @@ pub(super) struct SharedState {
     #[cfg(feature = "telemetry")]
     telemetry_metrics: TelemetryMetricState,
 
-    // Kept for ownership: dropping SharedState must also stop the backing standard I/O server.
-    #[allow(dead_code)]
-    _standard_io_server: StandardIoServer,
+    /// Standard-IO ring + group-leader server (spec §3.4). `Owned` in live
+    /// mode, where process 0 is registered; `Disabled` under replay (no ring,
+    /// no process 0). Its owner joins the ring at shutdown (`shutdown_owned`),
+    /// so the ring is not leaked until the last `Arc` drop.
+    standard_io: ServiceMode<StandardIoService>,
 
     #[cfg(any(test, feature = "test-support"))]
     idle_parks: AtomicUsize,
@@ -420,6 +420,15 @@ impl SharedState {
             self.exit_errors.remove(&evicted);
             self.exit_exceptions.remove(&evicted);
         }
+    }
+
+    /// Submit an operation to the file-IO ring, or `None` when it is `Disabled`
+    /// (spec §3.3). The completion re-arm paths use this so a disabled ring
+    /// stops re-arming instead of dispatching into a ring that was never built.
+    pub(super) fn submit_file_ring_op(&self, op: IoOp) -> Option<u64> {
+        self.file_io_ring
+            .service()
+            .map(|ring| ring.ring().submit(op))
     }
 
     pub(super) fn create_table(&self, metadata: EtsTableMetadata) -> EtsTableId {
@@ -786,7 +795,10 @@ impl Scheduler {
             None
         } else {
             config.io.map(|ring_config| {
-                let ring: Arc<dyn CompletionRing> = Arc::from(create_ring(ring_config));
+                let ring: Arc<dyn CompletionRing> = Arc::from(create_ring_with_prefix(
+                    ring_config,
+                    GENERIC_IO_RING_THREAD_PREFIX,
+                ));
                 let registry = Arc::new(PendingIoRegistry::default());
                 let facility: Arc<dyn IoFacility> = Arc::new(CompletionRingIoFacility::new(
                     Arc::clone(&ring),
@@ -795,9 +807,17 @@ impl Scheduler {
                 (ring, registry, facility)
             })
         };
+        // Generic ring ownership (spec §3.5): `Disabled` (byte-identical to the
+        // former `None` — no facility, no bridge) when unconfigured, `Owned`
+        // when built here. The completion bridge and pending registry stay
+        // scheduler-owned regardless of ring ownership.
         let (io_ring, io_registry, io_facility) = match io_runtime {
-            Some((ring, registry, facility)) => (Some(ring), Some(registry), Some(facility)),
-            None => (None, None, None),
+            Some((ring, registry, facility)) => (
+                ServiceMode::Owned(RingService::new(ring)),
+                Some(registry),
+                Some(facility),
+            ),
+            None => (ServiceMode::Disabled, None, None),
         };
         let distribution = config.distribution.unwrap_or_default();
         let dist_local_node_name = config
@@ -832,17 +852,40 @@ impl Scheduler {
         }
         let namespace_store = DashMap::new();
         namespace_store.insert(NamespaceId::DEFAULT, Arc::clone(&module_registry));
-        let file_io_ring: Arc<dyn CompletionRing> = if replay_enabled {
-            Arc::new(ReplayDisabledRing::default())
+        // File-IO ring (spec §3.3): `Disabled` under replay — the file facility
+        // is then absent from native services, so file submission refuses
+        // before registering any suspension — and `Owned` in live mode with a
+        // service-distinct thread name.
+        let file_io_ring: ServiceMode<RingService> = if replay_enabled {
+            ServiceMode::Disabled
         } else {
-            Arc::from(crate::io::create_ring(RingConfig::default()))
+            ServiceMode::Owned(RingService::new(Arc::from(create_ring_with_prefix(
+                RingConfig::default(),
+                FILE_IO_RING_THREAD_PREFIX,
+            ))))
         };
-        let standard_io_ring: Arc<dyn CompletionRing> = if replay_enabled {
-            Arc::new(ReplayDisabledRing::default())
+        // Standard-IO ring + group-leader server (spec §3.4): `Disabled` under
+        // replay (no ring, no process 0 — never a live ring behind a disabled
+        // facade), `Owned` in live mode. `standard_io_pid` follows: process 0
+        // when Owned, the no-such-pid sentinel when Disabled.
+        let standard_io_pid = if replay_enabled {
+            NO_STANDARD_IO_PID
         } else {
-            Arc::from(crate::io::create_ring(RingConfig::default()))
+            0u64
         };
-        let standard_io_pid = 0u64;
+        let standard_io: ServiceMode<StandardIoService> = if replay_enabled {
+            ServiceMode::Disabled
+        } else {
+            let standard_io_ring: Arc<dyn CompletionRing> = Arc::from(create_ring_with_prefix(
+                RingConfig::default(),
+                STANDARD_IO_RING_THREAD_PREFIX,
+            ));
+            ServiceMode::Owned(StandardIoService::new(StandardIoServer::new(
+                standard_io_pid,
+                standard_io_ring,
+                atom_table.as_ref(),
+            )))
+        };
         let local_node_name = config.node_name.as_deref().unwrap_or(DEFAULT_NODE_NAME);
         let local_node = Node::new(
             atom_table.intern(local_node_name),
@@ -857,13 +900,12 @@ impl Scheduler {
         );
         let net_kernel = Arc::new(NetKernel::new(connection_manager));
         let pg_registry = Arc::new(PgRegistry::new(atom_table.as_ref()));
-        let standard_io_server =
-            StandardIoServer::new(standard_io_pid, standard_io_ring, atom_table.as_ref());
-        let service_instances = inventory::ServiceInstances::mint(
-            io_ring.is_some(),
-            io_ring.is_some() && io_registry.is_some() && !replay_enabled,
-            dist_sender.is_some(),
-        );
+        // The file/standard/generic rings each mint and carry their own
+        // identity through their `ServiceMode`, so only the still-eager
+        // distribution runtimes need identities minted here; the bridge is
+        // requested exactly when the generic registry was built (spec §5).
+        let service_instances =
+            inventory::ServiceInstances::mint(dist_sender.is_some(), io_registry.is_some());
         let shared = Arc::new(SharedState {
             shutdown: AtomicBool::new(false),
             process_table: ProcessTable::new(),
@@ -921,7 +963,7 @@ impl Scheduler {
             nif_private_data: config.nif_private_data,
             #[cfg(feature = "telemetry")]
             telemetry_metrics: TelemetryMetricState::new(telemetry_sample_interval),
-            _standard_io_server: standard_io_server,
+            standard_io,
             #[cfg(any(test, feature = "test-support"))]
             idle_parks: AtomicUsize::new(0),
             #[cfg(any(test, feature = "test-support"))]
@@ -933,8 +975,12 @@ impl Scheduler {
             #[cfg(test)]
             park_gap_hook: Mutex::new(None),
         });
-        if !shared.replay_mode {
-            let standard_io_pid = shared._standard_io_server.pid();
+        // Process 0 is registered exactly when the standard-IO ring is Owned
+        // (spec §3.4): a Disabled standard ring (replay today) registers no
+        // process 0, so group-leader IO has no server and the completion poll
+        // loop can never hang a normal worker.
+        if let Some(standard) = shared.standard_io.service() {
+            let standard_io_pid = standard.server().pid();
             shared.process_table.spawn_with_pid(standard_io_pid);
             shared.process_bodies.insert(
                 standard_io_pid,
@@ -962,11 +1008,14 @@ impl Scheduler {
         // any embedder can subscribe (INV-SCHED-FIRST).
         connection_lifecycle::register_scheduler_connection_subscriber(&shared);
         if !shared.replay_mode
-            && let (Some(ring), Some(registry)) = (&shared.io_ring, &shared.io_registry)
+            && let (Some(ring), Some(registry)) = (shared.io_ring.service(), &shared.io_registry)
         {
             let target: Arc<dyn IoWakeTarget> = shared.clone();
-            let bridge = IoCompletionBridge::start(Arc::clone(ring), Arc::clone(registry), target)
-                .map_err(|error| format!("failed to spawn beamr-io-completion thread: {error}"))?;
+            let bridge =
+                IoCompletionBridge::start(Arc::clone(ring.ring()), Arc::clone(registry), target)
+                    .map_err(|error| {
+                        format!("failed to spawn beamr-io-completion thread: {error}")
+                    })?;
             *lock_or_recover(&shared.io_bridge) = Some(bridge);
         }
         let inject_queues: Vec<_> = (0..thread_count)

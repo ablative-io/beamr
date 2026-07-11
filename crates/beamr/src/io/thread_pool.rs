@@ -92,9 +92,20 @@ pub struct ThreadPoolRing {
 }
 
 impl ThreadPoolRing {
-    /// Construct a fallback ring with `pool_size` workers, or four workers when zero is requested.
+    /// Construct a fallback ring with `pool_size` workers, or four workers when
+    /// zero is requested. Workers take the default `beamr-io-thread-pool-*`
+    /// name; callers that need a service-distinct prefix (spec §5) use
+    /// [`with_prefix`](Self::with_prefix).
     #[must_use]
     pub fn new(pool_size: usize) -> Self {
+        Self::with_prefix(pool_size, crate::io::DEFAULT_RING_THREAD_PREFIX)
+    }
+
+    /// Construct a fallback ring whose workers are named `{prefix}-{index}`, so
+    /// the service inventory (spec §5) can attribute them to one service rather
+    /// than the three-way `beamr-io-thread-pool-*` collision.
+    #[must_use]
+    pub fn with_prefix(pool_size: usize, thread_name_prefix: &str) -> Self {
         let worker_count = if pool_size == 0 {
             DEFAULT_POOL_SIZE
         } else {
@@ -110,7 +121,7 @@ impl ThreadPoolRing {
             let jobs = job_receiver.clone();
             let completions = completion_sender.clone();
             let pending = std::sync::Arc::clone(&pending);
-            let worker_name = format!("beamr-io-thread-pool-{worker_index}");
+            let worker_name = format!("{thread_name_prefix}-{worker_index}");
             match thread::Builder::new()
                 .name(worker_name.clone())
                 .spawn(move || worker_loop(jobs, completions, pending))

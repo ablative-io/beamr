@@ -23,7 +23,7 @@ use crate::atom::{Atom, AtomTable};
 use crate::distribution::{ResolveError, ResolveFuture};
 use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
 use crate::hook::{Hook, HookDecision};
-use crate::io::{NullSink, RingConfig};
+use crate::io::NullSink;
 use crate::loader::Instruction;
 use crate::loader::decode::compact::Operand;
 use crate::mailbox::Mailbox;
@@ -1211,7 +1211,7 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         timers: Arc::new(Mutex::new(TimerWheel::new())),
         expired_receive_timers: DashMap::new(),
         output_sink: Mutex::new(Arc::new(NullSink)),
-        io_ring: None,
+        io_ring: super::service::ServiceMode::Disabled,
         io_registry: None,
         io_bridge: Mutex::new(None),
         io_facility: None,
@@ -1227,19 +1227,15 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         suspension_mirror_registrations: AtomicU64::new(0),
         dirty_suspension_allocations: AtomicU64::new(0),
         park_gap_hook: Mutex::new(None),
-        file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
+        file_io_ring: super::service::ServiceMode::Disabled,
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
-        service_instances: super::inventory::ServiceInstances::mint(false, false, false),
+        service_instances: super::inventory::ServiceInstances::mint(false, false),
         dirty_completion_spawns: AtomicU64::new(0),
-        _standard_io_server: crate::io::StandardIoServer::new(
-            u64::MAX,
-            Arc::from(crate::io::create_ring(RingConfig::default())),
-            &crate::atom::AtomTable::new(),
-        ),
+        standard_io: super::service::ServiceMode::Disabled,
         local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
         net_kernel,
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
@@ -1574,7 +1570,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         timers: Arc::new(Mutex::new(TimerWheel::new())),
         expired_receive_timers: DashMap::new(),
         output_sink: Mutex::new(Arc::new(NullSink)),
-        io_ring: None,
+        io_ring: super::service::ServiceMode::Disabled,
         io_registry: None,
         io_bridge: Mutex::new(None),
         io_facility: None,
@@ -1596,19 +1592,15 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         dirty_io: super::service::ServiceMode::Owned(crate::scheduler::dirty::DirtyPool::new(
             "test-io", 1,
         )),
-        file_io_ring: Arc::from(crate::io::create_ring(RingConfig::default())),
+        file_io_ring: super::service::ServiceMode::Disabled,
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
-        service_instances: super::inventory::ServiceInstances::mint(false, false, false),
+        service_instances: super::inventory::ServiceInstances::mint(false, false),
         dirty_completion_spawns: AtomicU64::new(0),
-        _standard_io_server: crate::io::StandardIoServer::new(
-            u64::MAX,
-            Arc::from(crate::io::create_ring(RingConfig::default())),
-            &crate::atom::AtomTable::new(),
-        ),
+        standard_io: super::service::ServiceMode::Disabled,
         local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
         net_kernel: {
             let dist = DistributionConfig::default();
@@ -2307,6 +2299,176 @@ fn disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler() 
     let (peer_reason, _peer_result) = scheduler.run_until_exit(peer_pid);
     assert_eq!(peer_reason, ExitReason::Normal);
     assert_eq!(DISABLED_PEER_PROGRESS.load(Ordering::Acquire), 1);
+
+    scheduler.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Disabled file-IO ring: refusal before any suspension (spec §3.3). A Disabled
+// file ring is absent from native services (no facility), so a file submit is
+// refused at the `file_io_facility.is_none()` check — BEFORE
+// `request_await_suspend` reaches the registrar. The file path suspends via the
+// same host-await machinery the dirty path does, so the gated-suspension
+// hazard is identical: a suspension registered against an absent ring would
+// park the process forever. The instrument is the shared suspension-mirror
+// counter; the positive control proves an ACCEPTED submit moves it.
+// ---------------------------------------------------------------------------
+
+/// Minimal [`FileIoFacility`](crate::native::FileIoFacility) for the positive
+/// control: an accepted submit returns an op id and never touches a real ring.
+struct GateFileFacility {
+    ring: Arc<dyn crate::io::CompletionRing>,
+}
+
+impl crate::native::FileIoFacility for GateFileFacility {
+    fn submit_file_io(
+        &self,
+        _pid: u64,
+        _op: crate::io::IoOp,
+        _continuation: crate::native::FileIoContinuation,
+    ) -> u64 {
+        7
+    }
+
+    fn track_submitted_file_io(
+        &self,
+        _pid: u64,
+        _op_id: u64,
+        _continuation: crate::native::FileIoContinuation,
+    ) {
+    }
+
+    fn take_file_io_completion(&self, _pid: u64) -> Option<crate::native::FileIoCompletion> {
+        None
+    }
+
+    fn cancel_pending_file_io_for_pid(&self, _pid: u64) {}
+
+    fn ring(&self) -> &dyn crate::io::CompletionRing {
+        self.ring.as_ref()
+    }
+}
+
+#[test]
+fn disabled_file_ring_refuses_file_submit_before_registering_a_suspension() {
+    // A real scheduler gives us the live suspension-mirror instrument that the
+    // file path shares with the dirty path.
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        Arc::new(ModuleRegistry::new()),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    let shared = Arc::clone(&scheduler.shared);
+    let registrar: Arc<dyn crate::native::SuspensionRegistrar> =
+        Arc::new(super::suspension::SchedulerSuspensionRegistrar {
+            shared: Arc::clone(&shared),
+        });
+
+    let pid = 500u64;
+    let mut process = Process::new(pid, DEFAULT_HEAP_SIZE);
+    let mut context = crate::native::ProcessContext::new();
+    context.set_pid(Some(pid));
+    context.attach_process(&mut process, 0);
+    context.set_suspension_registrar(Some(Arc::clone(&registrar)));
+
+    // NEGATIVE: no file facility — the Disabled file-ring shape (spec §3.3).
+    // The submit refuses (badarg at the BIF surface, Q-B: existing atom; the
+    // embedder-typed ServiceUnavailable half of Q-B lands with live-Disabled
+    // construction in commit 5) and the refusal precedes suspension
+    // registration, so the mirror counter is untouched and no gated
+    // suspension is stranded for the pid.
+    let mirrors_before = scheduler.suspension_mirror_registration_count();
+    let refused = context.submit_file_io(
+        crate::io::IoOp::Nop,
+        crate::native::FileIoContinuation::Open,
+    );
+    assert!(
+        refused.is_err(),
+        "a Disabled file ring must refuse the submit"
+    );
+    assert_eq!(
+        scheduler.suspension_mirror_registration_count(),
+        mirrors_before,
+        "a refused file submit must register no suspension mirror"
+    );
+    assert!(
+        !shared.suspensions.contains_key(&pid),
+        "a refused file submit must leave no gated suspension behind"
+    );
+
+    // POSITIVE control: with the facility present, the SAME submit registers
+    // exactly one suspension mirror — a pin that cannot fail is not a pin.
+    context.set_file_io_facility(Some(Arc::new(GateFileFacility {
+        ring: Arc::from(crate::io::create_ring_with_prefix(
+            crate::io::RingConfig::default(),
+            "gate-file-mock",
+        )),
+    })));
+    let accepted = context.submit_file_io(
+        crate::io::IoOp::Nop,
+        crate::native::FileIoContinuation::Open,
+    );
+    assert!(
+        accepted.is_ok(),
+        "a present file ring must accept the submit"
+    );
+    assert_eq!(
+        scheduler.suspension_mirror_registration_count(),
+        mirrors_before + 1,
+        "an accepted file submit registers exactly one suspension mirror"
+    );
+
+    drop(context);
+    scheduler.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Disabled standard-IO ring (spec §3.4): no ring, no process 0. A replay
+// scheduler is the one construction TODAY where the standard ring is Disabled
+// (the composition API that disables it in a LIVE profile is commit 5). The
+// standard ring is NEVER a live ring behind a disabled facade — a Disabled
+// slot registers no process 0, so the server's completion poll loop can never
+// hang a normal worker.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn disabled_standard_io_ring_registers_no_process_zero_and_reports_disabled() {
+    let scheduler = Scheduler::new_replay(SchedulerConfig::default(), ReplayLog::default())
+        .unwrap_or_else(|error| panic!("replay scheduler starts: {error}"));
+
+    // No process 0: a live scheduler registers the standard-IO server as pid 0
+    // (process_count == 1); a Disabled standard ring registers none.
+    assert_eq!(
+        scheduler.process_count(),
+        0,
+        "a Disabled standard-IO ring registers no process 0"
+    );
+
+    let by_service: StdHashMap<&'static str, inventory::ServiceInventoryEntry> = scheduler
+        .service_inventory()
+        .into_iter()
+        .map(|entry| (entry.service, entry))
+        .collect();
+
+    // Standard ring: a §5 Disabled entry.
+    let standard = &by_service[inventory::STANDARD_IO_RING];
+    assert_eq!(standard.mode, ServiceModeLabel::Disabled);
+    assert_eq!(standard.actual, 0);
+    assert_eq!(standard.configured, 0);
+    assert!(standard.thread_names.is_empty());
+    assert_eq!(
+        standard.instance,
+        super::service::ServiceInstanceId::DISABLED
+    );
+
+    // File ring is likewise Disabled under replay (spec §3.3).
+    let file = &by_service[inventory::FILE_IO_RING];
+    assert_eq!(file.mode, ServiceModeLabel::Disabled);
+    assert_eq!(file.actual, 0);
+    assert_eq!(file.instance, super::service::ServiceInstanceId::DISABLED);
 
     scheduler.shutdown();
 }
