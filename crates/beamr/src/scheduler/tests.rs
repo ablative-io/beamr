@@ -136,7 +136,9 @@ fn cleanup_exited_process_purges_pg_membership_without_connection() {
     let registry = scheduler.pg_registry();
     let scope = registry.default_scope();
     let group = scheduler.shared.atom_table.intern("exiting_workers");
-    let pid = 555_u64;
+    // A real table entry: finalization is exactly-once, keyed on the atomic
+    // process-table removal — a pid the table never knew is skipped.
+    let pid = super::supervision_tests::insert_process(&scheduler.shared, 555);
 
     registry.join(scope, group, pid);
     assert_eq!(

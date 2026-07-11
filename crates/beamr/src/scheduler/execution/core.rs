@@ -120,6 +120,25 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
             // recheck below — move it with them.
             #[cfg(test)]
             invoke_park_gap_hook(shared, ParkGap::WaitRegistered, pid);
+            // Death recheck AFTER registering: a kill landing in the
+            // store→register gap (direct exit_signal or a link-cascade
+            // process_exit_signal — both finalize on the Present slot) runs
+            // its wait-set sweep before the registration above exists, so
+            // the sweep finds nothing and the insert would leave a dead pid
+            // in `waiting` forever (one leaked entry per kill that threads
+            // the gap; found while pinning C3). The durable dead signal is
+            // PROCESS-TABLE absence — the table entry is removed exactly
+            // once, at finalization, and pids are never reused — NOT the
+            // exit tombstone, which is FIFO-bounded and can be evicted.
+            // Finalization has already completed in that ordering, so
+            // withdrawing the stale registration is the only outstanding
+            // obligation — re-running cleanup here would double-propagate
+            // exits.
+            if shared.process_table.get(pid).is_none() {
+                let mut ws = lock_or_recover(&shared.wait_set);
+                ws.waiting.remove(&pid);
+                return;
+            }
             // The recheck must notice EVERY wake source that can land before
             // the registration above: a delivered message, a receive timer
             // that fired while the slot was Executing or in the
@@ -1481,12 +1500,42 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     reason: ExitReason,
 ) {
     shared.insert_exit_tombstone(pid, reason);
-    #[cfg(feature = "telemetry")]
-    crate::telemetry::lifecycle::record_process_exited(&shared.atom_table, pid, reason);
     let _deleted_tables = shared.transfer_or_delete_tables_owned_by(pid);
     supervision_integration::propagate_exit(shared, pid, reason);
+    finalize_exited_process(shared, pid, reason);
+}
+
+/// Finalization half of process death: everything AFTER exit propagation.
+///
+/// Split from [`cleanup_exited_process`] so the link-cascade kill path
+/// (`process_exit_signal`'s should-die arm) can finalize a target it has
+/// already propagated for — calling the full cleanup there would
+/// re-propagate links/monitors the cascade has consumed, while calling
+/// nothing (the previous shape) left the process body, its owned fd
+/// resources, its pg memberships, and its metric state stranded on every
+/// cascade kill of a stored process.
+///
+/// Exactly-once: the atomic process-table removal is the ownership token —
+/// the single remover proceeds to the non-idempotent work (lifecycle
+/// telemetry, fd/refcount release via the still-present body); a concurrent
+/// loser returns immediately. Reachable overlap: two `terminate_process`
+/// callers can both pass the tombstone precheck and reach here, and a
+/// worker's tombstone cleanup can overlap an external one — without the
+/// token both would traverse the body and double-decrement refcounted
+/// resources.
+pub(in crate::scheduler) fn finalize_exited_process(
+    shared: &SharedState,
+    pid: u64,
+    reason: ExitReason,
+) {
+    if shared.process_table.remove(pid).is_none() {
+        return;
+    }
+    #[cfg(feature = "telemetry")]
+    crate::telemetry::lifecycle::record_process_exited(&shared.atom_table, pid, reason);
+    #[cfg(not(feature = "telemetry"))]
+    let _ = reason;
     close_owned_fd_resources_on_exit(shared, pid);
-    let _removed = shared.process_table.remove(pid);
     let _removed_body = shared.process_bodies.remove(&pid);
     #[cfg(feature = "telemetry")]
     {
