@@ -668,10 +668,11 @@ fn c3_enqueue_to_a_dead_or_absent_pid_returns_false() {
 /// hook releases. Death cannot lose the race to the woken slice because the
 /// woken slice cannot exist yet.
 ///
-/// (Deliberately NOT asserted: wait-set state. A kill landing in this gap
-/// leaves the parker to register a now-dead pid in `waiting` after cleanup
-/// has already swept it — a real, benign residue of the same gap, reported
-/// separately; pinning it here would pin the defect as contract.)
+/// (Wait-set state is pinned separately: a kill landing in this gap once
+/// left the parker to register a now-dead pid in `waiting` after cleanup had
+/// already swept it — fixed by the post-registration death recheck and
+/// pinned by `kill_in_the_store_to_register_gap_leaves_no_stale_wait_set_entry`
+/// and the kill-storm baseline test below.)
 #[test]
 fn c3_true_then_death_before_next_slice_drops_the_marker_harmlessly() {
     let scheduler = contract_scheduler();
@@ -910,5 +911,181 @@ fn bare_wake_before_registration_is_lost_which_is_why_markers_are_durable() {
     wait_exit(&scheduler, pid);
     assert!(observed(&seen).contains(&MARKER), "durable marker observed");
     assert_eq!(slices.load(Ordering::Acquire), 2, "exactly one wake slice");
+    scheduler.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Wait-set hygiene under kills (rule-1 negatives; pair-ruled riders)
+// ---------------------------------------------------------------------------
+
+/// Pins the fix for the store→register-gap residue: a kill landing in the
+/// held `WaitStored` gap runs its finalization (wait-set sweep included)
+/// BEFORE the parker registers, so without the post-registration death
+/// recheck the parker would leave the dead pid in `waiting` forever.
+///
+/// Barrier discipline: `shutdown()` joins the sole worker, which cannot
+/// complete its current slice — including the registration and recheck —
+/// before being joined. Asserting only after shutdown means the worker has
+/// provably passed the recheck; asserting earlier can win the race against
+/// a still-held gap and pass on pre-fix code.
+#[test]
+fn kill_in_the_store_to_register_gap_leaves_no_stale_wait_set_entry() {
+    let scheduler = contract_scheduler();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let slices = Arc::new(AtomicUsize::new(0));
+
+    let handle = hold_gap_and(&scheduler, ParkGap::WaitStored, move |s, pid| {
+        s.exit_signal(0, pid, ExitReason::Kill)
+            .expect("kill delivered");
+    });
+
+    let pid = scheduler
+        .spawn_native(recording_factory(NEVER, &seen, &slices))
+        .expect("spawn native");
+
+    wait_exit(&scheduler, pid);
+    handle.join().expect("helper joins");
+    scheduler.shutdown();
+
+    // The worker is joined: it resumed from the gap, registered, and ran the
+    // death recheck. No trace of the pid may remain in either table.
+    let ws = lock_or_recover(&scheduler.shared.wait_set);
+    assert!(
+        !ws.waiting.contains_key(&pid),
+        "stale registration withdrawn by the post-registration death recheck"
+    );
+    assert!(
+        !ws.woken.iter().any(|(woken, _)| *woken == pid),
+        "no dead pid stranded in woken"
+    );
+    drop(ws);
+    assert!(
+        !scheduler.shared.process_bodies.contains_key(&pid),
+        "process body reaped"
+    );
+}
+
+/// Same gap, cascade path: a LINKED exit propagated while the target sits in
+/// the store→register gap finalizes the target through
+/// `process_exit_signal`'s should-die arm. Pins BOTH halves of that fix:
+/// the cascade now finalizes fully (body reaped — previously it stranded the
+/// body, owned fds, pg membership, and metric state), and the parker's death
+/// recheck withdraws the stale registration it would otherwise leave.
+#[test]
+fn cascade_kill_in_the_store_to_register_gap_finalizes_and_leaves_no_residue() {
+    let scheduler = contract_scheduler();
+
+    // The cascade SOURCE: parks normally, dies by direct kill later.
+    let seen_a = Arc::new(Mutex::new(Vec::new()));
+    let slices_a = Arc::new(AtomicUsize::new(0));
+    let source = scheduler
+        .spawn_native(recording_factory(NEVER, &seen_a, &slices_a))
+        .expect("spawn source");
+    wait_parked(&scheduler, source);
+
+    // The cascade TARGET: its park will be held open at WaitStored while the
+    // source's death cascades into it.
+    let seen_b = Arc::new(Mutex::new(Vec::new()));
+    let slices_b = Arc::new(AtomicUsize::new(0));
+    let scheduler_for_gap = Arc::clone(&scheduler);
+    let handle = hold_gap_and(&scheduler, ParkGap::WaitStored, move |s, target| {
+        // Link source↔target while the target's slot is stored (Present),
+        // then kill the source: the cascade's should-die arm finalizes the
+        // target inside the held gap.
+        let facility = supervision_integration::SchedulerLinkFacility {
+            shared: Arc::clone(&scheduler_for_gap.shared),
+        };
+        {
+            use crate::native::links::LinkFacility as _;
+            facility.link(source, target).expect("link established");
+        }
+        s.exit_signal(0, source, ExitReason::Kill)
+            .expect("kill delivered");
+    });
+
+    let target = scheduler
+        .spawn_native(recording_factory(NEVER, &seen_b, &slices_b))
+        .expect("spawn target");
+
+    wait_exit(&scheduler, source);
+    wait_exit(&scheduler, target);
+    handle.join().expect("helper joins");
+    scheduler.shutdown();
+
+    let ws = lock_or_recover(&scheduler.shared.wait_set);
+    for pid in [source, target] {
+        assert!(
+            !ws.waiting.contains_key(&pid),
+            "no stale registration for {pid}"
+        );
+        assert!(
+            !ws.woken.iter().any(|(woken, _)| *woken == pid),
+            "no dead pid {pid} stranded in woken"
+        );
+    }
+    drop(ws);
+    assert!(
+        !scheduler.shared.process_bodies.contains_key(&target),
+        "cascade-killed target's body reaped (previously stranded)"
+    );
+    assert!(
+        !scheduler.shared.process_bodies.contains_key(&source),
+        "source's body reaped"
+    );
+}
+
+/// Rule-1 negative (kill-storm baseline): after killing a burst of FULLY
+/// PARKED processes, both wait-set tables return exactly to their pre-storm
+/// baselines — no dead pid remains in `waiting` or `woken`. (The
+/// kill-races-the-park orderings are pinned deterministically by the two
+/// gap tests above; this is the volume negative over the settled state.)
+/// Never retired.
+#[test]
+fn kill_storm_returns_the_wait_set_to_baseline() {
+    let scheduler = contract_scheduler();
+    let (baseline_waiting, baseline_woken) = {
+        let ws = lock_or_recover(&scheduler.shared.wait_set);
+        (
+            ws.waiting
+                .keys()
+                .copied()
+                .collect::<std::collections::BTreeSet<u64>>(),
+            ws.woken
+                .iter()
+                .map(|(pid, _)| *pid)
+                .collect::<std::collections::BTreeSet<u64>>(),
+        )
+    };
+
+    let mut pids = Vec::new();
+    for _ in 0..16 {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let slices = Arc::new(AtomicUsize::new(0));
+        let pid = scheduler
+            .spawn_native(recording_factory(NEVER, &seen, &slices))
+            .expect("spawn native");
+        pids.push(pid);
+    }
+    for pid in &pids {
+        wait_parked(&scheduler, *pid);
+    }
+    for pid in &pids {
+        scheduler
+            .exit_signal(0, *pid, ExitReason::Kill)
+            .expect("kill delivered");
+    }
+    for pid in &pids {
+        wait_exit(&scheduler, *pid);
+    }
+
+    // Bounded settle until BOTH tables equal their baselines exactly (the
+    // standard-IO server may legitimately move between the tables while
+    // settling), then pin the equality.
+    wait_until(10_000, || {
+        let ws = lock_or_recover(&scheduler.shared.wait_set);
+        let waiting: std::collections::BTreeSet<u64> = ws.waiting.keys().copied().collect();
+        let woken: std::collections::BTreeSet<u64> = ws.woken.iter().map(|(pid, _)| *pid).collect();
+        waiting == baseline_waiting && woken == baseline_woken
+    });
     scheduler.shutdown();
 }

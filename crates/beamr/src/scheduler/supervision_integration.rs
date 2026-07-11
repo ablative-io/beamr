@@ -352,12 +352,16 @@ fn process_exit_signal(
                     target.set_trap_exit(false);
                 }
 
-                // Collect this process's links for cascade before terminating.
+                // Collect this process's links for cascade before terminating
+                // — BOTH halves: local links feed the worklist, remote links
+                // each get a wire EXIT below (dropping them with the body
+                // would silently sever the peer's half-link).
                 let cascade_links: Vec<u64> = target
                     .take_links()
                     .into_iter()
                     .filter(|linked_pid| *linked_pid != source_pid)
                     .collect();
+                let remote_links = target.take_remote_links();
 
                 target.terminate(propagated_reason);
 
@@ -375,18 +379,20 @@ fn process_exit_signal(
                 drop(entry);
                 deliver_down_messages(shared, target_pid, propagated_reason);
 
-                // Remove from process table and wait set.
-                let _removed = shared.process_table.remove(target_pid);
-                {
-                    let mut wait_set = lock_or_recover(&shared.wait_set);
-                    wait_set.waiting.remove(&target_pid);
-                    wait_set.woken.retain(|(wp, _)| *wp != target_pid);
+                // Send the terminal EXIT to every remote half-link, exactly
+                // as full propagation would (`propagate_exit`).
+                for remote in remote_links {
+                    send_remote_exit(shared, target_pid, remote, propagated_reason);
                 }
-                // Purge per-pid suspension/timer state exactly like
-                // cleanup_exited_process: a killed suspended process must
-                // not strand its mirror or a published completion.
-                let _stale_marks = shared.expired_receive_timers.remove(&target_pid);
-                shared.purge_suspension_state(target_pid);
+
+                // Finalize exactly like a direct kill — table, BODY, owned
+                // fd resources, wait set, timers, suspensions, pg, metrics.
+                // Propagation is NOT re-run: this arm already took the
+                // target's links for the cascade worklist and delivered its
+                // DOWNs above. (The previous hand-written subset here left
+                // the body, fds, pg memberships, and metric state stranded
+                // on every cascade kill of a stored process.)
+                super::execution::finalize_exited_process(shared, target_pid, propagated_reason);
 
                 cascade_links
                     .into_iter()

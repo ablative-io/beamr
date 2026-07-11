@@ -120,6 +120,25 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
             // recheck below — move it with them.
             #[cfg(test)]
             invoke_park_gap_hook(shared, ParkGap::WaitRegistered, pid);
+            // Death recheck AFTER registering: a kill landing in the
+            // store→register gap (direct exit_signal or a link-cascade
+            // process_exit_signal — both finalize on the Present slot) runs
+            // its wait-set sweep before the registration above exists, so
+            // the sweep finds nothing and the insert would leave a dead pid
+            // in `waiting` forever (one leaked entry per kill that threads
+            // the gap; found while pinning C3). The durable dead signal is
+            // PROCESS-TABLE absence — the table entry is removed exactly
+            // once, at finalization, and pids are never reused — NOT the
+            // exit tombstone, which is FIFO-bounded and can be evicted.
+            // Finalization has already completed in that ordering, so
+            // withdrawing the stale registration is the only outstanding
+            // obligation — re-running cleanup here would double-propagate
+            // exits.
+            if shared.process_table.get(pid).is_none() {
+                let mut ws = lock_or_recover(&shared.wait_set);
+                ws.waiting.remove(&pid);
+                return;
+            }
             // The recheck must notice EVERY wake source that can land before
             // the registration above: a delivered message, a receive timer
             // that fired while the slot was Executing or in the
@@ -452,6 +471,16 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
             }
         }
         *slot = ProcessSlot::Present(ScheduledProcess(process));
+    } else if shared.process_table.get(pid).is_none() {
+        // The entry vanished mid-execution. The only remover of a body entry
+        // is `finalize_exited_process`, which wins the table token first —
+        // so the pid is dead, the pid-keyed half is already done against our
+        // Executing shadow, and this checked-out process is the LAST live
+        // reference to the body. Dispose of it here: re-inserting (the
+        // previous behavior) resurrected a body no later finalizer would
+        // ever reap — the table token was already spent — and
+        // `enqueue_atom_message` would deliver into it despite the dead pid.
+        release_process_exit_resources(&mut process, pid);
     } else {
         shared.process_bodies.insert(
             pid,
@@ -1481,13 +1510,59 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     reason: ExitReason,
 ) {
     shared.insert_exit_tombstone(pid, reason);
-    #[cfg(feature = "telemetry")]
-    crate::telemetry::lifecycle::record_process_exited(&shared.atom_table, pid, reason);
     let _deleted_tables = shared.transfer_or_delete_tables_owned_by(pid);
     supervision_integration::propagate_exit(shared, pid, reason);
-    close_owned_fd_resources_on_exit(shared, pid);
-    let _removed = shared.process_table.remove(pid);
-    let _removed_body = shared.process_bodies.remove(&pid);
+    finalize_exited_process(shared, pid, reason);
+}
+
+/// Finalization half of process death: everything AFTER exit propagation.
+///
+/// Split from [`cleanup_exited_process`] so the link-cascade kill path
+/// (`process_exit_signal`'s should-die arm) can finalize a target it has
+/// already propagated for — calling the full cleanup there would
+/// re-propagate links/monitors the cascade has consumed, while calling
+/// nothing (the previous shape) left the process body, its owned fd
+/// resources, its pg memberships, and its metric state stranded on every
+/// cascade kill of a stored process.
+///
+/// Exactly-once, in two halves with two tokens:
+///
+/// - The **table token** (atomic process-table removal) guards the pid-keyed
+///   work: lifecycle telemetry, metric state, wait-set sweep, timers,
+///   suspension purge, pg purge. A concurrent loser returns immediately.
+///   Reachable overlap: two `terminate_process` callers can both pass the
+///   tombstone precheck and reach here, and a worker's tombstone cleanup can
+///   overlap an external one.
+/// - The **body token** (removing the `process_bodies` entry) guards the
+///   body-owned work: fd close and refcounted-resource release. Resources are
+///   released only on the `Present` body the removal itself yielded — never
+///   in place — so a worker's `take_runnable_process` can never check out a
+///   body whose resources this finalizer already released. When the removal
+///   yields an `Executing` shadow, the worker owns the real body; its
+///   store-back finds the entry gone, the table dead, and disposes of the
+///   checked-out process itself ([`store_runnable_process`]). Table-token
+///   consumption while the body is checked out is therefore safe: the body
+///   half is finished by whoever actually holds the body.
+pub(in crate::scheduler) fn finalize_exited_process(
+    shared: &SharedState,
+    pid: u64,
+    reason: ExitReason,
+) {
+    if shared.process_table.remove(pid).is_none() {
+        return;
+    }
+    #[cfg(feature = "telemetry")]
+    crate::telemetry::lifecycle::record_process_exited(&shared.atom_table, pid, reason);
+    #[cfg(not(feature = "telemetry"))]
+    let _ = reason;
+    if let Some((_pid, slot_mutex)) = shared.process_bodies.remove(&pid) {
+        let slot = slot_mutex
+            .into_inner()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let ProcessSlot::Present(ScheduledProcess(mut process)) = slot {
+            release_process_exit_resources(&mut process, pid);
+        }
+    }
     #[cfg(feature = "telemetry")]
     {
         shared.remove_process_metric_state(pid);
@@ -1518,15 +1593,12 @@ pub(in crate::scheduler) fn cleanup_exited_process(
     shared.pg_registry.remove_pid_from_all_scopes(pid);
 }
 
-fn close_owned_fd_resources_on_exit(shared: &SharedState, pid: u64) {
-    let Some(entry) = shared.process_bodies.get(&pid) else {
-        return;
-    };
-    let mut slot = lock_or_recover(&entry);
-    let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot else {
-        return;
-    };
-
+/// Releases the fd and refcounted resources owned by an exiting process
+/// body. Callers must hold the LAST reference to the body — either the
+/// `Present` slot yielded by the finalizer's `process_bodies` removal, or
+/// the checked-out process a worker's store-back found orphaned — so the
+/// release can never run twice for one body.
+fn release_process_exit_resources(process: &mut Process, pid: u64) {
     process.heap().visit_boxed_objects(|ptr, tag, _words| {
         if tag == BoxedTag::FdResource {
             close_owned_resource_at(ptr, pid);
