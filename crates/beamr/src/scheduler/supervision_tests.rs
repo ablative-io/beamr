@@ -296,6 +296,8 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
     };
 
     let service_instances = super::inventory::ServiceInstances::mint(false);
+    let (dirty_completion_shutdown_tx, dirty_completion_shutdown_rx) =
+        crossbeam_channel::bounded::<()>(0);
     Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
         process_table: ProcessTable::new(),
@@ -357,6 +359,10 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         standard_io_pid: u64::MAX,
         service_instances,
         dirty_completion_spawns: AtomicU64::new(0),
+        dirty_completions: Mutex::new(super::DirtyCompletionRegistry::default()),
+        dirty_completions_changed: Condvar::new(),
+        dirty_completion_shutdown_tx: Mutex::new(Some(dirty_completion_shutdown_tx)),
+        dirty_completion_shutdown_rx,
         standard_io: super::service::ServiceMode::Disabled,
         local_node,
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),

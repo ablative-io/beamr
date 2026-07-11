@@ -385,7 +385,15 @@ impl Scheduler {
             instruction_pointer: enqueue.instruction_pointer,
             capabilities: CapabilitySet::all(),
             namespace_id: enqueue.namespace_id,
-            group_leader: Term::pid(pid),
+            // Top-level processes answer to process 0 — the standard-IO
+            // group-leader server — not to themselves (spec §3.4): a
+            // self-leader makes `io:*` self-queue its io_request and park
+            // forever awaiting a reply nothing will send. When the standard
+            // ring is Disabled this is the no-such-pid sentinel, so the
+            // io_request SEND fails and `io:*` returns `{error,noproc}`
+            // before any suspension — the defined absent behavior. (BIF
+            // spawns inherit the parent's leader, so this seeds every tree.)
+            group_leader: Term::pid(self.shared.standard_io_pid),
             priority: Priority::Normal,
             heap_size: DEFAULT_HEAP_SIZE,
             parent_pid,

@@ -86,20 +86,24 @@ impl Scheduler {
         // is what makes the Shared case safe — `.service()` would stop a ring
         // this scheduler does not own.
         self.shared.io_ring.shutdown_owned();
-        // Stop the dirty pools through their ServiceMode: an Owned pool joins
-        // its workers, a Disabled slot is a no-op (nothing to join). The full
-        // ownership-ordered teardown rewrite is the §4 work of commits 3-5.
-        // CONSTRAINT for that work: `.service()` answers for Shared too, but
-        // a Shared pool is NOT ours to stop — commit-2 constructs only
-        // Owned/Disabled dirty pools, and whichever commit enables Shared
-        // dirty construction must route this through `shutdown_if_owned`
-        // (§4 step ordering) before it lands.
-        if let Some(pool) = self.shared.dirty_cpu.service() {
-            pool.shutdown();
-        }
-        if let Some(pool) = self.shared.dirty_io.service() {
-            pool.shutdown();
-        }
+        // §4 step 3 for the dirty pools, BEFORE the pools themselves stop:
+        // close dirty intake (the DirtyCall arm refuses new submissions from
+        // here on, ahead of any suspension side effect), then wake and JOIN
+        // every live completion bridge. Bounded: a woken bridge exits without
+        // waiting for its job, so a long or never-finishing job on an
+        // embedder-owned SHARED pool cannot hold shutdown, retain this
+        // scheduler's state past its own lifetime, or deliver a completion
+        // into the dead scheduler.
+        self.shared.drain_dirty_completions();
+        // Stop the dirty pools through their ServiceMode, OWNER-ONLY (spec §4):
+        // an Owned pool joins its workers, a Shared injection is left for its
+        // embedder-owner (commit 5 enables Shared dirty construction, so this
+        // MUST NOT use `.service()` — that would stop a pool this scheduler does
+        // not own), a Disabled slot is a no-op. `shutdown_owned` leaves the slot
+        // readable so a post-shutdown inventory truthfully reports zero live
+        // workers for the joined Owned pool.
+        self.shared.dirty_cpu.shutdown_owned();
+        self.shared.dirty_io.shutdown_owned();
         // File and standard rings, owner-only (spec §3.3/§3.4/§4). The standard
         // ring's stop is NEW this commit: it was previously joined only at the
         // last `Arc` drop, so a post-shutdown inventory reported a live worker;

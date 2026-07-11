@@ -1,5 +1,65 @@
 # Changelog
 
+## Unreleased
+
+Embedder composition (`docs/EMBEDDER-COMPOSITION-SPEC.md`): a scheduler now
+starts exactly the VM services the embedder asks for. This head lands the
+composition entrypoint and profiles that sit on top of the per-service
+`ServiceMode` plumbing from the earlier composition commits.
+
+### Added
+
+- `Scheduler::with_services(config, services, module_registry)` and
+  `with_services_and_code_server(..)` — the additive composition entrypoint
+  (spec §2.2). `SchedulerServices` describes each ancillary service (dirty CPU/
+  IO pools, file/standard/generic IO rings, distribution bundle) with a
+  per-service choice; an explicit choice WINS over the matching legacy
+  `SchedulerConfig` knob, a `FromConfig` choice defers to it. Non-service knobs
+  (`thread_count`, node identity, queue depth, telemetry, private data) always
+  apply. `SchedulerConfig`'s existing fields and exhaustive-literal shape are
+  unchanged — this is purely additive.
+- Named profiles: `SchedulerServices::full_runtime()` (today's full standalone
+  VM — every service `FromConfig` plus distribution turned on with a default
+  config), `SchedulerServices::minimal()` (every ancillary service `Disabled`:
+  no dirty pools, no ring, no process 0, no distribution — only the requested
+  normal workers run), and `SchedulerServices::from_config()` (the legacy
+  profile that `Scheduler::new` maps to).
+- Shared dirty pools: inject an embedder-owned `Arc<DirtyPool>` into several
+  schedulers with `SchedulerServices::shared_dirty_cpu` / `shared_dirty_io`.
+  The pool is used by each scheduler but joined by NONE of them (the embedder
+  owns teardown). Safe now because dirty completion routes by the oneshot the
+  submission carries, not by any per-scheduler table.
+- `SharedIoRing` + `WithServicesError`: the injectable shared-IO-ring handle and
+  the typed refusal `with_services` returns for it. Shared IO rings are refused
+  this release — cross-scheduler completion routing lands with the §3.9 routing
+  gate in a later commit — so the composition surface is complete and the
+  refusal is loud and by name rather than a silent misroute.
+
+### Changed
+
+- The `beamr-cli` runner opts into `SchedulerServices::full_runtime()` instead
+  of setting `distribution: Some(default)` on the raw config directly. No
+  user-visible behavior change.
+
+### Behavior changes (migration)
+
+- **`Scheduler::new` is the legacy profile for one release.** It preserves
+  today's EAGER per-knob defaults (a `num_cpus`-sized dirty CPU pool, a
+  10-thread dirty IO pool, a live file-IO ring, a live standard-IO ring with
+  process 0) as a migration bridge. Embedders that want a specific service
+  footprint should move to `Scheduler::with_services` with `minimal()` /
+  `full_runtime()`. Distribution already follows `config.distribution` honestly
+  (`None` builds neither runtime, since 0.13.0).
+- **Replay disables distribution entirely.** Under replay a
+  `distribution: Some(config)` bundle is now `Disabled` — NEITHER the outbound
+  sender nor the net-kernel runtime is built (previously the net-kernel runtime
+  was still constructed, whose live `connect_node` dial performed real network
+  IO behind a disabled facade during replay). No replay path reads live
+  distribution state; every distribution BIF already resolves to absence
+  (`noconnection` / `false` / `[]`). The one observable flip: `is_alive/0`
+  reports `false` under replay (spec-§3.6-consistent for a node with no
+  distribution service).
+
 ## 0.13.0
 
 Distribution grows real cross-node supervision: LINK/UNLINK/EXIT/EXIT2 now

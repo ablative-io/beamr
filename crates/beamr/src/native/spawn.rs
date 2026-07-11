@@ -17,12 +17,19 @@ use crate::term::Term;
 pub enum SpawnError {
     /// The requested module/function/arity could not be resolved.
     UnresolvedMfa,
+    /// The owning scheduler is being (or has been) torn down: a spawn from an
+    /// in-flight dirty native surviving on an embedder-owned shared pool must
+    /// not create work for a dead scheduler (spec §4 step 3).
+    SchedulerTearingDown,
 }
 
 impl fmt::Display for SpawnError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnresolvedMfa => f.write_str("unresolved module/function/arity for spawn"),
+            Self::SchedulerTearingDown => {
+                f.write_str("spawn refused: the owning scheduler is tearing down")
+            }
         }
     }
 }

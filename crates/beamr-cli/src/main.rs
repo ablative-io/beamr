@@ -20,7 +20,7 @@ use beamr::native::{
 };
 use beamr::process::ExitReason;
 use beamr::replay::ReplayLog;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{Scheduler, SchedulerConfig, SchedulerServices};
 use beamr::term::{Term, format::format_term};
 
 const USAGE: &str = "Usage:\n  beamr <file.beam> [--entry module:function/arity] [--dir <path>]... [-- <arg>...]\n  beamr <file.beam> [module:function/arity] [--dir <path>]... [-- <arg>...]\n  beamr record <file.beam> --entry module:function/arity --log <output> [--dir <path>]... [-- <arg>...]\n  beamr replay <log-file>\n  beamr imports <file.beam>\n  beamr compile <dir> [--verbose]\n  beamr --help|-h\n  beamr --version|-V";
@@ -281,17 +281,17 @@ fn execute_module(
     // Share the load-time atom table and BIF registry with the scheduler so
     // runtime atom resolution and dynamic MFA dispatch (export funs) see the
     // same state the modules were loaded against.
-    let scheduler = Scheduler::with_code_server(
+    let scheduler = Scheduler::with_services_and_code_server(
         SchedulerConfig {
             thread_count: Some(1),
-            // Opt into full-runtime distribution explicitly. `distribution: None`
-            // is now honest absence (spec §3.6) — the default no longer builds a
-            // distribution runtime — so the CLI requests it to keep its
-            // user-visible behavior (a full standalone VM) unchanged; the
-            // profile-based CLI migration is commit 5.
-            distribution: Some(beamr::distribution::DistributionConfig::default()),
             ..SchedulerConfig::default()
         },
+        // The CLI is a full standalone VM: opt into the full-runtime profile
+        // (spec §2.2/§3.6), which turns distribution on explicitly (default
+        // config) while keeping every other ancillary service on its legacy
+        // default. This replaces the commit-4 stopgap of setting
+        // `distribution: Some(default)` on the raw config directly.
+        SchedulerServices::full_runtime(),
         Arc::clone(&registry),
         Arc::clone(&atom_table),
         bif_registry,
