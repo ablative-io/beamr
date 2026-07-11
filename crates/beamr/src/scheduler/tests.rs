@@ -136,7 +136,9 @@ fn cleanup_exited_process_purges_pg_membership_without_connection() {
     let registry = scheduler.pg_registry();
     let scope = registry.default_scope();
     let group = scheduler.shared.atom_table.intern("exiting_workers");
-    let pid = 555_u64;
+    // A real table entry: finalization is exactly-once, keyed on the atomic
+    // process-table removal — a pid the table never knew is skipped.
+    let pid = super::supervision_tests::insert_process(&scheduler.shared, 555);
 
     registry.join(scope, group, pid);
     assert_eq!(
@@ -2517,6 +2519,77 @@ fn stale_result_for_a_superseded_await_is_dropped_not_applied() {
         "the result resumed the process without re-executing the await"
     );
     scheduler.shutdown();
+}
+
+// --- External kill while the victim is checked out (Executing slot): the
+// finalizer's table token is consumed while a worker owns the real body, so
+// the body half must be finished by that worker's store-back — never by
+// re-inserting a body for the dead pid. ---
+
+static EXEC_TERMINATE_ENTERED: AtomicUsize = AtomicUsize::new(0);
+static EXEC_TERMINATE_RELEASE: AtomicBool = AtomicBool::new(false);
+
+/// Signals entry, then blocks until the test releases it — pinning the
+/// process in the `Executing` slot state for a deterministic window.
+fn exec_terminate_blocking_native(
+    _args: &[Term],
+    _context: &mut crate::native::ProcessContext,
+) -> Result<Term, Term> {
+    EXEC_TERMINATE_ENTERED.store(1, Ordering::Release);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !EXEC_TERMINATE_RELEASE.load(Ordering::Acquire) {
+        assert!(
+            std::time::Instant::now() <= deadline,
+            "release signal timed out"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    Ok(Term::NIL)
+}
+
+/// `terminate_process` against a mid-slice process: external finalization
+/// removes the `Executing` shadow and spends the table token while the
+/// worker still owns the real `Process`. The worker's store-back must then
+/// DISPOSE of that body — re-inserting it (the pre-fix behavior) resurrected
+/// a body no later finalizer would ever reap, and `enqueue_atom_message`
+/// kept delivering into it despite the dead pid (a C3 violation).
+#[test]
+fn terminate_while_executing_finalizes_without_resurrecting_the_body() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("exec_terminate");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = native_call_module(&registry, module_name, exec_terminate_blocking_native, None);
+    let scheduler = single_thread_scheduler(&registry);
+
+    let pid = scheduler.spawn_process(&module);
+    wait_until(10_000, || {
+        EXEC_TERMINATE_ENTERED.load(Ordering::Acquire) == 1
+    });
+
+    // The worker is inside the native: the slot is an Executing shadow.
+    scheduler.terminate_process(pid, ExitReason::Killed);
+
+    // External finalization ran to completion against the shadow: table
+    // token spent, shadow removed, while the worker still runs the slice.
+    assert!(scheduler.shared.process_table.get(pid).is_none());
+    assert!(!scheduler.shared.process_bodies.contains_key(&pid));
+
+    // Release the native, then JOIN the worker: shutdown is the barrier that
+    // guarantees the store-back has fully run before the assertions below.
+    EXEC_TERMINATE_RELEASE.store(true, Ordering::Release);
+    scheduler.shutdown();
+
+    assert!(
+        !scheduler.shared.process_bodies.contains_key(&pid),
+        "store-back after external finalization must dispose of the checked-out body, not resurrect it"
+    );
+    assert!(scheduler.shared.exit_tombstones.contains_key(&pid));
+    // Delivery keys off process_bodies alone, so this is the resurrection
+    // probe: a re-inserted body would accept the message for a dead pid.
+    assert!(
+        !scheduler.enqueue_atom_message(pid, Atom::OK),
+        "a dead pid must refuse delivery after its body is reaped"
+    );
 }
 
 // --- Defect 2: a gated host await has a wake guard — a plain message

@@ -300,8 +300,8 @@ fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<Spaw
 
 mod core;
 mod native_slice;
-pub(in crate::scheduler) use core::cleanup_exited_process;
 use core::run_process;
+pub(in crate::scheduler) use core::{cleanup_exited_process, finalize_exited_process};
 use std::net::SocketAddr;
 
 use super::process_slot::UdpActiveMessage;

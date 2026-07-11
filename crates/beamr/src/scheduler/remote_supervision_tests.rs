@@ -1572,3 +1572,50 @@ fn pids_beyond_the_wire_u32_range_are_refused_not_a_connection_teardown() {
     );
     drop(peer);
 }
+
+/// A LOCAL link-cascade kill of a process that owns a remote link must send
+/// that remote half exactly one wire EXIT (pre-terminalized), and the
+/// cascaded process must be fully finalized — the cascade arm once dropped
+/// remote links silently with the body (found by the wait-set-residue
+/// review; this is its regression pin).
+#[test]
+fn cascade_killed_process_sends_exit_for_its_remote_link_and_is_finalized() {
+    let shared = make_shared_state_with_dist_sender();
+    let handle = shared.dist_sender.as_ref().expect("dist sender").handle();
+    let _context = handle.enter();
+
+    let peer_node = shared.atom_table.intern("peer@test");
+    let dying = insert_process(&shared, 1);
+    let cascaded = insert_process(&shared, 2);
+    add_local_link(&shared, dying, cascaded);
+    let remote = RemotePid {
+        node: peer_node,
+        pid_number: 77,
+        serial: 0,
+    };
+    add_remote_link(&shared, cascaded, remote);
+    let mut peer = install_peer(&shared, peer_node);
+
+    // Direct kill of `dying` cascades through the local link into `cascaded`,
+    // whose remote half-link must leave the node as a wire EXIT.
+    cleanup_exited_process(&shared, dying, ExitReason::Kill);
+
+    let (control, _payload) = read_peer_frame(&mut peer);
+    assert_eq!(
+        decode_control(&control, &shared.atom_table),
+        Ok(ControlMessage::Exit {
+            from: RemotePid {
+                node: shared.local_node.name,
+                pid_number: cascaded,
+                serial: 0,
+            },
+            to_pid: remote.pid_number,
+            reason: ExitReason::Killed,
+        }),
+        "the cascaded process's remote link gets its EXIT"
+    );
+    // And the cascade finalized fully: no body, no table entry, tombstone set.
+    assert!(!shared.process_bodies.contains_key(&cascaded));
+    assert!(shared.process_table.get(cascaded).is_none());
+    assert!(shared.exit_tombstones.contains_key(&cascaded));
+}
