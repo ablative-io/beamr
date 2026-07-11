@@ -5,6 +5,11 @@
 //! insertion are handled by later loader stages.
 
 pub mod decode;
+// The `.beam` container writer — the mirror image of `decode`. Off by default;
+// enabled by the `encode` cargo feature. Shares the decoder's `Operand`,
+// `Instruction`, and chunk types so no format knowledge is duplicated.
+#[cfg(feature = "encode")]
+pub mod encode;
 // Embedded-archive support compresses `.beam` modules with zstd; that dependency
 // (and the C `zstd-sys` build) only exists under the `embedded` feature and does
 // not build for wasm32.

@@ -73,6 +73,9 @@ fs = ["std", "dep:libc", "dep:rustix"]
 jit = ["std", "threads", "dep:cranelift-codegen", "dep:cranelift-frontend", "dep:cranelift-jit", "dep:cranelift-module", "dep:cranelift-native"]
 embedded = ["std", "dep:zstd"]
 json = ["dep:base64", "dep:serde_json"]
+# `.beam` container writer — the mirror image of `loader::decode`. Off by
+# default; brings in no new dependencies (flate2 is already a hard dep).
+encode = []
 test-support = []
 telemetry = ["std", "dep:opentelemetry"]
 
