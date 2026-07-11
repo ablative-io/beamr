@@ -15,6 +15,7 @@ use crossbeam_channel::{Receiver, Sender};
 use crate::ets::OwnedTerm;
 use crate::native::{ExceptionClass, NativeContinuation, NativeFn, ProcessContext, SuspendRequest};
 use crate::scheduler::lock_or_recover;
+use crate::scheduler::service::{ServiceIdentity, ServiceInstanceId, ServiceMode, ShutdownService};
 use crate::term::Term;
 
 /// Default maximum number of queued dirty jobs per pool.
@@ -147,6 +148,11 @@ enum DirtyMessage {
 /// Failure returned when a dirty job cannot be enqueued.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DirtySubmitError {
+    /// The pool is disabled on this scheduler: it holds no channel and no
+    /// workers, so submission is refused before any queue/suspension side
+    /// effect (spec §3.2). Returned only by the [`ServiceMode<DirtyPool>`]
+    /// facade — a live [`DirtyPool`] never produces it.
+    Disabled,
     /// Submission was attempted after pool shutdown began.
     ShutDown,
     /// The bounded dirty queue is full; the normal scheduler must not block.
@@ -165,6 +171,7 @@ pub struct DirtyPool {
     threads: Mutex<Vec<JoinHandle<()>>>,
     worker_names: Vec<String>,
     requested_threads: usize,
+    instance_id: ServiceInstanceId,
 }
 
 impl DirtyPool {
@@ -219,6 +226,7 @@ impl DirtyPool {
             threads: Mutex::new(threads),
             worker_names,
             requested_threads: pool_thread_count,
+            instance_id: ServiceInstanceId::mint(),
         }
     }
 
@@ -329,6 +337,41 @@ impl DirtyPool {
 impl Drop for DirtyPool {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+impl ServiceIdentity for DirtyPool {
+    fn instance_id(&self) -> ServiceInstanceId {
+        self.instance_id
+    }
+}
+
+impl ShutdownService for DirtyPool {
+    fn shutdown(&self) {
+        DirtyPool::shutdown(self);
+    }
+}
+
+/// Disabled-aware submission facade for a dirty pool held in a
+/// [`ServiceMode`] (spec §2.1, §3.2). A `Disabled` slot holds no channel and
+/// no workers, so every submit refuses with [`DirtySubmitError::Disabled`]
+/// BEFORE touching any queue — the raw [`DirtyPool`] cannot encode this,
+/// which is why the facade lives on the mode.
+impl ServiceMode<DirtyPool> {
+    /// Enqueue a dirty native job, refusing if the pool is disabled.
+    pub fn submit(&self, job: DirtyJob) -> Result<(), DirtySubmitError> {
+        match self.service() {
+            Some(pool) => pool.submit(job),
+            None => Err(DirtySubmitError::Disabled),
+        }
+    }
+
+    /// Enqueue a generic dirty task, refusing if the pool is disabled.
+    pub fn submit_task(&self, task: DirtyTask) -> Result<(), DirtySubmitError> {
+        match self.service() {
+            Some(pool) => pool.submit_task(task),
+            None => Err(DirtySubmitError::Disabled),
+        }
     }
 }
 
@@ -550,5 +593,39 @@ mod tests {
     fn dirty_scheduler_kind_distinguishes_cpu_and_io() {
         assert_eq!(DirtySchedulerKind::Cpu, DirtySchedulerKind::Cpu);
         assert_ne!(DirtySchedulerKind::Cpu, DirtySchedulerKind::Io);
+    }
+
+    /// A disabled dirty-pool slot refuses BOTH submit paths with the typed
+    /// `Disabled` error before any queue side effect (spec §3.2), while an
+    /// owned slot forwards to the live pool.
+    #[test]
+    fn service_mode_facade_refuses_disabled_and_forwards_owned() {
+        use super::{DirtyJob, DirtySubmitError, DirtyTask};
+        use crate::native::ProcessContext;
+        use crate::scheduler::service::ServiceMode;
+
+        let disabled: ServiceMode<DirtyPool> = ServiceMode::Disabled;
+        assert_eq!(
+            disabled.submit_task(DirtyTask::new(|| {})),
+            Err(DirtySubmitError::Disabled)
+        );
+        let (result_sender, _receiver) = oneshot::channel();
+        assert_eq!(
+            disabled.submit(DirtyJob {
+                pid: 1,
+                function: forty_two,
+                args: Vec::new(),
+                context: ProcessContext::new(),
+                result_sender,
+            }),
+            Err(DirtySubmitError::Disabled)
+        );
+
+        // Owned forwards to the live pool.
+        let owned = ServiceMode::Owned(DirtyPool::with_queue_depth("facade-owned", 1, 1));
+        assert_eq!(owned.submit_task(DirtyTask::new(|| {})), Ok(()));
+        if let ServiceMode::Owned(pool) = &owned {
+            pool.shutdown();
+        }
     }
 }

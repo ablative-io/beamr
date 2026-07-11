@@ -9,7 +9,8 @@
 //! the same assertions catch any drift.
 
 use super::SharedState;
-use super::service::{ServiceInstanceId, ServiceModeLabel};
+use super::dirty::DirtyPool;
+use super::service::{ServiceInstanceId, ServiceMode, ServiceModeLabel};
 
 /// Service label: the dirty CPU pool.
 pub(super) const DIRTY_CPU: &str = "dirty-cpu";
@@ -79,9 +80,13 @@ pub struct ServicePolicyLine {
 /// Process-unique identities minted for each ancillary service at construction
 /// (spec §5). Held so `service_inventory()` reports a *stable* identity across
 /// calls, and so a service shared into another scheduler reports the same one.
+///
+/// The dirty pools are NOT here: each [`DirtyPool`] mints and carries its own
+/// [`ServiceInstanceId`], so a Disabled pool reports the
+/// [`DISABLED`](ServiceInstanceId::DISABLED) sentinel through its
+/// [`ServiceMode`] rather than a live id minted for a pool that was never
+/// built (spec §3.2/§5).
 pub(super) struct ServiceInstances {
-    pub(super) dirty_cpu: ServiceInstanceId,
-    pub(super) dirty_io: ServiceInstanceId,
     pub(super) file_io_ring: ServiceInstanceId,
     pub(super) standard_io_ring: ServiceInstanceId,
     pub(super) generic_io_ring: ServiceInstanceId,
@@ -106,8 +111,6 @@ impl ServiceInstances {
         dist_sender_present: bool,
     ) -> Self {
         Self {
-            dirty_cpu: ServiceInstanceId::mint(),
-            dirty_io: ServiceInstanceId::mint(),
             file_io_ring: ServiceInstanceId::mint(),
             standard_io_ring: ServiceInstanceId::mint(),
             generic_io_ring: presence_id(generic_io_present),
@@ -146,6 +149,30 @@ fn owned_entry(
     }
 }
 
+/// A dirty pool's line, reading through its [`ServiceMode`]. An `Owned` pool
+/// reports its requested-vs-live split and its own instance id; a `Disabled`
+/// slot reports the §5 disabled entry (DISABLED sentinel, zero threads, zero
+/// configured — it was explicitly requested off, spec §3.2). Dirty pools are
+/// never `Shared` this commit; a future `Shared` arm would carry the same
+/// borrowed pool and its propagated id.
+fn dirty_pool_entry(service: &'static str, mode: &ServiceMode<DirtyPool>) -> ServiceInventoryEntry {
+    match mode.service() {
+        Some(pool) => {
+            let thread_names = pool.live_worker_names();
+            ServiceInventoryEntry {
+                service,
+                mode: mode.label(),
+                instance: mode.instance_id(),
+                configured: pool.requested_threads(),
+                actual: thread_names.len(),
+                thread_names,
+                fd_classes: Vec::new(),
+            }
+        }
+        None => disabled_entry(service),
+    }
+}
+
 /// A disabled service line: no instance, no threads, no fds.
 fn disabled_entry(service: &'static str) -> ServiceInventoryEntry {
     ServiceInventoryEntry {
@@ -167,18 +194,8 @@ pub(super) fn build_service_inventory(shared: &SharedState) -> Vec<ServiceInvent
     let instances = &shared.service_instances;
     let mut entries = Vec::with_capacity(7);
 
-    entries.push(owned_entry(
-        DIRTY_CPU,
-        instances.dirty_cpu,
-        shared.dirty_cpu.requested_threads(),
-        shared.dirty_cpu.live_worker_names(),
-    ));
-    entries.push(owned_entry(
-        DIRTY_IO,
-        instances.dirty_io,
-        shared.dirty_io.requested_threads(),
-        shared.dirty_io.live_worker_names(),
-    ));
+    entries.push(dirty_pool_entry(DIRTY_CPU, &shared.dirty_cpu));
+    entries.push(dirty_pool_entry(DIRTY_IO, &shared.dirty_io));
     entries.push(owned_entry(
         FILE_IO_RING,
         instances.file_io_ring,
@@ -270,11 +287,19 @@ pub fn deduped_thread_aggregate(entries: &[ServiceInventoryEntry]) -> usize {
 
 /// Build the transient-thread policy lines for one scheduler (spec §5).
 pub(super) fn build_service_policies(shared: &SharedState) -> Vec<ServicePolicyLine> {
+    // The dirty-complete burst thread spawns only when a dirty call is
+    // submitted, so its mode follows the dirty pools (spec §3.2/§5): Owned
+    // while any dirty pool can accept work, Disabled when both pools are off
+    // and the completion thread can therefore never spawn.
+    let dirty_complete_mode =
+        if shared.dirty_cpu.service().is_some() || shared.dirty_io.service().is_some() {
+            ServiceModeLabel::Owned
+        } else {
+            ServiceModeLabel::Disabled
+        };
     vec![ServicePolicyLine {
         policy: DIRTY_COMPLETE,
-        // The dirty pools are Owned today, so the burst thread can spawn; a
-        // disabled pool refuses before it (commit 2, spec §3.2).
-        mode: ServiceModeLabel::Owned,
+        mode: dirty_complete_mode,
         spawned_total: shared
             .dirty_completion_spawns
             .load(std::sync::atomic::Ordering::Relaxed),

@@ -4,6 +4,7 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
 use beamr::atom::Atom;
+use beamr::error::ExecError;
 use beamr::loader::Instruction;
 use beamr::loader::decode::compact::Operand;
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
@@ -149,6 +150,16 @@ fn call_native_module(name: Atom, import: ResolvedImport) -> Module {
     m
 }
 
+/// Transient completion threads spawned to date, read from the public policy
+/// lines (§5) — the same surface an embedder would use.
+fn completion_spawned_total(scheduler: &Scheduler) -> u64 {
+    scheduler
+        .service_policies()
+        .into_iter()
+        .map(|line| line.spawned_total)
+        .sum()
+}
+
 #[test]
 fn dirty_nif_round_trip_does_not_block_normal_scheduler() {
     let generation = reset_dirty_lifecycle();
@@ -176,6 +187,14 @@ fn dirty_nif_round_trip_does_not_block_normal_scheduler() {
     )
     .expect("scheduler starts");
 
+    // Positive control for the refusal-ordering instruments: a SUCCESSFUL
+    // dirty call must move all three counters, or the disabled-pool gates'
+    // unchanged-counter assertions could pass vacuously on a deleted or
+    // mis-gated increment.
+    let allocations_before = scheduler.dirty_suspension_allocation_count();
+    let mirrors_before = scheduler.suspension_mirror_registration_count();
+    let spawns_before = completion_spawned_total(&scheduler);
+
     let dirty_pid = scheduler.spawn_process(&dirty_module);
     wait_for_dirty_started(generation);
     assert!(!dirty_finished_for_generation(generation));
@@ -191,6 +210,25 @@ fn dirty_nif_round_trip_does_not_block_normal_scheduler() {
     assert_eq!(dirty_reason, ExitReason::Normal);
     assert_eq!(dirty_result.root(), Term::small_int(42));
     assert!(dirty_finished_for_generation(generation));
+
+    // One dirty call = exactly one call-id allocation, one suspension
+    // mirror, and one completion thread: the instruments the disabled-pool
+    // gates hold at zero really do move when the path runs.
+    assert_eq!(
+        scheduler.dirty_suspension_allocation_count(),
+        allocations_before + 1,
+        "one successful dirty call allocates exactly one suspension call id"
+    );
+    assert_eq!(
+        scheduler.suspension_mirror_registration_count(),
+        mirrors_before + 1,
+        "one successful dirty call registers exactly one suspension mirror"
+    );
+    assert_eq!(
+        completion_spawned_total(&scheduler),
+        spawns_before + 1,
+        "one successful dirty call spawns exactly one completion thread"
+    );
 
     scheduler.shutdown();
 }
@@ -223,6 +261,104 @@ fn dirty_nif_error_resumes_and_raises_exception() {
         .expect("dirty native error captured exception");
     assert_eq!(exception.view().class, Term::atom(Atom::ERROR));
     assert_eq!(exception.view().reason, Term::atom(Atom::BADARG));
+
+    scheduler.shutdown();
+}
+
+static DISABLED_PEER_PROGRESS: AtomicUsize = AtomicUsize::new(0);
+
+fn dirty_unreachable(_args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+    // A disabled dirty pool refuses before this body could ever run.
+    unreachable!("a disabled dirty pool must refuse before executing the native")
+}
+
+fn disabled_peer_progress(_args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+    // A dedicated counter so this test never races the shared NORMAL_PROGRESS
+    // with siblings in the same binary running in parallel.
+    DISABLED_PEER_PROGRESS.fetch_add(1, Ordering::AcqRel);
+    Ok(Term::small_int(7))
+}
+
+/// THE GATE (spec §3.2): on a scheduler with the dirty-CPU pool disabled, a
+/// process making a dirty CPU call terminates PROMPTLY with the typed
+/// service-unavailable error — it never wedges parked with no worker to
+/// complete a gated suspension (readiness contract C2) — while an unrelated
+/// process on the SAME scheduler runs to a normal exit.
+#[test]
+fn disabled_dirty_cpu_pool_refuses_call_and_lets_peers_progress() {
+    DISABLED_PEER_PROGRESS.store(0, Ordering::Release);
+
+    let registry = Arc::new(ModuleRegistry::new());
+    let dirty_module = registry.insert(call_native_module(
+        Atom::OK,
+        native_import(dirty_unreachable, Some(DirtySchedulerKind::Cpu)),
+    ));
+    let normal_module = registry.insert(call_native_module(
+        Atom::ERROR,
+        native_import(disabled_peer_progress, None),
+    ));
+
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            dirty_cpu_threads: Some(0),
+            dirty_io_threads: Some(1),
+            dirty_queue_depth: Some(8),
+            ..SchedulerConfig::default()
+        },
+        Arc::clone(&registry),
+    )
+    .expect("scheduler starts");
+
+    // Boundary snapshots for the refusal ORDERING claim (§3.2): refusal must
+    // precede the whole gated-suspension sequence (call-id allocation ->
+    // set_suspension -> mirror registration) and the dirty submit, so the
+    // refused call moves none of these instruments. The allocation counter
+    // pins the sequence's first side effect and the mirror counter its last;
+    // entering the sequence and cleaning up would leave the same end state
+    // but cannot leave the same counters.
+    let allocations_before = scheduler.dirty_suspension_allocation_count();
+    let mirrors_before = scheduler.suspension_mirror_registration_count();
+    let spawns_before = completion_spawned_total(&scheduler);
+
+    // The refused dirty process exits with the explicit error. run_until_exit
+    // would hang forever on a park-forever bug, so its return IS the
+    // non-wedging assertion.
+    let dirty_pid = scheduler.spawn_process(&dirty_module);
+    let (dirty_reason, _dirty_result) = scheduler.run_until_exit(dirty_pid);
+    assert_eq!(dirty_reason, ExitReason::Error);
+    assert_eq!(
+        scheduler.take_exit_error(dirty_pid),
+        Some(ExecError::ServiceUnavailable {
+            service: "dirty-cpu"
+        }),
+    );
+
+    // The ordering itself: the refused call never entered the suspension
+    // sequence — no call id allocated, no mirror registered, no completion
+    // thread spawned; not merely cleaned up afterwards.
+    assert_eq!(
+        scheduler.dirty_suspension_allocation_count(),
+        allocations_before,
+        "a refused dirty call must never allocate a suspension call id"
+    );
+    assert_eq!(
+        scheduler.suspension_mirror_registration_count(),
+        mirrors_before,
+        "a refused dirty call must never register a suspension mirror"
+    );
+    assert_eq!(
+        completion_spawned_total(&scheduler),
+        spawns_before,
+        "a refused dirty call must never spawn a completion thread"
+    );
+
+    // A peer on the SAME scheduler makes progress and exits normally.
+    let normal_pid = scheduler.spawn_process(&normal_module);
+    let (normal_reason, normal_result) = scheduler.run_until_exit(normal_pid);
+    assert_eq!(normal_reason, ExitReason::Normal);
+    assert_eq!(normal_result.root(), Term::small_int(7));
+    assert_eq!(DISABLED_PEER_PROGRESS.load(Ordering::Acquire), 1);
 
     scheduler.shutdown();
 }

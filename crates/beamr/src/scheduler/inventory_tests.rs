@@ -128,6 +128,52 @@ fn default_profile_pins_as_built_service_inventory() {
     scheduler.shutdown();
 }
 
+/// A `dirty_*_threads: Some(0)` REQUEST disables the pool (spec §3.2/§6): the
+/// inventory reports the §5 Disabled entry (zero threads, zero fds, DISABLED
+/// sentinel instance), the OS probe sees no `dirty-*` worker, and the
+/// `dirty-complete` policy line follows the pools to Disabled once both are
+/// off. This is the behavior change from the old `.max(1)` coercion.
+#[test]
+fn disabled_dirty_pools_report_disabled_entries_and_policy() {
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            dirty_cpu_threads: Some(0),
+            dirty_io_threads: Some(0),
+            ..SchedulerConfig::default()
+        },
+        Arc::new(ModuleRegistry::new()),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+
+    let by_service = entries_by_service(&scheduler);
+    for service in [inventory::DIRTY_CPU, inventory::DIRTY_IO] {
+        let entry = &by_service[service];
+        assert_eq!(entry.mode, ServiceModeLabel::Disabled, "{service} disabled");
+        assert_eq!(entry.actual, 0);
+        assert_eq!(entry.configured, 0);
+        assert!(entry.thread_names.is_empty());
+        assert!(entry.fd_classes.is_empty());
+        assert_eq!(entry.instance, super::service::ServiceInstanceId::DISABLED);
+    }
+
+    // The exact zero-worker OS-probe delta is asserted in the isolated
+    // `tests/thread_inventory.rs` process; here the parallel `--lib` harness
+    // has co-resident schedulers with their own dirty pools, so a process-wide
+    // probe is unattributable (same reason the exact assertion-6 lives there).
+
+    // The transient completion policy follows the pools: both off ⇒ Disabled.
+    let dirty_complete = scheduler
+        .service_policies()
+        .into_iter()
+        .find(|line| line.policy == inventory::DIRTY_COMPLETE)
+        .expect("dirty-complete policy line present");
+    assert_eq!(dirty_complete.mode, ServiceModeLabel::Disabled);
+    assert_eq!(dirty_complete.spawned_total, 0);
+
+    scheduler.shutdown();
+}
+
 /// The transient `dirty-complete-{pid}` thread is a policy line with a counter,
 /// not a thread line (spec §5). At rest no dirty call has run, so the counter is
 /// zero and no such name appears in any service entry.

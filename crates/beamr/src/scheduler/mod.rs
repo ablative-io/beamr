@@ -209,7 +209,22 @@ impl CompletionRing for ReplayDisabledRing {
 #[derive(Clone, Default)]
 pub struct SchedulerConfig {
     pub thread_count: Option<usize>,
+    /// Dirty CPU pool sizing (spec §3.2).
+    ///
+    /// - `None` — legacy default: one worker per core (`num_cpus`).
+    /// - `Some(n)` with `n > 0` — an owned pool of `n` workers.
+    /// - `Some(0)` — the pool is **Disabled**: zero threads, zero fds, and a
+    ///   dirty CPU call is refused with a typed service-unavailable error
+    ///   before any suspension or queue side effect.
+    ///
+    /// **Behavior change (spec §6):** `Some(0)` previously coerced to a
+    /// one-worker pool; it now disables the pool. Requesting zero workers and
+    /// still dispatching dirty work is a composition error, surfaced loudly at
+    /// the calling process rather than silently papered over.
     pub dirty_cpu_threads: Option<usize>,
+    /// Dirty IO pool sizing. Same semantics as [`dirty_cpu_threads`](Self::dirty_cpu_threads):
+    /// `None` is the legacy default (10 workers), `Some(n > 0)` owns `n`,
+    /// `Some(0)` disables the pool (was coerced to 1 before — spec §6).
     pub dirty_io_threads: Option<usize>,
     pub dirty_queue_depth: Option<usize>,
     pub io: Option<RingConfig>,
@@ -264,8 +279,8 @@ pub(super) struct SharedState {
     capability_policy: Arc<dyn CapabilityPolicy>,
     spawn_counter: AtomicUsize,
     thread_count: usize,
-    pub(super) dirty_cpu: DirtyPool,
-    pub(super) dirty_io: DirtyPool,
+    pub(super) dirty_cpu: ServiceMode<DirtyPool>,
+    pub(super) dirty_io: ServiceMode<DirtyPool>,
     jit_profiler: Arc<JitProfiler>,
     jit_cache: Arc<JitCache>,
     next_pid: AtomicU64,
@@ -343,6 +358,25 @@ pub(super) struct SharedState {
     /// a load-sensitive wake rate. 0 = no worker has parked yet.
     #[cfg(any(test, feature = "test-support"))]
     observed_park_timeout_millis: AtomicU64,
+
+    /// Count of suspension mirrors registered to date, one per
+    /// `register_suspension_mirror` call. Boundary instrument for the §3.2
+    /// refusal-first ordering: a refused dirty call must leave this counter
+    /// unmoved, so a refusal that happens AFTER registration (and then
+    /// cleans up the mirror) fails the ordering gates instead of passing on
+    /// the cleaned-up end state.
+    #[cfg(any(test, feature = "test-support"))]
+    suspension_mirror_registrations: AtomicU64,
+
+    /// Count of entries into the dirty-call gated-suspension side-effect
+    /// sequence, whose FIRST step is suspension-call-id allocation —
+    /// incremented immediately before that allocation in the DirtyCall arm.
+    /// The mirror counter above pins the sequence's LAST side effect; this
+    /// one pins its first, so a refusal that regresses to anywhere inside
+    /// the sequence (after allocation or `set_suspension`, before mirror
+    /// registration) still moves an instrument and fails the §3.2 gates.
+    #[cfg(any(test, feature = "test-support"))]
+    dirty_suspension_allocations: AtomicU64,
 
     #[cfg(test)]
     park_gap_hook: Mutex<Option<ParkGapHook>>,
@@ -720,16 +754,22 @@ impl Scheduler {
         let dirty_queue_depth = config
             .dirty_queue_depth
             .unwrap_or(dirty::DEFAULT_DIRTY_QUEUE_DEPTH);
-        let dirty_cpu = DirtyPool::with_queue_depth(
+        // A zero-thread REQUEST (`Some(0)`) disables the pool outright: it holds
+        // no channel and no workers, so a later dirty dispatch is refused before
+        // any suspension is registered (spec §3.2/§6). `None` keeps the legacy
+        // default; `Some(n>0)` owns a pool of `n`. The `.max(1)` inside
+        // `with_queue_depth` still floors a nonzero request, but a zero request
+        // never constructs a pool.
+        let dirty_cpu = build_dirty_pool(
             "dirty-cpu",
-            config.dirty_cpu_threads.unwrap_or_else(num_cpus::get),
+            config.dirty_cpu_threads,
+            num_cpus::get(),
             dirty_queue_depth,
         );
-        let dirty_io = DirtyPool::with_queue_depth(
+        let dirty_io = build_dirty_pool(
             "dirty-io",
-            config
-                .dirty_io_threads
-                .unwrap_or(dirty::DEFAULT_DIRTY_IO_THREADS),
+            config.dirty_io_threads,
+            dirty::DEFAULT_DIRTY_IO_THREADS,
             dirty_queue_depth,
         );
         let jit_profiler = Arc::new(JitProfiler::new(
@@ -886,6 +926,10 @@ impl Scheduler {
             idle_parks: AtomicUsize::new(0),
             #[cfg(any(test, feature = "test-support"))]
             observed_park_timeout_millis: AtomicU64::new(0),
+            #[cfg(any(test, feature = "test-support"))]
+            suspension_mirror_registrations: AtomicU64::new(0),
+            #[cfg(any(test, feature = "test-support"))]
+            dirty_suspension_allocations: AtomicU64::new(0),
             #[cfg(test)]
             park_gap_hook: Mutex::new(None),
         });
@@ -1162,13 +1206,23 @@ impl Scheduler {
     pub fn service_policies(&self) -> Vec<ServicePolicyLine> {
         inventory::build_service_policies(&self.shared)
     }
+    /// The dirty CPU pool, or `None` when this scheduler was composed with the
+    /// pool disabled (spec §3.2). Replaces `dirty_cpu_pool()` per the §6
+    /// keep-old-working amendment (pair-ruled): the old `&DirtyPool` signature
+    /// cannot honestly represent a Disabled pool, so the break is loud and
+    /// `try_`-named at the call site.
+    #[doc(alias = "dirty_cpu_pool")]
     #[must_use]
-    pub fn dirty_cpu_pool(&self) -> &DirtyPool {
-        &self.shared.dirty_cpu
+    pub fn try_dirty_cpu_pool(&self) -> Option<&DirtyPool> {
+        self.shared.dirty_cpu.service()
     }
+    /// The dirty IO pool, or `None` when disabled (spec §3.2/§6). Replaces
+    /// `dirty_io_pool()` per the same §6 amendment as
+    /// [`Self::try_dirty_cpu_pool`].
+    #[doc(alias = "dirty_io_pool")]
     #[must_use]
-    pub fn dirty_io_pool(&self) -> &DirtyPool {
-        &self.shared.dirty_io
+    pub fn try_dirty_io_pool(&self) -> Option<&DirtyPool> {
+        self.shared.dirty_io.service()
     }
     #[must_use]
     pub fn jit_profiler(&self) -> &Arc<JitProfiler> {
@@ -1252,6 +1306,33 @@ impl Scheduler {
             millis => Some(millis),
         }
     }
+    /// Cumulative suspension-mirror registrations across this scheduler —
+    /// one per `register_suspension_mirror` call, counted at registration
+    /// rather than inferred from the live mirror map. Boundary instrument
+    /// for the §3.2 refusal ordering: a refused dirty call must leave this
+    /// unmoved, which distinguishes refusal-before-registration from
+    /// refusal-after-registration-plus-cleanup. Test-only instrumentation
+    /// (`test-support`), absent from production builds.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn suspension_mirror_registration_count(&self) -> u64 {
+        self.shared
+            .suspension_mirror_registrations
+            .load(Ordering::Acquire)
+    }
+    /// Cumulative entries into the dirty-call gated-suspension side-effect
+    /// sequence (first step: call-id allocation). Paired with
+    /// [`Self::suspension_mirror_registration_count`], the two instruments
+    /// bracket the whole sequence, so the §3.2 refusal gates catch a check
+    /// that regresses to anywhere inside it. Test-only instrumentation
+    /// (`test-support`), absent from production builds.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn dirty_suspension_allocation_count(&self) -> u64 {
+        self.shared
+            .dirty_suspension_allocations
+            .load(Ordering::Acquire)
+    }
 }
 #[cfg(feature = "threads")]
 impl Drop for Scheduler {
@@ -1266,6 +1347,30 @@ fn configured_thread_count(override_count: Option<usize>) -> usize {
         .unwrap_or_else(|| {
             std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
         })
+}
+
+/// Build a dirty pool slot from a config request (spec §3.2/§6):
+/// `Some(0)` → `Disabled` (no channel, no workers); `Some(n>0)` → `Owned(n)`;
+/// `None` → `Owned(default_threads)`. A zero request never constructs a pool,
+/// so a disabled dirty dispatch has nothing to submit into.
+#[cfg(feature = "threads")]
+fn build_dirty_pool(
+    name: &str,
+    requested: Option<usize>,
+    default_threads: usize,
+    queue_depth: usize,
+) -> ServiceMode<DirtyPool> {
+    match requested {
+        Some(0) => ServiceMode::Disabled,
+        Some(threads) => {
+            ServiceMode::Owned(DirtyPool::with_queue_depth(name, threads, queue_depth))
+        }
+        None => ServiceMode::Owned(DirtyPool::with_queue_depth(
+            name,
+            default_threads,
+            queue_depth,
+        )),
+    }
 }
 #[cfg(feature = "threads")]
 fn process_namespace(shared: &SharedState, pid: u64) -> Option<NamespaceId> {

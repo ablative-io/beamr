@@ -83,6 +83,9 @@ impl SharedState {
         kind: SuspensionKind,
         wake_on_message: bool,
     ) {
+        #[cfg(any(test, feature = "test-support"))]
+        self.suspension_mirror_registrations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.suspensions.insert(
             pid,
             SuspensionMirror {
