@@ -33,7 +33,9 @@ pub use aot::{
     AotCompiler, AotError, AotResult, NativeCodeBundle, NativeEntries, NativeModuleEntries,
 };
 pub use cache::{JitCache, JitCacheKey};
-pub use compile_job::{CompilationJob, CompilationRequest, submit_jit_compilation};
+pub use compile_job::{
+    CompilationJob, CompilationRequest, submit_jit_compilation, try_submit_jit_compilation,
+};
 pub use compiler::{JitCompiler, JitError, JitSettings};
 pub use profiler::{DEFAULT_JIT_THRESHOLD, JitProfiler, MfaKey, RecordResult};
 pub use type_info::GleamTypeReader;
