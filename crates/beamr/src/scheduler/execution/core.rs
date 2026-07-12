@@ -762,7 +762,7 @@ fn execute_slice_with_budget(
             // released on every error path below, converted into a retained,
             // OS-joinable bridge handle at spawn.
             let reservation = if target_available {
-                shared.try_reserve_dirty_completion()
+                shared.try_reserve_teardown_admission()
             } else {
                 None
             };
@@ -1438,7 +1438,7 @@ fn submit_dirty_call(
     shared: &Arc<SharedState>,
     process: &Process,
     invocation: DirtyInvocation,
-    reservation: crate::scheduler::DirtyCompletionReservation,
+    reservation: crate::scheduler::TeardownAdmission,
 ) -> Result<(), DirtySubmissionError> {
     let DirtyInvocation {
         call_id,
@@ -1665,6 +1665,8 @@ pub(in crate::scheduler) fn finalize_exited_process(
     crate::telemetry::lifecycle::record_process_exited(&shared.atom_table, pid, reason);
     #[cfg(not(feature = "telemetry"))]
     let _ = reason;
+    #[cfg(feature = "readiness")]
+    shared.purge_readiness_state(pid);
     if let Some((_pid, slot_mutex)) = shared.process_bodies.remove(&pid) {
         let slot = slot_mutex
             .into_inner()

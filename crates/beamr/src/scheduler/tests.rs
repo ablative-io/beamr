@@ -1256,9 +1256,13 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
+        #[cfg(feature = "readiness")]
+        readiness: super::service::ServiceMode::Disabled,
+        #[cfg(feature = "readiness")]
+        readiness_consumer: None,
         service_instances: super::inventory::ServiceInstances::mint(false),
         dirty_completion_spawns: AtomicU64::new(0),
-        dirty_completions: Mutex::new(super::DirtyCompletionRegistry::default()),
+        dirty_completions: Mutex::new(super::TeardownAdmissionRegistry::default()),
         dirty_completions_changed: Condvar::new(),
         dirty_completion_shutdown_tx: Mutex::new(Some(dirty_completion_shutdown_tx)),
         dirty_completion_shutdown_rx,
@@ -1677,9 +1681,13 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
+        #[cfg(feature = "readiness")]
+        readiness: super::service::ServiceMode::Disabled,
+        #[cfg(feature = "readiness")]
+        readiness_consumer: None,
         service_instances: super::inventory::ServiceInstances::mint(false),
         dirty_completion_spawns: AtomicU64::new(0),
-        dirty_completions: Mutex::new(super::DirtyCompletionRegistry::default()),
+        dirty_completions: Mutex::new(super::TeardownAdmissionRegistry::default()),
         dirty_completions_changed: Condvar::new(),
         dirty_completion_shutdown_tx: Mutex::new(Some(dirty_completion_shutdown_tx)),
         dirty_completion_shutdown_rx,

@@ -95,6 +95,8 @@ impl Scheduler {
         // scheduler's state past its own lifetime, or deliver a completion
         // into the dead scheduler.
         self.shared.drain_dirty_completions();
+        #[cfg(feature = "readiness")]
+        self.shared.deregister_shared_readiness();
         // Stop the dirty pools through their ServiceMode, OWNER-ONLY (spec §4):
         // an Owned pool joins its workers, a Shared injection is left for its
         // embedder-owner (commit 5 enables Shared dirty construction, so this
@@ -119,6 +121,8 @@ impl Scheduler {
         // `shutdown_owned` leaves the slot readable so the post-shutdown inventory
         // truthfully reports zero live runtime workers (commit-3 semantics).
         self.shared.distribution.shutdown_owned();
+        #[cfg(feature = "readiness")]
+        self.shared.readiness.shutdown_owned();
         self.shared.shutdown.store(true, Ordering::Release);
         self.shared.wake_condvar.notify_all();
         let mut threads = lock_or_recover(&self.threads);

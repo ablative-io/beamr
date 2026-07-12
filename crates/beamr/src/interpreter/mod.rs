@@ -23,6 +23,8 @@ use crate::io::{IoFacility, IoSink};
 #[cfg(feature = "jit")]
 use crate::jit::JitCache;
 use crate::module::{Module, ModuleRegistry};
+#[cfg(feature = "readiness")]
+use crate::native::ReadinessFacility;
 use crate::native::code_management_bifs::CodeManagementFacility;
 use crate::native::ets_bifs::EtsFacility;
 use crate::native::group_leader::GroupLeaderFacility;
@@ -95,6 +97,13 @@ pub struct NativeServices {
     pub io_facility: Option<Arc<dyn IoFacility>>,
     /// IO message facility for group-leader protocol BIFs.
     pub io_message_facility: Option<Arc<dyn IoMessageFacility>>,
+    /// Admission gate for timer and other mutating native facilities.
+    #[cfg(feature = "threads")]
+    pub(crate) teardown_admission_facility:
+        Option<Arc<dyn crate::native::TeardownAdmissionFacility>>,
+    /// In-slice readiness registration and rearm facility.
+    #[cfg(feature = "readiness")]
+    pub readiness_facility: Option<Arc<dyn ReadinessFacility>>,
     /// Completion-ring backed facility for file BIFs.
     #[cfg(feature = "threads")]
     pub file_io_facility: Option<Arc<dyn FileIoFacility>>,

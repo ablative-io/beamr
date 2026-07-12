@@ -22,6 +22,7 @@ crossbeam-channel = { version = "0.5.15", optional = true }
 crossbeam-deque = { version = "0.8.6", optional = true }
 crossbeam-queue = { version = "0.3.12", optional = true }
 dashmap = "6.1.0"
+mio = { version = "1", features = ["os-poll", "net", "os-ext"], optional = true }
 flate2 = "1.1.9"
 gleam-types = { path = "../gleam-types", version = "0.4.3" }
 libc = { version = "0.2.186", optional = true }
@@ -65,13 +66,14 @@ harness = false
 required-features = ["jit", "threads"]
 
 [features]
-default = ["std", "threads", "net", "fs", "jit", "embedded"]
+default = ["std", "threads", "net", "fs", "jit", "embedded", "readiness"]
 std = []
 # Cooperative single-threaded runtime (WR-0 spike). Brings in only the
 # lock-free SegQueue mailbox dependency; no tokio/crossbeam-channel/-deque,
 # no io-uring, no num_cpus. Intended for wasm32 where OS threads are absent.
 cooperative = ["std", "dep:crossbeam-queue"]
 threads = ["std", "dep:crossbeam-channel", "dep:crossbeam-deque", "dep:crossbeam-queue", "dep:io-uring", "dep:num_cpus", "dep:tokio"]
+readiness = ["threads", "dep:mio"]
 net = ["std", "dep:libc", "dep:rustix", "dep:tokio"]
 fs = ["std", "dep:libc", "dep:rustix"]
 jit = ["std", "threads", "dep:cranelift-codegen", "dep:cranelift-frontend", "dep:cranelift-jit", "dep:cranelift-module", "dep:cranelift-native"]

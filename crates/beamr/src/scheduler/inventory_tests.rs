@@ -56,6 +56,7 @@ fn default_profile_pins_as_built_service_inventory() {
             inventory::STANDARD_IO_RING,
             inventory::GENERIC_IO_RING,
             inventory::DISTRIBUTION,
+            inventory::READINESS,
         ],
         "the inventory enumerates exactly the service set, in order"
     );
@@ -95,6 +96,17 @@ fn default_profile_pins_as_built_service_inventory() {
     assert!(distribution.thread_names.is_empty());
     assert_eq!(
         distribution.instance,
+        super::service::ServiceInstanceId::DISABLED
+    );
+
+    // Readiness has no legacy config knob, so FromConfig is Disabled.
+    let readiness = &by_service[inventory::READINESS];
+    assert_eq!(readiness.mode, ServiceModeLabel::Disabled);
+    assert_eq!((readiness.configured, readiness.actual), (0, 0));
+    assert!(readiness.thread_names.is_empty());
+    assert!(readiness.fd_classes.is_empty());
+    assert_eq!(
+        readiness.instance,
         super::service::ServiceInstanceId::DISABLED
     );
 
