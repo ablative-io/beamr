@@ -891,6 +891,17 @@ a recommendation.
   "TBD". *Recommendation:* `readiness`, requiring `threads` (the poll thread and
   `enqueue_atom_message` are `threads`-only). Matches the contract's working
   name; no BEAM-visible surface, so no atom-name question (Q-B precedent).
+  **Default-set membership RESOLVED: YES, `readiness` joins the crate's
+  default features (pair-concurred 2026-07-12, build-leg derivation from
+  OQ-4).** The reasoning of record (Waffles): feature-compiled and
+  service-enabled are two different defaults, and this decision touches only
+  the first — the CODE ships in default builds while the service stays §3.9
+  default-off (`FromConfig` → `Disabled`), so no embedder gets a poll thread
+  they didn't compose, and `full_runtime()` delivering what OQ-4 says it
+  picks stops being conditional on a feature flag nobody was told about. Two
+  guards keep it clean: `readiness` requires `threads`, and the
+  wasm/cooperative consumers build with default-features=false, so mio never
+  leaks into a wasm target. Drift-prevention, not scope creep.
 - **OQ-2 — mio `Registry` vs `Poll` split behind the lock.** mio's `Registry`
   is `Sync` and can register fds while `Poll::poll` blocks, but the dereg epoch
   handshake (§4.2) still needs the Waker to bound the wait. *Recommendation:*
