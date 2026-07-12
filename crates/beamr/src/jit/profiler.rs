@@ -252,10 +252,13 @@ impl JitProfiler {
 
     /// Marks a pending or interpreted function as compiled at a generation.
     ///
-    /// No-ops when the profile's stamped generation is newer: a completion for an older generation
-    /// must not stamp state onto code that no longer runs.
-    pub fn mark_compiled(&self, module: Atom, function: Atom, arity: u8, generation: u64) {
-        self.set_state(module, function, arity, generation, STATE_COMPILED);
+    /// Applies ONLY on an exact generation match and returns whether it applied. A completion is
+    /// valid solely for the generation that submitted it: an older job's completion is about dead
+    /// code, and a NEWER job generation than the stamp means the profile was deleted and recreated
+    /// at the registry's restarted numbering — stamping it would wedge the replacement (its own
+    /// calls would read as "older" forever).
+    pub fn mark_compiled(&self, module: Atom, function: Atom, arity: u8, generation: u64) -> bool {
+        self.set_state(module, function, arity, generation, STATE_COMPILED)
     }
 
     /// Publishes a compilation result and marks the profile COMPILED as one step, serialized on
@@ -280,20 +283,25 @@ impl JitProfiler {
         let Some(profile) = self.profiles.get_mut(&key) else {
             return false;
         };
-        if profile.generation.load(Ordering::Acquire) > generation {
+        if profile.generation.load(Ordering::Acquire) != generation {
             return false;
         }
         publish();
-        profile.generation.store(generation, Ordering::Release);
         profile.state.store(STATE_COMPILED, Ordering::Release);
         true
     }
 
     /// Marks a function as permanently unsupported by this JIT tier at a generation.
     ///
-    /// No-ops when the profile's stamped generation is newer (see [`Self::mark_compiled`]).
-    pub fn mark_unsupported(&self, module: Atom, function: Atom, arity: u8, generation: u64) {
-        self.set_state(module, function, arity, generation, STATE_UNSUPPORTED);
+    /// Exact-generation-match semantics as [`Self::mark_compiled`]; returns whether it applied.
+    pub fn mark_unsupported(
+        &self,
+        module: Atom,
+        function: Atom,
+        arity: u8,
+        generation: u64,
+    ) -> bool {
+        self.set_state(module, function, arity, generation, STATE_UNSUPPORTED)
     }
 
     /// Returns whether an MFA is currently marked compiled.
@@ -310,21 +318,21 @@ impl JitProfiler {
 
     /// Resets a transient compilation failure at a generation so the function can heat up again.
     ///
-    /// No-ops when the profile's stamped generation is newer (see [`Self::mark_compiled`]), and
-    /// no-ops when no profile exists: completion paths never recreate an entry — a missing
-    /// profile means the module was deleted (the scheduler seam dropped it), and resurrecting it
-    /// would strand a stale generation stamp against a name whose registry generations restart.
-    pub fn reset_counter(&self, module: Atom, function: Atom, arity: u8, generation: u64) {
+    /// Exact-generation-match semantics as [`Self::mark_compiled`], and a no-op when no profile
+    /// exists: completion paths never recreate an entry — a missing profile means the module was
+    /// deleted (the scheduler seam dropped it), and resurrecting it would strand a stale
+    /// generation stamp against a name whose registry generations restart.
+    pub fn reset_counter(&self, module: Atom, function: Atom, arity: u8, generation: u64) -> bool {
         let key = MfaKey::new(module, function, arity);
         let Some(profile) = self.profiles.get_mut(&key) else {
-            return;
+            return false;
         };
-        if profile.generation.load(Ordering::Acquire) > generation {
-            return;
+        if profile.generation.load(Ordering::Acquire) != generation {
+            return false;
         }
-        profile.generation.store(generation, Ordering::Release);
         profile.counter.store(0, Ordering::Release);
         profile.state.store(STATE_INTERPRETING, Ordering::Release);
+        true
     }
 
     /// Drops every profile entry for a module.
@@ -335,20 +343,21 @@ impl JitProfiler {
         self.profiles.retain(|key, _| key.module != module);
     }
 
-    /// Completion-mark write path: no-ops when the stamped generation is newer AND when no
-    /// profile exists (see [`Self::reset_counter`] — completions never resurrect deleted
-    /// profiles). Only [`Self::record_call`] creates entries: an MFA enters the map by being
-    /// interpreted at a live call edge, never by a completion arriving after deletion.
-    fn set_state(&self, module: Atom, function: Atom, arity: u8, generation: u64, state: u8) {
+    /// Completion-mark write path: applies ONLY when the profile exists AND its stamp equals the
+    /// completion's generation exactly. No-profile means deleted (never resurrect); a mismatched
+    /// stamp in EITHER direction means the completion is stale — older jobs are about dead code,
+    /// and a job generation above the stamp means delete+reload restarted the registry's
+    /// numbering below it. Only [`Self::record_call`] creates entries or moves the stamp.
+    fn set_state(&self, module: Atom, function: Atom, arity: u8, generation: u64, state: u8) -> bool {
         let key = MfaKey::new(module, function, arity);
         let Some(profile) = self.profiles.get_mut(&key) else {
-            return;
+            return false;
         };
-        if profile.generation.load(Ordering::Acquire) > generation {
-            return;
+        if profile.generation.load(Ordering::Acquire) != generation {
+            return false;
         }
-        profile.generation.store(generation, Ordering::Release);
         profile.state.store(state, Ordering::Release);
+        true
     }
 
     fn state_for(&self, module: Atom, function: Atom, arity: u8) -> Option<u8> {
@@ -538,6 +547,31 @@ mod tests {
     }
 
     #[test]
+    fn completion_marks_refuse_a_job_generation_above_the_stamp() {
+        // The delete+reload interleaving: a generation-2 job survives a
+        // delete, and the replacement module heats at the registry's
+        // RESTARTED generation 1. The stale completions must neither stamp
+        // state nor touch the replacement's heat.
+        let profiler = JitProfiler::new(2);
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::Continue
+        );
+        assert!(!profiler.mark_compiled(atom(1), atom(2), 0, 2));
+        assert!(!profiler.is_compiled(atom(1), atom(2), 0));
+        assert!(!profiler.mark_unsupported(atom(1), atom(2), 0, 2));
+        assert!(!profiler.is_unsupported(atom(1), atom(2), 0));
+        assert!(!profiler.reset_counter(atom(1), atom(2), 0, 2));
+
+        // This call is the threshold-crosser, proving the stale completions
+        // neither wedged the state machine nor reset the counter.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::CompileNow
+        );
+    }
+
+    #[test]
     fn publish_compiled_refuses_after_remove_module_and_stale_generations() {
         let profiler = JitProfiler::new(1);
         assert_eq!(
@@ -569,6 +603,21 @@ mod tests {
         assert!(profiler.publish_compiled(atom(1), atom(2), 0, 3, || live_published = true));
         assert!(live_published);
         assert!(profiler.is_compiled(atom(1), atom(2), 0));
+
+        // A job generation ABOVE the stamp is equally stale: the profile was
+        // deleted and recreated at the registry's restarted numbering.
+        profiler.remove_module(atom(1));
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::CompileNow
+        );
+        let mut above_published = false;
+        assert!(!profiler.publish_compiled(atom(1), atom(2), 0, 3, || above_published = true));
+        assert!(
+            !above_published,
+            "a stale job must not publish onto a replacement stamped below it"
+        );
+        assert!(!profiler.is_compiled(atom(1), atom(2), 0));
     }
 
     #[test]
