@@ -719,10 +719,19 @@ fn dispatch_external_jit(
     let Some(cache) = ctx.jit_cache else {
         return Ok(None);
     };
-    // Same canonical-entry rule as the local edge: an export whose label
-    // resolves mid-function must never hit or heat the JIT surface under the
-    // exported MFA.
+    // Same canonical-entry rule as the local edge, plus ownership: the
+    // external identity is the cache key, and export validation only checks
+    // that the label EXISTS — a loader-legal export can alias another
+    // function's entry. Running or heating cached code under the exported
+    // MFA when the target entry belongs to a different function would swap
+    // one function's code for another's.
     if !target_module.is_function_entry(target_ip) {
+        return Ok(None);
+    }
+    let Some((owner, owner_arity)) = target_module.function_at_ip(target_ip) else {
+        return Ok(None);
+    };
+    if owner != function || owner_arity != arity {
         return Ok(None);
     }
     let Some(native) = cache.lookup(

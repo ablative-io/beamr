@@ -353,11 +353,14 @@ fn exported_instructions<'a>(
         Some(_) => entry,
         None => return Err(format!("entry instruction {entry} is outside module code")),
     };
+    // The boundary scan includes `start` itself — an empty function's `start`
+    // already sits on the next `FuncInfo`. Kept element-identical to
+    // `Module::function_instructions` (the slice-equality pin is the wall).
     let end = parsed
         .instructions
         .iter()
         .enumerate()
-        .skip(start.saturating_add(1))
+        .skip(start)
         .find_map(|(index, instruction)| match instruction {
             Instruction::FuncInfo { .. } => Some(index),
             _ => None,
