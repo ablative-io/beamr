@@ -30,6 +30,37 @@ exists — Waffles' riders, 2026-07-12):**
    is recorded here with its outcome. The merge commit must note both her
    design authorship and her absence at build time.
 
+   **OUTCOME RECORDED (2026-07-12, Artemis Peach): PASS — obligation
+   discharged.** The retroactive pass reviewed the landed diff on main
+   (1f98f73 through the §1.4 conformance fix 34702e1, at head 1b07d03)
+   against this doc as merged (c8297fe). Every load-bearing shape verified
+   realized: the §1.3 token walls; §3.2 validate-copy-unlock-deliver (W3);
+   the §3.3 gate with the R-1 sweep-count proof and the W2 straggler
+   refusal; the §3.5 sweep strictly after `drain_dirty_completions`; the
+   §4.2 epoch handshake including the D-1 lost-wakeup fix (all three
+   predicate writers pass through `epoch_lock` before notify); the §4.6
+   FAILED posture with the W1 panic-under-the-table-lock gate and
+   poisoned-lock recovery on the tombstone paths only; all six §6 rider
+   rows including this commit's own two ops; the OQ-1–OQ-4 resolutions as
+   signed; and the dead-pid funnel (`purge_readiness_state` in
+   `finalize_exited_process`, handshake skipped when the pid holds no
+   registrations). Reviewer battery on 1b07d03, toolchain rustc/clippy
+   1.94.1: fmt, check, clippy default and --all-features `-D warnings` all
+   exit 0; lib 1653/1653; integration 185/0; 10x stability on the new
+   suites green. Two non-blocking observations, recorded here so they
+   don't rot in channel archaeology: **O1** — `ReadinessCore`'s `stopping`
+   state refuses as `ReadinessError::ServiceFailed`, so a deliberate
+   embedder shutdown of a `SharedReadiness` with live consumers reads as
+   "poll thread has failed" at the refusal surface; behaviorally the
+   correct refusal, but the Display text over-claims (candidate one-line
+   follow-up, not a blocker). **O2** — registration performs the mio
+   register and the record insert under ONE table-lock hold, which is also
+   the wall closing the register-vs-event lost-edge race: an edge that
+   fires before the record exists blocks in delivery on the table lock
+   until registration completes. That property is load-bearing and
+   deliberate — no future change may hoist the `registry.register` call
+   out of the lock without replacing the wall.
+
 Citations are `file:line` into the landed tree at this head. Where the contract
 spec's own citations have drifted against landed code, the drift is recorded in
 §7, not silently corrected.
