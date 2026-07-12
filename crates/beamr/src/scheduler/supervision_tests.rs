@@ -357,9 +357,13 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         file_io_results: DashMap::new(),
         file_io_canceled: DashSet::new(),
         standard_io_pid: u64::MAX,
+        #[cfg(feature = "readiness")]
+        readiness: super::service::ServiceMode::Disabled,
+        #[cfg(feature = "readiness")]
+        readiness_consumer: None,
         service_instances,
         dirty_completion_spawns: AtomicU64::new(0),
-        dirty_completions: Mutex::new(super::DirtyCompletionRegistry::default()),
+        dirty_completions: Mutex::new(super::TeardownAdmissionRegistry::default()),
         dirty_completions_changed: Condvar::new(),
         dirty_completion_shutdown_tx: Mutex::new(Some(dirty_completion_shutdown_tx)),
         dirty_completion_shutdown_rx,

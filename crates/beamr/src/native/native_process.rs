@@ -19,6 +19,8 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use crate::error::ExecError;
+#[cfg(feature = "threads")]
+use crate::native::TeardownAdmissionFacility;
 use crate::native::local_send::{LocalSendError, LocalSendFacility, LocalSendRequest};
 use crate::native::spawn::{SpawnError, SpawnFacility};
 use crate::native::{NativeKey, ProcessContext, WasmAsyncNifFacility};
@@ -102,6 +104,8 @@ pub struct NativeContext<'a> {
     spawn: Arc<dyn SpawnFacility>,
     replay_driver: Option<Arc<Mutex<ReplayDriver>>>,
     timers: Option<Arc<Mutex<TimerWheel>>>,
+    #[cfg(feature = "threads")]
+    teardown_admission_facility: Option<Arc<dyn TeardownAdmissionFacility>>,
     replay_error: Option<ExecError>,
     /// Single-threaded host bridge for WASM async native functions (WR-7).
     ///
@@ -132,6 +136,8 @@ impl<'a> NativeContext<'a> {
             spawn,
             replay_driver,
             timers,
+            #[cfg(feature = "threads")]
+            teardown_admission_facility: None,
             replay_error: None,
             wasm_async_nif_facility: None,
         }
@@ -146,6 +152,14 @@ impl<'a> NativeContext<'a> {
         facility: Option<Rc<dyn WasmAsyncNifFacility>>,
     ) {
         self.wasm_async_nif_facility = facility;
+    }
+
+    #[cfg(feature = "threads")]
+    pub(crate) fn set_teardown_admission_facility(
+        &mut self,
+        facility: Option<Arc<dyn TeardownAdmissionFacility>>,
+    ) {
+        self.teardown_admission_facility = facility;
     }
 
     /// PID of the running native process.
@@ -288,6 +302,14 @@ impl<'a> NativeContext<'a> {
         self.send_after(delay, target_pid, message)
     }
 
+    #[cfg(feature = "threads")]
+    fn reserve_timer_mutation(&self) -> Result<Option<Box<dyn Send>>, ()> {
+        match &self.teardown_admission_facility {
+            Some(facility) => facility.try_reserve().map(Some).ok_or(()),
+            None => Ok(None),
+        }
+    }
+
     /// Schedule `message` to be delivered to `target_pid`'s mailbox after
     /// `delay`. Returns the timer reference, or `None` when the context was
     /// built without a timer wheel.
@@ -312,6 +334,8 @@ impl<'a> NativeContext<'a> {
         target_pid: u64,
         message: Term,
     ) -> Option<TimerRef> {
+        #[cfg(feature = "threads")]
+        let _admission = self.reserve_timer_mutation().ok()?;
         let timers = self.timers.as_ref()?;
         Some(
             timers
@@ -325,6 +349,8 @@ impl<'a> NativeContext<'a> {
     /// remaining duration. `None` when there is no timer wheel or the timer
     /// already fired or was already cancelled.
     pub fn cancel_timer(&mut self, reference: TimerRef) -> Option<std::time::Duration> {
+        #[cfg(feature = "threads")]
+        let _admission = self.reserve_timer_mutation().ok()?;
         let timers = self.timers.as_ref()?;
         timers
             .lock()

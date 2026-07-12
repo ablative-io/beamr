@@ -11,6 +11,8 @@
 use super::SharedState;
 use super::dirty::DirtyPool;
 use super::distribution_service::DistributionService;
+#[cfg(feature = "readiness")]
+use super::readiness::ReadinessService;
 use super::ring_service::{RingService, StandardIoService};
 use super::service::{ServiceInstanceId, ServiceMode, ServiceModeLabel};
 
@@ -28,6 +30,8 @@ pub(super) const GENERIC_IO_RING: &str = "generic-io-ring";
 /// whose §5 line lists BOTH runtime worker names (the outbound sender's and the
 /// net-kernel's) under a single entry.
 pub(super) const DISTRIBUTION: &str = "distribution";
+/// Service label: fd readiness registration and delivery.
+pub(super) const READINESS: &str = "readiness";
 /// Policy label: the per-dirty-call transient completion thread.
 pub(super) const DIRTY_COMPLETE: &str = "dirty-complete";
 /// Policy label: the per-connection distribution heartbeat (net-tick) task —
@@ -207,6 +211,26 @@ fn distribution_entry(mode: &ServiceMode<DistributionService>) -> ServiceInvento
     }
 }
 
+#[cfg(feature = "readiness")]
+fn readiness_entry(mode: &ServiceMode<ReadinessService>) -> ServiceInventoryEntry {
+    match mode.service() {
+        Some(readiness) => {
+            let _live_registration_count = readiness.live_registration_count();
+            let thread_names = readiness.poll_thread_names();
+            ServiceInventoryEntry {
+                service: READINESS,
+                mode: mode.label(),
+                instance: mode.instance_id(),
+                configured: 1,
+                actual: thread_names.len(),
+                thread_names,
+                fd_classes: readiness.poll_fd_classes(),
+            }
+        }
+        None => disabled_entry(READINESS),
+    }
+}
+
 /// A disabled service line: no instance, no threads, no fds.
 fn disabled_entry(service: &'static str) -> ServiceInventoryEntry {
     ServiceInventoryEntry {
@@ -264,6 +288,8 @@ pub(super) fn build_service_inventory(shared: &SharedState) -> Vec<ServiceInvent
     // runtime workers (spec §3.6): `Owned` when `config.distribution` was `Some`,
     // `Disabled` (honest absence, NEITHER runtime built) when it was `None`.
     entries.push(distribution_entry(&shared.distribution));
+    #[cfg(feature = "readiness")]
+    entries.push(readiness_entry(&shared.readiness));
 
     entries
 }

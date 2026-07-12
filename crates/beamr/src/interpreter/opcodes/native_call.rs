@@ -152,6 +152,10 @@ pub(crate) fn call_native_entry(
         context.set_io_facility(svc.io_facility.clone());
         context.set_io_message_facility(svc.io_message_facility.clone());
         #[cfg(feature = "threads")]
+        context.set_teardown_admission_facility(svc.teardown_admission_facility.clone());
+        #[cfg(feature = "readiness")]
+        context.set_readiness_facility(svc.readiness_facility.clone());
+        #[cfg(feature = "threads")]
         context.set_file_io_facility(svc.file_io_facility.clone());
         #[cfg(feature = "threads")]
         context.set_tcp_io_facility(svc.tcp_io_facility.clone());

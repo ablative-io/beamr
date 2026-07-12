@@ -39,6 +39,8 @@ use super::group_leader::GroupLeaderFacility;
 use super::io_message::IoMessageFacility;
 use super::links::LinkFacility;
 use super::process_info_bifs::ProcessInfoFacility;
+#[cfg(feature = "readiness")]
+use super::readiness::ReadinessFacility;
 use super::registry::RegistryFacility;
 use super::select::SelectFacility;
 use super::spawn::SpawnFacility;
@@ -300,6 +302,12 @@ pub trait SuspensionRegistrar: Send + Sync {
     fn cancel_host_await(&self, pid: u64, call_id: u64);
 }
 
+/// Scheduler-owned gate held across one mutating native facility operation.
+#[cfg(feature = "threads")]
+pub(crate) trait TeardownAdmissionFacility: Send + Sync {
+    fn try_reserve(&self) -> Option<Box<dyn Send>>;
+}
+
 /// Exception classes that BIFs can request when returning `Err(reason)`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ExceptionClass {
@@ -360,6 +368,8 @@ pub struct ProcessContext<'process> {
     #[cfg(feature = "threads")]
     io_facility: Option<Arc<dyn IoFacility>>,
     io_message_facility: Option<Arc<dyn IoMessageFacility>>,
+    #[cfg(feature = "readiness")]
+    readiness_facility: Option<Arc<dyn ReadinessFacility>>,
     #[cfg(feature = "threads")]
     file_io_facility: Option<Arc<dyn FileIoFacility>>,
     #[cfg(feature = "threads")]
@@ -372,6 +382,8 @@ pub struct ProcessContext<'process> {
     trampoline: Option<TrampolineRequest>,
     suspend: Option<SuspendRequest>,
     suspension_registrar: Option<Arc<dyn SuspensionRegistrar>>,
+    #[cfg(feature = "threads")]
+    teardown_admission_facility: Option<Arc<dyn TeardownAdmissionFacility>>,
     replay_driver: Option<Arc<Mutex<ReplayDriver>>>,
     wasm_async_nif_facility: Option<Rc<dyn WasmAsyncNifFacility>>,
     nif_private_data: Option<Arc<dyn std::any::Any + Send + Sync>>,
@@ -525,6 +537,8 @@ impl<'process> ProcessContext<'process> {
             #[cfg(feature = "threads")]
             io_facility: None,
             io_message_facility: None,
+            #[cfg(feature = "readiness")]
+            readiness_facility: None,
             #[cfg(feature = "threads")]
             file_io_facility: None,
             #[cfg(feature = "threads")]
@@ -536,6 +550,8 @@ impl<'process> ProcessContext<'process> {
             trampoline: None,
             suspend: None,
             suspension_registrar: None,
+            #[cfg(feature = "threads")]
+            teardown_admission_facility: None,
             shutdown_requested: false,
             replay_driver: None,
             wasm_async_nif_facility: None,
@@ -580,6 +596,8 @@ impl<'process> ProcessContext<'process> {
             #[cfg(feature = "threads")]
             io_facility: None,
             io_message_facility: None,
+            #[cfg(feature = "readiness")]
+            readiness_facility: None,
             #[cfg(feature = "threads")]
             file_io_facility: None,
             #[cfg(feature = "threads")]
@@ -591,6 +609,8 @@ impl<'process> ProcessContext<'process> {
             trampoline: None,
             suspend: None,
             suspension_registrar: None,
+            #[cfg(feature = "threads")]
+            teardown_admission_facility: None,
             shutdown_requested: false,
             replay_driver: None,
             wasm_async_nif_facility: None,
@@ -1012,6 +1032,14 @@ impl<'process> ProcessContext<'process> {
         self.registry_facility = facility;
     }
 
+    #[cfg(feature = "threads")]
+    fn reserve_timer_mutation(&self) -> Result<Option<Box<dyn Send>>, ()> {
+        match &self.teardown_admission_facility {
+            Some(facility) => facility.try_reserve().map(Some).ok_or(()),
+            None => Ok(None),
+        }
+    }
+
     /// Schedule a timer via the runtime timer wheel.
     pub fn schedule_timer(
         &mut self,
@@ -1019,6 +1047,8 @@ impl<'process> ProcessContext<'process> {
         target_pid: u64,
         message: Term,
     ) -> Option<TimerRef> {
+        #[cfg(feature = "threads")]
+        let _admission = self.reserve_timer_mutation().ok()?;
         let timers = self.timers.as_ref()?;
         Some(
             timers
@@ -1038,6 +1068,8 @@ impl<'process> ProcessContext<'process> {
     where
         F: FnOnce(TimerRef) -> Term,
     {
+        #[cfg(feature = "threads")]
+        let _admission = self.reserve_timer_mutation().ok()?;
         let timers = self.timers.as_ref()?;
         let mut timers = timers.lock().unwrap_or_else(|error| error.into_inner());
         let reference = timers.reserve_reference();
@@ -1052,6 +1084,8 @@ impl<'process> ProcessContext<'process> {
 
     /// Reserve a timer reference without scheduling it yet.
     pub fn reserve_timer_reference(&mut self) -> Option<TimerRef> {
+        #[cfg(feature = "threads")]
+        let _admission = self.reserve_timer_mutation().ok()?;
         let timers = self.timers.as_ref()?;
         Some(
             timers
@@ -1069,6 +1103,8 @@ impl<'process> ProcessContext<'process> {
         target_pid: u64,
         message: Term,
     ) -> Option<TimerRef> {
+        #[cfg(feature = "threads")]
+        let _admission = self.reserve_timer_mutation().ok()?;
         let timers = self.timers.as_ref()?;
         timers
             .lock()
@@ -1084,6 +1120,8 @@ impl<'process> ProcessContext<'process> {
 
     /// Cancel a timer via the runtime timer wheel.
     pub fn cancel_timer(&mut self, reference: TimerRef) -> Option<Duration> {
+        #[cfg(feature = "threads")]
+        let _admission = self.reserve_timer_mutation().ok()?;
         let timers = self.timers.as_ref()?;
         timers
             .lock()
@@ -1180,6 +1218,19 @@ impl<'process> ProcessContext<'process> {
     /// Set the IO message facility for group-leader protocol BIFs.
     pub fn set_io_message_facility(&mut self, facility: Option<Arc<dyn IoMessageFacility>>) {
         self.io_message_facility = facility;
+    }
+
+    /// Return the in-slice readiness facility when the service is composed.
+    #[cfg(feature = "readiness")]
+    #[must_use]
+    pub fn readiness_facility(&self) -> Option<&dyn ReadinessFacility> {
+        self.readiness_facility.as_deref()
+    }
+
+    /// Set the scheduler's in-slice readiness facility.
+    #[cfg(feature = "readiness")]
+    pub fn set_readiness_facility(&mut self, facility: Option<Arc<dyn ReadinessFacility>>) {
+        self.readiness_facility = facility;
     }
 
     /// Submit an I/O operation for the attached pid and request suspension.
@@ -1590,6 +1641,14 @@ impl<'process> ProcessContext<'process> {
     /// Set the scheduler-side registrar that publishes host-await call ids.
     pub fn set_suspension_registrar(&mut self, registrar: Option<Arc<dyn SuspensionRegistrar>>) {
         self.suspension_registrar = registrar;
+    }
+
+    #[cfg(feature = "threads")]
+    pub(crate) fn set_teardown_admission_facility(
+        &mut self,
+        facility: Option<Arc<dyn TeardownAdmissionFacility>>,
+    ) {
+        self.teardown_admission_facility = facility;
     }
 
     // --- Exception metadata ---
