@@ -12,21 +12,28 @@ use super::profiler::JitProfiler;
 /// Owned function identity and instruction slice for a pending JIT compilation.
 pub struct CompilationRequest {
     key: JitCacheKey,
+    /// The submitting profile's incarnation epoch: completions present it
+    /// back, so a stale job can never apply to a delete+reload replacement
+    /// even when the registry reuses the same generation number.
+    epoch: u64,
     instructions: Vec<Instruction>,
 }
 
 impl CompilationRequest {
-    /// Creates a request to compile one generation of an MFA.
+    /// Creates a request to compile one generation of an MFA, carrying the
+    /// submitting profile's incarnation epoch.
     #[must_use]
     pub fn new(
         module: crate::atom::Atom,
         function: crate::atom::Atom,
         arity: u8,
         generation: u64,
+        epoch: u64,
         instructions: Vec<Instruction>,
     ) -> Self {
         Self {
             key: JitCacheKey::new(module, function, arity, generation),
+            epoch,
             instructions,
         }
     }
@@ -60,6 +67,7 @@ impl CompilationJob {
     fn run(self) {
         let request = self.request;
         let key = request.key;
+        let epoch = request.epoch;
         match self
             .compiler
             .compile(&request.instructions, key.module, key.function, key.arity)
@@ -68,12 +76,13 @@ impl CompilationJob {
                 // Publication rides the profile's entry guard: a completion
                 // racing the scheduler's delete seam either publishes before
                 // the seam's cache invalidation (which then removes it) or
-                // finds the profile gone and publishes nothing.
+                // finds the profile gone/re-incarnated and publishes nothing.
                 let published = self.profiler.publish_compiled(
                     key.module,
                     key.function,
                     key.arity,
                     key.generation,
+                    epoch,
                     || self.cache.insert(key, native_code),
                 );
                 if published {
@@ -87,14 +96,15 @@ impl CompilationJob {
                 | JitError::UnsupportedOperand { .. }
                 | JitError::UnknownLabel { .. },
             ) => {
-                // A stale verdict (profile gone or stamped at a different
-                // generation) must neither mark nor count as an unsupported
-                // outcome — the code it judged no longer runs.
+                // A stale verdict (profile gone or from another incarnation)
+                // must neither mark nor count as an unsupported outcome — the
+                // code it judged no longer runs.
                 let applied = self.profiler.mark_unsupported(
                     key.module,
                     key.function,
                     key.arity,
                     key.generation,
+                    epoch,
                 );
                 if applied {
                     self.profiler.note_unsupported();
@@ -103,8 +113,13 @@ impl CompilationJob {
                 }
             }
             Err(JitError::CraneliftError(_) | JitError::EmptyFunction) => {
-                self.profiler
-                    .reset_counter(key.module, key.function, key.arity, key.generation);
+                self.profiler.reset_counter(
+                    key.module,
+                    key.function,
+                    key.arity,
+                    key.generation,
+                    epoch,
+                );
                 self.profiler.note_transient_failure();
             }
         }
@@ -194,9 +209,19 @@ mod tests {
             profiler.record_call(Atom::MODULE, Atom::OK, 0, 1),
             RecordResult::CompileNow
         );
+        let epoch = profiler
+            .profile_epoch(Atom::MODULE, Atom::OK, 0)
+            .expect("profile exists");
 
         let job = CompilationJob::new(
-            CompilationRequest::new(Atom::MODULE, Atom::OK, 0, 1, vec![Instruction::Return]),
+            CompilationRequest::new(
+                Atom::MODULE,
+                Atom::OK,
+                0,
+                1,
+                epoch,
+                vec![Instruction::Return],
+            ),
             Arc::clone(&compiler),
             Arc::clone(&profiler),
             Arc::clone(&cache),
@@ -223,6 +248,9 @@ mod tests {
             profiler.record_call(Atom::MODULE, Atom::ERROR, 0, 1),
             RecordResult::CompileNow
         );
+        let epoch = profiler
+            .profile_epoch(Atom::MODULE, Atom::ERROR, 0)
+            .expect("profile exists");
 
         let job = CompilationJob::new(
             CompilationRequest::new(
@@ -230,6 +258,7 @@ mod tests {
                 Atom::ERROR,
                 0,
                 1,
+                epoch,
                 vec![Instruction::Generic {
                     opcode: 255,
                     name: "unknown",
@@ -267,7 +296,7 @@ mod tests {
         let profiler = Arc::new(JitProfiler::new(1));
         let cache = Arc::new(JitCache::new());
         let job = CompilationJob::new(
-            CompilationRequest::new(Atom::MODULE, Atom::OK, 0, 1, vec![Instruction::Return]),
+            CompilationRequest::new(Atom::MODULE, Atom::OK, 0, 1, 1, vec![Instruction::Return]),
             compiler,
             Arc::clone(&profiler),
             cache,

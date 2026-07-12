@@ -265,12 +265,12 @@ pub fn load_companion_into_cache(
     let mut loaded = 0;
     for (function, arity, code) in entries {
         cache.insert(JitCacheKey::new(module.name, function, arity, 0), code);
-        // Inert today on both counts: generation-0 cache keys never match a
-        // live-edge lookup (registry generations start at 1), and completion
+        // Inert today on all counts: generation-0 cache keys never match a
+        // live-edge lookup (registry generations start at 1), completion
         // marks no longer create profile entries — record_call at a live edge
-        // is the only birth path. Companion-key generation semantics are the
-        // A1-2 brief's to resolve.
-        profiler.mark_compiled(module.name, function, arity, 0);
+        // is the only birth path — and epoch 0 is never minted. Companion-key
+        // generation semantics are the A1-2 brief's to resolve.
+        profiler.mark_compiled(module.name, function, arity, 0, 0);
         loaded += 1;
     }
     Ok(loaded)

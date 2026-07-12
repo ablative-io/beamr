@@ -949,7 +949,12 @@ fn aliased_export_never_runs_or_heats_another_functions_code() {
             label: 3,
         },
     }];
-    let caller = registry.insert(finish_module(caller_name, caller_code, HashMap::new(), imports));
+    let caller = registry.insert(finish_module(
+        caller_name,
+        caller_code,
+        HashMap::new(),
+        imports,
+    ));
 
     let scheduler =
         Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
@@ -1202,6 +1207,127 @@ fn queued_stale_job_never_stamps_a_replacement_profile() {
             .is_some(),
         "the replacement compiles at its own restarted generation"
     );
+    scheduler.shutdown();
+    drop(pool);
+}
+
+/// Equal-generation incarnation collision: an UNSUPPORTED module heats at
+/// generation 1 with its job queued; it is deleted and replaced by a
+/// SUPPORTED module that also gets generation 1 (the registry restarts).
+/// Numeric generations collide exactly — the stale job's unsupported verdict
+/// must be refused by the incarnation epoch, and the replacement must go on
+/// to compile.
+#[test]
+fn stale_unsupported_verdict_never_wedges_a_same_generation_replacement() {
+    let atoms = AtomTable::with_common_atoms();
+    let module_name = atoms.intern("jit_wireup_epoch_reuse");
+    let function = atoms.intern("f");
+    let threshold = 2;
+
+    let pool = Arc::new(DirtyPool::with_queue_depth("jit-wireup-epoch-reuse", 1, 2));
+    let (started_tx, started_rx) = mpsc::channel::<()>();
+    let (gate_tx, gate_rx) = mpsc::channel::<()>();
+    pool.submit_task(DirtyTask::new(move || {
+        let _ = started_tx.send(());
+        let _ = gate_rx.recv();
+    }))
+    .expect("gate task submits");
+    started_rx
+        .recv_timeout(WAIT_BUDGET)
+        .expect("gate task starts");
+
+    let registry = Arc::new(ModuleRegistry::new());
+    // The doomed incarnation: Trim-carrying body the JIT tier refuses.
+    let doomed = registry.insert(local_unsupported_module(
+        module_name,
+        function,
+        threshold,
+        7,
+    ));
+    assert_eq!(doomed.generation(), 1);
+    let scheduler = Scheduler::with_services(
+        config(threshold as u32),
+        SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
+        Arc::clone(&registry),
+    )
+    .expect("scheduler with the shared pool starts");
+
+    // Heat it: the unsupported job queues behind the gated worker.
+    assert_eq!(run_to_value(&scheduler, &doomed), Term::small_int(7));
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .submissions,
+        1
+    );
+
+    // Delete, then reload a SUPPORTED module at the SAME generation number.
+    assert!(scheduler.delete_module(module_name));
+    let replacement = registry.insert(local_hot_module(module_name, function, 1, 42));
+    assert_eq!(
+        replacement.generation(),
+        1,
+        "the registry restarts a deleted name at generation 1 — the premise of this pin"
+    );
+    assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .recorded_call_count(module_name, function, 0),
+        Some(1)
+    );
+
+    // Release the stale job: its unsupported verdict must be refused.
+    let _ = gate_tx.send(());
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .transient_failures
+            == 1),
+        "the stale verdict must be refused and counted transient"
+    );
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .unsupported,
+        0,
+        "a stale unsupported verdict is not an unsupported outcome"
+    );
+    assert!(
+        !scheduler
+            .jit_profiler()
+            .is_unsupported(module_name, function, 0),
+        "the stale verdict must not wedge the replacement's state machine"
+    );
+
+    // The replacement heats to threshold and compiles — the terminal proof
+    // that the equal-generation collision left it untouched.
+    assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .submissions,
+        2
+    );
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes
+            == 1),
+        "the supported replacement must compile at the reused generation number"
+    );
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, function, 0, 1)
+            .is_some()
+    );
+    assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));
     scheduler.shutdown();
     drop(pool);
 }

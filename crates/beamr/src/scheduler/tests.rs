@@ -280,9 +280,13 @@ fn delete_module_drops_jit_profile_entries() {
     let function = scheduler.shared.atom_table.intern("hot");
     // Entries are born at a live call edge; completions only update them.
     scheduler.jit_profiler().record_call(module, function, 0, 1);
+    let epoch = scheduler
+        .jit_profiler()
+        .profile_epoch(module, function, 0)
+        .expect("profile exists");
     scheduler
         .jit_profiler()
-        .mark_compiled(module, function, 0, 1);
+        .mark_compiled(module, function, 0, 1, epoch);
     assert!(scheduler.jit_profiler().is_compiled(module, function, 0));
 
     scheduler.delete_module(module);
