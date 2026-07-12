@@ -776,12 +776,21 @@ fn record_jit_call_miss(
     {
         return;
     }
+    // The epoch identifies this profile incarnation; every completion for the
+    // submitted job must present it back. A None here means the profile was
+    // deleted in the instant since record_call — nothing to submit or reset.
+    let Some(epoch) = profiling
+        .profiler
+        .profile_epoch(module.name, function, arity)
+    else {
+        return;
+    };
     let Some(instructions) = module.function_instructions(entry_ip) else {
         // CompileNow left the profile PENDING; with no slice no job will ever
         // complete it, so reset rather than strand the profile.
         profiling
             .profiler
-            .reset_counter(module.name, function, arity, generation);
+            .reset_counter(module.name, function, arity, generation, epoch);
         return;
     };
     profiling.profiler.note_submission();
@@ -790,12 +799,13 @@ fn record_jit_call_miss(
         function,
         arity,
         generation,
+        epoch,
         instructions.to_vec(),
     );
     if profiling.submitter.submit(request).is_err() {
         profiling
             .profiler
-            .reset_counter(module.name, function, arity, generation);
+            .reset_counter(module.name, function, arity, generation, epoch);
         profiling.profiler.note_transient_failure();
     }
 }

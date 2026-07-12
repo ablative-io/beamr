@@ -45,14 +45,23 @@ struct FunctionProfile {
     counter: AtomicU32,
     state: AtomicU8,
     generation: AtomicU64,
+    /// Incarnation token: minted from the profiler's counter when the profile
+    /// is created and again on every newer-generation reset. Registry
+    /// generation NUMBERS can repeat across delete+reload (a deleted name
+    /// restarts at 1), so numeric generation equality cannot distinguish a
+    /// stale job from a same-numbered replacement — the epoch can: completions
+    /// must present the epoch captured at submission, and a recreated or
+    /// re-heated profile always carries a fresh one.
+    epoch: AtomicU64,
 }
 
 impl FunctionProfile {
-    fn new(generation: u64) -> Self {
+    fn new(generation: u64, epoch: u64) -> Self {
         Self {
             counter: AtomicU32::new(0),
             state: AtomicU8::new(STATE_INTERPRETING),
             generation: AtomicU64::new(generation),
+            epoch: AtomicU64::new(epoch),
         }
     }
 }
@@ -102,6 +111,8 @@ pub struct JitProfiler {
     /// `ModuleRegistry` directly) linger until process end, bounded by that
     /// recorded-MFA count.
     profiles: DashMap<MfaKey, FunctionProfile>,
+    /// Source of profile incarnation epochs; never reused within one profiler.
+    next_epoch: AtomicU64,
     submissions: AtomicU64,
     successes: AtomicU64,
     unsupported: AtomicU64,
@@ -115,6 +126,7 @@ impl JitProfiler {
         Self {
             threshold: AtomicU32::new(threshold.max(1)),
             profiles: DashMap::new(),
+            next_epoch: AtomicU64::new(1),
             submissions: AtomicU64::new(0),
             successes: AtomicU64::new(0),
             unsupported: AtomicU64::new(0),
@@ -209,10 +221,9 @@ impl JitProfiler {
         generation: u64,
     ) -> RecordResult {
         let key = MfaKey::new(module, function, arity);
-        let profile = self
-            .profiles
-            .entry(key)
-            .or_insert_with(|| FunctionProfile::new(generation));
+        let profile = self.profiles.entry(key).or_insert_with(|| {
+            FunctionProfile::new(generation, self.next_epoch.fetch_add(1, Ordering::AcqRel))
+        });
 
         let stamped = profile.generation.load(Ordering::Acquire);
         if generation < stamped {
@@ -220,6 +231,10 @@ impl JitProfiler {
         }
         if generation > stamped {
             profile.generation.store(generation, Ordering::Release);
+            profile.epoch.store(
+                self.next_epoch.fetch_add(1, Ordering::AcqRel),
+                Ordering::Release,
+            );
             profile.state.store(STATE_INTERPRETING, Ordering::Release);
             profile.counter.store(0, Ordering::Release);
         }
@@ -250,25 +265,40 @@ impl JitProfiler {
         }
     }
 
-    /// Marks a pending or interpreted function as compiled at a generation.
+    /// Returns the profile's current incarnation epoch, captured by the call edge at submission
+    /// time and presented back by every completion.
+    pub(crate) fn profile_epoch(&self, module: Atom, function: Atom, arity: u8) -> Option<u64> {
+        self.profiles
+            .get(&MfaKey::new(module, function, arity))
+            .map(|profile| profile.epoch.load(Ordering::Acquire))
+    }
+
+    /// Marks a pending or interpreted function as compiled at a generation and incarnation epoch.
     ///
-    /// Applies ONLY on an exact generation match and returns whether it applied. A completion is
-    /// valid solely for the generation that submitted it: an older job's completion is about dead
-    /// code, and a NEWER job generation than the stamp means the profile was deleted and recreated
-    /// at the registry's restarted numbering — stamping it would wedge the replacement (its own
-    /// calls would read as "older" forever).
-    pub fn mark_compiled(&self, module: Atom, function: Atom, arity: u8, generation: u64) -> bool {
-        self.set_state(module, function, arity, generation, STATE_COMPILED)
+    /// Applies ONLY when both the generation and the epoch match the profile's stamps exactly,
+    /// and returns whether it applied. A completion is valid solely for the submission it
+    /// answers: generation numbers alone are insufficient because a deleted name's registry
+    /// numbering restarts — a stale job and a same-numbered replacement collide on generation but
+    /// never on epoch (recreated or re-heated profiles always mint a fresh one).
+    pub fn mark_compiled(
+        &self,
+        module: Atom,
+        function: Atom,
+        arity: u8,
+        generation: u64,
+        epoch: u64,
+    ) -> bool {
+        self.set_state(module, function, arity, generation, epoch, STATE_COMPILED)
     }
 
     /// Publishes a compilation result and marks the profile COMPILED as one step, serialized on
     /// the profile's entry guard. `publish` (the cache insert) runs ONLY while the guard is held
-    /// and only if the profile still exists at a generation no newer than `generation` — so a
-    /// concurrent [`Self::remove_module`] (the scheduler's delete seam, which runs before the
-    /// cache invalidation) either observes the publication and the seam's cache invalidation
-    /// removes it, or wins the guard first and the completion publishes nothing. Without this
-    /// serialization a job completing during a delete could strand a cache entry that a same-name
-    /// reload reaching the same generation number would execute.
+    /// and only if the profile still exists with the submission's exact generation AND
+    /// incarnation epoch — so a concurrent [`Self::remove_module`] (the scheduler's delete seam,
+    /// which runs before the cache invalidation) either observes the publication and the seam's
+    /// invalidation removes it, or wins the guard first and the completion publishes nothing;
+    /// and a stale job can never publish onto a delete+reload replacement even when the
+    /// generation NUMBER repeats.
     ///
     /// Returns whether the result was published.
     pub(crate) fn publish_compiled(
@@ -277,13 +307,16 @@ impl JitProfiler {
         function: Atom,
         arity: u8,
         generation: u64,
+        epoch: u64,
         publish: impl FnOnce(),
     ) -> bool {
         let key = MfaKey::new(module, function, arity);
         let Some(profile) = self.profiles.get_mut(&key) else {
             return false;
         };
-        if profile.generation.load(Ordering::Acquire) != generation {
+        if profile.generation.load(Ordering::Acquire) != generation
+            || profile.epoch.load(Ordering::Acquire) != epoch
+        {
             return false;
         }
         publish();
@@ -293,15 +326,24 @@ impl JitProfiler {
 
     /// Marks a function as permanently unsupported by this JIT tier at a generation.
     ///
-    /// Exact-generation-match semantics as [`Self::mark_compiled`]; returns whether it applied.
+    /// Exact generation+epoch match semantics as [`Self::mark_compiled`]; returns whether it
+    /// applied.
     pub fn mark_unsupported(
         &self,
         module: Atom,
         function: Atom,
         arity: u8,
         generation: u64,
+        epoch: u64,
     ) -> bool {
-        self.set_state(module, function, arity, generation, STATE_UNSUPPORTED)
+        self.set_state(
+            module,
+            function,
+            arity,
+            generation,
+            epoch,
+            STATE_UNSUPPORTED,
+        )
     }
 
     /// Returns whether an MFA is currently marked compiled.
@@ -316,18 +358,27 @@ impl JitProfiler {
         self.state_for(module, function, arity) == Some(STATE_UNSUPPORTED)
     }
 
-    /// Resets a transient compilation failure at a generation so the function can heat up again.
+    /// Resets a transient compilation failure so the function can heat up again.
     ///
-    /// Exact-generation-match semantics as [`Self::mark_compiled`], and a no-op when no profile
-    /// exists: completion paths never recreate an entry — a missing profile means the module was
-    /// deleted (the scheduler seam dropped it), and resurrecting it would strand a stale
-    /// generation stamp against a name whose registry generations restart.
-    pub fn reset_counter(&self, module: Atom, function: Atom, arity: u8, generation: u64) -> bool {
+    /// Exact generation+epoch match semantics as [`Self::mark_compiled`], and a no-op when no
+    /// profile exists: completion paths never recreate an entry — a missing profile means the
+    /// module was deleted (the scheduler seam dropped it), and resurrecting it would strand a
+    /// stale stamp against a name whose registry generations restart.
+    pub fn reset_counter(
+        &self,
+        module: Atom,
+        function: Atom,
+        arity: u8,
+        generation: u64,
+        epoch: u64,
+    ) -> bool {
         let key = MfaKey::new(module, function, arity);
         let Some(profile) = self.profiles.get_mut(&key) else {
             return false;
         };
-        if profile.generation.load(Ordering::Acquire) != generation {
+        if profile.generation.load(Ordering::Acquire) != generation
+            || profile.epoch.load(Ordering::Acquire) != epoch
+        {
             return false;
         }
         profile.counter.store(0, Ordering::Release);
@@ -343,17 +394,28 @@ impl JitProfiler {
         self.profiles.retain(|key, _| key.module != module);
     }
 
-    /// Completion-mark write path: applies ONLY when the profile exists AND its stamp equals the
-    /// completion's generation exactly. No-profile means deleted (never resurrect); a mismatched
-    /// stamp in EITHER direction means the completion is stale — older jobs are about dead code,
-    /// and a job generation above the stamp means delete+reload restarted the registry's
-    /// numbering below it. Only [`Self::record_call`] creates entries or moves the stamp.
-    fn set_state(&self, module: Atom, function: Atom, arity: u8, generation: u64, state: u8) -> bool {
+    /// Completion-mark write path: applies ONLY when the profile exists AND both its generation
+    /// and incarnation epoch equal the completion's exactly. No-profile means deleted (never
+    /// resurrect); a generation mismatch in either direction is stale; and an epoch mismatch
+    /// catches the case generation numbers cannot — delete+reload reusing the SAME number, where
+    /// a stale job would otherwise stamp verdicts from a different module's code onto the
+    /// replacement. Only [`Self::record_call`] creates entries or moves the stamps.
+    fn set_state(
+        &self,
+        module: Atom,
+        function: Atom,
+        arity: u8,
+        generation: u64,
+        epoch: u64,
+        state: u8,
+    ) -> bool {
         let key = MfaKey::new(module, function, arity);
         let Some(profile) = self.profiles.get_mut(&key) else {
             return false;
         };
-        if profile.generation.load(Ordering::Acquire) != generation {
+        if profile.generation.load(Ordering::Acquire) != generation
+            || profile.epoch.load(Ordering::Acquire) != epoch
+        {
             return false;
         }
         profile.state.store(state, Ordering::Release);
@@ -415,7 +477,10 @@ mod tests {
             profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::Continue
         );
-        profiler.mark_compiled(atom(1), atom(2), 0, 1);
+        let epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
+        profiler.mark_compiled(atom(1), atom(2), 0, 1, epoch);
 
         // Within the marked generation, COMPILED stays terminal.
         assert_eq!(
@@ -480,7 +545,10 @@ mod tests {
             profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::Continue
         );
-        profiler.mark_compiled(atom(1), atom(2), 0, 1);
+        let epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
+        profiler.mark_compiled(atom(1), atom(2), 0, 1, epoch);
         assert!(profiler.is_compiled(atom(1), atom(2), 0));
 
         assert_eq!(
@@ -501,7 +569,10 @@ mod tests {
             profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::Continue
         );
-        profiler.mark_unsupported(atom(1), atom(2), 0, 1);
+        let epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
+        profiler.mark_unsupported(atom(1), atom(2), 0, 1, epoch);
         assert!(profiler.is_unsupported(atom(1), atom(2), 0));
 
         assert_eq!(
@@ -519,13 +590,16 @@ mod tests {
             profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::CompileNow
         );
+        let gen1_epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
         // A generation-2 call re-heats before the generation-1 job completes.
         assert_eq!(
             profiler.record_call(atom(1), atom(2), 0, 2),
             RecordResult::CompileNow
         );
         // The stale generation-1 completion must not stamp COMPILED.
-        profiler.mark_compiled(atom(1), atom(2), 0, 1);
+        profiler.mark_compiled(atom(1), atom(2), 0, 1, gen1_epoch);
         assert!(!profiler.is_compiled(atom(1), atom(2), 0));
     }
 
@@ -557,11 +631,16 @@ mod tests {
             profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::Continue
         );
-        assert!(!profiler.mark_compiled(atom(1), atom(2), 0, 2));
+        // The stale job came from a prior incarnation: different epoch.
+        let stale_epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists")
+            + 1;
+        assert!(!profiler.mark_compiled(atom(1), atom(2), 0, 2, stale_epoch));
         assert!(!profiler.is_compiled(atom(1), atom(2), 0));
-        assert!(!profiler.mark_unsupported(atom(1), atom(2), 0, 2));
+        assert!(!profiler.mark_unsupported(atom(1), atom(2), 0, 2, stale_epoch));
         assert!(!profiler.is_unsupported(atom(1), atom(2), 0));
-        assert!(!profiler.reset_counter(atom(1), atom(2), 0, 2));
+        assert!(!profiler.reset_counter(atom(1), atom(2), 0, 2, stale_epoch));
 
         // This call is the threshold-crosser, proving the stale completions
         // neither wedged the state machine nor reset the counter.
@@ -572,15 +651,76 @@ mod tests {
     }
 
     #[test]
+    fn completion_marks_refuse_a_stale_job_when_the_generation_number_is_reused() {
+        // Incarnation 1 heats at generation 1 and submits; the module is
+        // deleted; the replacement ALSO gets generation 1 (the registry
+        // restarts a deleted name). Numeric generations collide exactly —
+        // only the incarnation epoch tells the stale job apart.
+        let profiler = JitProfiler::new(2);
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::Continue
+        );
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::CompileNow
+        );
+        let stale_epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
+        profiler.remove_module(atom(1));
+
+        // The replacement heats one call at the SAME generation number.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::Continue
+        );
+        let replacement_epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
+        assert_ne!(
+            stale_epoch, replacement_epoch,
+            "a recreated profile must carry a fresh incarnation epoch"
+        );
+
+        // The stale job's completions present the old epoch at the same
+        // generation number: every path must refuse.
+        assert!(!profiler.mark_unsupported(atom(1), atom(2), 0, 1, stale_epoch));
+        assert!(!profiler.is_unsupported(atom(1), atom(2), 0));
+        assert!(!profiler.mark_compiled(atom(1), atom(2), 0, 1, stale_epoch));
+        assert!(!profiler.is_compiled(atom(1), atom(2), 0));
+        let mut published = false;
+        assert!(
+            !profiler.publish_compiled(atom(1), atom(2), 0, 1, stale_epoch, || published = true)
+        );
+        assert!(!published, "a stale job must not publish deleted code");
+        assert!(!profiler.reset_counter(atom(1), atom(2), 0, 1, stale_epoch));
+
+        // The replacement is untouched: it crosses the threshold and its OWN
+        // completion applies.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::CompileNow
+        );
+        assert!(profiler.mark_compiled(atom(1), atom(2), 0, 1, replacement_epoch));
+        assert!(profiler.is_compiled(atom(1), atom(2), 0));
+    }
+
+    #[test]
     fn publish_compiled_refuses_after_remove_module_and_stale_generations() {
         let profiler = JitProfiler::new(1);
         assert_eq!(
             profiler.record_call(atom(1), atom(2), 0, 2),
             RecordResult::CompileNow
         );
+        let gen2_epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
         profiler.remove_module(atom(1));
         let mut published = false;
-        assert!(!profiler.publish_compiled(atom(1), atom(2), 0, 2, || published = true));
+        assert!(
+            !profiler.publish_compiled(atom(1), atom(2), 0, 2, gen2_epoch, || published = true)
+        );
         assert!(
             !published,
             "a completion racing a delete must publish nothing"
@@ -593,14 +733,25 @@ mod tests {
             profiler.record_call(atom(1), atom(2), 0, 3),
             RecordResult::CompileNow
         );
+        let gen3_epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
         let mut stale_published = false;
-        assert!(!profiler.publish_compiled(atom(1), atom(2), 0, 2, || stale_published = true));
-        assert!(!stale_published, "a stale-generation completion must publish nothing");
+        assert!(
+            !profiler.publish_compiled(atom(1), atom(2), 0, 2, gen2_epoch, || stale_published =
+                true)
+        );
+        assert!(
+            !stale_published,
+            "a stale-generation completion must publish nothing"
+        );
         assert!(!profiler.is_compiled(atom(1), atom(2), 0));
 
         // The live case publishes and marks COMPILED as one step.
         let mut live_published = false;
-        assert!(profiler.publish_compiled(atom(1), atom(2), 0, 3, || live_published = true));
+        assert!(
+            profiler.publish_compiled(atom(1), atom(2), 0, 3, gen3_epoch, || live_published = true)
+        );
         assert!(live_published);
         assert!(profiler.is_compiled(atom(1), atom(2), 0));
 
@@ -612,7 +763,10 @@ mod tests {
             RecordResult::CompileNow
         );
         let mut above_published = false;
-        assert!(!profiler.publish_compiled(atom(1), atom(2), 0, 3, || above_published = true));
+        assert!(
+            !profiler.publish_compiled(atom(1), atom(2), 0, 3, gen3_epoch, || above_published =
+                true)
+        );
         assert!(
             !above_published,
             "a stale job must not publish onto a replacement stamped below it"
@@ -631,8 +785,14 @@ mod tests {
             profiler.record_call(atom(9), atom(2), 0, 1),
             RecordResult::Continue
         );
-        profiler.mark_compiled(atom(1), atom(2), 0, 1);
-        profiler.mark_compiled(atom(9), atom(2), 0, 1);
+        let first_epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
+        let second_epoch = profiler
+            .profile_epoch(atom(9), atom(2), 0)
+            .expect("profile exists");
+        profiler.mark_compiled(atom(1), atom(2), 0, 1, first_epoch);
+        profiler.mark_compiled(atom(9), atom(2), 0, 1, second_epoch);
         assert!(profiler.is_compiled(atom(1), atom(2), 0));
         assert!(profiler.is_compiled(atom(9), atom(2), 0));
 
@@ -649,6 +809,9 @@ mod tests {
             profiler.record_call(atom(1), atom(2), 0, 2),
             RecordResult::CompileNow
         );
+        let epoch = profiler
+            .profile_epoch(atom(1), atom(2), 0)
+            .expect("profile exists");
         profiler.remove_module(atom(1));
         assert_eq!(profiler.profile_entry_count(), 0);
 
@@ -657,9 +820,9 @@ mod tests {
         // after a delete, so a resurrected stamp-2 profile would treat every
         // call from the replacement module as "older" and wedge it out of the
         // JIT permanently.
-        profiler.mark_compiled(atom(1), atom(2), 0, 2);
-        profiler.mark_unsupported(atom(1), atom(2), 0, 2);
-        profiler.reset_counter(atom(1), atom(2), 0, 2);
+        profiler.mark_compiled(atom(1), atom(2), 0, 2, epoch);
+        profiler.mark_unsupported(atom(1), atom(2), 0, 2, epoch);
+        profiler.reset_counter(atom(1), atom(2), 0, 2, epoch);
         assert_eq!(
             profiler.profile_entry_count(),
             0,
