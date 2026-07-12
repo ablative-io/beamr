@@ -58,11 +58,17 @@ fn sample_workflow_run_completes_end_to_end() {
         "beamr-sample-workflow-input-{}.txt",
         std::process::id()
     ));
-    let output_path = Path::new("/tmp/gleam-workflow-output.txt");
-    let _ = std::fs::remove_file(output_path);
+    // Per-process output path: a fixed shared path lets concurrent `cargo test`
+    // invocations on the same host delete each other's output mid-assertion.
+    let output_path = std::env::temp_dir().join(format!(
+        "beamr-sample-workflow-output-{}.txt",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&output_path);
     std::fs::write(&input_path, "sample content\n").expect("write sample input file");
 
     let path_arg = make_binary(input_path.to_string_lossy().as_bytes());
+    let output_arg = make_binary(output_path.to_string_lossy().as_bytes());
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
@@ -77,9 +83,9 @@ fn sample_workflow_run_completes_end_to_end() {
         .spawn(
             atom_table.intern("sample_workflow"),
             atom_table.intern("run"),
-            vec![path_arg],
+            vec![path_arg, output_arg],
         )
-        .expect("spawn sample_workflow:run/1");
+        .expect("spawn sample_workflow:run/2");
     let (reason, result) = scheduler.run_until_exit(pid);
     let exit_error = scheduler.take_exit_error(pid);
     let exit_exception = scheduler.take_exit_exception(pid);
@@ -92,8 +98,11 @@ fn sample_workflow_run_completes_end_to_end() {
         ExitReason::Normal,
         "result: {result:?}, exit_error: {exit_error:?}, exit_exception: {exit_exception:?}"
     );
-    assert!(output_path.exists(), "workflow should write output to /tmp");
-    let _ = std::fs::remove_file(output_path);
+    assert!(
+        output_path.exists(),
+        "workflow should write output to its caller-supplied path"
+    );
+    let _ = std::fs::remove_file(&output_path);
 }
 
 fn load_all_beams(
