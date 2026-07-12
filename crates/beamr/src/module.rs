@@ -231,11 +231,14 @@ impl Module {
             Instruction::Label { .. } | Instruction::FuncInfo { .. } => entry_ip + 1,
             _ => entry_ip,
         };
+        // The boundary scan includes `start` itself: an empty function's
+        // `start` already sits on the NEXT function's `FuncInfo`, and the
+        // slice must be empty there rather than absorb that function.
         let end = self
             .code
             .iter()
             .enumerate()
-            .skip(start.saturating_add(1))
+            .skip(start)
             .find_map(|(index, instruction)| match instruction {
                 Instruction::FuncInfo { .. } => Some(index),
                 _ => None,
@@ -639,6 +642,40 @@ mod tests {
         // canonical and included, not skipped.
         assert!(module.is_function_entry(1));
         assert_eq!(module.function_instructions(1), Some(&module.code[1..3]));
+    }
+
+    #[test]
+    fn function_instructions_yields_an_empty_slice_for_an_empty_non_final_function() {
+        let mut module = empty_module(crate::atom::Atom::MODULE);
+        module.code = vec![
+            crate::loader::Instruction::FuncInfo {
+                module: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::MODULE)),
+                function: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::OK)),
+                arity: crate::loader::decode::Operand::Unsigned(0),
+            },
+            crate::loader::Instruction::Label { label: 2 },
+            crate::loader::Instruction::FuncInfo {
+                module: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::MODULE)),
+                function: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::BADARG)),
+                arity: crate::loader::decode::Operand::Unsigned(0),
+            },
+            crate::loader::Instruction::Label { label: 3 },
+            crate::loader::Instruction::Return,
+        ];
+        module.function_table = vec![
+            (0, crate::atom::Atom::OK, 0),
+            (2, crate::atom::Atom::BADARG, 0),
+        ];
+
+        // The empty function's start already sits on the next FuncInfo: the
+        // slice must be empty, not absorb the following function.
+        assert_eq!(
+            module.function_instructions(1),
+            Some(&module.code[2..2]),
+            "an empty non-final function must yield an empty slice"
+        );
+        // The following function still slices correctly.
+        assert_eq!(module.function_instructions(3), Some(&module.code[4..5]));
     }
 
     #[test]

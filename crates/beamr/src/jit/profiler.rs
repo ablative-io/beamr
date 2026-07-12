@@ -81,8 +81,10 @@ pub struct CompileOutcomeCounters {
     pub successes: u64,
     /// Jobs refused by the JIT tier as permanently unsupported.
     pub unsupported: u64,
-    /// Transient failures: compile errors that reset the profile, plus
-    /// refused submissions — both leave the function free to re-heat.
+    /// Transient failures: compile errors that reset the profile, refused
+    /// submissions, and completions whose publication was refused because
+    /// the profile was deleted or re-heated at a newer generation — all
+    /// leave the function free to re-heat if it is still called.
     pub transient_failures: u64,
 }
 
@@ -254,6 +256,37 @@ impl JitProfiler {
     /// must not stamp state onto code that no longer runs.
     pub fn mark_compiled(&self, module: Atom, function: Atom, arity: u8, generation: u64) {
         self.set_state(module, function, arity, generation, STATE_COMPILED);
+    }
+
+    /// Publishes a compilation result and marks the profile COMPILED as one step, serialized on
+    /// the profile's entry guard. `publish` (the cache insert) runs ONLY while the guard is held
+    /// and only if the profile still exists at a generation no newer than `generation` — so a
+    /// concurrent [`Self::remove_module`] (the scheduler's delete seam, which runs before the
+    /// cache invalidation) either observes the publication and the seam's cache invalidation
+    /// removes it, or wins the guard first and the completion publishes nothing. Without this
+    /// serialization a job completing during a delete could strand a cache entry that a same-name
+    /// reload reaching the same generation number would execute.
+    ///
+    /// Returns whether the result was published.
+    pub(crate) fn publish_compiled(
+        &self,
+        module: Atom,
+        function: Atom,
+        arity: u8,
+        generation: u64,
+        publish: impl FnOnce(),
+    ) -> bool {
+        let key = MfaKey::new(module, function, arity);
+        let Some(profile) = self.profiles.get_mut(&key) else {
+            return false;
+        };
+        if profile.generation.load(Ordering::Acquire) > generation {
+            return false;
+        }
+        publish();
+        profile.generation.store(generation, Ordering::Release);
+        profile.state.store(STATE_COMPILED, Ordering::Release);
+        true
     }
 
     /// Marks a function as permanently unsupported by this JIT tier at a generation.
@@ -502,6 +535,40 @@ mod tests {
             1,
             "a reload-without-delete cycle must reuse the MFA's slot, not accumulate per-generation entries"
         );
+    }
+
+    #[test]
+    fn publish_compiled_refuses_after_remove_module_and_stale_generations() {
+        let profiler = JitProfiler::new(1);
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::CompileNow
+        );
+        profiler.remove_module(atom(1));
+        let mut published = false;
+        assert!(!profiler.publish_compiled(atom(1), atom(2), 0, 2, || published = true));
+        assert!(
+            !published,
+            "a completion racing a delete must publish nothing"
+        );
+        assert_eq!(profiler.profile_entry_count(), 0);
+
+        // Stale generation: the profile re-heated at generation 3 before the
+        // generation-2 job completed.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 3),
+            RecordResult::CompileNow
+        );
+        let mut stale_published = false;
+        assert!(!profiler.publish_compiled(atom(1), atom(2), 0, 2, || stale_published = true));
+        assert!(!stale_published, "a stale-generation completion must publish nothing");
+        assert!(!profiler.is_compiled(atom(1), atom(2), 0));
+
+        // The live case publishes and marks COMPILED as one step.
+        let mut live_published = false;
+        assert!(profiler.publish_compiled(atom(1), atom(2), 0, 3, || live_published = true));
+        assert!(live_published);
+        assert!(profiler.is_compiled(atom(1), atom(2), 0));
     }
 
     #[test]

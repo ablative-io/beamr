@@ -65,10 +65,22 @@ impl CompilationJob {
             .compile(&request.instructions, key.module, key.function, key.arity)
         {
             Ok(native_code) => {
-                self.cache.insert(key, native_code);
-                self.profiler
-                    .mark_compiled(key.module, key.function, key.arity, key.generation);
-                self.profiler.note_success();
+                // Publication rides the profile's entry guard: a completion
+                // racing the scheduler's delete seam either publishes before
+                // the seam's cache invalidation (which then removes it) or
+                // finds the profile gone and publishes nothing.
+                let published = self.profiler.publish_compiled(
+                    key.module,
+                    key.function,
+                    key.arity,
+                    key.generation,
+                    || self.cache.insert(key, native_code),
+                );
+                if published {
+                    self.profiler.note_success();
+                } else {
+                    self.profiler.note_transient_failure();
+                }
             }
             Err(
                 JitError::UnsupportedOpcode { .. }

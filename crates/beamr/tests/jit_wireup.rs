@@ -876,6 +876,205 @@ fn delete_module_through_the_scheduler_drops_hot_profiles_and_cached_code() {
     scheduler.shutdown();
 }
 
+/// Export-alias ownership gate: export validation only checks that the label
+/// EXISTS, so a loader-legal export can alias ANOTHER function's entry. The
+/// external edge must refuse when the target entry's owning function differs
+/// from the exported identity — otherwise a heated `foo/0` cache entry runs
+/// foo's native code at a call site whose bytecode resolution is bar.
+#[test]
+fn aliased_export_never_runs_or_heats_another_functions_code() {
+    let atoms = AtomTable::with_common_atoms();
+    let module_name = atoms.intern("jit_wireup_alias");
+    let caller_name = atoms.intern("jit_wireup_alias_caller");
+    let foo = atoms.intern("foo");
+    let threshold = 2;
+
+    // entry: threshold local calls to foo (heats and compiles foo/0);
+    // foo/0 returns 42; bar/0 returns 9.
+    let mut code = vec![Instruction::Label { label: 1 }];
+    for _ in 0..threshold {
+        code.push(Instruction::Call {
+            arity: Operand::Unsigned(0),
+            label: Operand::Label(2),
+        });
+    }
+    code.push(Instruction::Return);
+    code.extend([
+        Instruction::FuncInfo {
+            module: Operand::Atom(Some(module_name)),
+            function: Operand::Atom(Some(foo)),
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::Label { label: 2 },
+        Instruction::Move {
+            source: Operand::Integer(42),
+            destination: Operand::X(0),
+        },
+        Instruction::Return,
+        Instruction::FuncInfo {
+            module: Operand::Atom(Some(module_name)),
+            function: Operand::Atom(Some(atoms.intern("bar"))),
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::Label { label: 3 },
+        Instruction::Move {
+            source: Operand::Integer(9),
+            destination: Operand::X(0),
+        },
+        Instruction::Return,
+    ]);
+    let registry = Arc::new(ModuleRegistry::new());
+    // The aliased-export shape itself: foo/0 is EXPORTED at bar's entry
+    // label. Loader validation only checks that the label exists.
+    let mut exports = HashMap::new();
+    exports.insert((foo, 0), 3);
+    let module = registry.insert(finish_module(module_name, code, exports, Vec::new()));
+
+    // The caller imports foo/0; resolution follows the aliased export to
+    // BAR's entry label.
+    let caller_code = vec![
+        Instruction::Label { label: 1 },
+        Instruction::CallExt {
+            arity: Operand::Unsigned(0),
+            import: Operand::Unsigned(0),
+        },
+        Instruction::Return,
+    ];
+    let imports = vec![ResolvedImport {
+        module: module_name,
+        function: foo,
+        arity: 0,
+        target: ResolvedImportTarget::Code {
+            module: module_name,
+            label: 3,
+        },
+    }];
+    let caller = registry.insert(finish_module(caller_name, caller_code, HashMap::new(), imports));
+
+    let scheduler =
+        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+
+    // Heat and compile the REAL foo/0.
+    assert_eq!(run_to_value(&scheduler, &module), Term::small_int(42));
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes
+            == 1),
+        "foo/0 must compile through the wire"
+    );
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, foo, 0, module.generation())
+            .is_some()
+    );
+
+    // The aliased external call must run bar's BYTECODE (9), never foo's
+    // cached native code (42), and must not heat anything under foo/0.
+    for _ in 0..3 {
+        assert_eq!(
+            run_to_value(&scheduler, &caller),
+            Term::small_int(9),
+            "an aliased export must execute its bytecode target, not the exported name's cache"
+        );
+    }
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .submissions,
+        1,
+        "aliased calls must not heat the exported identity"
+    );
+    scheduler.shutdown();
+}
+
+/// Completion racing the delete seam (publication guard): a job still queued
+/// when `delete_module` runs must publish NOTHING when it eventually
+/// completes — no cache entry (a same-name reload reaching the same
+/// generation number would execute the deleted module's code) and no
+/// resurrected profile.
+#[test]
+fn queued_compilation_completing_after_delete_publishes_nothing() {
+    let atoms = AtomTable::with_common_atoms();
+    let module_name = atoms.intern("jit_wireup_pub_delete");
+    let function = atoms.intern("f");
+    let threshold = 2;
+
+    // One gated worker, queue depth 2: the gate task occupies the worker, the
+    // JIT job queues behind it and completes only after the delete.
+    let pool = Arc::new(DirtyPool::with_queue_depth("jit-wireup-pub-delete", 1, 2));
+    let (started_tx, started_rx) = mpsc::channel::<()>();
+    let (gate_tx, gate_rx) = mpsc::channel::<()>();
+    pool.submit_task(DirtyTask::new(move || {
+        let _ = started_tx.send(());
+        let _ = gate_rx.recv();
+    }))
+    .expect("gate task submits");
+    started_rx
+        .recv_timeout(WAIT_BUDGET)
+        .expect("gate task starts");
+
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = registry.insert(local_hot_module(module_name, function, threshold, 42));
+    let generation = module.generation();
+    let scheduler = Scheduler::with_services(
+        config(threshold as u32),
+        SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
+        Arc::clone(&registry),
+    )
+    .expect("scheduler with the shared pool starts");
+
+    assert_eq!(run_to_value(&scheduler, &module), Term::small_int(42));
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .submissions,
+        1,
+        "the job must be submitted (queued) before the delete"
+    );
+
+    assert!(scheduler.delete_module(module_name));
+    assert_eq!(scheduler.jit_profiler().profile_entry_count(), 0);
+
+    // Release the worker: the queued job compiles, then must refuse to
+    // publish against the deleted profile.
+    let _ = gate_tx.send(());
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .transient_failures
+            == 1),
+        "the late completion must be counted as a refused publication"
+    );
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes,
+        0,
+        "a completion after delete is not a success"
+    );
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, function, 0, generation)
+            .is_none(),
+        "the late completion must not strand a cache entry for the deleted module"
+    );
+    assert_eq!(
+        scheduler.jit_profiler().profile_entry_count(),
+        0,
+        "the late completion must not resurrect the profile"
+    );
+    scheduler.shutdown();
+    drop(pool);
+}
+
 /// Canonical-entry gate: a call targeting a label INSIDE a function shares
 /// that function's MFA, so letting it heat or hit the JIT surface would cache
 /// a suffix under the whole function's identity — a later entry call would
