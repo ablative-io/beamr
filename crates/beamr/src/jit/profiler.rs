@@ -277,13 +277,15 @@ impl JitProfiler {
 
     /// Resets a transient compilation failure at a generation so the function can heat up again.
     ///
-    /// No-ops when the profile's stamped generation is newer (see [`Self::mark_compiled`]).
+    /// No-ops when the profile's stamped generation is newer (see [`Self::mark_compiled`]), and
+    /// no-ops when no profile exists: completion paths never recreate an entry — a missing
+    /// profile means the module was deleted (the scheduler seam dropped it), and resurrecting it
+    /// would strand a stale generation stamp against a name whose registry generations restart.
     pub fn reset_counter(&self, module: Atom, function: Atom, arity: u8, generation: u64) {
         let key = MfaKey::new(module, function, arity);
-        let profile = self
-            .profiles
-            .entry(key)
-            .or_insert_with(|| FunctionProfile::new(generation));
+        let Some(profile) = self.profiles.get_mut(&key) else {
+            return;
+        };
         if profile.generation.load(Ordering::Acquire) > generation {
             return;
         }
@@ -300,12 +302,15 @@ impl JitProfiler {
         self.profiles.retain(|key, _| key.module != module);
     }
 
+    /// Completion-mark write path: no-ops when the stamped generation is newer AND when no
+    /// profile exists (see [`Self::reset_counter`] — completions never resurrect deleted
+    /// profiles). Only [`Self::record_call`] creates entries: an MFA enters the map by being
+    /// interpreted at a live call edge, never by a completion arriving after deletion.
     fn set_state(&self, module: Atom, function: Atom, arity: u8, generation: u64, state: u8) {
         let key = MfaKey::new(module, function, arity);
-        let profile = self
-            .profiles
-            .entry(key)
-            .or_insert_with(|| FunctionProfile::new(generation));
+        let Some(profile) = self.profiles.get_mut(&key) else {
+            return;
+        };
         if profile.generation.load(Ordering::Acquire) > generation {
             return;
         }
@@ -363,6 +368,11 @@ mod tests {
     #[test]
     fn mark_compiled_prevents_retriggering() {
         let profiler = JitProfiler::new(2);
+        // Entries are born at a live call edge; completions only update them.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::Continue
+        );
         profiler.mark_compiled(atom(1), atom(2), 0, 1);
 
         // Within the marked generation, COMPILED stays terminal.
@@ -424,6 +434,10 @@ mod tests {
     #[test]
     fn newer_generation_reheats_compiled_function() {
         let profiler = JitProfiler::new(2);
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::Continue
+        );
         profiler.mark_compiled(atom(1), atom(2), 0, 1);
         assert!(profiler.is_compiled(atom(1), atom(2), 0));
 
@@ -441,6 +455,10 @@ mod tests {
     #[test]
     fn newer_generation_retries_unsupported_function() {
         let profiler = JitProfiler::new(2);
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::Continue
+        );
         profiler.mark_unsupported(atom(1), atom(2), 0, 1);
         assert!(profiler.is_unsupported(atom(1), atom(2), 0));
 
@@ -489,6 +507,14 @@ mod tests {
     #[test]
     fn remove_module_drops_only_that_modules_entries() {
         let profiler = JitProfiler::new(2);
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::Continue
+        );
+        assert_eq!(
+            profiler.record_call(atom(9), atom(2), 0, 1),
+            RecordResult::Continue
+        );
         profiler.mark_compiled(atom(1), atom(2), 0, 1);
         profiler.mark_compiled(atom(9), atom(2), 0, 1);
         assert!(profiler.is_compiled(atom(1), atom(2), 0));
@@ -498,6 +524,40 @@ mod tests {
 
         assert!(!profiler.is_compiled(atom(1), atom(2), 0));
         assert!(profiler.is_compiled(atom(9), atom(2), 0));
+    }
+
+    #[test]
+    fn completion_marks_never_resurrect_a_deleted_profile() {
+        let profiler = JitProfiler::new(1);
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::CompileNow
+        );
+        profiler.remove_module(atom(1));
+        assert_eq!(profiler.profile_entry_count(), 0);
+
+        // A queued job completing after the delete must not recreate the
+        // profile at its stale generation: registry generations restart at 1
+        // after a delete, so a resurrected stamp-2 profile would treat every
+        // call from the replacement module as "older" and wedge it out of the
+        // JIT permanently.
+        profiler.mark_compiled(atom(1), atom(2), 0, 2);
+        profiler.mark_unsupported(atom(1), atom(2), 0, 2);
+        profiler.reset_counter(atom(1), atom(2), 0, 2);
+        assert_eq!(
+            profiler.profile_entry_count(),
+            0,
+            "completion paths must never resurrect a deleted profile"
+        );
+        assert!(!profiler.is_compiled(atom(1), atom(2), 0));
+        assert!(!profiler.is_unsupported(atom(1), atom(2), 0));
+
+        // The replacement module heats from scratch at its restarted
+        // generation, unimpeded by the stale completion.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::CompileNow
+        );
     }
 
     #[test]

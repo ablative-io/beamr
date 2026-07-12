@@ -108,8 +108,14 @@ impl Scheduler {
     }
 
     /// Remove every version of a module from the registry.
+    ///
+    /// Drops the module's JIT profiles AND cached native code: registry
+    /// generations restart at 1 after a delete, so retained cache entries
+    /// would collide with a later reload of the same name reaching the same
+    /// generation number and execute the deleted module's code.
     pub fn delete_module(&self, name: Atom) -> bool {
         self.shared.jit_profiler.remove_module(name);
+        self.shared.jit_cache.invalidate_module(name);
         self.shared.module_registry.delete_module(name)
     }
 
@@ -142,6 +148,7 @@ impl CodeManagementFacility for SchedulerCodeManagementFacility {
 
     fn delete_module(&self, module: Atom) -> bool {
         self.shared.jit_profiler.remove_module(module);
+        self.shared.jit_cache.invalidate_module(module);
         self.shared.module_registry.delete_module(module)
     }
 
