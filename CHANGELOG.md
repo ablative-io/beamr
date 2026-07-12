@@ -1,11 +1,77 @@
 # Changelog
 
-## Unreleased
+## 0.14.0 — 2026-07-12
 
-Embedder composition (`docs/EMBEDDER-COMPOSITION-SPEC.md`): a scheduler now
-starts exactly the VM services the embedder asks for. This head lands the
-composition entrypoint and profiles that sit on top of the per-service
-`ServiceMode` plumbing from the earlier composition commits.
+**The artifact of record for the embedder-composition campaign** (composition
+commits 1–6: `docs/EMBEDDER-COMPOSITION-SPEC.md`, `docs/READINESS-CONTRACT-SPEC.md`,
+`docs/READINESS-REGISTRATION-API.md`). This version contains exactly the tree
+0.13.2 shipped; the minor bump exists because the campaign's public-API breaks
+below cannot honestly ride a patch version — which is also why **0.13.1 and
+0.13.2 are yanked** (see their entries).
+
+### Breaking
+
+- `Scheduler::dirty_cpu_pool` / `dirty_io_pool` are replaced by
+  `try_dirty_cpu_pool` / `try_dirty_io_pool` returning `Option<&DirtyPool>` —
+  a composed scheduler can genuinely have no pool, and the old signatures
+  could not represent absence without panicking. `#[doc(alias)]`es preserve
+  discoverability under the old names.
+- `Scheduler::distribution_connections` / `distribution_config` are replaced
+  by `try_distribution_connections` / `try_distribution_config` (same reason:
+  `distribution: None` now builds NOTHING — honest absence).
+- `ExecError::ServiceUnavailable { service }` — new variant, breaks exhaustive
+  matches. Raised when a native dirty call reaches a `Disabled` dirty pool;
+  the BEAM-visible exit reason stays the plain `error` it always was.
+- `SpawnError::SchedulerTearingDown` — new variant, breaks exhaustive matches.
+  Every spawn facility entry point refuses (rather than mutating) once the
+  scheduler's teardown drain has closed admission.
+- `dirty_cpu_threads: Some(0)` / `dirty_io_threads: Some(0)` now mean
+  **Disabled** (zero threads, typed refusal at the pre-suspension gate);
+  previously zero rounded up to one thread. `None` keeps the eager legacy
+  defaults for one release (see the `Scheduler::new` migration note below).
+- Ancillary-service thread names are now service-distinct (each ring names
+  its own workers; `DEFAULT_RING_THREAD_PREFIX` is the exported default, and
+  `create_ring_with_prefix` / `try_create_ring_with_prefix` exist for
+  embedder-named rings). Anything keying on the old shared thread names must
+  update.
+- New **default feature `readiness`** (requires `threads`; adds the
+  already-in-lock `mio` as a direct dependency). Default-features consumers
+  compile the readiness registration service; the SERVICE stays composed-off
+  unless selected (`FromConfig` ⇒ `Disabled`) — feature-compiled and
+  service-enabled are deliberately different defaults (registration-API doc
+  §8 OQ-1). `default-features = false` consumers (wasm/cooperative) are
+  untouched.
+
+### Added (campaign surface beyond the composition entrypoint)
+
+- Per-service `ServiceMode` model with a stable identity per instance, and
+  `Scheduler::service_inventory()` — every ancillary service reports mode,
+  configured-vs-actual thread counts, thread names, and fd classes;
+  transient-thread classes report as policy lines. The §5 permanent
+  assertions (inventory ≡ OS probe, signed 5 ms idle floor with its
+  `IDLE_PARK_TIMEOUT` / `IDLE_WAKES_PER_SEC_PER_WORKER` linkage) pin it.
+- **Readiness registration service** (composition commit 6, contract §3
+  shape (b)): register an fd + durable atom marker for a pid, get woken by
+  marker enqueue on readiness — the enif_select-class primitive that lets an
+  idle consumer park instead of poll. One poll thread per service instance;
+  `Owned` per scheduler or ONE `SharedReadiness` injected across many
+  (delivery routes home by registration identity; generation-minted
+  `ReadinessToken`s make fd reuse safe). In-slice surface:
+  `ProcessContext::readiness_facility()` / `NativeContext::readiness_facility()`
+  (register + rearm); host-side acknowledged `Scheduler::readiness_deregister`.
+  Poll-thread death degrades to typed `ReadinessError::ServiceFailed`
+  refusals, honest `actual: 0` inventory, and bounded deregistration.
+- Teardown-admission gating across mutating facilities: dirty submissions,
+  every spawn path, message/link delivery, ETS create/delete/transfer,
+  group-leader set, supervision exit signals, timer arm/cancel, and readiness
+  register/rearm all hold an admission the shutdown drain waits out — a
+  mutation cannot land after teardown returns, and post-drain calls refuse
+  typed (`ReadinessError::TeardownInProgress` for readiness; existing typed
+  surfaces elsewhere).
+- `ConnectionManager::disconnect_all()`; per-connection teardown that
+  actually closes: an atomically-CLOEXEC teardown dup + `shutdown(2)` makes
+  connection closure independent of a wedged writer mutex (budget: one extra
+  fd per live connection, ledger-signed).
 
 ### Added
 
@@ -59,6 +125,51 @@ composition entrypoint and profiles that sit on top of the per-service
   (`noconnection` / `false` / `[]`). The one observable flip: `is_alive/0`
   reports `false` under replay (spec-§3.6-consistent for a node with no
   distribution service).
+- **Distribution is one bundle behind one manager.** The outbound sender and
+  the net-kernel now share a single heartbeat-enabled `ConnectionManager`
+  (previously two disjoint connection tables). Direct remote sends are
+  bounded: a wedged peer writer yields `NoConnection` + connection retirement
+  at the drain's 5 s write timeout instead of hanging; `connect_node` carries
+  a 15 s whole-attempt deadline; `is_alive/0` is `true` only with a live
+  distribution service AND a non-default node name. Teardown joins the
+  runtime workers to completion (no leaked runtime threads), safe from any
+  calling context.
+- Process 0 (group-leader IO server) is registered exactly when the
+  standard-IO ring is `Owned`; under `minimal()` there is no process 0, and
+  top-level group leaders seed from a dead-leader sentinel rather than
+  self-queueing IO forever.
+
+### Fixed
+
+- A kill landing in the store→register park gap left a dead pid's wait-set
+  entry behind forever, and a link-cascade kill of a stored process stranded
+  its body, owned fds, pg memberships, and metric state while silently
+  dropping its remote-link EXITs. Process finalization is now exactly-once
+  behind two ownership tokens (table token for pid-keyed work, body token for
+  resource release), and the cascade path finalizes like a direct kill.
+- The readiness deregistration epoch handshake had a lost-wakeup window (a
+  notify could land between a waiter's predicate check and its wait, with no
+  second chance on a tickless poller); every predicate-state writer now
+  passes through the epoch lock before notifying.
+- The readiness in-slice surface was reachable from BIF-path
+  `ProcessContext` but not from native-handler `NativeContext` — caught by
+  the first external consumer, fixed the same night, and the
+  first-external-consumer gate (an integration test consuming public paths
+  only) is now standing verification doctrine.
+
+## 0.13.2 — 2026-07-12 [YANKED]
+
+0.14.0's tree, released under a patch version: 0.13.1 plus the readiness
+§1.4 conformance fix (`NativeContext::readiness_facility`). **Yanked
+2026-07-12** because the composition campaign's public-API breaks (see
+0.14.0 § Breaking) cannot ride a patch bump. Use 0.14.0 — it is the same
+tree with an honest version.
+
+## 0.13.1 — 2026-07-12 [YANKED]
+
+First release of the embedder-composition campaign (composition commits 1–6,
+including the readiness registration service). **Yanked 2026-07-12**, same
+reason as 0.13.2: breaking API changes under a patch version. Use 0.14.0.
 
 ## 0.13.0
 
