@@ -1,0 +1,117 @@
+{
+  "id": "JIT-001",
+  "cluster": "jit",
+  "title": "JIT wire-up 1 of 2 — profiler at the call edges, threshold-tripped compilation through the composed dirty-CPU service",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": [],
+  "stories": [],
+  "purpose": "Ledger A1, first brief (docs/stack-review/beamr-ledger.md §A1 — 'highest payoff-per-brief in the repo'). Both interpreter call edges ALREADY consult the JIT cache and run native code on a hit (dispatch_local_jit, opcodes/core.rs:639; dispatch_external_jit, opcodes/core.rs:704 — generation-keyed via module.generation(), invalidation machinery landed). The profiler ALREADY implements the whole hotness protocol (record_call with INTERPRETING/PENDING/COMPILED/UNSUPPORTED states, profiler.rs:113). The compilation job is ALREADY self-contained (compile → cache.insert + mark_compiled; unsupported → mark_unsupported; transient → reset_counter; compile_job.rs:60-85) and ALREADY submits through the composed dirty-CPU ServiceMode with a typed disabled-refusal (try_submit_jit_compilation, compile_job.rs:104). What does not exist is the wire between them: nothing calls record_call, so no job is ever submitted and the headline performance feature is dormant. This brief closes exactly that gap and nothing else. LEDGER-DRIFT NOTE (binding): the ledger's A-tier is stated against v0.12.0, pre-composition. This brief lands on the composed surface: submission rides the dirty-CPU ServiceMode and the answer to 'which compositions carry a live profiler' reuses the OQ-1 reasoning of record verbatim (docs/READINESS-REGISTRATION-API.md §8 OQ-1): jit stays FEATURE-COMPILED exactly as today; the PROFILER is SERVICE-ENABLED — live only where the dirty-CPU service is live and never under replay. Base: beamr main at 0.14.0 (eeb1dd1 or later).",
+  "task": "Wire JitProfiler::record_call into the two bytecode-fallthrough paths at the interpreter's call edges, and on RecordResult::CompileNow assemble a CompilationRequest for the function's instruction slice at the module's current generation and submit it via try_submit_jit_compilation. Plumb the profiler and submission handle along the same seam jit_cache travels today (build_native_services → NativeServices → interpreter contexts), gated at the construction site on replay mode and dirty-CPU service liveness. Add compile-outcome counters exposed through the existing telemetry surface. Extend the differential harness to prove interpreter/JIT equivalence through the WIRED scheduler path, and pin the replay and disabled-composition refusals. Deviations from this brief — including improvements — STOP and report; they are not improvised (house rule, composition-campaign precedent).",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Profiler reachability — same seam as jit_cache, gated at construction",
+      "spec": "Add the profiler handle (and whatever submission handle R3 needs) to NativeServices beside its existing jit_cache field (interpreter/mod.rs:106) and thread it into the interpreter's dispatch contexts beside jit_cache (JitDispatchContext / ExtCallContext, opcodes/core.rs:36,47). Populate it in build_native_services (supervision_integration.rs:635, where jit_cache is cloned from shared today) — that site holds all three gating facts. The handle is Some IFF: (a) the jit feature is compiled (reuse the existing cfg structure — no new cfg patterns); (b) shared.replay_mode is false — replay composes the profiler AWAY entirely, commit-5 precedent (replay validates reduction counts; JIT charges differ, ledger §A1); (c) the dirty-CPU service is live (ServiceMode not Disabled). When the handle is None, record_call is unreachable and the call edges bear zero added cost — absence is the disable mechanism, not a runtime flag check inside the edge.",
+      "acceptance": [
+        "Default profile (from_config, dirty-CPU live): profiler handle present at both edges",
+        "Replay mode with jit feature compiled: handle absent; a replayed program's outputs are byte-identical to pre-brief behavior and no compilation is ever submitted",
+        "SchedulerServices::minimal() (dirty-CPU Disabled): handle absent; R4's counters prove zero submission attempts",
+        "No new #[allow]; no runtime branch on replay/service state inside the dispatch functions themselves"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/interpreter/mod.rs",
+          "crates/beamr/src/interpreter/opcodes/core.rs",
+          "crates/beamr/src/scheduler/supervision_integration.rs"
+        ]
+      }
+    },
+    {
+      "id": "R2",
+      "title": "record_call on the bytecode fall-through at both call edges",
+      "spec": "In dispatch_local_jit (opcodes/core.rs:639) and dispatch_external_jit (opcodes/core.rs:704): today a cache miss falls through to Ok(None) → bytecode. On that MISS path only — a cache hit must add no work, so record after the lookup misses, not before — call record_call with the same identity triple the lookup used (local: module.name + function_at_ip's (function, arity); external: target_module.name + function + arity). RecordResult::Continue proceeds to bytecode unchanged. Do not special-case compiled/unsupported functions at the edge: the profiler's own state machine returns Continue for them (profiler.rs:120-122), and once the cache is populated the lookup hits so the edge stops recording naturally.",
+      "acceptance": [
+        "Unit test: threshold-1 calls to a supported function produce zero submissions; the threshold-th call produces exactly one (threshold from SchedulerConfig.jit_threshold, honoring the existing DEFAULT_JIT_THRESHOLD fallback at scheduler/mod.rs:1039-1040)",
+        "After compilation lands in the cache, subsequent calls dispatch native and the profile counter stops moving (record-on-miss-only, observed via profiler state)",
+        "Both edges covered by tests — local and external call forms"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/interpreter/opcodes/core.rs"
+        ]
+      }
+    },
+    {
+      "id": "R3",
+      "title": "CompileNow — non-blocking submission through the composed service",
+      "spec": "On RecordResult::CompileNow, assemble CompilationRequest::new(module, function, arity, module.generation(), instructions) where instructions is EXACTLY the target function's slice of the loaded module's instruction stream (function_at_ip proves per-function boundary knowledge exists at core.rs:651; if the Module type lacks a function-slice accessor, STOP and report rather than inventing slicing logic at the call edge). Submit CompilationJob::new(request, compiler, profiler, cache) via try_submit_jit_compilation (compile_job.rs:104). The compiler is one Arc<JitCompiler> per scheduler, constructed once at SharedState build beside jit_profiler (scheduler/mod.rs:1039); JitCompiler::new returns Result — a construction failure in a jit-enabled build propagates out of the Scheduler constructor as an error (fatal-loud, the readiness ReadinessBuildError precedent; never expect/unwrap, never silent degradation). Submission is fire-and-forget from the calling process's perspective: it never blocks, and NO submission failure surfaces into BEAM semantics — Err(Disabled) is unreachable by R1's gating but if raced, and Err on a stopped/full pool, call profiler.reset_counter for the MFA (transient; the function can re-heat) and continue interpreting.",
+      "acceptance": [
+        "A hot function's compilation job runs on a dirty-CPU worker and its result reaches the cache: subsequent calls observably dispatch native (differential path in R5 consumes this)",
+        "Submission-failure path pinned: a refused/failed submission leaves the calling process running bytecode with no error and the profile counter reset (fail-first: verify the pin fails if reset_counter is dropped)",
+        "Scheduler construction with jit feature and a failing JitCompiler::new surfaces the error from the constructor (may be pinned via cfg(test) seam if cranelift cannot be made to fail naturally; if no honest seam exists, STOP and report)"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/scheduler/mod.rs",
+          "crates/beamr/src/interpreter/opcodes/core.rs"
+        ]
+      }
+    },
+    {
+      "id": "R4",
+      "title": "Compile-outcome counters on the telemetry surface",
+      "spec": "Count submissions, compile successes, unsupported markings, and transient failures. The counting seam is the builder's choice within existing patterns (plain AtomicU64s on JitProfiler read by the telemetry layer fits the house instrument style; TelemetryMetricState at scheduler/mod.rs is the exposure pattern) — but if the choice requires NEW cross-crate machinery, STOP and report. Counters must be cheap enough to live outside cfg(telemetry) (atomic increments), with only the EXPOSURE gated on the telemetry feature, so the R5 pins can consume them in default builds.",
+      "acceptance": [
+        "Counters move correctly under R5's hot-path test (1 submission, 1 success for a supported function; unsupported path exercised via a function the JIT tier rejects)",
+        "Replay and minimal() compositions: all counters remain zero across the same program",
+        "cargo clippy --all-features clean (telemetry feature exercised)"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/jit/profiler.rs",
+          "crates/beamr/src/scheduler/mod.rs"
+        ]
+      }
+    },
+    {
+      "id": "R5",
+      "title": "Differential acceptance on the wired path + refusal pins",
+      "spec": "The existing differential harness (tests/differential.rs) proves interpreter-vs-JIT equivalence by driving both directly; it does NOT exercise the wire. Add scheduler-driven coverage: a program calls a JIT-supported function (threshold + K) times THROUGH the scheduler, the test waits for the compilation to land (bounded wait on the R4 success counter — never a bare sleep), and asserts the post-compile results are equal to the same program's results with the profiler absent (minimal-composition run of identical code). Whether this extends differential.rs or lands as a sibling integration binary is the builder's structural call — matching the harness's existing proptest shape matters less than consuming ONLY public paths (first-external-consumer gate, now standing doctrine). Two refusal pins ride with it: (a) the same program under replay submits nothing and its outputs match the pre-brief interpreter exactly; (b) under minimal() the program runs interpreter-only with zero submissions and identical results.",
+      "acceptance": [
+        "Wired-path equivalence test green and 10x stable in isolation",
+        "Replay pin and minimal() pin both green, both counter-verified (zero submissions)",
+        "All three tests consume public API only",
+        "Fail-first evidence for the equivalence test: with record_call wiring reverted, the test detects the missing compilation (bounded wait expires) — recorded in the handoff, not committed"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/tests/differential.rs"
+        ],
+        "create": [
+          "crates/beamr/tests/jit_wireup.rs (builder's structural call — see spec)"
+        ]
+      }
+    },
+    {
+      "id": "R6",
+      "title": "Full gate bar on the final head",
+      "spec": "The composition-campaign bar, unchanged: cargo fmt --check; cargo check -p beamr; cargo clippy --all-targets -- -D warnings AND --all-targets --all-features -- -D warnings; cargo test -p beamr --lib; cargo test -p beamr --test '*'; 10x stability loops on every new pin. Zero new #[allow] attributes anywhere, including #[allow(deprecated)]. No unwrap/expect/panic outside tests. Handoff pack states toolchain versions (rustc + clippy) measured on the final head.",
+      "acceptance": [
+        "All gates exit 0 on the final head, toolchain-stamped",
+        "grep proves zero new #[allow] in the diff"
+      ],
+      "files": {
+        "modify": []
+      }
+    }
+  ],
+  "boundaries": [
+    "A1-2 (CLI .beamr_native companion loading) is OUT — it is the arc's second brief",
+    "A2 lowerings are OUT: no changes to the compiler, IR modules, or supported-opcode set; if the differential test needs a 'JIT-supported function', pick one the current tier already compiles",
+    "tune_threshold exists but stays unwired — adaptive thresholds are not this brief",
+    "No changes to replay semantics beyond the R1 gating; no changes to dirty-pool machinery, teardown admissions, or ServiceMode arms — this brief CONSUMES the composed surface, it does not extend it",
+    "No new services, no inventory changes: the profiler is not a service and must not grow an inventory line (it owns no threads; compilation runs on the dirty-CPU pool's already-inventoried workers)"
+  ],
+  "verification": "Full R6 bar on the final head. R5's three tests are the acceptance spine: wired-path equivalence (10x), replay refusal pin, minimal-composition refusal pin — each fail-first verified where the spec names it. Reviewer-of-record per house convention; norn adversarial rounds ride in addition to the bar as the campaign established."
+}
