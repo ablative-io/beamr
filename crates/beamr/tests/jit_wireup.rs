@@ -827,10 +827,10 @@ fn refused_submission_leaves_bytecode_running_and_the_profile_reheatable() {
 }
 
 /// Module delete through the scheduler drops the module's profile entries
-/// (R7) AND its cached native code: registry generations restart at 1 after
-/// a delete, so a retained cache entry would collide with a reload of the
-/// same name reaching the same generation and execute the deleted module's
-/// code.
+/// (R7) AND its cached native code. With monotonic generations (ruled) a
+/// registry reload can no longer collide with retained entries; the
+/// invalidation remains as hygiene and as defense for embedders that hand
+/// modules with arbitrary generation numbers.
 #[test]
 fn delete_module_through_the_scheduler_drops_hot_profiles_and_cached_code() {
     let atoms = AtomTable::with_common_atoms();
@@ -998,9 +998,7 @@ fn aliased_export_never_runs_or_heats_another_functions_code() {
 
 /// Completion racing the delete seam (publication guard): a job still queued
 /// when `delete_module` runs must publish NOTHING when it eventually
-/// completes — no cache entry (a same-name reload reaching the same
-/// generation number would execute the deleted module's code) and no
-/// resurrected profile.
+/// completes — no stranded cache entry and no resurrected profile.
 #[test]
 fn queued_compilation_completing_after_delete_publishes_nothing() {
     let atoms = AtomTable::with_common_atoms();
@@ -1082,10 +1080,10 @@ fn queued_compilation_completing_after_delete_publishes_nothing() {
 
 /// The replacement-before-completion interleaving: a job queued before a
 /// delete completes only AFTER a same-name reload has already heated a
-/// replacement profile at the registry's RESTARTED (lower) generation. The
-/// stale completion must neither stamp the replacement's profile nor publish
-/// code — exact-generation-match completions — and the replacement must then
-/// compile normally at its own generation.
+/// replacement profile. The stale completion must neither stamp the
+/// replacement's profile nor publish code — exact (generation, epoch)
+/// completions — and the replacement must then compile normally at its own
+/// (monotonic, ruled) generation.
 #[test]
 fn queued_stale_job_never_stamps_a_replacement_profile() {
     let atoms = AtomTable::with_common_atoms();
@@ -1134,8 +1132,8 @@ fn queued_stale_job_never_stamps_a_replacement_profile() {
     let replacement = registry.insert(local_hot_module(module_name, function, 1, 42));
     assert_eq!(
         replacement.generation(),
-        1,
-        "the registry restarts a deleted name at generation 1 — the premise of this pin"
+        3,
+        "generations are monotonic across delete (ruled): the replacement continues the numbering"
     );
     assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));
     assert_eq!(
@@ -1178,7 +1176,7 @@ fn queued_stale_job_never_stamps_a_replacement_profile() {
     assert!(
         scheduler
             .jit_cache()
-            .lookup(module_name, function, 0, 1)
+            .lookup(module_name, function, 0, replacement.generation())
             .is_none()
     );
 
@@ -1203,20 +1201,82 @@ fn queued_stale_job_never_stamps_a_replacement_profile() {
     assert!(
         scheduler
             .jit_cache()
-            .lookup(module_name, function, 0, 1)
+            .lookup(module_name, function, 0, replacement.generation())
             .is_some(),
-        "the replacement compiles at its own restarted generation"
+        "the replacement compiles at its own (monotonic) generation"
     );
     scheduler.shutdown();
     drop(pool);
 }
 
-/// Equal-generation incarnation collision: an UNSUPPORTED module heats at
-/// generation 1 with its job queued; it is deleted and replaced by a
-/// SUPPORTED module that also gets generation 1 (the registry restarts).
-/// Numeric generations collide exactly — the stale job's unsupported verdict
-/// must be refused by the incarnation epoch, and the replacement must go on
-/// to compile.
+/// Residual (i) retirement (the monotonic-generations ruling's own wall):
+/// after a delete, a STILL-RUNNING old-generation process keeps calling the
+/// hot function and recreates a profile at its stale generation; the reload
+/// then continues the numbering ABOVE that stamp, so the replacement re-heats
+/// and compiles instead of reading as "older" forever.
+#[test]
+fn stale_record_call_after_delete_cannot_wedge_a_monotonic_reload() {
+    let atoms = AtomTable::with_common_atoms();
+    let module_name = atoms.intern("jit_wireup_monotonic");
+    let function = atoms.intern("f");
+    let threshold = 3;
+
+    let registry = Arc::new(ModuleRegistry::new());
+    let v1 = registry.insert(local_hot_module(module_name, function, 1, 42));
+    assert_eq!(v1.generation(), 1);
+    let scheduler =
+        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+
+    // Delete, then the old-generation process (retained Arc) keeps calling:
+    // its record_call recreates a profile stamped at the DEAD generation.
+    assert!(scheduler.delete_module(module_name));
+    assert_eq!(run_to_value(&scheduler, &v1), Term::small_int(42));
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .recorded_call_count(module_name, function, 0),
+        Some(1),
+        "the stale process recreates a profile at its own generation"
+    );
+
+    // The reload continues the numbering above the stale stamp.
+    let replacement = registry.insert(local_hot_module(module_name, function, 1, 42));
+    assert_eq!(
+        replacement.generation(),
+        2,
+        "monotonic across delete: the reload numbering continues, never restarts"
+    );
+
+    // The replacement's calls are NEWER than the stale stamp: they reset,
+    // heat, and compile — the permanent-demotion wedge is structurally gone.
+    for _ in 0..threshold {
+        assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));
+    }
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes
+            == 1),
+        "the reloaded module must heat and compile despite the stale profile"
+    );
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, function, 0, replacement.generation())
+            .is_some()
+    );
+    assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));
+    scheduler.shutdown();
+}
+
+/// Stale-verdict refusal across delete+reload: an UNSUPPORTED module heats
+/// with its job queued; it is deleted and replaced by a SUPPORTED module.
+/// The registry's monotonic generations (ruled) give the replacement a fresh
+/// number, and the incarnation epoch additionally walls off embedders that
+/// hand the profiler colliding numbers directly (pinned at the profiler
+/// layer). Either way the stale verdict must be refused and the replacement
+/// must go on to compile.
 #[test]
 fn stale_unsupported_verdict_never_wedges_a_same_generation_replacement() {
     let atoms = AtomTable::with_common_atoms();
@@ -1267,8 +1327,8 @@ fn stale_unsupported_verdict_never_wedges_a_same_generation_replacement() {
     let replacement = registry.insert(local_hot_module(module_name, function, 1, 42));
     assert_eq!(
         replacement.generation(),
-        1,
-        "the registry restarts a deleted name at generation 1 — the premise of this pin"
+        2,
+        "generations are monotonic across delete (ruled): the replacement continues the numbering"
     );
     assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));
     assert_eq!(
@@ -1319,12 +1379,12 @@ fn stale_unsupported_verdict_never_wedges_a_same_generation_replacement() {
             .compile_outcome_counters()
             .successes
             == 1),
-        "the supported replacement must compile at the reused generation number"
+        "the supported replacement must compile at its own generation"
     );
     assert!(
         scheduler
             .jit_cache()
-            .lookup(module_name, function, 0, 1)
+            .lookup(module_name, function, 0, replacement.generation())
             .is_some()
     );
     assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));

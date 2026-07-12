@@ -109,10 +109,11 @@ impl Scheduler {
 
     /// Remove every version of a module from the registry.
     ///
-    /// Drops the module's JIT profiles AND cached native code: registry
-    /// generations restart at 1 after a delete, so retained cache entries
-    /// would collide with a later reload of the same name reaching the same
-    /// generation number and execute the deleted module's code.
+    /// Drops the module's JIT profiles AND cached native code. Registry
+    /// generations are monotonic across delete (a reload continues the
+    /// numbering), so retained entries can no longer collide with a reload;
+    /// the invalidation remains as hygiene and as defense for embedders
+    /// handing the cache modules with arbitrary generation numbers.
     pub fn delete_module(&self, name: Atom) -> bool {
         self.shared.jit_profiler.remove_module(name);
         self.shared.jit_cache.invalidate_module(name);
