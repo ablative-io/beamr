@@ -276,9 +276,14 @@ impl JitProfiler {
         }
     }
 
-    /// Returns the profile's current incarnation epoch, captured by the call edge at submission
-    /// time and presented back by every completion.
-    pub(crate) fn profile_epoch(&self, module: Atom, function: Atom, arity: u8) -> Option<u64> {
+    /// Test-support probe: the profile's current incarnation epoch.
+    ///
+    /// Production submissions receive the epoch inside
+    /// [`RecordResult::CompileNow`], read under the deciding entry guard —
+    /// this accessor exists only for tests that stage stale completions.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn profile_epoch(&self, module: Atom, function: Atom, arity: u8) -> Option<u64> {
         self.profiles
             .get(&MfaKey::new(module, function, arity))
             .map(|profile| profile.epoch.load(Ordering::Acquire))
