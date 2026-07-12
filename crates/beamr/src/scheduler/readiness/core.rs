@@ -131,7 +131,7 @@ impl ReadinessCore {
                     && (outcome.is_err() || outcome.is_ok_and(|result| result.is_err()))
                 {
                     thread_core.failed.store(true, Ordering::Release);
-                    thread_core.epoch_changed.notify_all();
+                    thread_core.notify_epoch_waiters();
                 }
             })
             .map_err(|error| ReadinessBuildError::PollSetUnavailable {
@@ -328,6 +328,23 @@ impl ReadinessCore {
         }
     }
 
+    /// Wake every `wake_and_wait` waiter AFTER a predicate-visible state
+    /// change (`poll_epoch`, `failed`, `stopping`). The notifier MUST pass
+    /// through `epoch_lock` between the state change and the notify: a
+    /// waiter holds that lock from its predicate check until `wait()`
+    /// releases it atomically, so an unlocked notify can land in the
+    /// check→wait window and be LOST — and the poller is tickless, so a
+    /// lost wake has no second chance and the dereg handshake hangs
+    /// forever. Acquiring-and-dropping the lock forces the notify to
+    /// happen-after the waiter is actually waiting (or the waiter to see
+    /// the new state before it waits).
+    fn notify_epoch_waiters(&self) {
+        if let Ok(guard) = self.epoch_lock.lock() {
+            drop(guard);
+        }
+        self.epoch_changed.notify_all();
+    }
+
     fn wake_and_wait(&self, epoch: u64) {
         let _ = self.waker.wake();
         let Ok(mut guard) = self.epoch_lock.lock() else {
@@ -348,7 +365,7 @@ impl ReadinessCore {
         let mut events = Events::with_capacity(256);
         loop {
             self.poll_epoch.fetch_add(1, Ordering::AcqRel);
-            self.epoch_changed.notify_all();
+            self.notify_epoch_waiters();
             if self.stopping.load(Ordering::Acquire) {
                 return Ok(());
             }
@@ -380,7 +397,7 @@ impl ReadinessCore {
         if let Some(handle) = handle {
             let _ = handle.join();
         }
-        self.epoch_changed.notify_all();
+        self.notify_epoch_waiters();
     }
 
     pub(super) fn poll_thread_names(&self) -> Vec<String> {
