@@ -119,6 +119,12 @@ conformance suite, and the rAF pump has no backpressure signal to the host.
   (2026-07-12): with no CI, "pinned on both poll backends" means "wherever
   someone runs the suite" — the readiness service's epoll leg is UNRECORDED
   until a Linux run happens. Repo-wide debt, not commit 6's.
+- **Readiness Display over-claim (S, one line)**: `ReadinessCore`'s
+  `stopping` state refuses as `ServiceFailed`, so a deliberate embedder
+  shutdown with live consumers reads as "poll thread has failed" at the
+  Display surface. Correct refusal, over-claiming text (domain-owner
+  review O1, 2026-07-12; O2's companion — the load-bearing
+  single-lock-hold registration wall — is pinned in the readiness doc).
 - **Feature-graph repair: `threads`-only build is red (S–M)**: found during
   the commit-6 build, VERIFIED pre-existing at base 52840bb (exit 101 before
   any readiness code): `cargo build -p beamr --no-default-features
