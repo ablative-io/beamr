@@ -19,6 +19,8 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use crate::error::ExecError;
+#[cfg(feature = "readiness")]
+use crate::native::ReadinessFacility;
 #[cfg(feature = "threads")]
 use crate::native::TeardownAdmissionFacility;
 use crate::native::local_send::{LocalSendError, LocalSendFacility, LocalSendRequest};
@@ -104,6 +106,8 @@ pub struct NativeContext<'a> {
     spawn: Arc<dyn SpawnFacility>,
     replay_driver: Option<Arc<Mutex<ReplayDriver>>>,
     timers: Option<Arc<Mutex<TimerWheel>>>,
+    #[cfg(feature = "readiness")]
+    readiness_facility: Option<Arc<dyn ReadinessFacility>>,
     #[cfg(feature = "threads")]
     teardown_admission_facility: Option<Arc<dyn TeardownAdmissionFacility>>,
     replay_error: Option<ExecError>,
@@ -136,6 +140,8 @@ impl<'a> NativeContext<'a> {
             spawn,
             replay_driver,
             timers,
+            #[cfg(feature = "readiness")]
+            readiness_facility: None,
             #[cfg(feature = "threads")]
             teardown_admission_facility: None,
             replay_error: None,
@@ -152,6 +158,22 @@ impl<'a> NativeContext<'a> {
         facility: Option<Rc<dyn WasmAsyncNifFacility>>,
     ) {
         self.wasm_async_nif_facility = facility;
+    }
+
+    /// Return the in-slice readiness facility when the scheduler composed it.
+    ///
+    /// `None` is the Disabled service's typed absence: handlers can refuse the
+    /// operation while still runnable instead of parking without an armed fd.
+    #[cfg(feature = "readiness")]
+    #[must_use]
+    pub fn readiness_facility(&self) -> Option<&dyn ReadinessFacility> {
+        self.readiness_facility.as_deref()
+    }
+
+    /// Install the scheduler's route-bound readiness facility for this slice.
+    #[cfg(feature = "readiness")]
+    pub(crate) fn set_readiness_facility(&mut self, facility: Option<Arc<dyn ReadinessFacility>>) {
+        self.readiness_facility = facility;
     }
 
     #[cfg(feature = "threads")]
