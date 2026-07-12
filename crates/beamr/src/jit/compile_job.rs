@@ -87,9 +87,20 @@ impl CompilationJob {
                 | JitError::UnsupportedOperand { .. }
                 | JitError::UnknownLabel { .. },
             ) => {
-                self.profiler
-                    .mark_unsupported(key.module, key.function, key.arity, key.generation);
-                self.profiler.note_unsupported();
+                // A stale verdict (profile gone or stamped at a different
+                // generation) must neither mark nor count as an unsupported
+                // outcome — the code it judged no longer runs.
+                let applied = self.profiler.mark_unsupported(
+                    key.module,
+                    key.function,
+                    key.arity,
+                    key.generation,
+                );
+                if applied {
+                    self.profiler.note_unsupported();
+                } else {
+                    self.profiler.note_transient_failure();
+                }
             }
             Err(JitError::CraneliftError(_) | JitError::EmptyFunction) => {
                 self.profiler

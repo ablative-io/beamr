@@ -1075,6 +1075,137 @@ fn queued_compilation_completing_after_delete_publishes_nothing() {
     drop(pool);
 }
 
+/// The replacement-before-completion interleaving: a job queued before a
+/// delete completes only AFTER a same-name reload has already heated a
+/// replacement profile at the registry's RESTARTED (lower) generation. The
+/// stale completion must neither stamp the replacement's profile nor publish
+/// code — exact-generation-match completions — and the replacement must then
+/// compile normally at its own generation.
+#[test]
+fn queued_stale_job_never_stamps_a_replacement_profile() {
+    let atoms = AtomTable::with_common_atoms();
+    let module_name = atoms.intern("jit_wireup_stale_stamp");
+    let function = atoms.intern("f");
+    let threshold = 2;
+
+    let pool = Arc::new(DirtyPool::with_queue_depth("jit-wireup-stale-stamp", 1, 2));
+    let (started_tx, started_rx) = mpsc::channel::<()>();
+    let (gate_tx, gate_rx) = mpsc::channel::<()>();
+    pool.submit_task(DirtyTask::new(move || {
+        let _ = started_tx.send(());
+        let _ = gate_rx.recv();
+    }))
+    .expect("gate task submits");
+    started_rx
+        .recv_timeout(WAIT_BUDGET)
+        .expect("gate task starts");
+
+    let registry = Arc::new(ModuleRegistry::new());
+    // Two inserts: the hot version is generation 2, so the queued job's
+    // generation sits ABOVE the replacement's restarted generation 1.
+    registry.insert(local_hot_module(module_name, function, threshold, 42));
+    let v2 = registry.insert(local_hot_module(module_name, function, threshold, 42));
+    assert_eq!(v2.generation(), 2);
+    let scheduler = Scheduler::with_services(
+        config(threshold as u32),
+        SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
+        Arc::clone(&registry),
+    )
+    .expect("scheduler with the shared pool starts");
+
+    // Heat generation 2: its job queues behind the gated worker.
+    assert_eq!(run_to_value(&scheduler, &v2), Term::small_int(42));
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .submissions,
+        1
+    );
+
+    // Delete, then reload: the replacement restarts at generation 1 and
+    // heats one call (below threshold) BEFORE the stale job completes.
+    assert!(scheduler.delete_module(module_name));
+    let replacement = registry.insert(local_hot_module(module_name, function, 1, 42));
+    assert_eq!(
+        replacement.generation(),
+        1,
+        "the registry restarts a deleted name at generation 1 — the premise of this pin"
+    );
+    assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .recorded_call_count(module_name, function, 0),
+        Some(1)
+    );
+
+    // Release the stale generation-2 job.
+    let _ = gate_tx.send(());
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .transient_failures
+            == 1),
+        "the stale completion must be refused and counted transient"
+    );
+    assert!(
+        !scheduler
+            .jit_profiler()
+            .is_compiled(module_name, function, 0),
+        "a stale job must not stamp COMPILED onto the replacement's profile"
+    );
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .recorded_call_count(module_name, function, 0),
+        Some(1),
+        "the stale completion must not touch the replacement's heat"
+    );
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, function, 0, 2)
+            .is_none(),
+        "the stale job must publish nothing at its own generation"
+    );
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, function, 0, 1)
+            .is_none()
+    );
+
+    // The replacement heats to threshold and compiles normally at ITS
+    // generation on the now-free worker.
+    assert_eq!(run_to_value(&scheduler, &replacement), Term::small_int(42));
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .submissions,
+        2
+    );
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes
+            == 1),
+        "the replacement's own compilation must land"
+    );
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, function, 0, 1)
+            .is_some(),
+        "the replacement compiles at its own restarted generation"
+    );
+    scheduler.shutdown();
+    drop(pool);
+}
+
 /// Canonical-entry gate: a call targeting a label INSIDE a function shares
 /// that function's MFA, so letting it heat or hit the JIT surface would cache
 /// a suffix under the whole function's identity — a later entry call would
