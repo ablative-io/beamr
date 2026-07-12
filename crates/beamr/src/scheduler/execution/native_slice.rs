@@ -65,6 +65,8 @@ pub(in crate::scheduler) fn run_native_slice(
     // rather than panicking.
     let services = supervision_integration::build_native_services(shared, process.namespace_id());
     let teardown_admission_facility = services.teardown_admission_facility.clone();
+    #[cfg(feature = "readiness")]
+    let readiness_facility = services.readiness_facility.clone();
     let (Some(local_send), Some(spawn)) = (services.local_send, services.spawn_facility) else {
         if let Some(body) = process.native_body_mut() {
             body.handler = Some(handler);
@@ -76,6 +78,8 @@ pub(in crate::scheduler) fn run_native_slice(
     let timers = Some(shared.timers.clone());
     let mut context = NativeContext::new(process, local_send, spawn, replay_driver, timers);
     context.set_teardown_admission_facility(teardown_admission_facility);
+    #[cfg(feature = "readiness")]
+    context.set_readiness_facility(readiness_facility);
     let outcome = handler.handle(&mut context);
     let replay_error = context.take_replay_error();
     drop(context);
