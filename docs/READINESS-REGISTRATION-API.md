@@ -1,7 +1,13 @@
 # Readiness Registration API — Composition Commit 6
 
-**Status:** DESIGN DOC (uncommitted draft; reviewing engineer commits after
-review). Realizes — does not re-litigate — the certified
+**Status:** DESIGN OF RECORD — **both pair halves signed.** Vesper Lynd's half
+signed with the §3.5-inherits-§4.6 condition (folded @ 3f42cf1); Waffles the
+Terrible's half signed 2026-07-12 APPROVE WITH THREE CONDITIONS W1–W3, all
+three folded in this revision (W1 → §4.6 poisoned-lock posture + gate panics
+under the table lock; W2 → §6 fifth rider row + §3.5 sweep-after-drain order +
+§3.3 straggler-refusal assertion; W3 → §3.2 validate-copy-unlock-deliver,
+author's choice of the structural wall). Commit 6 builds against THIS revision.
+Realizes — does not re-litigate — the certified
 `READINESS-CONTRACT-SPEC` §3 shape (b) and `EMBEDDER-COMPOSITION-SPEC` §3.9.
 **Scope:** the readiness service as the composition model's first born-composed
 service (composition spec §3.9), landing the §3.9 Shared-delivery gate and the
@@ -222,7 +228,10 @@ hypothetical false match delivers to the slot's CURRENT record — the correct,
 live pid of the newest registration — which is a spurious durable-marker wake
 the contract already tolerates by design (C2/C4: wake-without-cause is
 harmless; the consumer probes and re-parks). Two independent walls; the
-guarantee needs only one.
+guarantee needs only one. **Examined and ACCEPTED by both halves of the pair
+(Waffles 2026-07-12: wall (a) decisive alone; wall (b)'s current-record
+delivery is the C2/C4-tolerated wake, repaired by the consumer's own rearm
+loop).**
 
 ### 1.4 Registration / rearm / dereg — the embedder-visible surface
 
@@ -347,6 +356,14 @@ pub enum ReadinessError {
     /// Harmless — reported so the caller can drop its stale token (Hermes
     /// point 2, re-register-same-fd).
     UnknownToken,
+    /// The poll thread died; the service is FAILED (§4.6). Checked on the
+    /// atomic flag BEFORE the table lock (W1) — the refusal never touches
+    /// the possibly-poisoned lock.
+    ServiceFailed,
+    /// This scheduler's teardown has closed admission (§6 fifth row, W2):
+    /// `register`/`rearm` after `drain_dirty_completions` refuse rather than
+    /// stamp a record the §3.5 sweep can no longer see.
+    TeardownInProgress,
 }
 
 /// Construction-time failure (poll set / Waker could not be built): the service
@@ -454,13 +471,32 @@ and (b) be swept by consumer id at that scheduler's shutdown. For an `Owned`
 service the route-home is the owning scheduler's own `SharedState`; the same
 mechanism, trivially one consumer.
 
-Delivery, per poll event, under the table lock:
+Delivery, per poll event, is **validate-copy-unlock-deliver** (Waffles' half,
+condition W3 — lock-ordering discipline stated, structural form chosen):
 
-1. Look up the record by slot; require `generation` to match (else drop — §4).
-2. `route.scheduler.upgrade()`; `None` ⇒ the scheduler is gone, drop.
-3. On the upgraded `Arc<SharedState>`, call `deliver_readiness_marker(pid,
-   marker)` (= `deliver_term_to_mailbox` + `wake_process`, mod.rs:1947-1952).
-4. Clear the triggered direction's armed bit (one-shot; awaits `rearm`).
+1. Under the table lock: look up the record by slot; require `generation` to
+   match (else drop — §4) and the armed bit to be set.
+2. Still under the lock: `route.scheduler.upgrade()`; `None` ⇒ the scheduler is
+   gone, drop. Copy out the upgraded `Arc<SharedState>`, the `pid`, and the
+   `marker`; clear the triggered direction's armed bit (one-shot; awaits
+   `rearm`).
+3. **Release the table lock.**
+4. On the copied `Arc`, call `deliver_readiness_marker(pid, marker)`
+   (= `deliver_term_to_mailbox` + `wake_process`, mod.rs:1947-1952).
+
+Why the unlock sits before the deliver call: `deliver_readiness_marker` takes
+ANOTHER scheduler's mailbox/run-queue locks. Delivering under the table lock
+would make the table lock non-leaf, and any consumer-side path that ever held a
+scheduler delivery lock while calling `register`/`rearm` (table lock) would be
+an inversion no gate test reliably catches. Rather than resting on a
+never-provable "no such path exists" discipline across every future consumer,
+the delivery path releases the table lock first — the table lock is a leaf by
+construction on the delivery side, and register/rearm/dereg take it as their
+only lock. The one consequence is benign and verified against §3.4 and §4.6: a
+marker validated pre-tombstone that delivers post-unlock goes to the OLD
+current pid — the spurious durable-marker wake the contract already tolerates
+(C2/C4) — never to an unrelated new registration, because the generation was
+validated under the lock before the copy.
 
 ### 3.3 The delivery gate (composition spec §3.9 certification condition)
 
@@ -472,9 +508,12 @@ Test shape: build one `SharedReadiness`, two schedulers A and B each with a
 registered connection-shaped pid; fire A's fd and B's fd, assert each marker
 lands in its own scheduler's mailbox; shut down A (its §3.5 sweep runs); fire
 B's fd again, assert B still wakes; assert no delivery is attempted on A (the
-sweep removed A's records; the `Weak` upgrade would also fail). This is the same
-identity machinery as §3.5, tested from the delivery end (spec §5 assertion 5:
-"survival isn't the bar, no-delivery-to-the-dead is").
+sweep removed A's records; the `Weak` upgrade would also fail); and assert a
+straggler `register` attempted on A's slot after A's drain closed admission is
+**refused typed** (W2) — the §6 fifth-row gate tested from the same end, so
+the no-leak property is gated alongside the no-delivery property. This is the
+same identity machinery as §3.5, tested from the delivery end (spec §5
+assertion 5: "survival isn't the bar, no-delivery-to-the-dead is").
 
 ### 3.4 fd-reuse crossing generations under the Shared thread
 
@@ -510,7 +549,12 @@ The readiness additions:
   `self.shared.deregister_shared_readiness()` runs at the same phase as
   `drain_dirty_completions()` (execution.rs:97) — that call is the dirty-pool
   analogue of step 3 (close intake, wait out in-flight, before worker join);
-  the readiness sweep sits beside it. It calls, on the `Shared` slot only,
+  the readiness sweep sits beside it, and **strictly after it** (W2): the
+  drain closes admission and waits out every in-flight `register`/`rearm`
+  (§6, fifth row), so by the time the sweep walks the table every record an
+  admitted straggler could have created is present and gets swept — the
+  admission gate and the sweep order jointly close the
+  register-after-sweep leak window. It calls, on the `Shared` slot only,
   `ReadinessCore::deregister_all_for(consumer_id)`: for each record stamped with
   this scheduler's `ServiceConsumerId`, bump the generation, deregister the fd,
   and epoch-handshake once for the batch (§4) so the shared poll thread can emit
@@ -655,17 +699,33 @@ posture:
   wait's only purpose is to bound fd/slot reuse against an in-flight delivery,
   and no new arming can occur on a FAILED service. This cannot fail-stuck a
   supervisor teardown on a dead thread.
+- **Poisoned-lock posture (Waffles' half, condition W1).** The table lock is a
+  `std::sync::Mutex` (beamr's house mutex — no parking_lot anywhere in the
+  tree), so the worst-case panic — inside the delivery critical section,
+  WHILE HOLDING the table lock — poisons it, and the posture must survive
+  that exact case: a FAILED remedy that itself needs the lock the panic
+  poisoned is a remedy that doesn't ship. The posture: `register`/`rearm`
+  check the atomic FAILED flag BEFORE the lock and refuse without touching
+  it; the only post-FAILED acquisitions are the dereg tombstone and the §3.5
+  sweep, and both recover a poisoned lock via `PoisonError::into_inner()`
+  and tombstone on the recovered table. That recovery is sound on ANY torn
+  table state because tombstoning is monotone: bumping a generation can only
+  make a record staler, never make a stale record live — there is no
+  interleaving of the panic's partial writes that a generation bump can
+  promote into a wrong delivery.
 - Why tombstone-without-wait is airtight (the pair's precision, adopted): the
   impossibility of cross-delivery rests on the §3 delivery order — generation
-  check under the table lock → weak upgrade → deliver — being the left-hand
-  wall for EVERY delivery path, **including an event already handed past the
+  check under the table lock → weak upgrade → copy-and-unlock → deliver
+  (§3.2) — being the left-hand wall for EVERY delivery path, **including an event already handed past the
   poll thread before the panic**. Thread death is circumstance; the generation
   check is the guarantee. The tombstone bump walls off any subsequent delivery
   attempt regardless of which thread would have made it.
 
-Gate shape: kill the poll thread (test seam panics it), assert
-`ServiceFailed` refusals, `actual: 0` inventory, and a bounded
-`readiness_deregister` return; positive control on a healthy service.
+Gate shape: kill the poll thread **while it holds the table lock** (the test
+seam panics it inside the delivery critical section — the worst case W1
+names, not a convenient lock-free point), assert `ServiceFailed` refusals,
+`actual: 0` inventory, and a bounded `readiness_deregister` return that
+tombstones through the poisoned lock; positive control on a healthy service.
 
 ## 5. The §5 story — inventory and idle-cost lens
 
@@ -750,6 +810,7 @@ exact shape to the ops not yet gated:
 | Group-leader set (process 0 / standard-IO) | `send_io_message`'s `standard_io_pid` path (mod.rs:1986) | reserve before the group-leader mutation; the drain waits it out. |
 | ETS mutating ops (create/delete/transfer) | `create_table` / `delete_table` / `transfer_or_delete_tables_owned_by` (mod.rs:618-661) | reserve across the registry mutation so an ETS transfer cannot land after teardown returned. |
 | Timer arm/cancel | `TimerKind::Deliver` scheduling (native_process.rs:320; timer_integration.rs:118) | reserve across the wheel mutation. NB: this gates the timer *facility mutation*, not readiness — the reply-deadline wake still rides the timer, not this service (Hermes point 6, §9). |
+| **Readiness `register`/`rearm` (this commit's OWN ops — Waffles' half, condition W2)** | §1.4 registration surface | reserve across the table+poll-set mutation; post-drain they refuse typed (`ReadinessError::TeardownInProgress`, §1.5). Without this row the doc gates four pre-existing ops but not its own two: between the §3.5 sweep and worker join, a straggler slice could register a fresh fd, stamping a NEW record with the dying scheduler's consumer id AFTER the sweep already ran. The `Weak` upgrade makes it undeliverable (no correctness hole), but the record and its kernel poll-set entry would LEAK in a process-lifetime `Shared` table with no reaper — unbounded idle cost in principle, on exactly the service whose §5 story is costing nothing. |
 
 The gate reuses the single `dirty_completions: Mutex<DirtyCompletionRegistry>`
 (mod.rs:355) and its `closed`/`reserved`/`bridges` linearization and
@@ -826,12 +887,14 @@ a recommendation.
 - **OQ-3 — rename `DirtyCompletionRegistry`. RESOLVED: YES, this commit** —
   first consumer and Vesper's half both rule it ("a registry whose name
   misdescribes its guard set is the pin-that-can't-fail failure mode wearing a
-  name"); Waffles' half pro forma. Rename to `TeardownAdmissionRegistry`
+  name"); **Waffles' half SIGNED YES 2026-07-12** ("a name should describe
+  the property it guards"). Rename to `TeardownAdmissionRegistry`
   (and `DirtyCompletionReservation` → `TeardownAdmission`); low-risk,
   `pub(in crate::scheduler)` only (mod.rs:457).
 - **OQ-4 — `full_runtime()` readiness arm. RESOLVED: `Owned`** — first
   consumer no-objection and Vesper's half concur (the standalone-VM reading
-  the pair confirmed for distribution); Waffles' half pro forma.
+  the pair confirmed for distribution); **Waffles' half SIGNED YES
+  2026-07-12** (the distribution transfer of that reading, confirmed).
   Multi-scheduler embedders build `SharedReadiness` and inject it.
 
 **First-consumer composition, recorded (liminal):** readiness composes `Owned`
