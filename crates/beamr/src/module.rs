@@ -185,17 +185,48 @@ impl Module {
         Some((function, arity))
     }
 
+    /// Returns whether `ip` is a canonical function entry: the `FuncInfo`
+    /// instruction itself, or the instruction immediately following it (the
+    /// entry label position that `export_ip`/call-label resolution produce).
+    ///
+    /// JIT dispatch and [`Self::function_instructions`] refuse non-canonical
+    /// ips: a mid-function label shares its containing function's MFA, so
+    /// profiling, compiling, or caching a suffix under that identity would let
+    /// entry calls execute the suffix in place of the whole function.
+    #[must_use]
+    pub fn is_function_entry(&self, ip: usize) -> bool {
+        if ip >= self.code.len() {
+            return false;
+        }
+        self.function_table
+            .binary_search_by_key(&ip, |(entry_ip, _, _)| *entry_ip)
+            .map_or_else(
+                |insertion| {
+                    insertion.checked_sub(1).is_some_and(|index| {
+                        self.function_table
+                            .get(index)
+                            .is_some_and(|(entry_ip, _, _)| ip == entry_ip + 1)
+                    })
+                },
+                |_| true,
+            )
+    }
+
     /// Returns the instruction slice of the function entered at `entry_ip` —
     /// the slice shape `JitCompiler::compile` consumes, identical to
     /// `aot::exported_instructions` for the same function.
     ///
-    /// `entry_ip` is a call target (a `label_ip`/`export_ip` result): the
-    /// single entry `Label`/`FuncInfo` prelude instruction is skipped, and the
-    /// slice ends before the next `FuncInfo` or at code end. `None` when
-    /// `entry_ip` is outside the code or precedes the first function entry.
+    /// `entry_ip` is a canonical call target (a `label_ip`/`export_ip`
+    /// result): the single entry `Label`/`FuncInfo` prelude instruction is
+    /// skipped, and the slice ends before the next `FuncInfo` or at code end.
+    /// `None` when `entry_ip` is outside the code, precedes the first
+    /// function entry, or is not a canonical function entry
+    /// ([`Self::is_function_entry`]) — a mid-function ip yields no slice.
     #[must_use]
     pub fn function_instructions(&self, entry_ip: usize) -> Option<&[Instruction]> {
-        self.function_at_ip(entry_ip)?;
+        if !self.is_function_entry(entry_ip) {
+            return None;
+        }
         let start = match self.code.get(entry_ip)? {
             Instruction::Label { .. } | Instruction::FuncInfo { .. } => entry_ip + 1,
             _ => entry_ip,
@@ -568,8 +599,46 @@ mod tests {
         );
         // Entry label of the last function: the slice runs to code end.
         assert_eq!(module.function_instructions(4), Some(&module.code[5..7]));
-        // A non-prelude entry instruction is included, not skipped.
-        assert_eq!(module.function_instructions(5), Some(&module.code[5..7]));
+        // A mid-function ip is NOT a canonical entry: compiling a suffix under
+        // the containing function's MFA would let entry calls execute the
+        // suffix in place of the whole function.
+        assert!(!module.is_function_entry(5));
+        assert_eq!(
+            module.function_instructions(5),
+            None,
+            "a mid-function ip must yield no slice"
+        );
+        // Canonical entries: the FuncInfo itself and the instruction after it.
+        assert!(module.is_function_entry(0));
+        assert!(module.is_function_entry(1));
+        assert!(module.is_function_entry(3));
+        assert!(module.is_function_entry(4));
+        assert!(!module.is_function_entry(2));
+        assert!(!module.is_function_entry(6));
+        assert!(!module.is_function_entry(7));
+    }
+
+    #[test]
+    fn function_instructions_includes_a_non_prelude_entry_instruction() {
+        let mut module = empty_module(crate::atom::Atom::MODULE);
+        module.code = vec![
+            crate::loader::Instruction::FuncInfo {
+                module: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::MODULE)),
+                function: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::OK)),
+                arity: crate::loader::decode::Operand::Unsigned(0),
+            },
+            crate::loader::Instruction::Swap {
+                left: crate::loader::decode::Operand::X(0),
+                right: crate::loader::decode::Operand::X(1),
+            },
+            crate::loader::Instruction::Return,
+        ];
+        module.function_table = vec![(0, crate::atom::Atom::OK, 0)];
+
+        // The entry position holds a body instruction (no entry label): it is
+        // canonical and included, not skipped.
+        assert!(module.is_function_entry(1));
+        assert_eq!(module.function_instructions(1), Some(&module.code[1..3]));
     }
 
     #[test]

@@ -651,6 +651,13 @@ fn dispatch_local_jit(
     if function_arity != arity {
         return Ok(None);
     }
+    // A mid-function label shares its containing function's MFA: running or
+    // producing cached code for it under that identity would swap a suffix
+    // for the whole function (or vice versa), so only canonical entries may
+    // touch the JIT surface. Non-canonical targets stay pure bytecode.
+    if !module.is_function_entry(target_ip) {
+        return Ok(None);
+    }
     let Some(native) = cache.lookup(module.name, function, arity, module.generation()) else {
         record_jit_call_miss(jit_ctx.jit_profiling, module, function, arity, target_ip);
         return Ok(None);
@@ -712,6 +719,12 @@ fn dispatch_external_jit(
     let Some(cache) = ctx.jit_cache else {
         return Ok(None);
     };
+    // Same canonical-entry rule as the local edge: an export whose label
+    // resolves mid-function must never hit or heat the JIT surface under the
+    // exported MFA.
+    if !target_module.is_function_entry(target_ip) {
+        return Ok(None);
+    }
     let Some(native) = cache.lookup(
         target_module.name,
         function,

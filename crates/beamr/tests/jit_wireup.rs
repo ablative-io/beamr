@@ -827,13 +827,16 @@ fn refused_submission_leaves_bytecode_running_and_the_profile_reheatable() {
 }
 
 /// Module delete through the scheduler drops the module's profile entries
-/// (R7) — the wired-path variant of the unit pin.
+/// (R7) AND its cached native code: registry generations restart at 1 after
+/// a delete, so a retained cache entry would collide with a reload of the
+/// same name reaching the same generation and execute the deleted module's
+/// code.
 #[test]
-fn delete_module_through_the_scheduler_drops_hot_profiles() {
+fn delete_module_through_the_scheduler_drops_hot_profiles_and_cached_code() {
     let atoms = AtomTable::with_common_atoms();
     let module_name = atoms.intern("jit_wireup_delete");
     let function = atoms.intern("f");
-    let threshold = 8;
+    let threshold = 2;
 
     let registry = Arc::new(ModuleRegistry::new());
     let module = registry.insert(local_hot_module(module_name, function, 2, 42));
@@ -842,12 +845,122 @@ fn delete_module_through_the_scheduler_drops_hot_profiles() {
 
     assert_eq!(run_to_value(&scheduler, &module), Term::small_int(42));
     assert_eq!(scheduler.jit_profiler().profile_entry_count(), 1);
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes
+            == 1),
+        "compilation must land before the delete exercises the seam"
+    );
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, function, 0, module.generation())
+            .is_some()
+    );
 
     assert!(scheduler.delete_module(module_name));
     assert_eq!(
         scheduler.jit_profiler().profile_entry_count(),
         0,
         "the scheduler delete seam must drop the module's profile entries"
+    );
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, function, 0, module.generation())
+            .is_none(),
+        "the scheduler delete seam must drop the module's cached native code"
+    );
+    scheduler.shutdown();
+}
+
+/// Canonical-entry gate: a call targeting a label INSIDE a function shares
+/// that function's MFA, so letting it heat or hit the JIT surface would cache
+/// a suffix under the whole function's identity — a later entry call would
+/// then execute the suffix and skip the function's prefix entirely. The gate
+/// keeps non-canonical targets pure bytecode.
+#[test]
+fn internal_label_calls_never_touch_the_jit_surface() {
+    let atoms = AtomTable::with_common_atoms();
+    let module_name = atoms.intern("jit_wireup_suffix_bait");
+    let function = atoms.intern("f");
+    let threshold = 2;
+
+    // entry: x0 := 7; call f; return — f: x0 := 42; call label 3; return —
+    // label 3 (inside f): return. If the internal call were profiled under
+    // f/0, it would cross the threshold during the FIRST run and cache the
+    // [Return] suffix as f/0; the second run's entry call would then hit that
+    // suffix, skip `x0 := 42`, and return 7.
+    let code = vec![
+        Instruction::Label { label: 1 },
+        Instruction::Move {
+            source: Operand::Integer(7),
+            destination: Operand::X(0),
+        },
+        Instruction::Call {
+            arity: Operand::Unsigned(0),
+            label: Operand::Label(2),
+        },
+        Instruction::Return,
+        Instruction::FuncInfo {
+            module: Operand::Atom(Some(module_name)),
+            function: Operand::Atom(Some(function)),
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::Label { label: 2 },
+        Instruction::Move {
+            source: Operand::Integer(42),
+            destination: Operand::X(0),
+        },
+        Instruction::Call {
+            arity: Operand::Unsigned(0),
+            label: Operand::Label(3),
+        },
+        Instruction::Return,
+        Instruction::Label { label: 3 },
+        Instruction::Return,
+    ];
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = registry.insert(finish_module(module_name, code, HashMap::new(), Vec::new()));
+    let scheduler =
+        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+
+    assert_eq!(run_to_value(&scheduler, &module), Term::small_int(42));
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .recorded_call_count(module_name, function, 0),
+        Some(1),
+        "only the canonical entry call may record: the internal call must not count"
+    );
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .submissions,
+        0,
+        "the internal call must never be the threshold-crosser"
+    );
+
+    // The second canonical call crosses the threshold with the FULL function
+    // slice; whatever the tier's verdict on that slice, every subsequent call
+    // keeps returning the whole function's result.
+    for _ in 0..3 {
+        assert_eq!(
+            run_to_value(&scheduler, &module),
+            Term::small_int(42),
+            "entry calls must always execute the whole function, never a cached suffix"
+        );
+    }
+    assert_eq!(
+        scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .submissions,
+        1,
+        "the canonical threshold-crossing submits exactly once"
     );
     scheduler.shutdown();
 }
