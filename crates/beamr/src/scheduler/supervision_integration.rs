@@ -205,6 +205,9 @@ impl crate::native::GroupLeaderFacility for SchedulerGroupLeaderFacility {
         pid: u64,
         leader: Term,
     ) -> Result<(), crate::native::group_leader::GroupLeaderError> {
+        let Some(_admission) = self.shared.try_reserve_teardown_admission() else {
+            return Err(crate::native::group_leader::GroupLeaderError::NoProc);
+        };
         let Some(entry) = self.shared.process_bodies.get(&pid) else {
             return Err(crate::native::group_leader::GroupLeaderError::NoProc);
         };
@@ -623,6 +626,15 @@ pub(super) fn build_native_services(
         io_message_facility: Some(Arc::new(SchedulerIoMessageFacility {
             shared: Arc::clone(shared),
         })),
+        teardown_admission_facility: Some(Arc::new(SchedulerTeardownAdmissionFacility {
+            shared: Arc::clone(shared),
+        })),
+        #[cfg(feature = "readiness")]
+        readiness_facility: shared.readiness_consumer.as_ref().map(|_| {
+            Arc::new(SchedulerReadinessFacility {
+                shared: Arc::clone(shared),
+            }) as Arc<dyn crate::native::ReadinessFacility>
+        }),
         // Both surfaces ride the file ring, so both are absent when it is
         // Disabled (spec §3.3) — `file_io_facility` is already gated on the
         // ring above; the TCP surface follows the same condition.
@@ -646,6 +658,44 @@ pub(super) fn build_native_services(
 }
 
 // ── Facility implementations ────────────────────────────────────────────────
+
+struct SchedulerTeardownAdmissionFacility {
+    shared: Arc<SharedState>,
+}
+
+impl crate::native::TeardownAdmissionFacility for SchedulerTeardownAdmissionFacility {
+    fn try_reserve(&self) -> Option<Box<dyn Send>> {
+        self.shared
+            .try_reserve_teardown_admission()
+            .map(|admission| Box::new(admission) as Box<dyn Send>)
+    }
+}
+
+#[cfg(feature = "readiness")]
+struct SchedulerReadinessFacility {
+    shared: Arc<SharedState>,
+}
+
+#[cfg(feature = "readiness")]
+impl crate::native::ReadinessFacility for SchedulerReadinessFacility {
+    fn register(
+        &self,
+        fd: std::os::fd::RawFd,
+        interest: crate::scheduler::Interest,
+        pid: u64,
+        marker: crate::atom::Atom,
+    ) -> Result<crate::scheduler::ReadinessToken, crate::scheduler::ReadinessError> {
+        self.shared.readiness_register(fd, interest, pid, marker)
+    }
+
+    fn rearm(
+        &self,
+        token: &crate::scheduler::ReadinessToken,
+        interest: crate::scheduler::Interest,
+    ) -> Result<(), crate::scheduler::ReadinessError> {
+        self.shared.readiness_rearm(token, interest)
+    }
+}
 
 pub(super) struct SchedulerDistributionSendFacility {
     pub(super) shared: Arc<SharedState>,
@@ -986,7 +1036,7 @@ impl IoMessageFacility for SchedulerIoMessageFacility {
         // Teardown-admission (spec §4 step 3): no delivery into a scheduler
         // that is being (or has been) torn down; held across the delivery so
         // an admitted send lands before shutdown returns.
-        let Some(_admission) = self.shared.try_reserve_dirty_completion() else {
+        let Some(_admission) = self.shared.try_reserve_teardown_admission() else {
             return false;
         };
         let Some(entry) = self.shared.process_bodies.get(&target_pid) else {
@@ -1023,6 +1073,9 @@ struct SchedulerEtsFacility {
 
 impl EtsFacility for SchedulerEtsFacility {
     fn create_table(&self, metadata: EtsTableMetadata) -> Result<EtsTableId, EtsError> {
+        let Some(_admission) = self.shared.try_reserve_teardown_admission() else {
+            return Err(EtsError::Badarg);
+        };
         self.shared.ets_registry.try_create_table(metadata)
     }
 
@@ -1039,6 +1092,9 @@ impl EtsFacility for SchedulerEtsFacility {
     }
 
     fn delete_table(&self, id: EtsTableId) -> bool {
+        let Some(_admission) = self.shared.try_reserve_teardown_admission() else {
+            return false;
+        };
         self.shared.ets_registry.delete_table(id)
     }
 
@@ -1050,6 +1106,9 @@ impl EtsFacility for SchedulerEtsFacility {
         gift_data: Term,
         atom_table: &crate::atom::AtomTable,
     ) -> Result<(), EtsError> {
+        let Some(_admission) = self.shared.try_reserve_teardown_admission() else {
+            return Err(EtsError::Badarg);
+        };
         if !deliver_ets_transfer(
             &self.shared,
             new_owner,
@@ -1492,9 +1551,9 @@ impl SchedulerSpawnFacility {
     /// with the shutdown drain (one lock), so an admitted spawn completes
     /// BEFORE shutdown returns and a later one refuses — a snapshot check
     /// would admit a delayed spawn that mutates after shutdown has returned.
-    fn admit_or_refuse(&self) -> Result<crate::scheduler::DirtyCompletionReservation, SpawnError> {
+    fn admit_or_refuse(&self) -> Result<crate::scheduler::TeardownAdmission, SpawnError> {
         self.shared
-            .try_reserve_dirty_completion()
+            .try_reserve_teardown_admission()
             .ok_or(SpawnError::SchedulerTearingDown)
     }
 
@@ -2126,7 +2185,7 @@ pub(super) struct SchedulerLinkFacility {
 impl LinkFacility for SchedulerLinkFacility {
     fn link(&self, caller_pid: u64, target_pid: u64) -> Result<(), LinkError> {
         // Teardown-admission (spec §4 step 3), held across the link mutation.
-        let Some(_admission) = self.shared.try_reserve_dirty_completion() else {
+        let Some(_admission) = self.shared.try_reserve_teardown_admission() else {
             return Err(LinkError::NoProc);
         };
         if caller_pid == target_pid {
@@ -2347,6 +2406,9 @@ impl SupervisionFacility for SchedulerSupervisionFacility {
         target_pid: u64,
         reason: ExitReason,
     ) -> Result<(), SupervisionError> {
+        let Some(_admission) = self.shared.try_reserve_teardown_admission() else {
+            return Err(SupervisionError::NoProc);
+        };
         // Deliver exit signal to target process.
         if let Some(entry) = self.shared.process_bodies.get(&target_pid) {
             let mut slot = lock_or_recover(&entry);

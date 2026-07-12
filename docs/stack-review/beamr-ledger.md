@@ -115,7 +115,18 @@ conformance suite, and the rAF pump has no backpressure signal to the host.
 
 - **CI (S)**: no `.github/` exists; encode the gate bar (fmt, check, test,
   clippy -D warnings, wasm build) as Actions. The pipeline dogfood makes
-  local-only gates a liability.
+  local-only gates a liability. Sharpened during the commit-6 review
+  (2026-07-12): with no CI, "pinned on both poll backends" means "wherever
+  someone runs the suite" — the readiness service's epoll leg is UNRECORDED
+  until a Linux run happens. Repo-wide debt, not commit 6's.
+- **Feature-graph repair: `threads`-only build is red (S–M)**: found during
+  the commit-6 build, VERIFIED pre-existing at base 52840bb (exit 101 before
+  any readiness code): `cargo build -p beamr --no-default-features
+  --features threads` fails because threaded scheduler code unconditionally
+  references modules/deps owned by distribution/JIT/fs/embedded. Feature
+  independence is a stated property; today only the default and
+  readiness-only combinations are proven. Wants dedicated gating work, not
+  a rider on a service commit.
 - **Docs debt (S)**: `docs/files/` essays predate the crate layout (old
   "bearmr" spelling, a `beamr-loader`/`beamr-meridian` split that never
   happened); superseded specs (ACTOR-MIGRATION, MESSAGING-FIX,

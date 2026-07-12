@@ -40,6 +40,8 @@
 use std::sync::Arc;
 
 use super::dirty::DirtyPool;
+#[cfg(feature = "readiness")]
+use super::readiness::SharedReadiness;
 use crate::distribution::DistributionConfig;
 use crate::io::RingConfig;
 
@@ -60,6 +62,16 @@ pub(super) enum DirtyChoice {
     /// submission carries, not by any per-scheduler table (spec §5 / commit-5
     /// determination), so two schedulers can share one pool now.
     Shared(Arc<DirtyPool>),
+}
+
+/// Composition choice for the readiness service (spec §3.9).
+#[cfg(feature = "readiness")]
+#[derive(Clone)]
+pub(super) enum ReadinessChoice {
+    FromConfig,
+    Disabled,
+    Owned,
+    Shared(SharedReadiness),
 }
 
 /// Composition choice for the file-IO ring (spec §2.2/§3.3).
@@ -244,6 +256,8 @@ pub struct SchedulerServices {
     pub(super) standard_io: StandardRingChoice,
     pub(super) generic_io: GenericRingChoice,
     pub(super) distribution: DistributionChoice,
+    #[cfg(feature = "readiness")]
+    pub(super) readiness: ReadinessChoice,
 }
 
 impl SchedulerServices {
@@ -260,6 +274,8 @@ impl SchedulerServices {
             standard_io: StandardRingChoice::FromConfig,
             generic_io: GenericRingChoice::FromConfig,
             distribution: DistributionChoice::FromConfig,
+            #[cfg(feature = "readiness")]
+            readiness: ReadinessChoice::FromConfig,
         }
     }
 
@@ -273,6 +289,8 @@ impl SchedulerServices {
     pub fn full_runtime() -> Self {
         Self {
             distribution: DistributionChoice::Owned(DistributionConfig::default()),
+            #[cfg(feature = "readiness")]
+            readiness: ReadinessChoice::Owned,
             ..Self::from_config()
         }
     }
@@ -290,6 +308,8 @@ impl SchedulerServices {
             standard_io: StandardRingChoice::Disabled,
             generic_io: GenericRingChoice::Disabled,
             distribution: DistributionChoice::Disabled,
+            #[cfg(feature = "readiness")]
+            readiness: ReadinessChoice::Disabled,
         }
     }
 
@@ -417,6 +437,29 @@ impl SchedulerServices {
     #[must_use]
     pub fn owned_distribution(mut self, config: DistributionConfig) -> Self {
         self.distribution = DistributionChoice::Owned(config);
+        self
+    }
+
+    // ── Readiness ────────────────────────────────────────────────────────────
+
+    #[cfg(feature = "readiness")]
+    #[must_use]
+    pub fn disable_readiness(mut self) -> Self {
+        self.readiness = ReadinessChoice::Disabled;
+        self
+    }
+
+    #[cfg(feature = "readiness")]
+    #[must_use]
+    pub fn owned_readiness(mut self) -> Self {
+        self.readiness = ReadinessChoice::Owned;
+        self
+    }
+
+    #[cfg(feature = "readiness")]
+    #[must_use]
+    pub fn shared_readiness(mut self, service: SharedReadiness) -> Self {
+        self.readiness = ReadinessChoice::Shared(service);
         self
     }
 

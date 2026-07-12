@@ -67,6 +67,8 @@ pub mod native_process;
 pub mod otp_stubs;
 pub mod process_bifs;
 pub mod process_info_bifs;
+#[cfg(feature = "readiness")]
+pub mod readiness;
 pub mod registry;
 pub mod select;
 pub mod selector_ffi;
@@ -91,6 +93,8 @@ pub use capability::{
     AllCapabilitiesPolicy, Capability, CapabilityPolicy, CapabilitySet, LeastAuthorityPolicy,
 };
 pub use code_management_bifs::CodeManagementFacility;
+#[cfg(feature = "threads")]
+pub(crate) use context::TeardownAdmissionFacility;
 pub use context::{
     AionTimeoutContinuation, ExceptionClass, NativeContinuation, ProcessContext, RemoteSpawnError,
     RemoteSpawnFacility, RemoteSpawnResult, RootedTerms, SuspendRequest, SuspensionRegistrar,
@@ -110,6 +114,8 @@ pub use local_send::{LocalSendError, LocalSendFacility, LocalSendRequest};
 pub use process_info_bifs::{
     ProcessInfoFacility, ProcessInfoItem, ProcessInfoStatus, ProcessInfoValue, ProcessMonitorInfo,
 };
+#[cfg(feature = "readiness")]
+pub use readiness::ReadinessFacility;
 pub use registry::RegistryFacility;
 pub use select::SelectFacility;
 pub use spawn::{SpawnFacility, SpawnMonitorResult, SpawnOptions, SpawnOptionsResult};

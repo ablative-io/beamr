@@ -64,6 +64,8 @@ mod execution;
 mod exit_tombstones;
 #[cfg(feature = "threads")]
 mod inventory;
+#[cfg(feature = "readiness")]
+mod readiness;
 #[cfg(feature = "threads")]
 mod ring_service;
 #[cfg(feature = "threads")]
@@ -78,6 +80,10 @@ pub use execution::IDLE_PARK_TIMEOUT;
 pub use execution::IDLE_WAKES_PER_SEC_PER_WORKER;
 #[cfg(feature = "threads")]
 pub use inventory::{ServiceInventoryEntry, ServicePolicyLine, deduped_thread_aggregate};
+#[cfg(feature = "readiness")]
+pub use readiness::{
+    Generation, Interest, ReadinessBuildError, ReadinessError, ReadinessToken, SharedReadiness,
+};
 #[cfg(feature = "threads")]
 pub use service::{
     ServiceIdentity, ServiceInstanceId, ServiceMode, ServiceModeLabel, ShutdownService,
@@ -90,6 +96,8 @@ mod module_management;
 mod pg_propagation;
 #[cfg(feature = "threads")]
 mod process_slot;
+#[cfg(all(test, feature = "readiness"))]
+mod readiness_tests;
 #[cfg(feature = "threads")]
 mod remote_supervision;
 #[cfg(feature = "threads")]
@@ -102,6 +110,8 @@ pub mod steal;
 mod supervision_integration;
 #[cfg(feature = "threads")]
 mod suspension;
+#[cfg(all(test, feature = "readiness"))]
+mod teardown_admission_tests;
 #[cfg(feature = "threads")]
 mod test_helpers;
 #[cfg(feature = "threads")]
@@ -173,6 +183,8 @@ use dashmap::{DashMap, DashSet};
 use distribution_service::DistributionService;
 #[cfg(feature = "threads")]
 use process_slot::{ProcessMetadata, ProcessSlot};
+#[cfg(feature = "readiness")]
+use readiness::{ReadinessConsumer, ReadinessService, RouteHome, ServiceConsumerId};
 use ring_service::{RingService, StandardIoService};
 #[cfg(feature = "threads")]
 use run_queue::{PriorityStealers, RunQueue};
@@ -338,6 +350,11 @@ pub(super) struct SharedState {
     /// Group-leader / standard-IO server pid, or [`NO_STANDARD_IO_PID`] when the
     /// standard ring is `Disabled` (no process 0 registered, spec §3.4).
     standard_io_pid: u64,
+    /// Readiness poller ownership and this scheduler's route-home handle.
+    #[cfg(feature = "readiness")]
+    readiness: ServiceMode<ReadinessService>,
+    #[cfg(feature = "readiness")]
+    readiness_consumer: Option<ReadinessConsumer>,
     /// Process-unique identities minted for each ancillary service at
     /// construction, so `service_inventory()` reports a stable identity (§5).
     service_instances: inventory::ServiceInstances,
@@ -345,14 +362,13 @@ pub(super) struct SharedState {
     /// date. Reported as a policy line, not a thread line (§5); incremented
     /// once per dirty call, so it is negligible on the dirty submit path.
     dirty_completion_spawns: AtomicU64,
-    /// Admission + join state for dirty completion bridges (spec §4 step 3),
-    /// ONE mutex so intake closure and reservation are LINEARIZED: a dirty
-    /// call reserves (refused if closed) before any suspension side effect,
-    /// the reservation converts to a retained `JoinHandle` at bridge spawn,
-    /// and shutdown closes intake, waits out the reservations, and OS-JOINS
-    /// every bridge handle — a bridge can neither spawn behind the drain nor
-    /// outlive it.
-    dirty_completions: Mutex<DirtyCompletionRegistry>,
+    /// Teardown admission plus dirty-bridge join state (spec §4 step 3), behind
+    /// ONE mutex so intake closure and every reservation are LINEARIZED. Dirty
+    /// calls reserve before suspension and publish a retained `JoinHandle`;
+    /// mutating facilities hold a reservation across their mutation. Shutdown
+    /// closes intake, waits out every reservation, and OS-JOINS each bridge —
+    /// neither a bridge nor a facility mutation can land behind the drain.
+    dirty_completions: Mutex<TeardownAdmissionRegistry>,
     dirty_completions_changed: Condvar,
     /// Dropping this sender closes the channel every completion bridge
     /// selects on ([`dirty::oneshot::Receiver::recv_or_shutdown`]), waking
@@ -430,7 +446,7 @@ impl TelemetryMetricState {
 
 #[cfg(feature = "threads")]
 #[derive(Default)]
-struct DirtyCompletionRegistry {
+struct TeardownAdmissionRegistry {
     /// Set by the shutdown drain; reservations are refused from here on.
     closed: bool,
     /// Admissions that have not yet published a bridge handle or released.
@@ -454,13 +470,13 @@ struct DirtyCompletionRegistry {
 ///   refuses. A snapshot predicate cannot give this guarantee: it admits a
 ///   delayed mutation that lands after shutdown has returned.
 #[cfg(feature = "threads")]
-pub(in crate::scheduler) struct DirtyCompletionReservation {
+pub(in crate::scheduler) struct TeardownAdmission {
     shared: Arc<SharedState>,
     published: bool,
 }
 
 #[cfg(feature = "threads")]
-impl DirtyCompletionReservation {
+impl TeardownAdmission {
     /// Convert this reservation into a retained bridge handle.
     pub(in crate::scheduler) fn publish(mut self, handle: std::thread::JoinHandle<()>) {
         let mut registry = lock_or_recover(&self.shared.dirty_completions);
@@ -483,7 +499,7 @@ impl DirtyCompletionReservation {
 }
 
 #[cfg(feature = "threads")]
-impl Drop for DirtyCompletionReservation {
+impl Drop for TeardownAdmission {
     fn drop(&mut self) {
         if self.published {
             return;
@@ -500,16 +516,16 @@ impl SharedState {
     /// closed. Closure and reservation share ONE lock, so a reservation
     /// cannot slip behind the shutdown drain: the drain marks `closed` and
     /// waits out every earlier reservation under the same mutex.
-    pub(in crate::scheduler) fn try_reserve_dirty_completion(
+    pub(in crate::scheduler) fn try_reserve_teardown_admission(
         self: &Arc<Self>,
-    ) -> Option<DirtyCompletionReservation> {
+    ) -> Option<TeardownAdmission> {
         let mut registry = lock_or_recover(&self.dirty_completions);
         if registry.closed {
             return None;
         }
         registry.reserved += 1;
         drop(registry);
-        Some(DirtyCompletionReservation {
+        Some(TeardownAdmission {
             shared: Arc::clone(self),
             published: false,
         })
@@ -567,6 +583,68 @@ impl SharedState {
     /// `Disabled` bundle refuses honestly rather than touching an absent runtime.
     pub(in crate::scheduler) fn distribution(&self) -> Option<&DistributionService> {
         self.distribution.service()
+    }
+
+    #[cfg(feature = "readiness")]
+    pub(in crate::scheduler) fn readiness_register(
+        self: &Arc<Self>,
+        fd: std::os::fd::RawFd,
+        interest: Interest,
+        pid: u64,
+        marker: crate::atom::Atom,
+    ) -> Result<ReadinessToken, ReadinessError> {
+        self.readiness_consumer
+            .as_ref()
+            .ok_or(ReadinessError::Disabled)?
+            .register(fd, interest, pid, marker)
+    }
+
+    #[cfg(feature = "readiness")]
+    pub(in crate::scheduler) fn readiness_rearm(
+        self: &Arc<Self>,
+        token: &ReadinessToken,
+        interest: Interest,
+    ) -> Result<(), ReadinessError> {
+        self.readiness_consumer
+            .as_ref()
+            .ok_or(ReadinessError::Disabled)?
+            .rearm(token, interest)
+    }
+
+    #[cfg(feature = "readiness")]
+    pub(in crate::scheduler) fn readiness_deregister(&self, token: ReadinessToken) {
+        if let Some(consumer) = &self.readiness_consumer {
+            consumer.deregister(token);
+        }
+    }
+
+    #[cfg(feature = "readiness")]
+    pub(in crate::scheduler) fn purge_readiness_state(&self, pid: u64) {
+        if let Some(consumer) = &self.readiness_consumer {
+            consumer.deregister_pid(pid);
+        }
+    }
+
+    #[cfg(feature = "readiness")]
+    pub(in crate::scheduler) fn deregister_shared_readiness(&self) {
+        if matches!(self.readiness, ServiceMode::Shared(_))
+            && let Some(consumer) = &self.readiness_consumer
+        {
+            consumer.deregister_all();
+        }
+    }
+
+    #[cfg(feature = "readiness")]
+    pub(in crate::scheduler) fn deliver_readiness_marker(
+        &self,
+        pid: u64,
+        marker: crate::atom::Atom,
+    ) -> bool {
+        let delivered = timer_integration::deliver_term_to_mailbox(self, pid, Term::atom(marker));
+        if delivered {
+            execution::wake_process(self, pid);
+        }
+        delivered
     }
 
     /// Test-only: the owned distribution manager, panicking if `Disabled`. The
@@ -1202,76 +1280,118 @@ impl Scheduler {
         // receiver, so closing it wakes them all to exit without delivering.
         let (dirty_completion_shutdown_tx, dirty_completion_shutdown_rx) =
             crossbeam_channel::bounded::<()>(0);
-        let shared = Arc::new(SharedState {
-            shutdown: AtomicBool::new(false),
-            process_table: ProcessTable::new(),
-            module_registry,
-            namespace_store,
-            next_namespace_id: AtomicU64::new(1),
-            atom_table,
-            local_node,
-            ets_registry: Arc::new(EtsRegistry::new()),
-            pg_registry,
-            bif_registry,
-            capability_policy,
-            spawn_counter: AtomicUsize::new(0),
-            thread_count,
-            dirty_cpu,
-            dirty_io,
-            jit_profiler,
-            jit_cache,
-            next_pid: AtomicU64::new(1),
-            wait_set: Mutex::new(WaitSet::default()),
-            wake_condvar: Condvar::new(),
-            process_bodies: DashMap::new(),
-            exit_tombstones: exit_tombstones::BoundedTombstones::new(),
-            exit_results: DashMap::new(),
-            exit_errors: DashMap::new(),
-            exit_exceptions: DashMap::new(),
-            suspensions: DashMap::new(),
-            suspension_results: DashMap::new(),
-            pending_resumes: DashMap::new(),
-            file_io_ring,
-            file_io_pending: DashMap::new(),
-            file_io_orphans: DashMap::new(),
-            file_io_results: DashMap::new(),
-            file_io_canceled: DashSet::new(),
-            link_set: Mutex::new(LinkSet::new()),
-            monitor_set: Mutex::new(MonitorSet::new()),
-            hook: Hook::new(),
-            distribution,
-            process_registry: DashMap::new(),
-            timers: Arc::new(Mutex::new(TimerWheel::new())),
-            expired_receive_timers: DashMap::new(),
-            output_sink: Mutex::new(Arc::new(NullSink)),
-            io_ring,
-            io_registry,
-            io_bridge: Mutex::new(None),
-            io_facility,
-            standard_io_pid,
-            service_instances,
-            dirty_completion_spawns: AtomicU64::new(0),
-            dirty_completions: Mutex::new(DirtyCompletionRegistry::default()),
-            dirty_completions_changed: Condvar::new(),
-            dirty_completion_shutdown_tx: Mutex::new(Some(dirty_completion_shutdown_tx)),
-            dirty_completion_shutdown_rx,
-            replay_driver,
-            replay_mode: replay_enabled,
-            nif_private_data: config.nif_private_data,
-            #[cfg(feature = "telemetry")]
-            telemetry_metrics: TelemetryMetricState::new(telemetry_sample_interval),
-            standard_io,
-            #[cfg(any(test, feature = "test-support"))]
-            idle_parks: AtomicUsize::new(0),
-            #[cfg(any(test, feature = "test-support"))]
-            observed_park_timeout_millis: AtomicU64::new(0),
-            #[cfg(any(test, feature = "test-support"))]
-            suspension_mirror_registrations: AtomicU64::new(0),
-            #[cfg(any(test, feature = "test-support"))]
-            dirty_suspension_allocations: AtomicU64::new(0),
-            #[cfg(test)]
-            park_gap_hook: Mutex::new(None),
+        #[cfg(feature = "readiness")]
+        let readiness_error: std::cell::RefCell<Option<ReadinessBuildError>> =
+            std::cell::RefCell::new(None);
+        let shared = Arc::new_cyclic(|weak_shared| {
+            #[cfg(not(feature = "readiness"))]
+            let _ = weak_shared;
+            #[cfg(feature = "readiness")]
+            let route_home = RouteHome {
+                scheduler: weak_shared.clone(),
+                consumer: ServiceConsumerId::mint(),
+            };
+            #[cfg(feature = "readiness")]
+            let readiness: ServiceMode<ReadinessService> = match &services.readiness {
+                services::ReadinessChoice::FromConfig | services::ReadinessChoice::Disabled => {
+                    ServiceMode::Disabled
+                }
+                services::ReadinessChoice::Owned => {
+                    match ReadinessService::build_owned(route_home.clone()) {
+                        Ok(service) => ServiceMode::Owned(service),
+                        Err(error) => {
+                            *readiness_error.borrow_mut() = Some(error);
+                            ServiceMode::Disabled
+                        }
+                    }
+                }
+                services::ReadinessChoice::Shared(service) => {
+                    ServiceMode::Shared(Arc::clone(&service.0))
+                }
+            };
+            #[cfg(feature = "readiness")]
+            let readiness_consumer = readiness
+                .service()
+                .map(|service| service.consumer(route_home));
+            SharedState {
+                shutdown: AtomicBool::new(false),
+                process_table: ProcessTable::new(),
+                module_registry,
+                namespace_store,
+                next_namespace_id: AtomicU64::new(1),
+                atom_table,
+                local_node,
+                ets_registry: Arc::new(EtsRegistry::new()),
+                pg_registry,
+                bif_registry,
+                capability_policy,
+                spawn_counter: AtomicUsize::new(0),
+                thread_count,
+                dirty_cpu,
+                dirty_io,
+                jit_profiler,
+                jit_cache,
+                next_pid: AtomicU64::new(1),
+                wait_set: Mutex::new(WaitSet::default()),
+                wake_condvar: Condvar::new(),
+                process_bodies: DashMap::new(),
+                exit_tombstones: exit_tombstones::BoundedTombstones::new(),
+                exit_results: DashMap::new(),
+                exit_errors: DashMap::new(),
+                exit_exceptions: DashMap::new(),
+                suspensions: DashMap::new(),
+                suspension_results: DashMap::new(),
+                pending_resumes: DashMap::new(),
+                file_io_ring,
+                file_io_pending: DashMap::new(),
+                file_io_orphans: DashMap::new(),
+                file_io_results: DashMap::new(),
+                file_io_canceled: DashSet::new(),
+                link_set: Mutex::new(LinkSet::new()),
+                monitor_set: Mutex::new(MonitorSet::new()),
+                hook: Hook::new(),
+                distribution,
+                process_registry: DashMap::new(),
+                timers: Arc::new(Mutex::new(TimerWheel::new())),
+                expired_receive_timers: DashMap::new(),
+                output_sink: Mutex::new(Arc::new(NullSink)),
+                io_ring,
+                io_registry,
+                io_bridge: Mutex::new(None),
+                io_facility,
+                standard_io_pid,
+                #[cfg(feature = "readiness")]
+                readiness,
+                #[cfg(feature = "readiness")]
+                readiness_consumer,
+                service_instances,
+                dirty_completion_spawns: AtomicU64::new(0),
+                dirty_completions: Mutex::new(TeardownAdmissionRegistry::default()),
+                dirty_completions_changed: Condvar::new(),
+                dirty_completion_shutdown_tx: Mutex::new(Some(dirty_completion_shutdown_tx)),
+                dirty_completion_shutdown_rx,
+                replay_driver,
+                replay_mode: replay_enabled,
+                nif_private_data: config.nif_private_data,
+                #[cfg(feature = "telemetry")]
+                telemetry_metrics: TelemetryMetricState::new(telemetry_sample_interval),
+                standard_io,
+                #[cfg(any(test, feature = "test-support"))]
+                idle_parks: AtomicUsize::new(0),
+                #[cfg(any(test, feature = "test-support"))]
+                observed_park_timeout_millis: AtomicU64::new(0),
+                #[cfg(any(test, feature = "test-support"))]
+                suspension_mirror_registrations: AtomicU64::new(0),
+                #[cfg(any(test, feature = "test-support"))]
+                dirty_suspension_allocations: AtomicU64::new(0),
+                #[cfg(test)]
+                park_gap_hook: Mutex::new(None),
+            }
         });
+        #[cfg(feature = "readiness")]
+        if let Some(error) = readiness_error.into_inner() {
+            return Err(error.to_string());
+        }
         // Process 0 is registered exactly when the standard-IO ring is Owned
         // (spec §3.4): a Disabled standard ring (replay today) registers no
         // process 0, so group-leader IO has no server and the completion poll
@@ -1542,6 +1662,13 @@ impl Scheduler {
     pub fn service_inventory(&self) -> Vec<ServiceInventoryEntry> {
         inventory::build_service_inventory(&self.shared)
     }
+
+    /// Host-side acknowledged readiness deregistration.
+    #[cfg(feature = "readiness")]
+    pub fn readiness_deregister(&self, token: ReadinessToken) {
+        self.shared.readiness_deregister(token);
+    }
+
     /// The scheduler's transient-thread policy lines (spec §5).
     ///
     /// Classes that spawn and join OS threads in bursts — today just the
