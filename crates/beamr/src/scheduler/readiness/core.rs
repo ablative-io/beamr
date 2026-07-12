@@ -249,13 +249,17 @@ impl ReadinessCore {
     }
 
     pub(super) fn deregister(&self, token: ReadinessToken) {
-        let epoch = self.poll_epoch.load(Ordering::Acquire);
         let bumped = {
             let (mut table, failed) = self.lock_table_for_tombstone();
             let bumped = self.tombstone(&mut table, token);
-            (bumped, failed)
+            // §4.2 step 2: the epoch is read UNDER the table lock, after the
+            // tombstone — the wait then demands an iteration that starts
+            // after the tombstone is visible (reading any later epoch only
+            // strengthens the bound).
+            let epoch = self.poll_epoch.load(Ordering::Acquire);
+            (bumped, failed, epoch)
         };
-        let (Some(bumped_generation), failed) = bumped else {
+        let (Some(bumped_generation), failed, epoch) = bumped else {
             return;
         };
         if !failed {
@@ -301,7 +305,6 @@ impl ReadinessCore {
     }
 
     fn deregister_matching(&self, predicate: impl Fn(&Registration) -> bool) {
-        let epoch = self.poll_epoch.load(Ordering::Acquire);
         let (mut table, failed) = self.lock_table_for_tombstone();
         let mut draining = Vec::new();
         for (index, slot) in table.slots.iter_mut().enumerate() {
@@ -319,6 +322,9 @@ impl ReadinessCore {
             let _ = self.registry.deregister(&mut source);
             draining.push((index, slot.generation));
         }
+        // §4.2 step 2: read the epoch under the lock, after the batch
+        // tombstone (same discipline as `deregister`).
+        let epoch = self.poll_epoch.load(Ordering::Acquire);
         drop(table);
         if !failed && !draining.is_empty() {
             self.wake_and_wait(epoch);
@@ -415,6 +421,7 @@ impl ReadinessCore {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn live_registration_count(&self) -> usize {
         match self.table.lock() {
             Ok(table) => table

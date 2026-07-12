@@ -38,6 +38,12 @@ impl ReadinessService {
         vec!["poll", "waker"]
     }
 
+    /// Test-only observability: the §3.3 gate proves sweep-success by
+    /// counting records (no record ⇒ no possible delivery attempt). The §5
+    /// inventory deliberately does NOT read this — taking the table lock on
+    /// every inventory build is the idle-cost class this service kills
+    /// (reviewer-of-record A-2).
+    #[cfg(test)]
     pub(in crate::scheduler) fn live_registration_count(&self) -> usize {
         self.core.live_registration_count()
     }

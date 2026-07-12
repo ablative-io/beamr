@@ -127,6 +127,12 @@ fn shared_routes_home_survives_peer_shutdown_and_refuses_straggler() {
     );
 
     scheduler_a.shutdown();
+    // The sweep PROVES record absence: exactly B's registration survives.
+    // Without this count, sweep-success and sweep-failure-absorbed-by-the-
+    // dangling-Weak produce identical observables (reviewer-of-record R-1);
+    // no record ⇒ no possible delivery attempt — the §3.3 "attempted"
+    // clause, satisfied structurally.
+    assert_eq!(shared.0.live_registration_count(), 1);
     assert_eq!(
         scheduler_a
             .shared

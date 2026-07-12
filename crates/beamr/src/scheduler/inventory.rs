@@ -215,7 +215,6 @@ fn distribution_entry(mode: &ServiceMode<DistributionService>) -> ServiceInvento
 fn readiness_entry(mode: &ServiceMode<ReadinessService>) -> ServiceInventoryEntry {
     match mode.service() {
         Some(readiness) => {
-            let _live_registration_count = readiness.live_registration_count();
             let thread_names = readiness.poll_thread_names();
             ServiceInventoryEntry {
                 service: READINESS,

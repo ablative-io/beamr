@@ -28,6 +28,10 @@ impl Interest {
             (true, true) => mio::Interest::READABLE | mio::Interest::WRITABLE,
             (true, false) => mio::Interest::READABLE,
             (false, true) => mio::Interest::WRITABLE,
+            // Unreachable in practice: the field is pub(super) and both
+            // constructors set a bit, so an empty Interest cannot be built
+            // outside this module. mio cannot express "no interest", and a
+            // disarmed record's markers are dropped at delivery anyway.
             (false, false) => mio::Interest::READABLE,
         }
     }
