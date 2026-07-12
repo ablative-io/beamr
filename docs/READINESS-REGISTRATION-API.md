@@ -16,6 +16,20 @@ constraint). No code lands with this doc.
 **Base:** beamr `readiness-registration-api` @ 675ee5e (composition commits 1–5).
 **Author:** Artemis Peach (beamr).
 
+**Standing obligations on the commit-6 build (recorded before any code
+exists — Waffles' riders, 2026-07-12):**
+
+1. **Strict design-implementation.** The build leg (Vesper Lynd's hands,
+   Artemis unreachable) implements THIS revision verbatim. Any point where
+   the code wants to contradict this doc — including improvements — STOPS
+   and returns for a pair round instead of being improvised. The doc is
+   Artemis's voice at the table; drift silences it.
+2. **Deferred domain-owner review.** When contact with Artemis restores,
+   she receives a retroactive domain-owner review pass over the landed
+   diff — this entry is that obligation's record, standing until her pass
+   is recorded here with its outcome. The merge commit must note both her
+   design authorship and her absence at build time.
+
 Citations are `file:line` into the landed tree at this head. Where the contract
 spec's own citations have drifted against landed code, the drift is recorded in
 §7, not silently corrected.
