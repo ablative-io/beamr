@@ -17,6 +17,8 @@ use crate::jit::ir_exceptions::{
 };
 #[cfg(feature = "jit")]
 use crate::jit::runtime::JIT_YIELD_SENTINEL;
+#[cfg(feature = "jit")]
+use crate::jit::{CompilationRequest, JitProfilingServices, RecordResult};
 use crate::loader::decode::compact::Operand;
 use crate::module::{Module, ModuleRegistry, ResolvedImportTarget};
 use crate::native::ExceptionClass;
@@ -34,6 +36,8 @@ use crate::timer::TimerWheel;
 pub struct JitDispatchContext<'a> {
     #[cfg(feature = "jit")]
     pub jit_cache: Option<&'a JitCache>,
+    #[cfg(feature = "jit")]
+    pub jit_profiling: Option<&'a JitProfilingServices>,
     pub registry: Option<&'a ModuleRegistry>,
 }
 
@@ -45,6 +49,8 @@ pub struct ExtCallContext<'a> {
     pub atom_table: Option<&'a AtomTable>,
     #[cfg(feature = "jit")]
     pub jit_cache: Option<&'a JitCache>,
+    #[cfg(feature = "jit")]
+    pub jit_profiling: Option<&'a JitProfilingServices>,
 }
 
 pub(super) fn exception_class_atom(class: ExceptionClass) -> Atom {
@@ -136,15 +142,7 @@ fn try_dispatch_local_jit(
     save_return: bool,
     jit_ctx: JitDispatchContext<'_>,
 ) -> Result<Option<InstructionOutcome>, ExecError> {
-    dispatch_local_jit(
-        process,
-        module,
-        target,
-        arity,
-        save_return,
-        jit_ctx.jit_cache,
-        jit_ctx.registry,
-    )
+    dispatch_local_jit(process, module, target, arity, save_return, jit_ctx)
 }
 
 #[cfg(not(feature = "jit"))]
@@ -642,10 +640,9 @@ fn dispatch_local_jit(
     target_ip: usize,
     arity: u8,
     _save_return: bool,
-    jit_cache: Option<&JitCache>,
-    registry: Option<&ModuleRegistry>,
+    jit_ctx: JitDispatchContext<'_>,
 ) -> Result<Option<InstructionOutcome>, ExecError> {
-    let Some(cache) = jit_cache else {
+    let Some(cache) = jit_ctx.jit_cache else {
         return Ok(None);
     };
     let Some((function, function_arity)) = module.function_at_ip(target_ip) else {
@@ -655,13 +652,14 @@ fn dispatch_local_jit(
         return Ok(None);
     }
     let Some(native) = cache.lookup(module.name, function, arity, module.generation()) else {
+        record_jit_call_miss(jit_ctx.jit_profiling, module, function, arity, target_ip);
         return Ok(None);
     };
     process.set_code_position(Some(CodePosition {
         module: module.name,
         instruction_pointer: target_ip,
     }));
-    invoke_jit(process, module, native, registry, jit_cache)
+    invoke_jit(process, module, native, jit_ctx.registry, jit_ctx.jit_cache)
 }
 
 /// JIT entry for an external call. With `jit` the compiled body may run; without
@@ -720,6 +718,7 @@ fn dispatch_external_jit(
         arity,
         target_module.generation(),
     ) else {
+        record_jit_call_miss(ctx.jit_profiling, target_module, function, arity, target_ip);
         return Ok(None);
     };
     process.set_code_position(Some(CodePosition {
@@ -727,6 +726,56 @@ fn dispatch_external_jit(
         instruction_pointer: target_ip,
     }));
     invoke_jit(process, target_module, native, ctx.registry, ctx.jit_cache)
+}
+
+/// Heat accounting on the bytecode fall-through: a cache MISS records one
+/// interpreted call at the generation the lookup used, and the
+/// threshold-crossing call submits that function's compilation. Fire-and-forget
+/// from the calling process: a refused submission resets the profile at the
+/// submitted generation (the function can re-heat) and never surfaces into
+/// BEAM semantics. With no profiling handle this is one `None` check — the
+/// handle's absence is the replay/minimal-composition disable mechanism.
+#[cfg(feature = "jit")]
+fn record_jit_call_miss(
+    jit_profiling: Option<&JitProfilingServices>,
+    module: &Module,
+    function: Atom,
+    arity: u8,
+    entry_ip: usize,
+) {
+    let Some(profiling) = jit_profiling else {
+        return;
+    };
+    let generation = module.generation();
+    if profiling
+        .profiler
+        .record_call(module.name, function, arity, generation)
+        != RecordResult::CompileNow
+    {
+        return;
+    }
+    let Some(instructions) = module.function_instructions(entry_ip) else {
+        // CompileNow left the profile PENDING; with no slice no job will ever
+        // complete it, so reset rather than strand the profile.
+        profiling
+            .profiler
+            .reset_counter(module.name, function, arity, generation);
+        return;
+    };
+    profiling.profiler.note_submission();
+    let request = CompilationRequest::new(
+        module.name,
+        function,
+        arity,
+        generation,
+        instructions.to_vec(),
+    );
+    if profiling.submitter.submit(request).is_err() {
+        profiling
+            .profiler
+            .reset_counter(module.name, function, arity, generation);
+        profiling.profiler.note_transient_failure();
+    }
 }
 
 #[cfg(feature = "jit")]

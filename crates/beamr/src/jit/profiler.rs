@@ -2,7 +2,7 @@
 
 use crate::atom::Atom;
 use dashmap::DashMap;
-use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 
 const STATE_INTERPRETING: u8 = 0;
 const STATE_PENDING: u8 = 1;
@@ -44,13 +44,15 @@ impl MfaKey {
 struct FunctionProfile {
     counter: AtomicU32,
     state: AtomicU8,
+    generation: AtomicU64,
 }
 
 impl FunctionProfile {
-    fn new() -> Self {
+    fn new(generation: u64) -> Self {
         Self {
             counter: AtomicU32::new(0),
             state: AtomicU8::new(STATE_INTERPRETING),
+            generation: AtomicU64::new(generation),
         }
     }
 }
@@ -64,10 +66,44 @@ pub enum RecordResult {
     CompileNow,
 }
 
+/// Snapshot of the compile-outcome counters.
+///
+/// The counters are plain atomics maintained unconditionally (submission
+/// attempts at the call edges, job outcomes on the dirty-CPU workers); only
+/// their telemetry-metric exposure is feature-gated, so refusal pins can
+/// consume this snapshot in default builds.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompileOutcomeCounters {
+    /// Compilation requests submitted toward the dirty-CPU service,
+    /// including attempts the pool refused.
+    pub submissions: u64,
+    /// Jobs whose native code reached the cache.
+    pub successes: u64,
+    /// Jobs refused by the JIT tier as permanently unsupported.
+    pub unsupported: u64,
+    /// Transient failures: compile errors that reset the profile, plus
+    /// refused submissions — both leave the function free to re-heat.
+    pub transient_failures: u64,
+}
+
 /// Per-function hotness profiler for JIT compilation decisions.
 pub struct JitProfiler {
     threshold: AtomicU32,
+    /// Per-MFA hotness state.
+    ///
+    /// Growth bound: one slot (two small counters plus a generation stamp) per
+    /// distinct MFA ever recorded at a live call edge — an MFA only enters the
+    /// map by being interpreted there. Generation stamping reuses a slot across
+    /// hot reloads rather than accumulating per-generation entries, and
+    /// [`JitProfiler::remove_module`] drops a module's slots at the scheduler's
+    /// delete seam. Modules deleted WITHOUT that seam (embedders mutating a raw
+    /// `ModuleRegistry` directly) linger until process end, bounded by that
+    /// recorded-MFA count.
     profiles: DashMap<MfaKey, FunctionProfile>,
+    submissions: AtomicU64,
+    successes: AtomicU64,
+    unsupported: AtomicU64,
+    transient_failures: AtomicU64,
 }
 
 impl JitProfiler {
@@ -77,7 +113,54 @@ impl JitProfiler {
         Self {
             threshold: AtomicU32::new(threshold.max(1)),
             profiles: DashMap::new(),
+            submissions: AtomicU64::new(0),
+            successes: AtomicU64::new(0),
+            unsupported: AtomicU64::new(0),
+            transient_failures: AtomicU64::new(0),
         }
+    }
+
+    /// Returns a snapshot of the compile-outcome counters.
+    #[must_use]
+    pub fn compile_outcome_counters(&self) -> CompileOutcomeCounters {
+        CompileOutcomeCounters {
+            submissions: self.submissions.load(Ordering::Acquire),
+            successes: self.successes.load(Ordering::Acquire),
+            unsupported: self.unsupported.load(Ordering::Acquire),
+            transient_failures: self.transient_failures.load(Ordering::Acquire),
+        }
+    }
+
+    pub(crate) fn note_submission(&self) {
+        self.submissions.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub(crate) fn note_success(&self) {
+        self.successes.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub(crate) fn note_unsupported(&self) {
+        self.unsupported.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub(crate) fn note_transient_failure(&self) {
+        self.transient_failures.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// Test-support probe: the recorded interpreted-call count for an MFA.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn recorded_call_count(&self, module: Atom, function: Atom, arity: u8) -> Option<u32> {
+        self.profiles
+            .get(&MfaKey::new(module, function, arity))
+            .map(|profile| profile.counter.load(Ordering::Acquire))
+    }
+
+    /// Test-support probe: the number of live profile entries.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn profile_entry_count(&self) -> usize {
+        self.profiles.len()
     }
 
     /// Returns the current compilation threshold.
@@ -109,13 +192,35 @@ impl JitProfiler {
             .store(clamp_tuned_threshold(tuned), Ordering::Release);
     }
 
-    /// Records a call to an MFA without blocking on compilation work.
-    pub fn record_call(&self, module: Atom, function: Atom, arity: u8) -> RecordResult {
+    /// Records a call to an MFA at a module generation without blocking on compilation work.
+    ///
+    /// The profile stamps the generation it heats at. A call from a NEWER generation is a fresh
+    /// function: the profile resets to INTERPRETING at the new generation with a zeroed counter
+    /// before counting, so a previously-COMPILED function re-heats and a previously-UNSUPPORTED
+    /// function retries after a hot load. A call from an OLDER generation than the stamp neither
+    /// resets nor counts — the stamped generation's heat is the only heat one profile tracks.
+    pub fn record_call(
+        &self,
+        module: Atom,
+        function: Atom,
+        arity: u8,
+        generation: u64,
+    ) -> RecordResult {
         let key = MfaKey::new(module, function, arity);
         let profile = self
             .profiles
             .entry(key)
-            .or_insert_with(FunctionProfile::new);
+            .or_insert_with(|| FunctionProfile::new(generation));
+
+        let stamped = profile.generation.load(Ordering::Acquire);
+        if generation < stamped {
+            return RecordResult::Continue;
+        }
+        if generation > stamped {
+            profile.generation.store(generation, Ordering::Release);
+            profile.state.store(STATE_INTERPRETING, Ordering::Release);
+            profile.counter.store(0, Ordering::Release);
+        }
 
         if profile.state.load(Ordering::Acquire) != STATE_INTERPRETING {
             return RecordResult::Continue;
@@ -143,14 +248,19 @@ impl JitProfiler {
         }
     }
 
-    /// Marks a pending or interpreted function as compiled.
-    pub fn mark_compiled(&self, module: Atom, function: Atom, arity: u8) {
-        self.set_state(module, function, arity, STATE_COMPILED);
+    /// Marks a pending or interpreted function as compiled at a generation.
+    ///
+    /// No-ops when the profile's stamped generation is newer: a completion for an older generation
+    /// must not stamp state onto code that no longer runs.
+    pub fn mark_compiled(&self, module: Atom, function: Atom, arity: u8, generation: u64) {
+        self.set_state(module, function, arity, generation, STATE_COMPILED);
     }
 
-    /// Marks a function as permanently unsupported by this JIT tier.
-    pub fn mark_unsupported(&self, module: Atom, function: Atom, arity: u8) {
-        self.set_state(module, function, arity, STATE_UNSUPPORTED);
+    /// Marks a function as permanently unsupported by this JIT tier at a generation.
+    ///
+    /// No-ops when the profile's stamped generation is newer (see [`Self::mark_compiled`]).
+    pub fn mark_unsupported(&self, module: Atom, function: Atom, arity: u8, generation: u64) {
+        self.set_state(module, function, arity, generation, STATE_UNSUPPORTED);
     }
 
     /// Returns whether an MFA is currently marked compiled.
@@ -165,23 +275,41 @@ impl JitProfiler {
         self.state_for(module, function, arity) == Some(STATE_UNSUPPORTED)
     }
 
-    /// Resets a transient compilation failure so the function can heat up again.
-    pub fn reset_counter(&self, module: Atom, function: Atom, arity: u8) {
+    /// Resets a transient compilation failure at a generation so the function can heat up again.
+    ///
+    /// No-ops when the profile's stamped generation is newer (see [`Self::mark_compiled`]).
+    pub fn reset_counter(&self, module: Atom, function: Atom, arity: u8, generation: u64) {
         let key = MfaKey::new(module, function, arity);
         let profile = self
             .profiles
             .entry(key)
-            .or_insert_with(FunctionProfile::new);
+            .or_insert_with(|| FunctionProfile::new(generation));
+        if profile.generation.load(Ordering::Acquire) > generation {
+            return;
+        }
+        profile.generation.store(generation, Ordering::Release);
         profile.counter.store(0, Ordering::Release);
         profile.state.store(STATE_INTERPRETING, Ordering::Release);
     }
 
-    fn set_state(&self, module: Atom, function: Atom, arity: u8, state: u8) {
+    /// Drops every profile entry for a module.
+    ///
+    /// Invoked from the scheduler's module-delete seam so a deleted module's hotness state does
+    /// not linger; entries for modules deleted outside that seam are bounded per the map's rustdoc.
+    pub fn remove_module(&self, module: Atom) {
+        self.profiles.retain(|key, _| key.module != module);
+    }
+
+    fn set_state(&self, module: Atom, function: Atom, arity: u8, generation: u64, state: u8) {
         let key = MfaKey::new(module, function, arity);
         let profile = self
             .profiles
             .entry(key)
-            .or_insert_with(FunctionProfile::new);
+            .or_insert_with(|| FunctionProfile::new(generation));
+        if profile.generation.load(Ordering::Acquire) > generation {
+            return;
+        }
+        profile.generation.store(generation, Ordering::Release);
         profile.state.store(state, Ordering::Release);
     }
 
@@ -217,17 +345,17 @@ mod tests {
         let profiler = JitProfiler::new(1000);
         for _ in 0..999 {
             assert_eq!(
-                profiler.record_call(atom(1), atom(2), 0),
+                profiler.record_call(atom(1), atom(2), 0, 1),
                 RecordResult::Continue
             );
         }
 
         assert_eq!(
-            profiler.record_call(atom(1), atom(2), 0),
+            profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::CompileNow
         );
         assert_eq!(
-            profiler.record_call(atom(1), atom(2), 0),
+            profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::Continue
         );
     }
@@ -235,15 +363,26 @@ mod tests {
     #[test]
     fn mark_compiled_prevents_retriggering() {
         let profiler = JitProfiler::new(2);
-        profiler.mark_compiled(atom(1), atom(2), 0);
+        profiler.mark_compiled(atom(1), atom(2), 0, 1);
 
+        // Within the marked generation, COMPILED stays terminal.
         assert_eq!(
-            profiler.record_call(atom(1), atom(2), 0),
+            profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::Continue
         );
         assert_eq!(
-            profiler.record_call(atom(1), atom(2), 0),
+            profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::Continue
+        );
+
+        // A newer generation is a fresh function: it re-heats and recompiles.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::Continue
+        );
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::CompileNow
         );
     }
 
@@ -251,13 +390,114 @@ mod tests {
     fn first_call_to_new_mfa_continues_and_sets_counter() {
         let profiler = JitProfiler::new(2);
         assert_eq!(
-            profiler.record_call(atom(1), atom(2), 1),
+            profiler.record_call(atom(1), atom(2), 1, 1),
             RecordResult::Continue
         );
         assert_eq!(
-            profiler.record_call(atom(1), atom(2), 1),
+            profiler.record_call(atom(1), atom(2), 1, 1),
             RecordResult::CompileNow
         );
+    }
+
+    #[test]
+    fn older_generation_call_neither_resets_nor_counts() {
+        let profiler = JitProfiler::new(2);
+        // One call heats the profile at generation 2.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::Continue
+        );
+        // An older-generation call must not count: were it counted, the counter
+        // would reach the threshold here.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::Continue
+        );
+        // The next generation-2 call is the threshold-crosser, proving the
+        // older-generation call was not counted.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::CompileNow
+        );
+    }
+
+    #[test]
+    fn newer_generation_reheats_compiled_function() {
+        let profiler = JitProfiler::new(2);
+        profiler.mark_compiled(atom(1), atom(2), 0, 1);
+        assert!(profiler.is_compiled(atom(1), atom(2), 0));
+
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::Continue
+        );
+        assert!(!profiler.is_compiled(atom(1), atom(2), 0));
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::CompileNow
+        );
+    }
+
+    #[test]
+    fn newer_generation_retries_unsupported_function() {
+        let profiler = JitProfiler::new(2);
+        profiler.mark_unsupported(atom(1), atom(2), 0, 1);
+        assert!(profiler.is_unsupported(atom(1), atom(2), 0));
+
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::Continue
+        );
+        assert!(!profiler.is_unsupported(atom(1), atom(2), 0));
+    }
+
+    #[test]
+    fn completion_mark_no_ops_when_profile_generation_is_newer() {
+        let profiler = JitProfiler::new(1);
+        // Generation 1 heats to PENDING.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 1),
+            RecordResult::CompileNow
+        );
+        // A generation-2 call re-heats before the generation-1 job completes.
+        assert_eq!(
+            profiler.record_call(atom(1), atom(2), 0, 2),
+            RecordResult::CompileNow
+        );
+        // The stale generation-1 completion must not stamp COMPILED.
+        profiler.mark_compiled(atom(1), atom(2), 0, 1);
+        assert!(!profiler.is_compiled(atom(1), atom(2), 0));
+    }
+
+    #[test]
+    fn generation_stamping_reuses_one_slot_per_mfa_across_reloads() {
+        let profiler = JitProfiler::new(10);
+        for generation in 1..=5 {
+            assert_eq!(
+                profiler.record_call(atom(1), atom(2), 0, generation),
+                RecordResult::Continue
+            );
+        }
+
+        assert_eq!(
+            profiler.profile_entry_count(),
+            1,
+            "a reload-without-delete cycle must reuse the MFA's slot, not accumulate per-generation entries"
+        );
+    }
+
+    #[test]
+    fn remove_module_drops_only_that_modules_entries() {
+        let profiler = JitProfiler::new(2);
+        profiler.mark_compiled(atom(1), atom(2), 0, 1);
+        profiler.mark_compiled(atom(9), atom(2), 0, 1);
+        assert!(profiler.is_compiled(atom(1), atom(2), 0));
+        assert!(profiler.is_compiled(atom(9), atom(2), 0));
+
+        profiler.remove_module(atom(1));
+
+        assert!(!profiler.is_compiled(atom(1), atom(2), 0));
+        assert!(profiler.is_compiled(atom(9), atom(2), 0));
     }
 
     #[test]

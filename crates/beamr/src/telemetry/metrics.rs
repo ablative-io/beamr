@@ -23,6 +23,7 @@ struct Instruments {
     workflow_steps_completed: Counter<u64>,
     workflow_step_duration: Histogram<f64>,
     workflow_active: Gauge<u64>,
+    jit_compile_outcomes: Gauge<u64>,
 }
 
 impl Instruments {
@@ -104,6 +105,14 @@ impl Instruments {
                 .with_description("Current number of active Beamr workflows")
                 .with_unit("{workflow}")
                 .build(),
+            jit_compile_outcomes: meter
+                .u64_gauge("beamr.jit.compile_outcomes")
+                .with_description(
+                    "Cumulative JIT compile-outcome totals by outcome \
+                     (submission, success, unsupported, transient_failure)",
+                )
+                .with_unit("{job}")
+                .build(),
         }
     }
 }
@@ -144,6 +153,30 @@ pub(crate) fn record_vm_health(
     instruments
         .scheduler_utilization
         .record(scheduler_utilization.clamp(0.0, 1.0), &[]);
+}
+
+/// Record the cumulative JIT compile-outcome totals at a sample boundary.
+///
+/// The totals live on the JIT profiler as plain atomics (they exist in every
+/// build); this exposure is the telemetry-gated half of that split. Plain
+/// `u64`s keep this module independent of the `jit` feature's types.
+pub(crate) fn record_jit_compile_outcomes(
+    submissions: u64,
+    successes: u64,
+    unsupported: u64,
+    transient_failures: u64,
+) {
+    let instruments = instruments();
+    for (outcome, total) in [
+        ("submission", submissions),
+        ("success", successes),
+        ("unsupported", unsupported),
+        ("transient_failure", transient_failures),
+    ] {
+        instruments
+            .jit_compile_outcomes
+            .record(total, &[KeyValue::new("outcome", outcome)]);
+    }
 }
 
 /// Record one successfully completed GC collection.

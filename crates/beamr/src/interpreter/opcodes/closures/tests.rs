@@ -14,6 +14,7 @@ fn ext_ctx(registry: Option<&ModuleRegistry>) -> core::ExtCallContext<'_> {
         registry,
         atom_table: None,
         jit_cache: None,
+        jit_profiling: None,
     }
 }
 
@@ -791,6 +792,7 @@ fn call_fun_dispatches_export_fun_to_native_bif() {
         registry: Some(&registry),
         atom_table: None,
         jit_cache: None,
+        jit_profiling: None,
     };
 
     let caller = module(atoms.intern("caller"), vec![Instruction::Return]);

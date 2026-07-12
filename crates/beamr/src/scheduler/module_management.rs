@@ -109,6 +109,7 @@ impl Scheduler {
 
     /// Remove every version of a module from the registry.
     pub fn delete_module(&self, name: Atom) -> bool {
+        self.shared.jit_profiler.remove_module(name);
         self.shared.module_registry.delete_module(name)
     }
 
@@ -140,6 +141,7 @@ impl CodeManagementFacility for SchedulerCodeManagementFacility {
     }
 
     fn delete_module(&self, module: Atom) -> bool {
+        self.shared.jit_profiler.remove_module(module);
         self.shared.module_registry.delete_module(module)
     }
 

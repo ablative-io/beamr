@@ -23,6 +23,8 @@ use crate::error::ExecError;
 use crate::interpreter::{InstructionOutcome, NativeServices};
 #[cfg(feature = "jit")]
 use crate::jit::JitCache;
+#[cfg(feature = "jit")]
+use crate::jit::JitProfilingServices;
 use crate::loader::Instruction;
 use crate::loader::decode::Operand;
 use crate::module::{Module, ModuleRegistry};
@@ -39,6 +41,8 @@ struct DispatchCtx<'a> {
     atom_table: Option<&'a AtomTable>,
     #[cfg(feature = "jit")]
     jit_cache: Option<&'a JitCache>,
+    #[cfg(feature = "jit")]
+    jit_profiling: Option<&'a JitProfilingServices>,
 }
 
 /// Dispatch one already-fetched instruction.
@@ -74,6 +78,8 @@ pub fn dispatch_with_timer_services(
             atom_table: None,
             #[cfg(feature = "jit")]
             jit_cache: None,
+            #[cfg(feature = "jit")]
+            jit_profiling: None,
         },
     )
 }
@@ -100,6 +106,8 @@ pub fn dispatch_with_services(
             atom_table: services.atom_table.as_deref(),
             #[cfg(feature = "jit")]
             jit_cache: services.jit_cache.as_deref(),
+            #[cfg(feature = "jit")]
+            jit_profiling: services.jit_profiling.as_deref(),
         },
     )
 }
@@ -132,6 +140,8 @@ pub fn dispatch_with_receiver(
             atom_table: None,
             #[cfg(feature = "jit")]
             jit_cache: None,
+            #[cfg(feature = "jit")]
+            jit_profiling: None,
         },
     )
 }
@@ -202,6 +212,8 @@ fn dispatch_common(
             core::JitDispatchContext {
                 #[cfg(feature = "jit")]
                 jit_cache: ctx.jit_cache,
+                #[cfg(feature = "jit")]
+                jit_profiling: ctx.jit_profiling,
                 registry: ctx.registry,
             },
         ),
@@ -215,6 +227,8 @@ fn dispatch_common(
             core::JitDispatchContext {
                 #[cfg(feature = "jit")]
                 jit_cache: ctx.jit_cache,
+                #[cfg(feature = "jit")]
+                jit_profiling: ctx.jit_profiling,
                 registry: ctx.registry,
             },
         ),
@@ -226,6 +240,8 @@ fn dispatch_common(
                 atom_table: ctx.atom_table,
                 #[cfg(feature = "jit")]
                 jit_cache: ctx.jit_cache,
+                #[cfg(feature = "jit")]
+                jit_profiling: ctx.jit_profiling,
             };
             core::call_ext(process, module, arity, import, next_ip, true, &ext)
         }
@@ -237,6 +253,8 @@ fn dispatch_common(
                 atom_table: ctx.atom_table,
                 #[cfg(feature = "jit")]
                 jit_cache: ctx.jit_cache,
+                #[cfg(feature = "jit")]
+                jit_profiling: ctx.jit_profiling,
             };
             core::call_ext(process, module, arity, import, next_ip, false, &ext)
         }
@@ -257,6 +275,8 @@ fn dispatch_common(
                 atom_table: ctx.atom_table,
                 #[cfg(feature = "jit")]
                 jit_cache: ctx.jit_cache,
+                #[cfg(feature = "jit")]
+                jit_profiling: ctx.jit_profiling,
             };
             core::call_ext_last(process, module, arity, import, deallocate, &ext)
         }
@@ -390,6 +410,8 @@ fn dispatch_common(
                 atom_table: ctx.atom_table,
                 #[cfg(feature = "jit")]
                 jit_cache: ctx.jit_cache,
+                #[cfg(feature = "jit")]
+                jit_profiling: ctx.jit_profiling,
             };
             closures::call_fun(process, module, arity, next_ip, &ext)
         }
@@ -405,6 +427,8 @@ fn dispatch_common(
                 atom_table: ctx.atom_table,
                 #[cfg(feature = "jit")]
                 jit_cache: ctx.jit_cache,
+                #[cfg(feature = "jit")]
+                jit_profiling: ctx.jit_profiling,
             };
             closures::call_fun2(process, module, func, arity, next_ip, &ext)
         }

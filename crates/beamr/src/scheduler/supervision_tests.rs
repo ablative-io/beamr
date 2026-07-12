@@ -370,6 +370,10 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         standard_io: super::service::ServiceMode::Disabled,
         local_node,
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
+        jit_compiler: Arc::new(
+            crate::jit::JitCompiler::new(crate::jit::JitSettings)
+                .expect("host JIT compiler should initialize"),
+        ),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
         replay_driver: None,
         replay_mode: false,
