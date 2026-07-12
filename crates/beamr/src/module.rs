@@ -315,10 +315,30 @@ impl fmt::Display for PurgeError {
 
 impl std::error::Error for PurgeError {}
 
+/// One registry slot: the live versions plus the name's next generation.
+///
+/// The slot SURVIVES `delete_module` (versions become `None`) so generations
+/// are monotonic across delete — a deleted name's reload continues the
+/// numbering instead of restarting at 1, which would let stale JIT state from
+/// a prior incarnation collide with the replacement. Growth is bounded by the
+/// count of distinct names ever deleted and not reloaded: one small slot each.
+#[derive(Debug)]
+struct ModuleSlot {
+    versions: Option<ModuleVersions>,
+    /// The generation the next insert of this name receives when no current
+    /// version exists; maintained as `last assigned + 1` on every insert.
+    next_generation: u64,
+}
+
 /// Thread-safe dual-version module registry.
+///
+/// Generation numbers are per-name and MONOTONIC ACROSS DELETE: within one
+/// registry, a later insert of a name never receives a generation less than
+/// or equal to any earlier version's — "older generation" always means older
+/// code.
 #[derive(Debug, Default)]
 pub struct ModuleRegistry {
-    modules: DashMap<Atom, ModuleVersions>,
+    modules: DashMap<Atom, ModuleSlot>,
 }
 
 impl ModuleRegistry {
@@ -347,21 +367,34 @@ impl ModuleRegistry {
 
         match self.modules.entry(name) {
             Entry::Occupied(mut entry) => {
-                let previous_current = Arc::clone(&entry.get().current);
-                module.generation = previous_current.generation().saturating_add(1);
-                let module = Arc::new(module);
-                *entry.get_mut() = ModuleVersions {
-                    current: Arc::clone(&module),
-                    old: Some(previous_current),
+                let slot = entry.get_mut();
+                let (generation, previous_current) = match &slot.versions {
+                    Some(versions) => (
+                        versions.current.generation().saturating_add(1),
+                        Some(Arc::clone(&versions.current)),
+                    ),
+                    // A deleted name continues its numbering: the slot's
+                    // retained next_generation is the monotonicity carrier.
+                    None => (slot.next_generation.max(1), None),
                 };
+                module.generation = generation;
+                let module = Arc::new(module);
+                slot.versions = Some(ModuleVersions {
+                    current: Arc::clone(&module),
+                    old: previous_current,
+                });
+                slot.next_generation = generation.saturating_add(1);
                 module
             }
             Entry::Vacant(entry) => {
                 module.generation = 1;
                 let module = Arc::new(module);
-                entry.insert(ModuleVersions {
-                    current: Arc::clone(&module),
-                    old: None,
+                entry.insert(ModuleSlot {
+                    versions: Some(ModuleVersions {
+                        current: Arc::clone(&module),
+                        old: None,
+                    }),
+                    next_generation: 2,
                 });
                 module
             }
@@ -371,9 +404,13 @@ impl ModuleRegistry {
     /// Looks up the current module version by name.
     #[must_use]
     pub fn lookup(&self, name: Atom) -> Option<Arc<Module>> {
-        self.modules
-            .get(&name)
-            .map(|entry| Arc::clone(&entry.value().current))
+        self.modules.get(&name).and_then(|entry| {
+            entry
+                .value()
+                .versions
+                .as_ref()
+                .map(|versions| Arc::clone(&versions.current))
+        })
     }
 
     /// Looks up the origin metadata for the current module version by name.
@@ -388,7 +425,10 @@ impl ModuleRegistry {
         let mut modules: Vec<_> = self
             .modules
             .iter()
-            .map(|entry| (*entry.key(), entry.value().current.origin.clone()))
+            .filter_map(|entry| {
+                let versions = entry.value().versions.as_ref()?;
+                Some((*entry.key(), versions.current.origin.clone()))
+            })
             .collect();
         modules.sort_by_key(|(name, _)| name.index());
         modules
@@ -397,17 +437,25 @@ impl ModuleRegistry {
     /// Looks up the retained old module version by name.
     #[must_use]
     pub fn lookup_old(&self, name: Atom) -> Option<Arc<Module>> {
-        self.modules
-            .get(&name)
-            .and_then(|entry| entry.value().old.as_ref().map(Arc::clone))
+        self.modules.get(&name).and_then(|entry| {
+            entry
+                .value()
+                .versions
+                .as_ref()
+                .and_then(|versions| versions.old.as_ref().map(Arc::clone))
+        })
     }
 
     /// Returns the number of retained versions for a module name.
     #[must_use]
     pub fn module_version_count(&self, name: Atom) -> usize {
-        self.modules
-            .get(&name)
-            .map_or(0, |entry| 1 + usize::from(entry.value().old.is_some()))
+        self.modules.get(&name).map_or(0, |entry| {
+            entry
+                .value()
+                .versions
+                .as_ref()
+                .map_or(0, |versions| 1 + usize::from(versions.old.is_some()))
+        })
     }
 
     /// Purges an old module version when only the registry still references it.
@@ -420,7 +468,11 @@ impl ModuleRegistry {
             .modules
             .get_mut(&name)
             .ok_or(PurgeError::NoOldVersion { module: name })?;
-        let old = entry
+        let versions = entry
+            .versions
+            .as_mut()
+            .ok_or(PurgeError::NoOldVersion { module: name })?;
+        let old = versions
             .old
             .as_ref()
             .ok_or(PurgeError::NoOldVersion { module: name })?;
@@ -432,7 +484,7 @@ impl ModuleRegistry {
             });
         }
 
-        entry.old = None;
+        versions.old = None;
         Ok(())
     }
 
@@ -474,8 +526,14 @@ impl ModuleRegistry {
     /// Removes every retained version for `name` from the registry.
     ///
     /// Callers are responsible for checking process references before deleting.
+    /// The name's generation numbering SURVIVES the delete: a later reload
+    /// continues at the next generation rather than restarting at 1, so stale
+    /// JIT state from the deleted incarnation can never share a generation
+    /// number with the replacement.
     pub fn delete_module(&self, name: Atom) -> bool {
-        self.modules.remove(&name).is_some()
+        self.modules
+            .get_mut(&name)
+            .is_some_and(|mut entry| entry.versions.take().is_some())
     }
 
     /// Removes the retained old version without checking external references.
@@ -491,6 +549,9 @@ impl ModuleRegistry {
             .get_mut(&name)
             .ok_or(PurgeError::NoOldVersion { module: name })?;
         entry
+            .versions
+            .as_mut()
+            .ok_or(PurgeError::NoOldVersion { module: name })?
             .old
             .take()
             .ok_or(PurgeError::NoOldVersion { module: name })?;
@@ -784,6 +845,37 @@ mod tests {
         assert_eq!(v1.generation(), 1);
         assert_eq!(v2.generation(), 2);
         assert_eq!(v3.generation(), 3);
+    }
+
+    #[test]
+    fn deleted_names_do_not_reuse_generations() {
+        let registry = ModuleRegistry::new();
+        let v1 = registry.insert(empty_module(crate::atom::Atom::MODULE));
+        let v2 = registry.insert(empty_module(crate::atom::Atom::MODULE));
+        assert_eq!(v1.generation(), 1);
+        assert_eq!(v2.generation(), 2);
+
+        assert!(registry.delete_module(crate::atom::Atom::MODULE));
+        assert!(registry.lookup(crate::atom::Atom::MODULE).is_none());
+        assert_eq!(registry.module_version_count(crate::atom::Atom::MODULE), 0);
+
+        // The reload CONTINUES the numbering: "older generation" always means
+        // older code, even across a delete.
+        let v3 = registry.insert(empty_module(crate::atom::Atom::MODULE));
+        assert_eq!(
+            v3.generation(),
+            3,
+            "a deleted name's reload must not reuse generation numbers"
+        );
+
+        // Delete again, reload again: still monotonic.
+        assert!(registry.delete_module(crate::atom::Atom::MODULE));
+        let v4 = registry.insert(empty_module(crate::atom::Atom::MODULE));
+        assert_eq!(v4.generation(), 4);
+
+        // A second delete of an already-deleted name reports nothing removed.
+        assert!(registry.delete_module(crate::atom::Atom::MODULE));
+        assert!(!registry.delete_module(crate::atom::Atom::MODULE));
     }
 
     #[test]
