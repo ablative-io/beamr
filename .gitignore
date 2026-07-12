@@ -11,3 +11,6 @@ erl_crash.dump
 
 # hand-driven build worktrees
 .wt-*
+
+# norn fetch cache
+.norn/

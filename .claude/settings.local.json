@@ -3,6 +3,9 @@
     "allow": [
       "Bash(cargo *)",
       "Bash(ast-grep *)"
+    ],
+    "additionalDirectories": [
+      "/Users/annabel/Developer/ablative/stack/frame"
     ]
   }
 }
