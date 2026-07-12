@@ -46,12 +46,12 @@ struct FunctionProfile {
     state: AtomicU8,
     generation: AtomicU64,
     /// Incarnation token: minted from the profiler's counter when the profile
-    /// is created and again on every newer-generation reset. Registry
-    /// generation NUMBERS can repeat across delete+reload (a deleted name
-    /// restarts at 1), so numeric generation equality cannot distinguish a
-    /// stale job from a same-numbered replacement — the epoch can: completions
-    /// must present the epoch captured at submission, and a recreated or
-    /// re-heated profile always carries a fresh one.
+    /// is created and again on every newer-generation reset. Generation
+    /// NUMBERS cannot be trusted to identify an incarnation on their own —
+    /// embedders can hand modules with arbitrary or colliding numbers even
+    /// though the registry's own numbering is monotonic across delete — so
+    /// completions must present the epoch captured at submission, and a
+    /// recreated or re-heated profile always carries a fresh one.
     epoch: AtomicU64,
 }
 
@@ -72,7 +72,14 @@ pub enum RecordResult {
     /// Continue interpreting without starting a compilation job.
     Continue,
     /// The function reached the hot threshold and should be compiled now.
-    CompileNow,
+    /// Carries the profile's incarnation epoch, captured while the entry
+    /// guard is still held: reading it in a separate call would let a
+    /// delete+reload substitute the replacement's epoch onto a job compiled
+    /// from the deleted module's instructions.
+    CompileNow {
+        /// The submitting profile incarnation; completions present it back.
+        epoch: u64,
+    },
 }
 
 /// Snapshot of the compile-outcome counters.
@@ -260,7 +267,11 @@ impl JitProfiler {
             Ordering::AcqRel,
             Ordering::Acquire,
         ) {
-            Ok(_) => RecordResult::CompileNow,
+            // The epoch travels out with the decision, read under the same
+            // entry guard that made it.
+            Ok(_) => RecordResult::CompileNow {
+                epoch: profile.epoch.load(Ordering::Acquire),
+            },
             Err(_) => RecordResult::Continue,
         }
     }
@@ -362,8 +373,8 @@ impl JitProfiler {
     ///
     /// Exact generation+epoch match semantics as [`Self::mark_compiled`], and a no-op when no
     /// profile exists: completion paths never recreate an entry — a missing profile means the
-    /// module was deleted (the scheduler seam dropped it), and resurrecting it would strand a
-    /// stale stamp against a name whose registry generations restart.
+    /// module was deleted (the scheduler seam dropped it), and a completion must never
+    /// resurrect state for code that no longer runs.
     pub fn reset_counter(
         &self,
         module: Atom,
@@ -459,10 +470,10 @@ mod tests {
             );
         }
 
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         assert_eq!(
             profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::Continue
@@ -497,10 +508,10 @@ mod tests {
             profiler.record_call(atom(1), atom(2), 0, 2),
             RecordResult::Continue
         );
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 2),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
     }
 
     #[test]
@@ -510,10 +521,10 @@ mod tests {
             profiler.record_call(atom(1), atom(2), 1, 1),
             RecordResult::Continue
         );
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 1, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
     }
 
     #[test]
@@ -532,10 +543,10 @@ mod tests {
         );
         // The next generation-2 call is the threshold-crosser, proving the
         // older-generation call was not counted.
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 2),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
     }
 
     #[test]
@@ -556,10 +567,10 @@ mod tests {
             RecordResult::Continue
         );
         assert!(!profiler.is_compiled(atom(1), atom(2), 0));
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 2),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
     }
 
     #[test]
@@ -586,18 +597,18 @@ mod tests {
     fn completion_mark_no_ops_when_profile_generation_is_newer() {
         let profiler = JitProfiler::new(1);
         // Generation 1 heats to PENDING.
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         let gen1_epoch = profiler
             .profile_epoch(atom(1), atom(2), 0)
             .expect("profile exists");
         // A generation-2 call re-heats before the generation-1 job completes.
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 2),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         // The stale generation-1 completion must not stamp COMPILED.
         profiler.mark_compiled(atom(1), atom(2), 0, 1, gen1_epoch);
         assert!(!profiler.is_compiled(atom(1), atom(2), 0));
@@ -644,27 +655,57 @@ mod tests {
 
         // This call is the threshold-crosser, proving the stale completions
         // neither wedged the state machine nor reset the counter.
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
+    }
+
+    #[test]
+    fn compile_now_carries_the_epoch_of_the_deciding_incarnation() {
+        // The epoch rides inside CompileNow, read under the deciding entry
+        // guard — the type makes a separate (raceable) epoch read at the call
+        // edge impossible: there is no CompileNow without its epoch.
+        let profiler = JitProfiler::new(1);
+        let RecordResult::CompileNow { epoch } = profiler.record_call(atom(1), atom(2), 0, 1)
+        else {
+            panic!("threshold 1 must trip on the first call");
+        };
+        assert_eq!(profiler.profile_epoch(atom(1), atom(2), 0), Some(epoch));
+
+        // A delete+reload recreates the profile at a fresh epoch; the carried
+        // epoch stays with the OLD incarnation, whose completions are refused
+        // even at a colliding generation number.
+        profiler.remove_module(atom(1));
+        let RecordResult::CompileNow {
+            epoch: replacement_epoch,
+        } = profiler.record_call(atom(1), atom(2), 0, 1)
+        else {
+            panic!("the replacement heats independently");
+        };
+        assert_ne!(epoch, replacement_epoch);
+        assert!(!profiler.mark_compiled(atom(1), atom(2), 0, 1, epoch));
+        assert!(!profiler.is_compiled(atom(1), atom(2), 0));
+        assert!(profiler.mark_compiled(atom(1), atom(2), 0, 1, replacement_epoch));
+        assert!(profiler.is_compiled(atom(1), atom(2), 0));
     }
 
     #[test]
     fn completion_marks_refuse_a_stale_job_when_the_generation_number_is_reused() {
         // Incarnation 1 heats at generation 1 and submits; the module is
-        // deleted; the replacement ALSO gets generation 1 (the registry
-        // restarts a deleted name). Numeric generations collide exactly —
-        // only the incarnation epoch tells the stale job apart.
+        // deleted; the replacement is handed the SAME generation number (an
+        // embedder-style collision — the registry's own numbering is
+        // monotonic, but the profiler must not depend on that). Only the
+        // incarnation epoch tells the stale job apart.
         let profiler = JitProfiler::new(2);
         assert_eq!(
             profiler.record_call(atom(1), atom(2), 0, 1),
             RecordResult::Continue
         );
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         let stale_epoch = profiler
             .profile_epoch(atom(1), atom(2), 0)
             .expect("profile exists");
@@ -698,10 +739,10 @@ mod tests {
 
         // The replacement is untouched: it crosses the threshold and its OWN
         // completion applies.
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         assert!(profiler.mark_compiled(atom(1), atom(2), 0, 1, replacement_epoch));
         assert!(profiler.is_compiled(atom(1), atom(2), 0));
     }
@@ -709,10 +750,10 @@ mod tests {
     #[test]
     fn publish_compiled_refuses_after_remove_module_and_stale_generations() {
         let profiler = JitProfiler::new(1);
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 2),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         let gen2_epoch = profiler
             .profile_epoch(atom(1), atom(2), 0)
             .expect("profile exists");
@@ -729,10 +770,10 @@ mod tests {
 
         // Stale generation: the profile re-heated at generation 3 before the
         // generation-2 job completed.
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 3),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         let gen3_epoch = profiler
             .profile_epoch(atom(1), atom(2), 0)
             .expect("profile exists");
@@ -758,10 +799,10 @@ mod tests {
         // A job generation ABOVE the stamp is equally stale: the profile was
         // deleted and recreated at the registry's restarted numbering.
         profiler.remove_module(atom(1));
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         let mut above_published = false;
         assert!(
             !profiler.publish_compiled(atom(1), atom(2), 0, 3, gen3_epoch, || above_published =
@@ -805,10 +846,10 @@ mod tests {
     #[test]
     fn completion_marks_never_resurrect_a_deleted_profile() {
         let profiler = JitProfiler::new(1);
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 2),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         let epoch = profiler
             .profile_epoch(atom(1), atom(2), 0)
             .expect("profile exists");
@@ -816,10 +857,9 @@ mod tests {
         assert_eq!(profiler.profile_entry_count(), 0);
 
         // A queued job completing after the delete must not recreate the
-        // profile at its stale generation: registry generations restart at 1
-        // after a delete, so a resurrected stamp-2 profile would treat every
-        // call from the replacement module as "older" and wedge it out of the
-        // JIT permanently.
+        // profile at its stale generation: a resurrected stale-stamp profile
+        // would treat calls from a lower-numbered replacement as "older" and
+        // wedge it out of the JIT permanently.
         profiler.mark_compiled(atom(1), atom(2), 0, 2, epoch);
         profiler.mark_unsupported(atom(1), atom(2), 0, 2, epoch);
         profiler.reset_counter(atom(1), atom(2), 0, 2, epoch);
@@ -833,10 +873,10 @@ mod tests {
 
         // The replacement module heats from scratch at its restarted
         // generation, unimpeded by the stale completion.
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(atom(1), atom(2), 0, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
     }
 
     #[test]

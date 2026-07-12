@@ -769,19 +769,13 @@ fn record_jit_call_miss(
         return;
     };
     let generation = module.generation();
-    if profiling
-        .profiler
-        .record_call(module.name, function, arity, generation)
-        != RecordResult::CompileNow
-    {
-        return;
-    }
-    // The epoch identifies this profile incarnation; every completion for the
-    // submitted job must present it back. A None here means the profile was
-    // deleted in the instant since record_call — nothing to submit or reset.
-    let Some(epoch) = profiling
-        .profiler
-        .profile_epoch(module.name, function, arity)
+    // The epoch rides out of record_call under its entry guard: reading it
+    // in a separate call would let a delete+reload interleave and pair the
+    // replacement's epoch with THIS module's instruction slice.
+    let RecordResult::CompileNow { epoch } =
+        profiling
+            .profiler
+            .record_call(module.name, function, arity, generation)
     else {
         return;
     };

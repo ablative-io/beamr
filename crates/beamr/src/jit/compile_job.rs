@@ -205,10 +205,10 @@ mod tests {
         let compiler = Arc::new(JitCompiler::new(JitSettings).unwrap());
         let profiler = Arc::new(JitProfiler::new(1));
         let cache = Arc::new(JitCache::new());
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(Atom::MODULE, Atom::OK, 0, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         let epoch = profiler
             .profile_epoch(Atom::MODULE, Atom::OK, 0)
             .expect("profile exists");
@@ -244,10 +244,10 @@ mod tests {
         let compiler = Arc::new(JitCompiler::new(JitSettings).unwrap());
         let profiler = Arc::new(JitProfiler::new(1));
         let cache = Arc::new(JitCache::new());
-        assert_eq!(
+        assert!(matches!(
             profiler.record_call(Atom::MODULE, Atom::ERROR, 0, 1),
-            RecordResult::CompileNow
-        );
+            RecordResult::CompileNow { .. }
+        ));
         let epoch = profiler
             .profile_epoch(Atom::MODULE, Atom::ERROR, 0)
             .expect("profile exists");
