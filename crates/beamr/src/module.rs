@@ -185,6 +185,34 @@ impl Module {
         Some((function, arity))
     }
 
+    /// Returns the instruction slice of the function entered at `entry_ip` —
+    /// the slice shape `JitCompiler::compile` consumes, identical to
+    /// `aot::exported_instructions` for the same function.
+    ///
+    /// `entry_ip` is a call target (a `label_ip`/`export_ip` result): the
+    /// single entry `Label`/`FuncInfo` prelude instruction is skipped, and the
+    /// slice ends before the next `FuncInfo` or at code end. `None` when
+    /// `entry_ip` is outside the code or precedes the first function entry.
+    #[must_use]
+    pub fn function_instructions(&self, entry_ip: usize) -> Option<&[Instruction]> {
+        self.function_at_ip(entry_ip)?;
+        let start = match self.code.get(entry_ip)? {
+            Instruction::Label { .. } | Instruction::FuncInfo { .. } => entry_ip + 1,
+            _ => entry_ip,
+        };
+        let end = self
+            .code
+            .iter()
+            .enumerate()
+            .skip(start.saturating_add(1))
+            .find_map(|(index, instruction)| match instruction {
+                Instruction::FuncInfo { .. } => Some(index),
+                _ => None,
+            })
+            .unwrap_or(self.code.len());
+        self.code.get(start..end)
+    }
+
     /// Resolves the source line containing `ip` from the last preceding line marker.
     #[must_use]
     pub fn line_at_ip(&self, ip: usize) -> Option<u32> {
@@ -501,6 +529,76 @@ mod tests {
             module.function_at_ip(12),
             Some((crate::atom::Atom::FLUSH, 2))
         );
+    }
+
+    #[test]
+    fn function_instructions_slices_one_function_between_func_info_boundaries() {
+        let mut module = empty_module(crate::atom::Atom::MODULE);
+        module.code = vec![
+            crate::loader::Instruction::FuncInfo {
+                module: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::MODULE)),
+                function: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::OK)),
+                arity: crate::loader::decode::Operand::Unsigned(0),
+            },
+            crate::loader::Instruction::Label { label: 2 },
+            crate::loader::Instruction::Return,
+            crate::loader::Instruction::FuncInfo {
+                module: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::MODULE)),
+                function: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::BADARG)),
+                arity: crate::loader::decode::Operand::Unsigned(0),
+            },
+            crate::loader::Instruction::Label { label: 3 },
+            crate::loader::Instruction::Swap {
+                left: crate::loader::decode::Operand::X(0),
+                right: crate::loader::decode::Operand::X(1),
+            },
+            crate::loader::Instruction::Return,
+        ];
+        module.function_table = vec![
+            (0, crate::atom::Atom::OK, 0),
+            (3, crate::atom::Atom::BADARG, 0),
+        ];
+
+        // Entry label of the first function: the slice stops before the next
+        // FuncInfo, not at code end.
+        assert_eq!(
+            module.function_instructions(1),
+            Some(&module.code[2..3]),
+            "first function's slice must end before the next FuncInfo"
+        );
+        // Entry label of the last function: the slice runs to code end.
+        assert_eq!(module.function_instructions(4), Some(&module.code[5..7]));
+        // A non-prelude entry instruction is included, not skipped.
+        assert_eq!(module.function_instructions(5), Some(&module.code[5..7]));
+    }
+
+    #[test]
+    fn function_instructions_refuses_out_of_code_and_pre_function_ips() {
+        let mut module = empty_module(crate::atom::Atom::MODULE);
+        module.code = vec![
+            crate::loader::Instruction::Label { label: 1 },
+            crate::loader::Instruction::Return,
+            crate::loader::Instruction::FuncInfo {
+                module: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::MODULE)),
+                function: crate::loader::decode::Operand::Atom(Some(crate::atom::Atom::OK)),
+                arity: crate::loader::decode::Operand::Unsigned(0),
+            },
+            crate::loader::Instruction::Label { label: 2 },
+            crate::loader::Instruction::Return,
+        ];
+        module.function_table = vec![(2, crate::atom::Atom::OK, 0)];
+
+        assert_eq!(
+            module.function_instructions(0),
+            None,
+            "an ip before the first function entry has no owning function"
+        );
+        assert_eq!(
+            module.function_instructions(module.code.len()),
+            None,
+            "an ip outside the code bounds yields no slice"
+        );
+        assert_eq!(module.function_instructions(3), Some(&module.code[4..5]));
     }
 
     #[test]

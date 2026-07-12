@@ -662,6 +662,18 @@ pub(super) fn build_native_services(
             }) as Arc<dyn crate::native::TcpIoFacility>
         }),
         jit_cache: Some(Arc::clone(&shared.jit_cache)),
+        // The profiling handle composes AWAY under replay (reduction counts
+        // are validated there and JIT charges differ, commit-5 precedent) and
+        // wherever the dirty-CPU service is Disabled: absence at the call
+        // edges is the disable mechanism, never a runtime flag check.
+        jit_profiling: (!shared.replay_mode && shared.dirty_cpu.service().is_some()).then(|| {
+            Arc::new(crate::jit::JitProfilingServices {
+                profiler: Arc::clone(&shared.jit_profiler),
+                submitter: Arc::new(SchedulerJitSubmissionFacility {
+                    shared: Arc::clone(shared),
+                }),
+            })
+        }),
         replay_driver: shared.replay_driver.clone(),
         bif_registry: Some(Arc::clone(&shared.bif_registry)),
         nif_private_data: shared.nif_private_data.clone(),
@@ -675,6 +687,25 @@ pub(super) fn build_native_services(
 }
 
 // ── Facility implementations ────────────────────────────────────────────────
+
+struct SchedulerJitSubmissionFacility {
+    shared: Arc<SharedState>,
+}
+
+impl crate::jit::JitSubmissionFacility for SchedulerJitSubmissionFacility {
+    fn submit(
+        &self,
+        request: crate::jit::CompilationRequest,
+    ) -> Result<(), super::dirty::DirtySubmitError> {
+        let job = crate::jit::CompilationJob::new(
+            request,
+            Arc::clone(&self.shared.jit_compiler),
+            Arc::clone(&self.shared.jit_profiler),
+            Arc::clone(&self.shared.jit_cache),
+        );
+        crate::jit::try_submit_jit_compilation(&self.shared.dirty_cpu, job)
+    }
+}
 
 struct SchedulerTeardownAdmissionFacility {
     shared: Arc<SharedState>,

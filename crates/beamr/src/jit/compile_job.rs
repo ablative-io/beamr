@@ -67,7 +67,8 @@ impl CompilationJob {
             Ok(native_code) => {
                 self.cache.insert(key, native_code);
                 self.profiler
-                    .mark_compiled(key.module, key.function, key.arity);
+                    .mark_compiled(key.module, key.function, key.arity, key.generation);
+                self.profiler.note_success();
             }
             Err(
                 JitError::UnsupportedOpcode { .. }
@@ -75,14 +76,37 @@ impl CompilationJob {
                 | JitError::UnknownLabel { .. },
             ) => {
                 self.profiler
-                    .mark_unsupported(key.module, key.function, key.arity);
+                    .mark_unsupported(key.module, key.function, key.arity, key.generation);
+                self.profiler.note_unsupported();
             }
             Err(JitError::CraneliftError(_) | JitError::EmptyFunction) => {
                 self.profiler
-                    .reset_counter(key.module, key.function, key.arity);
+                    .reset_counter(key.module, key.function, key.arity, key.generation);
+                self.profiler.note_transient_failure();
             }
         }
     }
+}
+
+/// Fire-and-forget submission surface the interpreter's call edges use on
+/// [`crate::jit::RecordResult::CompileNow`]. The scheduler implements it over
+/// its composed dirty-CPU [`ServiceMode`], attaching its own compiler,
+/// profiler, and cache to the job; an `Err` is the pool's refusal and never
+/// surfaces into BEAM semantics.
+pub trait JitSubmissionFacility: Send + Sync {
+    /// Submits one compilation request without blocking the caller.
+    fn submit(&self, request: CompilationRequest) -> Result<(), DirtySubmitError>;
+}
+
+/// Profiler and submission handle threaded to the interpreter's call edges
+/// along the jit-cache seam. Present IFF the jit feature is compiled, replay
+/// mode is off, and the dirty-CPU service is live — absence is the disable
+/// mechanism, so the edges never branch on replay or service state.
+pub struct JitProfilingServices {
+    /// Hotness profiler consulted on cache-miss fall-throughs.
+    pub profiler: Arc<JitProfiler>,
+    /// Threshold-tripped compilation submission into the dirty-CPU service.
+    pub submitter: Arc<dyn JitSubmissionFacility>,
 }
 
 /// Submits JIT compilation to the dirty CPU pool without blocking the caller.
@@ -144,7 +168,7 @@ mod tests {
         let profiler = Arc::new(JitProfiler::new(1));
         let cache = Arc::new(JitCache::new());
         assert_eq!(
-            profiler.record_call(Atom::MODULE, Atom::OK, 0),
+            profiler.record_call(Atom::MODULE, Atom::OK, 0, 1),
             RecordResult::CompileNow
         );
 
@@ -173,7 +197,7 @@ mod tests {
         let profiler = Arc::new(JitProfiler::new(1));
         let cache = Arc::new(JitCache::new());
         assert_eq!(
-            profiler.record_call(Atom::MODULE, Atom::ERROR, 0),
+            profiler.record_call(Atom::MODULE, Atom::ERROR, 0, 1),
             RecordResult::CompileNow
         );
 
@@ -203,7 +227,7 @@ mod tests {
         assert!(cache.lookup(Atom::MODULE, Atom::ERROR, 0, 1).is_none());
         for _ in 0..10 {
             assert_eq!(
-                profiler.record_call(Atom::MODULE, Atom::ERROR, 0),
+                profiler.record_call(Atom::MODULE, Atom::ERROR, 0, 1),
                 RecordResult::Continue
             );
         }

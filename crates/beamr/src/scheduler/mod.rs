@@ -211,7 +211,7 @@ use crate::io::{
     StandardIoServer, create_ring_with_prefix,
 };
 #[cfg(feature = "threads")]
-use crate::jit::{DEFAULT_JIT_THRESHOLD, JitCache, JitProfiler};
+use crate::jit::{DEFAULT_JIT_THRESHOLD, JitCache, JitCompiler, JitProfiler, JitSettings};
 #[cfg(feature = "threads")]
 use crate::module::ModuleRegistry;
 #[cfg(feature = "threads")]
@@ -352,6 +352,7 @@ pub(super) struct SharedState {
     pub(super) dirty_cpu: ServiceMode<DirtyPool>,
     pub(super) dirty_io: ServiceMode<DirtyPool>,
     jit_profiler: Arc<JitProfiler>,
+    jit_compiler: Arc<JitCompiler>,
     jit_cache: Arc<JitCache>,
     next_pid: AtomicU64,
     wait_set: Mutex<WaitSet>,
@@ -914,6 +915,13 @@ impl SharedState {
             heap_words,
             self.scheduler_utilization(),
         );
+        let compile_outcomes = self.jit_profiler.compile_outcome_counters();
+        crate::telemetry::metrics::record_jit_compile_outcomes(
+            compile_outcomes.submissions,
+            compile_outcomes.successes,
+            compile_outcomes.unsupported,
+            compile_outcomes.transient_failures,
+        );
     }
 
     #[cfg(feature = "telemetry")]
@@ -1286,6 +1294,13 @@ impl Scheduler {
         let jit_profiler = Arc::new(JitProfiler::new(
             config.jit_threshold.unwrap_or(DEFAULT_JIT_THRESHOLD),
         ));
+        // One compiler per scheduler; a construction failure is fatal-loud
+        // from the constructor (the ReadinessBuildError precedent), never a
+        // silent degradation to interpreter-only.
+        let jit_compiler = Arc::new(
+            build_jit_compiler()
+                .map_err(|error| format!("JIT compiler construction failed: {error}"))?,
+        );
         #[cfg(feature = "telemetry")]
         let telemetry_sample_interval = config
             .telemetry_sample_interval
@@ -1499,6 +1514,7 @@ impl Scheduler {
                 dirty_cpu,
                 dirty_io,
                 jit_profiler,
+                jit_compiler,
                 jit_cache,
                 next_pid: AtomicU64::new(1),
                 wait_set: Mutex::new(WaitSet::default()),
@@ -2038,6 +2054,29 @@ fn configured_thread_count(override_count: Option<usize>) -> usize {
         .unwrap_or_else(|| {
             std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
         })
+}
+
+// Scheduler construction runs on the caller's thread, so a thread-local
+// injection scopes the failure to the test that set it — parallel tests
+// constructing schedulers are untouched.
+#[cfg(feature = "threads")]
+#[cfg(test)]
+thread_local! {
+    static INJECT_JIT_COMPILER_FAILURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Builds the per-scheduler JIT compiler. Cranelift cannot be made to fail
+/// naturally on a supported host, so the constructor-error propagation is
+/// pinned through the test-only injection above.
+#[cfg(feature = "threads")]
+fn build_jit_compiler() -> Result<JitCompiler, crate::jit::JitError> {
+    #[cfg(test)]
+    if INJECT_JIT_COMPILER_FAILURE.with(std::cell::Cell::get) {
+        return Err(crate::jit::JitError::CraneliftError(
+            "injected construction failure (test seam)".to_owned(),
+        ));
+    }
+    JitCompiler::new(JitSettings)
 }
 
 /// Build a dirty pool slot from a config request (spec §3.2/§6):

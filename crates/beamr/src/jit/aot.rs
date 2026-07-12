@@ -265,7 +265,7 @@ pub fn load_companion_into_cache(
     let mut loaded = 0;
     for (function, arity, code) in entries {
         cache.insert(JitCacheKey::new(module.name, function, arity, 0), code);
-        profiler.mark_compiled(module.name, function, arity);
+        profiler.mark_compiled(module.name, function, arity, 0);
         loaded += 1;
     }
     Ok(loaded)
@@ -435,6 +435,67 @@ impl Error for AotError {
             | Self::ChecksumMismatch { .. }
             | Self::Malformed(_)
             | Self::MissingFunction { .. } => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::exported_instructions;
+    use crate::atom::AtomTable;
+    use crate::loader::{load_beam_chunks, load_module};
+    use crate::module::ModuleRegistry;
+    use crate::native::BifRegistryImpl;
+
+    /// The wall between the two slicers (brief JIT-001 R8): for every export
+    /// of a real fixture module, `Module::function_instructions` on the
+    /// LOADED module must yield an element-identical slice to
+    /// `exported_instructions` on the PARSED module, so neither can change
+    /// shape unilaterally without failing here.
+    #[test]
+    fn function_instructions_matches_aot_slicer_for_every_export() {
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/stdlib/lists.beam"
+        ))
+        .expect("lists.beam fixture is readable");
+        let atom_table = AtomTable::with_common_atoms();
+        let parsed = load_beam_chunks(&bytes, &atom_table).expect("lists.beam parses");
+        let registry = ModuleRegistry::new();
+        let (module, _report) =
+            load_module(&bytes, &atom_table, &registry, &BifRegistryImpl::new())
+                .expect("lists.beam loads");
+        assert!(
+            !parsed.exports.is_empty(),
+            "fixture must have exports for the pin to bite"
+        );
+
+        for export in &parsed.exports {
+            let aot_slice = exported_instructions(&parsed, export).unwrap_or_else(|error| {
+                panic!(
+                    "AOT slicer refused export {:?}/{}: {error}",
+                    export.function, export.arity
+                )
+            });
+            let entry_ip = module
+                .export_ip(export.function, export.arity)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "loaded module lacks export {:?}/{}: {error:?}",
+                        export.function, export.arity
+                    )
+                });
+            let module_slice = module.function_instructions(entry_ip).unwrap_or_else(|| {
+                panic!(
+                    "function_instructions returned None for export {:?}/{} at ip {entry_ip}",
+                    export.function, export.arity
+                )
+            });
+            assert_eq!(
+                module_slice, aot_slice,
+                "slicers diverged for export {:?}/{}",
+                export.function, export.arity
+            );
         }
     }
 }

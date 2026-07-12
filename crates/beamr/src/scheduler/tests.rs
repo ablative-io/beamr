@@ -214,6 +214,84 @@ fn scheduler_uses_explicit_jit_threshold() {
     scheduler.shutdown();
 }
 
+/// R1's three gating facts, pinned at the site that holds them: the JIT
+/// profiling handle is present IFF the jit feature is compiled (this test IS
+/// jit-compiled), replay mode is off, and the dirty-CPU service is live.
+#[test]
+fn replay_and_disabled_dirty_cpu_compose_the_jit_handle_away() {
+    let live = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
+        .expect("live scheduler starts");
+    let services =
+        supervision_integration::build_native_services(&live.shared, NamespaceId::DEFAULT);
+    assert!(
+        services.jit_profiling.is_some(),
+        "default profile with a live dirty-CPU pool must offer the profiling handle"
+    );
+    live.shutdown();
+
+    let replay = Scheduler::new_replay(SchedulerConfig::default(), ReplayLog::default())
+        .expect("replay scheduler starts");
+    let services =
+        supervision_integration::build_native_services(&replay.shared, NamespaceId::DEFAULT);
+    assert!(
+        services.jit_profiling.is_none(),
+        "replay composes the profiling handle away entirely"
+    );
+    replay.shutdown();
+
+    let minimal = Scheduler::with_services(
+        SchedulerConfig::default(),
+        SchedulerServices::minimal(),
+        Arc::new(ModuleRegistry::new()),
+    )
+    .expect("minimal scheduler starts");
+    let services =
+        supervision_integration::build_native_services(&minimal.shared, NamespaceId::DEFAULT);
+    assert!(
+        services.jit_profiling.is_none(),
+        "a Disabled dirty-CPU service composes the profiling handle away"
+    );
+    minimal.shutdown();
+}
+
+#[test]
+fn failing_jit_compiler_construction_surfaces_from_the_scheduler_constructor() {
+    INJECT_JIT_COMPILER_FAILURE.with(|flag| flag.set(true));
+    let result = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()));
+    INJECT_JIT_COMPILER_FAILURE.with(|flag| flag.set(false));
+
+    match result {
+        Err(error) => assert!(
+            error.contains("JIT compiler construction failed"),
+            "constructor error must name the JIT compiler: {error}"
+        ),
+        Ok(scheduler) => {
+            scheduler.shutdown();
+            panic!("a failing JitCompiler::new must fail scheduler construction, not degrade");
+        }
+    }
+}
+
+#[test]
+fn delete_module_drops_jit_profile_entries() {
+    let scheduler = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
+        .expect("scheduler should start");
+    let module = scheduler.shared.atom_table.intern("jit_deleted_module");
+    let function = scheduler.shared.atom_table.intern("hot");
+    scheduler
+        .jit_profiler()
+        .mark_compiled(module, function, 0, 1);
+    assert!(scheduler.jit_profiler().is_compiled(module, function, 0));
+
+    scheduler.delete_module(module);
+
+    assert!(
+        !scheduler.jit_profiler().is_compiled(module, function, 0),
+        "delete_module must drop the module's JIT profile entries"
+    );
+    scheduler.shutdown();
+}
+
 #[test]
 fn ets_registry_create_lookup_name_and_delete() {
     let scheduler = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
@@ -1400,6 +1478,10 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         standard_io: super::service::ServiceMode::Disabled,
         local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
+        jit_compiler: Arc::new(
+            crate::jit::JitCompiler::new(crate::jit::JitSettings)
+                .expect("host JIT compiler should initialize"),
+        ),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
         replay_driver: None,
         replay_mode: false,
@@ -1825,6 +1907,10 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         standard_io: super::service::ServiceMode::Disabled,
         local_node: crate::distribution::Node::new(crate::atom::Atom::new(0), 0),
         jit_profiler: Arc::new(crate::jit::JitProfiler::new(1000)),
+        jit_compiler: Arc::new(
+            crate::jit::JitCompiler::new(crate::jit::JitSettings)
+                .expect("host JIT compiler should initialize"),
+        ),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
         replay_driver: None,
         replay_mode: false,

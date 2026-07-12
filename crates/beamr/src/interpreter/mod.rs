@@ -22,7 +22,7 @@ use crate::error::ExecError;
 use crate::io::IoFacility;
 use crate::io_sink::IoSink;
 #[cfg(feature = "jit")]
-use crate::jit::JitCache;
+use crate::jit::{JitCache, JitProfilingServices};
 use crate::module::{Module, ModuleRegistry};
 #[cfg(feature = "readiness")]
 use crate::native::ReadinessFacility;
@@ -117,6 +117,11 @@ pub struct NativeServices {
     /// Shared JIT cache used for mixed interpreter/native dispatch.
     #[cfg(feature = "jit")]
     pub jit_cache: Option<Arc<JitCache>>,
+    /// JIT hot-path profiler and compilation submitter, travelling the
+    /// jit-cache seam. `Some` IFF replay mode is off and the dirty-CPU
+    /// service is live — absence disables profiling at the call edges.
+    #[cfg(feature = "jit")]
+    pub jit_profiling: Option<Arc<JitProfilingServices>>,
     /// Replay driver used to replace nondeterministic native decisions.
     pub replay_driver: Option<Arc<Mutex<ReplayDriver>>>,
     /// Optional sink for runtime native capability audit events.
