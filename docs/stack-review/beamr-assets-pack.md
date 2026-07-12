@@ -81,6 +81,20 @@ practice):
   `suspend_result_binary` tests encode the protocol's hardest cases
   (tail-call parks, lost-wakeup races, binary results). Read them before
   touching the protocol; extend them with any new case.
+- **The first-external-consumer gate** (adopted 2026-07-12; origin: beamr
+  §1.4 conformance gap, standpoint-law fourth sighting). Every clause of a
+  design that promises an embedder- or consumer-facing surface must carry,
+  in the same commit that implements it, a conformance gate that consumes
+  the surface exclusively through PUBLIC paths from OUTSIDE the
+  implementing crate — a test crate, an example binary, or a downstream
+  fixture. In-crate tests cannot verify consumer-standpoint claims: they
+  see `pub(crate)` reality, so a surface that exists only from the author's
+  chair passes every one of them. Review question, added to the adversarial
+  set: "which gate would fail if this API were deleted but its in-crate
+  plumbing kept?" If no gate answers, the clause is unverified regardless
+  of coverage numbers. (Cross-reference: the standpoint law — identity and
+  existence must be falsifiable from the consumer's standpoint with a
+  structural guard.)
 
 ## 3. Design documents required before implementation
 
