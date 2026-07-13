@@ -217,6 +217,7 @@ use distribution_service::DistributionService;
 use process_slot::{PendingMailboxMessage, ProcessMetadata, ProcessSlot};
 #[cfg(feature = "readiness")]
 use readiness::{ReadinessConsumer, ReadinessService, RouteHome, ServiceConsumerId};
+#[cfg(feature = "threads")]
 use ring_service::{RingService, StandardIoService};
 #[cfg(feature = "threads")]
 use run_queue::{PriorityStealers, RunQueue};
@@ -543,6 +544,7 @@ impl Drop for TeardownAdmission {
     }
 }
 
+#[cfg(feature = "threads")]
 impl SharedState {
     /// Reserve admission for one dirty submission, refused once intake is
     /// closed. Closure and reservation share ONE lock, so a reservation
