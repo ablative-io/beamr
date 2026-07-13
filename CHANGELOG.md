@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.15.1 — 2026-07-13
+
+### Fixed
+
+- `SupervisionFacility::monitor` against an already-tombstoned target now
+  delivers the immediate DOWN through the same dual-slot admission path as
+  normal exits: a `Present` watcher is enqueued and woken after the message is
+  visible, and an `Executing` watcher receives it via `pending_down_messages`
+  merged at store-back. Previously the DOWN was silently dropped for any
+  watcher not in the `Present` slot — including every native host observer
+  registering while executing — while the result still claimed
+  `immediate_down: true`.
+- `MonitorResult::immediate_down` is now truthful: it reports whether the DOWN
+  was actually admitted, and is `false` when the watcher slot is absent or the
+  watcher has already exited.
+
+### Added
+
+- `Scheduler::monitor_with_result(watcher_pid, target_pid)` returns the full
+  `MonitorResult` so embedders can observe the immediate-DOWN case. The
+  existing `Scheduler::monitor` keeps its signature and delegates to it.
+
 ## 0.15.0 — 2026-07-13
 
 ### Added
