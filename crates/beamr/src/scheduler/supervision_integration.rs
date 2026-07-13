@@ -483,10 +483,7 @@ fn deliver_down_messages(shared: &SharedState, target_pid: u64, reason: ExitReas
     };
 
     for (watcher_pid, reference) in watcher_info {
-        let delivered = deliver_single_down(shared, watcher_pid, reference, target_pid, reason);
-        if delivered {
-            wake_process(shared, watcher_pid);
-        }
+        deliver_single_down_and_wake(shared, watcher_pid, reference, target_pid, reason);
     }
 }
 
@@ -522,6 +519,26 @@ fn deliver_single_down(
         }
         ProcessSlot::Absent => false,
     }
+}
+
+/// Admit one DOWN and perform the wake only after the mailbox or executing-slot
+/// metadata contains it. Returns whether a live watcher accepted the message.
+fn deliver_single_down_and_wake(
+    shared: &SharedState,
+    watcher_pid: u64,
+    reference: u64,
+    target_pid: u64,
+    reason: ExitReason,
+) -> bool {
+    let delivered = deliver_single_down(shared, watcher_pid, reference, target_pid, reason);
+    if delivered {
+        // For Present this closes the enqueue-to-park race. For Executing the
+        // wake is normally a no-op because the watcher is not registered in
+        // the wait set yet; store-back merges pending_down_messages before the
+        // Wait arm's post-registration mailbox recheck, which self-wakes it.
+        wake_process(shared, watcher_pid);
+    }
+    delivered
 }
 
 /// Build the `NativeServices` bundle for a scheduler time slice.
@@ -2324,20 +2341,22 @@ impl SupervisionFacility for SchedulerSupervisionFacility {
 
         // Check if target is already dead.
         if let Some(reason) = self.shared.exit_tombstones.get(&target_pid) {
-            // Allocate reference from monitor set.
             let reference = ms.allocate_reference_pub();
+            drop(ms);
 
-            // Deliver immediate DOWN to caller.
-            if let Some(entry) = self.shared.process_bodies.get(&caller_pid) {
-                let mut slot = lock_or_recover(&entry);
-                if let ProcessSlot::Present(ScheduledProcess(caller)) = &mut *slot {
-                    monitor::enqueue_down_message_pub(caller, reference, target_pid, reason);
-                }
-            }
+            // Use the normal-exit admission and wake path. In particular, an
+            // executing caller receives the DOWN through pending metadata.
+            let immediate_down = deliver_single_down_and_wake(
+                &self.shared,
+                caller_pid,
+                reference,
+                target_pid,
+                reason,
+            );
 
             return Ok(MonitorResult {
                 reference,
-                immediate_down: true,
+                immediate_down,
             });
         }
 

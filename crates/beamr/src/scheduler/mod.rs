@@ -1566,6 +1566,26 @@ impl Scheduler {
     pub fn is_native(&self, pid: u64) -> Option<bool> {
         process_is_native(&self.shared, pid)
     }
+    /// Establish a unidirectional monitor and return its complete result.
+    ///
+    /// [`crate::native::supervision::MonitorResult::immediate_down`] is true
+    /// when the target already had a retained exit tombstone and the resulting
+    /// DOWN was admitted to the watcher's mailbox (or to its executing-slot
+    /// pending messages). It remains false for an ordinary live monitor and
+    /// when a tombstoned target has no live watcher slot that can accept DOWN.
+    pub fn monitor_with_result(
+        &self,
+        watcher_pid: u64,
+        target_pid: u64,
+    ) -> Result<
+        crate::native::supervision::MonitorResult,
+        crate::native::supervision::SupervisionError,
+    > {
+        let facility = supervision_integration::SchedulerSupervisionFacility {
+            shared: Arc::clone(&self.shared),
+        };
+        crate::native::supervision::SupervisionFacility::monitor(&facility, watcher_pid, target_pid)
+    }
     /// Establish a unidirectional monitor from `watcher_pid` to `target_pid`,
     /// returning the monitor reference.
     ///
@@ -1579,10 +1599,7 @@ impl Scheduler {
         watcher_pid: u64,
         target_pid: u64,
     ) -> Result<u64, crate::native::supervision::SupervisionError> {
-        let facility = supervision_integration::SchedulerSupervisionFacility {
-            shared: Arc::clone(&self.shared),
-        };
-        crate::native::supervision::SupervisionFacility::monitor(&facility, watcher_pid, target_pid)
+        self.monitor_with_result(watcher_pid, target_pid)
             .map(|result| result.reference)
     }
     /// Send an exit signal to `target_pid` with `reason`, the embedding-side
@@ -2196,6 +2213,9 @@ mod inventory_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod mailbox_send_tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
+mod monitor_immediate_down_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod readiness_contract_tests;
