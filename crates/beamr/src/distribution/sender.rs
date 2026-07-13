@@ -47,7 +47,7 @@
 //! The single drain prefers the control lane (`tokio::select!` with `biased`):
 //! controls are small and latency-sensitive, and preferring them empties the
 //! bounded lane fastest. Accepted v1 blast radius: a wedged peer can hold the
-//! drain up to [`WRITE_TIMEOUT`] — or until the wedged connection itself is
+//! drain up to `WRITE_TIMEOUT` — or until the wedged connection itself is
 //! marked down (its own lane overflow, the net-tick), whichever comes first:
 //! `mark_down`'s socket shutdown errors the parked write immediately, so the
 //! drain recovers without waiting out the timer (commit 4). Within that
@@ -73,7 +73,7 @@
 //! [`DistSender`] `Arc` can resolve anywhere — a scheduler worker, the main
 //! thread, a `#[tokio::test]` task, or a task on this very runtime —
 //! `DistSenderInner` holds the runtime in a `Mutex<Option<_>>` and hands
-//! teardown to [`join_runtime_drop`](crate::distribution::join_runtime_drop),
+//! teardown to `join_runtime_drop`,
 //! which joins the worker before returning from every context except this
 //! runtime's own thread (the only place a join must deadlock — there it falls
 //! back to `shutdown_background`).
@@ -82,7 +82,7 @@
 //!
 //! The single drain serialises writes across all peers, so one peer that is
 //! TCP-connected but never reads (kernel send buffer full) would stall
-//! propagation cluster-wide. Each write is bounded by [`WRITE_TIMEOUT`]; on
+//! propagation cluster-wide. Each write is bounded by `WRITE_TIMEOUT`; on
 //! elapse the connection is marked down (firing the connection-down hook and
 //! remote-node purge) and the drain proceeds.
 

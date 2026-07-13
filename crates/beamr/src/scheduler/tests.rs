@@ -2003,7 +2003,9 @@ fn deliver_atom(shared: &SharedState, pid: u64, atom: Atom) {
     let mut slot = lock_or_recover(&entry);
     match &mut *slot {
         ProcessSlot::Present(scheduled) => scheduled.0.mailbox_mut().push_owned(Term::atom(atom)),
-        ProcessSlot::Executing(metadata) => metadata.pending_io_messages.push(Term::atom(atom)),
+        ProcessSlot::Executing(metadata) => metadata
+            .pending_io_messages
+            .push(PendingMailboxMessage::TargetOwned(Term::atom(atom))),
         ProcessSlot::Absent => panic!("process body absent"),
     }
 }

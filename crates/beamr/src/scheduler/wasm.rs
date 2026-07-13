@@ -177,7 +177,7 @@ impl WasmScheduler {
     ///
     /// The bytecode async-NIF path stores the completion in `async_results`,
     /// where the next bytecode slice injects it into `x(0)` and advances past the
-    /// NIF (see [`WasmScheduler::apply_async_completion`]). A NATIVE process has
+    /// NIF (see `WasmScheduler::apply_async_completion`). A NATIVE process has
     /// no `x(0)`/instruction pointer, so for a native target the completion is
     /// delivered as a mailbox message instead — `{ok, Value}` on success or
     /// `{error, Reason}` on rejection — which the parked handler reads via

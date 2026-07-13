@@ -193,7 +193,7 @@ impl WasmScheduler {
     /// Spawn a root native process from `factory` and make it runnable.
     ///
     /// Mirrors [`WasmScheduler::spawn_in`](super::WasmScheduler) for the native
-    /// case: it allocates a pid, attaches the [`NativeBody`], and pushes the
+    /// case: it allocates a pid, attaches the `NativeBody`, and pushes the
     /// process onto the ready queue. Returns the new pid.
     pub fn spawn_native_root(&mut self, factory: NativeHandlerFactory) -> u64 {
         let pid = self.alloc_pid();
@@ -250,7 +250,7 @@ impl WasmScheduler {
 
     /// Run one cooperative turn that understands native processes.
     ///
-    /// Native processes run their [`NativeHandler`] for one slice via the
+    /// Native processes run their [`NativeHandler`](crate::native::native_process::NativeHandler) for one slice via the
     /// cooperative facilities; any other process is left for the bytecode turn.
     /// Returns the pids that exited during this turn.
     pub fn run_native_until_idle(&mut self) -> Vec<u64> {

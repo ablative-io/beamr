@@ -24,6 +24,38 @@ pub enum DirtySchedulerKind {
     Io,
 }
 
+/// Typed failure returned by [`Scheduler::send_to_mailbox`].
+#[cfg(feature = "threads")]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MailboxSendError {
+    /// No live process body or retained exit tombstone exists for the PID.
+    NoSuchProcess,
+    /// The PID has a retained exit tombstone and can no longer accept messages.
+    ProcessTerminated,
+    /// The process body exists, but its slot cannot currently admit a message.
+    ProcessSlotUnavailable,
+    /// The target process heap cannot reserve enough space for the message.
+    HeapAllocationFailed,
+    /// The owned value does not contain a valid, copyable BEAM term.
+    InvalidMessage,
+}
+
+#[cfg(feature = "threads")]
+impl std::fmt::Display for MailboxSendError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::NoSuchProcess => "no such process",
+            Self::ProcessTerminated => "process already terminated",
+            Self::ProcessSlotUnavailable => "process slot unavailable for mailbox admission",
+            Self::HeapAllocationFailed => "target heap cannot admit mailbox message",
+            Self::InvalidMessage => "invalid owned mailbox message",
+        })
+    }
+}
+
+#[cfg(feature = "threads")]
+impl std::error::Error for MailboxSendError {}
+
 /// Result returned by a successful hot module load.
 ///
 /// Plain metadata returned by the threaded code server. It is named in the
@@ -182,7 +214,7 @@ use dashmap::{DashMap, DashSet};
 #[cfg(feature = "threads")]
 use distribution_service::DistributionService;
 #[cfg(feature = "threads")]
-use process_slot::{ProcessMetadata, ProcessSlot};
+use process_slot::{PendingMailboxMessage, ProcessMetadata, ProcessSlot};
 #[cfg(feature = "readiness")]
 use readiness::{ReadinessConsumer, ReadinessService, RouteHome, ServiceConsumerId};
 use ring_service::{RingService, StandardIoService};
@@ -641,10 +673,10 @@ impl SharedState {
         marker: crate::atom::Atom,
     ) -> bool {
         let delivered = timer_integration::deliver_term_to_mailbox(self, pid, Term::atom(marker));
-        if delivered {
+        if delivered.is_ok() {
             execution::wake_process(self, pid);
         }
-        delivered
+        delivered.is_ok()
     }
 
     /// Test-only: the owned distribution manager, panicking if `Disabled`. The
@@ -1535,7 +1567,7 @@ impl Scheduler {
     /// Establish a unidirectional monitor from `watcher_pid` to `target_pid`,
     /// returning the monitor reference.
     ///
-    /// Delegates to the existing pid-keyed [`SupervisionFacility`] used by the
+    /// Delegates to the existing pid-keyed `SupervisionFacility` used by the
     /// `monitor/2` BIF, so a `{'DOWN', ref, process, pid, reason}` message is
     /// delivered to the watcher via the same `deliver_down_messages` path when
     /// the target exits — there is no native-specific monitor handling. Works
@@ -1554,7 +1586,7 @@ impl Scheduler {
     /// Send an exit signal to `target_pid` with `reason`, the embedding-side
     /// equivalent of `erlang:exit/2`.
     ///
-    /// Delegates to the existing pid-keyed [`SupervisionFacility`]: an abnormal
+    /// Delegates to the existing pid-keyed `SupervisionFacility`: an abnormal
     /// reason terminates a non-trapping target through `cleanup_exited_process`
     /// (propagating to its links and monitors) or is delivered as an
     /// `{'EXIT', from, reason}` message to a trapping target. No native-specific
@@ -2073,10 +2105,38 @@ impl Scheduler {
     pub fn enqueue_atom_message(&self, target_pid: u64, atom: crate::atom::Atom) -> bool {
         let delivered =
             timer_integration::deliver_term_to_mailbox(&self.shared, target_pid, Term::atom(atom));
-        if delivered {
+        if delivered.is_ok() {
             execution::wake_process(&self.shared, target_pid);
         }
-        delivered
+        delivered.is_ok()
+    }
+
+    /// Send an owned arbitrary term to a process mailbox.
+    ///
+    /// The message is deep-copied from [`OwnedTerm`] storage into the target
+    /// process heap before this method returns. A waiting target is woken after
+    /// the message is visible. If the target is executing, admission is recorded
+    /// in its executing-slot metadata, copied at slice store-back, and then
+    /// woken; the receive park path's post-registration mailbox recheck closes
+    /// the store-back-to-wait-set gap, so the next receive observes the message
+    /// without a lost wake. Each successful send contributes at most one wake.
+    ///
+    /// This supports event-driven host consumers such as R-B-1 supervisors:
+    /// encode command identity and payload in a structurally disjoint tagged
+    /// tuple, own it with [`crate::ets::copy_term_to_ets`], then send that value
+    /// here and handle [`MailboxSendError`] instead of maintaining a side queue
+    /// plus a wake-only notification.
+    ///
+    /// Deliveries are appended under the target slot lock, preserving FIFO order
+    /// with this scheduler's atom and timer mailbox deliveries.
+    pub fn send_to_mailbox(
+        &self,
+        target_pid: u64,
+        message: OwnedTerm,
+    ) -> Result<(), MailboxSendError> {
+        timer_integration::deliver_owned_term_to_mailbox(&self.shared, target_pid, message)?;
+        execution::wake_process(&self.shared, target_pid);
+        Ok(())
     }
 }
 
@@ -2106,7 +2166,9 @@ impl IoWakeTarget for SharedState {
         if let ProcessSlot::Present(process) = &mut *slot {
             process.0.mailbox_mut().push_owned(term);
         } else if let ProcessSlot::Executing(metadata) = &mut *slot {
-            metadata.pending_io_messages.push(term);
+            metadata
+                .pending_io_messages
+                .push(PendingMailboxMessage::TargetOwned(term));
         }
         drop(slot);
         drop(entry);
@@ -2129,6 +2191,9 @@ mod connection_lifecycle_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod inventory_tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
+mod mailbox_send_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod readiness_contract_tests;

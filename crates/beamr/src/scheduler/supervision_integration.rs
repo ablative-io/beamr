@@ -1048,7 +1048,9 @@ impl IoMessageFacility for SchedulerIoMessageFacility {
                 process.0.mailbox_mut().push_owned(message);
             }
             ProcessSlot::Executing(metadata) => {
-                metadata.pending_io_messages.push(message);
+                metadata
+                    .pending_io_messages
+                    .push(super::PendingMailboxMessage::TargetOwned(message));
             }
             ProcessSlot::Absent => return false,
         }

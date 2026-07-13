@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.15.0 — 2026-07-13
+
+### Added
+
+- `Scheduler::send_to_mailbox(pid, OwnedTerm)` is the public threaded-runtime
+  host-to-process message primitive. It deep-copies arbitrary owned terms into
+  the receiver heap, preserves FIFO with existing atom/timer deliveries, and
+  wakes a waiting receiver only after the message is visible. Delivery racing
+  an executing slice is merged at store-back and observed by the receiver's next
+  receive without a lost-wake window.
+- `MailboxSendError` replaces boolean ambiguity for the new API with typed
+  `NoSuchProcess`, `ProcessTerminated`, `ProcessSlotUnavailable`,
+  `HeapAllocationFailed`, and `InvalidMessage` failures.
+
 ## 0.14.0 — 2026-07-12
 
 **The artifact of record for the embedder-composition campaign** (composition

@@ -89,7 +89,7 @@ pub enum ControlMessage {
     ///
     /// `node`/`pid_number`/`serial` are extracted from the member PID, which is
     /// always encoded as an external PID carrying the originating node's name so
-    /// that the receiver records a fully-qualified [`RemoteMember`] rather than a
+    /// that the receiver records a fully-qualified `RemoteMember` rather than a
     /// node-less local PID.
     PgJoin {
         /// Scope atom the member joined.
@@ -225,7 +225,7 @@ pub fn encode_reg_send_frame(
 /// `Tag` is `1` for a join or `2` for a leave. The member is always encoded as
 /// an **external** PID carrying `local_node` as its node component: a plain
 /// local PID would decode on the receiver with `node = None` and corrupt the
-/// recorded [`RemoteMember`]. The payload is `[]` (`NIL`) — `PG_UPDATE` carries
+/// recorded `RemoteMember`. The payload is `[]` (`NIL`) — `PG_UPDATE` carries
 /// no message body.
 pub fn encode_pg_update_frame(
     update: PgUpdate,

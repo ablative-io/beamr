@@ -413,7 +413,21 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
                 );
             }
             for message in metadata.pending_io_messages.drain(..) {
-                process.mailbox_mut().push_owned(message);
+                match message {
+                    crate::scheduler::PendingMailboxMessage::TargetOwned(term) => {
+                        process.mailbox_mut().push_owned(term);
+                    }
+                    crate::scheduler::PendingMailboxMessage::HostOwned {
+                        message,
+                        completion,
+                    } => {
+                        let copied = crate::scheduler::timer_integration::copy_owned_message(
+                            &mut process,
+                            &message,
+                        );
+                        let _receiver_gone = completion.send(copied);
+                    }
+                }
             }
             for payload in metadata.pending_distribution_payloads.drain(..) {
                 let mut context = crate::native::ProcessContext::new();

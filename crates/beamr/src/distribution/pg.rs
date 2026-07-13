@@ -120,7 +120,7 @@ impl PgRegistry {
     ///
     /// Used by the scheduler to install the real `SchedulerPgPropagation` once
     /// `SharedState` exists, resolving the construction-order/`Arc`-cycle
-    /// problem (see the [`PgRegistry::propagation`] field documentation).
+    /// problem (see the `PgRegistry::propagation` field documentation).
     pub fn set_propagation(&self, propagation: Arc<dyn PgPropagation>) {
         *self
             .propagation

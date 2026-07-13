@@ -2,7 +2,7 @@
 //! scheduler-supervised beamr process (Shape B of `NATIVE-PROCESS-DESIGN.md`).
 //!
 //! A native process *is* a [`crate::process::Process`] that additionally
-//! carries a [`NativeBody`] (a [`NativeHandler`] plus the factory that built
+//! carries a `NativeBody` (a [`NativeHandler`] plus the factory that built
 //! it). It keeps the heap, [`crate::mailbox::Mailbox`], logical clock, the
 //! `ProcessMetadata` swap, the 3-phase park-gap protocol, and exit-tombstones
 //! unchanged. The only genuinely new behaviour is *what executes during a
@@ -33,7 +33,7 @@ use crate::timer::{TimerKind, TimerRef, TimerWheel};
 
 /// Factory that reconstructs a handler instance.
 ///
-/// Taken at `spawn_native` time and stored on the [`NativeBody`] so a
+/// Taken at `spawn_native` time and stored on the `NativeBody` so a
 /// supervisor can rebuild a crashed native child without cloning a live
 /// handler (NATIVE-002 restart). `Send + Sync` because it is held inside a
 /// scheduler slot that crosses threads.
