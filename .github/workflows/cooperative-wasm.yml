@@ -1,0 +1,20 @@
+name: Cooperative wasm cfg closure
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  wasm32-unknown-unknown:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Check beamr cooperative feature closure
+        run: cargo check --target wasm32-unknown-unknown -p beamr --no-default-features --features cooperative,json --locked
+      - name: Check beamr-wasm manifest closure
+        run: cargo check --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked
