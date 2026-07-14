@@ -297,7 +297,7 @@ fn corpus_round_trips_when_env_set() {
 
 /// A hand-built module carrying the nasty operand and literal shapes: negative
 /// and bignum integers, atom-index width boundaries, an empty string table, and
-/// a compressed multi-entry `LitT`.
+/// a multi-entry `LitT` in the zero-prefix uncompressed form.
 #[test]
 fn hand_built_edge_cases_round_trip() {
     let table = AtomTable::with_common_atoms();
@@ -341,7 +341,7 @@ fn hand_built_edge_cases_round_trip() {
             source: Operand::Integer(40000),
             destination: Operand::X(1),
         },
-        // A literal reference into the compressed LitT.
+        // A literal reference into the LitT table.
         Instruction::Move {
             source: Operand::Literal(2),
             destination: Operand::X(2),
