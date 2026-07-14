@@ -6,8 +6,11 @@ use super::*;
 use crate::atom::{Atom, AtomTable};
 use crate::constant_pool::ConstantPool;
 use crate::ets::copy_term_to_ets;
+use crate::loader::decode::compact::Operand;
 use crate::loader::{Instruction, LambdaEntry, LineInfo, Literal};
-use crate::module::{Module, ModuleOrigin, ResolvedImport};
+use crate::module::{Module, ModuleOrigin, ResolvedImport, ResolvedImportTarget};
+use crate::native::bifs::register_gate1_bifs;
+use crate::native::process_bifs::register_gate2_bifs;
 use crate::native::{BifRegistryImpl, ProcessContext};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{CodePosition, ExitReason, Process, ProcessStatus, ReceiveTimeout};
@@ -269,6 +272,257 @@ fn async_rejection_maps_to_error_exit() {
         Some(ExitReason::Error)
     );
     assert_eq!(process.x_reg(0), Term::atom(Atom::BADARG));
+}
+
+/// WPORT-3 R2: real bytecode `erlang:send_after/3`, `start_timer/3`, and
+/// `cancel_timer/1` execute through `run_with_native_services` under the
+/// cooperative scheduler now that `WasmScheduler::native_services` injects the
+/// shared native timer wheel — the missing-service `badarg`/`false` refusal is
+/// gone, and the timers land in the wheel whose earliest deadline the drain
+/// result exposes.
+#[test]
+fn cooperative_bytecode_timer_bifs_round_trip_through_native_services() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let modules = Arc::new(ModuleRegistry::new());
+    let bifs = Arc::new(BifRegistryImpl::new());
+    register_gate1_bifs(&bifs, &atom_table).expect("gate-1 BIFs register");
+    register_gate2_bifs(&bifs, &atom_table).expect("gate-2 BIFs register");
+    let mut scheduler = WasmScheduler::new(
+        Arc::clone(&atom_table),
+        Arc::clone(&modules),
+        Arc::clone(&bifs),
+    );
+
+    let bif_import = |function: &str, arity: u8| -> ResolvedImport {
+        let erlang = atom_table.intern("erlang");
+        let function_atom = atom_table.intern(function);
+        let entry = bifs
+            .lookup(erlang, function_atom, arity)
+            .expect("gate-1 timer BIF is registered");
+        ResolvedImport {
+            module: erlang,
+            function: function_atom,
+            arity,
+            target: ResolvedImportTarget::Native(entry),
+        }
+    };
+    // Imports: 0 = self/0, 1 = send_after/3, 2 = start_timer/3,
+    // 3 = cancel_timer/1.
+    let imports = vec![
+        bif_import("self", 0),
+        bif_import("send_after", 3),
+        bif_import("start_timer", 3),
+        bif_import("cancel_timer", 1),
+    ];
+    let code = vec![
+        // recv_one/0: park until one message arrives, exit with it.
+        Instruction::Label { label: 1 },
+        Instruction::Label { label: 10 },
+        Instruction::LoopRec {
+            fail: Operand::Label(11),
+            destination: Operand::X(0),
+        },
+        Instruction::RemoveMessage,
+        Instruction::Return,
+        Instruction::Label { label: 11 },
+        Instruction::Wait {
+            fail: Operand::Label(10),
+        },
+        // arm_send/3 (Pid, DelayMs, Msg): send_after, exit with the reference.
+        Instruction::Label { label: 2 },
+        Instruction::Move {
+            source: Operand::X(0),
+            destination: Operand::X(3),
+        },
+        Instruction::Move {
+            source: Operand::X(1),
+            destination: Operand::X(0),
+        },
+        Instruction::Move {
+            source: Operand::X(3),
+            destination: Operand::X(1),
+        },
+        Instruction::CallExt {
+            arity: Operand::Unsigned(3),
+            import: Operand::Unsigned(1),
+        },
+        Instruction::Return,
+        // start_wait/0: start_timer(90_000, self(), 77), park, exit with the
+        // delivered {timeout, Ref, Msg}.
+        Instruction::Label { label: 3 },
+        Instruction::CallExt {
+            arity: Operand::Unsigned(0),
+            import: Operand::Unsigned(0),
+        },
+        Instruction::Move {
+            source: Operand::X(0),
+            destination: Operand::X(1),
+        },
+        Instruction::Move {
+            source: Operand::Integer(90_000),
+            destination: Operand::X(0),
+        },
+        Instruction::Move {
+            source: Operand::Integer(77),
+            destination: Operand::X(2),
+        },
+        Instruction::CallExt {
+            arity: Operand::Unsigned(3),
+            import: Operand::Unsigned(2),
+        },
+        Instruction::Label { label: 30 },
+        Instruction::LoopRec {
+            fail: Operand::Label(31),
+            destination: Operand::X(0),
+        },
+        Instruction::RemoveMessage,
+        Instruction::Return,
+        Instruction::Label { label: 31 },
+        Instruction::Wait {
+            fail: Operand::Label(30),
+        },
+        // cancel_ref/1 (RefId): cancel_timer, exit with remaining ms or false.
+        Instruction::Label { label: 4 },
+        Instruction::CallExt {
+            arity: Operand::Unsigned(1),
+            import: Operand::Unsigned(3),
+        },
+        Instruction::Return,
+    ];
+    let label_index = code
+        .iter()
+        .enumerate()
+        .filter_map(|(ip, instruction)| match instruction {
+            Instruction::Label { label } => Some((*label, ip)),
+            _ => None,
+        })
+        .collect();
+    let name = atom_table.intern("wport3_timer_bifs");
+    let recv_one = atom_table.intern("recv_one");
+    let arm_send = atom_table.intern("arm_send");
+    let start_wait = atom_table.intern("start_wait");
+    let cancel_ref = atom_table.intern("cancel_ref");
+    let mut exports = HashMap::new();
+    exports.insert((recv_one, 0), 1);
+    exports.insert((arm_send, 3), 2);
+    exports.insert((start_wait, 0), 3);
+    exports.insert((cancel_ref, 1), 4);
+    let mut definition = dummy_module(name);
+    definition.exports = exports;
+    definition.label_index = label_index;
+    definition.code = code;
+    definition.resolved_imports = imports;
+    modules.insert(definition);
+
+    let owned = |term: Term| crate::ets::OwnedTerm::immediate(term);
+
+    // Target parked in a plain receive.
+    let target = scheduler
+        .spawn_owned(name, recv_one, Vec::new())
+        .expect("receive target spawns");
+    let parked = scheduler.run_until_idle();
+    assert_eq!(parked.waiting, vec![target]);
+
+    // send_after/3 returns a reference and arms a native wheel deadline that
+    // the settled drain result reports.
+    let armer = scheduler
+        .spawn_owned(
+            name,
+            arm_send,
+            vec![
+                owned(Term::pid(target)),
+                owned(Term::small_int(120_000)),
+                owned(Term::atom(Atom::OK)),
+            ],
+        )
+        .expect("send_after armer spawns");
+    let armed = scheduler.run_until_idle();
+    assert_eq!(armed.exited, vec![armer], "send_after must not refuse");
+    let reference_a = scheduler
+        .take_exit_result(armer)
+        .expect("armer retains its exit result")
+        .root()
+        .as_small_int()
+        .expect("send_after returns a reference id");
+    assert!(reference_a >= 1);
+    assert!(
+        matches!(
+            armed.state,
+            WasmRunState::Idle {
+                next_native_deadline: Some(_)
+            }
+        ),
+        "the bytecode-scheduled timer is reported by the settled drain"
+    );
+
+    // start_timer/3 to self: schedules the earlier (90s) deadline and parks.
+    let waiter = scheduler
+        .spawn_owned(name, start_wait, Vec::new())
+        .expect("start_wait spawns");
+    let waiting = scheduler.run_until_idle();
+    assert!(waiting.waiting.contains(&waiter));
+
+    // cancel_timer/1: remaining milliseconds for the pending reference, then
+    // false on the second cancel.
+    let cancel_one = scheduler
+        .spawn_owned(name, cancel_ref, vec![owned(Term::small_int(reference_a))])
+        .expect("first cancel spawns");
+    let _run = scheduler.run_until_idle();
+    let remaining = scheduler
+        .take_exit_result(cancel_one)
+        .expect("first cancel retains its exit result")
+        .root()
+        .as_small_int()
+        .expect("first cancel returns remaining milliseconds");
+    assert!(remaining > 0 && remaining <= 120_000);
+    let cancel_two = scheduler
+        .spawn_owned(name, cancel_ref, vec![owned(Term::small_int(reference_a))])
+        .expect("second cancel spawns");
+    let _run = scheduler.run_until_idle();
+    assert_eq!(
+        scheduler
+            .take_exit_result(cancel_two)
+            .expect("second cancel retains its exit result")
+            .root(),
+        Term::atom(Atom::FALSE),
+        "cancel-after-cancel returns false"
+    );
+
+    // A deliberately late deterministic tick delivers the due start_timer
+    // deadline exactly once; the cancelled send_after delivers nothing.
+    let woken =
+        scheduler.tick_native_timers_at(web_time::Instant::now() + Duration::from_millis(150_000));
+    assert_eq!(woken, vec![waiter], "only the live due timer fires");
+    let resumed = scheduler.run_until_idle();
+    assert_eq!(resumed.exited, vec![waiter]);
+    let delivered = scheduler
+        .take_exit_result(waiter)
+        .expect("waiter retains its exit result");
+    let tuple = Tuple::new(delivered.root()).expect("delivered {timeout, Ref, Msg} tuple");
+    assert_eq!(tuple.get(0), Some(Term::atom(Atom::TIMEOUT)));
+    let reference_w = tuple
+        .get(1)
+        .and_then(|term| term.as_small_int())
+        .expect("delivered tuple carries the timer reference");
+    assert!(reference_w >= 1);
+    assert_eq!(tuple.get(2), Some(Term::small_int(77)));
+    assert!(
+        scheduler.waiting.contains(&target),
+        "cancel-before-fire suppressed the send_after delivery"
+    );
+
+    // cancel-after-fire returns false and cannot retract the delivery.
+    let cancel_fired = scheduler
+        .spawn_owned(name, cancel_ref, vec![owned(Term::small_int(reference_w))])
+        .expect("cancel-after-fire spawns");
+    let _run = scheduler.run_until_idle();
+    assert_eq!(
+        scheduler
+            .take_exit_result(cancel_fired)
+            .expect("cancel-after-fire retains its exit result")
+            .root(),
+        Term::atom(Atom::FALSE)
+    );
 }
 
 fn scheduler_with_test_module() -> (WasmScheduler, Arc<Module>) {

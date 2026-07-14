@@ -139,11 +139,12 @@ pub struct WasmScheduler {
     pub(super) native_exit_reasons: BTreeMap<u64, ExitReason>,
     /// Shared timer wheel for cooperative native `Deliver` timers (WR-4).
     ///
-    /// `NativeContext::send_after`/`schedule` build `TimerKind::Deliver` entries
-    /// carrying a message payload; the existing host-`setTimeout` bridge only
-    /// carries `(pid, timer_id)` for receive-timeout label jumps and cannot
-    /// deliver a message, so native timers run on the passive wheel ticked once
-    /// per cooperative turn (see [`WasmScheduler::tick_native_timers`]). It is an
+    /// `NativeContext::send_after`/`schedule` and the bytecode timer BIFs build
+    /// `TimerKind::Deliver` entries carrying a message payload. The wheel is
+    /// ticked at the start of every cooperative turn (see
+    /// [`WasmScheduler::tick_native_timers`]) and its earliest deadline is
+    /// reported by [`WasmRunState::Idle`], where the wrapper's unified deadline
+    /// service arms the single host one-shot (WPORT-3). It is an
     /// `Arc<Mutex<…>>` so the `Send + Sync` [`NativeContext`] can hold it;
     /// uncontended on the single host thread.
     pub(super) native_timers: Arc<Mutex<TimerWheel>>,
@@ -720,6 +721,11 @@ impl WasmScheduler {
         NativeServices {
             atom_table: Some(Arc::clone(&self.atom_table)),
             wasm_async_nif_facility: self.wasm_async_nif_facility.clone(),
+            // WPORT-3 R2: cooperative bytecode shares the native `Deliver`
+            // wheel, so `erlang:send_after/3`, `start_timer/3`, and
+            // `cancel_timer/1` reach a real timer facility instead of the
+            // missing-service `badarg`/`false` refusal.
+            timers: Some(Arc::clone(&self.native_timers)),
             ..NativeServices::default()
         }
     }

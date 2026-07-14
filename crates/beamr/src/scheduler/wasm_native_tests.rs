@@ -419,6 +419,79 @@ fn native_actor_self_tick_is_delivered_when_the_timer_fires() {
     );
 }
 
+#[test]
+fn late_native_tick_delivers_every_due_deliver_and_retains_the_future_one() {
+    // WPORT-3 R3 (core leg of the FIRE-DELIVERS-ALL wall): one deliberately
+    // late deterministic tick expires the COMPLETE due set — every native
+    // `Deliver` whose deadline has passed, not merely the earliest — exactly
+    // once, while a not-yet-due entry stays pending and fires completely on a
+    // later tick. Delays are large (10s/20s/100s) relative to the sub-second
+    // test window for the same wall-clock-anchor reasons documented on
+    // `native_actor_self_tick_is_delivered_when_the_timer_fires`.
+    let mut scheduler = scheduler();
+    let sink_a = Arc::new(Mutex::new(None));
+    let sink_b = Arc::new(Mutex::new(None));
+    let sink_c = Arc::new(Mutex::new(None));
+    let spawn_ticker = |scheduler: &mut WasmScheduler,
+                        delay_secs: u64,
+                        tick_value: i64,
+                        sink: &Arc<Mutex<Option<i64>>>| {
+        let sink = Arc::clone(sink);
+        scheduler.spawn_native_root(Box::new(move || {
+            Box::new(SelfTicker {
+                delay: std::time::Duration::from_secs(delay_secs),
+                tick_value,
+                sink: Arc::clone(&sink),
+                armed: false,
+            })
+        }))
+    };
+    let ticker_a = spawn_ticker(&mut scheduler, 10, 1, &sink_a);
+    let ticker_b = spawn_ticker(&mut scheduler, 20, 2, &sink_b);
+    let ticker_c = spawn_ticker(&mut scheduler, 100, 3, &sink_c);
+    let exited = scheduler.run_native_until_idle();
+    assert!(exited.is_empty(), "all three tickers arm and park");
+
+    let start = std::time::Instant::now();
+    let mut woken = scheduler.tick_native_timers_at(start + std::time::Duration::from_secs(50));
+    woken.sort_unstable();
+    assert_eq!(
+        woken,
+        vec![ticker_a, ticker_b],
+        "one late tick wakes every due Deliver target and only those"
+    );
+    assert!(
+        scheduler
+            .tick_native_timers_at(start + std::time::Duration::from_secs(50))
+            .is_empty(),
+        "the due set is removed on delivery — a second tick delivers nothing"
+    );
+
+    let mut exited_now = scheduler.run_native_until_idle();
+    exited_now.sort_unstable();
+    assert_eq!(
+        exited_now,
+        vec![ticker_a, ticker_b],
+        "both woken targets handle their delivered ticks in one turn"
+    );
+    assert_eq!(*sink_a.lock().expect("sink lock"), Some(1));
+    assert_eq!(*sink_b.lock().expect("sink lock"), Some(2));
+    assert_eq!(
+        *sink_c.lock().expect("sink lock"),
+        None,
+        "the future deadline is retained, not delivered early"
+    );
+
+    let woken_later = scheduler.tick_native_timers_at(start + std::time::Duration::from_secs(150));
+    assert_eq!(
+        woken_later,
+        vec![ticker_c],
+        "the retained deadline fires late but completely"
+    );
+    assert!(drain_until_exit(&mut scheduler, ticker_c, 4));
+    assert_eq!(*sink_c.lock().expect("sink lock"), Some(3));
+}
+
 // ---------------------------------------------------------------------------
 // WR-5: supervision + restart on the cooperative scheduler.
 // ---------------------------------------------------------------------------
