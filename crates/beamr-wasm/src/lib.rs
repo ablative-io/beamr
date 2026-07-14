@@ -13,8 +13,6 @@ use beamr::module::{ModuleOrigin, ModuleRegistry};
 use beamr::native::bifs::register_gate1_bifs;
 
 use beamr::ets::OwnedTerm;
-use beamr::native::etf_bifs::register_etf_bifs;
-use beamr::native::exception_bifs::register_exception_bifs;
 use beamr::native::process_bifs::register_gate2_bifs;
 use beamr::native::stdlib_stubs::register_stdlib_stubs;
 use beamr::native::{
@@ -782,8 +780,6 @@ fn register_wasm_safe_bifs(
 ) -> Result<(), NativeRegistrationError> {
     register_gate1_bifs(registry, atom_table)?;
     register_gate2_bifs(registry, atom_table)?;
-    register_exception_bifs(registry, atom_table)?;
-    register_etf_bifs(registry, atom_table)?;
     register_stdlib_stubs(registry, atom_table)?;
     Ok(())
 }
@@ -915,7 +911,7 @@ mod tests {
     // executable proof is the native `beamr` test of the same `call_async` logic).
     #[wasm_bindgen_test]
     async fn await_vm_call_resolves_with_js_handler_reply() {
-        let mut vm = WasmVm::new().expect("VM constructs");
+        let mut vm = create_vm().expect("VM constructs");
 
         // JS handler: given request `{ n }`, reply with `{ result: n + 1 }`.
         let handler = Closure::<dyn FnMut(JsValue) -> JsValue>::new(|request: JsValue| {

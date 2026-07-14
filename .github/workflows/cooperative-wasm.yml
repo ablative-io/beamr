@@ -18,3 +18,50 @@ jobs:
         run: cargo check --target wasm32-unknown-unknown -p beamr --no-default-features --features cooperative,json --locked
       - name: Check beamr-wasm manifest closure
         run: cargo check --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked
+      - name: Install wasm-bindgen test runner
+        run: cargo install wasm-bindgen-cli --version 0.2.123 --locked
+      - name: Execute beamr-wasm tests
+        shell: bash
+        run: |
+          git rev-parse HEAD
+          rustc --version --verbose
+          cargo --version
+          wasm-bindgen-test-runner --version
+          node --version
+
+          output_file="$(mktemp)"
+          set +e
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+            cargo test --manifest-path crates/beamr-wasm/Cargo.toml \
+              --target wasm32-unknown-unknown --locked -- --nocapture \
+              2>&1 | tee "$output_file"
+          runner_status=${PIPESTATUS[0]}
+          set -e
+
+          expected_tests=(
+            "convert::tests::converts_complex_nested_js_object_to_term"
+            "convert::tests::converts_terms_to_js_values"
+            "convert::tests::documents_boolean_atom_round_trip_as_atom_names"
+            "tests::await_vm_call_resolves_with_js_handler_reply"
+            "tests::pump_once_drives_an_actor_call_to_completion"
+          )
+          assertion_status=0
+          for test_name in "${expected_tests[@]}"; do
+            if ! grep -Fqx "test ${test_name} ... ok" "$output_file"; then
+              echo "missing passing wasm test: ${test_name}" >&2
+              assertion_status=1
+            fi
+          done
+          if ! grep -Fq \
+            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 filtered out" \
+            "$output_file"; then
+            echo "missing exact five-test success summary" >&2
+            assertion_status=1
+          fi
+
+          if (( runner_status != 0 )); then
+            exit "$runner_status"
+          fi
+          if (( assertion_status != 0 )); then
+            exit "$assertion_status"
+          fi
