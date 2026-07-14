@@ -31,8 +31,6 @@ pub enum EncodeError {
     /// An instruction shape cannot be expressed (e.g. a `MakeFun` with an
     /// operand count matching neither `make_fun2` nor `make_fun3`).
     UnsupportedInstruction,
-    /// The `LitT` payload could not be zlib-compressed.
-    CompressionFailed,
 }
 
 impl fmt::Display for EncodeError {
@@ -42,7 +40,6 @@ impl fmt::Display for EncodeError {
             Self::ValueOutOfRange => "value exceeds the width of its BEAM chunk field",
             Self::MalformedBigInteger => "big-integer literal is not a sign byte plus magnitude",
             Self::UnsupportedInstruction => "instruction shape cannot be encoded",
-            Self::CompressionFailed => "literal table zlib compression failed",
         };
         formatter.write_str(message)
     }

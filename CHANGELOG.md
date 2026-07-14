@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The `LitT` chunk emitted by the `.beam` encoder (`encode` feature) changed
+  to the tear-ruled **candidate C zero-prefix uncompressed form** (ENC-001): a
+  zero u32 size prefix followed by the raw literal-table bytes, replacing the
+  zlib-compressed body produced through 0.15.2. The emitted bytes are now a
+  pure function of the literal table — no compressor, no ambient
+  `Compression::default()`, no dependency-resolved variance — and are
+  byte-symmetric with the form the erlc/gleam toolchain emits across the
+  committed fixture corpus. Consequences: emitted `.beam` bytes differ from
+  0.15.2's output for any module carrying literals, so downstream content
+  hashes over emitted bytes (e.g. aion package version identity) shift ONCE on
+  the next recompile — expected and correct, never a regression. The decode
+  side is unchanged and loads both forms: legacy compressed `LitT` chunks keep
+  loading forever.
+
 ## 0.15.2 — 2026-07-15
 
 ### Fixed
