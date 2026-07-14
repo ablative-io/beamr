@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.15.2 — 2026-07-15
+
+### Fixed
+
+- `make_fun` and `put_map` now route near-full-heap allocations through the
+  GC's `ensure_space` safety net (collect, then grow) instead of calling the
+  raw heap allocator, which surfaced `heap full: requested N words with M
+  available` as a fatal VM execution error. Hit in production by aion's first
+  direct-BEAM AWL child workflow: any process whose nursery is near-full at a
+  `make_fun` died ~150ms after spawn. Both reservations run before the
+  instruction's terms are copied into Rust locals, so a safety-net collection
+  cannot leave the closure's free variables or the source map dangling.
+- DOWN-message heap reservations under-counted by one word (7 reserved for
+  the 8-word local message, 11 for the 12-word remote one). A watcher heap
+  with exactly the reserved word count free failed the final tuple allocation
+  and the watcher was killed instead of receiving `{'DOWN', Ref, process,
+  Pid, Reason}`.
+
 ## 0.15.1 — 2026-07-13
 
 ### Fixed
