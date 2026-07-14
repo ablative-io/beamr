@@ -2,7 +2,7 @@
 
 mod convert;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use beamr::native::stdlib_stubs::register_stdlib_stubs;
 use beamr::native::{
     BifRegistryImpl, Capability, NativeKey, NativeRegistrationError, WasmAsyncNifFacility,
 };
-use beamr::scheduler::{WasmAsyncCompletion, WasmRunSummary, WasmScheduler};
+use beamr::scheduler::{WasmAsyncCompletion, WasmRunState, WasmRunSummary, WasmScheduler};
 use beamr::term::json::term_to_value;
 use beamr::term::{Term, format::format_term};
 use beamr::{CoopSenderHandle, DynActor, ReplyFn, WireTerm, spawn_actor_cooperative};
@@ -46,6 +46,7 @@ pub struct WasmVm {
     module_registry: Arc<ModuleRegistry>,
     bif_registry: Arc<BifRegistryImpl>,
     scheduler: Rc<RefCell<WasmScheduler>>,
+    arbiter: Rc<HostArbiter>,
     timer_handles: Rc<RefCell<BTreeMap<u64, HostTimer>>>,
     async_bridge: Rc<HostAsyncNifs>,
     js_callbacks: Rc<HostJsCallbacks>,
@@ -57,6 +58,7 @@ impl WasmVm {
     /// Create a VM with common atoms and wasm-safe BIF registrations.
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<WasmVm, JsValue> {
+        let primitives = HostPrimitives::probe()?;
         let atom_table = Arc::new(AtomTable::with_common_atoms());
         let module_registry = Arc::new(ModuleRegistry::new());
         let bif_registry = Arc::new(BifRegistryImpl::new());
@@ -66,13 +68,22 @@ impl WasmVm {
             Arc::clone(&module_registry),
             Arc::clone(&bif_registry),
         )));
+        let timer_handles = Rc::new(RefCell::new(BTreeMap::new()));
+        let arbiter = HostArbiter::new(
+            primitives,
+            Arc::clone(&atom_table),
+            Rc::clone(&scheduler),
+            Rc::clone(&timer_handles),
+        );
         let async_bridge = Rc::new(HostAsyncNifs::new(
             Arc::clone(&atom_table),
             Rc::downgrade(&scheduler),
+            Rc::downgrade(&arbiter),
         ));
         let js_callbacks = Rc::new(HostJsCallbacks::new(
             Arc::clone(&atom_table),
             Rc::downgrade(&scheduler),
+            Rc::downgrade(&arbiter),
         ));
         let facility: Rc<dyn WasmAsyncNifFacility> = Rc::new(HostWasmFacility {
             async_nifs: Rc::clone(&async_bridge),
@@ -89,7 +100,8 @@ impl WasmVm {
             module_registry,
             bif_registry,
             scheduler,
-            timer_handles: Rc::new(RefCell::new(BTreeMap::new())),
+            arbiter,
+            timer_handles,
             async_bridge,
             js_callbacks,
             actor_handlers,
@@ -123,6 +135,7 @@ impl WasmVm {
             .send_owned(pid, &message)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.sync_host_timers()?;
+        self.schedule_external_edge()?;
         Ok(())
     }
 
@@ -184,22 +197,19 @@ impl WasmVm {
             .borrow_mut()
             .spawn_owned(module, function, args)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        self.schedule_external_edge()?;
         Ok(pid)
     }
 
-    /// Run one cooperative scheduling round and return a JSON summary.
+    /// Run one bounded cooperative drain and return its complete JSON result.
     pub fn run_step(&mut self) -> Result<JsValue, JsValue> {
-        let summary = self.scheduler.borrow_mut().run_until_idle();
-        self.sync_host_timers()?;
-        let exits = self
-            .scheduler
-            .borrow()
-            .exit_results()
-            .into_iter()
-            .map(|(pid, term)| json!({ "pid": pid, "value": self.term_to_json_or_fallback(term) }))
-            .collect::<Vec<_>>();
-        let value = summary_to_json(summary, exits);
+        let value = self.arbiter.run_manual_drain()?;
         json_to_js(&value)
+    }
+
+    /// Await target exit/error, or settled idle when no receive one-shot remains armed.
+    pub fn await_exit(&mut self, pid: u64) -> Promise {
+        self.arbiter.await_exit(pid)
     }
 
     /// Consume and return the captured exit value for `pid`, if that process has exited.
@@ -239,6 +249,7 @@ impl WasmVm {
         let actor = spawn_actor_cooperative::<DynActor, _>(&self.scheduler, move || {
             DynActor::new(Arc::clone(&reply))
         });
+        self.schedule_external_edge_infallible();
         actor.pid
     }
 
@@ -247,42 +258,61 @@ impl WasmVm {
     ///
     /// The request value is marshalled to a term, sent through the cooperative
     /// `call_async` path (ref-correlated, so concurrent calls never cross
-    /// replies), and the resulting host-pumpable `CallFuture` is wrapped as a JS
-    /// `Promise` via `future_to_promise`. The Promise resolves only as the host
-    /// keeps pumping [`WasmVm::run_step`]: each pump advances the transient call
-    /// client, and the reply (or its timeout self-tick) wakes the future.
+    /// replies), and the resulting `CallFuture` is wrapped as a JS `Promise`.
+    /// The transient client spawn requests the VM's edge-triggered arbiter turn.
     pub fn call(&mut self, pid: u64, request: JsValue) -> Result<Promise, JsValue> {
         let owned = js_value_to_owned_term(request, &self.atom_table)?;
         let handle = CoopSenderHandle::<DynActor>::attach(&self.scheduler, pid);
         let future = handle.call_async(WireTerm::new(owned));
         let atom_table = Arc::clone(&self.atom_table);
-        Ok(wasm_bindgen_futures::future_to_promise(async move {
+        let promise = wasm_bindgen_futures::future_to_promise(async move {
             match future.await {
                 Ok(reply) => term_to_js_value(reply.owned().root(), atom_table.as_ref()),
                 Err(error) => Err(JsValue::from_str(&error.to_string())),
             }
-        }))
+        });
+        self.schedule_external_edge()?;
+        Ok(promise)
     }
 
     /// Send a fire-and-forget message to an actor by pid (non-blocking).
     ///
     /// The value is marshalled to a term and cast through the cooperative path; it
-    /// reaches the actor's cast handler on a later pumped turn. A cast to a dead
+    /// reaches the actor's cast handler on a later arbiter turn. A cast to a dead
     /// pid is silently dropped, exactly like a BEAM send.
     pub fn cast(&mut self, pid: u64, message: JsValue) -> Result<(), JsValue> {
         let owned = js_value_to_owned_term(message, &self.atom_table)?;
         let handle = CoopSenderHandle::<DynActor>::attach(&self.scheduler, pid);
         handle
             .cast(WireTerm::new(owned))
-            .map_err(|error| JsValue::from_str(&error.to_string()))
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        self.schedule_external_edge()?;
+        Ok(())
     }
 
     /// Called by tests or custom hosts to drive an already-fired timer manually.
     pub fn timer_fired(&mut self, pid: u64, timer_id: u64) -> Result<bool, JsValue> {
-        self.timer_handles.borrow_mut().remove(&timer_id);
+        if self.timer_handles.borrow_mut().remove(&timer_id).is_some() {
+            self.arbiter.record_deadline_execution();
+        }
         let fired = self.scheduler.borrow_mut().timer_fired(pid, timer_id);
         self.sync_host_timers()?;
+        self.schedule_external_edge()?;
         Ok(fired)
+    }
+
+    fn schedule_external_edge(&self) -> Result<(), JsValue> {
+        let edge = self.scheduler.borrow_mut().take_external_runnable_edge();
+        if edge {
+            self.arbiter.request_external_turn()?;
+        }
+        Ok(())
+    }
+
+    fn schedule_external_edge_infallible(&self) {
+        if let Err(error) = self.schedule_external_edge() {
+            self.arbiter.fail(error);
+        }
     }
 
     fn json_args_to_terms(&self, value: &Value) -> Result<Vec<beamr::ets::OwnedTerm>, JsValue> {
@@ -294,151 +324,379 @@ impl WasmVm {
     }
 
     fn sync_host_timers(&mut self) -> Result<(), JsValue> {
-        sync_host_timers_inner(&self.scheduler, &self.timer_handles)
+        sync_host_timers_inner(
+            &self.scheduler,
+            &self.timer_handles,
+            Rc::downgrade(&self.arbiter),
+        )
     }
+}
 
-    /// Drive one cooperative pump turn WITHOUT touching the browser scheduler:
-    /// run the scheduler to quiescence (which first ticks native `Deliver`
-    /// timers off `web_time::Instant::now()`), reflect any newly-armed or
-    /// cancelled receive-timers into host `setTimeout`s, and report whether the
-    /// scheduler still has pending work.
-    ///
-    /// This is the pure per-frame body shared by [`WasmVm::run_step`]-style
-    /// manual driving and the [`WasmVm::start_pump`] `requestAnimationFrame`
-    /// loop. It is additive: `run_step` is unchanged and still works for manual
-    /// and test driving. Returning `bool` (not a JSON summary) keeps it cheap to
-    /// call every frame; hosts that want the summary use `run_step`.
-    pub fn pump_once(&mut self) -> Result<bool, JsValue> {
-        pump_turn(&self.scheduler, &self.timer_handles)
-    }
+#[derive(Clone)]
+struct HostPrimitives {
+    global: JsValue,
+    queue_microtask: Function,
+    set_timeout: Function,
+}
 
-    /// Start a `requestAnimationFrame`-driven host pump that drives the
-    /// cooperative runtime to quiescence each frame, then yields the browser and
-    /// reschedules itself for the next frame while work remains. Returns a
-    /// [`PumpHandle`]; dropping it (or calling [`PumpHandle::stop`]) cancels the
-    /// pump.
-    ///
-    /// The pump runs `pump_once` each frame. When a frame leaves the scheduler
-    /// with no pending work (no ready process, no armed native timer) the pump
-    /// still reschedules ONE more frame and then stops driving rAF, because the
-    /// events that re-enqueue a parked process — an inbound `send`/`cast`, a
-    /// `timer_fired` host callback, or an async completion — each already wake
-    /// the target; a host that delivers such an event simply calls `start_pump`
-    /// (or keeps a pump running) to resume. This avoids burning a
-    /// `requestAnimationFrame` slot every frame on an idle VM.
-    ///
-    /// Borrow discipline: the rAF closure captures only cloned `Rc`s (the
-    /// scheduler and the host-timer map) and a shared stop flag — never `&mut
-    /// self`. Each turn's scheduler access is a scoped `borrow_mut` inside
-    /// `pump_once`/`sync_host_timers_inner` that is dropped before the closure
-    /// reschedules itself, so no borrow is ever held across the rAF callback.
-    pub fn start_pump(&mut self) -> Result<PumpHandle, JsValue> {
-        let scheduler = Rc::clone(&self.scheduler);
-        let timer_handles = Rc::clone(&self.timer_handles);
-        let running = Rc::new(RefCell::new(true));
-
-        // The closure must reschedule itself, so it needs a handle to itself.
-        // The standard wasm-bindgen pattern: an `Rc<RefCell<Option<Closure>>>`
-        // the closure reads to re-request the next frame.
-        let frame: FrameCell = Rc::new(RefCell::new(None));
-        let frame_for_closure = Rc::clone(&frame);
-        let running_for_closure = Rc::clone(&running);
-
-        let closure = Closure::<dyn FnMut()>::new(move || {
-            if !*running_for_closure.borrow() {
-                return;
-            }
-            // Drive one turn; a pump-turn failure stops the pump rather than
-            // panicking across the rAF boundary.
-            let pending = match pump_turn(&scheduler, &timer_handles) {
-                Ok(pending) => pending,
-                Err(_) => {
-                    *running_for_closure.borrow_mut() = false;
-                    return;
-                }
-            };
-            // Reschedule the next frame while work remains. When idle, drop the
-            // self-reference so the closure is freed and rAF is no longer
-            // requested until the host restarts the pump.
-            if pending {
-                if let Some(callback) = frame_for_closure.borrow().as_ref() {
-                    let _id = request_animation_frame(callback);
-                }
-            } else {
-                *running_for_closure.borrow_mut() = false;
-            }
-        });
-
-        let first_id = request_animation_frame(&closure)?;
-        *frame.borrow_mut() = Some(closure);
-
-        Ok(PumpHandle {
-            running,
-            frame,
-            last_id: first_id,
+impl HostPrimitives {
+    fn probe() -> Result<Self, JsValue> {
+        let global = js_sys::global();
+        let queue_microtask = required_host_function(&global, "queueMicrotask")?;
+        let set_timeout = required_host_function(&global, "setTimeout")?;
+        Ok(Self {
+            global: global.into(),
+            queue_microtask,
+            set_timeout,
         })
     }
 }
 
-/// Shared cell holding the pump's self-rescheduling animation-frame closure.
-/// The closure reads it to re-request the next frame; [`PumpHandle::stop`]
-/// clears it to release the `Closure` and its captured `Rc`s.
-type FrameCell = Rc<RefCell<Option<Closure<dyn FnMut()>>>>;
-
-/// Handle to a running [`WasmVm::start_pump`] loop. Dropping it stops the pump.
-#[wasm_bindgen]
-pub struct PumpHandle {
-    running: Rc<RefCell<bool>>,
-    frame: FrameCell,
-    last_id: i32,
+fn required_host_function(global: &JsValue, name: &str) -> Result<Function, JsValue> {
+    let value = Reflect::get(global, &JsValue::from_str(name)).map_err(|_| {
+        JsValue::from_str(&format!("required host primitive {name} is unavailable"))
+    })?;
+    value.dyn_into::<Function>().map_err(|_| {
+        JsValue::from_str(&format!("required host primitive {name} is not a function"))
+    })
 }
 
-#[wasm_bindgen]
-impl PumpHandle {
-    /// Stop the pump: clear the run flag, cancel the most recently requested
-    /// animation frame, and release the self-rescheduling closure. Idempotent.
-    pub fn stop(&mut self) {
-        *self.running.borrow_mut() = false;
-        cancel_animation_frame(self.last_id);
-        let _dropped = self.frame.borrow_mut().take();
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ArbiterState {
+    Idle,
+    Queued,
+    Draining,
+}
+
+#[derive(Clone, Copy)]
+enum HostTurnLeg {
+    ExternalMicrotask,
+    FairnessMacrotask,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct CallbackCounters {
+    requests: u64,
+    queued_now: usize,
+    executions: u64,
+    cancellations: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct ArbiterInstrumentation {
+    arbiter: CallbackCounters,
+    receive_timers: CallbackCounters,
+}
+
+struct ExitWaiter {
+    resolve: Function,
+    reject: Function,
+}
+
+struct HostArbiter {
+    primitives: HostPrimitives,
+    callback: Function,
+    atom_table: Arc<AtomTable>,
+    scheduler: Rc<RefCell<WasmScheduler>>,
+    timer_handles: Rc<RefCell<BTreeMap<u64, HostTimer>>>,
+    state: Cell<ArbiterState>,
+    ignored_callbacks: Cell<usize>,
+    waiters: RefCell<BTreeMap<u64, Vec<ExitWaiter>>>,
+    last_summary: RefCell<Value>,
+    last_error: RefCell<Option<JsValue>>,
+    instrumentation: RefCell<ArbiterInstrumentation>,
+}
+
+impl HostArbiter {
+    fn new(
+        primitives: HostPrimitives,
+        atom_table: Arc<AtomTable>,
+        scheduler: Rc<RefCell<WasmScheduler>>,
+        timer_handles: Rc<RefCell<BTreeMap<u64, HostTimer>>>,
+    ) -> Rc<Self> {
+        Rc::new_cyclic(|weak: &Weak<Self>| {
+            let weak = weak.clone();
+            let callback = Closure::<dyn FnMut()>::new(move || {
+                if let Some(arbiter) = weak.upgrade() {
+                    arbiter.execute_queued_turn();
+                }
+            })
+            .into_js_value()
+            .unchecked_into::<Function>();
+            Self {
+                primitives,
+                callback,
+                atom_table,
+                scheduler,
+                timer_handles,
+                state: Cell::new(ArbiterState::Idle),
+                ignored_callbacks: Cell::new(0),
+                waiters: RefCell::new(BTreeMap::new()),
+                last_summary: RefCell::new(summary_to_json(&WasmRunSummary::default(), Vec::new())),
+                last_error: RefCell::new(None),
+                instrumentation: RefCell::new(ArbiterInstrumentation::default()),
+            }
+        })
+    }
+
+    fn request_external_turn(self: &Rc<Self>) -> Result<(), JsValue> {
+        match self.state.get() {
+            ArbiterState::Idle => self.queue_turn(HostTurnLeg::ExternalMicrotask),
+            ArbiterState::Queued | ArbiterState::Draining => Ok(()),
+        }
+    }
+
+    fn queue_turn(self: &Rc<Self>, leg: HostTurnLeg) -> Result<(), JsValue> {
+        self.state.set(ArbiterState::Queued);
+        {
+            let mut instrumentation = self.instrumentation.borrow_mut();
+            instrumentation.arbiter.requests = instrumentation.arbiter.requests.saturating_add(1);
+            instrumentation.arbiter.queued_now = 1;
+        }
+        let result = match leg {
+            HostTurnLeg::ExternalMicrotask => self
+                .primitives
+                .queue_microtask
+                .call1(&self.primitives.global, self.callback.as_ref()),
+            HostTurnLeg::FairnessMacrotask => self.primitives.set_timeout.call2(
+                &self.primitives.global,
+                self.callback.as_ref(),
+                &JsValue::from_f64(0.0),
+            ),
+        };
+        match result {
+            Ok(_opaque_handle) => Ok(()),
+            Err(error) => {
+                self.state.set(ArbiterState::Idle);
+                self.instrumentation.borrow_mut().arbiter.queued_now = 0;
+                self.fail(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    fn execute_queued_turn(self: &Rc<Self>) {
+        if self.ignored_callbacks.get() != 0 {
+            self.ignored_callbacks
+                .set(self.ignored_callbacks.get().saturating_sub(1));
+            return;
+        }
+        if self.state.get() != ArbiterState::Queued {
+            return;
+        }
+        self.state.set(ArbiterState::Draining);
+        {
+            let mut instrumentation = self.instrumentation.borrow_mut();
+            instrumentation.arbiter.queued_now = 0;
+            instrumentation.arbiter.executions =
+                instrumentation.arbiter.executions.saturating_add(1);
+        }
+        match self.perform_drain() {
+            Ok((summary, _json)) => self.finish_drain(&summary),
+            Err(error) => {
+                self.state.set(ArbiterState::Idle);
+                self.fail(error);
+            }
+        }
+    }
+
+    fn run_manual_drain(self: &Rc<Self>) -> Result<Value, JsValue> {
+        match self.state.get() {
+            ArbiterState::Draining => {
+                return Err(JsValue::from_str("arbiter is already draining"));
+            }
+            ArbiterState::Queued => {
+                self.ignored_callbacks
+                    .set(self.ignored_callbacks.get().saturating_add(1));
+                self.instrumentation.borrow_mut().arbiter.queued_now = 0;
+            }
+            ArbiterState::Idle => {}
+        }
+        self.state.set(ArbiterState::Draining);
+        let (summary, json) = self.perform_drain()?;
+        self.finish_drain(&summary);
+        Ok(json)
+    }
+
+    fn perform_drain(self: &Rc<Self>) -> Result<(WasmRunSummary, Value), JsValue> {
+        let summary = self.scheduler.borrow_mut().run_until_idle();
+        sync_host_timers_inner(&self.scheduler, &self.timer_handles, Rc::downgrade(self))?;
+        let exits = self
+            .scheduler
+            .borrow()
+            .exit_results()
+            .into_iter()
+            .map(|(pid, term)| {
+                json!({
+                    "pid": pid,
+                    "value": term_to_json_or_fallback(term, self.atom_table.as_ref())
+                })
+            })
+            .collect::<Vec<_>>();
+        let json = summary_to_json(&summary, exits);
+        *self.last_summary.borrow_mut() = json.clone();
+        self.resolve_waiters(&summary, &json);
+        Ok((summary, json))
+    }
+
+    fn finish_drain(self: &Rc<Self>, summary: &WasmRunSummary) {
+        match summary.state {
+            WasmRunState::Idle { .. } => self.state.set(ArbiterState::Idle),
+            WasmRunState::FairnessYield { .. } => {
+                if let Err(error) = self.queue_turn(HostTurnLeg::FairnessMacrotask) {
+                    self.fail(error);
+                }
+            }
+        }
+    }
+
+    fn await_exit(self: &Rc<Self>, pid: u64) -> Promise {
+        if let Some(error) = self.last_error.borrow().clone() {
+            return Promise::reject(&error);
+        }
+        if let Some(result) = self.scheduler.borrow_mut().take_exit_result(pid) {
+            let value = term_to_json_or_fallback(result.root(), self.atom_table.as_ref());
+            return Promise::resolve(&completion_to_js(
+                "exited",
+                pid,
+                value,
+                self.last_summary.borrow().clone(),
+            ));
+        }
+        if self.scheduler.borrow().has_exit_error(pid) {
+            return Promise::resolve(&completion_to_js(
+                "errored",
+                pid,
+                Value::Null,
+                self.last_summary.borrow().clone(),
+            ));
+        }
+        if self.state.get() == ArbiterState::Idle
+            && self.scheduler.borrow().runnable_count() == 0
+            && self.timer_handles.borrow().is_empty()
+        {
+            return Promise::resolve(&completion_to_js(
+                "idle",
+                pid,
+                Value::Null,
+                self.last_summary.borrow().clone(),
+            ));
+        }
+
+        let arbiter = Rc::clone(self);
+        Promise::new(&mut move |resolve, reject| {
+            arbiter
+                .waiters
+                .borrow_mut()
+                .entry(pid)
+                .or_default()
+                .push(ExitWaiter { resolve, reject });
+        })
+    }
+
+    fn resolve_waiters(&self, summary: &WasmRunSummary, summary_json: &Value) {
+        for pid in &summary.exited {
+            let Some(waiters) = self.waiters.borrow_mut().remove(pid) else {
+                continue;
+            };
+            let result = self
+                .scheduler
+                .borrow_mut()
+                .take_exit_result(*pid)
+                .map(|term| term_to_json_or_fallback(term.root(), self.atom_table.as_ref()))
+                .unwrap_or(Value::Null);
+            resolve_waiters(
+                waiters,
+                completion_to_js("exited", *pid, result, summary_json.clone()),
+            );
+        }
+        for pid in &summary.errored {
+            let Some(waiters) = self.waiters.borrow_mut().remove(pid) else {
+                continue;
+            };
+            resolve_waiters(
+                waiters,
+                completion_to_js("errored", *pid, Value::Null, summary_json.clone()),
+            );
+        }
+        if matches!(summary.state, WasmRunState::Idle { .. })
+            && self.timer_handles.borrow().is_empty()
+        {
+            let remaining = std::mem::take(&mut *self.waiters.borrow_mut());
+            for (pid, waiters) in remaining {
+                resolve_waiters(
+                    waiters,
+                    completion_to_js("idle", pid, Value::Null, summary_json.clone()),
+                );
+            }
+        }
+    }
+
+    fn fail(&self, error: JsValue) {
+        *self.last_error.borrow_mut() = Some(error.clone());
+        let waiters = std::mem::take(&mut *self.waiters.borrow_mut());
+        for waiter in waiters.into_values().flatten() {
+            let _ignored = waiter.reject.call1(&JsValue::UNDEFINED, &error);
+        }
+    }
+
+    fn record_deadline_request(&self) {
+        let mut instrumentation = self.instrumentation.borrow_mut();
+        instrumentation.receive_timers.requests =
+            instrumentation.receive_timers.requests.saturating_add(1);
+        instrumentation.receive_timers.queued_now =
+            instrumentation.receive_timers.queued_now.saturating_add(1);
+    }
+
+    fn record_deadline_execution(&self) {
+        let mut instrumentation = self.instrumentation.borrow_mut();
+        instrumentation.receive_timers.queued_now =
+            instrumentation.receive_timers.queued_now.saturating_sub(1);
+        instrumentation.receive_timers.executions =
+            instrumentation.receive_timers.executions.saturating_add(1);
+    }
+
+    fn record_deadline_cancellation(&self) {
+        let mut instrumentation = self.instrumentation.borrow_mut();
+        instrumentation.receive_timers.queued_now =
+            instrumentation.receive_timers.queued_now.saturating_sub(1);
+        instrumentation.receive_timers.cancellations = instrumentation
+            .receive_timers
+            .cancellations
+            .saturating_add(1);
     }
 }
 
-impl Drop for PumpHandle {
-    fn drop(&mut self) {
-        self.stop();
-    }
+fn completion_to_js(state: &str, pid: u64, result: Value, summary: Value) -> JsValue {
+    JsValue::from_str(
+        &json!({
+            "state": state,
+            "pid": pid,
+            "result": result,
+            "summary": summary,
+        })
+        .to_string(),
+    )
 }
 
-/// One cooperative pump turn: run the scheduler to quiescence (it first ticks
-/// native `Deliver` timers off the wasm clock), reflect pending receive-timer
-/// schedules/cancellations into host `setTimeout`s, and report whether pending
-/// work remains. Shared by the manual `pump_once` and the rAF pump.
-fn pump_turn(
-    scheduler: &Rc<RefCell<WasmScheduler>>,
-    timer_handles: &Rc<RefCell<BTreeMap<u64, HostTimer>>>,
-) -> Result<bool, JsValue> {
-    let _summary = scheduler.borrow_mut().run_until_idle();
-    sync_host_timers_inner(scheduler, timer_handles)?;
-    let pending = scheduler.borrow().has_pending_work();
-    Ok(pending)
+fn resolve_waiters(waiters: Vec<ExitWaiter>, value: JsValue) {
+    for waiter in waiters {
+        let _ignored = waiter.resolve.call1(&JsValue::UNDEFINED, &value);
+    }
 }
 
 /// Drain the scheduler's pending receive-timer cancellations and schedules,
 /// reflecting each into a host `setTimeout`/`clearTimeout`.
 ///
-/// Free function (over the shared `Rc`s rather than `&mut WasmVm`) so both the
-/// `&mut self` entry points and the WR-10 `requestAnimationFrame` pump closure —
-/// which cannot capture `&mut self` — drive the identical bridge logic. Every
-/// scheduler borrow is scoped (`take_*` returns owned `Vec`s, then the borrow is
-/// dropped) so no `borrow_mut` is held across the per-timer host calls.
+/// Every scheduler borrow is scoped and dropped before a host call.
 fn sync_host_timers_inner(
     scheduler: &Rc<RefCell<WasmScheduler>>,
     timer_handles: &Rc<RefCell<BTreeMap<u64, HostTimer>>>,
+    arbiter: Weak<HostArbiter>,
 ) -> Result<(), JsValue> {
     let cancellations = scheduler.borrow_mut().take_pending_timer_cancellations();
     for timer_id in cancellations {
-        clear_host_timer(timer_handles, timer_id);
+        clear_host_timer(timer_handles, timer_id, &arbiter);
     }
     let schedules = scheduler.borrow_mut().take_pending_timer_schedules();
     for schedule in schedules {
@@ -448,6 +706,7 @@ fn sync_host_timers_inner(
             schedule.pid,
             schedule.timer_id,
             schedule.milliseconds,
+            arbiter.clone(),
         )?;
     }
     Ok(())
@@ -459,13 +718,27 @@ fn schedule_host_timer(
     pid: u64,
     timer_id: u64,
     milliseconds: u64,
+    arbiter: Weak<HostArbiter>,
 ) -> Result<(), JsValue> {
-    clear_host_timer(timer_handles, timer_id);
+    clear_host_timer(timer_handles, timer_id, &arbiter);
     let scheduler = Rc::clone(scheduler);
     let handles = Rc::clone(timer_handles);
+    let arbiter_for_callback = arbiter.clone();
     let callback = Closure::<dyn FnMut()>::new(move || {
-        handles.borrow_mut().remove(&timer_id);
-        let _fired = scheduler.borrow_mut().timer_fired(pid, timer_id);
+        let was_armed = handles.borrow_mut().remove(&timer_id).is_some();
+        let edge = {
+            let mut scheduler = scheduler.borrow_mut();
+            let _fired = scheduler.timer_fired(pid, timer_id);
+            scheduler.take_external_runnable_edge()
+        };
+        if let Some(arbiter) = arbiter_for_callback.upgrade() {
+            if was_armed {
+                arbiter.record_deadline_execution();
+            }
+            if edge && let Err(error) = arbiter.request_external_turn() {
+                arbiter.fail(error);
+            }
+        }
     });
     let handle = set_timeout(&callback, milliseconds)?;
     timer_handles.borrow_mut().insert(
@@ -475,17 +748,27 @@ fn schedule_host_timer(
             _callback: callback,
         },
     );
+    if let Some(arbiter) = arbiter.upgrade() {
+        arbiter.record_deadline_request();
+    }
     Ok(())
 }
 
-fn clear_host_timer(timer_handles: &Rc<RefCell<BTreeMap<u64, HostTimer>>>, timer_id: u64) {
+fn clear_host_timer(
+    timer_handles: &Rc<RefCell<BTreeMap<u64, HostTimer>>>,
+    timer_id: u64,
+    arbiter: &Weak<HostArbiter>,
+) {
     if let Some(timer) = timer_handles.borrow_mut().remove(&timer_id) {
-        clear_timeout(timer.handle);
+        clear_timeout(&timer.handle);
+        if let Some(arbiter) = arbiter.upgrade() {
+            arbiter.record_deadline_cancellation();
+        }
     }
 }
 
 struct HostTimer {
-    handle: i32,
+    handle: JsValue,
     _callback: Closure<dyn FnMut()>,
 }
 
@@ -493,14 +776,20 @@ struct HostAsyncNifs {
     atom_table: Arc<AtomTable>,
     callbacks: RefCell<BTreeMap<NativeKey, Function>>,
     scheduler: Weak<RefCell<WasmScheduler>>,
+    arbiter: Weak<HostArbiter>,
 }
 
 impl HostAsyncNifs {
-    fn new(atom_table: Arc<AtomTable>, scheduler: Weak<RefCell<WasmScheduler>>) -> Self {
+    fn new(
+        atom_table: Arc<AtomTable>,
+        scheduler: Weak<RefCell<WasmScheduler>>,
+        arbiter: Weak<HostArbiter>,
+    ) -> Self {
         Self {
             atom_table,
             callbacks: RefCell::new(BTreeMap::new()),
             scheduler,
+            arbiter,
         }
     }
 
@@ -555,6 +844,7 @@ impl HostAsyncNifs {
 
     fn start_promise_completion(&self, pid: u64, promise: Promise) {
         let scheduler = self.scheduler.clone();
+        let arbiter = self.arbiter.clone();
         let atom_table = Arc::clone(&self.atom_table);
         wasm_bindgen_futures::spawn_local(async move {
             let completion = match JsFuture::from(promise).await {
@@ -574,7 +864,17 @@ impl HostAsyncNifs {
                     }),
             };
             if let Some(scheduler) = scheduler.upgrade() {
-                let _completed = scheduler.borrow_mut().complete_async(pid, completion);
+                let edge = {
+                    let mut scheduler = scheduler.borrow_mut();
+                    let _completed = scheduler.complete_async(pid, completion);
+                    scheduler.take_external_runnable_edge()
+                };
+                if edge
+                    && let Some(arbiter) = arbiter.upgrade()
+                    && let Err(error) = arbiter.request_external_turn()
+                {
+                    arbiter.fail(error);
+                }
             }
         });
     }
@@ -587,8 +887,16 @@ struct HostJsCallbacks {
 }
 
 impl HostJsCallbacks {
-    fn new(atom_table: Arc<AtomTable>, scheduler: Weak<RefCell<WasmScheduler>>) -> Self {
-        let async_nifs = Rc::new(HostAsyncNifs::new(Arc::clone(&atom_table), scheduler));
+    fn new(
+        atom_table: Arc<AtomTable>,
+        scheduler: Weak<RefCell<WasmScheduler>>,
+        arbiter: Weak<HostArbiter>,
+    ) -> Self {
+        let async_nifs = Rc::new(HostAsyncNifs::new(
+            Arc::clone(&atom_table),
+            scheduler,
+            arbiter,
+        ));
         Self {
             atom_table,
             callbacks: RefCell::new(BTreeMap::new()),
@@ -806,13 +1114,23 @@ fn unresolved_imports_to_json(
         .collect()
 }
 
-fn summary_to_json(summary: WasmRunSummary, exits: Vec<Value>) -> Value {
+fn summary_to_json(summary: &WasmRunSummary, exits: Vec<Value>) -> Value {
+    let next_native_deadline_ms = summary.state.next_native_deadline_millis_from_now();
+    let (state, runnable_remaining) = match summary.state {
+        WasmRunState::Idle { .. } => ("idle", 0),
+        WasmRunState::FairnessYield { runnable_remaining } => {
+            ("fairness_yield", runnable_remaining)
+        }
+    };
     json!({
+        "state": state,
+        "next_native_deadline_ms": next_native_deadline_ms,
+        "runnable_remaining": runnable_remaining,
         "executed": summary.executed,
-        "yielded": summary.yielded,
-        "waiting": summary.waiting,
-        "exited": summary.exited,
-        "errored": summary.errored,
+        "yielded": &summary.yielded,
+        "waiting": &summary.waiting,
+        "exited": &summary.exited,
+        "errored": &summary.errored,
         "results": exits,
     })
 }
@@ -832,89 +1150,93 @@ fn registration_error_to_js(error: NativeRegistrationError) -> JsValue {
     JsValue::from_str(&error.to_string())
 }
 
-fn set_timeout(callback: &Closure<dyn FnMut()>, milliseconds: u64) -> Result<i32, JsValue> {
+fn set_timeout(callback: &Closure<dyn FnMut()>, milliseconds: u64) -> Result<JsValue, JsValue> {
     let global = js_sys::global();
     let set_timeout = Reflect::get(&global, &JsValue::from_str("setTimeout"))?
         .dyn_into::<Function>()
         .map_err(|_| JsValue::from_str("global setTimeout is not a function"))?;
     let delay = i32::try_from(milliseconds).unwrap_or(i32::MAX);
-    let handle = set_timeout.call2(
+    set_timeout.call2(
         &global,
         callback.as_ref().unchecked_ref(),
         &JsValue::from_f64(f64::from(delay)),
-    )?;
-    handle
-        .as_f64()
-        .and_then(|value| i32::try_from(value as i64).ok())
-        .ok_or_else(|| JsValue::from_str("setTimeout did not return a numeric handle"))
+    )
 }
 
-fn clear_timeout(handle: i32) {
+fn clear_timeout(handle: &JsValue) {
     let global = js_sys::global();
     if let Ok(clear_timeout) = Reflect::get(&global, &JsValue::from_str("clearTimeout"))
         && let Ok(clear_timeout) = clear_timeout.dyn_into::<Function>()
     {
-        let _ignored = clear_timeout.call1(&global, &JsValue::from_f64(f64::from(handle)));
+        let _ignored = clear_timeout.call1(&global, handle);
     }
 }
 
-/// Request one animation frame for `callback`, returning the request id.
-///
-/// Resolved off the JS global (`globalThis.requestAnimationFrame`) rather than a
-/// hard `web_sys::Window` dependency so the seam also works in a Worker/Node host
-/// that polyfills rAF. A missing or non-function global surfaces as an `Err`
-/// (never a panic across the wasm boundary), so [`WasmVm::start_pump`] fails
-/// cleanly in an environment without rAF.
-fn request_animation_frame(callback: &Closure<dyn FnMut()>) -> Result<i32, JsValue> {
-    let global = js_sys::global();
-    let raf = Reflect::get(&global, &JsValue::from_str("requestAnimationFrame"))?
-        .dyn_into::<Function>()
-        .map_err(|_| JsValue::from_str("global requestAnimationFrame is not a function"))?;
-    let id = raf.call1(&global, callback.as_ref().unchecked_ref())?;
-    id.as_f64()
-        .and_then(|value| i32::try_from(value as i64).ok())
-        .ok_or_else(|| JsValue::from_str("requestAnimationFrame did not return a numeric id"))
+#[cfg(all(test, target_arch = "wasm32"))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CallbackCounterSnapshot {
+    requests: u64,
+    queued_now: usize,
+    executions: u64,
+    cancellations: u64,
 }
 
-/// Cancel a previously requested animation frame. A missing or non-function
-/// global is ignored (best-effort), exactly like [`clear_timeout`].
-fn cancel_animation_frame(id: i32) {
-    let global = js_sys::global();
-    if let Ok(cancel) = Reflect::get(&global, &JsValue::from_str("cancelAnimationFrame"))
-        && let Ok(cancel) = cancel.dyn_into::<Function>()
-    {
-        let _ignored = cancel.call1(&global, &JsValue::from_f64(f64::from(id)));
+#[cfg(all(test, target_arch = "wasm32"))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ArbiterCounterSnapshot {
+    arbiter: CallbackCounterSnapshot,
+    receive_timers: CallbackCounterSnapshot,
+}
+
+#[cfg(all(test, target_arch = "wasm32"))]
+impl From<CallbackCounters> for CallbackCounterSnapshot {
+    fn from(counters: CallbackCounters) -> Self {
+        Self {
+            requests: counters.requests,
+            queued_now: counters.queued_now,
+            executions: counters.executions,
+            cancellations: counters.cancellations,
+        }
     }
 }
 
-// wasm-bindgen types abort when constructed outside a wasm runtime, so this
-// suite only runs on the wasm32 target (e.g. via `wasm-pack test`).
+#[cfg(all(test, target_arch = "wasm32"))]
+impl WasmVm {
+    fn arbiter_counters(&self) -> ArbiterCounterSnapshot {
+        let instrumentation = *self.arbiter.instrumentation.borrow();
+        ArbiterCounterSnapshot {
+            arbiter: instrumentation.arbiter.into(),
+            receive_timers: instrumentation.receive_timers.into(),
+        }
+    }
+}
+
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
-    use js_sys::Object;
+    use beamr::atom::Atom;
+    use beamr::constant_pool::ConstantPool;
+    use beamr::loader::decode::compact::Operand;
+    use beamr::loader::{Instruction, LambdaEntry, LineInfo, Literal};
+    use beamr::module::{Module, ModuleOrigin, ResolvedImport};
+    use beamr::native::native_process::{NativeContext, NativeHandler, NativeOutcome};
+    use js_sys::{Array, Object};
     use wasm_bindgen_test::wasm_bindgen_test;
 
-    #[test]
-    fn create_vm_initializes() {
-        let vm = WasmVm::new();
-        assert!(vm.is_ok());
+    fn parse_json(value: JsValue) -> Value {
+        serde_json::from_str(
+            value
+                .as_string()
+                .expect("wrapper JSON values are returned as strings")
+                .as_str(),
+        )
+        .expect("wrapper JSON parses")
     }
 
-    // End-to-end WR-8: a JS host spawns an actor whose reply is computed by a
-    // JavaScript function, then `await`s a request/reply as a real `Promise` over
-    // the cooperative `CallFuture`.
-    //
-    // NOTE: this is a `#[wasm_bindgen_test]`; it requires a browser/Node wasm
-    // runner (`wasm-pack test` / `wasm-bindgen-test-runner`) and CANNOT be
-    // executed headless in this environment. It is compile-gated here (the seam's
-    // executable proof is the native `beamr` test of the same `call_async` logic).
-    #[wasm_bindgen_test]
-    async fn await_vm_call_resolves_with_js_handler_reply() {
-        let mut vm = create_vm().expect("VM constructs");
-
-        // JS handler: given request `{ n }`, reply with `{ result: n + 1 }`.
-        let handler = Closure::<dyn FnMut(JsValue) -> JsValue>::new(|request: JsValue| {
+    fn increment_handler() -> Closure<dyn FnMut(JsValue) -> JsValue> {
+        Closure::new(|request: JsValue| {
             let n = Reflect::get(&request, &JsValue::from_str("n"))
                 .ok()
                 .and_then(|value| value.as_f64())
@@ -926,93 +1248,310 @@ mod tests {
                 &JsValue::from_f64(n + 1.0),
             );
             reply.into()
-        });
-        let handler_fn = handler.as_ref().unchecked_ref::<Function>().clone();
+        })
+    }
 
-        let pid = vm.spawn_actor(handler_fn);
+    fn timeout_value(milliseconds: i32, value: JsValue) -> Promise {
+        Promise::new(&mut move |resolve, _reject| {
+            let callback_value = value.clone();
+            let callback = Closure::once_into_js(move || {
+                let _ignored = resolve.call1(&JsValue::UNDEFINED, &callback_value);
+            });
+            let global = js_sys::global();
+            let set_timeout = Reflect::get(&global, &JsValue::from_str("setTimeout"))
+                .expect("setTimeout is present")
+                .dyn_into::<Function>()
+                .expect("setTimeout is a function");
+            let _opaque_handle = set_timeout
+                .call2(
+                    &global,
+                    &callback,
+                    &JsValue::from_f64(f64::from(milliseconds)),
+                )
+                .expect("test macrotask schedules");
+        })
+    }
 
+    async fn host_macrotask() {
+        JsFuture::from(timeout_value(0, JsValue::UNDEFINED))
+            .await
+            .expect("test macrotask resolves");
+    }
+
+    async fn host_microtask() {
+        JsFuture::from(Promise::resolve(&JsValue::UNDEFINED))
+            .await
+            .expect("test microtask resolves");
+    }
+
+    fn request(n: f64) -> JsValue {
         let request = Object::new();
-        let _set = Reflect::set(&request, &JsValue::from_str("n"), &JsValue::from_f64(41.0));
-        let promise = vm
-            .call(pid, request.into())
-            .expect("call returns a Promise");
+        let _set = Reflect::set(&request, &JsValue::from_str("n"), &JsValue::from_f64(n));
+        request.into()
+    }
 
-        // Pump the cooperative scheduler so the transient call client sends the
-        // request, the actor runs the JS handler, and the reply resolves the slot.
-        for _ in 0..8 {
-            let _summary = vm.run_step().expect("run_step succeeds");
+    struct MailboxDrainer;
+
+    impl NativeHandler for MailboxDrainer {
+        fn handle(&mut self, context: &mut NativeContext<'_>) -> NativeOutcome {
+            while context.recv().is_some() {}
+            NativeOutcome::Wait
         }
+    }
 
+    async fn spawn_waiting_mailbox(vm: &mut WasmVm) -> u64 {
+        let pid = vm
+            .scheduler
+            .borrow_mut()
+            .spawn_native_root(Box::new(|| Box::new(MailboxDrainer)));
+        vm.schedule_external_edge()
+            .expect("test native root schedules the arbiter");
+        host_macrotask().await;
+        pid
+    }
+
+    fn receive_after_module(atoms: &AtomTable) -> (Atom, Atom, Module) {
+        let name = atoms.intern("wport2_receive_after");
+        let function = atoms.intern("run");
+        let timed_out = atoms.intern("timed_out");
+        let code = vec![
+            Instruction::Label { label: 1 },
+            Instruction::Label { label: 10 },
+            Instruction::LoopRec {
+                fail: Operand::Label(20),
+                destination: Operand::X(0),
+            },
+            Instruction::RemoveMessage,
+            Instruction::Return,
+            Instruction::Label { label: 20 },
+            Instruction::WaitTimeout {
+                fail: Operand::Label(10),
+                timeout: Operand::Unsigned(25),
+            },
+            Instruction::Timeout,
+            Instruction::Move {
+                source: Operand::Atom(Some(timed_out)),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ];
+        let label_index = code
+            .iter()
+            .enumerate()
+            .filter_map(|(ip, instruction)| match instruction {
+                Instruction::Label { label } => Some((*label, ip)),
+                _ => None,
+            })
+            .collect();
+        let mut exports = HashMap::new();
+        exports.insert((function, 0), 1);
+        (
+            name,
+            function,
+            Module {
+                name,
+                generation: 0,
+                origin: ModuleOrigin::Preloaded,
+                exports,
+                label_index,
+                code,
+                function_table: Vec::new(),
+                line_table: Vec::new(),
+                literals: Vec::<Literal>::new(),
+                constant_pool: ConstantPool::new(),
+                resolved_imports: Vec::<ResolvedImport>::new(),
+                lambdas: Vec::<LambdaEntry>::new(),
+                string_table: Vec::new(),
+                line_info: Vec::<LineInfo>::new(),
+            },
+        )
+    }
+
+    #[wasm_bindgen_test]
+    async fn await_vm_call_resolves_with_js_handler_reply() {
+        let mut vm = create_vm().expect("VM constructs");
+        let handler = increment_handler();
+        let handler_fn = handler.as_ref().unchecked_ref::<Function>().clone();
+        let pid = vm.spawn_actor(handler_fn);
+        let promise = vm.call(pid, request(41.0)).expect("call returns a Promise");
         let value = JsFuture::from(promise)
             .await
-            .expect("the call Promise resolves with the actor's reply");
+            .expect("the arbiter drives the call Promise to completion");
         let result = Reflect::get(&value, &JsValue::from_str("result"))
             .expect("reply has a result field")
             .as_f64();
         assert_eq!(result, Some(42.0), "JS handler replied with n + 1");
-
         drop(handler);
     }
 
-    // WR-10: the host pump. `pump_once` is the pure per-frame body; this drives
-    // it manually (the deterministic, runner-executable shape) to prove the same
-    // logic the rAF closure runs makes progress without hand-calling `run_step`.
-    //
-    // NOTE: a `#[wasm_bindgen_test]` — it needs a browser/Node wasm runner and
-    // CANNOT execute headless here. It is compile-gated. The rAF loop itself
-    // (`start_pump`/`PumpHandle`) is browser-only: rAF does not fire under a
-    // bare wasm test harness, so the executable proof of the pump's PURE logic
-    // is the native `has_pending_work` scheduler tests in `beamr`, which exercise
-    // the identical idle predicate `pump_once`/`start_pump` branch on.
     #[wasm_bindgen_test]
-    async fn pump_once_drives_an_actor_call_to_completion() {
+    async fn arbiter_drives_an_actor_call_to_completion() {
         let mut vm = WasmVm::new().expect("VM constructs");
-
-        let handler = Closure::<dyn FnMut(JsValue) -> JsValue>::new(|request: JsValue| {
-            let n = Reflect::get(&request, &JsValue::from_str("n"))
-                .ok()
-                .and_then(|value| value.as_f64())
-                .unwrap_or(0.0);
-            let reply = Object::new();
-            let _set = Reflect::set(
-                &reply,
-                &JsValue::from_str("result"),
-                &JsValue::from_f64(n + 1.0),
-            );
-            reply.into()
-        });
+        let handler = increment_handler();
         let handler_fn = handler.as_ref().unchecked_ref::<Function>().clone();
         let pid = vm.spawn_actor(handler_fn);
-
-        let request = Object::new();
-        let _set = Reflect::set(&request, &JsValue::from_str("n"), &JsValue::from_f64(7.0));
-        let promise = vm
-            .call(pid, request.into())
-            .expect("call returns a Promise");
-
-        // Drive turns via the pump body instead of run_step until the VM is idle.
-        for _ in 0..16 {
-            let pending = vm.pump_once().expect("pump_once succeeds");
-            if !pending {
-                break;
-            }
-        }
-
+        let promise = vm.call(pid, request(7.0)).expect("call returns a Promise");
         let value = JsFuture::from(promise)
             .await
-            .expect("the call Promise resolves after pumping");
+            .expect("the call Promise resolves after arbiter execution");
         let result = Reflect::get(&value, &JsValue::from_str("result"))
             .expect("reply has a result field")
             .as_f64();
-        assert_eq!(result, Some(8.0), "pump_once drove the actor reply (n + 1)");
-
-        // start_pump returns a usable handle in a runtime with rAF; stopping it
-        // is idempotent.
-        if let Ok(mut pump) = vm.start_pump() {
-            pump.stop();
-            pump.stop();
-        }
-
+        assert_eq!(result, Some(8.0), "the arbiter drove the actor reply");
         drop(handler);
+    }
+
+    #[wasm_bindgen_test]
+    async fn idle_vm_schedules_zero_recurring_callbacks() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let summary = parse_json(vm.run_step().expect("manual idle drain succeeds"));
+        assert_eq!(summary["state"], "idle");
+        let before = vm.arbiter_counters();
+
+        host_macrotask().await;
+
+        let after = vm.arbiter_counters();
+        assert_eq!(after.arbiter.requests, before.arbiter.requests);
+        assert_eq!(after.arbiter.executions, before.arbiter.executions);
+        assert_eq!(after.arbiter.queued_now, 0);
+        assert_eq!(after.receive_timers, before.receive_timers);
+    }
+
+    #[wasm_bindgen_test]
+    async fn idle_to_runnable_burst_queues_one_arbiter_turn() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let pid = spawn_waiting_mailbox(&mut vm).await;
+        let before = vm.arbiter_counters();
+
+        for value in 0..8 {
+            vm.send_message(pid, JsValue::from_f64(f64::from(value)))
+                .expect("host send succeeds");
+        }
+        let queued = vm.arbiter_counters();
+        assert_eq!(queued.arbiter.requests, before.arbiter.requests + 1);
+        assert_eq!(queued.arbiter.queued_now, 1);
+        assert_eq!(queued.arbiter.executions, before.arbiter.executions);
+
+        host_macrotask().await;
+        let after = vm.arbiter_counters();
+        assert_eq!(after.arbiter.executions, before.arbiter.executions + 1);
+        assert_eq!(after.arbiter.queued_now, 0);
+    }
+
+    #[wasm_bindgen_test]
+    async fn arbiter_reedges_after_true_idle() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let pid = spawn_waiting_mailbox(&mut vm).await;
+        let before = vm.arbiter_counters();
+
+        vm.send_message(pid, JsValue::from_f64(1.0))
+            .expect("first host send succeeds");
+        host_macrotask().await;
+        vm.send_message(pid, JsValue::from_f64(2.0))
+            .expect("second host send succeeds");
+        host_macrotask().await;
+
+        let after = vm.arbiter_counters();
+        assert_eq!(after.arbiter.requests, before.arbiter.requests + 2);
+        assert_eq!(after.arbiter.executions, before.arbiter.executions + 2);
+        assert_eq!(after.arbiter.queued_now, 0);
+    }
+
+    #[wasm_bindgen_test]
+    async fn fairness_yield_reports_runnable_remaining() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let handler = increment_handler();
+        let handler_fn = handler.as_ref().unchecked_ref::<Function>().clone();
+        for _ in 0..1_025 {
+            let _pid = vm.spawn_actor(handler_fn.clone());
+        }
+        let queued = vm.arbiter_counters();
+        assert_eq!(queued.arbiter.requests, 1);
+        assert_eq!(queued.arbiter.queued_now, 1);
+
+        host_microtask().await;
+
+        let middle = vm.arbiter_counters();
+        assert_eq!(middle.arbiter.executions, 1);
+        assert_eq!(middle.arbiter.requests, 2);
+        assert_eq!(middle.arbiter.queued_now, 1);
+        let summary = vm.arbiter.last_summary.borrow().clone();
+        assert_eq!(summary["state"], "fairness_yield");
+        assert_eq!(summary["runnable_remaining"], 1);
+
+        host_macrotask().await;
+        let after = vm.arbiter_counters();
+        assert_eq!(after.arbiter.executions, 2);
+        assert_eq!(after.arbiter.queued_now, 0);
+        assert_eq!(vm.arbiter.last_summary.borrow()["state"], "idle");
+        drop(handler);
+    }
+
+    #[wasm_bindgen_test]
+    fn arbiter_installation_rejects_missing_host_primitive() {
+        let global = js_sys::global();
+
+        let queue_key = JsValue::from_str("queueMicrotask");
+        let queue_microtask = Reflect::get(&global, &queue_key).expect("queueMicrotask exists");
+        assert!(Reflect::delete_property(&global, &queue_key).expect("queueMicrotask deletes"));
+        let queue_error = match WasmVm::new() {
+            Ok(_) => String::from("constructor unexpectedly succeeded"),
+            Err(error) => error.as_string().unwrap_or_default(),
+        };
+        Reflect::set(&global, &queue_key, &queue_microtask).expect("queueMicrotask restores");
+        assert!(queue_error.contains("queueMicrotask"), "{queue_error}");
+
+        let timeout_key = JsValue::from_str("setTimeout");
+        let set_timeout = Reflect::get(&global, &timeout_key).expect("setTimeout exists");
+        assert!(Reflect::delete_property(&global, &timeout_key).expect("setTimeout deletes"));
+        let timeout_error = match WasmVm::new() {
+            Ok(_) => String::from("constructor unexpectedly succeeded"),
+            Err(error) => error.as_string().unwrap_or_default(),
+        };
+        Reflect::set(&global, &timeout_key, &set_timeout).expect("setTimeout restores");
+        assert!(timeout_error.contains("setTimeout"), "{timeout_error}");
+    }
+
+    #[wasm_bindgen_test]
+    async fn await_exit_waits_for_armed_receive_timer() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let (module, function, definition) = receive_after_module(&vm.atom_table);
+        vm.module_registry.insert(definition);
+        let module_name = vm
+            .atom_table
+            .resolve(module)
+            .expect("module name")
+            .to_owned();
+        let function_name = vm
+            .atom_table
+            .resolve(function)
+            .expect("function name")
+            .to_owned();
+        let pid = vm
+            .spawn(&module_name, &function_name, "[]")
+            .expect("receive-after process spawns");
+        let completion = vm.await_exit(pid);
+        let marker = JsValue::from_str("macrotask");
+        let race = Promise::race(&Array::of2(
+            completion.as_ref(),
+            timeout_value(0, marker.clone()).as_ref(),
+        ));
+
+        let first = JsFuture::from(race).await.expect("race resolves");
+        assert_eq!(first.as_string(), marker.as_string());
+        assert_eq!(vm.arbiter_counters().receive_timers.queued_now, 1);
+
+        let settled = parse_json(
+            JsFuture::from(completion)
+                .await
+                .expect("receive timer fires and target exits"),
+        );
+        assert_eq!(settled["state"], "exited");
+        assert_eq!(settled["pid"], pid);
+        assert_eq!(settled["result"], "timed_out");
+        let counters = vm.arbiter_counters();
+        assert_eq!(counters.receive_timers.requests, 1);
+        assert_eq!(counters.receive_timers.executions, 1);
+        assert_eq!(counters.receive_timers.queued_now, 0);
     }
 }

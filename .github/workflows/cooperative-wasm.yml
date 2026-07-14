@@ -43,7 +43,13 @@ jobs:
             "convert::tests::converts_terms_to_js_values"
             "convert::tests::documents_boolean_atom_round_trip_as_atom_names"
             "tests::await_vm_call_resolves_with_js_handler_reply"
-            "tests::pump_once_drives_an_actor_call_to_completion"
+            "tests::arbiter_drives_an_actor_call_to_completion"
+            "tests::idle_vm_schedules_zero_recurring_callbacks"
+            "tests::idle_to_runnable_burst_queues_one_arbiter_turn"
+            "tests::arbiter_reedges_after_true_idle"
+            "tests::fairness_yield_reports_runnable_remaining"
+            "tests::arbiter_installation_rejects_missing_host_primitive"
+            "tests::await_exit_waits_for_armed_receive_timer"
           )
           assertion_status=0
           for test_name in "${expected_tests[@]}"; do
@@ -53,9 +59,9 @@ jobs:
             fi
           done
           if ! grep -Fq \
-            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 filtered out" \
+            "test result: ok. 11 passed; 0 failed; 0 ignored; 0 filtered out" \
             "$output_file"; then
-            echo "missing exact five-test success summary" >&2
+            echo "missing exact eleven-test success summary" >&2
             assertion_status=1
           fi
 

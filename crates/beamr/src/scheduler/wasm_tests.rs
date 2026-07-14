@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::*;
 use crate::atom::{Atom, AtomTable};
@@ -12,6 +13,7 @@ use crate::process::heap::DEFAULT_HEAP_SIZE;
 use crate::process::{CodePosition, ExitReason, Process, ProcessStatus, ReceiveTimeout};
 use crate::term::Term;
 use crate::term::boxed::Tuple;
+use crate::timer::TimerKind;
 
 #[test]
 fn wasm_scheduler_starts_empty_and_runs_idle_round() {
@@ -23,7 +25,83 @@ fn wasm_scheduler_starts_empty_and_runs_idle_round() {
     let summary = scheduler.run_until_idle();
 
     assert_eq!(summary.executed, 0);
+    assert_eq!(
+        summary.state,
+        WasmRunState::Idle {
+            next_native_deadline: None
+        }
+    );
     assert!(summary.exited.is_empty());
+}
+
+#[test]
+fn run_until_idle_reports_true_idle_and_earliest_native_deadline() {
+    let (mut empty, module) = scheduler_with_test_module();
+    assert_eq!(
+        empty.run_until_idle().state,
+        WasmRunState::Idle {
+            next_native_deadline: None
+        }
+    );
+
+    let mut receive_only = scheduler_with_test_module().0;
+    let mut waiting = waiting_process(88, module);
+    waiting.set_receive_timeout(Some(ReceiveTimeout {
+        timeout_position: CodePosition {
+            module: Atom::NIL,
+            instruction_pointer: 3,
+        },
+        milliseconds: 25,
+    }));
+    receive_only.register_receive_timer(&mut waiting);
+    assert_eq!(
+        receive_only.run_until_idle().state,
+        WasmRunState::Idle {
+            next_native_deadline: None
+        },
+        "host receive-after records do not enter the native wheel"
+    );
+
+    let (mut native_deadline, _module) = scheduler_with_test_module();
+    let now = web_time::Instant::now();
+    let delay = Duration::from_secs(60);
+    let expected = now + delay;
+    lock_timers(&native_deadline.native_timers).schedule_at(
+        now,
+        delay,
+        999,
+        Term::small_int(1),
+        TimerKind::Deliver,
+    );
+    assert_eq!(
+        native_deadline.run_until_idle().state,
+        WasmRunState::Idle {
+            next_native_deadline: Some(expected)
+        }
+    );
+}
+
+#[test]
+fn run_until_idle_preserves_errored_pid_identity() {
+    let (mut scheduler, _module) = scheduler_with_test_module();
+    let pid = 91;
+    let mut process = Process::new(pid, DEFAULT_HEAP_SIZE);
+    process
+        .transition_to(ProcessStatus::Running)
+        .expect("new process can run");
+    scheduler.processes.insert(pid, process);
+    scheduler.ready.push(pid, Priority::Normal);
+
+    let summary = scheduler.run_until_idle();
+
+    assert_eq!(summary.errored, vec![pid]);
+    assert_eq!(
+        summary.state,
+        WasmRunState::Idle {
+            next_native_deadline: None
+        }
+    );
+    assert!(scheduler.has_exit_error(pid));
 }
 
 #[test]

@@ -37,7 +37,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let archive = archive_pack(&modules)?;
     fs::write(bundle_dir.join("modules.bin"), archive)?;
     fs::write(bundle_dir.join("manifest.json"), manifest_json(&modules))?;
-    fs::write(bundle_dir.join("bootstrap.js"), bootstrap_js(&modules)?)?;
+    let bootstrap_path = bundle_dir.join("bootstrap.js");
+    fs::write(&bootstrap_path, bootstrap_js(&modules)?)?;
+    println!(
+        "cargo:rustc-env=BEAMR_WASM_BOOTSTRAP={}",
+        bootstrap_path.display()
+    );
     fs::write(bundle_dir.join("package-bundle.mjs"), package_script())?;
 
     Ok(())
@@ -274,25 +279,11 @@ export async function spawnPreloaded(module, functionName, args = [], options = 
   return { vm, pid, loads };
 }
 
-export function runUntilExit(vm, pid, options = {}) {
-  const maxSteps = options.maxSteps ?? 1024;
-  for (let step = 0; step < maxSteps; step += 1) {
-    const summary = parseJsonResult(vm.run_step());
-    const result = summary.results.find((entry) => entry.pid === pid);
-    if (result) {
-      if (typeof vm.take_exit_result === "function") {
-        result.value = parseJsonResult(vm.take_exit_result(pid));
-      }
-      return { summary, result };
-    }
-    if (summary.executed === 0 && summary.waiting === 0 && summary.yielded === 0) {
-      return { summary, result: undefined };
-    }
-  }
-  throw new Error(`BEAM process ${pid} did not exit within the ${maxSteps} step limit`);
+export async function awaitExit(vm, pid) {
+  return parseJsonResult(await vm.await_exit(pid));
 }
 
-const api = { WasmVm, initBeamr, createPreloadedVm, spawnPreloaded, runUntilExit, bundledModules };
+const api = { WasmVm, initBeamr, createPreloadedVm, spawnPreloaded, awaitExit, bundledModules };
 if (typeof globalThis !== "undefined") {
   globalThis.BeamrBundle = api;
 }

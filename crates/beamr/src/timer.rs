@@ -230,6 +230,12 @@ impl TimerWheel {
         self.entries.is_empty()
     }
 
+    /// Return the earliest absolute deadline among pending timers.
+    #[must_use]
+    pub fn earliest_deadline(&self) -> Option<Instant> {
+        self.entries.values().map(|entry| entry.expires_at).min()
+    }
+
     /// Inspect a pending timer entry.
     #[must_use]
     pub fn get(&self, reference: TimerRef) -> Option<&TimerEntry> {
@@ -340,6 +346,38 @@ mod tests {
         assert_eq!(expired[0].message, Term::atom(Atom::OK));
         assert_eq!(expired[0].kind, TimerKind::Deliver);
         assert!(wheel.is_empty());
+    }
+
+    #[test]
+    fn timer_reports_earliest_absolute_deadline() {
+        let start = Instant::now();
+        let mut wheel = TimerWheel::with_bucket_count(8);
+        let later = start + Duration::from_millis(40);
+        let earlier = start + Duration::from_millis(10);
+
+        wheel.schedule_at(
+            start,
+            Duration::from_millis(40),
+            1,
+            Term::small_int(1),
+            TimerKind::Deliver,
+        );
+        let earlier_ref = wheel.schedule_at(
+            start,
+            Duration::from_millis(10),
+            2,
+            Term::small_int(2),
+            TimerKind::Deliver,
+        );
+
+        assert_eq!(wheel.earliest_deadline(), Some(earlier));
+        assert_eq!(
+            wheel.cancel_at(earlier_ref, start),
+            Some(Duration::from_millis(10))
+        );
+        assert_eq!(wheel.earliest_deadline(), Some(later));
+        let _expired = wheel.tick_at(later);
+        assert_eq!(wheel.earliest_deadline(), None);
     }
 
     #[test]

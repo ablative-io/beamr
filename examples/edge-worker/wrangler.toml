@@ -6,4 +6,3 @@ workers_dev = true
 [vars]
 BEAMR_EDGE_MODULE = "edge_handler"
 BEAMR_EDGE_FUNCTION = "handle"
-BEAMR_EDGE_MAX_STEPS = "1024"

@@ -19,14 +19,25 @@ async function workerScript() {
         });
         return pid;
       },
-      run_step() {
-        const results = [...this.results].map(([pid, value]) => ({ pid, value }));
-        return JSON.stringify({ executed: 1, yielded: 0, waiting: 0, exited: results.length, errored: 0, results });
-      },
-      take_exit_result(pid) {
+      async await_exit(pid) {
         const value = this.results.get(pid) ?? null;
         this.results.delete(pid);
-        return JSON.stringify(value);
+        return JSON.stringify({
+          state: value == null ? "idle" : "exited",
+          pid,
+          result: value,
+          summary: {
+            state: "idle",
+            next_native_deadline_ms: null,
+            runnable_remaining: 0,
+            executed: value == null ? 0 : 1,
+            yielded: [],
+            waiting: [],
+            exited: value == null ? [] : [pid],
+            errored: [],
+            results: value == null ? [] : [{ pid, value }]
+          }
+        });
       }
     };
     async function createPreloadedVm() {
@@ -35,20 +46,12 @@ async function workerScript() {
     function parseJsonResult(value) {
       return typeof value === "string" ? JSON.parse(value) : value;
     }
-    function runUntilExit(vm, pid, options = {}) {
-      const maxSteps = options.maxSteps ?? 1024;
-      for (let step = 0; step < maxSteps; step += 1) {
-        const summary = parseJsonResult(vm.run_step());
-        const result = summary.results.find((entry) => entry.pid === pid);
-        if (result) {
-          return { summary, result };
-        }
-      }
-      throw new Error("process did not exit");
+    async function awaitExit(vm, pid) {
+      return parseJsonResult(await vm.await_exit(pid));
     }
   `;
   return source.replace(
-    'import { createPreloadedVm, runUntilExit } from "../../../crates/beamr-wasm/pkg/beamr.bundle.mjs";',
+    'import { awaitExit, createPreloadedVm } from "../../../crates/beamr-wasm/pkg/beamr.bundle.mjs";',
     stubBundle
   );
 }
@@ -60,7 +63,6 @@ test("Cloudflare Worker spawns one BEAM process per HTTP request shape", async (
     bindings: {
       BEAMR_EDGE_MODULE: "edge_handler",
       BEAMR_EDGE_FUNCTION: "handle",
-      BEAMR_EDGE_MAX_STEPS: "1024",
     },
   });
   try {

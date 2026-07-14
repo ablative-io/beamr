@@ -1,6 +1,6 @@
 //! Cooperative single-threaded scheduler for `wasm32-unknown-unknown` hosts.
 //!
-//! The host owns the event loop and repeatedly calls [`WasmScheduler::run_until_idle`]
+//! The host owns the event loop and calls [`WasmScheduler::run_until_idle`]
 //! from `requestAnimationFrame`, a microtask, or an equivalent callback. No OS
 //! threads, blocking I/O, dirty pools, or distribution services are started here.
 
@@ -41,9 +41,52 @@ pub enum WasmAsyncCompletion {
     Error(OwnedTerm),
 }
 
-/// Summary returned from one cooperative scheduler turn.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// Maximum number of reduction-bounded process slices executed in one host turn.
+///
+/// A finite wall guarantees that continuously runnable work returns control to
+/// the host event loop so timers and I/O can be serviced. This is deliberately
+/// not configurable: embedders observe the fairness result instead.
+pub const MAX_SLICES_PER_DRAIN: usize = 1_024;
+
+/// Post-drain scheduler state, separate from process exits and errors.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum WasmRunState {
+    /// No runnable process remains. This scheduler exposes but does not arm the
+    /// later host-deadline service's native timer-wheel seam.
+    Idle {
+        /// Earliest absolute native timer-wheel deadline, if one is pending.
+        next_native_deadline: Option<web_time::Instant>,
+    },
+    /// Runnable processes remain because this host turn reached its fairness wall.
+    FairnessYield {
+        /// Exact number of processes still present in the ready queues.
+        runnable_remaining: usize,
+    },
+}
+
+impl WasmRunState {
+    /// Convert the exposed native deadline to non-negative milliseconds from now.
+    #[must_use]
+    pub fn next_native_deadline_millis_from_now(&self) -> Option<f64> {
+        match self {
+            Self::Idle {
+                next_native_deadline: Some(deadline),
+            } => Some(
+                deadline
+                    .saturating_duration_since(web_time::Instant::now())
+                    .as_secs_f64()
+                    * 1_000.0,
+            ),
+            Self::Idle { .. } | Self::FairnessYield { .. } => None,
+        }
+    }
+}
+
+/// Summary returned from one cooperative scheduler drain.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WasmRunSummary {
+    /// Whether the drain reached true idle or yielded for host fairness.
+    pub state: WasmRunState,
     /// Number of processes that received one reduction-bounded slice.
     pub executed: usize,
     /// PIDs that yielded and were requeued for a later host tick.
@@ -54,6 +97,21 @@ pub struct WasmRunSummary {
     pub exited: Vec<u64>,
     /// PIDs that faulted with an interpreter error during this turn.
     pub errored: Vec<u64>,
+}
+
+impl Default for WasmRunSummary {
+    fn default() -> Self {
+        Self {
+            state: WasmRunState::Idle {
+                next_native_deadline: None,
+            },
+            executed: 0,
+            yielded: Vec::new(),
+            waiting: Vec::new(),
+            exited: Vec::new(),
+            errored: Vec::new(),
+        }
+    }
 }
 
 /// Single-threaded cooperative scheduler for WASM.
@@ -89,6 +147,10 @@ pub struct WasmScheduler {
     /// `Arc<Mutex<…>>` so the `Send + Sync` [`NativeContext`] can hold it;
     /// uncontended on the single host thread.
     pub(super) native_timers: Arc<Mutex<TimerWheel>>,
+    /// One-shot latch set by an external empty-ready to runnable mutation.
+    external_runnable_edge_pending: bool,
+    /// Suppresses external-edge requests for work produced inside an active drain.
+    drain_in_progress: bool,
 }
 
 impl WasmScheduler {
@@ -119,6 +181,8 @@ impl WasmScheduler {
             shared_next_pid: Arc::new(Mutex::new(1)),
             native_exit_reasons: BTreeMap::new(),
             native_timers: Arc::new(Mutex::new(TimerWheel::new())),
+            external_runnable_edge_pending: false,
+            drain_in_progress: false,
         }
     }
 
@@ -249,7 +313,9 @@ impl WasmScheduler {
                 process.set_x_reg(register, arg);
             }
         }
+        let ready_was_empty = self.ready.len() == 0;
         self.ready.push(pid, process.priority());
+        self.note_ready_push(ready_was_empty);
         self.processes.insert(pid, process);
         Ok(pid)
     }
@@ -292,7 +358,9 @@ impl WasmScheduler {
                 process.set_x_reg(register, copied);
             }
         }
+        let ready_was_empty = self.ready.len() == 0;
         self.ready.push(pid, process.priority());
+        self.note_ready_push(ready_was_empty);
         self.processes.insert(pid, process);
         Ok(pid)
     }
@@ -308,7 +376,9 @@ impl WasmScheduler {
         if process.transition_to(ProcessStatus::Running).is_err() {
             return false;
         }
+        let ready_was_empty = self.ready.len() == 0;
         self.ready.push(pid, process.priority());
+        self.note_ready_push(ready_was_empty);
         true
     }
 
@@ -424,17 +494,26 @@ impl WasmScheduler {
         woken
     }
 
-    /// Execute at most one ready-queue snapshot. Processes that yield are
-    /// requeued for the next host-driven turn, preserving cooperative fairness.
+    /// Drain runnable work until true idle or the fixed host-turn fairness wall.
     pub fn run_until_idle(&mut self) -> WasmRunSummary {
+        self.run_until_idle_with_limit(MAX_SLICES_PER_DRAIN)
+    }
+
+    #[cfg(test)]
+    pub(super) fn run_until_idle_with_test_limit(&mut self, limit: usize) -> WasmRunSummary {
+        self.run_until_idle_with_limit(limit)
+    }
+
+    fn run_until_idle_with_limit(&mut self, limit: usize) -> WasmRunSummary {
+        self.drain_in_progress = true;
+        self.external_runnable_edge_pending = false;
         // WR-4: expire any native `Deliver` timers due now so a parked actor
         // whose self-tick has come due is runnable within this same turn.
         let _woken = self.tick_native_timers();
         let mut summary = WasmRunSummary::default();
-        let budget = self.ready.len();
         let mut yielded_next_tick = Vec::new();
 
-        for _ in 0..budget {
+        while summary.executed < limit {
             let Some(pid) = self.ready.pop() else {
                 break;
             };
@@ -535,7 +614,21 @@ impl WasmScheduler {
         for (pid, priority) in yielded_next_tick {
             self.ready.push(pid, priority);
         }
+        self.drain_in_progress = false;
+        let runnable_remaining = self.ready.len();
+        summary.state = if runnable_remaining == 0 {
+            WasmRunState::Idle {
+                next_native_deadline: lock_timers(&self.native_timers).earliest_deadline(),
+            }
+        } else {
+            WasmRunState::FairnessYield { runnable_remaining }
+        };
         summary
+    }
+
+    /// Consume the one-shot external idle-to-runnable edge latch.
+    pub fn take_external_runnable_edge(&mut self) -> bool {
+        std::mem::take(&mut self.external_runnable_edge_pending)
     }
 
     /// Return a process exit result captured from x(0), if available.
@@ -570,23 +663,39 @@ impl WasmScheduler {
         pid
     }
 
+    pub(super) fn note_ready_push(&mut self, ready_was_empty: bool) {
+        if ready_was_empty && !self.drain_in_progress {
+            self.external_runnable_edge_pending = true;
+        }
+    }
+
+    /// Return whether an interpreter error has been retained for `pid`.
+    #[must_use]
+    pub fn has_exit_error(&self, pid: u64) -> bool {
+        self.exit_errors.contains_key(&pid)
+    }
+
+    /// Return the number of currently runnable processes.
+    #[must_use]
+    pub fn runnable_count(&self) -> usize {
+        self.ready.len()
+    }
+
     /// Total number of ready-queued processes across all priorities.
     pub(super) fn ready_len(&self) -> usize {
         self.ready.len()
     }
 
-    /// Whether the scheduler still has work that a host pump can make progress
-    /// on by continuing to drive turns: a process is ready to run, or a native
-    /// `Deliver` timer is armed (a later tick will deliver its message and wake
-    /// the target).
+    /// Whether a process is ready to run or a native `Deliver` timer is armed
+    /// (a later tick will deliver its message and wake the target).
     ///
-    /// This is the WR-10 host-pump idle predicate. It deliberately does NOT
-    /// count processes parked in `waiting` with no armed timer: those are blocked
-    /// on an external event (an inbound `send`/`cast`, a `timer_fired`, or an
-    /// async completion) that the host delivers, each of which re-enqueues the
-    /// process and is the host's cue to pump again — so a pump loop that yielded
-    /// the browser on `!has_pending_work()` is correctly restarted by those
-    /// entry points, not by spinning `requestAnimationFrame` while idle.
+    /// An introspection predicate for tests and embedders. It deliberately does
+    /// NOT count processes parked in `waiting` with no armed timer: those are
+    /// blocked on an external event (an inbound `send`/`cast`, a `timer_fired`,
+    /// or an async completion), and each of those entry points raises the
+    /// edge-triggered arbiter turn that resumes execution. It is not a drive
+    /// signal: progress is arbiter-scheduled, never polled, and the drain
+    /// result ([`WasmRunState`]) is the host-facing idle/fairness contract.
     #[must_use]
     pub fn has_pending_work(&self) -> bool {
         if self.ready.len() != 0 {

@@ -1,6 +1,6 @@
 # Beamr Cloudflare Worker example
 
-This example shows how to deploy a precompiled Beamr WASM bundle to an edge worker platform. It keeps the worker isolate warm by loading the bundle at module scope, then handles every HTTP request by spawning a fresh BEAM process and driving the cooperative scheduler until that process exits.
+This example shows how to deploy a precompiled Beamr WASM bundle to an edge worker platform. It keeps the worker isolate warm by loading the bundle at module scope, then handles every HTTP request by spawning a fresh BEAM process and awaiting its arbiter-driven completion.
 
 ## Build the bundle
 
@@ -16,7 +16,7 @@ node crates/beamr-wasm/target/wasm32-unknown-unknown/release/build/beamr-wasm-*/
 
 The build script emits deterministic bundle assets under Cargo `OUT_DIR/beamr-wasm-bundle/`:
 
-- `bootstrap.js` imports the wasm-bindgen package, constructs a VM with `create_vm()`, loads each bundled module with `load_module(bytes)`, and exports `createPreloadedVm`, `spawnPreloaded`, and `runUntilExit`.
+- `bootstrap.js` imports the wasm-bindgen package, constructs a VM with `create_vm()`, loads each bundled module with `load_module(bytes)`, and exports `createPreloadedVm`, `spawnPreloaded`, and `awaitExit`.
 - `modules.bin` uses the same `BEAMR_EMBED\0` archive format as the native runtime for the selected `.beam` files.
 - `manifest.json` records `beamr.wasm`/`beamr_wasm_bg.wasm`, the bootstrap, archive, and sorted module list.
 - `package-bundle.mjs` can turn `wasm-pack` output plus `bootstrap.js` into `beamr.bundle.mjs` for single-import deployment.
@@ -42,7 +42,7 @@ That object is passed through the existing B-146 copy-based JSON/Term conversion
 vm.spawn(env.BEAMR_EDGE_MODULE, env.BEAMR_EDGE_FUNCTION, JSON.stringify([requestObject]))
 ```
 
-The BEAM handler should return either a string body or an object shaped like `{ status, headers, body }`. Terms are converted back through the WASM JSON result returned by `run_step()`.
+The worker then calls `await awaitExit(vm, pid)`. External idle-to-runnable edges queue one microtask; an explicit fairness yield continues through `setTimeout(0)` so the host gets a real turn. The BEAM handler should return either a string body or an object shaped like `{ status, headers, body }`; the exited completion carries that converted value in `result`. There is no max-step option or repeated `run_step()` completion protocol.
 
 ## Local smoke test
 

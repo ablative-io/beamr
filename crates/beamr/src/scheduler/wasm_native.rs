@@ -201,7 +201,9 @@ impl WasmScheduler {
         process.set_group_leader(Term::pid(pid));
         process.set_priority(Priority::Normal);
         process.set_native_body(NativeBody::new(factory));
+        let ready_was_empty = self.ready.len() == 0;
         self.ready.push(pid, process.priority());
+        self.note_ready_push(ready_was_empty);
         self.processes.insert(pid, process);
         pid
     }
@@ -449,7 +451,9 @@ impl WasmScheduler {
                 let _parent_linked = parent.add_link(pid);
             }
         }
+        let ready_was_empty = self.ready.len() == 0;
         self.ready.push(pid, process.priority());
+        self.note_ready_push(ready_was_empty);
         self.processes.insert(pid, process);
     }
 

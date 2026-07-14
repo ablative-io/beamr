@@ -22,6 +22,7 @@ use crate::native::native_process::{
     NativeContext, NativeHandler, NativeHandlerFactory, NativeOutcome,
 };
 use crate::process::ExitReason;
+use crate::scheduler::WasmRunState;
 use crate::term::Term;
 
 /// A one-shot echo actor: parks until a message arrives, then on its next slice
@@ -1228,6 +1229,68 @@ impl NativeHandler for Yielder {
         self.remaining -= 1;
         NativeOutcome::Continue
     }
+}
+
+/// A continuously runnable actor that spawns another copy of itself and yields.
+struct SpawningYielder {
+    runs: Arc<Mutex<Vec<u64>>>,
+}
+
+impl NativeHandler for SpawningYielder {
+    fn handle(&mut self, ctx: &mut NativeContext<'_>) -> NativeOutcome {
+        if let Ok(mut runs) = self.runs.lock() {
+            runs.push(ctx.self_pid());
+        }
+        let child_runs = Arc::clone(&self.runs);
+        let _child = ctx.spawn_native(
+            Box::new(move || {
+                Box::new(SpawningYielder {
+                    runs: Arc::clone(&child_runs),
+                })
+            }),
+            None,
+        );
+        NativeOutcome::Continue
+    }
+}
+
+#[test]
+fn run_until_idle_reports_fairness_yield_with_runnable_remaining() {
+    let mut scheduler = scheduler();
+    let runs = Arc::new(Mutex::new(Vec::new()));
+    let root_runs = Arc::clone(&runs);
+    let _root = scheduler.spawn_native_root(Box::new(move || {
+        Box::new(SpawningYielder {
+            runs: Arc::clone(&root_runs),
+        })
+    }));
+
+    let summary = scheduler.run_until_idle_with_test_limit(3);
+
+    assert_eq!(summary.executed, 3, "the low test wall bounds this drain");
+    assert_eq!(
+        summary.state,
+        WasmRunState::FairnessYield {
+            runnable_remaining: 4
+        },
+        "three held yielders plus the newest child remain runnable"
+    );
+    let observed = runs.lock().expect("run log lock");
+    assert_eq!(observed.len(), 3);
+    let unique = observed
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        unique.len(),
+        3,
+        "no yielded pid is selected twice in one drain"
+    );
+    drop(observed);
+    assert!(
+        !scheduler.take_external_runnable_edge(),
+        "in-turn child spawns are consumed by the active drain, not external edges"
+    );
 }
 
 /// A native actor that records the order in which it first runs into a shared

@@ -5,7 +5,9 @@ pub mod exit_capture;
 pub mod wasm;
 mod wasm_native;
 pub use exit_capture::OwnedException;
-pub use wasm::{WasmAsyncCompletion, WasmRunSummary, WasmScheduledTimer, WasmScheduler};
+pub use wasm::{
+    WasmAsyncCompletion, WasmRunState, WasmRunSummary, WasmScheduledTimer, WasmScheduler,
+};
 
 /// Default preemption budget for a process slice, shared by both the threaded
 /// and the cooperative scheduler.

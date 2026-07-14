@@ -169,9 +169,10 @@ poll-based timer. Everything else the consumers need is already platform-neutral
 ## 3. The three execution-model options, assessed
 
 ### (a) Single-threaded cooperative scheduler on the wasm event loop — **RECOMMENDED**
-Processes run one bounded slice each per host tick and cooperatively yield; the host pumps
-`run_until_idle()` from a microtask/`setTimeout(0)`/`requestAnimationFrame`. **This is what already
-exists** for bytecode; we extend it to native processes.
+Processes run one bounded slice per selected PID and cooperatively yield. As superseded by
+WPORT-2, external idle-to-runnable edges queue one coalesced `queueMicrotask`; an explicit
+fairness boundary continues through `setTimeout(0)` so the host receives a real turn. Recurring
+animation-frame or timer checks are polling and are not a runtime progress mechanism.
 
 - **Pro:** matches the existing `WasmScheduler`, the existing timer/async bridges, and the consumers'
   actual workload (see §6 — both haematite shards and liminal channels/conversations are wake-on-demand
@@ -463,25 +464,23 @@ async resources (the hybrid) for the one genuinely-blocking case (OPFS file hand
 
 ## 10. Using the cooperative runtime (WR-10)
 
-This section is the consumer-facing guide to the merged cooperative runtime: the
-execution model, the `call` → `call_async`/`Promise` migration, the WR-10 host
-pump, and the wasm time base. It describes the API as merged on `main`, not a
-proposal.
+> **Superseded scheduling guidance (WPORT-2).** The former `pump_once`,
+> `start_pump`, `PumpHandle`, and recurring `requestAnimationFrame` protocol were
+> retired because checking again for progress violates the NO-POLLING law. The
+> event-driven contract below is the live consumer guidance.
 
 ### 10.1 The cooperative model in one paragraph
 
 On native targets beamr runs a multi-threaded, reduction-preempted scheduler.
 On `wasm32-unknown-unknown` there are no OS threads, so the runtime is a
 **single-threaded cooperative scheduler** (`WasmScheduler`, `scheduler/wasm.rs`)
-driven by the JavaScript host. The host advances the runtime one *turn* at a
-time: each turn first expires any due native `Deliver` timers, then gives every
-ready process one reduction-bounded slice. Bytecode processes are preempted by
-the reduction budget; a **native `handle()` runs to completion within its slice**,
-so a native handler must process at most one message per slice and then return
-`Wait`/`Stop` (the one-message-per-slice rule — a handler that loops forever
-blocks the whole turn and hangs the page). Nothing is parallel: a single
-`Rc<RefCell<WasmScheduler>>` lives on the browser main thread, and every host
-entry point takes a short, scoped `borrow_mut`.
+driven by an edge-triggered host arbiter. One drain first expires due native
+`Deliver` timers, then selects live ready work until no runnable process remains
+or the fixed 1,024-slice fairness wall is reached. Yielded PIDs are held until
+the host turn ends, so one PID cannot be selected twice in the same drain.
+Bytecode is reduction-bounded; a native `handle()` must remain short because it
+runs to completion within its slice. Nothing is parallel: the VM owns one
+`Rc<RefCell<WasmScheduler>>`, and host entry points use scoped borrows.
 
 ### 10.2 `call` (blocking, threaded) → `call_async` / `Promise` (cooperative, wasm)
 
@@ -491,101 +490,72 @@ produced by a later turn, which the same (blocked) thread would have to drive.
 The cooperative surface replaces it:
 
 - **Rust native callers (haematite/liminal actors):** use
-  `CoopSenderHandle::call_async`, which returns a host-pumpable `CallFuture`
+  `CoopSenderHandle::call_async`, which returns a `CallFuture`
   instead of blocking. It is ref-correlated, so concurrent in-flight calls never
   cross replies. `cast` (fire-and-forget) is unchanged.
 - **JavaScript hosts:** `WasmVm::call(pid, request)` returns a real JS
   `Promise` (the `CallFuture` wrapped via `future_to_promise`). `await vm.call(...)`
-  resolves with the actor's reply once the host keeps pumping; a timeout self-tick
-  rejects it. `WasmVm::cast(pid, message)` is the non-blocking send (a cast to a
-  dead pid is silently dropped, exactly like a BEAM send).
+  resolves with the actor's reply as the arbiter drains the transient client and
+  target actor; a timeout self-tick rejects it. `WasmVm::cast(pid, message)` is
+  the non-blocking send (a cast to a dead pid is silently dropped).
 
 Migration rule of thumb: every threaded `handle.call(req)?` becomes, under wasm,
-`handle.call_async(req).await` (Rust) or `await vm.call(pid, req)` (JS), and the
-host must be pumping turns for the future/Promise to make progress.
+`handle.call_async(req).await` (Rust) or `await vm.call(pid, req)` (JS). External
+idle-to-runnable mutations request the required host turn automatically.
 
-### 10.3 Driving the runtime: manual stepping vs the WR-10 host pump
+### 10.3 Driving the runtime: edge-triggered arbitration
 
-There are two ways to advance turns; both live on `WasmVm` and are additive.
+Each VM owns an `Idle` / `Queued` / `Draining` arbiter:
 
-**Manual stepping (unchanged, for tests / custom hosts):**
+- An external idle-to-runnable edge (`send_message`, bytecode/native spawn,
+  `call`, `cast`, async completion, or receive-timer fire) queues exactly one
+  `queueMicrotask`. More events before that callback coalesce.
+- Callback entry drains runnable work. TRUE IDLE returns the arbiter to `Idle`
+  and schedules nothing.
+- FAIRNESS YIELD reports the exact positive `runnable_remaining` count and queues
+  exactly one `setTimeout(0)` continuation. The returned timeout handle is opaque
+  and discarded; the macrotask leg gives timers and I/O a host turn.
 
-- `vm.run_step()` runs one turn to quiescence and returns a JSON summary
-  (executed / yielded / waiting / exited / errored + captured exit results), then
-  reflects any newly-armed receive-timers into host `setTimeout`s.
-- `vm.pump_once()` is the same per-turn body but returns a plain `bool` —
-  *whether the scheduler still has pending work* — instead of the JSON summary,
-  so it is cheap to call every frame. Use `run_step` when you want the summary,
-  `pump_once`/the pump when you just want to drive to idle.
+`vm.run_step()` remains available for a custom embedder to invoke **one** manual
+drain. Its JSON has `state` (`idle` or `fairness_yield`), nullable
+`next_native_deadline_ms`, `runnable_remaining`, and the existing
+executed/yielded/waiting/exited/errored/results collections. Repeated
+`run_step()` calls are not a completion or idle protocol.
 
-**The WR-10 pump (recommended for browser apps):**
+### 10.4 Awaitable completion and SETTLED IDLE
 
 ```js
 import init, { create_vm } from "./pkg/beamr_wasm.js";
 await init();
 const vm = create_vm();
 const pid = vm.spawn_actor((request) => ({ result: request.n + 1 }));
-
-// Start a requestAnimationFrame-driven pump: no more hand-calling run_step.
-const pump = vm.start_pump();
-
-const reply = await vm.call(pid, { n: 41 }); // resolves as the pump drives turns
-console.log(reply.result);                   // 42
-
-pump.stop(); // or let the returned PumpHandle be GC'd / dropped
+const reply = await vm.call(pid, { n: 41 });
+console.log(reply.result); // 42
 ```
 
-`vm.start_pump()` installs a `requestAnimationFrame` loop that runs `pump_once`
-each frame — expiring native timers off a real wasm clock
-(`web_time::Instant::now()`, see §10.4), running every ready process, and
-draining pending timer schedules — then yields the browser and reschedules
-itself **while work remains**. When a turn leaves the scheduler idle (no ready
-process and no armed native timer) the pump stops requesting frames rather than
-burning a rAF slot every frame on an idle VM. The events that re-enqueue a
-parked process — an inbound `send_message`/`cast`, a fired host timer, or an
-async-NIF completion — already wake the target, so a host that delivers such an
-event simply (re)starts a pump to resume. `start_pump` returns a `PumpHandle`;
-call `handle.stop()` (idempotent) or drop it to cancel the loop.
+For process completion, use `WasmVm::await_exit(pid)` or generated
+`awaitExit(vm, pid)`. The Promise resolves with `exited` plus the exactly-once
+result, `errored` for the surfaced target error identity, or `idle` only at
+**SETTLED IDLE**: TRUE IDLE with zero armed receive-timer one-shots. TRUE IDLE
+while a receive-after callback remains armed keeps the Promise pending because
+that known deadline can make the target runnable. FAIRNESS YIELD never resolves
+completion; it requests the single macrotask continuation.
 
-**Borrow discipline (why the pump is safe):** the rAF closure captures only
-cloned `Rc`s (the scheduler and the host-timer map) plus a stop flag — never
-`&mut self`. Each turn's scheduler access is a short scoped `borrow_mut` inside
-`pump_once` / `sync_host_timers_inner` that is dropped before the closure
-reschedules itself, so no `RefCell` borrow is ever held across the rAF callback
-(the classic nested-`borrow_mut` panic source). A turn that errors stops the
-pump cleanly rather than panicking across the wasm boundary.
-
-**Idle predicate:** the pump's keep-going decision is
-`WasmScheduler::has_pending_work()` — true iff a process is ready OR a native
-`Deliver` timer is armed. It deliberately does *not* count processes parked in
-`waiting` with no armed timer (those are blocked on a host-delivered external
-event). This predicate is plain scheduler state, so it is unit-tested natively
-(no browser) by the `has_pending_work_*` tests in `scheduler/wasm_native_tests.rs`,
-which exercise the exact branch the rAF loop runs.
-
-### 10.4 The wasm time base (`web-time`)
+### 10.5 The wasm time base and WPORT-3 boundary
 
 The native timer wheel (`timer.rs`) and the cooperative timer seam read a
 monotonic clock via `web_time::Instant` rather than `std::time::Instant`. On
-native targets `web_time::Instant` is a re-export of `std::time::Instant`, so
-there is **zero behavior change** (the full native suite is unchanged-green). On
-`wasm32-unknown-unknown`, `std::time::Instant::now()` panics (no time source); a
-single armed native timer would otherwise panic the page on the next turn, since
-`run_until_idle` ticks the wheel each turn. `web_time::Instant` is backed by
-`performance.now()` there, so native timers (`NativeContext::schedule` /
-`send_after`, `WasmVm` host `setTimeout` receive-timeouts, and the rAF pump's
-per-turn tick) work in the browser. `Duration` stays `std::time::Duration`
-(portable). The deterministic test/host seam `tick_native_timers_at(now)` takes a
-`web_time::Instant` (which a browser host derives from `performance.now()`); the
-threaded scheduler's own timing is untouched.
+native targets it is a re-export of `std::time::Instant`; on wasm it uses the
+host monotonic clock. The drain exposes the earliest native timer-wheel deadline
+as nullable milliseconds from serialization time, but WPORT-2 does **not** arm a
+host callback for it. WPORT-3 owns native-deadline arming, cancellation, and
+re-arming. Existing receive-after one-shots remain separately host-armed and are
+counted separately from progress turns.
 
-### 10.5 What is and isn't headless-testable
+### 10.6 Executed acceptance ground
 
-The pure logic — the idle predicate, the timer wheel, the cooperative
-actor/`call_async` path — is proven by native `cargo test`. The
-`requestAnimationFrame` loop, the JS `Promise` resolution, and the actual
-`spawn_actor`/`call` round-trip are `#[wasm_bindgen_test]`s that require a
-browser/Node wasm runner (`wasm-pack test` / `wasm-bindgen-test-runner`); they
-are compile-gated in CI here but execute under a real runner. rAF does not fire
-under a bare wasm test harness, so the pump's executable proof of its *pure*
-logic is the native `has_pending_work` suite.
+Native tests pin drain state, fairness, priority, error identity, and the timer
+query. The Node `wasm-bindgen-test-runner` executes the real VM and pins the idle
+wall, coalescing, re-edge, fairness macrotask, both missing-primitive refusals,
+SETTLED IDLE, and the actor results. This document makes no browser/Worker
+availability or throttling claim; those platform probes belong to later briefs.
