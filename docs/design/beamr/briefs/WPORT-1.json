@@ -1,0 +1,69 @@
+{
+  "id": "WPORT-1",
+  "cluster": "wasm-port",
+  "title": "Wasm baseline truthfulness — duplicate-free VM construction and an executed Node test gate",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": [],
+  "stories": [],
+  "purpose": "The executable baseline governed by `docs/design/beamr/WASM-PORT-ARC.md` at `5b165cd`, specifically WPORT-1 (`docs/design/beamr/WASM-PORT-ARC.md:46-57`). At the pinned product base `d9de35e`, `WasmVm::new` returns on BIF-registration error (`crates/beamr-wasm/src/lib.rs:59-70`), and its caller registers gate 1 followed by gate 2, exception, ETF, and stdlib stubs (`crates/beamr-wasm/src/lib.rs:779-788`) even though gate 1 already includes exception and ETF registration (`crates/beamr/src/native/bifs.rs:47-65`); the registry refuses duplicate MFAs (`crates/beamr/src/native/mod.rs:251-268`). The evidence pack's executed wasm runner recorded three conversion tests passing and both VM actor tests failing at their constructor calls with the duplicate-registration error (`_inputs/wasm-port-evidence-pack-full.md:52-68`; `crates/beamr-wasm/src/lib.rs:916-918`; `crates/beamr-wasm/src/lib.rs:971-973`). CI did not expose that runtime refusal because the current workflow installs the target and runs only two `cargo check` commands (`.github/workflows/cooperative-wasm.yml:13-20`). Compiles does not imply constructs, and constructs does not imply runs: this brief buys the first truthful executable fact and makes CI prove it permanently, without entering WPORT-2 scheduling scope.",
+  "task": "Correct the wasm-safe BIF caller set so it composes gate 1, gate 2, and stdlib stubs exactly once while preserving the registry's duplicate-MFA refusal as a hard wall. Make the complete existing five-test `#[wasm_bindgen_test]` inventory pass under real `wasm32-unknown-unknown` execution with the Node wasm-bindgen runner, including both actor workloads after construction. Extend `.github/workflows/cooperative-wasm.yml` without removing either existing check so CI installs the matching wasm test toolchain, executes that suite, reports what commit/toolchain and test count it measured, and carries fail-first evidence that the new leg detects the pre-fix constructor defect. Deviations from this brief — including improvements — STOP and report; they are not improvised (house rule, composition-campaign precedent).",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Correct the caller's registration set; preserve duplicate refusal as the wall",
+      "spec": "At `d9de35e`, `register_wasm_safe_bifs` calls `register_gate1_bifs`, `register_gate2_bifs`, `register_exception_bifs`, `register_etf_bifs`, and `register_stdlib_stubs` in that order (`crates/beamr-wasm/src/lib.rs:779-788`), while gate 1 already calls the exception and ETF registrars (`crates/beamr/src/native/bifs.rs:47-65`). The exact duplicated MFA set is seven entries: `erlang:raise/3` (`crates/beamr/src/native/exception_bifs.rs:11-22`) plus `erlang:term_to_binary/1`, `erlang:term_to_binary/2`, `erlang:term_to_iovec/1`, `erlang:term_to_iovec/2`, `erlang:binary_to_term/1`, and `erlang:binary_to_term/2` (`crates/beamr/src/native/etf_bifs.rs:15-31`). The source-byte table comparison is complete: gate 2 has no MFA overlap with expanded gate 1, stdlib stubs have no MFA overlap with expanded gate 1, and gate 2 and stdlib stubs have no overlap with each other (`crates/beamr/src/native/bifs.rs:23-82`; `crates/beamr/src/native/code_management_bifs.rs:42-67`; `crates/beamr/src/native/dictionary_bifs.rs:14-38`; `crates/beamr/src/native/etf_bifs.rs:15-31`; `crates/beamr/src/native/ets_bifs.rs:107-193`; `crates/beamr/src/native/exception_bifs.rs:11-22`; `crates/beamr/src/native/process_info_bifs.rs:30-45`; `crates/beamr/src/native/process_info_bifs.rs:147-156`; `crates/beamr/src/native/system_info_bifs.rs:20-28`; `crates/beamr/src/native/system_info_bifs.rs:101-110`; `crates/beamr/src/native/process_bifs/mod.rs:21-56`; `crates/beamr/src/native/stdlib_stubs/registrations.rs:73-658`; `crates/beamr/src/native/stdlib_stubs/registrations.rs:661-697`). Therefore fix only the caller: remove the two redundant explicit exception/ETF registrations so the wasm-safe set is gate 1 + gate 2 + stdlib stubs. Do not change any registrar table or BIF implementation. Do not weaken `BifRegistryImpl::register_entry`: an occupied `(module, function, arity)` must continue to return `NativeRegistrationError::DuplicateMfa` (`crates/beamr/src/native/mod.rs:251-268`); no idempotent-registration escape hatch, ignore-duplicates flag, or caught-and-discarded duplicate error is permitted.",
+      "acceptance": [
+        "`WasmVm::new()` succeeds under the wasm32 runner, and the exported `create_vm()` path, which delegates to `WasmVm::new` at `crates/beamr-wasm/src/lib.rs:38-61`, also returns a constructed real VM",
+        "The final `register_wasm_safe_bifs` caller contains exactly gate 1 + gate 2 + stdlib stubs; the explicit exception and ETF calls are absent, and no registrar table or registered native function/capability/dirty-kind entry changes",
+        "Duplicate refusal remains a loud construction wall: `BifRegistryImpl::register_entry` still returns `DuplicateMfa` for an occupied MFA, and fail-first verification by deliberately reintroducing one removed duplicate makes construction fail rather than silently succeeding",
+        "No behavior change to any registered BIF; no new `#[allow]`; no new `unwrap`, `expect`, or panic outside tests"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr-wasm/src/lib.rs"
+        ]
+      }
+    },
+    {
+      "id": "R2",
+      "title": "The complete existing wasm-bindgen suite passes under real Node wasm execution",
+      "spec": "The wrapper already declares `wasm-bindgen-test` as a dev dependency (`crates/beamr-wasm/Cargo.toml:28-29`) and contains exactly five `#[wasm_bindgen_test]` cases at `d9de35e`: `converts_complex_nested_js_object_to_term` (`crates/beamr-wasm/src/convert.rs:390-440`), `converts_terms_to_js_values` (`crates/beamr-wasm/src/convert.rs:442-490`), `documents_boolean_atom_round_trip_as_atom_names` (`crates/beamr-wasm/src/convert.rs:492-501`), `await_vm_call_resolves_with_js_handler_reply` (`crates/beamr-wasm/src/lib.rs:916-959`), and `pump_once_drives_an_actor_call_to_completion` (`crates/beamr-wasm/src/lib.rs:971-1021`). The evidence pack records that the Node-capable runner is executable at this base: the three conversion tests pass, while both actor tests stop at `WasmVm::new().expect(\"VM constructs\")` before their workloads (`_inputs/wasm-port-evidence-pack-full.md:52-68`; `crates/beamr-wasm/src/lib.rs:918`; `crates/beamr-wasm/src/lib.rs:973`). Run the full existing suite with `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked -- --nocapture`; after R1, both actor tests must pass their real JS-handler/Promise workloads, not merely construction. Preserve all five tests and their real VM path. NO-POLLING binds the test work: this brief may not introduce a poll, retry, sleep, recurring timer, animation-frame loop, or bounded readiness loop to wait for wasm/runner readiness; construction is direct and asynchronous completion is event/Promise-driven. Existing workload-driving behavior is not scheduling redesign and may not be expanded under this brief.",
+      "acceptance": [
+        "The Node wasm-bindgen runner reports all five named tests passing on `wasm32-unknown-unknown`: three conversion tests and two VM actor tests",
+        "`await_vm_call_resolves_with_js_handler_reply` reaches the actor workload and resolves the real `CallFuture` Promise with result `42`; `pump_once_drives_an_actor_call_to_completion` reaches its workload and resolves with result `8` (`crates/beamr-wasm/src/lib.rs:908-959`; `crates/beamr-wasm/src/lib.rs:961-1021`)",
+        "Zero wasm-bindgen tests are skipped, ignored, disabled, renamed out of discovery, converted to expected failures, or replaced by a JavaScript VM stub",
+        "No new poll/retry/readiness loop is introduced; wasm readiness is proved by direct construction and completion remains event/Promise-driven"
+      ],
+      "files": {
+        "modify": []
+      }
+    },
+    {
+      "id": "R3",
+      "title": "CI executes the wasm suite as a freshness-stamped truthfulness gate",
+      "spec": "The current workflow has one `wasm32-unknown-unknown` job: checkout, target installation, `cargo check -p beamr --no-default-features --features cooperative,json --locked`, and `cargo check --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked` (`.github/workflows/cooperative-wasm.yml:10-20`). Keep both checks unchanged in intent and add an executed-test leg that installs a `wasm-bindgen-test-runner` compatible with the lockfile, confirms Node is available, and runs R2's exact locked cargo-test command. The gate must print the measured commit and toolchain identity (`git rev-parse HEAD`, Rust/Cargo, wasm-bindgen runner, and Node versions) before execution, and its log must expose the five discovered test names plus an explicit five-test pass count rather than treating an unannotated exit zero as sufficient. Record fail-first evidence in the handoff, not as a committed defect: running the new CI test command against pre-R1 `d9de35e` must fail at the two constructor sites with the duplicate-registration error recorded by the evidence pack (`_inputs/wasm-port-evidence-pack-full.md:52-68`); the same command on the brief's final head must pass. Believed-state-is-not-citable-state binds this gate: the handoff and CI log state exactly which commit, target, toolchain, runner, Node version, command, discovered tests, and result were measured. NO-POLLING also binds the CI/test addition: no readiness polling may be added to make the runner appear green.",
+      "acceptance": [
+        "Both pre-existing wasm32 `cargo check` commands remain in `.github/workflows/cooperative-wasm.yml` and pass on the final head",
+        "CI installs the matching wasm-bindgen test runner and executes the locked `beamr-wasm` suite on `wasm32-unknown-unknown` under Node; it does not stop at compilation or type-check",
+        "Fail-first proof is recorded in the handoff: the new command at `d9de35e` fails with `native function already registered for Atom(76):Atom(125)/3` at the two VM constructor tests; the identical command on the final head passes",
+        "The CI log prints commit and toolchain freshness data and names all five tests with an explicit count of five passed, zero failed, zero ignored/skipped",
+        "The CI/test diff introduces no JavaScript VM stub and no poll/retry/readiness loop"
+      ],
+      "files": {
+        "modify": [
+          ".github/workflows/cooperative-wasm.yml"
+        ]
+      }
+    }
+  ],
+  "boundaries": [
+    "No scheduling redesign, wake/pump/timer change, run-to-idle change, rAF retirement, or generated `runUntilExit` change — those are WPORT-2/WPORT-3 scope",
+    "No new BIFs and no registration-semantics change beyond correcting the caller's set; registrar tables and `DuplicateMfa` refusal remain unchanged",
+    "No threaded-surface or feature-closure change: `beamr-wasm` remains on the cooperative,json closure shown at `crates/beamr-wasm/Cargo.toml:13-21`, without `threads`, `net`, `fs`, `jit`, `embedded`, or readiness work",
+    "No JavaScript-stub substitution anywhere: construction and both actor workloads use the real Rust/wasm VM",
+    "Believed state is not citable state binds every current-state assertion in this brief: facts are pinned to file:line at `d9de35e` or to the recorded executed evidence; prospective shapes are requirements, not claims (`docs/design/beamr/WASM-PORT-ARC.md:25-29` at `5b165cd`)",
+    "NO-POLLING binds the test and CI work even though scheduling is out of scope: no new test may introduce a poll/retry/sleep/rAF/recurring-timer loop to await wasm readiness; use direct construction and event/Promise completion only (`docs/design/beamr/WASM-PORT-ARC.md:17-23` at `5b165cd`)"
+  ],
+  "verification": "Run the house bar on the final head: `cargo fmt --check`; fresh `cargo clippy --workspace --all-targets -- -D warnings`; fresh `cargo clippy --workspace --all-targets --all-features -- -D warnings`; `cargo test -p beamr --lib`; `cargo test -p beamr --test '*'`; and 10 consecutive isolated runs of every new or changed acceptance pin. Run both existing wasm checks from `.github/workflows/cooperative-wasm.yml:17-20`, then run `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked -- --nocapture` and require the five named wasm-bindgen tests to report five passed, zero failed, zero ignored/skipped. Stamp the handoff with final `git rev-parse HEAD`, `rustc --version --verbose`, `cargo --version`, `wasm-bindgen-test-runner --version`, `node --version`, target, exact commands, and timestamps so the measured state is citable. Record R3 fail-first evidence from the same wasm test command on `d9de35e`, where the two VM tests fail at `crates/beamr-wasm/src/lib.rs:918` and `crates/beamr-wasm/src/lib.rs:973` with the duplicate-registration error; do not commit the fail-first mutation. Grep the diff to prove zero new `#[allow]`, and inspect the diff to prove no new non-test `unwrap`/`expect`/panic, no registrar/registry-semantics change, no JS stub, and no readiness-polling loop."
+}
