@@ -34,7 +34,10 @@ impl std::error::Error for SupervisionError {}
 pub struct MonitorResult {
     /// Unique reference identifying the monitor.
     pub reference: u64,
-    /// Whether the target was already dead (DOWN was immediately enqueued).
+    /// Whether the target was already dead and its DOWN was admitted to the
+    /// watcher's mailbox or executing-slot pending messages.
+    ///
+    /// This is false when the watcher is absent or has already exited.
     pub immediate_down: bool,
 }
 

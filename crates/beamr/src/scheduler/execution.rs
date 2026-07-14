@@ -167,8 +167,7 @@ impl Scheduler {
     /// be called repeatedly and does not disturb `run_until_exit` or any other
     /// reader. Exit tombstones are written once at process teardown and are
     /// retained with a *bounded* guarantee: the most recent
-    /// [`TOMBSTONE_CAPACITY`](super::exit_tombstones::TOMBSTONE_CAPACITY)
-    /// exits are kept, evicting the oldest on overflow (FIFO). A peek after a
+    /// `TOMBSTONE_CAPACITY` exits are kept, evicting the oldest on overflow (FIFO). A peek after a
     /// process has exited therefore reliably observes the reason — including
     /// for a process terminated externally via
     /// [`Scheduler::terminate_process`] — *unless* more than

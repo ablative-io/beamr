@@ -19,6 +19,16 @@ pub(super) enum PendingExitSource {
     Remote(RemotePid),
 }
 
+pub(super) enum PendingMailboxMessage {
+    /// A term whose storage already belongs to the target process.
+    TargetOwned(Term),
+    /// A host-owned term awaiting a checked copy into the target process heap.
+    HostOwned {
+        message: OwnedTerm,
+        completion: std::sync::mpsc::Sender<Result<(), super::MailboxSendError>>,
+    },
+}
+
 pub(super) struct PendingEtsTransferMessage {
     pub(super) table_id: EtsTableId,
     pub(super) from_pid: u64,
@@ -54,7 +64,7 @@ pub(super) struct ProcessMetadata {
     pub(super) logical_clock: u64,
     pub(super) pending_exit_messages: Vec<(PendingExitSource, ExitReason)>,
     pub(super) pending_down_messages: Vec<(u64, u64, ExitReason)>,
-    pub(super) pending_io_messages: Vec<Term>,
+    pub(super) pending_io_messages: Vec<PendingMailboxMessage>,
     pub(super) pending_distribution_payloads: Vec<Vec<u8>>,
     /// ETF payloads for local sends queued while the receiver is Executing.
     pub(super) pending_local_messages: Vec<Vec<u8>>,

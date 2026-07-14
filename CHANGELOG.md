@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.15.1 — 2026-07-13
+
+### Fixed
+
+- `SupervisionFacility::monitor` against an already-tombstoned target now
+  delivers the immediate DOWN through the same dual-slot admission path as
+  normal exits: a `Present` watcher is enqueued and woken after the message is
+  visible, and an `Executing` watcher receives it via `pending_down_messages`
+  merged at store-back. Previously the DOWN was silently dropped for any
+  watcher not in the `Present` slot — including every native host observer
+  registering while executing — while the result still claimed
+  `immediate_down: true`.
+- `MonitorResult::immediate_down` is now truthful: it reports whether the DOWN
+  was actually admitted, and is `false` when the watcher slot is absent or the
+  watcher has already exited.
+
+### Added
+
+- `Scheduler::monitor_with_result(watcher_pid, target_pid)` returns the full
+  `MonitorResult` so embedders can observe the immediate-DOWN case. The
+  existing `Scheduler::monitor` keeps its signature and delegates to it.
+
+## 0.15.0 — 2026-07-13
+
+### Added
+
+- `Scheduler::send_to_mailbox(pid, OwnedTerm)` is the public threaded-runtime
+  host-to-process message primitive. It deep-copies arbitrary owned terms into
+  the receiver heap, preserves FIFO with existing atom/timer deliveries, and
+  wakes a waiting receiver only after the message is visible. Delivery racing
+  an executing slice is merged at store-back and observed by the receiver's next
+  receive without a lost-wake window.
+- `MailboxSendError` replaces boolean ambiguity for the new API with typed
+  `NoSuchProcess`, `ProcessTerminated`, `ProcessSlotUnavailable`,
+  `HeapAllocationFailed`, and `InvalidMessage` failures.
+
 ## 0.14.0 — 2026-07-12
 
 **The artifact of record for the embedder-composition campaign** (composition

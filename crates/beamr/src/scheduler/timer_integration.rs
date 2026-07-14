@@ -6,11 +6,15 @@
 use std::time::Duration;
 
 use crate::atom::Atom;
+use crate::ets::{EtsError, OwnedTerm};
 use crate::hook::{HookDecision, HookEvent};
 use crate::process::{ExitReason, Process, ProcessStatus};
 use crate::term::Term;
 
-use super::{ProcessSlot, ScheduledProcess, SharedState, lock_or_recover};
+use super::{
+    MailboxSendError, PendingMailboxMessage, ProcessSlot, ScheduledProcess, SharedState,
+    lock_or_recover,
+};
 
 /// Invoke the reduction-boundary hook if one is registered.
 pub(super) fn invoke_hook(
@@ -119,7 +123,7 @@ fn expire_timers(shared: &SharedState, expired: Vec<crate::timer::ExpiredTimer>)
                 // A plain mailbox push of the recorded message in recorded
                 // order — no time reads, no nondeterminism — so it is replay
                 // safe when reached from `tick_replay_timers`.
-                if deliver_term_to_mailbox(shared, pid, timer.message) {
+                if deliver_term_to_mailbox(shared, pid, timer.message).is_ok() {
                     super::execution::wake_process(shared, pid);
                 }
             }
@@ -143,30 +147,103 @@ pub(super) fn expire_timers_for_test(
 /// Executing-slot-safe pattern as [`Scheduler::enqueue_atom_message`]: a
 /// `Present` process receives it directly, an `Executing` process receives it
 /// through its pending metadata (merged into the mailbox at slice store-back),
-/// and an `Absent` slot drops it. Returns true when the term was queued (the
-/// caller then wakes the process). Shared by `enqueue_atom_message` and the
+/// and an `Absent` slot refuses admission. Shared by `enqueue_atom_message` and the
 /// `Deliver`-timer branch so the slot dispatch lives in exactly one place.
 ///
 /// [`Scheduler::enqueue_atom_message`]: super::Scheduler::enqueue_atom_message
-pub(super) fn deliver_term_to_mailbox(shared: &SharedState, pid: u64, term: Term) -> bool {
+pub(super) fn deliver_term_to_mailbox(
+    shared: &SharedState,
+    pid: u64,
+    term: Term,
+) -> Result<(), MailboxSendError> {
     let Some(entry) = shared.process_bodies.get(&pid) else {
-        return false;
+        return Err(missing_process_error(shared, pid));
     };
     let mut slot = lock_or_recover(&entry);
-    let delivered = match &mut *slot {
+    if shared.exit_tombstones.contains_key(&pid) {
+        return Err(MailboxSendError::ProcessTerminated);
+    }
+    match &mut *slot {
         ProcessSlot::Present(ScheduledProcess(process)) => {
             process.mailbox_mut().push_owned(term);
-            true
+            Ok(())
         }
         ProcessSlot::Executing(metadata) => {
-            metadata.pending_io_messages.push(term);
-            true
+            metadata
+                .pending_io_messages
+                .push(PendingMailboxMessage::TargetOwned(term));
+            Ok(())
         }
-        ProcessSlot::Absent => false,
+        ProcessSlot::Absent => Err(slot_refusal_error(shared, pid)),
+    }
+}
+
+pub(super) fn deliver_owned_term_to_mailbox(
+    shared: &SharedState,
+    pid: u64,
+    message: OwnedTerm,
+) -> Result<(), MailboxSendError> {
+    let Some(entry) = shared.process_bodies.get(&pid) else {
+        return Err(missing_process_error(shared, pid));
     };
-    drop(slot);
-    drop(entry);
-    delivered
+    let mut slot = lock_or_recover(&entry);
+    if shared.exit_tombstones.contains_key(&pid) {
+        return Err(MailboxSendError::ProcessTerminated);
+    }
+    match &mut *slot {
+        ProcessSlot::Present(ScheduledProcess(process)) => copy_owned_message(process, &message),
+        ProcessSlot::Executing(metadata) => {
+            let (completion, result) = std::sync::mpsc::channel();
+            metadata
+                .pending_io_messages
+                .push(PendingMailboxMessage::HostOwned {
+                    message,
+                    completion,
+                });
+            drop(slot);
+            drop(entry);
+            result
+                .recv()
+                .unwrap_or_else(|_| Err(missing_process_error(shared, pid)))
+        }
+        ProcessSlot::Absent => Err(slot_refusal_error(shared, pid)),
+    }
+}
+
+pub(super) fn copy_owned_message(
+    process: &mut Process,
+    message: &OwnedTerm,
+) -> Result<(), MailboxSendError> {
+    crate::gc::ensure_space(process, message.total_words(), 256).map_err(|error| match error {
+        crate::gc::GcError::HeapFull(_) => MailboxSendError::HeapAllocationFailed,
+        crate::gc::GcError::InvalidObjectHeader(_) => MailboxSendError::InvalidMessage,
+    })?;
+    let copied = message
+        .copy_to_heap(process.heap_mut())
+        .map_err(|error| match error {
+            EtsError::InvalidBoxedTerm | EtsError::Badarg | EtsError::AccessDenied { .. } => {
+                MailboxSendError::InvalidMessage
+            }
+            EtsError::AllocationFailed => MailboxSendError::HeapAllocationFailed,
+        })?;
+    process.mailbox_mut().push_owned(copied);
+    Ok(())
+}
+
+fn missing_process_error(shared: &SharedState, pid: u64) -> MailboxSendError {
+    if shared.exit_tombstones.contains_key(&pid) {
+        MailboxSendError::ProcessTerminated
+    } else {
+        MailboxSendError::NoSuchProcess
+    }
+}
+
+fn slot_refusal_error(shared: &SharedState, pid: u64) -> MailboxSendError {
+    if shared.exit_tombstones.contains_key(&pid) {
+        MailboxSendError::ProcessTerminated
+    } else {
+        MailboxSendError::ProcessSlotUnavailable
+    }
 }
 
 /// Insert a fired-timer mark for `pid` and wake the process if it is parked.

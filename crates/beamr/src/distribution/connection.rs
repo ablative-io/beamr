@@ -95,7 +95,7 @@ type ControlFrameHandler = dyn Fn(Atom, &[u8], &[u8]) + Send + Sync + 'static;
 /// Proactive net-tick (heartbeat) configuration for idle distribution links.
 ///
 /// When enabled, each connection runs a periodic task that (1) writes a
-/// [`KEEPALIVE_FRAME`] so the peer's read loop refreshes its liveness clock, and
+/// `KEEPALIVE_FRAME` so the peer's read loop refreshes its liveness clock, and
 /// (2) marks the link down if no inbound bytes have arrived within `deadline`.
 /// `deadline` MUST exceed `interval` (by a comfortable margin) so a healthy
 /// peer's own keepalives always refresh liveness before the deadline and no
@@ -1074,7 +1074,7 @@ impl ConnectionManager {
     /// Separated from [`listen`](Self::listen) so callers that must bind the
     /// listener before the manager exists (e.g. to publish the chosen port into a
     /// resolver) can reuse the same accept-loop spawn. The accept loop runs on the
-    /// bound runtime handle via [`ConnectionManagerInner::spawn_lifecycle`].
+    /// bound runtime handle via `ConnectionManagerInner::spawn_lifecycle`.
     #[must_use]
     pub fn listen_with(&self, listener: TcpListener) -> AcceptHandle {
         let local_addr = listener

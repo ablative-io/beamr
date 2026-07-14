@@ -63,7 +63,14 @@ fn pending_markers(scheduler: &Scheduler, pid: u64) -> Vec<Term> {
         .unwrap_or_else(|| panic!("pid {pid} body exists"));
     let slot = lock_or_recover(&entry);
     match &*slot {
-        ProcessSlot::Executing(metadata) => metadata.pending_io_messages.clone(),
+        ProcessSlot::Executing(metadata) => metadata
+            .pending_io_messages
+            .iter()
+            .filter_map(|message| match message {
+                PendingMailboxMessage::TargetOwned(term) => Some(*term),
+                PendingMailboxMessage::HostOwned { .. } => None,
+            })
+            .collect(),
         _ => panic!("readiness test process remains checked out"),
     }
 }

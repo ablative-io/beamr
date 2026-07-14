@@ -246,8 +246,8 @@ impl std::error::Error for WithServicesError {}
 ///
 /// Construct one from a profile ([`full_runtime`](Self::full_runtime),
 /// [`minimal`](Self::minimal), [`from_config`](Self::from_config)) and adjust
-/// individual services with the builder methods. See the [module
-/// docs](self) for the precedence rule and profile semantics.
+/// individual services with the builder methods. See this module's documentation
+/// for the precedence rule and profile semantics.
 #[derive(Clone)]
 pub struct SchedulerServices {
     pub(super) dirty_cpu: DirtyChoice,

@@ -1,5 +1,5 @@
 //! Connection lifecycle events for distribution links: generation-tagged
-//! Up/Down event types, the multi-subscriber [`ConnectionEventHub`], and the
+//! Up/Down event types, the multi-subscriber `ConnectionEventHub`, and the
 //! legacy single-slot [`ConnectionDownHook`] (the `register_connection_down`
 //! target, retained as 0.11-compat surface; `connection.rs` re-exports the
 //! legacy types so existing import paths keep compiling).
