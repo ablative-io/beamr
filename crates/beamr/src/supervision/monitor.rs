@@ -235,7 +235,9 @@ fn enqueue_remote_down_message(
     target: RemotePid,
     reason: ExitReason,
 ) -> Result<(), ()> {
-    const DOWN_MESSAGE_WORDS: usize = 11;
+    // Two-word boxed reference + four-word boxed external pid + the six-word
+    // (header + five elements) `{'DOWN', Ref, process, Pid, Reason}` tuple.
+    const DOWN_MESSAGE_WORDS: usize = 12;
 
     crate::gc::ensure_space(watcher, DOWN_MESSAGE_WORDS, 256).map_err(|_| ())?;
 
@@ -270,7 +272,9 @@ fn enqueue_down_message(
     target_pid: u64,
     reason: ExitReason,
 ) -> Result<(), ()> {
-    const DOWN_MESSAGE_WORDS: usize = 7;
+    // Two-word boxed reference + the six-word (header + five elements)
+    // `{'DOWN', Ref, process, Pid, Reason}` tuple.
+    const DOWN_MESSAGE_WORDS: usize = 8;
 
     // Route heap growth through the GC: `ensure_space` runs minor/major
     // collection (moving live young-generation data into old space and

@@ -4,11 +4,12 @@ use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
 use crate::error::ExecError;
+use crate::gc::ensure_space;
 use crate::interpreter::InstructionOutcome;
 use crate::loader::decode::MapOp;
 use crate::loader::decode::compact::Operand;
 use crate::module::{Module, ModuleRegistry};
-use crate::process::{CodePosition, Process};
+use crate::process::{CodePosition, Process, X_REG_COUNT};
 use crate::term::Term;
 use crate::term::boxed::{Closure, Map, write_closure, write_map};
 use crate::term::compare;
@@ -37,6 +38,16 @@ pub fn make_fun(
         return Err(ExecError::InvalidOperand("make_fun num_free"));
     }
 
+    let words = CLOSURE_BASE_WORDS
+        .checked_add(num_free)
+        .ok_or(ExecError::InvalidOperand("closure size"))?;
+    // No live operand exists for make_fun (see put_list in core.rs); this
+    // defensive `ensure_space` conservatively roots the full register file.
+    // It must run BEFORE the free variables are copied into the Rust vector
+    // below: a safety-net collection moves heap terms and rewrites register
+    // roots, so terms already held in Rust locals would dangle.
+    ensure_space(process, words, X_REG_COUNT).map_err(core::gc_error_to_exec)?;
+
     let free_vars = make_fun_free_vars(process, module, operands, num_free)?;
 
     let closure_arity = if has_explicit_free_vars(operands) {
@@ -50,9 +61,6 @@ pub fn make_fun(
     } else {
         lambda.arity
     };
-    let words = CLOSURE_BASE_WORDS
-        .checked_add(free_vars.len())
-        .ok_or(ExecError::InvalidOperand("closure size"))?;
     let ptr = process.heap_mut().alloc(words).map_err(ExecError::from)?;
     let heap = core::heap_slice(ptr, words);
     let function_index = u64::try_from(lambda_index)
@@ -446,6 +454,26 @@ fn put_map(
         return Err(ExecError::InvalidOperand("put_map pairs"));
     }
 
+    let source_term = core::read_term(process, module, source)?;
+    let Some(source_map) = Map::new(source_term) else {
+        return jump_label(module, fail);
+    };
+
+    // Upper bound on the merged map's words: every update key may be new.
+    // The `live` operand is deliberately not trusted (see update_record in
+    // core.rs); this defensive `ensure_space` conservatively roots the full
+    // register file. It must run BEFORE any term is copied into the Rust
+    // vectors below, and a safety-net collection moves the source map, so
+    // the map is re-read from its operand afterwards.
+    let max_entries = source_map
+        .len()
+        .checked_add(items.len() / 2)
+        .ok_or(ExecError::InvalidOperand("map size"))?;
+    let words_bound = max_entries
+        .checked_mul(2)
+        .and_then(|entry_words| entry_words.checked_add(2))
+        .ok_or(ExecError::InvalidOperand("map size"))?;
+    ensure_space(process, words_bound, X_REG_COUNT).map_err(core::gc_error_to_exec)?;
     let source_term = core::read_term(process, module, source)?;
     let Some(source_map) = Map::new(source_term) else {
         return jump_label(module, fail);

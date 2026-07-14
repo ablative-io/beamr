@@ -832,3 +832,90 @@ fn call_fun_reports_undef_for_unloaded_export_target() {
         })
     );
 }
+
+/// MakeFun on a near-full nursery must collect/grow via the GC instead of
+/// surfacing `heap full` as a VM execution error (the aion production
+/// failure: a nine-word closure allocation with one word available). The
+/// heap-allocated free variable additionally proves the safety-net
+/// collection runs BEFORE the free variables are read: the tuple moves, and
+/// the closure must capture the forwarded term, not a stale pointer.
+#[test]
+fn make_fun_survives_heap_exhaustion_via_gc_and_grow() {
+    let mut module = module(Atom::OK, Vec::new());
+    module.lambdas.push(LambdaEntry {
+        function: Atom::OK,
+        arity: 2,
+        label: 7,
+        num_free: 2,
+        unique_id: 11,
+    });
+    let mut process = Process::new(1, 32);
+
+    let ptr = process.heap_mut().alloc(3).expect("young tuple fits");
+    let tuple = crate::term::boxed::write_tuple(
+        core::heap_slice(ptr, 3),
+        &[Term::small_int(7), Term::small_int(8)],
+    )
+    .expect("tuple writes");
+    process.set_x_reg(0, tuple);
+    process.set_x_reg(1, Term::small_int(99));
+
+    // Fill the nursery so the nine-word closure cannot fit without collection.
+    while process.heap().available() >= CLOSURE_BASE_WORDS + 2 {
+        let _ = process.heap_mut().alloc(1);
+    }
+
+    make_fun(&mut process, &module, &[Operand::Unsigned(0)])
+        .unwrap_or_else(|error| panic!("make_fun survives heap exhaustion: {error:?}"));
+
+    let closure = Closure::new(process.x_reg(0)).expect("closure term");
+    assert_eq!(closure.num_free(), 2);
+    let captured =
+        crate::term::boxed::Tuple::new(closure.free_var(0).expect("free var 0 captured"))
+            .expect("free var 0 is a tuple");
+    assert_eq!(captured.get(0), Some(Term::small_int(7)));
+    assert_eq!(captured.get(1), Some(Term::small_int(8)));
+    assert_eq!(closure.free_var(1), Some(Term::small_int(99)));
+}
+
+/// PutMap on a near-full nursery must collect/grow via the GC instead of
+/// surfacing `heap full` — the same defect class as make_fun above. The
+/// heap-allocated source map moves on the safety-net collection, so put_map
+/// must re-read it from its operand after reserving space.
+#[test]
+fn put_map_survives_heap_exhaustion_via_gc_and_grow() {
+    let module = module(Atom::OK, vec![Instruction::Label { label: 1 }]);
+    let mut process = Process::new(1, 32);
+
+    let ptr = process.heap_mut().alloc(4).expect("young map fits");
+    let source = write_map(
+        core::heap_slice(ptr, 4),
+        &[Term::atom(Atom::ERROR)],
+        &[Term::small_int(5)],
+    )
+    .expect("map writes");
+    process.set_x_reg(0, source);
+
+    // Fill the nursery so the merged two-entry map (six words) cannot fit.
+    while process.heap().available() >= 6 {
+        let _ = process.heap_mut().alloc(1);
+    }
+
+    let operands = [
+        Operand::Label(1),
+        Operand::X(0),
+        Operand::X(1),
+        Operand::Unsigned(2),
+        Operand::List(vec![Operand::Atom(Some(Atom::OK)), Operand::Integer(7)]),
+    ];
+    put_map(&mut process, &module, &operands, PutMapMode::Assoc, None)
+        .unwrap_or_else(|error| panic!("put_map survives heap exhaustion: {error:?}"));
+
+    let merged = Map::new(process.x_reg(1)).expect("merged map");
+    assert_eq!(merged.len(), 2);
+    assert_eq!(
+        merged.get(Term::atom(Atom::ERROR)),
+        Some(Term::small_int(5))
+    );
+    assert_eq!(merged.get(Term::atom(Atom::OK)), Some(Term::small_int(7)));
+}

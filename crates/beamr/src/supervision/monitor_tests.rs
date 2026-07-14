@@ -240,3 +240,47 @@ fn down_delivery_grows_mailbox_heap_instead_of_dropping_signal() {
     );
     assert_eq!(tuple.get(4), Some(Term::atom(Atom::ERROR)));
 }
+
+/// The DOWN reservation must cover the whole message: a two-word boxed
+/// reference plus the six-word (header + five elements) tuple. Before the
+/// fix the constant said 7 for this 8-word message, so with EXACTLY seven
+/// free words `ensure_space` returned satisfied and the tuple allocation
+/// failed — the watcher was killed instead of receiving DOWN.
+#[test]
+fn down_delivery_with_exactly_seven_free_words_still_delivers() {
+    let mut watcher = running(1);
+    while watcher.heap().available() > 7 {
+        let _ = watcher.heap_mut().alloc(1);
+    }
+    assert_eq!(watcher.heap().available(), 7);
+
+    assert!(enqueue_down_message(&mut watcher, 0, 2, ExitReason::Error).is_ok());
+    assert_eq!(watcher.status(), ProcessStatus::Running);
+    let tuple = down_tuple(&mut watcher);
+    assert_eq!(tuple.arity(), 5);
+    assert_eq!(tuple.get(0), Some(Term::atom(Atom::DOWN)));
+    assert_eq!(tuple.get(3).and_then(Term::as_pid), Some(2));
+}
+
+/// Same off-by-one for the remote variant: 11 reserved for a 12-word message
+/// (two-word reference + four-word boxed external pid + six-word tuple).
+#[cfg(feature = "net")]
+#[test]
+fn remote_down_delivery_with_exactly_eleven_free_words_still_delivers() {
+    let mut watcher = running(1);
+    while watcher.heap().available() > 11 {
+        let _ = watcher.heap_mut().alloc(1);
+    }
+    assert_eq!(watcher.heap().available(), 11);
+
+    let target = RemotePid {
+        node: Atom::OK,
+        pid_number: 77,
+        serial: 0,
+    };
+    assert!(enqueue_remote_down_message(&mut watcher, 0, target, ExitReason::Error).is_ok());
+    assert_eq!(watcher.status(), ProcessStatus::Running);
+    let tuple = down_tuple(&mut watcher);
+    assert_eq!(tuple.arity(), 5);
+    assert_eq!(tuple.get(0), Some(Term::atom(Atom::DOWN)));
+}
