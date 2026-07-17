@@ -1,0 +1,50 @@
+{
+  "id": "EMB-002",
+  "cluster": "embedder-surface",
+  "title": "The with_services empty-registry composition footgun — shouting docs, and the hot-load API's swallowed unresolved report (both shapes presented for ruling)",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": [],
+  "stories": [],
+  "purpose": "Ground: same incident and sanction as EMB-001 (report `artemis-artifacts/2026-07-18-gcbif-probe/gcbif-tr-probe-report.md`; frame bundle at frame `c4dfb18`; Waffles' paper sanction 2026-07-18 23:09Z with the explicit order that this brief PRESENT BOTH SHAPES for ruling rather than pick silently). Evidence pin beamr main `a399b54`. TWO composition facts, both verified at the bytes: (1) `Scheduler::with_services` (`crates/beamr/src/scheduler/mod.rs:1012-1024`) silently installs `Arc::new(BifRegistryImpl::new())` — an EMPTY BIF registry — so every `erlang:*` import in every subsequently hot-loaded module resolves `Deferred` and dies at first guard-BIF execution; `Scheduler::new` and the other non-registry-carrying constructors share the same default. This is the exact defect that cost the 2026-07-18 attribution day: frame-core (`supervision/command.rs:158`) and frame-host (`runtime.rs:63`) both construct through it. (2) SHARPER, found sizing the fix: `HotLoadResult` (`scheduler/mod.rs:67-73`: module_name, generation, had_old_version, on_load_required, on_load_succeeded) DOES NOT CARRY the `UnresolvedImportReport` — the loader computes it (`loader/load.rs:513-601` fills deferred/denied/unresolved by module) and the raw `loader::load_module` returns it, but the scheduler's hot-load path swallows it entirely. Through the API frame actually uses, the deferred-erlang signal was UNREADABLE, not unread. The frame-side fix Waffles dispatched (\"the swallowed deferred_by_module signal at registry.rs:182 becomes a typed loud composition refusal\") DEPENDS on beamr exposing that report — flagged cross-seat the same hour; this brief is the beamr half of that dependency.",
+  "task": "Waffles' order carried verbatim: the doc-warning-vs-louder-signal question \"is a genuine design fork, so the brief should present both shapes for ruling rather than pick silently.\" Both shapes follow; they COMPOSE rather than compete, and the recommendation is A+B (docs are necessary regardless; the report exposure is what the dispatched frame fix consumes).\n\nSHAPE A — SHOUTING DOCS (zero behavior change): every constructor that defaults the BIF registry (`new`, `new_with_registry`-family, `with_services`, `with_code_server`-family users' entry docs) gains an explicit warning block: the default composition registers ZERO native BIFs; any loaded module importing `erlang:*` (which is essentially every erlc-compiled module — module_info alone imports `erlang:get_module_info`) will resolve those imports Deferred and refuse at first guard-BIF execution, process-fatal; embedders executing real BEAM bytecode must construct via the registry-carrying constructors (`with_services_and_code_server`, `with_code_server`) with at least gate1 registered, and consult the load report (Shape B) after every load. The doc block cites the incident class by shape, not by repo.\n\nSHAPE B — THE HOT-LOAD API SURFACES THE REPORT (additive API): `HotLoadResult` gains `pub unresolved: UnresolvedImportReport` (the loader's existing type, re-exported at the scheduler surface), filled from the resolution the load actually performed — deferred/denied/unresolved by module, byte-identical to what `loader::load_module` already returns. Additive-field caveat stated honestly: `HotLoadResult` is a pub struct with pub fields and no `#[non_exhaustive]`; downstream exhaustive struct patterns break (compile-visible). Sweep duty rides the build; the alternative — a parallel getter method keeping the struct frozen — is presented as B-ALT for the tear (`Scheduler::last_load_report(module)` or returning a wrapper), REJECTED in recommendation because the report belongs to the load RESULT, not to mutable scheduler state (a getter invites the polling idiom and stale reads). No logging shape is proposed: beamr has no tracing dependency (`Cargo.toml`: otel only, feature-gated), an unconditional eprintln is not house style, and a feature-gated log would be a knob — the REPORT IS THE SIGNAL and the embedder decides its loudness (this also honors NO-KNOB).\n\nDECIDED REGARDLESS OF THE FORK: deferred imports REMAIN LEGAL AND SILENT AT LOAD (the WPORT-6 cycles ruling made deferred-heals load-bearing for legal mutual recursion; a load-time refusal on deferred `erlang:*` would break lawful cross-module loading orders). The composition judgment belongs to the EMBEDDER, made possible by B and taught by A. Nothing in this brief changes resolution semantics, load acceptance, or execution behavior.\n\nOQ-A (the ruled fork): A-only vs A+B (recommended) vs A+B-ALT. Recommendation: A+B — the dispatched frame fix consumes B directly; A alone leaves the signal unreadable through the scheduler API and the next embedder repeats the attribution day.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "Shape A — the constructor warning blocks",
+      "spec": "Doc blocks per SHAPE A on every registry-defaulting constructor, cross-linking the registry-carrying constructors and the load report; rustdoc examples show the CORRECT composition (gate1-populated) not the footgun.",
+      "acceptance": [
+        "Every registry-defaulting constructor's rustdoc names the consequence (erlang:* Deferred → guard-BIF refusal, process-fatal) and the correct alternative; `cargo doc` builds clean; doc examples compile (doctest or no_run as appropriate)"
+      ],
+      "files": { "modify": ["crates/beamr/src/scheduler/mod.rs"] }
+    },
+    {
+      "id": "R2",
+      "title": "Shape B — HotLoadResult carries the UnresolvedImportReport (per OQ-A's ruling)",
+      "spec": "Per SHAPE B: the additive field, filled on every hot-load path (default + namespaced + embedded-origin), re-export of the report type at the scheduler surface, downstream exhaustive-pattern sweep. If OQ-A rules A-only, this requirement drops whole; if B-ALT, it becomes the getter shape as ruled.",
+      "acceptance": [
+        "A hot-load of a module importing `erlang:'+'/2` against the default (empty-registry) composition returns a HotLoadResult whose report lists it under deferred_by_module — the exact signal the 2026-07-18 incident needed, now readable at the API frame uses",
+        "A gate1-populated composition returns an empty report for the same module (both-directions, walled); all workspace consumers of HotLoadResult compile (sweep complete)"
+      ],
+      "files": { "modify": ["crates/beamr/src/scheduler/mod.rs", "crates/beamr/src/scheduler/module_management.rs", "crates/beamr/src/scheduler/module_management/helpers.rs"] }
+    },
+    {
+      "id": "R3",
+      "title": "The composition wall",
+      "spec": "Integration test pinning the footgun's observable surface per the ruled shapes: the default composition's hot-load report flags deferred erlang:* (B), and the EMB-001 fixture module (shared if EMB-001 lands first, else a local twin) refuses at execution exactly as the docs warn (A's honesty proven, not just written).",
+      "acceptance": [
+        "Wall green ten consecutive isolated runs; fail-first recorded-and-reverted (empty the R2 fill → report-assert red)",
+        "Zero behavior change to load acceptance or resolution semantics proven by the existing loader test suite staying byte-green"
+      ],
+      "files": { "create": ["crates/beamr/tests/composition_report.rs"] }
+    }
+  ],
+  "boundaries": [
+    "DEFERRED STAYS LEGAL: no load-time refusal, no new load error class — the WPORT-6 deferred-heals doctrine is load-bearing and untouched. Anything refusing a load on deferred imports is a STOP.",
+    "NO-KNOB: no verbosity flag, no warn-toggle, no env var; the report is data, the embedder chooses loudness.",
+    "NO breaking constructor changes and NO deprecations in this brief — retiring or hard-warning `with_services` is Tom-desk direction, recorded as an open register item, not absorbed.",
+    "Cooperative/wasm closure untouched in behavior: the wasm wrapper's own load path (`load_module` export, artifact_loader) already surfaces unresolved vocabulary (WPORT-6 preserved+additive) and is NOT in scope; both wasm32 check closures must stay green.",
+    "ZERO new #[allow]; no unwrap/expect/panic outside cfg(test); `crates/beamr/src/loader/encode/**` untouchable (Vesper Lynd's claim)."
+  ],
+  "verification": "Build-leg bar: the 9-leg gate on the final head (wasm Node count untouched unless a wasm test is added — three CI carriers same-commit if so); prohibition greps; 10× isolation on new walls; fail-firsts recorded-and-reverted. Pin-shift re-verify at the actual base: with_services family (`scheduler/mod.rs:1012-1075`), HotLoadResult (`:67-73`), the helpers' resolution call (`module_management/helpers.rs:61-62`), `loader/load.rs:513-601`. Handoff carries: the ruled shape, the sweep-site list for the struct change, the report-payload example as landed, and the cross-seat note to the frame fix lane (their registry.rs:182 check consumes R2's field — coordinate landing order so their fix doesn't build against an unshipped field; beamr publishes/pins per the standing lead-gated process)."
+}
