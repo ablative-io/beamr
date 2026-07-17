@@ -86,6 +86,8 @@ pub enum ModuleOrigin {
     Embedded,
     /// Module loaded directly from caller-provided bytes or test/preload setup.
     Preloaded,
+    /// Module fetched at runtime by the wasm artifact loader (WPORT-6).
+    Fetched,
 }
 
 impl ModuleOrigin {
@@ -96,6 +98,7 @@ impl ModuleOrigin {
             Self::Filesystem(_) => "filesystem",
             Self::Embedded => "embedded",
             Self::Preloaded => "preloaded",
+            Self::Fetched => "fetched",
         }
     }
 }
@@ -469,6 +472,13 @@ mod tests {
             line_table: Vec::new(),
             line_info: Vec::new(),
         }
+    }
+
+    #[test]
+    fn fetched_origin_reports_fetched_source_atom() {
+        // WPORT-6 (OQ-C RULED IN): the additive runtime-fetch provenance
+        // variant pins its `module_info(Module, source)` atom name.
+        assert_eq!(ModuleOrigin::Fetched.source_atom_name(), "fetched");
     }
 
     #[test]
