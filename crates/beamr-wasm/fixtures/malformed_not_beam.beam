@@ -1,0 +1,1 @@
+WPORT-6 malformed fixture: these bytes are deliberately NOT a FOR1/BEAM container; loading them MUST produce LoadError::InvalidFormat, surfaced by the artifact loader as the artifact_invalid_format kind slug.

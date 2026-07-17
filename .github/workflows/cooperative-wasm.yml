@@ -72,6 +72,19 @@ jobs:
             "tests::default_sink_routes_output_to_console_with_zero_configuration"
             "tests::take_exit_error_distinguishes_refusal_reasons_from_js"
             "tests::statistics_and_memory_refuse_explicitly_instead_of_fabricating_zeros"
+            "tests::native_and_cooperative_spawns_mint_distinct_pids"
+            "artifact_loader::tests::manifest_chain_loads_dependencies_before_dependants_with_clean_report"
+            "artifact_loader::tests::mutual_cycle_pair_loads_in_manifest_order_and_reports_the_scc"
+            "artifact_loader::tests::dep_edge_naming_module_absent_from_manifest_rejects_dependency_missing"
+            "artifact_loader::tests::rejecting_fetch_double_rejects_batch_with_artifact_fetch_failed_and_loaded_list"
+            "artifact_loader::tests::malformed_artifact_bytes_reject_with_exact_decode_stage_kind_slugs"
+            "artifact_loader::tests::non_promise_fetch_return_rejects_with_fetch_protocol"
+            "artifact_loader::tests::duplicate_module_names_in_manifest_reject_with_manifest_malformed"
+            "artifact_loader::tests::dependant_before_dependency_defers_then_heals_at_call_time"
+            "artifact_loader::tests::post_batch_verification_asserts_in_manifest_deferreds_healed_and_reports_absent_targets"
+            "artifact_loader::tests::manifest_url_to_executed_module_end_to_end_reaches_settled_completion"
+            "artifact_loader::tests::failing_manifest_fetch_rejects_with_manifest_fetch_failed"
+            "artifact_loader::tests::artifact_load_error_kind_slug_set_is_closed_and_exact"
           )
           assertion_status=0
           for test_name in "${expected_tests[@]}"; do
@@ -81,9 +94,16 @@ jobs:
             fi
           done
           if ! grep -Fq \
-            "test result: ok. 33 passed; 0 failed; 0 ignored; 0 filtered out" \
+            "test result: ok. 46 passed; 0 failed; 0 ignored; 0 filtered out" \
             "$output_file"; then
-            echo "missing exact thirty-three-test success summary" >&2
+            echo "missing exact forty-six-test success summary" >&2
+            assertion_status=1
+          fi
+
+          # WPORT-6 borrow wall: the artifact loader future holds Arc clones
+          # only — zero `.borrow` calls in artifact_loader.rs, mechanically.
+          if grep -q "\.borrow" crates/beamr-wasm/src/artifact_loader.rs; then
+            echo "borrow wall breached: .borrow found in artifact_loader.rs" >&2
             assertion_status=1
           fi
 

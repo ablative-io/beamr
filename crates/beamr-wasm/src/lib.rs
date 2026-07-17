@@ -3780,6 +3780,32 @@ mod tests {
         assert_eq!(child_exit["result"], "child_done");
     }
 
+    /// WPORT-6 R3 wall 11 — the pid-collision rider (D13), discharging
+    /// Waffles' arc `:113` line item: the WPORT-5 fix deleted the private
+    /// counter and made `alloc_pid` on the shared mint the sole allocator
+    /// (`crates/beamr/src/scheduler/wasm.rs:702`, called from both spawn
+    /// sites); this wall pins that native-path and cooperative-path spawns
+    /// mint distinct pids in one VM.
+    #[wasm_bindgen_test]
+    async fn native_and_cooperative_spawns_mint_distinct_pids() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let mut pids = std::collections::HashSet::new();
+        for round in 0..3 {
+            let native_pid = spawn_waiting_mailbox(&mut vm).await;
+            assert!(
+                pids.insert(native_pid),
+                "native-path pid {native_pid} collided in round {round}"
+            );
+            let handler_fn: Function = increment_handler().into_js_value().unchecked_into();
+            let actor_pid = vm.spawn_actor(handler_fn);
+            assert!(
+                pids.insert(actor_pid),
+                "cooperative-path pid {actor_pid} collided in round {round}"
+            );
+        }
+        assert_eq!(pids.len(), 6, "one shared mint, six distinct pids");
+    }
+
     /// Wall 3 (WPORT-5 R3): export-fun dispatch to registered BIFs succeeds
     /// where static `CallExt` always did — the closure-dispatch `Undef` on
     /// that path is gone (`bif_registry` wired into bytecode services).
