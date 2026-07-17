@@ -1,5 +1,6 @@
 //! JavaScript bindings for the cooperative Beamr WASM runtime.
 
+pub mod artifact_loader;
 mod connection_events;
 mod convert;
 mod io_sink;
