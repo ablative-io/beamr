@@ -89,6 +89,8 @@ The citable-state law binds every boundary below: every current-state justificat
 
 **Named socket/gate filled.** The NO-POLLING deadline gate; no additional named socket.
 
+**Board finding (2026-07-17, probe-first rider — Waffles the Terrible's ruling on the timer-wall probe thread):** the shared `TimerWheel` strands behind-cursor inserts for a full 1024-tick revolution (~1.024s): insert never consults the cursor (`crates/beamr/src/timer.rs:142-174`), the sweep only moves forward (`:207-219`), and not-yet-due entries are skipped in place with no rounds counter (`:259-286`) — mechanism confirmed at the bytes by Artemis Peach's probe answering Apollo Biscuit's TTL P3 distributions (`artemis-artifacts/2026-07-17-sched-cert/beamr-timer-wall-probe.md`; native-side behavior is inside haematite's certified §4.4 budget, nothing changes there). The wasm-side exposure is INFERRED, not yet run: the cooperative scheduler drives the same wheel (`crates/beamr/src/scheduler/wasm.rs:455-477`, earliest-deadline feed `:667`) and WPORT-3 made `erlang:send_after(0, ...)` live, so a mid-turn 0ms arm may strand behind the cursor with the unified one-shot re-arming an overdue deadline repeatedly (~1s of macrotask churn). RULED: confirm-or-kill measurement rides the NEXT wasm-timer-touching brief (WPORT-7+; WPORT-6's loader touches no timers) in the WPORT-3 probe pattern — no behavior change without cert re-sign.
+
 ### WPORT-4 — Event-source integration
 
 **Size:** M  
