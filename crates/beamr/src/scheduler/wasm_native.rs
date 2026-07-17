@@ -26,6 +26,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use crate::atom::Atom;
+use crate::error::ExecError;
 use crate::ets::{OwnedTerm, copy_term_to_ets};
 use crate::native::native_process::{
     NativeBody, NativeContext, NativeHandlerFactory, NativeOutcome,
@@ -35,7 +36,7 @@ use crate::native::spawn::{
 };
 use crate::native::{CapabilitySet, LocalSendError, LocalSendFacility, LocalSendRequest};
 use crate::process::heap::DEFAULT_HEAP_SIZE;
-use crate::process::{ExitReason, Priority, Process, ProcessStatus};
+use crate::process::{CodePosition, ExitReason, Priority, Process, ProcessStatus};
 use crate::supervision::link;
 use crate::term::Term;
 
@@ -46,6 +47,20 @@ struct DeferredSpawn {
     pid: u64,
     factory: NativeHandlerFactory,
     link_to: Option<u64>,
+}
+
+/// A plain MFA spawn (`erlang:spawn/3`) requested by a bytecode slice,
+/// materialized after the slice (WPORT-5 R2 item 2, OQ8 ruled: plain
+/// spawn only — every link/monitor-bearing variant stays a refusal, see
+/// [`CooperativeSpawn::spawn`]).
+///
+/// Arguments are captured into self-owned storage at request time (while the
+/// caller heap is alive) exactly as [`DeferredSend`] captures its message.
+struct DeferredMfaSpawn {
+    pid: u64,
+    module: Atom,
+    function: Atom,
+    args: Vec<OwnedTerm>,
 }
 
 /// A local send requested by a handler during a slice, applied afterwards.
@@ -61,8 +76,9 @@ struct DeferredSend {
 /// Effects a native slice asked for, collected for the scheduler to apply once
 /// the handler has returned and released its borrow of the running process.
 #[derive(Default)]
-struct DeferredEffects {
+pub(super) struct DeferredEffects {
     spawns: Vec<DeferredSpawn>,
+    mfa_spawns: Vec<DeferredMfaSpawn>,
     sends: Vec<DeferredSend>,
 }
 
@@ -70,7 +86,7 @@ struct DeferredEffects {
 ///
 /// `Arc<Mutex<…>>` only to satisfy the `Send + Sync` facility bounds; never
 /// contended (one thread).
-type SharedEffects = Arc<Mutex<DeferredEffects>>;
+pub(super) type SharedEffects = Arc<Mutex<DeferredEffects>>;
 
 /// Cooperative [`SpawnFacility`]: pre-allocates a pid and records the spawn.
 struct CooperativeSpawn {
@@ -82,13 +98,40 @@ impl SpawnFacility for CooperativeSpawn {
     fn spawn(
         &self,
         _caller_pid: u64,
-        _module: Atom,
-        _function: Atom,
-        _args: Vec<Term>,
-        _link_to: Option<u64>,
+        module: Atom,
+        function: Atom,
+        args: Vec<Term>,
+        link_to: Option<u64>,
     ) -> Result<u64, SpawnError> {
-        // WR-0 spike: only native spawning is exercised cooperatively.
-        Err(SpawnError::UnresolvedMfa)
+        // PLAIN spawn only (WPORT-5 R2 item 2, OQ8 ruled): a link-bearing
+        // spawn stays an explicit refusal, because cooperative bytecode
+        // exits perform NO link propagation (WPORT-4 tear Ruling 7's latent
+        // gap) — wiring `spawn_link` here would make that gap reachable as
+        // silent wrong behaviour, the exact class this campaign forbids.
+        // The refusal surfaces as the spawn BIF's catchable `badarg`.
+        if link_to.is_some() {
+            return Err(SpawnError::UnresolvedMfa);
+        }
+        // Owned-argument capture at the facility (the `DeferredSend`
+        // pattern): the caller heap is only alive during the slice.
+        let mut owned_args = Vec::with_capacity(args.len());
+        for arg in &args {
+            let owned = copy_term_to_ets(*arg).map_err(|_| SpawnError::UnresolvedMfa)?;
+            owned_args.push(owned);
+        }
+        let pid = {
+            let mut guard = lock(&self.next_pid);
+            let pid = *guard;
+            *guard = guard.saturating_add(1);
+            pid
+        };
+        lock(&self.effects).mfa_spawns.push(DeferredMfaSpawn {
+            pid,
+            module,
+            function,
+            args: owned_args,
+        });
+        Ok(pid)
     }
 
     fn spawn_native(
@@ -421,6 +464,56 @@ impl WasmScheduler {
             }
             self.materialize_native_child(spawn);
         }
+        for spawn in drained.mfa_spawns {
+            self.materialize_mfa_child(spawn);
+        }
+        for send in drained.sends {
+            // A missing target is a silent drop (BEAM semantics); ignore errors.
+            let _delivered = self.send_owned(send.target_pid, &send.message);
+        }
+    }
+
+    /// Construct the per-slice cooperative effect facilities for a BYTECODE
+    /// slice (WPORT-5 R2 items 1 and 2): a shared [`DeferredEffects`] buffer
+    /// plus the same [`CooperativeLocalSend`]/[`CooperativeSpawn`] pair the
+    /// native slice driver builds in `run_one_native_slice` — the bytecode
+    /// `native_services()` seam mirrors the native-slice shape exactly.
+    pub(super) fn bytecode_effect_facilities(
+        &self,
+    ) -> (
+        SharedEffects,
+        Arc<dyn LocalSendFacility>,
+        Arc<dyn SpawnFacility>,
+    ) {
+        let effects: SharedEffects = Arc::new(Mutex::new(DeferredEffects::default()));
+        let local_send: Arc<dyn LocalSendFacility> = Arc::new(CooperativeLocalSend {
+            effects: Arc::clone(&effects),
+        });
+        let spawn: Arc<dyn SpawnFacility> = Arc::new(CooperativeSpawn {
+            effects: Arc::clone(&effects),
+            next_pid: Arc::clone(&self.shared_next_pid),
+        });
+        (effects, local_send, spawn)
+    }
+
+    /// Drain and apply a BYTECODE slice's effect buffer (WPORT-5 R2 items 1
+    /// and 2), after the slice has returned and its process has been
+    /// re-inserted (or dropped on exit) — so unlike
+    /// [`WasmScheduler::apply_deferred_effects`] there is no in-hand running
+    /// process: a `link_to` parent, if any, is resolved through the process
+    /// map by [`WasmScheduler::materialize_native_child`]. Sends to a pid
+    /// that exited during the same slice are silent drops (BEAM semantics).
+    pub(super) fn apply_bytecode_effects(&mut self, effects: &SharedEffects) {
+        let drained = {
+            let mut guard = lock(effects);
+            std::mem::take(&mut *guard)
+        };
+        for spawn in drained.spawns {
+            self.materialize_native_child(spawn);
+        }
+        for spawn in drained.mfa_spawns {
+            self.materialize_mfa_child(spawn);
+        }
         for send in drained.sends {
             // A missing target is a silent drop (BEAM semantics); ignore errors.
             let _delivered = self.send_owned(send.target_pid, &send.message);
@@ -449,6 +542,67 @@ impl WasmScheduler {
             let _child_linked = process.add_link(parent_pid);
             if let Some(parent) = self.processes.get_mut(&parent_pid) {
                 let _parent_linked = parent.add_link(pid);
+            }
+        }
+        let ready_was_empty = self.ready.len() == 0;
+        self.ready.push(pid, process.priority());
+        self.note_ready_push(ready_was_empty);
+        self.processes.insert(pid, process);
+    }
+
+    /// Build the `Process` for a deferred plain MFA spawn and make it runnable
+    /// (WPORT-5 R2 item 2), following the `WasmScheduler::spawn_in`
+    /// construction shape: `CapabilitySet::all()`, self group leader, Normal
+    /// priority, ready push with edge accounting.
+    ///
+    /// The spawn BIF already returned the child pid to the caller, so a
+    /// materialization failure cannot raise there; it is recorded as the
+    /// CHILD's exit error instead (the BEAM-adjacent shape: `spawn/3` returns
+    /// a pid whose process dies, the caller is unaffected), observable via
+    /// `has_exit_error`/`take_exit_error`.
+    fn materialize_mfa_child(&mut self, spawn: DeferredMfaSpawn) {
+        let DeferredMfaSpawn {
+            pid,
+            module,
+            function,
+            args,
+        } = spawn;
+        let Ok(arity) = u8::try_from(args.len()) else {
+            self.record_exit_error(pid, ExecError::Badarg);
+            return;
+        };
+        let entry = match self.module_registry().lookup_mfa(module, function, arity) {
+            Ok(entry) => entry,
+            Err(error) => {
+                self.record_exit_error(pid, error);
+                return;
+            }
+        };
+        let instruction_pointer = match entry.module.label_ip(entry.label) {
+            Ok(instruction_pointer) => instruction_pointer,
+            Err(error) => {
+                self.record_exit_error(pid, error);
+                return;
+            }
+        };
+        let mut process = Process::with_capabilities(pid, DEFAULT_HEAP_SIZE, CapabilitySet::all());
+        process.set_group_leader(Term::pid(pid));
+        process.set_priority(Priority::Normal);
+        process.set_code_position(Some(CodePosition {
+            module,
+            instruction_pointer,
+        }));
+        process.set_current_module(entry.module);
+        for (index, arg) in args.iter().enumerate().take(1024) {
+            if let Ok(register) = u16::try_from(index) {
+                let copied = match arg.copy_to_heap(process.heap_mut()) {
+                    Ok(copied) => copied,
+                    Err(_) => {
+                        self.record_exit_error(pid, ExecError::Badarg);
+                        return;
+                    }
+                };
+                process.set_x_reg(register, copied);
             }
         }
         let ready_was_empty = self.ready.len() == 0;

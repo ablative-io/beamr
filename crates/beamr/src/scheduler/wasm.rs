@@ -12,6 +12,7 @@ use crate::atom::{Atom, AtomTable};
 use crate::error::ExecError;
 use crate::ets::OwnedTerm;
 use crate::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
+use crate::io_sink::IoSink;
 use crate::mailbox::SendError;
 use crate::module::ModuleRegistry;
 use crate::namespace::NamespaceId;
@@ -119,7 +120,6 @@ pub struct WasmScheduler {
     atom_table: Arc<AtomTable>,
     module_registry: Arc<ModuleRegistry>,
     bif_registry: Arc<BifRegistryImpl>,
-    next_pid: u64,
     pub(super) processes: BTreeMap<u64, Process>,
     pub(super) ready: ReadyQueues,
     pub(super) waiting: BTreeSet<u64>,
@@ -152,6 +152,11 @@ pub struct WasmScheduler {
     external_runnable_edge_pending: bool,
     /// Suppresses external-edge requests for work produced inside an active drain.
     drain_in_progress: bool,
+    /// Wrapper-injected output sink for the `io`-family BIFs (WPORT-5 R2
+    /// item 4). `None` until the embedder installs one; injected into
+    /// bytecode `NativeServices` per slice. The sink contract is PUSH-ONLY
+    /// (NO-POLLING law): writes reach it synchronously at the writing BIF.
+    io_sink: Option<Arc<dyn IoSink>>,
 }
 
 impl WasmScheduler {
@@ -167,7 +172,6 @@ impl WasmScheduler {
             atom_table,
             module_registry,
             bif_registry,
-            next_pid: 1,
             processes: BTreeMap::new(),
             ready: ReadyQueues::default(),
             waiting: BTreeSet::new(),
@@ -184,6 +188,7 @@ impl WasmScheduler {
             native_timers: Arc::new(Mutex::new(TimerWheel::new())),
             external_runnable_edge_pending: false,
             drain_in_progress: false,
+            io_sink: None,
         }
     }
 
@@ -208,6 +213,16 @@ impl WasmScheduler {
     /// Install the single-threaded host bridge used by WASM async NIF stubs.
     pub fn set_wasm_async_nif_facility(&mut self, facility: Option<Rc<dyn WasmAsyncNifFacility>>) {
         self.wasm_async_nif_facility = facility;
+    }
+
+    /// Install the output sink injected into bytecode `NativeServices`
+    /// (WPORT-5 R2 item 4). The wrapper installs its host sink at
+    /// construction so `io`-family output goes somewhere with zero
+    /// configuration; the sink is PUSH-ONLY (NO-POLLING law) — writes reach
+    /// it synchronously at the writing BIF, with no flush timer or recurring
+    /// callback on any branch.
+    pub fn set_io_sink(&mut self, sink: Arc<dyn IoSink>) {
+        self.io_sink = Some(sink);
     }
 
     /// Drain receive timers that the host must schedule with `setTimeout`.
@@ -297,8 +312,11 @@ impl WasmScheduler {
             .lookup_mfa(entry_module, entry_function, arity)?;
         let instruction_pointer = entry.module.label_ip(entry.label)?;
 
-        let pid = self.next_pid;
-        self.next_pid = self.next_pid.saturating_add(1);
+        // One pid space for every spawn path (WPORT-5 R2 item 2): the shared
+        // counter also feeds native root spawns and the cooperative
+        // spawn/MFA-spawn facilities, so bytecode and native pids can never
+        // collide (the former private `next_pid` counter overlapped it).
+        let pid = self.alloc_pid();
 
         let mut process = Process::with_capabilities(pid, DEFAULT_HEAP_SIZE, CapabilitySet::all());
         process.set_group_leader(Term::pid(pid));
@@ -339,8 +357,8 @@ impl WasmScheduler {
             .lookup_mfa(entry_module, entry_function, arity)?;
         let instruction_pointer = entry.module.label_ip(entry.label)?;
 
-        let pid = self.next_pid;
-        self.next_pid = self.next_pid.saturating_add(1);
+        // Shared pid counter — see `spawn_in` (WPORT-5 R2 item 2).
+        let pid = self.alloc_pid();
 
         let mut process = Process::with_capabilities(pid, DEFAULT_HEAP_SIZE, CapabilitySet::all());
         process.set_group_leader(Term::pid(pid));
@@ -548,11 +566,13 @@ impl WasmScheduler {
             // LATENT GAP, record-only (WPORT-4 tear Ruling 7): bytecode-process
             // exits — this arm and the `ExecutionResult::Exited` arm below —
             // perform NO link propagation, unlike the cooperative native path
-            // (`wasm_native.rs::propagate_native_exit`). Unreachable today:
-            // cooperative bytecode `native_services()` injects no link/spawn/
-            // supervision facility, so a bytecode process cannot hold links.
-            // The guarding wall belongs to the future bytecode-linking brief
-            // that makes this path reachable (arc-board line recorded).
+            // (`wasm_native.rs::propagate_native_exit`). Still unreachable
+            // after WPORT-5 R2: the injected cooperative spawn facility
+            // refuses every link/monitor-bearing variant (plain `spawn/3`
+            // only — OQ8 ruled) and no link/supervision facility is injected,
+            // so a bytecode process cannot hold links. The guarding wall
+            // belongs to the future bytecode-linking brief that makes this
+            // path reachable (arc-board line recorded).
             if let Some(reason) = self.apply_async_completion(&mut process) {
                 let x0 = process.x_reg(0);
                 let _transition = process.transition_to(ProcessStatus::Exited(reason));
@@ -571,7 +591,18 @@ impl WasmScheduler {
                 continue;
             };
 
-            let services = self.native_services();
+            // WPORT-5 R2 items 1+2: mirror the native-slice shape at the
+            // bytecode seam — per-slice effect facilities over a shared
+            // `DeferredEffects` buffer, applied after the slice returns and
+            // the process is back in the map (or dropped on exit). This is
+            // what makes cross-process `Pid ! Msg` deliver and plain
+            // `erlang:spawn/3` run instead of silently dropping/refusing.
+            let (effects, local_send, spawn_facility) = self.bytecode_effect_facilities();
+            let services = NativeServices {
+                local_send: Some(local_send),
+                spawn_facility: Some(spawn_facility),
+                ..self.native_services()
+            };
             let result = run_with_native_services(
                 &mut process,
                 module.as_ref(),
@@ -618,6 +649,12 @@ impl WasmScheduler {
                     summary.errored.push(pid);
                 }
             }
+
+            // Apply the slice's deferred sends/spawns now that its borrow of
+            // the process has settled (WPORT-5 R2): delivered messages wake
+            // their targets and spawned children become runnable within this
+            // same drain's budget discipline.
+            self.apply_bytecode_effects(&effects);
         }
 
         for (pid, priority) in yielded_next_tick {
@@ -684,6 +721,33 @@ impl WasmScheduler {
         self.exit_errors.contains_key(&pid)
     }
 
+    /// Consume and return the interpreter error retained for `pid`, if any
+    /// (WPORT-5 R2 item 7; the cooperative counterpart of the threaded
+    /// `Scheduler::take_exit_error`). This is what makes refusal REASONS —
+    /// facility-absent `Badarg` vs `Undef`-with-MFA vs `UnsupportedOpcode` —
+    /// observable at the embedder boundary instead of a bare boolean.
+    #[must_use]
+    pub fn take_exit_error(&mut self, pid: u64) -> Option<ExecError> {
+        self.exit_errors.remove(&pid)
+    }
+
+    /// Return the retained interpreter error for `pid` WITHOUT consuming it.
+    ///
+    /// Completion surfaces use this peek so repeated completion queries for
+    /// an errored pid keep answering (exactly as `has_exit_error` always
+    /// did), while [`WasmScheduler::take_exit_error`] remains the consuming
+    /// accessor.
+    #[must_use]
+    pub fn exit_error(&self, pid: u64) -> Option<&ExecError> {
+        self.exit_errors.get(&pid)
+    }
+
+    /// Record an interpreter error for a process that could not be
+    /// materialized or run (used by the deferred MFA-spawn path).
+    pub(super) fn record_exit_error(&mut self, pid: u64, error: ExecError) {
+        self.exit_errors.insert(pid, error);
+    }
+
     /// Return the number of currently runnable processes.
     #[must_use]
     pub fn runnable_count(&self) -> usize {
@@ -734,6 +798,14 @@ impl WasmScheduler {
             // `cancel_timer/1` reach a real timer facility instead of the
             // missing-service `badarg`/`false` refusal.
             timers: Some(Arc::clone(&self.native_timers)),
+            // WPORT-5 R2 item 3: the registry the scheduler already holds,
+            // so export-fun/`apply` dispatch to a registered BIF succeeds
+            // where static `CallExt` always did (the closure-dispatch `Undef`
+            // dies).
+            bif_registry: Some(Arc::clone(&self.bif_registry)),
+            // WPORT-5 R2 item 4: the wrapper-injected host output sink;
+            // `None` leaves the `NullSink` context default in place.
+            io_sink: self.io_sink.clone(),
             ..NativeServices::default()
         }
     }
