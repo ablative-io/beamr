@@ -31,8 +31,8 @@ use convert::{
     terms_to_js_array,
 };
 use io_sink::HostIoSinkBridge;
-use reasons::exec_error_to_reason;
 use js_sys::{Function, Promise, Reflect};
+use reasons::exec_error_to_reason;
 use serde_json::{Value, json};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
@@ -1508,6 +1508,31 @@ fn register_wasm_safe_bifs(
     register_gate2_bifs(registry, atom_table)?;
     register_stdlib_stubs(registry, atom_table)?;
     Ok(())
+}
+
+/// WPORT-5 R1 registry-seal helper (OQ6 RIDER, tear-ruled): wraps the PRIVATE
+/// [`register_wasm_safe_bifs`] composition UNCHANGED so the profile seal test
+/// (`tests/profile_seal.rs`) can derive the registered browser surface
+/// through the REAL wrapper composition. That seal test is this function's
+/// ONLY intended consumer. CANNOT-DRIFT REASONING: the seal must NOT
+/// recompose the registry in-test from beamr's public
+/// `register_gate1_bifs`/`register_gate2_bifs`/`register_stdlib_stubs`
+/// chains — a recomposition duplicates this wrapper's composition and would
+/// keep passing while `register_wasm_safe_bifs` silently gained a filter or a
+/// fourth chain, forfeiting exactly the cannot-drift property the seal exists
+/// for.
+///
+/// # Errors
+///
+/// Propagates any duplicate-MFA registration error (impossible for the
+/// shipped tables; the seal test treats it as failure).
+#[doc(hidden)]
+pub fn build_wasm_safe_registry()
+-> Result<(BifRegistryImpl, Arc<AtomTable>), NativeRegistrationError> {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let registry = BifRegistryImpl::new();
+    register_wasm_safe_bifs(&registry, &atom_table)?;
+    Ok((registry, atom_table))
 }
 
 fn unresolved_imports_to_json(

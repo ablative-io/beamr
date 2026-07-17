@@ -347,6 +347,37 @@ impl BifRegistryImpl {
         self.registry.lookup(module, function, arity)
     }
 
+    /// Read-only enumeration of every registered BIF as
+    /// `(module, function, arity, capability)` (WPORT-5 R1 registry seal).
+    ///
+    /// OQ6 RIDER (tear-ruled): this accessor is ADDITIVE and READ-ONLY — zero
+    /// behavior change to registration or lookup — and its ONLY intended
+    /// consumer is the WPORT-5 profile seal test
+    /// (`crates/beamr-wasm/tests/profile_seal.rs`), which asserts exact
+    /// two-way set equality between this enumeration — derived through the
+    /// REAL wrapper composition (`beamr_wasm::build_wasm_safe_registry`) —
+    /// and the machine-readable row keys of
+    /// `docs/design/beamr/BROWSER-BIF-PROFILE.md`. CANNOT-DRIFT REASONING:
+    /// the seal must enumerate a registry built by the real wrapper
+    /// composition rather than one recomposed in-test from the public
+    /// `register_gate1_bifs`/`register_gate2_bifs`/`register_stdlib_stubs`
+    /// chains — a recomposed registry would keep passing while the wrapper
+    /// silently gained a filter or a fourth chain, forfeiting exactly the
+    /// property the seal exists for.
+    ///
+    /// Ordering is unspecified (DashMap iteration); consumers sort.
+    #[must_use]
+    pub fn registered_mfas(&self) -> Vec<(Atom, Atom, u8, Capability)> {
+        self.registry
+            .entries
+            .iter()
+            .map(|entry| {
+                let (module, function, arity) = *entry.key();
+                (module, function, arity, entry.value().capability)
+            })
+            .collect()
+    }
+
     /// Returns imports that remain unresolved after checking registered BIFs.
     #[must_use]
     pub fn coverage(&self, report: &UnresolvedImportReport) -> Vec<UnresolvedImport> {
