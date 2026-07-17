@@ -95,6 +95,15 @@ jobs:
             "failure::tests::promise_completion_wake_failure_reaches_both_surfaces"
             "failure::tests::panic_hook_installs_exactly_once_across_vm_constructions"
             "failure::tests::panic_reaches_console_and_registered_callback_before_the_trap"
+            "io_sink::tests::buffer_preserves_write_order_across_stream_tags"
+            "io_sink::tests::flush_decodes_bytes_as_lossy_utf8"
+            "io_sink::tests::throwing_callback_switches_flush_remainder_to_console_at_one_split_point"
+            "io_sink::tests::flush_completes_before_waiter_resolution_on_success_path"
+            "io_sink::tests::flush_on_failed_drain_delivers_output_before_typed_rejection"
+            "io_sink::tests::reentrant_run_step_mid_flush_receives_already_draining_refusal"
+            "io_sink::tests::cross_process_interleave_is_slice_order"
+            "io_sink::tests::multi_turn_fairness_output_order_is_total_across_turns"
+            "io_sink::tests::io_format_2_facility_absent_badarg_is_pinned"
           )
           assertion_status=0
           for test_name in "${expected_tests[@]}"; do
@@ -104,9 +113,9 @@ jobs:
             fi
           done
           if ! grep -Fq \
-            "test result: ok. 56 passed; 0 failed; 0 ignored; 0 filtered out" \
+            "test result: ok. 65 passed; 0 failed; 0 ignored; 0 filtered out" \
             "$output_file"; then
-            echo "missing exact fifty-six-test success summary" >&2
+            echo "missing exact sixty-five-test success summary" >&2
             assertion_status=1
           fi
 

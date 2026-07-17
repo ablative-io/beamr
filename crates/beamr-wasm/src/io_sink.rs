@@ -1,4 +1,5 @@
-//! The cooperative host IO sink (WPORT-5 R2 item 4).
+//! The cooperative host IO sink (WPORT-5 R2 item 4; ordering promoted to a
+//! constructional contract by WPORT-7 R3).
 //!
 //! The scheduler-facing half ([`CooperativeSinkBuffer`]) implements the
 //! `Send + Sync` [`IoSink`] trait by capturing each tagged write into an
@@ -11,11 +12,47 @@
 //! lib.rs borrow discipline, binding on the sink exactly as the WPORT-3 pen
 //! note states it for the deadline service).
 //!
+//! # The promoted ordering guarantee (WPORT-7 R3, contractual)
+//!
+//! - **Per-write delivery granularity**: one callback invocation per BIF
+//!   write, bytes decoded as lossy UTF-8.
+//! - **Total FIFO order within a turn**: all writes from a host turn, across
+//!   ALL processes and BOTH streams, are delivered in the single order they
+//!   were written (one scheduler-wide FIFO).
+//! - **Same-turn synchronous delivery, including failed drains**: the flush
+//!   runs synchronously at the tail of the host turn that produced the
+//!   output — a drain that fails at the deadline-reconcile seam still
+//!   delivers everything the turn captured, before the typed error surfaces.
+//! - **Flush-before-waiter-resolution** (constructional, not microtask
+//!   luck): the arbiter flushes INSIDE the drain envelope — state is still
+//!   Draining — before any `await_exit` waiter resolves or rejects, so
+//!   waiter continuations always observe the turn's output already
+//!   delivered. A sink callback that synchronously re-enters `run_step`
+//!   receives the existing "arbiter is already draining" refusal (caller
+//!   misuse, the sync-refusal class — distinct from `SchedulerFailureError`);
+//!   newer-before-older delivery is closed by construction (OQ-B ruled
+//!   HOLD-DRAINING). A wake-path call (e.g. `send_message`) from inside the
+//!   flush window delivers its message but its turn request no-ops against
+//!   the held Draining state — the wake rides the next host stimulus;
+//!   re-entrant scheduling from a sink callback is the same caller-misuse
+//!   class as the `run_step` refusal.
+//! - **One split point per flush**: if the registered callback throws, the
+//!   REMAINDER of that flush switches to the console default — order
+//!   preserved within each channel, channels never interleaved, and the
+//!   callback is retried no earlier than the next flush.
+//! - **Cross-process interleaving is faithfully preserved but remains
+//!   scheduler policy**, not contract: the FIFO reproduces slice order
+//!   exactly; which slice order the scheduler picks is its own affair.
+//! - **Node cross-stream console order is OUT-OF-CONTRACT**: under the
+//!   console default, `out` and `err` land on `stdout`/`stderr`, two OS
+//!   streams whose relative order the platform may reorder. Hosts wanting
+//!   one totally ordered stream register a sink callback.
+//!
 //! NO-POLLING (Tom's ruling, counted law): there is no flush timer, no
 //! recurring callback, and no buffer-poll anywhere on this seam. The flush is
-//! invoked synchronously by the arbiter at the tail of the same host turn
-//! whose slices produced the output; an empty buffer costs one uncontended
-//! lock and no host call.
+//! invoked synchronously by the arbiter inside the same host turn whose
+//! slices produced the output; an empty buffer costs one uncontended lock and
+//! no host call.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -91,9 +128,14 @@ impl HostIoSinkBridge {
     ///
     /// Called by the arbiter once per host turn AFTER the drain has settled
     /// (no scheduler borrow is live, so a sink callback may legally re-enter
-    /// the VM surface). With no registered callback — or when the registered
-    /// callback throws — the write falls back to the console default so
-    /// output is never silently lost (OQ2: the console IS the platform sink).
+    /// the VM's registration surface) and INSIDE the drain envelope (WPORT-7
+    /// R3, OQ-B HOLD-DRAINING — see the module doc's ordering guarantee).
+    /// With no registered callback the console default delivers every write
+    /// (OQ2: the console IS the platform sink). A registered callback that
+    /// THROWS switches the remainder of this flush to the console — ONE split
+    /// point per flush (WPORT-7 D10a), order preserved within each channel,
+    /// never interleaved across channels; the callback is retried no earlier
+    /// than the next flush.
     pub(crate) fn flush(&self) {
         let drained = self.buffer.drain();
         if drained.is_empty() {
@@ -101,7 +143,7 @@ impl HostIoSinkBridge {
         }
         // Clone the callback out of the cell before invoking it: a callback
         // that re-enters `register_io_sink` must not hit a live borrow.
-        let callback = self.callback.borrow().clone();
+        let mut callback = self.callback.borrow().clone();
         for (stream, bytes) in drained {
             let text = String::from_utf8_lossy(&bytes);
             let delivered = callback.as_ref().is_some_and(|function| {
@@ -114,6 +156,10 @@ impl HostIoSinkBridge {
                     .is_ok()
             });
             if !delivered {
+                // The one split point: from the first throw (or with no
+                // callback at all) every remaining write of THIS flush goes
+                // to the console — no per-write alternation.
+                callback = None;
                 console_write(stream, &text);
             }
         }
@@ -148,3 +194,7 @@ fn console_write(stream: IoStream, text: &str) {
     };
     let _ = method.call1(&console, &JsValue::from_str(text));
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "io_sink_tests.rs"]
+mod tests;

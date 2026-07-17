@@ -682,21 +682,34 @@ impl HostArbiter {
             instrumentation.executions = instrumentation.executions.saturating_add(1);
         }
         match self.perform_drain() {
-            Ok((summary, _json)) => self.finish_drain(&summary),
+            Ok((summary, json)) => {
+                // WPORT-7 R3 (D9a + D10b, OQ-B ruled HOLD-DRAINING): the sink
+                // flush runs INSIDE the drain envelope — state is still
+                // Draining here, so a sink callback synchronously re-entering
+                // `run_step` gets the existing already-draining refusal and no
+                // newer-before-older delivery is constructible — and it
+                // completes BEFORE `finish_drain`'s state transition and
+                // BEFORE waiter resolution (flush-before-continuation is
+                // construction, not microtask luck). The drain has settled and
+                // no scheduler borrow is live (WPORT-5 R2 item 4): same-turn,
+                // synchronous, push-only — never a timer.
+                self.io_sink.flush();
+                self.finish_drain(&summary);
+                self.resolve_waiters(&summary, &json);
+            }
             Err(error) => {
-                // WPORT-7 R1: the queued-turn drain failure (the deadline-
-                // reconcile seam is the sole fallible drain op) is typed,
-                // reset, and latched — the symmetric twin of the manual leg.
+                // Failed drains keep the same envelope: deliver whatever the
+                // turn already captured (never lose output) while still
+                // Draining, THEN type/reset/latch. WPORT-7 R1: the queued-turn
+                // drain failure (the deadline-reconcile seam is the sole
+                // fallible drain op) is typed, reset, and latched — the
+                // symmetric twin of the manual leg.
+                self.io_sink.flush();
                 let error = scheduler_failure_error(FailureLeg::Queued, PHASE_RECONCILE, &error);
                 self.state.set(ArbiterState::Idle);
                 self.fail(error);
             }
         }
-        // WPORT-5 R2 item 4: deliver the turn's captured IO to the host sink
-        // now that the drain has settled and no scheduler borrow is live (a
-        // sink callback may legally re-enter the VM surface). Same-turn,
-        // synchronous, push-only — never a timer.
-        self.io_sink.flush();
     }
 
     fn run_manual_drain(self: &Rc<Self>) -> Result<Value, JsValue> {
@@ -715,10 +728,12 @@ impl HostArbiter {
         let drain_result = self.perform_drain();
         match drain_result {
             Ok((summary, json)) => {
-                self.finish_drain(&summary);
-                // Same-turn sink delivery after the drain settles — see
-                // `execute_queued_turn`.
+                // Same envelope as `execute_queued_turn` (OQ-B HOLD-DRAINING):
+                // flush inside Draining, then the state transition, then
+                // waiter resolution.
                 self.io_sink.flush();
+                self.finish_drain(&summary);
+                self.resolve_waiters(&summary, &json);
                 Ok(json)
             }
             Err(error) => {
@@ -771,7 +786,10 @@ impl HostArbiter {
             .collect::<Vec<_>>();
         let json = summary_to_json(&summary, exits);
         *self.last_summary.borrow_mut() = json.clone();
-        self.resolve_waiters(&summary, &json);
+        // Waiter resolution moved to the callers (WPORT-7 R3, D9a): both
+        // drain paths flush the sink FIRST, inside the drain envelope, so
+        // waiter continuations constructionally observe the turn's output
+        // already delivered.
         Ok((summary, json))
     }
 

@@ -228,6 +228,153 @@ fn console_error(text: &str) {
     let _ignored = method.call1(&console, &JsValue::from_str(text));
 }
 
+// ---------------------------------------------------------------------------
+// Test support (cfg(test) only): throwing host-primitive doubles and typed-
+// error introspection/assertion helpers for this module's contract, shared
+// with the io_sink wall battery. Zero production surface.
+// ---------------------------------------------------------------------------
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod test_support {
+    use js_sys::{Function, Reflect};
+    use serde_json::{Value, json};
+    use wasm_bindgen::JsValue;
+
+    use crate::WasmVm;
+
+    /// A delegating throw-capable double over a named global host primitive,
+    /// installed BEFORE `WasmVm::new` so the constructor probe captures it.
+    pub(crate) struct PrimitiveDouble {
+        name: &'static str,
+        original: JsValue,
+    }
+
+    pub(crate) fn install_throwing_double(name: &'static str) -> PrimitiveDouble {
+        let global = js_sys::global();
+        let original = Reflect::get(&global, &JsValue::from_str(name))
+            .expect("host primitive exists to double");
+        let factory = Function::new_with_args(
+            "original",
+            &format!(
+                "return function() {{ \
+                     if (globalThis.__wport7_throw_{name}) {{ \
+                         throw new Error('{name} injected throw'); \
+                     }} \
+                     return original.apply(this, arguments); \
+                 }};"
+            ),
+        );
+        let double = factory
+            .call1(&JsValue::UNDEFINED, &original)
+            .expect("throwing double constructs");
+        Reflect::set(&global, &JsValue::from_str(name), &double).expect("throwing double installs");
+        PrimitiveDouble { name, original }
+    }
+
+    /// A targeted `queueMicrotask` double: throws ONLY for the arbiter's own
+    /// turn callback (identity-matched against `__wport7_arbiter_callback`),
+    /// delegating every other enqueue — wasm-bindgen-futures schedules its task
+    /// queue through the global `queueMicrotask`, and a blanket throw would crash
+    /// the test harness's own machinery instead of exercising the arbiter seam.
+    pub(crate) fn install_targeted_queue_microtask_double() -> PrimitiveDouble {
+        let name = "queueMicrotask";
+        let global = js_sys::global();
+        let original = Reflect::get(&global, &JsValue::from_str(name))
+            .expect("host primitive exists to double");
+        let factory = Function::new_with_args(
+            "original",
+            "return function() { \
+                 if (globalThis.__wport7_throw_queueMicrotask \
+                     && arguments[0] === globalThis.__wport7_arbiter_callback) { \
+                     throw new Error('queueMicrotask injected throw'); \
+                 } \
+                 return original.apply(this, arguments); \
+             };",
+        );
+        let double = factory
+            .call1(&JsValue::UNDEFINED, &original)
+            .expect("throwing double constructs");
+        Reflect::set(&global, &JsValue::from_str(name), &double).expect("throwing double installs");
+        PrimitiveDouble { name, original }
+    }
+
+    /// Point the targeted double at this VM's arbiter turn callback.
+    pub(crate) fn target_arbiter_callback(vm: &WasmVm) {
+        let _set = Reflect::set(
+            &js_sys::global(),
+            &JsValue::from_str("__wport7_arbiter_callback"),
+            vm.arbiter.callback.as_ref(),
+        );
+    }
+
+    impl PrimitiveDouble {
+        pub(crate) fn set_throwing(&self, throwing: bool) {
+            let flag = format!("__wport7_throw_{}", self.name);
+            let _set = Reflect::set(
+                &js_sys::global(),
+                &JsValue::from_str(&flag),
+                &JsValue::from_bool(throwing),
+            );
+        }
+
+        pub(crate) fn restore(self) {
+            self.set_throwing(false);
+            let _set = Reflect::set(
+                &js_sys::global(),
+                &JsValue::from_str(self.name),
+                &self.original,
+            );
+        }
+    }
+
+    pub(crate) fn error_name(error: &JsValue) -> String {
+        Reflect::get(error, &JsValue::from_str("name"))
+            .ok()
+            .and_then(|value| value.as_string())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn error_message(error: &JsValue) -> String {
+        Reflect::get(error, &JsValue::from_str("message"))
+            .ok()
+            .and_then(|value| value.as_string())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn error_data(error: &JsValue) -> Value {
+        let raw = Reflect::get(error, &JsValue::from_str("data")).expect("data property reads");
+        serde_json::from_str(&raw.as_string().expect("data is a JSON string")).expect("data parses")
+    }
+
+    /// Assert the full typed shape: class name, `"{leg}: {detail}"` message, and
+    /// the pinned three-key data schema with literal `terminal: true`.
+    pub(crate) fn assert_typed(error: &JsValue, leg: &str, phase: &str) {
+        assert_eq!(error_name(error), "SchedulerFailureError");
+        let message = error_message(error);
+        assert!(
+            message.starts_with(&format!("{leg}: ")),
+            "message carries the leg slug in kind position: {message}"
+        );
+        let data = error_data(error);
+        assert_eq!(data["leg"], json!(leg));
+        assert_eq!(data["phase"], json!(phase));
+        assert_eq!(data["terminal"], json!(true));
+        let keys: Vec<&str> = data
+            .as_object()
+            .expect("data is an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys.len(), 3, "exactly the pinned schema keys: {keys:?}");
+    }
+}
+
+#[cfg(all(test, target_arch = "wasm32"))]
+pub(crate) use test_support::{
+    PrimitiveDouble, assert_typed, error_data, error_name, install_targeted_queue_microtask_double,
+    install_throwing_double, target_arbiter_callback,
+};
+
 #[cfg(all(test, target_arch = "wasm32"))]
 #[path = "failure_tests.rs"]
 mod tests;
