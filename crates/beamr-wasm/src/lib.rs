@@ -3,6 +3,7 @@
 pub mod artifact_loader;
 mod connection_events;
 mod convert;
+mod failure;
 mod io_sink;
 mod reasons;
 
@@ -30,6 +31,9 @@ use connection_events::BrowserConnectionHub;
 use convert::{
     js_value_to_owned_term, js_value_to_term_in_context, term_to_js_value, terms_from_json_array,
     terms_to_js_array,
+};
+use failure::{
+    FailureLeg, PHASE_QUEUE_MICROTASK, PHASE_RECONCILE, PHASE_SET_TIMEOUT, scheduler_failure_error,
 };
 use io_sink::HostIoSinkBridge;
 use js_sys::{Function, Promise, Reflect};
@@ -67,6 +71,9 @@ impl WasmVm {
     /// Create a VM with common atoms and wasm-safe BIF registrations.
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<WasmVm, JsValue> {
+        // WPORT-7 R2: the reporting-only browser panic hook installs exactly
+        // once per process, regardless of how many VMs are constructed.
+        failure::install_panic_hook_once();
         let primitives = HostPrimitives::probe()?;
         let atom_table = Arc::new(AtomTable::with_common_atoms());
         let module_registry = Arc::new(ModuleRegistry::new());
@@ -135,6 +142,27 @@ impl WasmVm {
         self.io_sink.register(callback);
     }
 
+    /// Non-consuming read of the terminal scheduler failure (WPORT-7 R1):
+    /// `null` before any failure; after the latch sets, the
+    /// `SchedulerFailureError`'s `data` JSON string
+    /// (`{"leg":…,"phase":…,"terminal":true}`), repeatably. The latch is
+    /// permanent — there is no clear/reset API (no-knob law).
+    pub fn terminal_error(&self) -> JsValue {
+        self.arbiter.terminal_error()
+    }
+
+    /// Register the one-shot push failure callback (WPORT-7 R1), invoked with
+    /// the typed `SchedulerFailureError` at the FIRST `fail()` after
+    /// registration reaches the latch — event-driven, never polled (the VM
+    /// arms no timer for this). Covers the two latch-only legs (`deadline`,
+    /// `promise`) invisible to hosts not parked in `await_exit`. Registering
+    /// after the latch has already set never fires — consult
+    /// [`WasmVm::terminal_error`] for the already-latched value. Pre-failure
+    /// re-registration replaces the callback (last-wins).
+    pub fn register_failure_callback(&mut self, callback: Function) {
+        self.arbiter.register_failure_callback(callback);
+    }
+
     /// Consume and return the structured refusal reason for an errored pid
     /// (WPORT-5 R2 item 7), or `null` when no interpreter error is retained.
     ///
@@ -187,7 +215,7 @@ impl WasmVm {
         // not a routing gap. Do NOT reorder these two calls; any evidence of a
         // transiently-throwing host reopens this as its own finding.
         self.deadline.sync_and_reconcile()?;
-        self.schedule_external_edge()?;
+        self.schedule_external_edge(FailureLeg::Queued)?;
         Ok(())
     }
 
@@ -249,7 +277,7 @@ impl WasmVm {
             .borrow_mut()
             .spawn_owned(module, function, args)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        self.schedule_external_edge()?;
+        self.schedule_external_edge(FailureLeg::Queued)?;
         Ok(pid)
     }
 
@@ -323,7 +351,7 @@ impl WasmVm {
                 Err(error) => Err(JsValue::from_str(&error.to_string())),
             }
         });
-        self.schedule_external_edge()?;
+        self.schedule_external_edge(FailureLeg::Queued)?;
         Ok(promise)
     }
 
@@ -338,7 +366,7 @@ impl WasmVm {
         handle
             .cast(WireTerm::new(owned))
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        self.schedule_external_edge()?;
+        self.schedule_external_edge(FailureLeg::Queued)?;
         Ok(())
     }
 
@@ -424,20 +452,23 @@ impl WasmVm {
         self.deadline.remove_receive_record(timer_id);
         let fired = self.scheduler.borrow_mut().timer_fired(pid, timer_id);
         self.deadline.sync_and_reconcile()?;
-        self.schedule_external_edge()?;
+        self.schedule_external_edge(FailureLeg::Queued)?;
         Ok(fired)
     }
 
-    fn schedule_external_edge(&self) -> Result<(), JsValue> {
+    fn schedule_external_edge(&self, leg: FailureLeg) -> Result<(), JsValue> {
         let edge = self.scheduler.borrow_mut().take_external_runnable_edge();
         if edge {
-            self.arbiter.request_external_turn()?;
+            self.arbiter.request_external_turn(leg)?;
         }
         Ok(())
     }
 
     fn schedule_external_edge_infallible(&self) {
-        if let Err(error) = self.schedule_external_edge() {
+        // The spawn-edge leg (WPORT-7 R1): no per-call surface exists here, so
+        // the typed error is swallowed into the latch — observable through
+        // `terminal_error` and the one-shot failure callback.
+        if let Err(error) = self.schedule_external_edge(FailureLeg::SpawnEdge) {
             self.arbiter.fail(error);
         }
     }
@@ -546,6 +577,9 @@ struct HostArbiter {
     waiters: RefCell<BTreeMap<u64, Vec<ExitWaiter>>>,
     last_summary: RefCell<Value>,
     last_error: RefCell<Option<JsValue>>,
+    /// One-shot push surface (WPORT-7 R1): taken and invoked at the first
+    /// `fail()` that finds it registered; never polled, never re-armed.
+    failure_callback: RefCell<Option<Function>>,
     instrumentation: RefCell<CallbackCounters>,
 }
 
@@ -578,19 +612,24 @@ impl HostArbiter {
                 waiters: RefCell::new(BTreeMap::new()),
                 last_summary: RefCell::new(summary_to_json(&WasmRunSummary::default(), Vec::new())),
                 last_error: RefCell::new(None),
+                failure_callback: RefCell::new(None),
                 instrumentation: RefCell::new(CallbackCounters::default()),
             }
         })
     }
 
-    fn request_external_turn(self: &Rc<Self>) -> Result<(), JsValue> {
+    fn request_external_turn(self: &Rc<Self>, failure_leg: FailureLeg) -> Result<(), JsValue> {
         match self.state.get() {
-            ArbiterState::Idle => self.queue_turn(HostTurnLeg::ExternalMicrotask),
+            ArbiterState::Idle => self.queue_turn(HostTurnLeg::ExternalMicrotask, failure_leg),
             ArbiterState::Queued | ArbiterState::Draining => Ok(()),
         }
     }
 
-    fn queue_turn(self: &Rc<Self>, leg: HostTurnLeg) -> Result<(), JsValue> {
+    fn queue_turn(
+        self: &Rc<Self>,
+        leg: HostTurnLeg,
+        failure_leg: FailureLeg,
+    ) -> Result<(), JsValue> {
         self.state.set(ArbiterState::Queued);
         {
             let mut instrumentation = self.instrumentation.borrow_mut();
@@ -611,6 +650,14 @@ impl HostArbiter {
         match result {
             Ok(_opaque_handle) => Ok(()),
             Err(error) => {
+                // WPORT-7 R1: the raw host throw becomes the one typed class
+                // HERE, tagged with the entry leg threaded in by the caller —
+                // the value latched, thrown, and rejected is the same object.
+                let phase = match leg {
+                    HostTurnLeg::ExternalMicrotask => PHASE_QUEUE_MICROTASK,
+                    HostTurnLeg::FairnessMacrotask => PHASE_SET_TIMEOUT,
+                };
+                let error = scheduler_failure_error(failure_leg, phase, &error);
                 self.state.set(ArbiterState::Idle);
                 self.instrumentation.borrow_mut().queued_now = 0;
                 self.fail(error.clone());
@@ -637,6 +684,10 @@ impl HostArbiter {
         match self.perform_drain() {
             Ok((summary, _json)) => self.finish_drain(&summary),
             Err(error) => {
+                // WPORT-7 R1: the queued-turn drain failure (the deadline-
+                // reconcile seam is the sole fallible drain op) is typed,
+                // reset, and latched — the symmetric twin of the manual leg.
+                let error = scheduler_failure_error(FailureLeg::Queued, PHASE_RECONCILE, &error);
                 self.state.set(ArbiterState::Idle);
                 self.fail(error);
             }
@@ -672,8 +723,18 @@ impl HostArbiter {
             }
             Err(error) => {
                 // Deliver whatever the failed turn already captured (never
-                // lose output); the arbiter's error surface is unchanged.
+                // lose output).
                 self.io_sink.flush();
+                // WPORT-7 R1, the D1 wedge fix (OQ-C ruled LATCH): the manual
+                // Err arm gains exactly what `execute_queued_turn` has —
+                // reset to Idle, then `fail()` with the typed error — so a
+                // failed manual drain can no longer strand the arbiter at
+                // Draining with `last_error` unset (the silent wedge). The
+                // manual path's per-call surface is kept: the typed Err still
+                // returns to the JS caller.
+                let error = scheduler_failure_error(FailureLeg::Manual, PHASE_RECONCILE, &error);
+                self.state.set(ArbiterState::Idle);
+                self.fail(error.clone());
                 Err(error)
             }
         }
@@ -718,7 +779,9 @@ impl HostArbiter {
         match summary.state {
             WasmRunState::Idle { .. } => self.state.set(ArbiterState::Idle),
             WasmRunState::FairnessYield { .. } => {
-                if let Err(error) = self.queue_turn(HostTurnLeg::FairnessMacrotask) {
+                if let Err(error) =
+                    self.queue_turn(HostTurnLeg::FairnessMacrotask, FailureLeg::Queued)
+                {
                     self.fail(error);
                 }
             }
@@ -842,6 +905,34 @@ impl HostArbiter {
         for waiter in waiters.into_values().flatten() {
             let _ignored = waiter.reject.call1(&JsValue::UNDEFINED, &error);
         }
+        // WPORT-7 R1 (D3): the one-shot push surface. Taken out of the slot
+        // (so it fires exactly once, at the first latch) and invoked
+        // borrow-free AFTER the state writes above — the sink-flush borrow
+        // discipline. The VM arms no timer for this; it is pure push.
+        let callback = self.failure_callback.borrow_mut().take();
+        if let Some(callback) = callback {
+            let _ignored = callback.call1(&JsValue::UNDEFINED, &error);
+        }
+    }
+
+    /// Non-consuming latch read (WPORT-7 R1, D3): `null` pre-failure, the
+    /// typed error's `data` JSON string post-failure, repeatably.
+    fn terminal_error(&self) -> JsValue {
+        match self.last_error.borrow().as_ref() {
+            Some(error) => {
+                let data = Reflect::get(error, &JsValue::from_str("data")).unwrap_or(JsValue::NULL);
+                if data.is_undefined() {
+                    JsValue::NULL
+                } else {
+                    data
+                }
+            }
+            None => JsValue::NULL,
+        }
+    }
+
+    fn register_failure_callback(&self, callback: Function) {
+        *self.failure_callback.borrow_mut() = Some(callback);
     }
 }
 
@@ -1155,7 +1246,7 @@ impl HostDeadlineService {
         let _edge = self.scheduler.borrow_mut().take_external_runnable_edge();
         let arbiter = self.arbiter.borrow().clone();
         if let Some(arbiter) = arbiter.upgrade()
-            && let Err(error) = arbiter.request_external_turn()
+            && let Err(error) = arbiter.request_external_turn(FailureLeg::Deadline)
         {
             arbiter.fail(error);
         }
@@ -1290,7 +1381,7 @@ impl HostAsyncNifs {
                 };
                 if edge
                     && let Some(arbiter) = arbiter.upgrade()
-                    && let Err(error) = arbiter.request_external_turn()
+                    && let Err(error) = arbiter.request_external_turn(FailureLeg::Promise)
                 {
                     arbiter.fail(error);
                 }
@@ -1728,7 +1819,7 @@ mod tests {
     use js_sys::{Array, Object};
     use wasm_bindgen_test::wasm_bindgen_test;
 
-    fn parse_json(value: JsValue) -> Value {
+    pub(crate) fn parse_json(value: JsValue) -> Value {
         serde_json::from_str(
             value
                 .as_string()
@@ -1775,13 +1866,13 @@ mod tests {
         })
     }
 
-    async fn host_macrotask() {
+    pub(crate) async fn host_macrotask() {
         JsFuture::from(timeout_value(0, JsValue::UNDEFINED))
             .await
             .expect("test macrotask resolves");
     }
 
-    async fn host_microtask() {
+    pub(crate) async fn host_microtask() {
         JsFuture::from(Promise::resolve(&JsValue::UNDEFINED))
             .await
             .expect("test microtask resolves");
@@ -1807,13 +1898,13 @@ mod tests {
             .scheduler
             .borrow_mut()
             .spawn_native_root(Box::new(|| Box::new(MailboxDrainer)));
-        vm.schedule_external_edge()
+        vm.schedule_external_edge(FailureLeg::Queued)
             .expect("test native root schedules the arbiter");
         host_macrotask().await;
         pid
     }
 
-    fn build_module(
+    pub(crate) fn build_module(
         atoms: &AtomTable,
         name: &str,
         exports: &[(&str, u8, u32)],
@@ -1852,7 +1943,7 @@ mod tests {
 
     /// `run/0`: receive one message and exit with it, or exit with `timed_out`
     /// after `milliseconds` (the receive-after class of the deadline service).
-    fn receive_after_module(
+    pub(crate) fn receive_after_module(
         atoms: &AtomTable,
         name: &str,
         milliseconds: u64,
@@ -2042,18 +2133,23 @@ mod tests {
         )
     }
 
-    fn spawn_bytecode(vm: &mut WasmVm, module: Atom, function: Atom, args: Vec<OwnedTerm>) -> u64 {
+    pub(crate) fn spawn_bytecode(
+        vm: &mut WasmVm,
+        module: Atom,
+        function: Atom,
+        args: Vec<OwnedTerm>,
+    ) -> u64 {
         let pid = vm
             .scheduler
             .borrow_mut()
             .spawn_owned(module, function, args)
             .expect("bytecode process spawns");
-        vm.schedule_external_edge()
+        vm.schedule_external_edge(FailureLeg::Queued)
             .expect("bytecode spawn schedules the arbiter");
         pid
     }
 
-    async fn await_exit_json(vm: &mut WasmVm, pid: u64) -> Value {
+    pub(crate) async fn await_exit_json(vm: &mut WasmVm, pid: u64) -> Value {
         parse_json(
             JsFuture::from(vm.await_exit(pid))
                 .await
@@ -2863,7 +2959,7 @@ mod tests {
     /// Resolve a host-registered (non-`erlang`) NIF into a bytecode import
     /// entry, the way the loader would — the async-NIF analogue of
     /// `erlang_bif_import`.
-    fn registered_bif_import(
+    pub(crate) fn registered_bif_import(
         vm: &WasmVm,
         module: &str,
         function: &str,
@@ -2889,7 +2985,7 @@ mod tests {
     /// NIF), while the rejection twin exits AT the completion seam with the
     /// bare rejection term — never a list — proving `ExitReason::Error` took
     /// the exit-at-seam path (`crates/beamr/src/scheduler/wasm.rs:761-767`).
-    fn async_caller_module(vm: &WasmVm, name: &str) -> Module {
+    pub(crate) fn async_caller_module(vm: &WasmVm, name: &str) -> Module {
         let imports = vec![registered_bif_import(vm, "wport4_async", "fetch", 1)];
         let code = vec![
             Instruction::Label { label: 1 },
@@ -2926,7 +3022,9 @@ mod tests {
     /// A Promise-returning host NIF callback: each invocation creates a fresh
     /// `Promise` and banks its `(resolve, reject)` pair so the test settles it
     /// deterministically later, from true idle.
-    fn promise_returning_nif(resolvers: &Rc<RefCell<Vec<(Function, Function)>>>) -> Function {
+    pub(crate) fn promise_returning_nif(
+        resolvers: &Rc<RefCell<Vec<(Function, Function)>>>,
+    ) -> Function {
         let resolvers = Rc::clone(resolvers);
         Closure::<dyn FnMut(JsValue) -> JsValue>::new(move |_args: JsValue| {
             let resolvers = Rc::clone(&resolvers);
@@ -3095,7 +3193,7 @@ mod tests {
     /// every production entry point does (test plumbing, not a pump).
     fn spawn_native_root_edge(vm: &mut WasmVm, factory: NativeHandlerFactory) -> u64 {
         let pid = vm.scheduler.borrow_mut().spawn_native_root(factory);
-        vm.schedule_external_edge()
+        vm.schedule_external_edge(FailureLeg::Queued)
             .expect("native root spawn schedules the arbiter");
         pid
     }
@@ -3467,7 +3565,7 @@ mod tests {
                 "the first injected completion wakes the parked handler"
             );
         } // scheduler borrow dropped before the arbiter host call
-        vm.schedule_external_edge()
+        vm.schedule_external_edge(FailureLeg::Queued)
             .expect("the first injection requests the one turn");
         {
             let mut scheduler = vm.scheduler.borrow_mut();
@@ -3476,7 +3574,7 @@ mod tests {
                 WasmAsyncCompletion::Error(OwnedTerm::immediate(Term::small_int(7))),
             );
         }
-        vm.schedule_external_edge()
+        vm.schedule_external_edge(FailureLeg::Queued)
             .expect("the second injection coalesces (no edge, no request)");
         let queued = vm.arbiter_counters();
         assert_eq!(
@@ -3579,7 +3677,7 @@ mod tests {
 
     /// `build_module` plus materialised literals (binary/export-fun operands
     /// for the WPORT-5 walls).
-    fn build_module_with_literals(
+    pub(crate) fn build_module_with_literals(
         atoms: &AtomTable,
         name: &str,
         exports: &[(&str, u8, u32)],

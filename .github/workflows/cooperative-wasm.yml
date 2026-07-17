@@ -85,6 +85,16 @@ jobs:
             "artifact_loader::tests::manifest_url_to_executed_module_end_to_end_reaches_settled_completion"
             "artifact_loader::tests::failing_manifest_fetch_rejects_with_manifest_fetch_failed"
             "artifact_loader::tests::artifact_load_error_kind_slug_set_is_closed_and_exact"
+            "failure::tests::queued_drain_failure_rejects_await_exit_with_typed_scheduler_failure"
+            "failure::tests::manual_drain_failure_returns_typed_error_resets_state_and_latches"
+            "failure::tests::terminal_error_returns_null_then_repeatable_json_after_failure"
+            "failure::tests::failure_callback_fires_exactly_once_at_first_failure"
+            "failure::tests::failure_leg_slug_set_is_closed_and_exact"
+            "failure::tests::spawn_edge_wake_failure_swallows_into_latch_with_spawn_edge_leg"
+            "failure::tests::deadline_late_fire_wake_failure_reaches_both_surfaces"
+            "failure::tests::promise_completion_wake_failure_reaches_both_surfaces"
+            "failure::tests::panic_hook_installs_exactly_once_across_vm_constructions"
+            "failure::tests::panic_reaches_console_and_registered_callback_before_the_trap"
           )
           assertion_status=0
           for test_name in "${expected_tests[@]}"; do
@@ -94,9 +104,9 @@ jobs:
             fi
           done
           if ! grep -Fq \
-            "test result: ok. 46 passed; 0 failed; 0 ignored; 0 filtered out" \
+            "test result: ok. 56 passed; 0 failed; 0 ignored; 0 filtered out" \
             "$output_file"; then
-            echo "missing exact forty-six-test success summary" >&2
+            echo "missing exact fifty-six-test success summary" >&2
             assertion_status=1
           fi
 

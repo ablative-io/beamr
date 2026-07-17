@@ -58,5 +58,6 @@ The smoke test verifies HTTP request/response handling, the explicit WebSocket r
 ## Boundaries
 
 - Stateless per request: the isolate caches only the preloaded module bundle/VM; request data is copied into a freshly spawned BEAM process and is not persisted after the response.
+- Bricked-VM recovery (WPORT-7): the module-level `preloadedVmPromise` caches one VM for the isolate's lifetime and is never invalidated. After a Rust panic the instance is latched (borrowed RefCells, stuck Draining) — every scheduler-touching call re-traps — and after a terminal scheduler failure every `await_exit` rejects with the latched `SchedulerFailureError` (`vm.terminal_error()` reads it non-consumingly; `register_failure_callback`/`register_panic_callback` push-report both). Either way the cached VM serves nothing useful afterwards: recovery is a fresh `WasmVm` on a fresh isolate — let the failing requests surface and the platform recycle the worker rather than retrying into the bricked instance.
 - HTTP request/response only: WebSocket upgrades return `426` and Durable Objects or persistent state are intentionally not used.
 - WASM-safe execution only: handlers must avoid dirty native calls, blocking I/O, OS threads, and distribution.
