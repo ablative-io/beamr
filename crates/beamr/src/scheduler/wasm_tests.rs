@@ -525,6 +525,201 @@ fn cooperative_bytecode_timer_bifs_round_trip_through_native_services() {
     );
 }
 
+/// WPORT-5 P11 pin: on a context with NO timer facility, `cancel_timer/1`
+/// answers atom `false` — a missing-service answer indistinguishable from
+/// "timer already fired/cancelled". With the facility wired (WPORT-3) the
+/// same `false` means already-fired; this pin freezes the bare-context shape
+/// so a wiring regression cannot silently reintroduce it unclassified.
+#[test]
+fn bare_context_cancel_timer_answers_false_indistinguishable_from_fired() {
+    let mut context = ProcessContext::new();
+    let result = crate::native::bifs::cancel_timer(&[Term::small_int(41)], &mut context)
+        .expect("bare-context cancel_timer answers rather than raises");
+    assert_eq!(
+        result,
+        Term::atom(Atom::FALSE),
+        "the missing-service answer is the same atom `false` a fired timer produces"
+    );
+}
+
+/// WPORT-5 P7/P10 pin (scheduler-level): a dirty-registered native reached
+/// from cooperative bytecode never runs its body — dispatch returns
+/// `DirtyCall` and the wasm scheduler converts it to the process-fatal
+/// `ExecError::UnsupportedOpcode { name: "dirty native call on wasm" }`,
+/// consumable via the cooperative `take_exit_error` (WPORT-5 R2 item 7).
+/// Uses the REAL `timer:sleep/1` registration (the only dirty entry on the
+/// browser surface).
+#[test]
+fn dirty_native_call_errors_the_process_with_unsupported_opcode() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let modules = Arc::new(ModuleRegistry::new());
+    let bifs = Arc::new(BifRegistryImpl::new());
+    crate::native::stdlib_stubs::register_stdlib_stubs(&bifs, &atom_table)
+        .expect("stdlib stubs register");
+    let mut scheduler = WasmScheduler::new(
+        Arc::clone(&atom_table),
+        Arc::clone(&modules),
+        Arc::clone(&bifs),
+    );
+
+    let timer = atom_table.intern("timer");
+    let sleep = atom_table.intern("sleep");
+    let entry = bifs
+        .lookup(timer, sleep, 1)
+        .expect("timer:sleep/1 is registered");
+    assert!(entry.dirty_kind.is_some(), "timer:sleep/1 is dirty-marked");
+    let imports = vec![ResolvedImport {
+        module: timer,
+        function: sleep,
+        arity: 1,
+        target: ResolvedImportTarget::Native(entry),
+    }];
+    let code = vec![
+        Instruction::Label { label: 1 },
+        Instruction::Move {
+            source: Operand::Integer(1),
+            destination: Operand::X(0),
+        },
+        Instruction::CallExt {
+            arity: Operand::Unsigned(1),
+            import: Operand::Unsigned(0),
+        },
+        Instruction::Return,
+    ];
+    let label_index = code
+        .iter()
+        .enumerate()
+        .filter_map(|(ip, instruction)| match instruction {
+            Instruction::Label { label } => Some((*label, ip)),
+            _ => None,
+        })
+        .collect();
+    let name = atom_table.intern("wport5_dirty_pin");
+    let sleepy = atom_table.intern("sleepy");
+    let mut exports = HashMap::new();
+    exports.insert((sleepy, 0), 1);
+    let mut definition = dummy_module(name);
+    definition.exports = exports;
+    definition.label_index = label_index;
+    definition.code = code;
+    definition.resolved_imports = imports;
+    modules.insert(definition);
+
+    let pid = scheduler
+        .spawn_owned(name, sleepy, Vec::new())
+        .expect("sleepy spawns");
+    let summary = scheduler.run_until_idle();
+    assert_eq!(summary.errored, vec![pid], "the dirty call errors the pid");
+    assert!(scheduler.has_exit_error(pid));
+    assert_eq!(
+        scheduler.take_exit_error(pid),
+        Some(crate::error::ExecError::UnsupportedOpcode {
+            name: "dirty native call on wasm",
+        }),
+    );
+    assert_eq!(
+        scheduler.take_exit_error(pid),
+        None,
+        "take_exit_error consumes the record"
+    );
+}
+
+/// WPORT-5 send-drop TOMBSTONE, named for the retired behaviour: before R2
+/// item 1, cross-process bytecode `Pid ! Msg` on the cooperative scheduler
+/// silently dropped the message while reporting success (its only spec was
+/// the messaging.rs fall-through comment). With `local_send` injected into
+/// bytecode `NativeServices`, delivery now occurs: the receiver observes the
+/// payload and the sender's x0 carries the message.
+#[test]
+fn retired_silent_send_drop_cross_process_bytecode_send_now_delivers() {
+    let atom_table = Arc::new(AtomTable::with_common_atoms());
+    let modules = Arc::new(ModuleRegistry::new());
+    let bifs = Arc::new(BifRegistryImpl::new());
+    let mut scheduler = WasmScheduler::new(
+        Arc::clone(&atom_table),
+        Arc::clone(&modules),
+        Arc::clone(&bifs),
+    );
+
+    let code = vec![
+        // recv_one/0: park until one message arrives, exit with it.
+        Instruction::Label { label: 1 },
+        Instruction::Label { label: 10 },
+        Instruction::LoopRec {
+            fail: Operand::Label(11),
+            destination: Operand::X(0),
+        },
+        Instruction::RemoveMessage,
+        Instruction::Return,
+        Instruction::Label { label: 11 },
+        Instruction::Wait {
+            fail: Operand::Label(10),
+        },
+        // send_to/2 (Pid, Msg): the Send opcode (x0 = pid, x1 = msg), then
+        // exit with x0 (which Send sets to the message).
+        Instruction::Label { label: 2 },
+        Instruction::Send,
+        Instruction::Return,
+    ];
+    let label_index = code
+        .iter()
+        .enumerate()
+        .filter_map(|(ip, instruction)| match instruction {
+            Instruction::Label { label } => Some((*label, ip)),
+            _ => None,
+        })
+        .collect();
+    let name = atom_table.intern("wport5_send_tombstone");
+    let recv_one = atom_table.intern("recv_one");
+    let send_to = atom_table.intern("send_to");
+    let mut exports = HashMap::new();
+    exports.insert((recv_one, 0), 1);
+    exports.insert((send_to, 2), 2);
+    let mut definition = dummy_module(name);
+    definition.exports = exports;
+    definition.label_index = label_index;
+    definition.code = code;
+    modules.insert(definition);
+
+    let owned = |term: Term| crate::ets::OwnedTerm::immediate(term);
+    let receiver = scheduler
+        .spawn_owned(name, recv_one, Vec::new())
+        .expect("receiver spawns");
+    let parked = scheduler.run_until_idle();
+    assert_eq!(parked.waiting, vec![receiver]);
+
+    let payload = atom_table.intern("wport5_payload");
+    let sender = scheduler
+        .spawn_owned(
+            name,
+            send_to,
+            vec![owned(Term::pid(receiver)), owned(Term::atom(payload))],
+        )
+        .expect("sender spawns");
+    let summary = scheduler.run_until_idle();
+    assert!(summary.exited.contains(&sender));
+    assert!(
+        summary.exited.contains(&receiver),
+        "the delivered message wakes the receiver within the same drain"
+    );
+    assert_eq!(
+        scheduler
+            .take_exit_result(sender)
+            .expect("sender retains its exit result")
+            .root(),
+        Term::atom(payload),
+        "the sender's x0 carries the message"
+    );
+    assert_eq!(
+        scheduler
+            .take_exit_result(receiver)
+            .expect("receiver retains its exit result")
+            .root(),
+        Term::atom(payload),
+        "nothing is dropped: the receiver observed the exact payload"
+    );
+}
+
 fn scheduler_with_test_module() -> (WasmScheduler, Arc<Module>) {
     let atom_table = Arc::new(AtomTable::with_common_atoms());
     let modules = Arc::new(ModuleRegistry::new());

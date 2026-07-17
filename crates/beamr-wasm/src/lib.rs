@@ -3571,4 +3571,730 @@ mod tests {
             .expect("the replacement child pid was recorded");
         assert_ne!(replacement, child, "the supervisor spawned a FRESH child");
     }
+    // ── WPORT-5 R3 profile walls ────────────────────────────────────────────
+
+    // (The WPORT-5 walls reuse the existing `registered_bif_import` helper
+    // for `io`/`logger`/`gleam_stdlib`/`timer` imports beside `erlang`.)
+
+    /// `build_module` plus materialised literals (binary/export-fun operands
+    /// for the WPORT-5 walls).
+    fn build_module_with_literals(
+        atoms: &AtomTable,
+        name: &str,
+        exports: &[(&str, u8, u32)],
+        code: Vec<Instruction>,
+        resolved_imports: Vec<ResolvedImport>,
+        literals: Vec<Literal>,
+    ) -> Module {
+        let mut module = build_module(atoms, name, exports, code, resolved_imports);
+        module.constant_pool = beamr::constant_pool::materialise_literals(&literals, Some(atoms))
+            .expect("wall literals materialise");
+        module.literals = literals;
+        module
+    }
+
+    /// `recv_one/0` (label 1) + `send_to/2` (label 2: the raw `Send` opcode,
+    /// x0 = pid, x1 = msg, exits with x0 = the message).
+    fn send_wall_module(atoms: &AtomTable, name: &str) -> Module {
+        let code = vec![
+            Instruction::Label { label: 1 },
+            Instruction::Label { label: 10 },
+            Instruction::LoopRec {
+                fail: Operand::Label(11),
+                destination: Operand::X(0),
+            },
+            Instruction::RemoveMessage,
+            Instruction::Return,
+            Instruction::Label { label: 11 },
+            Instruction::Wait {
+                fail: Operand::Label(10),
+            },
+            Instruction::Label { label: 2 },
+            Instruction::Send,
+            Instruction::Return,
+        ];
+        build_module(
+            atoms,
+            name,
+            &[("recv_one", 0, 1), ("send_to", 2, 2)],
+            code,
+            Vec::new(),
+        )
+    }
+
+    fn pid_from_exit_result(value: &Value) -> u64 {
+        value
+            .as_str()
+            .expect("pid exit results serialize as \"<0.N.0>\" strings")
+            .trim_start_matches("<0.")
+            .trim_end_matches(".0>")
+            .parse()
+            .expect("pid string parses")
+    }
+
+    /// Wall 1 (WPORT-5 R3): the headline drop, dead — from true idle, one
+    /// bytecode-to-bytecode send wakes the receiver through the arbiter, and
+    /// a pre-turn burst coalesces into ONE counted arbiter turn with every
+    /// payload durable. Counted gauges, no manual pump (NO-POLLING).
+    #[wasm_bindgen_test]
+    async fn cross_process_bytecode_send_delivers_and_coalesces_a_burst() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let module = send_wall_module(&vm.atom_table, "wport5_send_wall");
+        let module_name = module.name;
+        vm.module_registry.insert(module);
+        let recv_one = vm.atom_table.intern("recv_one");
+        let send_to = vm.atom_table.intern("send_to");
+
+        // Single send from true idle.
+        let receiver = spawn_bytecode(&mut vm, module_name, recv_one, Vec::new());
+        host_macrotask().await;
+        let before = vm.arbiter_counters();
+        let solo = vm.atom_table.intern("solo");
+        let sender = spawn_bytecode(
+            &mut vm,
+            module_name,
+            send_to,
+            vec![
+                OwnedTerm::immediate(Term::pid(receiver)),
+                OwnedTerm::immediate(Term::atom(solo)),
+            ],
+        );
+        host_macrotask().await;
+        let woke = vm.arbiter_counters();
+        assert_eq!(
+            woke.arbiter.requests,
+            before.arbiter.requests + 1,
+            "one send-spawn edge, one arbiter turn"
+        );
+        assert_eq!(woke.arbiter.executions, before.arbiter.executions + 1);
+        let received = await_exit_json(&mut vm, receiver).await;
+        assert_eq!(received["state"], "exited");
+        assert_eq!(
+            received["result"], "solo",
+            "the receiver observed the payload"
+        );
+        let sent = await_exit_json(&mut vm, sender).await;
+        assert_eq!(sent["state"], "exited");
+        assert_eq!(
+            sent["result"], "solo",
+            "the sender's x0 carries the message"
+        );
+
+        // Pre-turn burst: three sender spawns before yielding to the host
+        // coalesce into one turn; every payload is durable.
+        let r1 = spawn_bytecode(&mut vm, module_name, recv_one, Vec::new());
+        let r2 = spawn_bytecode(&mut vm, module_name, recv_one, Vec::new());
+        let r3 = spawn_bytecode(&mut vm, module_name, recv_one, Vec::new());
+        host_macrotask().await;
+        let parked = vm.arbiter_counters();
+        let payloads = ["burst_a", "burst_b", "burst_c"];
+        for (target, payload) in [r1, r2, r3].into_iter().zip(payloads) {
+            let atom = vm.atom_table.intern(payload);
+            let _sender = spawn_bytecode(
+                &mut vm,
+                module_name,
+                send_to,
+                vec![
+                    OwnedTerm::immediate(Term::pid(target)),
+                    OwnedTerm::immediate(Term::atom(atom)),
+                ],
+            );
+        }
+        host_macrotask().await;
+        let after = vm.arbiter_counters();
+        assert_eq!(
+            after.arbiter.requests,
+            parked.arbiter.requests + 1,
+            "the burst coalesced into exactly one arbiter turn"
+        );
+        assert_eq!(after.arbiter.executions, parked.arbiter.executions + 1);
+        for (target, payload) in [r1, r2, r3].into_iter().zip(payloads) {
+            let exited = await_exit_json(&mut vm, target).await;
+            assert_eq!(exited["state"], "exited");
+            assert_eq!(exited["result"], payload, "no payload was dropped");
+        }
+    }
+
+    /// Wall 2 (WPORT-5 R3, OQ8 ruled: plain spawn/3): bytecode
+    /// `erlang:spawn/3` returns a fresh pid whose process runs the named
+    /// exported function under the cooperative scheduler.
+    #[wasm_bindgen_test]
+    async fn bytecode_spawn_runs_child_under_the_cooperative_scheduler() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let atoms = Arc::clone(&vm.atom_table);
+        let module_name_str = "wport5_spawn_wall";
+        let module_atom = atoms.intern(module_name_str);
+        let child_fn = atoms.intern("child");
+        let child_done = atoms.intern("child_done");
+        let imports = vec![registered_bif_import(&vm, "erlang", "spawn", 3)];
+        let code = vec![
+            // spawner/0: erlang:spawn(wport5_spawn_wall, child, []).
+            Instruction::Label { label: 1 },
+            Instruction::Move {
+                source: Operand::Atom(Some(module_atom)),
+                destination: Operand::X(0),
+            },
+            Instruction::Move {
+                source: Operand::Atom(Some(child_fn)),
+                destination: Operand::X(1),
+            },
+            Instruction::Move {
+                source: Operand::Atom(None),
+                destination: Operand::X(2),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(3),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Return,
+            // child/0: exit with `child_done`.
+            Instruction::Label { label: 2 },
+            Instruction::Move {
+                source: Operand::Atom(Some(child_done)),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ];
+        let module = build_module(
+            &atoms,
+            module_name_str,
+            &[("spawner", 0, 1), ("child", 0, 2)],
+            code,
+            imports,
+        );
+        vm.module_registry.insert(module);
+
+        let spawner_fn = atoms.intern("spawner");
+        let spawner = spawn_bytecode(&mut vm, module_atom, spawner_fn, Vec::new());
+        host_macrotask().await;
+        let spawned = await_exit_json(&mut vm, spawner).await;
+        assert_eq!(spawned["state"], "exited", "spawn/3 no longer refuses");
+        let child = pid_from_exit_result(&spawned["result"]);
+        assert_ne!(child, spawner, "spawn/3 returned a fresh pid");
+        let child_exit = await_exit_json(&mut vm, child).await;
+        assert_eq!(
+            child_exit["state"], "exited",
+            "the child ran under the cooperative scheduler"
+        );
+        assert_eq!(child_exit["result"], "child_done");
+    }
+
+    /// Wall 3 (WPORT-5 R3): export-fun dispatch to registered BIFs succeeds
+    /// where static `CallExt` always did — the closure-dispatch `Undef` on
+    /// that path is gone (`bif_registry` wired into bytecode services).
+    #[wasm_bindgen_test]
+    async fn apply_and_export_fun_dispatch_registered_bifs_without_undef() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let atoms = Arc::clone(&vm.atom_table);
+        let erlang = atoms.intern("erlang");
+        let plus = atoms.intern("+");
+        let self_fn = atoms.intern("self");
+        let literals = vec![
+            Literal::ExportFun {
+                module: erlang,
+                function: plus,
+                arity: 2,
+            },
+            Literal::ExportFun {
+                module: erlang,
+                function: self_fn,
+                arity: 0,
+            },
+        ];
+        let code = vec![
+            // fun_add/0: (fun erlang:'+'/2)(20, 22).
+            Instruction::Label { label: 1 },
+            Instruction::Move {
+                source: Operand::Integer(20),
+                destination: Operand::X(0),
+            },
+            Instruction::Move {
+                source: Operand::Integer(22),
+                destination: Operand::X(1),
+            },
+            Instruction::Move {
+                source: Operand::Literal(0),
+                destination: Operand::X(2),
+            },
+            Instruction::CallFun {
+                arity: Operand::Unsigned(2),
+            },
+            Instruction::Return,
+            // fun_self/0: (fun erlang:self/0)().
+            Instruction::Label { label: 2 },
+            Instruction::Move {
+                source: Operand::Literal(1),
+                destination: Operand::X(0),
+            },
+            Instruction::CallFun {
+                arity: Operand::Unsigned(0),
+            },
+            Instruction::Return,
+        ];
+        let module = build_module_with_literals(
+            &atoms,
+            "wport5_export_fun_wall",
+            &[("fun_add", 0, 1), ("fun_self", 0, 2)],
+            code,
+            Vec::new(),
+            literals,
+        );
+        let module_name = module.name;
+        vm.module_registry.insert(module);
+
+        let fun_add = atoms.intern("fun_add");
+        let adder = spawn_bytecode(&mut vm, module_name, fun_add, Vec::new());
+        host_macrotask().await;
+        let added = await_exit_json(&mut vm, adder).await;
+        assert_eq!(added["state"], "exited", "export-fun BIF dispatch succeeds");
+        assert_eq!(added["result"], 42, "fun erlang:'+'/2 computed 20 + 22");
+
+        let fun_self = atoms.intern("fun_self");
+        let selfer = spawn_bytecode(&mut vm, module_name, fun_self, Vec::new());
+        host_macrotask().await;
+        let selfed = await_exit_json(&mut vm, selfer).await;
+        assert_eq!(selfed["state"], "exited");
+        assert_eq!(
+            pid_from_exit_result(&selfed["result"]),
+            selfer,
+            "fun erlang:self/0 answered the calling pid"
+        );
+    }
+
+    /// Bytecode module driving the whole R2 print family: io:put_chars/1,
+    /// io:format/3, logger:warning/2, gleam print + print_error, and
+    /// erlang:display/1 (labels 1..2 split so wall 5 can run a short leg).
+    fn print_wall_module(vm: &WasmVm, name: &str) -> Module {
+        let atoms = &vm.atom_table;
+        let standard_io = atoms.intern("standard_io");
+        let literals = vec![
+            Literal::Binary(b"hi\n".to_vec()),
+            Literal::Binary(b"fmt\n".to_vec()),
+            Literal::Binary(b"warned".to_vec()),
+            Literal::Binary(b"gp".to_vec()),
+            Literal::Binary(b"ge".to_vec()),
+        ];
+        let imports = vec![
+            registered_bif_import(vm, "io", "put_chars", 1),
+            registered_bif_import(vm, "io", "format", 3),
+            registered_bif_import(vm, "logger", "warning", 2),
+            registered_bif_import(vm, "gleam_stdlib", "print", 1),
+            registered_bif_import(vm, "gleam_stdlib", "print_error", 1),
+            registered_bif_import(vm, "erlang", "display", 1),
+        ];
+        let code = vec![
+            // print_all/0: the six-call sweep.
+            Instruction::Label { label: 1 },
+            Instruction::Move {
+                source: Operand::Literal(0),
+                destination: Operand::X(0),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Move {
+                source: Operand::Atom(Some(standard_io)),
+                destination: Operand::X(0),
+            },
+            Instruction::Move {
+                source: Operand::Literal(1),
+                destination: Operand::X(1),
+            },
+            Instruction::Move {
+                source: Operand::Atom(None),
+                destination: Operand::X(2),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(3),
+                import: Operand::Unsigned(1),
+            },
+            Instruction::Move {
+                source: Operand::Literal(2),
+                destination: Operand::X(0),
+            },
+            Instruction::Move {
+                source: Operand::Atom(None),
+                destination: Operand::X(1),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(2),
+                import: Operand::Unsigned(2),
+            },
+            Instruction::Move {
+                source: Operand::Literal(3),
+                destination: Operand::X(0),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(3),
+            },
+            Instruction::Move {
+                source: Operand::Literal(4),
+                destination: Operand::X(0),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(4),
+            },
+            Instruction::Move {
+                source: Operand::Integer(7),
+                destination: Operand::X(0),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(5),
+            },
+            Instruction::Return,
+            // print_pair/0: one out line + one err line (wall 5's short leg).
+            Instruction::Label { label: 2 },
+            Instruction::Move {
+                source: Operand::Literal(3),
+                destination: Operand::X(0),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(3),
+            },
+            Instruction::Move {
+                source: Operand::Literal(4),
+                destination: Operand::X(0),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(4),
+            },
+            Instruction::Return,
+        ];
+        build_module_with_literals(
+            atoms,
+            name,
+            &[("print_all", 0, 1), ("print_pair", 0, 2)],
+            code,
+            imports,
+            literals,
+        )
+    }
+
+    /// Wall 4 (WPORT-5 R3): the whole retired silent class lands in a
+    /// registered capturing JS sink with correct out/err stream tags, in
+    /// write order, with no flush timer or recurring callback (counted).
+    #[wasm_bindgen_test]
+    async fn print_family_lands_in_registered_sink_with_stream_tags() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let captured = Rc::new(RefCell::new(Vec::<(String, String)>::new()));
+        let capture = Rc::clone(&captured);
+        let sink =
+            Closure::<dyn FnMut(JsValue, JsValue)>::new(move |stream: JsValue, text: JsValue| {
+                capture.borrow_mut().push((
+                    stream.as_string().unwrap_or_default(),
+                    text.as_string().unwrap_or_default(),
+                ));
+            });
+        vm.register_io_sink(sink.as_ref().unchecked_ref::<Function>().clone());
+
+        let module = print_wall_module(&vm, "wport5_print_wall");
+        let module_name = module.name;
+        vm.module_registry.insert(module);
+        let print_all = vm.atom_table.intern("print_all");
+        let printer = spawn_bytecode(&mut vm, module_name, print_all, Vec::new());
+        host_macrotask().await;
+        let exited = await_exit_json(&mut vm, printer).await;
+        assert_eq!(exited["state"], "exited", "the print sweep completes");
+
+        let lines = captured.borrow().clone();
+        assert_eq!(lines.len(), 6, "six writes, six sink deliveries: {lines:?}");
+        assert_eq!(
+            lines[0],
+            ("out".to_owned(), "hi\n".to_owned()),
+            "io:put_chars/1"
+        );
+        assert_eq!(
+            lines[1],
+            ("out".to_owned(), "fmt\n".to_owned()),
+            "io:format/3"
+        );
+        assert_eq!(lines[2].0, "out", "logger:warning/2 is stdout-flavoured");
+        assert!(
+            lines[2].1.starts_with("[warning] warned"),
+            "logger line: {:?}",
+            lines[2].1
+        );
+        assert_eq!(lines[3], ("out".to_owned(), "gp".to_owned()), "gleam print");
+        assert_eq!(
+            lines[4],
+            ("err".to_owned(), "ge".to_owned()),
+            "gleam print_error carries the err tag"
+        );
+        assert_eq!(
+            lines[5],
+            ("out".to_owned(), "7\n".to_owned()),
+            "erlang:display/1 routes through the sink"
+        );
+
+        // NO-POLLING: an idle VM with a registered sink schedules nothing.
+        let before = vm.arbiter_counters();
+        host_macrotask().await;
+        let after = vm.arbiter_counters();
+        assert_eq!(after.arbiter.requests, before.arbiter.requests);
+        assert_eq!(after.arbiter.executions, before.arbiter.executions);
+        assert_eq!(
+            captured.borrow().len(),
+            6,
+            "no flush timer or recurring callback re-delivers output"
+        );
+        drop(sink);
+    }
+
+    /// Wall 5 (WPORT-5 R3, OQ2 ruled — retained as its own wall per OQ7):
+    /// with ZERO configuration the print family lands on the platform
+    /// console — `console.log` for out, `console.error` for err.
+    #[wasm_bindgen_test]
+    async fn default_sink_routes_output_to_console_with_zero_configuration() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let module = print_wall_module(&vm, "wport5_console_wall");
+        let module_name = module.name;
+        vm.module_registry.insert(module);
+
+        let global = js_sys::global();
+        let console =
+            Reflect::get(&global, &JsValue::from_str("console")).expect("Node exposes a console");
+        let original_log =
+            Reflect::get(&console, &JsValue::from_str("log")).expect("console.log exists");
+        let original_error =
+            Reflect::get(&console, &JsValue::from_str("error")).expect("console.error exists");
+
+        let captured = Rc::new(RefCell::new(Vec::<(String, String)>::new()));
+        let capture_log = Rc::clone(&captured);
+        let log_spy = Closure::<dyn FnMut(JsValue)>::new(move |text: JsValue| {
+            capture_log
+                .borrow_mut()
+                .push(("log".to_owned(), text.as_string().unwrap_or_default()));
+        });
+        let capture_error = Rc::clone(&captured);
+        let error_spy = Closure::<dyn FnMut(JsValue)>::new(move |text: JsValue| {
+            capture_error
+                .borrow_mut()
+                .push(("error".to_owned(), text.as_string().unwrap_or_default()));
+        });
+        Reflect::set(&console, &JsValue::from_str("log"), log_spy.as_ref())
+            .expect("console.log is patchable");
+        Reflect::set(&console, &JsValue::from_str("error"), error_spy.as_ref())
+            .expect("console.error is patchable");
+
+        let print_pair = vm.atom_table.intern("print_pair");
+        let printer = spawn_bytecode(&mut vm, module_name, print_pair, Vec::new());
+        host_macrotask().await;
+
+        let _restore_log = Reflect::set(&console, &JsValue::from_str("log"), &original_log);
+        let _restore_error = Reflect::set(&console, &JsValue::from_str("error"), &original_error);
+        drop(log_spy);
+        drop(error_spy);
+
+        let exited = await_exit_json(&mut vm, printer).await;
+        assert_eq!(exited["state"], "exited");
+        let lines = captured.borrow().clone();
+        assert_eq!(
+            lines,
+            vec![
+                ("log".to_owned(), "gp".to_owned()),
+                ("error".to_owned(), "ge".to_owned()),
+            ],
+            "zero-configuration output lands on console.log / console.error"
+        );
+    }
+
+    /// Wall 6 (WPORT-5 R3): refusal REASONS are JS-observable — badarg,
+    /// `Undef` with the MFA (call-time Undef on the wasm scheduler, a
+    /// previously unpinned gap), and the DirtyCall→UnsupportedOpcode mapping
+    /// end-to-end from JS (the other unpinned gap), via both the completion
+    /// `reason` field and the consuming `WasmVm::take_exit_error`.
+    #[wasm_bindgen_test]
+    async fn take_exit_error_distinguishes_refusal_reasons_from_js() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let atoms = Arc::clone(&vm.atom_table);
+        let missing_module = atoms.intern("wport5_missing");
+        let missing_fn = atoms.intern("nope");
+        let oops = atoms.intern("oops");
+        let imports = vec![
+            ResolvedImport {
+                module: missing_module,
+                function: missing_fn,
+                arity: 0,
+                target: ResolvedImportTarget::Unresolved {
+                    module: missing_module,
+                    function: missing_fn,
+                    arity: 0,
+                },
+            },
+            registered_bif_import(&vm, "timer", "sleep", 1),
+        ];
+        let code = vec![
+            // bad_send/0: `1 ! oops` — the Send opcode's raw badarg.
+            Instruction::Label { label: 1 },
+            Instruction::Move {
+                source: Operand::Integer(1),
+                destination: Operand::X(0),
+            },
+            Instruction::Move {
+                source: Operand::Atom(Some(oops)),
+                destination: Operand::X(1),
+            },
+            Instruction::Send,
+            Instruction::Return,
+            // undef_call/0: CallExt into a never-registered MFA.
+            Instruction::Label { label: 2 },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(0),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Return,
+            // sleepy/0: timer:sleep(1) — the dirty gate.
+            Instruction::Label { label: 3 },
+            Instruction::Move {
+                source: Operand::Integer(1),
+                destination: Operand::X(0),
+            },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(1),
+            },
+            Instruction::Return,
+        ];
+        let module = build_module(
+            &atoms,
+            "wport5_reason_wall",
+            &[("bad_send", 0, 1), ("undef_call", 0, 2), ("sleepy", 0, 3)],
+            code,
+            imports,
+        );
+        let module_name = module.name;
+        vm.module_registry.insert(module);
+
+        let bad = spawn_bytecode(&mut vm, module_name, atoms.intern("bad_send"), Vec::new());
+        let undef = spawn_bytecode(&mut vm, module_name, atoms.intern("undef_call"), Vec::new());
+        let sleepy = spawn_bytecode(&mut vm, module_name, atoms.intern("sleepy"), Vec::new());
+        host_macrotask().await;
+
+        // badarg, via the completion's additive reason field.
+        let bad_exit = await_exit_json(&mut vm, bad).await;
+        assert_eq!(bad_exit["state"], "errored");
+        assert_eq!(bad_exit["reason"]["error"], "badarg");
+
+        // Undef with the MFA, via the consuming JS surface.
+        let undef_reason = parse_json(vm.take_exit_error(undef).expect("take_exit_error marshals"));
+        assert_eq!(undef_reason["error"], "undef");
+        assert_eq!(undef_reason["module"], "wport5_missing");
+        assert_eq!(undef_reason["function"], "nope");
+        assert_eq!(undef_reason["arity"], 0);
+
+        // DirtyCall → UnsupportedOpcode, end-to-end from JS: the completion
+        // reason peeks without consuming; take_exit_error then consumes.
+        let sleepy_exit = await_exit_json(&mut vm, sleepy).await;
+        assert_eq!(sleepy_exit["state"], "errored");
+        assert_eq!(sleepy_exit["reason"]["error"], "unsupported_opcode");
+        assert_eq!(sleepy_exit["reason"]["name"], "dirty native call on wasm");
+        let consumed = parse_json(
+            vm.take_exit_error(sleepy)
+                .expect("take_exit_error marshals"),
+        );
+        assert_eq!(consumed["error"], "unsupported_opcode");
+        let drained = parse_json(
+            vm.take_exit_error(sleepy)
+                .expect("take_exit_error marshals"),
+        );
+        assert!(drained.is_null(), "take_exit_error consumes the record");
+    }
+
+    /// Wall 7 (WPORT-5 R3, OQ3 ruled): `erlang:statistics/1` and
+    /// `erlang:memory/0` raise CATCHABLE badarg from bytecode on the
+    /// cooperative scheduler instead of fabricating zeros — proven with a
+    /// real bytecode `catch` whose caught value reaches JS.
+    #[wasm_bindgen_test]
+    async fn statistics_and_memory_refuse_explicitly_instead_of_fabricating_zeros() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let atoms = Arc::clone(&vm.atom_table);
+        let wall_clock = atoms.intern("wall_clock");
+        let imports = vec![
+            registered_bif_import(&vm, "erlang", "statistics", 1),
+            registered_bif_import(&vm, "erlang", "memory", 0),
+        ];
+        let catch_wrapped = |import: u64, arg: Option<Instruction>, label: u32| {
+            let mut code = vec![
+                Instruction::Label { label },
+                Instruction::Allocate {
+                    stack_need: Operand::Unsigned(1),
+                    live: Operand::Unsigned(0),
+                },
+                Instruction::Catch {
+                    destination: Operand::Y(0),
+                    label: Operand::Label(label + 1),
+                },
+            ];
+            if let Some(instruction) = arg {
+                code.push(instruction);
+            }
+            let arity = u64::from(arg_count(import));
+            code.push(Instruction::CallExt {
+                arity: Operand::Unsigned(arity),
+                import: Operand::Unsigned(import),
+            });
+            code.extend([
+                // Normal completion falls into the same label the exception
+                // path jumps to; x0 is the result-or-caught value either way.
+                Instruction::Label { label: label + 1 },
+                Instruction::CatchEnd {
+                    source: Operand::Y(0),
+                },
+                Instruction::Deallocate {
+                    words: Operand::Unsigned(1),
+                },
+                Instruction::Return,
+            ]);
+            code
+        };
+        fn arg_count(import: u64) -> u8 {
+            match import {
+                0 => 1,
+                _ => 0,
+            }
+        }
+        let mut code = catch_wrapped(
+            0,
+            Some(Instruction::Move {
+                source: Operand::Atom(Some(wall_clock)),
+                destination: Operand::X(0),
+            }),
+            1,
+        );
+        code.extend(catch_wrapped(1, None, 3));
+        let module = build_module(
+            &atoms,
+            "wport5_zeros_wall",
+            &[("stats_catch", 0, 1), ("memory_catch", 0, 3)],
+            code,
+            imports,
+        );
+        let module_name = module.name;
+        vm.module_registry.insert(module);
+
+        for function in ["stats_catch", "memory_catch"] {
+            let pid = spawn_bytecode(&mut vm, module_name, atoms.intern(function), Vec::new());
+            host_macrotask().await;
+            let exited = await_exit_json(&mut vm, pid).await;
+            assert_eq!(
+                exited["state"], "exited",
+                "{function}: the refusal is CATCHABLE (the process caught it and exited normally)"
+            );
+            let caught = serde_json::to_string(&exited["result"]).expect("caught value serializes");
+            assert!(
+                caught.contains("badarg"),
+                "{function}: caught value carries badarg, got {caught}"
+            );
+            assert!(
+                caught.contains("EXIT"),
+                "{function}: caught value is the {{'EXIT', ...}} catch shape, got {caught}"
+            );
+        }
+    }
 }

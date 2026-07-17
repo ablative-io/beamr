@@ -65,6 +65,13 @@ jobs:
             "connection_events::tests::subscription_snapshot_delivers_synthetic_ups_then_live_events_in_shared_vocabulary"
             "connection_events::tests::subscription_synthetics_are_subscriber_local_and_unsubscribe_stops_delivery"
             "connection_events::tests::subscription_during_churn_misses_no_session_and_double_sees_none"
+            "tests::cross_process_bytecode_send_delivers_and_coalesces_a_burst"
+            "tests::bytecode_spawn_runs_child_under_the_cooperative_scheduler"
+            "tests::apply_and_export_fun_dispatch_registered_bifs_without_undef"
+            "tests::print_family_lands_in_registered_sink_with_stream_tags"
+            "tests::default_sink_routes_output_to_console_with_zero_configuration"
+            "tests::take_exit_error_distinguishes_refusal_reasons_from_js"
+            "tests::statistics_and_memory_refuse_explicitly_instead_of_fabricating_zeros"
           )
           assertion_status=0
           for test_name in "${expected_tests[@]}"; do
@@ -74,9 +81,9 @@ jobs:
             fi
           done
           if ! grep -Fq \
-            "test result: ok. 26 passed; 0 failed; 0 ignored; 0 filtered out" \
+            "test result: ok. 33 passed; 0 failed; 0 ignored; 0 filtered out" \
             "$output_file"; then
-            echo "missing exact twenty-six-test success summary" >&2
+            echo "missing exact thirty-three-test success summary" >&2
             assertion_status=1
           fi
 
