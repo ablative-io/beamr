@@ -415,19 +415,25 @@ const STDLIB_STUBS: &[StubBif] = &[
         None,
         bif_io_get_line_1,
     ),
+    // Capability hygiene (WPORT-5 R2 item 6): `io:setopts/2` is a
+    // success-returning no-op touching only nominal process-local IO options
+    // — it performs no external IO, so `ExternalIo` was a misregistration.
     (
         "io",
         "setopts",
         2,
-        Capability::ExternalIo,
+        Capability::ProcessLocal,
         None,
         bif_io_setopts_2,
     ),
+    // Capability hygiene (WPORT-5 R2 item 6): `io_lib:format/2` is pure
+    // formatting (returns a binary, writes nothing) — `ExternalIo` was a
+    // misregistration.
     (
         "io_lib",
         "format",
         2,
-        Capability::ExternalIo,
+        Capability::Pure,
         None,
         bif_io_lib_format_2,
     ),

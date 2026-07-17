@@ -139,10 +139,15 @@ pub fn bif_statistics_1(args: &[Term], context: &mut ProcessContext) -> Result<T
         return Err(badarg());
     };
     let item_name = atom_name(*item_term, context)?.to_owned();
+    // Facility-absent refusal (WPORT-5 R2 item 5, OQ3 ruled): without a
+    // system-info facility this used to fabricate an all-zero summary via
+    // `.unwrap_or_default()` and present it as genuine data. Refuse with the
+    // dominant facility-absent badarg instead; facility-backed builds are
+    // unchanged.
     let summary = context
         .system_info_facility()
         .map(SystemInfoFacility::statistics_summary)
-        .unwrap_or_default();
+        .ok_or_else(badarg)?;
 
     let (total, since_last) = match item_name.as_str() {
         "wall_clock" => (
@@ -163,7 +168,7 @@ pub fn bif_memory_0(args: &[Term], context: &mut ProcessContext) -> Result<Term,
         return Err(badarg());
     };
 
-    let summary = memory_summary(context);
+    let summary = memory_summary(context)?;
     let item_atoms = {
         let atom_table = context.atom_table().ok_or_else(badarg)?;
         MEMORY_ITEMS
@@ -187,7 +192,7 @@ pub fn bif_memory_1(args: &[Term], context: &mut ProcessContext) -> Result<Term,
         return Err(badarg());
     };
     let item_name = atom_name(*item_term, context)?.to_owned();
-    let summary = memory_summary(context);
+    let summary = memory_summary(context)?;
 
     match item_name.as_str() {
         "total" => small_int(summary.total),
@@ -252,11 +257,14 @@ fn atom_name<'context>(
     table.resolve(item).ok_or_else(badarg)
 }
 
-fn memory_summary(context: &ProcessContext) -> MemorySummary {
+// Facility-absent refusal (WPORT-5 R2 item 5, OQ3 ruled): all-zero fabricated
+// memory summaries are retired in favour of the dominant facility-absent
+// badarg; facility-backed builds are unchanged.
+fn memory_summary(context: &ProcessContext) -> Result<MemorySummary, Term> {
     context
         .system_info_facility()
         .map(SystemInfoFacility::memory_summary)
-        .unwrap_or_default()
+        .ok_or_else(badarg)
 }
 
 fn memory_values(summary: MemorySummary) -> Result<[Term; 5], Term> {

@@ -223,19 +223,10 @@ pub fn try_create_ring_with_prefix(
     }
 }
 
-/// Output target for `io` module BIFs.
-pub trait IoSink: Send + Sync {
-    /// Write bytes to the sink.
-    fn write(&self, bytes: &[u8]);
-}
-
-/// Default output sink that intentionally discards all bytes.
-#[derive(Debug, Default)]
-pub struct NullSink;
-
-impl IoSink for NullSink {
-    fn write(&self, _bytes: &[u8]) {}
-}
+// `IoSink`/`NullSink` moved to the ungated `crate::io_sink` seam (WPORT-5 R2)
+// so the cooperative closure can reach them; re-exported here so threaded
+// import paths and impls compile unchanged.
+pub use crate::io_sink::{IoSink, IoStream, NullSink};
 
 /// Output sink that writes directly to process stdout.
 #[derive(Debug, Default)]

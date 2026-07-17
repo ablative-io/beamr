@@ -19,7 +19,8 @@ use crate::distribution::remote_link::DistributionControlFacility;
 use crate::distribution::{NetKernel, Node};
 use crate::error::ExecError;
 #[cfg(feature = "threads")]
-use crate::io::{IoFacility, IoSink};
+use crate::io::IoFacility;
+use crate::io_sink::IoSink;
 #[cfg(feature = "jit")]
 use crate::jit::JitCache;
 use crate::module::{Module, ModuleRegistry};
@@ -81,7 +82,10 @@ pub struct NativeServices {
     /// Process information facility for process_info/1,2 BIFs.
     pub process_info_facility: Option<Arc<dyn ProcessInfoFacility>>,
     /// Output sink for `io` module BIFs.
-    #[cfg(feature = "threads")]
+    ///
+    /// Ungated (WPORT-5 R2 item 4): the cooperative scheduler injects the
+    /// wrapper-registered host sink here so the `io`-family BIFs stop
+    /// silently discarding output on the wasm closure.
     pub io_sink: Option<Arc<dyn IoSink>>,
     /// Code management facility for hot-loading BIFs.
     pub code_management_facility: Option<Arc<dyn CodeManagementFacility>>,

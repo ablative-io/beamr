@@ -160,7 +160,6 @@ pub(crate) fn call_native_entry(
         #[cfg(feature = "threads")]
         context.set_tcp_io_facility(svc.tcp_io_facility.clone());
         context.set_replay_driver(svc.replay_driver.clone());
-        #[cfg(feature = "threads")]
         if let Some(sink) = &svc.io_sink {
             context.set_io_sink(Arc::clone(sink));
         }

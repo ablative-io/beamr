@@ -8,29 +8,31 @@
 //! forbidden (see the no-shadow guard tests).
 
 use crate::atom::{Atom, AtomTable};
+use crate::io_sink::IoStream;
 use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::format::format_term;
 
 pub fn bif_print(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    write_print_args(args, context, false)
+    write_print_args(args, context, false, IoStream::Out)
 }
 
 pub fn bif_print_error(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    // There is currently one configured IoSink, so stderr-flavoured Gleam
-    // wrappers intentionally write to the same sink as stdout wrappers.
-    write_print_args(args, context, false)
+    // Stderr-flavoured Gleam wrappers carry the err stream tag (WPORT-5 R2
+    // item 4). A stream-aware sink (the browser console sink) splits them;
+    // every pre-existing threaded sink keeps the historical shared-sink
+    // behaviour through the `write_stream` default.
+    write_print_args(args, context, false, IoStream::Err)
 }
 
 pub fn bif_println(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    write_print_args(args, context, true)
+    write_print_args(args, context, true, IoStream::Out)
 }
 
 pub fn bif_println_error(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
-    // There is currently one configured IoSink, so stderr-flavoured Gleam
-    // wrappers intentionally write to the same sink as stdout wrappers.
-    write_print_args(args, context, true)
+    // Stderr-flavoured: err stream tag, same rationale as `bif_print_error`.
+    write_print_args(args, context, true, IoStream::Err)
 }
 
 /// Writes the rendered argument to the IO sink and returns the `nil` atom,
@@ -39,6 +41,7 @@ fn write_print_args(
     args: &[Term],
     context: &mut ProcessContext,
     newline: bool,
+    stream: IoStream,
 ) -> Result<Term, Term> {
     let [value] = args else {
         return Err(badarg());
@@ -47,7 +50,7 @@ fn write_print_args(
     if newline {
         bytes.push(b'\n');
     }
-    context.write_to_io_sink(&bytes);
+    context.write_to_io_sink_tagged(stream, &bytes);
     Ok(Term::atom(Atom::NIL))
 }
 

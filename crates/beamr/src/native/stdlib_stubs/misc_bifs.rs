@@ -142,6 +142,15 @@ pub fn bif_rand_uniform(args: &[Term], context: &mut ProcessContext) -> Result<T
 }
 
 /// init:stop/1 — request runtime shutdown and return `ok`.
+///
+/// DEFINED APPROXIMATION (WPORT-5 P13, record-only — the WPORT-4 Ruling 7
+/// comment pattern): `request_shutdown` maps to
+/// `InstructionOutcome::Exit(ExitReason::Normal)` for the CALLING PROCESS
+/// only (`crate::interpreter::opcodes::native_call`), and no VM-wide shutdown
+/// exists on the wasm scheduler — other processes keep running. The exit code
+/// is validated below and then DISCARDED. The browser BIF profile row for
+/// `init:stop/1` (`docs/design/beamr/BROWSER-BIF-PROFILE.md`) cites this
+/// comment as the approximation's definition.
 pub fn bif_init_stop(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [exit_code] = args else {
         return Err(badarg());

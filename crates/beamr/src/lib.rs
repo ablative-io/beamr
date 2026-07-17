@@ -23,6 +23,11 @@ pub mod interpreter;
 #[cfg(feature = "threads")]
 #[path = "io/mod.rs"]
 pub mod io;
+// The sink seam (`IoSink`/`NullSink`/`IoStream`) is deliberately OUTSIDE the
+// `threads` gate: the cooperative wasm closure routes `io`-family output
+// through it (WPORT-5 R2). The `io` module re-exports these names so threaded
+// import paths stay unchanged.
+pub mod io_sink;
 #[cfg(feature = "jit")]
 pub mod jit;
 pub mod loader;

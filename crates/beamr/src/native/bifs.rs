@@ -207,7 +207,19 @@ pub fn display(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term
 
     let fallback = AtomTable::with_common_atoms();
     let atom_table = context.atom_table().unwrap_or(&fallback);
+    // Threaded path byte-identical (WPORT-5 R2 item 4): `display/1` keeps its
+    // direct-stdout `println!` on the threaded scheduler.
+    #[cfg(feature = "threads")]
     println!("{}", format_term(*term, atom_table));
+    // Cooperative path: stdout is discarded by the wasm32 stdio backend, so
+    // `display/1` routes through the injected IO sink (stdout-flavoured
+    // stream) instead of silently succeeding.
+    #[cfg(not(feature = "threads"))]
+    {
+        let mut bytes = format_term(*term, atom_table).into_bytes();
+        bytes.push(b'\n');
+        context.write_to_io_sink(&bytes);
+    }
     Ok(bool_term(true))
 }
 

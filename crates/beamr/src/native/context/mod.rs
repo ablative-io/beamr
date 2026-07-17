@@ -18,9 +18,8 @@ use crate::distribution::remote_link::DistributionControlFacility;
 #[cfg(feature = "threads")]
 use crate::io::resource::FdInner;
 #[cfg(feature = "threads")]
-use crate::io::{
-    CompletionRing, IoCompletion, IoError, IoFacility, IoOp, IoSink, NullSink, ResultMode,
-};
+use crate::io::{CompletionRing, IoCompletion, IoError, IoFacility, IoOp, ResultMode};
+use crate::io_sink::{IoSink, IoStream, NullSink};
 use crate::native::ets_bifs::EtsFoldlState;
 use crate::native::stdlib_stubs::{
     lists_hof_bifs::ListsHofState,
@@ -374,7 +373,6 @@ pub struct ProcessContext<'process> {
     file_io_facility: Option<Arc<dyn FileIoFacility>>,
     #[cfg(feature = "threads")]
     tcp_io_facility: Option<Arc<dyn TcpIoFacility>>,
-    #[cfg(feature = "threads")]
     io_sink: Arc<dyn IoSink>,
     exception_class: ExceptionClass,
     exception_stacktrace: Term,
@@ -473,7 +471,6 @@ impl fmt::Debug for ProcessContext<'_> {
             "tcp_io_facility",
             &self.tcp_io_facility.as_ref().map(|_| ".."),
         );
-        #[cfg(feature = "threads")]
         d.field("io_sink", &"..");
         d.field("exception_class", &self.exception_class);
         d.field("shutdown_requested", &self.shutdown_requested);
@@ -543,7 +540,6 @@ impl<'process> ProcessContext<'process> {
             file_io_facility: None,
             #[cfg(feature = "threads")]
             tcp_io_facility: None,
-            #[cfg(feature = "threads")]
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -602,7 +598,6 @@ impl<'process> ProcessContext<'process> {
             file_io_facility: None,
             #[cfg(feature = "threads")]
             tcp_io_facility: None,
-            #[cfg(feature = "threads")]
             io_sink: Arc::new(NullSink),
             exception_class: ExceptionClass::Error,
             exception_stacktrace: Term::NIL,
@@ -1460,29 +1455,36 @@ impl<'process> ProcessContext<'process> {
     }
 
     /// Return the configured output sink for `io` module BIFs.
-    #[cfg(feature = "threads")]
     #[must_use]
     pub fn io_sink(&self) -> &dyn IoSink {
         self.io_sink.as_ref()
     }
 
     /// Set the output sink for `io` module BIFs.
-    #[cfg(feature = "threads")]
     pub fn set_io_sink(&mut self, sink: Arc<dyn IoSink>) {
         self.io_sink = sink;
     }
 
     /// Write `bytes` to the configured output sink for `io` module BIFs.
     ///
-    /// In the cooperative/wasm build there is no host output sink, so this is a
-    /// no-op (browser hosts surface `io:*` output through other channels).
-    #[cfg(feature = "threads")]
+    /// One body for both closures (WPORT-5 R2 item 4): the threaded scheduler
+    /// injects its configured sink exactly as before, and the cooperative
+    /// scheduler injects the wrapper-registered host sink — the former
+    /// unconditional `not(threads)` no-op is retired. Untagged writes carry
+    /// the stdout-flavoured stream by the [`IoSink::write`] contract.
     pub fn write_to_io_sink(&self, bytes: &[u8]) {
         self.io_sink.write(bytes);
     }
 
-    #[cfg(not(feature = "threads"))]
-    pub fn write_to_io_sink(&self, _bytes: &[u8]) {}
+    /// Write `bytes` to the configured output sink with a stream tag.
+    ///
+    /// Stderr-flavoured BIFs (`gleam_stdlib` `print_error`/`println_error`)
+    /// route through this so a stream-aware sink can split out/err; the
+    /// [`IoSink::write_stream`] default keeps every pre-existing threaded sink
+    /// byte-identical (tag discarded, routed to [`IoSink::write`]).
+    pub fn write_to_io_sink_tagged(&self, stream: IoStream, bytes: &[u8]) {
+        self.io_sink.write_stream(stream, bytes);
+    }
 
     /// Request runtime shutdown after the current BIF returns.
     pub fn request_shutdown(&mut self) {
