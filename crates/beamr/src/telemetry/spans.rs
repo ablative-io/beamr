@@ -343,13 +343,23 @@ mod tests {
         provider.force_flush().expect("spans flush");
 
         let spans = exporter.get_finished_spans().expect("finished spans");
+        // Concurrent tests can emit message spans into the shared global
+        // tracer provider; select by this test's own pids, never name alone
+        // (the scheduler pid-narrowing idiom).
         let send_span = spans
             .iter()
-            .find(|span| span.name.as_ref() == "beamr.message.send")
+            .find(|span| {
+                span.name.as_ref() == "beamr.message.send"
+                    && attr_i64(span, "message.sender.pid") == Some(10)
+                    && attr_i64(span, "message.receiver.pid") == Some(20)
+            })
             .expect("send span emitted");
         let receive_span = spans
             .iter()
-            .find(|span| span.name.as_ref() == "beamr.message.receive")
+            .find(|span| {
+                span.name.as_ref() == "beamr.message.receive"
+                    && attr_i64(span, "message.receiver.pid") == Some(20)
+            })
             .expect("receive span emitted");
 
         assert_eq!(attr_i64(send_span, "message.sender.pid"), Some(10));
