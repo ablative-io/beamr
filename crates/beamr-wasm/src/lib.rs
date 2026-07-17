@@ -2,6 +2,8 @@
 
 mod connection_events;
 mod convert;
+mod io_sink;
+mod reasons;
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -28,6 +30,8 @@ use convert::{
     js_value_to_owned_term, js_value_to_term_in_context, term_to_js_value, terms_from_json_array,
     terms_to_js_array,
 };
+use io_sink::HostIoSinkBridge;
+use reasons::exec_error_to_reason;
 use js_sys::{Function, Promise, Reflect};
 use serde_json::{Value, json};
 use wasm_bindgen::JsCast;
@@ -54,6 +58,7 @@ pub struct WasmVm {
     js_callbacks: Rc<HostJsCallbacks>,
     actor_handlers: Rc<HostActorHandlers>,
     connection_events: Rc<BrowserConnectionHub>,
+    io_sink: Rc<HostIoSinkBridge>,
 }
 
 #[wasm_bindgen]
@@ -71,12 +76,18 @@ impl WasmVm {
             Arc::clone(&module_registry),
             Arc::clone(&bif_registry),
         )));
+        // Cooperative IO sink (WPORT-5 R2 item 4): installed at construction
+        // so `io`-family output goes somewhere with zero configuration — the
+        // console default (OQ2 ruled) — until `register_io_sink` replaces it.
+        let io_sink = HostIoSinkBridge::new();
+        scheduler.borrow_mut().set_io_sink(io_sink.scheduler_sink());
         let deadline = HostDeadlineService::new(primitives.clone(), Rc::clone(&scheduler));
         let arbiter = HostArbiter::new(
             primitives,
             Arc::clone(&atom_table),
             Rc::clone(&scheduler),
             Rc::clone(&deadline),
+            Rc::clone(&io_sink),
         );
         deadline.set_arbiter(Rc::downgrade(&arbiter));
         let async_bridge = Rc::new(HostAsyncNifs::new(
@@ -110,7 +121,34 @@ impl WasmVm {
             js_callbacks,
             actor_handlers,
             connection_events: Rc::new(BrowserConnectionHub::new()),
+            io_sink,
         })
+    }
+
+    /// Register a JavaScript IO sink callback `(stream, text)` receiving the
+    /// VM's `io`-family output with `stream` `"out"` or `"err"` (WPORT-5 R2
+    /// item 4). Replaces the zero-configuration console default. The sink is
+    /// PUSH-ONLY: output is delivered synchronously at the tail of the host
+    /// turn that produced it — no flush timer, no recurring callback.
+    pub fn register_io_sink(&mut self, callback: Function) {
+        self.io_sink.register(callback);
+    }
+
+    /// Consume and return the structured refusal reason for an errored pid
+    /// (WPORT-5 R2 item 7), or `null` when no interpreter error is retained.
+    ///
+    /// The shape distinguishes facility-absent `{"error":"badarg"}`,
+    /// `{"error":"undef","module":..,"function":..,"arity":..}`, and
+    /// `{"error":"unsupported_opcode","name":..}` (the wasm dirty-call
+    /// mapping); every other `ExecError` variant carries its snake_case name
+    /// plus a `detail` string. Errored completions carry the same shape in
+    /// their `reason` field without consuming the record.
+    pub fn take_exit_error(&mut self, pid: u64) -> Result<JsValue, JsValue> {
+        let error = { self.scheduler.borrow_mut().take_exit_error(pid) };
+        let value = error
+            .map(|error| exec_error_to_reason(&error, self.atom_table.as_ref()))
+            .unwrap_or(Value::Null);
+        json_to_js(&value)
     }
 
     /// Load a caller-provided `.beam` module byte buffer.
@@ -501,6 +539,7 @@ struct HostArbiter {
     atom_table: Arc<AtomTable>,
     scheduler: Rc<RefCell<WasmScheduler>>,
     deadline: Rc<HostDeadlineService>,
+    io_sink: Rc<HostIoSinkBridge>,
     state: Cell<ArbiterState>,
     ignored_callbacks: Cell<usize>,
     waiters: RefCell<BTreeMap<u64, Vec<ExitWaiter>>>,
@@ -515,6 +554,7 @@ impl HostArbiter {
         atom_table: Arc<AtomTable>,
         scheduler: Rc<RefCell<WasmScheduler>>,
         deadline: Rc<HostDeadlineService>,
+        io_sink: Rc<HostIoSinkBridge>,
     ) -> Rc<Self> {
         Rc::new_cyclic(|weak: &Weak<Self>| {
             let weak = weak.clone();
@@ -531,6 +571,7 @@ impl HostArbiter {
                 atom_table,
                 scheduler,
                 deadline,
+                io_sink,
                 state: Cell::new(ArbiterState::Idle),
                 ignored_callbacks: Cell::new(0),
                 waiters: RefCell::new(BTreeMap::new()),
@@ -599,6 +640,11 @@ impl HostArbiter {
                 self.fail(error);
             }
         }
+        // WPORT-5 R2 item 4: deliver the turn's captured IO to the host sink
+        // now that the drain has settled and no scheduler borrow is live (a
+        // sink callback may legally re-enter the VM surface). Same-turn,
+        // synchronous, push-only — never a timer.
+        self.io_sink.flush();
     }
 
     fn run_manual_drain(self: &Rc<Self>) -> Result<Value, JsValue> {
@@ -614,9 +660,22 @@ impl HostArbiter {
             ArbiterState::Idle => {}
         }
         self.state.set(ArbiterState::Draining);
-        let (summary, json) = self.perform_drain()?;
-        self.finish_drain(&summary);
-        Ok(json)
+        let drain_result = self.perform_drain();
+        match drain_result {
+            Ok((summary, json)) => {
+                self.finish_drain(&summary);
+                // Same-turn sink delivery after the drain settles — see
+                // `execute_queued_turn`.
+                self.io_sink.flush();
+                Ok(json)
+            }
+            Err(error) => {
+                // Deliver whatever the failed turn already captured (never
+                // lose output); the arbiter's error surface is unchanged.
+                self.io_sink.flush();
+                Err(error)
+            }
+        }
     }
 
     fn perform_drain(self: &Rc<Self>) -> Result<(WasmRunSummary, Value), JsValue> {
@@ -679,10 +738,15 @@ impl HostArbiter {
             ));
         }
         if self.scheduler.borrow().has_exit_error(pid) {
-            return Promise::resolve(&completion_to_js(
+            // Non-consuming peek (WPORT-5 R2 item 7): repeated awaits keep
+            // answering "errored" exactly as the boolean check always did,
+            // now with the structured reason riding alongside.
+            let reason = self.exit_reason_for(pid);
+            return Promise::resolve(&completion_to_js_with_reason(
                 "errored",
                 pid,
                 Value::Null,
+                reason,
                 self.last_summary.borrow().clone(),
             ));
         }
@@ -708,6 +772,17 @@ impl HostArbiter {
         })
     }
 
+    /// Structured refusal reason for an errored pid, WITHOUT consuming the
+    /// scheduler's retained record (`WasmVm::take_exit_error` is the
+    /// consuming surface). `Null` when no error is retained.
+    fn exit_reason_for(&self, pid: u64) -> Value {
+        self.scheduler
+            .borrow()
+            .exit_error(pid)
+            .map(|error| exec_error_to_reason(error, self.atom_table.as_ref()))
+            .unwrap_or(Value::Null)
+    }
+
     fn resolve_waiters(&self, summary: &WasmRunSummary, summary_json: &Value) {
         for pid in &summary.exited {
             let Some(waiters) = self.waiters.borrow_mut().remove(pid) else {
@@ -728,9 +803,16 @@ impl HostArbiter {
             let Some(waiters) = self.waiters.borrow_mut().remove(pid) else {
                 continue;
             };
+            let reason = self.exit_reason_for(*pid);
             resolve_waiters(
                 waiters,
-                completion_to_js("errored", *pid, Value::Null, summary_json.clone()),
+                completion_to_js_with_reason(
+                    "errored",
+                    *pid,
+                    Value::Null,
+                    reason,
+                    summary_json.clone(),
+                ),
             );
         }
         if self.settled_idle(matches!(summary.state, WasmRunState::Idle { .. })) {
@@ -763,11 +845,26 @@ impl HostArbiter {
 }
 
 fn completion_to_js(state: &str, pid: u64, result: Value, summary: Value) -> JsValue {
+    completion_to_js_with_reason(state, pid, result, Value::Null, summary)
+}
+
+/// Completion with a structured refusal reason (WPORT-5 R2 item 7). The
+/// `reason` field is ADDITIVE: it rides alongside the existing
+/// state/pid/result/summary shape (`null` for non-errored completions), never
+/// replacing the `"errored"` kind.
+fn completion_to_js_with_reason(
+    state: &str,
+    pid: u64,
+    result: Value,
+    reason: Value,
+    summary: Value,
+) -> JsValue {
     JsValue::from_str(
         &json!({
             "state": state,
             "pid": pid,
             "result": result,
+            "reason": reason,
             "summary": summary,
         })
         .to_string(),
