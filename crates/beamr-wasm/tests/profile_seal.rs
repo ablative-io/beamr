@@ -85,28 +85,107 @@ fn registered_keys() -> BTreeSet<String> {
         .collect()
 }
 
+/// Entries registered ONLY on feature-unified native builds — cfg-gated OUT
+/// of the wasm closure at the source level (the net/fs blocks of
+/// `crates/beamr/src/native/bifs.rs` plus the `global`/`pg` distribution
+/// modules). The browser closure (`cooperative,json`, `--locked`) can never
+/// register them; a native `--all-features` workspace build feature-unifies
+/// beamr with `net`+`fs`, so the REAL wrapper composition sweeps them in on
+/// that build only. This is an ALLOWLIST for that build shape: an extra
+/// entry NOT on it — a new chain or a filter change inside
+/// `register_wasm_safe_bifs` — still fails the seal on every build.
+fn cfg_gated_out_of_the_wasm_closure(key: &str) -> bool {
+    if key.starts_with("global:") || key.starts_with("pg:") {
+        return true;
+    }
+    const NETFS_ERLANG_KEYS: &[&str] = &[
+        "erlang:close_file/1",
+        "erlang:del_dir/1",
+        "erlang:del_file/1",
+        "erlang:file_info/1",
+        "erlang:file_seek/3",
+        "erlang:inet_close/1",
+        "erlang:inet_getopts/2",
+        "erlang:inet_peername/1",
+        "erlang:inet_port/1",
+        "erlang:inet_setopts/2",
+        "erlang:inet_sockname/1",
+        "erlang:list_dir/1",
+        "erlang:make_dir/1",
+        "erlang:open_file/2",
+        "erlang:pread/3",
+        "erlang:pwrite/3",
+        "erlang:read_file/2",
+        "erlang:rename/2",
+        "erlang:tcp_accept/1",
+        "erlang:tcp_accept/2",
+        "erlang:tcp_connect/3",
+        "erlang:tcp_controlling_process/2",
+        "erlang:tcp_listen/2",
+        "erlang:tcp_recv/2",
+        "erlang:tcp_recv/3",
+        "erlang:tcp_send/2",
+        "erlang:tcp_setopts/2",
+        "erlang:udp_open/1",
+        "erlang:udp_open/2",
+        "erlang:udp_recv/2",
+        "erlang:udp_recv/3",
+        "erlang:udp_send/4",
+        "erlang:write_file/2",
+    ];
+    NETFS_ERLANG_KEYS.contains(&key)
+}
+
+/// Split the composition's extras (registered − listed) into the cfg-gated
+/// feature-unification set and genuine seal breaks.
+fn split_extras<'set>(
+    registered: &'set BTreeSet<String>,
+    listed: &'set BTreeSet<String>,
+) -> (Vec<&'set String>, Vec<&'set String>) {
+    registered
+        .difference(listed)
+        .partition(|key| cfg_gated_out_of_the_wasm_closure(key))
+}
+
 #[test]
 fn profile_rows_exactly_match_the_registered_browser_surface() {
     let document = std::fs::read_to_string(profile_path()).expect("profile document exists");
     let listed = parse_profile_keys(&document);
     let registered = registered_keys();
 
-    let registered_but_unlisted: Vec<_> = registered.difference(&listed).collect();
+    // BOTH directions, on every build shape:
+    // - a listed-but-unregistered row always fails;
+    // - a registered-but-unlisted entry fails unless it is one of the
+    //   cfg-gated net/fs/global/pg entries that ONLY a feature-unified
+    //   native build sweeps into the real composition (see
+    //   `cfg_gated_out_of_the_wasm_closure`); on the browser closure the
+    //   gated set is empty and the equality is exact.
+    let (gated_extras, seal_breaks) = split_extras(&registered, &listed);
     let listed_but_unregistered: Vec<_> = listed.difference(&registered).collect();
     assert!(
-        registered_but_unlisted.is_empty(),
-        "registered but MISSING from the profile document: {registered_but_unlisted:?}"
+        seal_breaks.is_empty(),
+        "registered but MISSING from the profile document: {seal_breaks:?}"
     );
     assert!(
         listed_but_unregistered.is_empty(),
         "listed in the profile document but NOT registered: {listed_but_unregistered:?}"
     );
     assert_eq!(
-        registered.len(),
+        registered.len() - gated_extras.len(),
         SEALED_ROW_COUNT,
         "registered browser surface count moved; update the profile AND this seal deliberately"
     );
     assert_eq!(listed.len(), SEALED_ROW_COUNT);
+    if !gated_extras.is_empty() {
+        // Loud, never silent: this build shape is a feature-unified NATIVE
+        // test build, not the browser closure. The browser closure is
+        // additionally sealed by the default-feature `profile_seal` leg.
+        println!(
+            "note: feature-unified build — {} cfg-gated net/fs/global/pg entries present \
+             beyond the browser surface",
+            gated_extras.len()
+        );
+    }
 }
 
 /// Proof by construction (R1 acceptance): a synthetic MFA registered on top
@@ -145,9 +224,9 @@ fn synthetic_registration_without_a_row_breaks_the_seal() {
         })
         .collect();
 
-    let registered_but_unlisted: Vec<_> = registered.difference(&listed).collect();
+    let (_gated_extras, seal_breaks) = split_extras(&registered, &listed);
     assert_eq!(
-        registered_but_unlisted,
+        seal_breaks,
         vec![&"wport5_seal_probe:synthetic/0".to_owned()],
         "the synthetic MFA must be the exact equality break the seal detects"
     );
