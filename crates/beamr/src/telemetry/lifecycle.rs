@@ -65,6 +65,12 @@ where
     *guard = Some(Arc::new(ProviderLifecycleLogEmitter { provider }));
 }
 
+// Each `record_*` helper is a thin wrapper over a `record_*_with_emitter`
+// form that takes its emitter explicitly. Production call sites go through
+// the wrappers (and therefore the process-global slot); tests can drive the
+// identical record-construction path against an instance-scoped emitter that
+// concurrent global emission can never reach.
+
 pub(crate) fn record_process_spawned(
     atom_table: &AtomTable,
     pid: u64,
@@ -73,7 +79,29 @@ pub(crate) fn record_process_spawned(
     function: Atom,
     arity: u8,
 ) {
-    emit_lifecycle_event(
+    if let Some(emitter) = current_emitter() {
+        record_process_spawned_with_emitter(
+            emitter.as_ref(),
+            atom_table,
+            pid,
+            parent_pid,
+            module,
+            function,
+            arity,
+        );
+    }
+}
+
+fn record_process_spawned_with_emitter(
+    emitter: &dyn LifecycleLogEmitter,
+    atom_table: &AtomTable,
+    pid: u64,
+    parent_pid: u64,
+    module: Atom,
+    function: Atom,
+    arity: u8,
+) {
+    emitter.emit(
         EVENT_PROCESS_SPAWNED,
         Severity::Info,
         vec![
@@ -92,7 +120,18 @@ pub(crate) fn record_process_spawned(
 }
 
 pub(crate) fn record_process_exited(atom_table: &AtomTable, pid: u64, reason: ExitReason) {
-    emit_lifecycle_event(
+    if let Some(emitter) = current_emitter() {
+        record_process_exited_with_emitter(emitter.as_ref(), atom_table, pid, reason);
+    }
+}
+
+fn record_process_exited_with_emitter(
+    emitter: &dyn LifecycleLogEmitter,
+    atom_table: &AtomTable,
+    pid: u64,
+    reason: ExitReason,
+) {
+    emitter.emit(
         EVENT_PROCESS_EXITED,
         Severity::Info,
         vec![
@@ -110,7 +149,13 @@ pub(crate) fn record_process_exited(atom_table: &AtomTable, pid: u64, reason: Ex
 }
 
 pub(crate) fn record_process_linked(pid_a: u64, pid_b: u64) {
-    emit_lifecycle_event(
+    if let Some(emitter) = current_emitter() {
+        record_process_linked_with_emitter(emitter.as_ref(), pid_a, pid_b);
+    }
+}
+
+fn record_process_linked_with_emitter(emitter: &dyn LifecycleLogEmitter, pid_a: u64, pid_b: u64) {
+    emitter.emit(
         EVENT_PROCESS_LINKED,
         Severity::Info,
         vec![
@@ -123,7 +168,18 @@ pub(crate) fn record_process_linked(pid_a: u64, pid_b: u64) {
 }
 
 pub(crate) fn record_process_monitored(watcher_pid: u64, target_pid: u64, reference: u64) {
-    emit_lifecycle_event(
+    if let Some(emitter) = current_emitter() {
+        record_process_monitored_with_emitter(emitter.as_ref(), watcher_pid, target_pid, reference);
+    }
+}
+
+fn record_process_monitored_with_emitter(
+    emitter: &dyn LifecycleLogEmitter,
+    watcher_pid: u64,
+    target_pid: u64,
+    reference: u64,
+) {
+    emitter.emit(
         EVENT_PROCESS_MONITORED,
         Severity::Info,
         vec![
@@ -138,7 +194,18 @@ pub(crate) fn record_process_monitored(watcher_pid: u64, target_pid: u64, refere
 }
 
 pub(crate) fn record_process_crashed(atom_table: &AtomTable, pid: u64, exception: Exception) {
-    emit_lifecycle_event(
+    if let Some(emitter) = current_emitter() {
+        record_process_crashed_with_emitter(emitter.as_ref(), atom_table, pid, exception);
+    }
+}
+
+fn record_process_crashed_with_emitter(
+    emitter: &dyn LifecycleLogEmitter,
+    atom_table: &AtomTable,
+    pid: u64,
+    exception: Exception,
+) {
+    emitter.emit(
         EVENT_PROCESS_CRASHED,
         Severity::Error,
         vec![
@@ -161,8 +228,19 @@ pub(crate) fn record_process_crashed(atom_table: &AtomTable, pid: u64, exception
 }
 
 pub(crate) fn record_process_crashed_reason(atom_table: &AtomTable, pid: u64, reason: ExitReason) {
+    if let Some(emitter) = current_emitter() {
+        record_process_crashed_reason_with_emitter(emitter.as_ref(), atom_table, pid, reason);
+    }
+}
+
+fn record_process_crashed_reason_with_emitter(
+    emitter: &dyn LifecycleLogEmitter,
+    atom_table: &AtomTable,
+    pid: u64,
+    reason: ExitReason,
+) {
     let reason_name = atom_name(atom_table, reason.as_atom());
-    emit_lifecycle_event(
+    emitter.emit(
         EVENT_PROCESS_CRASHED,
         Severity::Error,
         vec![
@@ -178,18 +256,11 @@ pub(crate) fn record_process_crashed_reason(atom_table: &AtomTable, pid: u64, re
     );
 }
 
-fn emit_lifecycle_event(
-    event_name: &'static str,
-    severity: Severity,
-    attributes: Vec<(Key, AnyValue)>,
-) {
-    let emitter = {
-        let guard = read_emitter_slot();
-        guard.as_ref().map(Arc::clone)
-    };
-    if let Some(emitter) = emitter {
-        emitter.emit(event_name, severity, attributes);
-    }
+/// Clone the currently installed process-global emitter, if any, so emission
+/// happens outside the slot lock.
+fn current_emitter() -> Option<Arc<dyn LifecycleLogEmitter>> {
+    let guard = read_emitter_slot();
+    guard.as_ref().map(Arc::clone)
 }
 
 fn lifecycle_scope() -> InstrumentationScope {
@@ -260,199 +331,5 @@ const fn exit_class(reason: ExitReason) -> &'static str {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use opentelemetry::logs::Severity;
-    use opentelemetry::{Key, logs::AnyValue};
-    use opentelemetry_sdk::logs::{InMemoryLogExporter, SdkLoggerProvider};
-
-    fn install_test_provider() -> (InMemoryLogExporter, SdkLoggerProvider) {
-        let exporter = InMemoryLogExporter::default();
-        let provider = SdkLoggerProvider::builder()
-            .with_simple_exporter(exporter.clone())
-            .build();
-        set_lifecycle_logger_provider(provider.clone());
-        (exporter, provider)
-    }
-
-    fn attr_i64(log: &opentelemetry_sdk::logs::SdkLogRecord, key: &str) -> Option<i64> {
-        log.attributes_iter().find_map(|(attribute_key, value)| {
-            (attribute_key == &Key::new(key.to_owned())).then_some(match value {
-                AnyValue::Int(value) => Some(*value),
-                _ => None,
-            })?
-        })
-    }
-
-    fn attr_string(log: &opentelemetry_sdk::logs::SdkLogRecord, key: &str) -> Option<String> {
-        log.attributes_iter().find_map(|(attribute_key, value)| {
-            (attribute_key == &Key::new(key.to_owned())).then(|| match value {
-                AnyValue::String(value) => Some(value.to_string()),
-                _ => None,
-            })?
-        })
-    }
-
-    #[test]
-    fn lifecycle_helpers_emit_process_events_with_attributes() {
-        let _guard = crate::telemetry::test_lock::guard();
-        let (exporter, provider) = install_test_provider();
-        let atom_table = AtomTable::with_common_atoms();
-        let module = atom_table.intern("demo_module");
-        let function = atom_table.intern("start");
-
-        record_process_spawned(&atom_table, 2, 1, module, function, 3);
-        record_process_linked(1, 2);
-        record_process_monitored(1, 2, 99);
-        record_process_exited(&atom_table, 2, ExitReason::Normal);
-        provider.force_flush().expect("logs flush");
-
-        let logs = exporter.get_emitted_logs().expect("emitted logs");
-        let spawned = logs
-            .iter()
-            .find(|log| log.record.event_name() == Some(EVENT_PROCESS_SPAWNED))
-            .expect("spawned event emitted");
-        assert_eq!(
-            spawned.record.target().map(|target| target.as_ref()),
-            Some(LOGGER_NAME)
-        );
-        assert!(spawned.record.timestamp().is_some());
-        assert!(spawned.record.observed_timestamp().is_some());
-        assert_eq!(spawned.record.severity_number(), Some(Severity::Info));
-        assert_eq!(attr_i64(&spawned.record, "process.pid"), Some(2));
-        assert_eq!(attr_i64(&spawned.record, "parent_pid"), Some(1));
-        assert_eq!(
-            attr_string(&spawned.record, "module"),
-            Some("demo_module".to_owned())
-        );
-        assert_eq!(
-            attr_string(&spawned.record, "function"),
-            Some("start".to_owned())
-        );
-        assert_eq!(attr_i64(&spawned.record, "arity"), Some(3));
-
-        let linked = logs
-            .iter()
-            .find(|log| log.record.event_name() == Some(EVENT_PROCESS_LINKED))
-            .expect("linked event emitted");
-        assert_eq!(attr_i64(&linked.record, "pid_a"), Some(1));
-        assert_eq!(attr_i64(&linked.record, "pid_b"), Some(2));
-
-        let monitored = logs
-            .iter()
-            .find(|log| log.record.event_name() == Some(EVENT_PROCESS_MONITORED))
-            .expect("monitored event emitted");
-        assert_eq!(attr_i64(&monitored.record, "watcher_pid"), Some(1));
-        assert_eq!(attr_i64(&monitored.record, "target_pid"), Some(2));
-        assert_eq!(attr_i64(&monitored.record, "ref"), Some(99));
-
-        let exited = logs
-            .iter()
-            .find(|log| log.record.event_name() == Some(EVENT_PROCESS_EXITED))
-            .expect("exited event emitted");
-        assert_eq!(
-            attr_string(&exited.record, "reason"),
-            Some("normal".to_owned())
-        );
-        assert_eq!(
-            attr_string(&exited.record, "exit_class"),
-            Some("normal".to_owned())
-        );
-        provider.shutdown().expect("provider shutdown");
-    }
-
-    #[test]
-    fn crash_event_records_error_severity_and_exception_details() {
-        let _guard = crate::telemetry::test_lock::guard();
-        let (exporter, provider) = install_test_provider();
-        let atom_table = AtomTable::with_common_atoms();
-        let badarg = atom_table.intern("badarg");
-        let exception = Exception {
-            class: crate::term::Term::atom(Atom::ERROR),
-            reason: crate::term::Term::atom(badarg),
-            stacktrace: crate::term::Term::NIL,
-        };
-
-        record_process_crashed(&atom_table, 42, exception);
-        provider.force_flush().expect("logs flush");
-        let logs = exporter.get_emitted_logs().expect("emitted logs");
-        let crashed = logs
-            .iter()
-            .find(|log| log.record.event_name() == Some(EVENT_PROCESS_CRASHED))
-            .expect("crashed event emitted");
-        assert_eq!(crashed.record.severity_number(), Some(Severity::Error));
-        assert_eq!(attr_i64(&crashed.record, "process.pid"), Some(42));
-        assert_eq!(
-            attr_string(&crashed.record, "exception.class"),
-            Some("error".to_owned())
-        );
-        assert_eq!(
-            attr_string(&crashed.record, "exception_class"),
-            Some("error".to_owned())
-        );
-        assert_eq!(
-            attr_string(&crashed.record, "exception.reason"),
-            Some("badarg".to_owned())
-        );
-        provider.shutdown().expect("provider shutdown");
-    }
-
-    #[test]
-    fn supervision_tree_can_be_reconstructed_from_event_stream() {
-        let _guard = crate::telemetry::test_lock::guard();
-        let (exporter, provider) = install_test_provider();
-        let atom_table = AtomTable::new();
-        let supervisor = atom_table.intern("supervisor");
-        let worker = atom_table.intern("worker");
-        let start = atom_table.intern("start_link");
-
-        record_process_spawned(&atom_table, 10, 1, supervisor, start, 0);
-        record_process_spawned(&atom_table, 11, 10, worker, start, 0);
-        record_process_spawned(&atom_table, 12, 10, worker, start, 0);
-        record_process_linked(10, 11);
-        record_process_linked(10, 12);
-        record_process_monitored(10, 12, 7);
-        provider.force_flush().expect("logs flush");
-
-        let logs = exporter.get_emitted_logs().expect("emitted logs");
-        let mut children_by_parent = std::collections::BTreeMap::<i64, Vec<i64>>::new();
-        let mut links = Vec::new();
-        let mut monitors = Vec::new();
-        for log in &logs {
-            match log.record.event_name() {
-                Some(EVENT_PROCESS_SPAWNED) => {
-                    if let (Some(parent), Some(child)) = (
-                        attr_i64(&log.record, "parent_pid"),
-                        attr_i64(&log.record, "process.pid"),
-                    ) {
-                        children_by_parent.entry(parent).or_default().push(child);
-                    }
-                }
-                Some(EVENT_PROCESS_LINKED) => {
-                    if let (Some(pid_a), Some(pid_b)) = (
-                        attr_i64(&log.record, "pid_a"),
-                        attr_i64(&log.record, "pid_b"),
-                    ) {
-                        links.push((pid_a, pid_b));
-                    }
-                }
-                Some(EVENT_PROCESS_MONITORED) => {
-                    if let (Some(watcher), Some(target), Some(reference)) = (
-                        attr_i64(&log.record, "watcher_pid"),
-                        attr_i64(&log.record, "target_pid"),
-                        attr_i64(&log.record, "ref"),
-                    ) {
-                        monitors.push((watcher, target, reference));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        assert_eq!(children_by_parent.get(&1), Some(&vec![10]));
-        assert_eq!(children_by_parent.get(&10), Some(&vec![11, 12]));
-        assert_eq!(links, vec![(10, 11), (10, 12)]);
-        assert_eq!(monitors, vec![(10, 12, 7)]);
-        provider.shutdown().expect("provider shutdown");
-    }
-}
+#[path = "lifecycle_tests.rs"]
+mod tests;
