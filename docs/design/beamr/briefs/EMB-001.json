@@ -1,0 +1,59 @@
+{
+  "id": "EMB-001",
+  "cluster": "embedder-surface",
+  "title": "Guard-BIF refusal diagnosability — the non-Native-import refusal names the MFA and the resolution state",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": [],
+  "stories": [],
+  "purpose": "Ground: the 2026-07-18 gc_bif attribution (report `artemis-artifacts/2026-07-18-gcbif-probe/gcbif-tr-probe-report.md`; frame bundle `crates/frame-host/attribution/gcbif-wedge/` at frame `feature/frame-host` `c4dfb18`; Waffles' paper sanction 2026-07-18 23:09Z, recorded for Tom's veto). A frame-host BEAM child died deterministically at its first arithmetic instruction with `ExecError::InvalidOperand(\"guard bif native import\")`, and attributing that one static string to its true cause — `Scheduler::with_services` installing an empty BIF registry so `erlang:'+'/2` resolved `Deferred` — took a full multi-seat day, two probe rounds, and a byte-exact artifact exchange, because the refusal names neither the MFA nor the resolution state. Evidence pin: beamr main `a399b54`. The refusal site is `crates/beamr/src/interpreter/opcodes/guards.rs:193-195` at the pin: `let ResolvedImportTarget::Native(entry) = resolved.target else { return Err(ExecError::InvalidOperand(\"guard bif native import\")) }` — one arm conflating FOUR distinct non-Native resolution shapes (`Deferred` — not in the BIF registry and target module not loaded; `Denied { capability }` — registered but capability-refused at load; `Code { .. }` — resolved to a bytecode export, illegal in guard/bif position; `Unresolved` — target module loaded but export missing). `ExecError::InvalidOperand` carries only `&'static str` (`crates/beamr/src/error.rs:88`), so the payload CANNOT name the failing import without a vocabulary change. The sealed browser profile and the wasm reason vocabulary constrain that change: `crates/beamr-wasm/src/reasons.rs:47-71` maps every ExecError variant to a stable snake_case reason (WPORT-5 R2 item 7, walled), so any new variant carries an ADDITIVE reasons row and the coverage match is compile-forced. Related precedent IN the enum already: `ExecError::ServiceUnavailable` (`error.rs:106-116`) exists precisely to distinguish \"composed without that service\" from a genuine bad argument — this brief extends that composition-honesty doctrine to the guard-BIF import seam. The one-log-line standard this brief targets, verbatim from the sanction: \"erlang:'+'/2 resolved Deferred (registry empty)\".",
+  "task": "DESIGN STANCE (decided, with one carved fork OQ-A): the refusal VALUE gains full diagnosability; the refusal SEMANTICS change not at all — same site, same process-fatal outcome, same fail-label handling (`guards.rs:215-222` untouched in behavior), same reason-class boundary. Zero new wake paths, zero timers, zero configuration.\n\nD1 NEW VARIANT (recommended; the fork is OQ-A): `ExecError::GuardBifUnavailable { module: Atom, function: Atom, arity: u8, resolution: GuardBifResolution }` with `GuardBifResolution` a new small public enum `{ Deferred, Denied, CodeTarget, Unresolved }` (no capability payload on Denied in v1 — the loader's denied report already carries capability detail; keeping the enum payload-free keeps it `Copy` and keeps Display simple; stated as a judgment call for the tear). Display: `guard bif {module}:{function}/{arity} unavailable: import resolved {resolution} ({hint})` where the hint strings are fixed per resolution arm — Deferred: \"native BIF registry has no entry and the target module is not loaded\"; Denied: \"registered but capability-denied at load\"; CodeTarget: \"resolved to a bytecode export — guard BIFs must be native\"; Unresolved: \"target module loaded but export missing\". Atom rendering follows the existing `Undef` Display precedent (`error.rs:126+` renders atom indices; `format_with_atoms` renders names — both sites gain the new arm).\n\nD2 MINT SITE: `guards.rs` `bif()` replaces the `InvalidOperand(\"guard bif native import\")` arm with the new variant, deriving `resolution` from the actual `ResolvedImportTarget` arm. The `resolved.arity != parsed.expected_arity` refusal (`:189-191`) and the operand-shape refusals (`:337-364`) KEEP their existing InvalidOperand payloads — they are operand/shape errors, not composition errors; scope discipline.\n\nD3 EXHAUSTIVE-MATCH SWEEP: ExecError is exhaustively matched downstream (the `GcNeeded` comment at `error.rs:93-96` records the constraint). Adding a variant is compile-error-visible; the sweep is therefore mechanical and complete by construction. Known sweep sites at the pin: both Display impls in `error.rs`, `format_with_atoms` (if separately matched), `crates/beamr-wasm/src/reasons.rs:47-71` (\"guard_bif_unavailable\" ADDITIVE row), plus whatever `cargo check --workspace --all-targets` surfaces. The wasm reasons WALL (WPORT-5's pinned coverage test) extends by the one row in the SAME commit.\n\nD4 REGRESSION FIXTURE, beamr-owned: a committed `.erl` + `.beam` fixture pair under `crates/beamr/tests/fixtures/` (house convention) containing the minimal typed-operand arithmetic receive-loop (the probe's `wedge_probe.erl` shape — authored fresh for beamr, NOT frame's artifact bytes; provenance stays clean and the shape is what matters). New integration test: load with an EMPTY `BifRegistryImpl`, drive the arithmetic clause through the real threaded scheduler, assert via `take_exit_error` the exact new variant with `resolution: Deferred` and the exact Display string; twin assertion with a gate1-populated registry proving clean execution (the both-directions confirm, permanently). This is the attribution artifact become the wall.\n\nD5 WASM-SIDE: `reasons.rs` additive row; if a wasm-side test is added the CI three-carrier law (name list, exact summary count, count prose — currently 65) moves in the same commit; if no wasm test is added, CI is untouched and the lib-side coverage stays compile-forced. Drafter's call at build, stated in the handoff.\n\nOQ-A (the fork, for the tear): NEW VARIANT (recommended, D1) vs the two rejected-but-presented alternatives: (ALT-1) reuse `ExecError::ServiceUnavailable { service: \"guard-bif-registry\" }` — honest class, loses the MFA entirely, fails the one-log-line standard; (ALT-2) widen `InvalidOperand` to carry `String` — names the MFA but ripples every `InvalidOperand` construction site and every downstream `&'static str` expectation, far larger blast radius for less structure. Recommendation: D1.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "GuardBifUnavailable variant + resolution enum + both Display arms",
+      "spec": "Per D1: the new variant and `GuardBifResolution` enum in `crates/beamr/src/error.rs`, both Display sites (index and atom-rendered), doc comments carrying the composition-honesty doctrine (ServiceUnavailable precedent cited).",
+      "acceptance": [
+        "The variant carries module/function/arity atoms + resolution; Display renders the sanction's one-log-line standard (exact string pinned by the D4 wall)",
+        "Every downstream ExecError match compiles (exhaustive sweep complete by construction); zero `_ =>` catch-alls introduced to dodge the sweep"
+      ],
+      "files": { "modify": ["crates/beamr/src/error.rs"] }
+    },
+    {
+      "id": "R2",
+      "title": "Mint at the guard-bif dispatch, derived from the actual resolution arm",
+      "spec": "Per D2: `guards.rs` `bif()` mints the new variant with the true resolution state; arity/operand refusals unchanged; fail-label semantics byte-preserved.",
+      "acceptance": [
+        "All four resolution arms map correctly (Deferred/Denied/CodeTarget/Unresolved); the refusal remains process-fatal at the same execution point; `InvalidOperand(\"guard bif native import\")` no longer exists in the tree (grep)",
+        "Behavioral twin: fail-label != 0 still jumps on Err from the NATIVE call path exactly as before (the new variant is pre-call, the BIF-Err path untouched)"
+      ],
+      "files": { "modify": ["crates/beamr/src/interpreter/opcodes/guards.rs"] }
+    },
+    {
+      "id": "R3",
+      "title": "Wasm reason vocabulary additive row",
+      "spec": "Per D3/D5: `reasons.rs` gains `guard_bif_unavailable`; the WPORT-5 coverage wall extends; CI carriers move only if a wasm test is added (drafter states the choice).",
+      "acceptance": [
+        "`variant_name` covers the new variant (compile-forced) with the stable snake_case slug; the coverage wall is green and unweakened; WPORT-5's reason vocabulary remains otherwise byte-identical (additive-only proven by diff)"
+      ],
+      "files": { "modify": ["crates/beamr-wasm/src/reasons.rs"] }
+    },
+    {
+      "id": "R4",
+      "title": "The attribution-artifact wall — both-directions regression fixture",
+      "spec": "Per D4: beamr-authored fixture pair + integration test asserting the exact new payload under an empty registry AND clean execution under gate1 — the permanent form of the 2026-07-18 both-directions confirm.",
+      "acceptance": [
+        "Empty-registry leg: `take_exit_error` yields the new variant, resolution Deferred, exact Display string; populated leg: no exit error, arithmetic result observable; ten consecutive isolated runs green; fail-first recorded-and-reverted (revert the R2 mint → the wall goes red at the payload assert)"
+      ],
+      "files": { "create": ["crates/beamr/tests/guard_bif_unavailable.rs", "crates/beamr/tests/fixtures/guard_bif_probe.erl", "crates/beamr/tests/fixtures/guard_bif_probe.beam"] }
+    }
+  ],
+  "boundaries": [
+    "REFUSAL SEMANTICS UNCHANGED: same mint point, still process-fatal, fail-label handling byte-preserved; only the error VALUE and vocabulary change. Anything that changes WHEN or WHETHER the refusal fires is a STOP.",
+    "The exited-not-errored classification (arc board line at `a399b54`) is ADJACENT, NOT REOPENED: how an uncaught raise files into summaries is a different brief's vocabulary; this brief changes the error value only.",
+    "Shared interpreter code (`guards.rs`, `error.rs`) compiles for BOTH threaded and cooperative closures — the byte-identical marker files (`native/bifs.rs`, `io_bifs.rs`, `context/mod.rs`) are untouched; both wasm32 check closures must stay green.",
+    "No `_ =>` arms to dodge the exhaustive sweep; ZERO new `#[allow]`; no unwrap/expect/panic outside cfg(test); `crates/beamr/src/loader/encode/**` untouchable (Vesper Lynd's claim); no-knob law (no configurable error verbosity).",
+    "Fixture provenance: beamr-authored `.erl` compiled fresh — never frame's artifact bytes."
+  ],
+  "verification": "Build-leg bar: the 9-leg gate on the final head (fmt; fresh-lint both clippy legs with Compiling lines; lib all-features; --test '*'; edge-worker npm; both locked wasm32 checks; pinned Node leg — count moves only if a wasm test is added, all three CI carriers same-commit; prohibition greps; 10× isolation for the new wall). Fail-first: revert the R2 mint → R4 wall red at the payload assert → restore. Pin-shift re-verify at the actual base: guards.rs refusal site, error.rs variant block + Display, reasons.rs match, the ServiceUnavailable doc block. Handoff carries the exact Display strings as landed, the sweep-site list, and the CI-carrier decision."
+}
