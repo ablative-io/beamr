@@ -361,6 +361,263 @@ where the landed code deviates); decision record: ADR-012.
 
 - `Scheduler::spawn_link_closure(parent_pid, closure_term)`: spawn a linked child process that runs a zero-arity closure (thunk). Unlike the `args: Vec<Term>` spawn entrypoints — whose argument terms are NOT heap-copied and require the caller to keep any backing heap alive — the closure's environment (free variables) is deep-copied into the child's own heap via the mailbox copy machinery before the child becomes runnable, so the caller's heap may be collected, mutated, or freed the moment the call returns. The child heap doubles on `HeapFull` up to a 2^26-word cap. Target resolution matches `call_fun` (generation match with unique-id validation, unique-id fallback across generations, old-generation fallback); export funs (`fun m:f/0`) resolve through the export table; native-entry funs are not spawnable. The link is established atomically at spawn (no unlinked window) and the child does not trap exits. Built for Aion's in-VM activity tier (linked activity child processes running SDK-supplied thunks).
 
+## 0.11.0 — 2026-06-28
+
+The cooperative wasm runtime release (WR-0..WR-10, this range landing
+WR-2..WR-10): beamr's native-process model runs on the single-threaded
+cooperative `WasmScheduler` — no tokio, no crossbeam channels, no OS threads
+in the execution path. `beamr-wasm` 0.5.0 rides along. The public threaded
+API is unchanged (additive + cfg-widening only).
+
+### Added
+
+- Native processes dispatch through the unified cooperative `run_until_idle`:
+  native and bytecode processes share a single host pump, with native slice
+  outcomes folded into the same `WasmRunSummary` and yielded-requeue buffer
+  the bytecode arm uses (WR-3).
+- Cooperative native timers: `WasmScheduler` carries a shared `TimerWheel`,
+  so `NativeContext::send_after`/`schedule` build real `Deliver` timers
+  instead of hitting an inert `None` wheel; expirations drain once per turn
+  via `tick_native_timers`/`tick_native_timers_at` (WR-4).
+- Cooperative supervision and restart: `spawn_native`'s `link_to` establishes
+  the bidirectional link, exit propagation delivers `{'EXIT', From, Reason}`
+  to trapping links and applies `should_die_from_signal` semantics to
+  non-trapping ones (the predicate is now shared with the threaded path by
+  construction), and restart is the trapping supervisor re-invoking the
+  retained factory (WR-5). A review pass rewrote the link cascade as a
+  transitive worklist mirroring the threaded path — the initial in-place kill
+  let grandchildren survive and left dead processes re-enterable as zombies.
+- `spawn_actor_cooperative` + `CoopActorRef`/`CoopSenderHandle`:
+  fire-and-forget `cast` and non-blocking `call_async`/`call_async_timeout`
+  returning a host-pumpable `CallFuture<Reply>`; ref correlation reuses the
+  threaded envelope machinery, so concurrent calls never cross replies (WR-6).
+- Native handlers reach the wasm async-NIF seam: `NativeContext::start_async`
+  parks the handler without blocking the event loop, and `complete_async`
+  delivers the completion as an `{ok, Value}`/`{error, Reason}` mailbox
+  message on a later turn (WR-7).
+- `DynActor`/`ReplyFn`/`WireTerm` — a term-carrying actor an untyped host
+  drives over `call_async` with no new wire code — plus
+  `NativeContext::alloc_owned_term`; on the beamr-wasm JS seam,
+  `WasmVm::spawn_actor(handler)`, `call(pid, request)` returning a real
+  Promise, and `cast` (WR-8).
+- Wasm time base: the native timer wheel, the cooperative timer seam, and
+  the in-memory replay driver read `web_time::Instant` (performance.now() on
+  wasm; identical to `std::time::Instant` on native). beamr-wasm gains the
+  requestAnimationFrame host pump: `WasmVm::pump_once`, `start_pump()`
+  returning a `PumpHandle`, and idempotent `PumpHandle::stop()` (WR-10).
+- Distribution reconnection hardening (HS-4/HS-5): `connect_node` treats a
+  down-but-not-yet-reaped connection entry as not-connected, so re-dial after
+  a dropped link is deterministic instead of being told the peer is up; plus
+  a 3-node full-mesh handshake-convergence integration test (six
+  simultaneous dials, per-node runtimes, hard watchdog) pinning the 0.10.0
+  deadlock fix in CI.
+
+### Fixed
+
+- Safety-net GC collections inside `put_list`/`put_tuple2`/`update_record`
+  conservatively root the full X register file. The hardcoded `live_x` of
+  256 both under-rooted and NIL-cleared any live term in a register at index
+  ≥ 256 — silent corruption. These opcodes carry no Live operand in this
+  VM's bytecode, so conservative full-width rooting is the only sound choice
+  (#106).
+
+## 0.10.0 — 2026-06-27
+
+### Fixed
+
+- Distribution handshake deadlock (HS-0..HS-3,
+  `docs/DISTRIBUTION-HANDSHAKE-DESIGN.md`): simultaneous cross-dials could
+  hang `connect` forever and prevent a ≥3-node mesh from forming. Three
+  coordinated fixes: whole-handshake deadlines (default 5 s,
+  `with_handshake_timeout`, new `HandshakeError::Timeout`) so the outbound
+  connect always returns and no accept-side responder parks forever (HS-1);
+  race-safe connection install — `register_connection` dedups against an
+  existing live link per peer name, dropping the newcomer's stream and
+  replacing stale down entries, so two simultaneous handshakes cannot leave
+  a clobbered, orphaned reader (HS-2); and the OTP simultaneous-connect
+  tie-break (`ok`/`ok_simultaneous`/`nok` status bytes decided by node-name
+  comparison) so exactly one symmetric link survives per pair — the losing
+  initiator's `nok` folds into a benign non-retrying success (HS-3). The
+  pre-fix silent-peer hang and simultaneous-dial mesh scenarios are pinned
+  as regression oracles (HS-0).
+
+### Added
+
+- Wasm-runtime port groundwork (WR-0/WR-1,
+  `docs/WASM-RUNTIME-PORT-DESIGN.md`): a new `cooperative` Cargo feature
+  (std + crossbeam-queue only) with cooperative spawn/local-send facilities
+  and a native-aware turn on `WasmScheduler` proving a native Actor runs
+  cooperatively; host-only modules (io/jit/timer/replay/distribution/hook)
+  are feature-gated so beamr compiles toward `wasm32-unknown-unknown` with
+  no default features. The native default build is unchanged and the
+  cooperative build is warning-free.
+
+## 0.9.0 — 2026-06-24
+
+The distribution layer's minor-release marker: promotes the cross-node work
+landed in 0.8.3 (OTP handshake, async sender, cross-node pg) to a minor
+version.
+
+- Added `Scheduler::atom_table()` so distribution-facing embedders intern
+  names into the SAME atom table the scheduler uses internally — pg
+  group/scope atoms and the node atoms from
+  `ConnectionManager::connected_nodes()` are indices into it, so a
+  separately-constructed table would not match. Mirrors the accessor
+  `WasmScheduler::atom_table()` already exposes.
+
+## 0.8.3 — 2026-06-24
+
+The distribution layer lands: cross-node process groups over authenticated
+connections with non-blocking propagation.
+
+### Added
+
+- OTP handshake wired into `ConnectionManager` connect/accept:
+  cookie/challenge/MD5-digest auth with constant-time compare and
+  cryptographically random challenges; connection identity comes from the
+  authenticated `HandshakeResult::remote_name` (the address→atom identity
+  seam is deleted); cookie configured via `DistributionConfig`; public
+  `Scheduler::start_distribution_listener`. The handshake completes before
+  the data-frame read loop starts.
+- Distributed process groups: local pg join/leave propagate to every
+  connected node via a `PG_UPDATE` control frame (op 101, member as an
+  external pid carrying the local node name); inbound frames apply on the
+  peer's `PgRegistry`; a connection-down hook purges the lost node's
+  members wholesale.
+- Async distribution sender (`DistSender`): all outbound distribution I/O
+  moves to a single owned 1-worker runtime with a bounded queue. pg
+  broadcast enqueues instead of `block_on` on a scheduler worker thread
+  (killing the latency cliff), process exit purges pg membership locally and
+  propagates the leave async (never blocking the death path), and writes
+  carry a 5 s timeout so a wedged-but-connected peer is marked down instead
+  of stalling propagation cluster-wide.
+
+### Fixed
+
+- The distribution control-frame handler captured a strong `SharedState`
+  reference, so schedulers with distribution enabled never dropped; it now
+  upgrades a `Weak` per frame (regression-pinned: `strong_count == 0` on
+  drop).
+
+## 0.8.2 — 2026-06-24
+
+- Timer messages are actually delivered: the timer wheel was
+  receive-timeout-only, so `send_after`/`start_timer` scheduled messages
+  that never reached any mailbox. Timers now carry a `TimerKind`
+  (`ReceiveTimeout` keeps the mark-and-wake code-jump path; `Deliver` pushes
+  the message into the target mailbox with Executing-slot-safe semantics and
+  wakes the process).
+- Native processes gain timer access: `NativeContext` carries an optional
+  shared timer wheel with `schedule`/`send_after`/`cancel_timer`.
+- Replay log `FORMAT_VERSION` 1 → 2: the timer-kind byte round-trips, and an
+  unknown byte is `InvalidFormat` rather than a silent default.
+
+## 0.8.1 — 2026-06-23
+
+- Corrected the `recv_marker` opcode family to OTP numbering
+  (173=bind/2, 174=clear/1, 175=reserve/1 — beamr had the three rotated with
+  mismatched arities), which desynced decoding through the receive prologue
+  and made the loader reject valid modules with "export label N does not
+  exist"; `recv_marker_bind`'s second operand is modelled as a register
+  (Ref), not a label.
+- Added `Scheduler::peek_exit_reason` — a non-blocking, non-consuming read
+  of a dead process's exit reason, for supervisors that must observe an
+  external kill without parking on `run_until_exit`.
+- Exit tombstones are bounded: the unbounded pid→ExitReason map is now an
+  insertion-ordered store with FIFO eviction above 65,536 live entries,
+  evicting a pid's paired exit-result satellites together with its
+  tombstone — closing a slow per-connection/per-request leak with read
+  semantics unchanged (eviction can never strand a blocked
+  `run_until_exit`: the awaited tombstone is always the newest entry).
+
+## 0.8.0 — 2026-06-23
+
+The native-process release: Rust code participates in the process model as
+real processes.
+
+### Added
+
+- Native-process core (NATIVE-001): a native process IS a `Process` carrying
+  a Rust `NativeHandler` — factory-based `spawn_native`, `run_native_slice`,
+  and `NativeContext::send` through the real `LocalSendFacility`. Reuses the
+  park-gap protocol, exit tombstones, and pending-message merge verbatim; no
+  new process-slot variants or sync primitives.
+- Native-process supervision (NATIVE-002): links, monitors, exit signals,
+  trap_exit, and factory-based restart reuse the pid-keyed exit-propagation
+  machinery unchanged; adds `NativeContext::set_trap_exit` and generic
+  `Scheduler::is_native`/`monitor`/`exit_signal`.
+- Ergonomic actor API (NATIVE-003): gen_server-style `Actor` trait
+  (`handle_call`/`handle_cast`), ref-correlated `call` and fire-and-forget
+  `cast`, and public `spawn_actor` returning a Clone-able `SenderHandle`.
+  Blocking `call` lives only on the external `SenderHandle`; handlers get a
+  cast-only `ActorContext`, so the call-deadlock is unreachable by
+  construction. Feature-gated; the bytecode path is untouched.
+
+### Fixed
+
+- A trapping process that was mid-slice (Executing) when a linked process
+  exited normally never received `{'EXIT', Pid, normal}` — both the
+  `process_exit_signal` and `exit_signal` (erlang:exit/2) Executing arms
+  gated delivery on a non-normal reason. Both now gate on trap_exit alone,
+  matching the Present arm, the remote sibling, and OTP semantics.
+
+## 0.7.0 — 2026-06-22
+
+### Fixed
+
+- Cross-process local send actually delivers: `B ! Msg` between two
+  processes driven through the real Send opcode silently dropped
+  (`messaging::send` only delivered to an in-hand receiver, and the
+  scheduler always passed none). A new `LocalSendFacility` delivers via the
+  I/O-delivery template — a Present receiver gets a deep copy onto its heap
+  with push-before-wake, an Executing receiver (mid-slice on another thread)
+  gets the message ETF-encoded and decoded onto its heap at store-back, and
+  self-sends deliver to the in-hand process. Replay clock observation
+  happens under the slot lock.
+- ETF decode gained reference arms (`NEWER_REFERENCE_EXT` 90,
+  `REFERENCE_EXT` 114): the encoder emitted `NEWER_REFERENCE_EXT` but the
+  decoder had no arm, so ref-bearing messages (gen_server call tags, monitor
+  DOWNs) were silently dropped on the Executing path.
+
+### Added
+
+- Encode/copy failures on the send path surface via a `messages_dropped`
+  telemetry counter instead of vanishing.
+
+### Compatibility
+
+- `NativeServices` gains a `local_send` field and is now
+  `#[non_exhaustive]`; embedders constructing it as a struct literal must
+  update.
+
+## 0.6.4 — 2026-06-16
+
+- Added `erlang:integer_to_list/2` (radix 2–36, OTP semantics).
+  gleam_json's error-path hex formatter calls `integer_to_list(I, 16)`,
+  which was undefined — crashing workflows that hit JSON parse errors during
+  diagnostics rendering.
+
+## 0.6.3 — 2026-06-15
+
+- io_uring backend: added the missing `SendMsg`/`RecvMsg` match arms (the
+  new `IoOp` variants made the Linux build fail on a non-exhaustive match);
+  implements async sendmsg/recvmsg via io_uring opcodes with heap-stable
+  storage for msghdr, iovec, and address buffers.
+
+## 0.6.2 — 2026-06-15
+
+- Linux build fix for io-uring 0.7.12: `Statx::new` went from 5 args to 3 —
+  flags and mask are builder methods and the statxbuf pointer is an opaque
+  type.
+
+## 0.6.1 — 2026-06-13
+
+- `put_list` and `put_tuple2` self-ensure heap space before allocating: when
+  data-dependent decoding builds more cells than the preceding `test_heap`
+  reservation covers, the raw bump allocator returned a fatal `HeapFull`,
+  bypassing the GC-and-grow path. Both opcodes now call `ensure_space()`
+  before reading operands, matching `update_record`.
+
 ## 0.6.0
 
 ### Correctness
