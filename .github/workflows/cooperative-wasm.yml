@@ -57,6 +57,14 @@ jobs:
             "tests::late_fire_delivers_all_due_timer_classes_queues_one_turn_and_arms_next"
             "tests::await_exit_waits_for_armed_native_deliver_timer"
             "tests::cooperative_bytecode_timer_bifs_round_trip_and_arm_unified_deadline"
+            "tests::cast_from_true_idle_queues_one_turn_and_coalesces_a_burst"
+            "tests::promise_completion_from_true_idle_queues_one_turn_with_durable_result"
+            "tests::native_completion_envelope_wakes_parked_handler_through_the_arbiter"
+            "tests::native_completion_direct_injection_wakes_parked_handler"
+            "tests::trapped_exit_wakes_linked_supervisor_without_external_pump"
+            "connection_events::tests::subscription_snapshot_delivers_synthetic_ups_then_live_events_in_shared_vocabulary"
+            "connection_events::tests::subscription_synthetics_are_subscriber_local_and_unsubscribe_stops_delivery"
+            "connection_events::tests::subscription_during_churn_misses_no_session_and_double_sees_none"
           )
           assertion_status=0
           for test_name in "${expected_tests[@]}"; do
@@ -66,9 +74,9 @@ jobs:
             fi
           done
           if ! grep -Fq \
-            "test result: ok. 18 passed; 0 failed; 0 ignored; 0 filtered out" \
+            "test result: ok. 26 passed; 0 failed; 0 ignored; 0 filtered out" \
             "$output_file"; then
-            echo "missing exact eighteen-test success summary" >&2
+            echo "missing exact twenty-six-test success summary" >&2
             assertion_status=1
           fi
 

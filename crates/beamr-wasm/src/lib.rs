@@ -1,5 +1,6 @@
 //! JavaScript bindings for the cooperative Beamr WASM runtime.
 
+mod connection_events;
 mod convert;
 
 use std::cell::{Cell, RefCell};
@@ -22,6 +23,7 @@ use beamr::scheduler::{WasmAsyncCompletion, WasmRunState, WasmRunSummary, WasmSc
 use beamr::term::json::term_to_value;
 use beamr::term::{Term, format::format_term};
 use beamr::{CoopSenderHandle, DynActor, ReplyFn, WireTerm, spawn_actor_cooperative};
+use connection_events::BrowserConnectionHub;
 use convert::{
     js_value_to_owned_term, js_value_to_term_in_context, term_to_js_value, terms_from_json_array,
     terms_to_js_array,
@@ -51,6 +53,7 @@ pub struct WasmVm {
     async_bridge: Rc<HostAsyncNifs>,
     js_callbacks: Rc<HostJsCallbacks>,
     actor_handlers: Rc<HostActorHandlers>,
+    connection_events: Rc<BrowserConnectionHub>,
 }
 
 #[wasm_bindgen]
@@ -106,6 +109,7 @@ impl WasmVm {
             async_bridge,
             js_callbacks,
             actor_handlers,
+            connection_events: Rc::new(BrowserConnectionHub::new()),
         })
     }
 
@@ -135,6 +139,14 @@ impl WasmVm {
             .borrow_mut()
             .send_owned(pid, &message)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        // Host-failure abort path, RATIFIED (WPORT-4 tear Ruling 6): if
+        // `sync_and_reconcile` fails here, the external runnable edge latched
+        // by the send above is STRANDED — never consumed, no turn requested.
+        // That failure requires the host's own `clearTimeout`/`setTimeout` to
+        // throw, the same torn-down-realm world in which the arbiter itself
+        // fails loudly, so the stranded edge is the declared abort behaviour,
+        // not a routing gap. Do NOT reorder these two calls; any evidence of a
+        // transiently-throwing host reopens this as its own finding.
         self.deadline.sync_and_reconcile()?;
         self.schedule_external_edge()?;
         Ok(())
@@ -289,6 +301,78 @@ impl WasmVm {
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.schedule_external_edge()?;
         Ok(())
+    }
+
+    /// Up-ingress for the browser connection-event hub (WPORT-4 R2): the host
+    /// feeds `{node, peer_creation}` — nothing else. The hub mints the session
+    /// generation locally (per-peer monotonic from 1; never host-supplied).
+    ///
+    /// Takes `&self` so a subscriber callback may legally re-enter this
+    /// surface through the wasm-bindgen borrow guard (shared borrows nest).
+    ///
+    /// # Errors
+    ///
+    /// A bare double-Up without an intervening Down is a loud typed
+    /// `ConnectionEventProtocolError`.
+    pub fn connection_up(&self, node: &str, peer_creation: u32) -> Result<(), JsValue> {
+        self.connection_events.connection_up(node, peer_creation)
+    }
+
+    /// Down-ingress for the browser connection-event hub: the host feeds
+    /// `{node, reason}` with `reason` drawn from the ruled mapping onto the
+    /// seven native `ConnectionDownReason` variants (see the
+    /// `connection_events` module contract).
+    ///
+    /// # Errors
+    ///
+    /// An unmapped reason or a Down with no open session is a loud typed
+    /// `ConnectionEventProtocolError`.
+    pub fn connection_down(&self, node: &str, reason: &str) -> Result<(), JsValue> {
+        self.connection_events.connection_down(node, reason)
+    }
+
+    /// Replacement ingress: the open session for `node` was displaced by a
+    /// new peer incarnation. Expands atomically into `Down(g, reason)` then
+    /// `Up(g+1, new_peer_creation)` — the native "peer bounced" sequence;
+    /// `peer_creation` (not generation) answers restart-vs-blip.
+    ///
+    /// # Errors
+    ///
+    /// An unmapped reason or a replacement with no open session is a loud
+    /// typed `ConnectionEventProtocolError`.
+    pub fn connection_replaced(
+        &self,
+        node: &str,
+        new_peer_creation: u32,
+        reason: &str,
+    ) -> Result<(), JsValue> {
+        self.connection_events
+            .connection_replaced(node, new_peer_creation, reason)
+    }
+
+    /// Subscribe to connection lifecycle events (Up + Down; no catch-up),
+    /// mirroring the native `ConnectionManager` method name. Returns the
+    /// numeric `SubscriberId`. Subscribers are TOLD — callbacks run
+    /// synchronously with host-fed ingress; nothing polls (NO-POLLING).
+    pub fn subscribe_connection_events(&self, callback: Function) -> u32 {
+        self.connection_events.subscribe(callback)
+    }
+
+    /// Subscribe with synthetic catch-up: the blessed late-subscriber path
+    /// (INV-NO-REPLAY). Before this returns, `callback` alone is invoked
+    /// SYNCHRONOUSLY with one synthetic `Up` per live peer — invisible to
+    /// other subscribers — then registered. Called reentrantly from inside a
+    /// subscriber callback, it registers WITHOUT catch-up (native rule,
+    /// verbatim).
+    pub fn subscribe_connection_events_with_snapshot(&self, callback: Function) -> u32 {
+        self.connection_events.subscribe_with_snapshot(callback)
+    }
+
+    /// Remove a connection-event subscription by its numeric id; `false` when
+    /// the id is unknown or already removed. Delivery stops from the next
+    /// event.
+    pub fn unsubscribe_connection_events(&self, id: u32) -> bool {
+        self.connection_events.unsubscribe(id)
     }
 
     /// Called by tests or custom hosts to drive an already-fired timer manually.
@@ -1504,6 +1588,7 @@ impl WasmVm {
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::Mutex;
     use std::time::Duration;
 
     use super::*;
@@ -1512,7 +1597,11 @@ mod tests {
     use beamr::loader::decode::compact::Operand;
     use beamr::loader::{Instruction, LambdaEntry, LineInfo, Literal};
     use beamr::module::{Module, ModuleOrigin, ResolvedImport, ResolvedImportTarget};
-    use beamr::native::native_process::{NativeContext, NativeHandler, NativeOutcome};
+    use beamr::native::native_process::{
+        NativeContext, NativeHandler, NativeHandlerFactory, NativeOutcome,
+    };
+    use beamr::process::ExitReason;
+    use beamr::term::boxed::Tuple;
     use js_sys::{Array, Object};
     use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -2618,5 +2707,746 @@ mod tests {
         host_macrotask().await;
         let cancel_after_fire_exit = await_exit_json(&mut vm, cancel_after_fire).await;
         assert_eq!(cancel_after_fire_exit["result"], Value::Bool(false));
+    }
+
+    // =======================================================================
+    // WPORT-4 R1: source-specific acceptance walls (cast, Promise completion,
+    // native completion envelope pair, trapped exit). Shared shape: start from
+    // PROVEN true idle, one event = exactly one arbiter request (counted
+    // gauge), a pre-turn burst coalesces, the durable payload is observed on
+    // resume, and NO manual `run_step`/pump drives progress.
+    // =======================================================================
+
+    /// Prove TRUE IDLE (idle-wall precedent): nothing queued, and an
+    /// intervening host macrotask changes no arbiter counter and arms nothing.
+    /// Returns the settled counter snapshot the wall diffs against.
+    async fn assert_true_idle(vm: &WasmVm) -> ArbiterCounterSnapshot {
+        let before = vm.arbiter_counters();
+        assert_eq!(before.arbiter.queued_now, 0, "true idle: no queued turn");
+        assert_eq!(
+            vm.unified_deadline_snapshot().queued_now,
+            0,
+            "true idle in these walls: no deadline arm outstanding"
+        );
+        host_macrotask().await;
+        let after = vm.arbiter_counters();
+        assert_eq!(
+            after, before,
+            "true idle: an idle macrotask changes no arbiter counter"
+        );
+        after
+    }
+
+    /// Resolve a host-registered (non-`erlang`) NIF into a bytecode import
+    /// entry, the way the loader would — the async-NIF analogue of
+    /// `erlang_bif_import`.
+    fn registered_bif_import(
+        vm: &WasmVm,
+        module: &str,
+        function: &str,
+        arity: u8,
+    ) -> ResolvedImport {
+        let module_atom = vm.atom_table.intern(module);
+        let function_atom = vm.atom_table.intern(function);
+        let entry = vm
+            .bif_registry
+            .lookup(module_atom, function_atom, arity)
+            .expect("the registered async NIF resolves");
+        ResolvedImport {
+            module: module_atom,
+            function: function_atom,
+            arity,
+            target: ResolvedImportTarget::Native(entry),
+        }
+    }
+
+    /// `run/1`: call the registered async NIF with x(0), then cons the raw
+    /// resumed x(0) into `[x0]` and exit with it. The cons is the resume
+    /// witness: a fulfilled process exits with a LIST (it executed past the
+    /// NIF), while the rejection twin exits AT the completion seam with the
+    /// bare rejection term — never a list — proving `ExitReason::Error` took
+    /// the exit-at-seam path (`crates/beamr/src/scheduler/wasm.rs:761-767`).
+    fn async_caller_module(vm: &WasmVm, name: &str) -> Module {
+        let imports = vec![registered_bif_import(vm, "wport4_async", "fetch", 1)];
+        let code = vec![
+            Instruction::Label { label: 1 },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::TestHeap {
+                heap_need: Operand::Unsigned(2),
+                live: Operand::Unsigned(1),
+            },
+            Instruction::PutList {
+                head: Operand::X(0),
+                tail: Operand::Atom(None),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ];
+        build_module(&vm.atom_table, name, &[("run", 1, 1)], code, imports)
+    }
+
+    /// A native handler that stops normally on its first slice — a
+    /// quickly-dead pid for the dead-target cast leg. Native (not bytecode)
+    /// so its pid comes from the same shared counter the cast senders and
+    /// actors use.
+    struct StopImmediately;
+
+    impl NativeHandler for StopImmediately {
+        fn handle(&mut self, _ctx: &mut NativeContext<'_>) -> NativeOutcome {
+            NativeOutcome::Stop(ExitReason::Normal)
+        }
+    }
+
+    /// A Promise-returning host NIF callback: each invocation creates a fresh
+    /// `Promise` and banks its `(resolve, reject)` pair so the test settles it
+    /// deterministically later, from true idle.
+    fn promise_returning_nif(resolvers: &Rc<RefCell<Vec<(Function, Function)>>>) -> Function {
+        let resolvers = Rc::clone(resolvers);
+        Closure::<dyn FnMut(JsValue) -> JsValue>::new(move |_args: JsValue| {
+            let resolvers = Rc::clone(&resolvers);
+            Promise::new(&mut move |resolve, reject| {
+                resolvers.borrow_mut().push((resolve, reject));
+            })
+            .into()
+        })
+        .into_js_value()
+        .unchecked_into::<Function>()
+    }
+
+    /// Decode a `{ok, V}`/`{error, R}` completion envelope into
+    /// `(is_ok, small_int)`; `None` for any other message shape.
+    fn decode_envelope(message: Term) -> Option<(bool, i64)> {
+        let tuple = Tuple::new(message)?;
+        if tuple.arity() != 2 {
+            return None;
+        }
+        let tag = tuple.get(0).and_then(Term::as_atom)?;
+        let value = tuple.get(1).and_then(Term::as_small_int)?;
+        match tag {
+            Atom::OK => Some((true, value)),
+            Atom::ERROR => Some((false, value)),
+            _ => None,
+        }
+    }
+
+    /// A native handler that starts one host async op through
+    /// `NativeContext::start_async` (the SAME facility seam the bytecode path
+    /// uses), parks with `Wait`, and on resume records the delivered
+    /// `{ok, V}`/`{error, R}` envelope read via `recv`.
+    struct StartAsyncEnvelope {
+        mfa: NativeKey,
+        issued: bool,
+        outcomes: Arc<Mutex<Vec<(bool, i64)>>>,
+    }
+
+    impl NativeHandler for StartAsyncEnvelope {
+        fn handle(&mut self, ctx: &mut NativeContext<'_>) -> NativeOutcome {
+            if !self.issued {
+                self.issued = true;
+                return match ctx.start_async(self.mfa, &[Term::small_int(9)]) {
+                    Ok(()) => NativeOutcome::Wait,
+                    Err(_) => NativeOutcome::Stop(ExitReason::Error),
+                };
+            }
+            while let Some(message) = ctx.recv() {
+                if let Some(envelope) = decode_envelope(message) {
+                    self.outcomes
+                        .lock()
+                        .expect("outcome sink lock")
+                        .push(envelope);
+                    return NativeOutcome::Stop(ExitReason::Normal);
+                }
+            }
+            NativeOutcome::Wait
+        }
+    }
+
+    /// A parked native handler that records every completion envelope it is
+    /// woken with and parks again — the direct-injection wall's observer.
+    struct EnvelopeRecorder {
+        outcomes: Arc<Mutex<Vec<(bool, i64)>>>,
+    }
+
+    impl NativeHandler for EnvelopeRecorder {
+        fn handle(&mut self, ctx: &mut NativeContext<'_>) -> NativeOutcome {
+            while let Some(message) = ctx.recv() {
+                if let Some(envelope) = decode_envelope(message) {
+                    self.outcomes
+                        .lock()
+                        .expect("outcome sink lock")
+                        .push(envelope);
+                }
+            }
+            NativeOutcome::Wait
+        }
+    }
+
+    const CMD_CRASH: i64 = 66;
+    const CMD_WORK: i64 = 67;
+
+    /// A supervised child: parks until commanded; `CMD_CRASH` makes it stop
+    /// abnormally (the link signal under test), any other small int is logged
+    /// work.
+    struct WorkOrCrashChild {
+        work_log: Arc<Mutex<Vec<i64>>>,
+    }
+
+    impl NativeHandler for WorkOrCrashChild {
+        fn handle(&mut self, ctx: &mut NativeContext<'_>) -> NativeOutcome {
+            while let Some(message) = ctx.recv() {
+                match message.as_small_int() {
+                    Some(CMD_CRASH) => return NativeOutcome::Stop(ExitReason::Error),
+                    Some(value) => self.work_log.lock().expect("work log lock").push(value),
+                    None => {}
+                }
+            }
+            NativeOutcome::Wait
+        }
+    }
+
+    fn child_factory(work_log: &Arc<Mutex<Vec<i64>>>) -> NativeHandlerFactory {
+        let work_log = Arc::clone(work_log);
+        Box::new(move || {
+            Box::new(WorkOrCrashChild {
+                work_log: Arc::clone(&work_log),
+            })
+        })
+    }
+
+    /// Decode a trapped `{'EXIT', SourcePid, Reason}` signal into
+    /// `(source_pid, reason_is_error)`.
+    fn decode_exit_signal(message: Term) -> Option<(u64, bool)> {
+        let tuple = Tuple::new(message)?;
+        if tuple.arity() != 3 {
+            return None;
+        }
+        if tuple.get(0).and_then(Term::as_atom) != Some(Atom::EXIT) {
+            return None;
+        }
+        let source = tuple.get(1).and_then(Term::as_pid)?;
+        let is_error = tuple.get(2).and_then(Term::as_atom) == Some(Atom::ERROR);
+        Some((source, is_error))
+    }
+
+    /// A trapping supervisor: slice 1 enables trap_exit and spawns a linked
+    /// child; on a trapped `{'EXIT', child, reason}` it records the signal,
+    /// restarts a fresh linked child through the same factory, and hands it
+    /// work — the restart logic the wall requires to complete without any
+    /// external pump.
+    struct TrappingRestarter {
+        started: bool,
+        child_pid: Arc<Mutex<Option<u64>>>,
+        exits: Arc<Mutex<Vec<(u64, bool)>>>,
+        work_log: Arc<Mutex<Vec<i64>>>,
+    }
+
+    impl NativeHandler for TrappingRestarter {
+        fn handle(&mut self, ctx: &mut NativeContext<'_>) -> NativeOutcome {
+            if !self.started {
+                self.started = true;
+                let _previous = ctx.set_trap_exit(true);
+                let child = ctx
+                    .spawn_native(child_factory(&self.work_log), Some(ctx.self_pid()))
+                    .expect("supervisor spawns the linked child");
+                *self.child_pid.lock().expect("child pid lock") = Some(child);
+                return NativeOutcome::Wait;
+            }
+            while let Some(message) = ctx.recv() {
+                if let Some(signal) = decode_exit_signal(message) {
+                    self.exits.lock().expect("exit log lock").push(signal);
+                    let replacement = ctx
+                        .spawn_native(child_factory(&self.work_log), Some(ctx.self_pid()))
+                        .expect("supervisor restarts the child via the factory");
+                    *self.child_pid.lock().expect("child pid lock") = Some(replacement);
+                    ctx.send(replacement, Term::small_int(CMD_WORK));
+                }
+            }
+            NativeOutcome::Wait
+        }
+    }
+
+    /// Spawn a native root and request the edge-triggered turn the same way
+    /// every production entry point does (test plumbing, not a pump).
+    fn spawn_native_root_edge(vm: &mut WasmVm, factory: NativeHandlerFactory) -> u64 {
+        let pid = vm.scheduler.borrow_mut().spawn_native_root(factory);
+        vm.schedule_external_edge()
+            .expect("native root spawn schedules the arbiter");
+        pid
+    }
+
+    #[wasm_bindgen_test]
+    async fn cast_from_true_idle_queues_one_turn_and_coalesces_a_burst() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let log = Rc::new(RefCell::new(Vec::<f64>::new()));
+        let recording_handler = || {
+            let log = Rc::clone(&log);
+            Closure::<dyn FnMut(JsValue) -> JsValue>::new(move |request: JsValue| {
+                if let Some(value) = request.as_f64() {
+                    log.borrow_mut().push(value);
+                }
+                JsValue::from_f64(0.0)
+            })
+            .into_js_value()
+            .unchecked_into::<Function>()
+        };
+        let actor = vm.spawn_actor(recording_handler());
+        host_macrotask().await;
+        let before = assert_true_idle(&vm).await;
+
+        // One cast from true idle: exactly one counted request, one queued.
+        vm.cast(actor, JsValue::from_f64(1.0))
+            .expect("cast succeeds");
+        let queued = vm.arbiter_counters();
+        assert_eq!(queued.arbiter.requests, before.arbiter.requests + 1);
+        assert_eq!(queued.arbiter.queued_now, 1);
+        assert_eq!(queued.arbiter.executions, before.arbiter.executions);
+
+        host_macrotask().await;
+        let after_one = vm.arbiter_counters();
+        assert_eq!(after_one.arbiter.executions, before.arbiter.executions + 1);
+        assert_eq!(after_one.arbiter.queued_now, 0);
+        assert_eq!(
+            *log.borrow(),
+            vec![1.0],
+            "the cast envelope reached the actor's cast handler"
+        );
+
+        // A pre-turn cast burst across three actors coalesces to ONE request
+        // and ONE execution (each actor consumes its cast in one slice).
+        let actor_b = vm.spawn_actor(recording_handler());
+        let actor_c = vm.spawn_actor(recording_handler());
+        host_macrotask().await;
+        let fanout_before = assert_true_idle(&vm).await;
+        for (target, value) in [(actor, 2.0), (actor_b, 3.0), (actor_c, 4.0)] {
+            vm.cast(target, JsValue::from_f64(value))
+                .expect("burst cast succeeds");
+        }
+        let burst_queued = vm.arbiter_counters();
+        assert_eq!(
+            burst_queued.arbiter.requests,
+            fanout_before.arbiter.requests + 1,
+            "a cast burst before the turn coalesces to one request"
+        );
+        assert_eq!(burst_queued.arbiter.queued_now, 1);
+
+        host_macrotask().await;
+        let after_burst = vm.arbiter_counters();
+        assert_eq!(
+            after_burst.arbiter.executions,
+            fanout_before.arbiter.executions + 1,
+            "one execution consumed the whole burst"
+        );
+        assert_eq!(after_burst.arbiter.queued_now, 0);
+        assert_eq!(
+            *log.borrow(),
+            vec![1.0, 2.0, 3.0, 4.0],
+            "every cast in the burst is durable: delivered once, none lost"
+        );
+
+        // A pre-turn burst to ONE actor still coalesces to one EXTERNAL
+        // request. The actor driver handles one message per slice, so the
+        // remainder rides the arbiter's own coalesced FairnessMacrotask
+        // continuations (one turn each; a fairness continuation is internal
+        // turn-taking, never an external wake): 3 casts = 1 external turn +
+        // exactly 2 fairness turns, every payload durable.
+        for value in [5.0, 6.0, 7.0] {
+            vm.cast(actor, JsValue::from_f64(value))
+                .expect("same-target burst cast succeeds");
+        }
+        let single_target_queued = vm.arbiter_counters();
+        assert_eq!(
+            single_target_queued.arbiter.requests,
+            after_burst.arbiter.requests + 1,
+            "the same-target burst coalesces to one external request"
+        );
+        assert_eq!(single_target_queued.arbiter.queued_now, 1);
+        host_macrotask().await;
+        host_macrotask().await;
+        host_macrotask().await;
+        let after_single_target = vm.arbiter_counters();
+        assert_eq!(
+            after_single_target.arbiter.executions,
+            after_burst.arbiter.executions + 3,
+            "one external turn plus exactly two coalesced fairness continuations"
+        );
+        assert_eq!(
+            after_single_target.arbiter.requests,
+            after_burst.arbiter.requests + 3,
+            "the two continuation requests are the arbiter's own fairness \
+             macrotasks, not external wake requests"
+        );
+        assert_eq!(after_single_target.arbiter.queued_now, 0);
+        assert_eq!(
+            *log.borrow(),
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
+            "the same-target burst is durable across the fairness chain"
+        );
+
+        // Dead-pid cast: still exactly one turn, silently dropped (the
+        // documented BEAM-send contract), no error and no delivery.
+        let dead = spawn_native_root_edge(&mut vm, Box::new(|| Box::new(StopImmediately)));
+        host_macrotask().await;
+        assert_eq!(
+            vm.scheduler.borrow().native_exit_reason(dead),
+            Some(ExitReason::Normal),
+            "the target pid is dead"
+        );
+        let before_dead = assert_true_idle(&vm).await;
+        vm.cast(dead, JsValue::from_f64(9.0))
+            .expect("a dead-pid cast returns Ok, never an error");
+        let dead_queued = vm.arbiter_counters();
+        assert_eq!(
+            dead_queued.arbiter.requests,
+            before_dead.arbiter.requests + 1
+        );
+        assert_eq!(dead_queued.arbiter.queued_now, 1);
+        host_macrotask().await;
+        let after_dead = vm.arbiter_counters();
+        assert_eq!(
+            after_dead.arbiter.executions,
+            before_dead.arbiter.executions + 1
+        );
+        assert_eq!(after_dead.arbiter.queued_now, 0);
+        assert_eq!(
+            *log.borrow(),
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
+            "the dead-pid cast was dropped silently: nothing new delivered"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn promise_completion_from_true_idle_queues_one_turn_with_durable_result() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let resolvers = Rc::new(RefCell::new(Vec::<(Function, Function)>::new()));
+        vm.register_async_nif(
+            "wport4_async",
+            "fetch",
+            1,
+            promise_returning_nif(&resolvers),
+        )
+        .expect("async NIF registers");
+        let caller = async_caller_module(&vm, "wport4_promise_caller");
+        let caller_name = caller.name;
+        vm.module_registry.insert(caller);
+        let run = vm.atom_table.intern("run");
+
+        // Two bytecode callers suspend at the async-NIF await.
+        let pid_a = spawn_bytecode(
+            &mut vm,
+            caller_name,
+            run,
+            vec![OwnedTerm::immediate(Term::small_int(1))],
+        );
+        let pid_b = spawn_bytecode(
+            &mut vm,
+            caller_name,
+            run,
+            vec![OwnedTerm::immediate(Term::small_int(2))],
+        );
+        host_macrotask().await;
+        assert_eq!(
+            resolvers.borrow().len(),
+            2,
+            "both callers reached the suspended Promise await"
+        );
+        let before = assert_true_idle(&vm).await;
+
+        // Fulfilment burst: both Promises settle before the turn.
+        {
+            let resolvers = resolvers.borrow();
+            resolvers[0]
+                .0
+                .call1(&JsValue::UNDEFINED, &JsValue::from_f64(41.0))
+                .expect("resolve caller A");
+            resolvers[1]
+                .0
+                .call1(&JsValue::UNDEFINED, &JsValue::from_f64(42.0))
+                .expect("resolve caller B");
+        }
+        host_microtask().await;
+        let queued = vm.arbiter_counters();
+        assert_eq!(
+            queued.arbiter.requests,
+            before.arbiter.requests + 1,
+            "a settlement burst coalesces to one arbiter request"
+        );
+        assert_eq!(queued.arbiter.queued_now, 1);
+        assert_eq!(queued.arbiter.executions, before.arbiter.executions);
+
+        host_macrotask().await;
+        let after = vm.arbiter_counters();
+        assert_eq!(after.arbiter.requests, before.arbiter.requests + 1);
+        assert_eq!(after.arbiter.executions, before.arbiter.executions + 1);
+        assert_eq!(after.arbiter.queued_now, 0);
+        let exit_a = await_exit_json(&mut vm, pid_a).await;
+        assert_eq!(exit_a["state"], "exited");
+        assert_eq!(
+            exit_a["result"],
+            json!([41]),
+            "durable RAW resolved term in x(0): the resumed bytecode consed it \
+             — no {{ok,V}} tuple exists on the bytecode path"
+        );
+        let exit_b = await_exit_json(&mut vm, pid_b).await;
+        assert_eq!(exit_b["state"], "exited");
+        assert_eq!(exit_b["result"], json!([42]));
+
+        // Rejection twin: the process exits at the completion seam with
+        // `ExitReason::Error` carrying the rejection term — asserted via the
+        // captured exit result, with the same counter deltas.
+        let pid_c = spawn_bytecode(
+            &mut vm,
+            caller_name,
+            run,
+            vec![OwnedTerm::immediate(Term::small_int(3))],
+        );
+        host_macrotask().await;
+        assert_eq!(resolvers.borrow().len(), 3);
+        let before_reject = assert_true_idle(&vm).await;
+        resolvers.borrow()[2]
+            .1
+            .call1(&JsValue::UNDEFINED, &JsValue::from_f64(13.0))
+            .expect("reject caller C");
+        host_microtask().await;
+        let reject_queued = vm.arbiter_counters();
+        assert_eq!(
+            reject_queued.arbiter.requests,
+            before_reject.arbiter.requests + 1
+        );
+        assert_eq!(reject_queued.arbiter.queued_now, 1);
+        assert_eq!(
+            reject_queued.arbiter.executions,
+            before_reject.arbiter.executions
+        );
+        host_macrotask().await;
+        let after_reject = vm.arbiter_counters();
+        assert_eq!(
+            after_reject.arbiter.executions,
+            before_reject.arbiter.executions + 1
+        );
+        assert_eq!(after_reject.arbiter.queued_now, 0);
+        let exit_c = await_exit_json(&mut vm, pid_c).await;
+        assert_eq!(
+            exit_c["state"], "exited",
+            "the rejected process exited at the completion seam"
+        );
+        assert_eq!(
+            exit_c["result"],
+            json!(13),
+            "the captured exit result is the bare rejection term — never the \
+             consed list, so the bytecode did NOT resume past the NIF \
+             (the ExitReason::Error exit-at-seam path)"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn native_completion_envelope_wakes_parked_handler_through_the_arbiter() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let resolvers = Rc::new(RefCell::new(Vec::<(Function, Function)>::new()));
+        vm.register_async_nif("wport4_native", "op", 1, promise_returning_nif(&resolvers))
+            .expect("async host op registers");
+        let mfa: NativeKey = (
+            vm.atom_table.intern("wport4_native"),
+            vm.atom_table.intern("op"),
+            1,
+        );
+        let outcomes = Arc::new(Mutex::new(Vec::<(bool, i64)>::new()));
+        let factory = |outcomes: &Arc<Mutex<Vec<(bool, i64)>>>| -> NativeHandlerFactory {
+            let outcomes = Arc::clone(outcomes);
+            Box::new(move || {
+                Box::new(StartAsyncEnvelope {
+                    mfa,
+                    issued: false,
+                    outcomes: Arc::clone(&outcomes),
+                })
+            })
+        };
+        let _pid_ok = spawn_native_root_edge(&mut vm, factory(&outcomes));
+        let _pid_err = spawn_native_root_edge(&mut vm, factory(&outcomes));
+        host_macrotask().await;
+        assert_eq!(
+            resolvers.borrow().len(),
+            2,
+            "both native handlers started host ops via start_async and parked"
+        );
+        assert!(
+            outcomes.lock().expect("outcome sink lock").is_empty(),
+            "no envelope before the host settles"
+        );
+        let before = assert_true_idle(&vm).await;
+
+        // Settlement burst before the turn: one fulfilment + one rejection.
+        {
+            let resolvers = resolvers.borrow();
+            resolvers[0]
+                .0
+                .call1(&JsValue::UNDEFINED, &JsValue::from_f64(21.0))
+                .expect("resolve the first host op");
+            resolvers[1]
+                .1
+                .call1(&JsValue::UNDEFINED, &JsValue::from_f64(7.0))
+                .expect("reject the second host op");
+        }
+        host_microtask().await;
+        let queued = vm.arbiter_counters();
+        assert_eq!(
+            queued.arbiter.requests,
+            before.arbiter.requests + 1,
+            "the settlement burst coalesces to one arbiter request"
+        );
+        assert_eq!(queued.arbiter.queued_now, 1);
+        assert_eq!(queued.arbiter.executions, before.arbiter.executions);
+
+        host_macrotask().await;
+        let after = vm.arbiter_counters();
+        assert_eq!(after.arbiter.requests, before.arbiter.requests + 1);
+        assert_eq!(after.arbiter.executions, before.arbiter.executions + 1);
+        assert_eq!(after.arbiter.queued_now, 0);
+        let mut observed = outcomes.lock().expect("outcome sink lock").clone();
+        observed.sort_unstable();
+        assert_eq!(
+            observed,
+            vec![(false, 7), (true, 21)],
+            "{{ok, Value}} and {{error, Reason}} both observed via recv on resume"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn native_completion_direct_injection_wakes_parked_handler() {
+        // Ruling 4: the direct `complete_async`-injection bisection of the
+        // end-to-end wall above — same wake/coalescing/durability assertions
+        // with the completion injected at the scheduler seam, separating
+        // Promise plumbing from envelope delivery when the e2e wall reddens.
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let outcomes = Arc::new(Mutex::new(Vec::<(bool, i64)>::new()));
+        let pid = spawn_native_root_edge(&mut vm, {
+            let outcomes = Arc::clone(&outcomes);
+            Box::new(move || {
+                Box::new(EnvelopeRecorder {
+                    outcomes: Arc::clone(&outcomes),
+                })
+            })
+        });
+        host_macrotask().await;
+        let before = assert_true_idle(&vm).await;
+
+        // Inject a completion burst at the scheduler seam, consuming the edge
+        // exactly as the wrapper's settlement path does.
+        {
+            let mut scheduler = vm.scheduler.borrow_mut();
+            assert!(
+                scheduler.complete_async(
+                    pid,
+                    WasmAsyncCompletion::Ok(OwnedTerm::immediate(Term::small_int(5)))
+                ),
+                "the first injected completion wakes the parked handler"
+            );
+        } // scheduler borrow dropped before the arbiter host call
+        vm.schedule_external_edge()
+            .expect("the first injection requests the one turn");
+        {
+            let mut scheduler = vm.scheduler.borrow_mut();
+            let _already_woken = scheduler.complete_async(
+                pid,
+                WasmAsyncCompletion::Error(OwnedTerm::immediate(Term::small_int(7))),
+            );
+        }
+        vm.schedule_external_edge()
+            .expect("the second injection coalesces (no edge, no request)");
+        let queued = vm.arbiter_counters();
+        assert_eq!(
+            queued.arbiter.requests,
+            before.arbiter.requests + 1,
+            "the injected burst coalesces to one arbiter request"
+        );
+        assert_eq!(queued.arbiter.queued_now, 1);
+        assert_eq!(queued.arbiter.executions, before.arbiter.executions);
+
+        host_macrotask().await;
+        let after = vm.arbiter_counters();
+        assert_eq!(after.arbiter.executions, before.arbiter.executions + 1);
+        assert_eq!(after.arbiter.queued_now, 0);
+        assert_eq!(
+            *outcomes.lock().expect("outcome sink lock"),
+            vec![(true, 5), (false, 7)],
+            "both injected envelopes are durable and delivered in order"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn trapped_exit_wakes_linked_supervisor_without_external_pump() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let child_pid = Arc::new(Mutex::new(None));
+        let exits = Arc::new(Mutex::new(Vec::<(u64, bool)>::new()));
+        let work_log = Arc::new(Mutex::new(Vec::<i64>::new()));
+        let _supervisor = spawn_native_root_edge(&mut vm, {
+            let child_pid = Arc::clone(&child_pid);
+            let exits = Arc::clone(&exits);
+            let work_log = Arc::clone(&work_log);
+            Box::new(move || {
+                Box::new(TrappingRestarter {
+                    started: false,
+                    child_pid: Arc::clone(&child_pid),
+                    exits: Arc::clone(&exits),
+                    work_log: Arc::clone(&work_log),
+                })
+            })
+        });
+        host_macrotask().await;
+        let child = child_pid
+            .lock()
+            .expect("child pid lock")
+            .expect("the linked child spawned during supervisor setup");
+        let before = assert_true_idle(&vm).await;
+
+        // One host send from true idle crashes the child. Everything else —
+        // link propagation, trapped {'EXIT', …} delivery, the supervisor's
+        // restart logic, the replacement child's work — must complete inside
+        // the ONE requested turn (or its single fairness continuation), with
+        // no external pump and no duplicate external turn.
+        let crash_command = i32::try_from(CMD_CRASH).expect("CMD_CRASH fits i32");
+        vm.send_message(child, JsValue::from_f64(f64::from(crash_command)))
+            .expect("the crash trigger delivers");
+        let queued = vm.arbiter_counters();
+        assert_eq!(queued.arbiter.requests, before.arbiter.requests + 1);
+        assert_eq!(queued.arbiter.queued_now, 1);
+
+        host_macrotask().await;
+        let after = vm.arbiter_counters();
+        assert_eq!(
+            after.arbiter.requests,
+            before.arbiter.requests + 1,
+            "no duplicate external turn: the mid-drain trapped-exit wake is \
+             consumed by the active drain (in-drain suppression)"
+        );
+        assert_eq!(
+            after.arbiter.executions,
+            before.arbiter.executions + 1,
+            "EXIT delivery, restart logic, and the replacement child's work \
+             all ran in the SAME host turn"
+        );
+        assert_eq!(after.arbiter.queued_now, 0);
+        assert_eq!(
+            vm.arbiter.last_summary.borrow()["state"],
+            "idle",
+            "the turn settled idle: the fairness-continuation branch was not needed"
+        );
+        assert_eq!(
+            *exits.lock().expect("exit log lock"),
+            vec![(child, true)],
+            "{{'EXIT', child, error}} was delivered to the trapping survivor"
+        );
+        assert_eq!(
+            *work_log.lock().expect("work log lock"),
+            vec![CMD_WORK],
+            "the restarted child received its work message in the same turn"
+        );
+        let replacement = child_pid
+            .lock()
+            .expect("child pid lock")
+            .expect("the replacement child pid was recorded");
+        assert_ne!(replacement, child, "the supervisor spawned a FRESH child");
     }
 }
