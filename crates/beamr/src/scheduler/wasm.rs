@@ -545,6 +545,14 @@ impl WasmScheduler {
                 continue;
             }
 
+            // LATENT GAP, record-only (WPORT-4 tear Ruling 7): bytecode-process
+            // exits — this arm and the `ExecutionResult::Exited` arm below —
+            // perform NO link propagation, unlike the cooperative native path
+            // (`wasm_native.rs::propagate_native_exit`). Unreachable today:
+            // cooperative bytecode `native_services()` injects no link/spawn/
+            // supervision facility, so a bytecode process cannot hold links.
+            // The guarding wall belongs to the future bytecode-linking brief
+            // that makes this path reachable (arc-board line recorded).
             if let Some(reason) = self.apply_async_completion(&mut process) {
                 let x0 = process.x_reg(0);
                 let _transition = process.transition_to(ProcessStatus::Exited(reason));
