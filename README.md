@@ -204,6 +204,10 @@ Key architectural choices are documented as ADRs in `docs/adr/`:
 
 Several major subsystems — the JIT, distribution, record/replay, the io_uring I/O backend, and the capability security layer — post-date the current ADRs and are not yet covered by an ADR.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, repo layout, and development workflow.
+
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
