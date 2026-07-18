@@ -51,6 +51,59 @@ impl fmt::Display for LoadError {
 
 impl Error for LoadError {}
 
+/// The non-`Native` resolution state a guard/BIF import landed in when the
+/// guard-BIF dispatch demanded a native entry and did not get one.
+///
+/// Guard and BIF opcodes can only call a Rust [`Native`](crate::module::ResolvedImportTarget::Native)
+/// entry; every other resolution shape is a composition or bytecode-shape
+/// error at the dispatch seam. This enum names WHICH shape so the refusal can
+/// say so (see [`ExecError::GuardBifUnavailable`]). It carries no payload — the
+/// loader's denied/unresolved report is the detail channel — which keeps it
+/// `Copy` and its `Display` a single fixed word.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum GuardBifResolution {
+    /// Not in the native BIF registry and the target module is not loaded.
+    Deferred,
+    /// Registered as a native BIF but capability-denied at load time.
+    Denied,
+    /// Resolved to a bytecode export — illegal in guard/BIF position.
+    CodeTarget,
+    /// The target module was loaded but did not export the requested MFA.
+    Unresolved,
+}
+
+impl GuardBifResolution {
+    /// The one-word resolution label used in the refusal's one-log-line form.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Deferred => "Deferred",
+            Self::Denied => "Denied",
+            Self::CodeTarget => "CodeTarget",
+            Self::Unresolved => "Unresolved",
+        }
+    }
+
+    /// The fixed diagnostic hint for this resolution arm.
+    #[must_use]
+    pub const fn hint(self) -> &'static str {
+        match self {
+            Self::Deferred => {
+                "native BIF registry has no entry and the target module is not loaded"
+            }
+            Self::Denied => "registered but capability-denied at load",
+            Self::CodeTarget => "resolved to a bytecode export — guard BIFs must be native",
+            Self::Unresolved => "target module loaded but export missing",
+        }
+    }
+}
+
+impl fmt::Display for GuardBifResolution {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.label())
+    }
+}
+
 /// Failures that can occur while executing BEAM code.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecError {
@@ -113,6 +166,25 @@ pub enum ExecError {
     ServiceUnavailable {
         /// Inventory label of the disabled service.
         service: &'static str,
+    },
+    /// A guard/BIF opcode dispatched an import that did not resolve to a native
+    /// entry. Extends the [`ServiceUnavailable`](Self::ServiceUnavailable)
+    /// composition-honesty doctrine to the guard-BIF import seam: rather than a
+    /// bare `InvalidOperand`, the refusal names the failing MFA AND the
+    /// resolution state ([`GuardBifResolution`]) so an empty-registry
+    /// composition (`erlang:'+'/2` resolving `Deferred`) is diagnosable from one
+    /// log line instead of a multi-seat attribution. Same mint point, same
+    /// process-fatal outcome, same fail-label handling as the operand refusals
+    /// it replaces — only the error VALUE gains structure.
+    GuardBifUnavailable {
+        /// Imported module atom.
+        module: crate::atom::Atom,
+        /// Imported function atom.
+        function: crate::atom::Atom,
+        /// Imported arity.
+        arity: u8,
+        /// The non-`Native` resolution state the import landed in.
+        resolution: GuardBifResolution,
     },
     /// Replay mode reached a decision point that does not match the recorded log.
     ReplayMismatch(String),
@@ -187,6 +259,23 @@ impl fmt::Display for ExecError {
             Self::ServiceUnavailable { service } => {
                 write!(formatter, "scheduler service unavailable: {service}")
             }
+            Self::GuardBifUnavailable {
+                module,
+                function,
+                arity,
+                resolution,
+            } => {
+                let fallback = AtomTable::with_common_atoms();
+                write!(
+                    formatter,
+                    "guard bif {}:{}/{} unavailable: import resolved {} ({})",
+                    fallback.resolve(*module).unwrap_or("#<unknown atom>"),
+                    fallback.resolve(*function).unwrap_or("#<unknown atom>"),
+                    arity,
+                    resolution.label(),
+                    resolution.hint(),
+                )
+            }
             Self::ReplayMismatch(message) => write!(formatter, "replay mismatch: {message}"),
         }
     }
@@ -223,6 +312,19 @@ impl ExecError {
                     formatted_args
                 )
             }
+            Self::GuardBifUnavailable {
+                module,
+                function,
+                arity,
+                resolution,
+            } => format!(
+                "guard bif {}:{}/{} unavailable: import resolved {} ({})",
+                atom_table.resolve(*module).unwrap_or("#<unknown atom>"),
+                atom_table.resolve(*function).unwrap_or("#<unknown atom>"),
+                arity,
+                resolution.label(),
+                resolution.hint(),
+            ),
             _ => self.to_string(),
         }
     }
