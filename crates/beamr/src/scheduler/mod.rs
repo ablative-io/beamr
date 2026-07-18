@@ -984,6 +984,27 @@ impl Scheduler {
     /// [`SchedulerServices::minimal`] / [`SchedulerServices::full_runtime`]
     /// instead; this constructor is retained for source compatibility and will
     /// keep the legacy defaults for one release (see CHANGELOG migration note).
+    ///
+    /// # Empty BIF registry (composition footgun)
+    ///
+    /// **This constructor defaults the native BIF registry to an EMPTY one**
+    /// (`BifRegistryImpl::new()`). With zero native BIFs registered, every
+    /// `erlang:*` import in every module you subsequently load resolves
+    /// [`Deferred`](crate::error::GuardBifResolution::Deferred) — and that is
+    /// essentially EVERY erlc-compiled module, because `module_info` alone
+    /// imports `erlang:get_module_info`. The first guard-BIF execution
+    /// (any arithmetic, comparison, or type guard) then refuses with a
+    /// process-fatal [`ExecError::GuardBifUnavailable`](crate::error::ExecError).
+    /// A deterministic child-death at its first arithmetic instruction, once
+    /// mistaken for an interpreter wedge, traced to exactly this default.
+    ///
+    /// To execute real BEAM bytecode, construct through a registry-carrying
+    /// constructor — [`Scheduler::with_services_and_code_server`] or
+    /// [`Scheduler::with_code_server`] — with at least
+    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs) applied
+    /// to the registry, and consult the returned [`HotLoadResult`]'s
+    /// unresolved-import report after every load (see
+    /// [`Scheduler::with_services`] for a worked example).
     pub fn new(
         config: SchedulerConfig,
         module_registry: Arc<ModuleRegistry>,
@@ -1009,6 +1030,55 @@ impl Scheduler {
     /// file/generic IO ring, whose cross-scheduler routing lands with the §3.9
     /// gate in commit 6 ([`WithServicesError`]). Validate ahead of construction
     /// with [`SchedulerServices::validate`].
+    ///
+    /// # Empty BIF registry (composition footgun)
+    ///
+    /// **Like [`Scheduler::new`], this constructor defaults the native BIF
+    /// registry to an EMPTY one** (`BifRegistryImpl::new()`). It composes the
+    /// ancillary SERVICES you ask for, but it registers ZERO native BIFs — so
+    /// every `erlang:*` import in every subsequently loaded module resolves
+    /// [`Deferred`](crate::error::GuardBifResolution::Deferred) and the first
+    /// guard-BIF execution refuses, process-fatal, with
+    /// [`ExecError::GuardBifUnavailable`](crate::error::ExecError).
+    /// This default is the strongest single hazard on the embedder surface: a
+    /// scaffolded host that never registers a BIF appears to load modules fine
+    /// and then dies at the first arithmetic instruction.
+    ///
+    /// Embedders executing real BEAM bytecode must construct through a
+    /// registry-carrying constructor — [`Scheduler::with_services_and_code_server`]
+    /// or [`Scheduler::with_code_server`] — with at least
+    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs) applied,
+    /// and consult the [`HotLoadResult`]'s unresolved-import report after every
+    /// load:
+    ///
+    /// ```rust,no_run
+    /// # fn compose() -> Result<(), String> {
+    /// use std::sync::Arc;
+    /// use beamr::atom::AtomTable;
+    /// use beamr::module::ModuleRegistry;
+    /// use beamr::native::BifRegistryImpl;
+    /// use beamr::native::bifs::register_gate1_bifs;
+    /// use beamr::scheduler::{Scheduler, SchedulerConfig, SchedulerServices};
+    ///
+    /// let atoms = Arc::new(AtomTable::with_common_atoms());
+    /// let bifs = BifRegistryImpl::new();
+    /// // Register the gate1 native BIFs (erlang:'+'/2 and friends) BEFORE loading
+    /// // any module that imports erlang:* — which is every erlc-compiled module.
+    /// register_gate1_bifs(&bifs, &atoms).map_err(|error| error.to_string())?;
+    ///
+    /// let scheduler = Scheduler::with_services_and_code_server(
+    ///     SchedulerConfig::default(),
+    ///     SchedulerServices::minimal(),
+    ///     Arc::new(ModuleRegistry::new()),
+    ///     atoms,
+    ///     Arc::new(bifs),
+    /// )?;
+    /// // After each hot-load, treat a non-empty `erlang:*` deferred report as a
+    /// // composition error rather than waiting for the process-fatal refusal.
+    /// let _ = &scheduler;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn with_services(
         config: SchedulerConfig,
         services: SchedulerServices,
