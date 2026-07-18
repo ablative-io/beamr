@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 0.15.4 — 2026-07-18
+
+### Added
+
+- Additive registry API: `BifRegistryImpl::replace_existing(module, function,
+  arity, native_fn, capability) -> Result<NativeEntry, NativeReplacementError>`
+  — atomic replacement of an already-occupied MFA returning the previous
+  `NativeEntry` whole (function + capability, directly delegatable). A
+  replacement, not an upsert: a vacant MFA returns typed
+  `NativeReplacementError::MissingMfa` and leaves the registry observably
+  unchanged. The occupied-decision and the swap share one map-entry write
+  guard (no lookup-then-replace gap; linearizes at the entry insert), a racing
+  lookup observes the whole previous or the whole replacement entry, never
+  torn, and no error path can vacate the slot. Intended for registry
+  construction (install the complete BIF table, then fence selected MFAs
+  before starting scheduler workers) — the driver is aion's spawn-reservation
+  fencing of `erlang:spawn/1` / `erlang:spawn_link/1` over the complete Gate-3
+  table. Scoped to normal-scheduled BIFs: the replacement entry is written
+  with `dirty_kind: None` (the returned previous entry keeps its `dirty_kind`
+  intact). Gate tables, scheduler, wasm, and exit surfaces untouched
+  (insertion-only change).
+
 ## 0.15.3 — 2026-07-18
 
 ### Added
