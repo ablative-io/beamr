@@ -79,7 +79,9 @@ pub(super) struct BoundedTombstones {
     reasons: DashMap<u64, ExitReason>,
     /// Complete take-once outcomes plus their durable publication tokens. The
     /// owned term is retained until consumed; the compact token remains for the
-    /// scheduler lifetime and closes the eviction/consumption TOCTOU.
+    /// scheduler lifetime and closes the eviction/consumption TOCTOU. Its 40-byte
+    /// per-pid value residue is the deliberate, lawful price of process-lifetime
+    /// exactly-once (excluding the `DashMap` key and bucket overhead).
     outcomes: DashMap<u64, FinalizedOutcome>,
     /// Insertion order of currently-live pids, oldest at the front. Guarded
     /// independently of the DashMap shards; it also serializes writers so an
@@ -250,6 +252,35 @@ mod tests {
 
     fn insert(store: &BoundedTombstones, pid: u64, reason: ExitReason) -> Option<u64> {
         store.insert_outcome(pid, reason, OwnedTerm::immediate(Term::NIL))
+    }
+
+    #[test]
+    fn finalized_outcome_residue_is_size_bounded_and_payload_free_after_take() {
+        const PINNED_RETAINED_VALUE_BYTES: usize = 40;
+
+        // Measured size on the supported 64-bit layout is 40 bytes. Pin that
+        // ceiling so the permanent exactly-once token cannot silently grow.
+        assert!(
+            core::mem::size_of::<FinalizedOutcome>() <= PINNED_RETAINED_VALUE_BYTES,
+            "retained value grew beyond {PINNED_RETAINED_VALUE_BYTES} bytes"
+        );
+
+        let store = BoundedTombstones::with_capacity(1);
+        let pid = 1;
+        let payload = OwnedTerm::from_allocations(Term::NIL, vec![vec![0_u64].into_boxed_slice()]);
+        assert_eq!(payload.allocation_count(), 1, "test payload must allocate");
+        store.insert_outcome(pid, ExitReason::Normal, payload);
+
+        let (reason, payload) = store.take_outcome(&pid).expect("outcome is takeable");
+        assert_eq!(reason, ExitReason::Normal);
+        assert_eq!(payload.allocation_count(), 1, "take returns the allocation");
+        drop(payload);
+
+        let retained = store.outcomes.get(&pid).expect("token remains durable");
+        assert!(
+            retained.outcome.is_none(),
+            "take_exit_outcome must leave no OwnedTerm or payload allocation in the ledger"
+        );
     }
 
     /// (a) Inserting far more than the cap keeps the live count bounded at the
