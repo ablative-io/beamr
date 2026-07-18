@@ -1,0 +1,10 @@
+{
+  "_comment": "WPORT-6 expected-observation 4: fetch_chain_a points at a URL that 404s. Kahn order loads c then b (both succeed and stay loaded), then a's fetch fails -> the injected adapter throws on !r.ok, rejecting with ArtifactLoadError 'artifact_fetch_failed: ...' whose data names artifact fetch_chain_a, the bad URL, stage 'fetch', and loaded [fetch_chain_c, fetch_chain_b].",
+  "format": "beamr-fetch-manifest",
+  "version": 1,
+  "modules": [
+    { "name": "fetch_chain_c", "url": "fetch_chain_c.beam", "deps": [] },
+    { "name": "fetch_chain_b", "url": "fetch_chain_b.beam", "deps": ["fetch_chain_c"] },
+    { "name": "fetch_chain_a", "url": "fetch_chain_a_DELIBERATELY_MISSING.beam", "deps": ["fetch_chain_b"] }
+  ]
+}

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>WPORT-3 PROBE-THROTTLE</title></head>
+<body>
+<h1>WPORT-3 PROBE-THROTTLE — platform timer throttling</h1>
+<p>Arms both deadline classes, then waits. Keep this tab backgrounded past both
+deadlines (and past the ~5-min intensive-throttle threshold). The page records
+timestamps of everything and reports on fire.</p>
+<pre id="log"></pre>
+<script type="module">
+import {
+  installTimerSpies, spySummary, loadBundle, fetchBeam, obs, suiteComplete, suiteFatal, now, sleep,
+} from "./probe-common.js";
+
+const log = (m) => { document.getElementById("log").textContent += m + "\n"; };
+const mode = new URLSearchParams(location.search).get("mode") === "worker" ? "worker" : "main";
+
+// Wall-clock anchor so late fires can be dated even under throttling.
+const wallAnchor = { perf: now(), epoch: Date.now() };
+const stamp = () => ({ perf: now(), epoch: Date.now(), sinceArmMs: null });
+
+async function runMain() {
+  const spy = installTimerSpies();
+  const beamr = await loadBundle();
+  const beam = await fetchBeam(`${location.origin}/artifacts/throttle_probe.beam`);
+  const vm = beamr.create_vm();
+  vm.load_module(beam);
+
+  const armBefore = spy.arms.length;
+  const recvPid = vm.spawn("throttle_probe", "wait30", "[]");      // receive-after T+30s
+  const nativePid = vm.spawn("throttle_probe", "deliver45", "[]"); // native Deliver T+45s (self-armed)
+  vm.run_step();                                                   // force the arm
+  await sleep(30);
+  const armed = spy.arms.slice(armBefore).filter((a) => a.delay >= 1000);
+  const armedAt = now();
+
+  obs("armed", {
+    mode, wallAnchor,
+    requestedDeadlines: { receiveAfterMs: 30000, nativeSendAfterMs: 45000 },
+    unifiedArmedDelayMs: armed.length ? armed[0].delay : null,
+    unifiedArmMatchesEarliest: armed.length === 1 && armed[0].delay === 30000,
+    recvPid: Number(recvPid), nativePid: Number(nativePid),
+    armStamp: { perf: armedAt, epoch: Date.now() },
+    spyAtArm: spySummary(spy),
+    note: "Runner: background NOW; the one setTimeout is armed at the earliest (30s). The 45s native rides behind and re-arms after the 30s fires.",
+  });
+  log("ARMED unifiedDelay=" + (armed[0] && armed[0].delay));
+
+  // Await both exits — event-driven, no polling. Each resolves when its timer
+  // actually fires (late under throttling).
+  const fires = [];
+  const started = now();
+  const onFire = (which, completionStr) => {
+    const s = { which, ...stamp(), sinceArmMs: now() - armedAt, elapsedSinceStartMs: now() - started,
+      completion: JSON.parse(completionStr), armsSoFar: spy.arms.length, clearsSoFar: spy.clears.length,
+      nextArmedDelaysMs: spy.arms.filter((a) => a.delay >= 1000 && a.t > armedAt).map((a) => a.delay) };
+    fires.push(s);
+    obs("fire", s);
+    log("FIRE " + which + " sinceArm=" + Math.round(s.sinceArmMs) + "ms result=" + JSON.stringify(s.completion.result));
+  };
+  const pRecv = vm.await_exit(recvPid).then((r) => onFire("receive-after", r));
+  const pNative = vm.await_exit(nativePid).then((r) => onFire("native-deliver", r));
+  await Promise.all([pRecv, pNative]);
+
+  const receive = fires.find((f) => f.which === "receive-after");
+  const native = fires.find((f) => f.which === "native-deliver");
+  obs("settled", {
+    mode,
+    receiveAfter: receive ? { sinceArmMs: receive.sinceArmMs, result: receive.completion.result } : null,
+    nativeDeliver: native ? { sinceArmMs: native.sinceArmMs, result: native.completion.result } : null,
+    bothDeliveredExactlyOnce: fires.length === 2,
+    lateButComplete: fires.length === 2 && receive && native &&
+      receive.completion.result === "timed_out" && native.completion.result === "got_it",
+    fireTimeline: fires,
+    finalSpy: spySummary(spy),
+  });
+  log("SETTLED both delivered");
+  suiteComplete({ probe: "wport3", mode, legs: ["armed", "fire", "settled"] });
+}
+
+async function runWorker() {
+  const worker = new Worker("./worker.js", { type: "module" });
+  const started = now();
+  const fired = new Set();
+  worker.onmessage = (e) => {
+    const m = e.data;
+    log("worker: " + JSON.stringify(m).slice(0, 120));
+    if (m.type === "throttle-armed") {
+      obs("armed", { mode, wallAnchor,
+        requestedDeadlines: { receiveAfterMs: 30000, nativeSendAfterMs: 45000 },
+        unifiedArmedDelayMs: (m.armedDelays.find((d) => d >= 1000)) ?? null,
+        recvPid: m.recvPid, nativePid: m.nativePid, armStamp: { perf: m.t, epoch: Date.now() },
+        armedDelaysRaw: m.armedDelays,
+        note: "Worker mode: both classes armed inside the dedicated Worker; runner backgrounds the OWNER page now." });
+      log("ARMED (worker)");
+    } else if (m.type === "throttle-fire") {
+      obs("fire", { which: m.which, ...stamp(), elapsedSinceStartMs: m.elapsedMs, completion: m.completion });
+      log("FIRE (worker) " + m.which + " elapsed=" + Math.round(m.elapsedMs) + "ms");
+      fired.add(m.which);
+      if (fired.size === 2) {
+        obs("settled", { mode, bothDeliveredExactlyOnce: true, note: "worker-mode both classes delivered" });
+        suiteComplete({ probe: "wport3", mode, legs: ["armed", "fire", "settled"] });
+        log("SETTLED (worker)");
+      }
+    } else if (m.type === "worker-error") {
+      suiteFatal(new Error(m.message));
+    }
+  };
+  // Kick off; postMessage queues until the worker module has loaded.
+  worker.postMessage({ cmd: "throttle-arm", origin: location.origin });
+}
+
+(mode === "worker" ? runWorker() : runMain())
+  .catch((e) => { suiteFatal(e); log("FATAL " + e); });
+</script>
+</body>
+</html>

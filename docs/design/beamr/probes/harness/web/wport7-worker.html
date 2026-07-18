@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>WPORT-7 1b — Worker panic surfacing</title></head>
+<body>
+<h1>WPORT-7 leg 1b — Worker-context panic surfacing</h1>
+<pre id="log"></pre>
+<script type="module">
+import { obs, suiteComplete, suiteFatal, now, sleep } from "./probe-common.js";
+const log = (m) => { document.getElementById("log").textContent += m + "\n"; };
+
+async function main() {
+  const workerEvents = [];       // messages from inside the worker (self.onerror, cb, ...)
+  const pageWorkerOnerror = [];  // the owner page's worker.onerror
+
+  const worker = new Worker("./worker.js", { type: "module" });
+  worker.onerror = (e) => {
+    pageWorkerOnerror.push({ t: now(), message: String(e.message || e), filename: e.filename, lineno: e.lineno });
+    e.preventDefault && e.preventDefault();
+  };
+  worker.onmessage = (e) => { workerEvents.push(e.data); log("worker: " + JSON.stringify(e.data).slice(0, 120)); };
+
+  // Wait for the worker's ready handshake.
+  const t0 = now();
+  while (!workerEvents.some((m) => m.type === "ready") && now() - t0 < 5000) await sleep(20);
+
+  worker.postMessage({ cmd: "panic-1b", origin: location.origin });
+
+  // Give the uncaught trap time to surface both channels.
+  await sleep(1500);
+
+  const cb = workerEvents.find((m) => m.type === "cb");
+  const selfOnerror = workerEvents.find((m) => m.type === "self-onerror");
+  obs("1b-worker", {
+    workerReady: workerEvents.some((m) => m.type === "ready"),
+    panicCallbackFired: !!cb,
+    callbackPayload: cb ? cb.payload : null,
+    payloadHasMessage: !!cb && cb.payload.includes("wport7 intentional panic wall probe"),
+    workerSelfOnerrorFired: !!selfOnerror,
+    workerSelfOnerror: selfOnerror || null,
+    ownerPageWorkerOnerrorFired: pageWorkerOnerror.length > 0,
+    ownerPageWorkerOnerror: pageWorkerOnerror,
+    callbackBeforeTrap: !!cb && (!selfOnerror || cb.t <= selfOnerror.t) &&
+      (pageWorkerOnerror.length === 0 || cb.t <= pageWorkerOnerror[0].t),
+    allWorkerMessages: workerEvents,
+    note: "The panic callback (process-global in the worker realm) must fire BEFORE the trap; onerror routing (worker self.onerror vs owner-page worker.onerror) is engine-dependent and recorded as observed.",
+  });
+  log("1b done");
+
+  worker.terminate();
+  suiteComplete({ probe: "wport7-worker", legs: ["1b-worker"] });
+  log("SUITE COMPLETE");
+}
+
+main().catch((e) => { suiteFatal(e); log("FATAL " + e); });
+</script>
+</body>
+</html>
