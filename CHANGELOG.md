@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 0.15.3 — 2026-07-18
+
+### Added
+
+- Additive Scheduler exit-observation API: `take_exit_outcome(pid)` — a
+  non-blocking, consuming, exactly-once take of a process's `(ExitReason,
+  OwnedTerm)` outcome, backed by a durable per-process finalization token that
+  survives both legacy tombstone FIFO eviction and the take itself (permanent
+  residue pinned at 40 bytes per finalized process, test-asserted) — and a
+  single-subscriber bounded exit-event stream (1,024 events) whose `Exited`
+  notification is published only after the outcome is takeable, with typed
+  `Lagged` overflow and scan-based recovery. Existing exit surfaces
+  (`run_until_exit`, `peek_exit_reason`, diagnostic takes, `terminate_process`)
+  are semantically unchanged.
+- `ExecError::GuardBifUnavailable` with a typed four-arm `GuardBifResolution`,
+  exact-string diagnostics through `format_with_atoms`, and an
+  `unresolved` import report on `HotLoadResult` (which consequently no longer
+  derives `Copy`) — the EMB-001/EMB-002 pair.
+
 ### Changed
 
 - The `LitT` chunk emitted by the `.beam` encoder (`encode` feature) changed
