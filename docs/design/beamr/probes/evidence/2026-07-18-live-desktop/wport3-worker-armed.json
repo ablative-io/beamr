@@ -1,0 +1,29 @@
+{
+  "smoke": false,
+  "probe": "wport3",
+  "mode": "worker",
+  "leg": "armed",
+  "capturedAt": "2026-07-18T04:56:55.176Z",
+  "data": {
+    "mode": "worker",
+    "wallAnchor": {
+      "perf": 34.30000001192093,
+      "epoch": 1784350615084
+    },
+    "requestedDeadlines": {
+      "receiveAfterMs": 30000,
+      "nativeSendAfterMs": 45000
+    },
+    "unifiedArmedDelayMs": 30000,
+    "recvPid": 1,
+    "nativePid": 2,
+    "armStamp": {
+      "perf": 78.5,
+      "epoch": 1784350615175
+    },
+    "armedDelaysRaw": [
+      30000
+    ],
+    "note": "Worker mode: both classes armed inside the dedicated Worker; runner backgrounds the OWNER page now."
+  }
+}

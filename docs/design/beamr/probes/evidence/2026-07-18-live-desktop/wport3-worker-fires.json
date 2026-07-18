@@ -1,0 +1,72 @@
+{
+  "smoke": false,
+  "probe": "wport3",
+  "mode": "worker",
+  "leg": "fire",
+  "capturedAt": "2026-07-18T05:03:26.392Z",
+  "backgroundMs": 390000,
+  "fires": [
+    {
+      "which": "receive-after",
+      "perf": 30133.5,
+      "epoch": 1784350645183,
+      "sinceArmMs": null,
+      "elapsedSinceStartMs": 30007.799999952316,
+      "completion": {
+        "pid": 1,
+        "reason": null,
+        "result": "timed_out",
+        "state": "exited",
+        "summary": {
+          "errored": [],
+          "executed": 1,
+          "exited": [
+            1
+          ],
+          "next_native_deadline_ms": 14992.900000000001,
+          "results": [
+            {
+              "pid": 1,
+              "value": "timed_out"
+            }
+          ],
+          "runnable_remaining": 0,
+          "state": "idle",
+          "waiting": [],
+          "yielded": []
+        }
+      }
+    },
+    {
+      "which": "native-deliver",
+      "perf": 45128.69999998808,
+      "epoch": 1784350660178,
+      "sinceArmMs": null,
+      "elapsedSinceStartMs": 45003,
+      "completion": {
+        "pid": 2,
+        "reason": null,
+        "result": "got_it",
+        "state": "exited",
+        "summary": {
+          "errored": [],
+          "executed": 1,
+          "exited": [
+            2
+          ],
+          "next_native_deadline_ms": null,
+          "results": [
+            {
+              "pid": 2,
+              "value": "got_it"
+            }
+          ],
+          "runnable_remaining": 0,
+          "state": "idle",
+          "waiting": [],
+          "yielded": []
+        }
+      }
+    }
+  ]
+}

@@ -93,3 +93,60 @@ and complete, no lost timers, no duplicate delivery, no recurring callbacks.
 - **Not optional bookkeeping.** Until observations are attached here, every
   browser/Worker deadline behaviour claim in this repository remains
   UNVERIFIED-ON-PLATFORM and the arc's deadline pillar stays OPEN.
+
+---
+
+## 2026-07-18 official sitting — live desktop (second environment)
+
+Operator: Waffles the Terrible, at Tom's live desktop on his word (headed run
+watched by Tom in person — display context: active, unlocked, physical
+display). Harness: the committed zero-dep CDP driver at `harness/` (main @
+`b68b596`); bundle built CLEAN from main at the operator's hands
+(wasm-bindgen 0.2.123, no panic source — WPORT-3 needs none). Raw
+observation JSONs committed beside this record under
+`evidence/2026-07-18-live-desktop/` (same-commit standard).
+
+### Run (a) — backgrounded tab, main-thread VM
+
+| Field | Value |
+| --- | --- |
+| Date (UTC) | 2026-07-18T04:56:54Z (settled) |
+| Operator | Waffles the Terrible (live desktop, Tom observing) |
+| Browser + version | Google Chrome 150.0.7871.128 |
+| OS + version | macOS 26.3.1 (arm64) |
+| Bundle commit (`git rev-parse HEAD`) | `b68b596` |
+| Requested deadlines (receive, native) | 30 000 ms receive-after; 45 000 ms native deliver (rides behind, re-arms after the 30 s fires) |
+| Armed unified deadline at background time | 30 000 ms (one one-shot; backgrounded immediately on arm: real second-tab activation + `Browser.setWindowBounds` minimize) |
+| Backgrounded interval | 390 s (past the ~300 s intensive-throttle threshold) |
+| Observed callback time(s) vs requested | receive-after fired at 30 104 ms (+104 ms); native-deliver fired at 45 553 ms (+553 ms) |
+| Delivered identities + counts | both classes delivered exactly once (`bothDeliveredExactlyOnce: true`); fire timeline carries exactly 2 fires; zero further wakeups across the remaining ~344 s of minimized intensive throttle |
+| Next arm after settle | none — no known deadline remained; zero recurring callbacks observed post-settle |
+| Late-but-complete? | YES (`lateButComplete: true`) — receive-after correctly `timed_out`, native deliver correctly `got_it`; no lost timers, no duplicates |
+
+### Run (b) — same workload in a dedicated Worker
+
+| Field | Value |
+| --- | --- |
+| Date (UTC) | 2026-07-18T05:03:26Z (settled) |
+| Operator | Waffles the Terrible (live desktop) |
+| Browser + version | Google Chrome 150.0.7871.128 |
+| OS + version | macOS 26.3.1 (arm64) |
+| Bundle commit | `b68b596` |
+| Requested deadlines (receive, native) | 30 000 ms receive-after; 45 000 ms native deliver |
+| Armed unified deadline at background time | 30 000 ms; owning page backgrounded + minimized on arm |
+| Backgrounded interval | 390 s |
+| Observed callback time(s) vs requested | receive-after fired at 30 008 ms (+8 ms); native-deliver fired at 45 003 ms (+3 ms) — dedicated-Worker timers essentially unthrottled by page backgrounding on this engine |
+| Delivered identities + counts | both classes delivered exactly once (`bothDeliveredExactlyOnce: true`); 2 fires total; zero further wakeups |
+| Next arm after settle | none; zero recurring callbacks post-settle |
+| Late-but-complete? | YES (effectively on-time) — same completion identities as run (a) |
+
+**Verdict against the probe's stated expectation:** late-but-delivered and
+complete in both contexts — no lost timers, no duplicate delivery, no
+recurring callbacks under intensive throttle. BEAM receive-after semantics
+tolerated the late fire exactly as stated. The main-thread +104 ms/+553 ms
+deltas show mild background throttling (fires landed before the intensive
+threshold); the decisive intensive-throttle evidence is the ZERO additional
+wakeups across the remaining minimized interval, both contexts. A parallel
+same-day sitting ran on a remote Tailscale display at Annabel's machine
+(Artemis's record, appended separately with its own display-context
+disclosure) — a deliberate two-environment close.

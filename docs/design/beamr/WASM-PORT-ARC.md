@@ -75,7 +75,7 @@ The citable-state law binds every boundary below: every current-state justificat
 
 **Size:** L  
 **Dependencies:** WPORT-2.
-**Status (2026-07-15):** CODE GATE CLOSED — landed on `main` at `a17be58` (brief `cb066df`, fold `9d0c311`), landing gates GREEN. The deadline pillar remains **OPEN** until one real browser+Worker PROBE-THROTTLE run attaches observations to `probes/WPORT-3-PROBE-THROTTLE.md` — a ~15-minute manual run against the built bundle, on Tom's or Annabel's word.
+**Status (2026-07-15):** CODE GATE CLOSED — landed on `main` at `a17be58` (brief `cb066df`, fold `9d0c311`), landing gates GREEN. The deadline pillar is **CLOSED (2026-07-18)**: official browser+Worker PROBE-THROTTLE observations are attached to `probes/WPORT-3-PROBE-THROTTLE.md` — a live-desktop sitting at Tom's machine (Waffles, Tom observing, on Annabel's word) with evidence under `probes/evidence/2026-07-18-live-desktop/`; a second same-day remote-display sitting (Artemis, Annabel's machine) appends separately. Late-but-delivered and complete in both contexts; zero recurring callbacks under intensive throttle.
 
 **Scope.** Unify receive-after timers and native `Deliver` timers behind one browser deadline service. The host is told the earliest known deadline and arms a single one-shot `setTimeout`; it cancels or re-arms that callback when the earliest deadline changes. Fired deadlines deliver expiries and schedule a runtime turn through WPORT-2's arbiter. Inject the timer facility required by bytecode timer BIFs. Timers are told, never discovered by polling.
 
