@@ -26,10 +26,16 @@
 //!   in practice (a just-closed connection, never one buried 64Ki exits deep),
 //!   so for them too the cap is effectively unreachable.
 //!
-//! The additive outcome store has a different retention contract: its complete
-//! owned `(reason, term)` value is retained until consumed, even if this legacy
-//! tombstone is evicted. The legacy result and diagnostic satellites remain
-//! bounded with the legacy tombstone, preserving their existing semantics.
+//! The additive finalization ledger has a different retention contract: its
+//! complete owned `(reason, term)` value is retained until consumed, even if the
+//! legacy tombstone is evicted. Taking releases the owned term but deliberately
+//! leaves a compact per-pid token for the scheduler lifetime. That token makes
+//! outcome installation and event publication exactly-once across both outcome
+//! consumption and tombstone eviction. Callers must drain outcomes to bound the
+//! retained owned-term payload; the token ledger itself grows by one entry per
+//! finalized pid and is the same map, not a second unbounded store. The legacy
+//! result and diagnostic satellites remain bounded with the legacy tombstone,
+//! preserving their existing semantics.
 
 use super::exit_events::{ExitEvent, ExitEventPublisher, ExitEventSubscription};
 use crate::ets::copy::OwnedTerm;
@@ -51,6 +57,17 @@ use std::sync::Mutex;
 /// while still hard-bounding memory.
 pub(super) const TOMBSTONE_CAPACITY: usize = 65_536;
 
+/// Durable additive state for one process's first terminal transition.
+///
+/// `outcome` becomes `None` when taken, but the entry itself is the permanent
+/// publication token. `reason` is therefore the authoritative additive reason
+/// used by both the outcome and event even if a later cleanup overwrites the
+/// bounded legacy tombstone's compatibility value.
+struct FinalizedOutcome {
+    reason: ExitReason,
+    outcome: Option<OwnedTerm>,
+}
+
 /// A bounded, insertion-ordered concurrent map from pid to [`ExitReason`].
 ///
 /// Reads are lock-free via the inner [`DashMap`] and preserve the exact
@@ -60,9 +77,10 @@ pub(super) const TOMBSTONE_CAPACITY: usize = 65_536;
 /// evict the paired satellite entries.
 pub(super) struct BoundedTombstones {
     reasons: DashMap<u64, ExitReason>,
-    /// Complete take-once outcomes. Unlike legacy tombstones, these are
-    /// retained until consumed and therefore close the eviction TOCTOU.
-    outcomes: DashMap<u64, (ExitReason, OwnedTerm)>,
+    /// Complete take-once outcomes plus their durable publication tokens. The
+    /// owned term is retained until consumed; the compact token remains for the
+    /// scheduler lifetime and closes the eviction/consumption TOCTOU.
+    outcomes: DashMap<u64, FinalizedOutcome>,
     /// Insertion order of currently-live pids, oldest at the front. Guarded
     /// independently of the DashMap shards; it also serializes writers so an
     /// complete outcome is always visible before its legacy tombstone.
@@ -106,7 +124,9 @@ impl BoundedTombstones {
 
     /// Consume the complete retained outcome for `pid` exactly once.
     pub(super) fn take_outcome(&self, pid: &u64) -> Option<(ExitReason, OwnedTerm)> {
-        self.outcomes.remove(pid).map(|(_, outcome)| outcome)
+        let mut finalized = self.outcomes.get_mut(pid)?;
+        let outcome = finalized.outcome.take()?;
+        Some((finalized.reason, outcome))
     }
 
     /// Create the scheduler's sole exit-event subscription.
@@ -125,9 +145,13 @@ impl BoundedTombstones {
 
     /// Insert a tombstone together with a complete retained outcome.
     ///
-    /// A fresh pid publishes one retained outcome and, after all state is
-    /// visible, one event. An overwrite changes only the legacy reason and
-    /// cannot re-arm an already-consumed outcome or emit a duplicate event.
+    /// The first terminal caller atomically owns the durable additive token and
+    /// publishes one retained outcome followed by one event. Later callers may
+    /// preserve the historical legacy behavior by overwriting or restoring the
+    /// bounded tombstone, but cannot change the authoritative additive reason,
+    /// re-arm a consumed outcome, or publish another event. Consequently a
+    /// legacy `get` after overlapping cleanup may report that later cleanup's
+    /// compatibility reason; the additive outcome and event remain coherent.
     pub(super) fn insert_outcome(
         &self,
         pid: u64,
@@ -152,11 +176,25 @@ impl BoundedTombstones {
             return None;
         }
 
-        // Keep this order: a reader can never observe the legacy tombstone
-        // before the exactly-once outcome, and the event follows both.
+        // The writer mutex makes this durable-token check-and-install atomic
+        // across competing terminal callers. Unlike the bounded legacy reason,
+        // the token survives both eviction and outcome consumption.
         let publish_event = if let Some(outcome) = outcome {
-            self.outcomes.insert(pid, (reason, outcome));
-            true
+            if self.outcomes.contains_key(&pid) {
+                false
+            } else {
+                // Keep this order: a reader can never observe the legacy
+                // tombstone before the exactly-once outcome, and the event
+                // follows both.
+                self.outcomes.insert(
+                    pid,
+                    FinalizedOutcome {
+                        reason,
+                        outcome: Some(outcome),
+                    },
+                );
+                true
+            }
         } else {
             false
         };
@@ -164,8 +202,9 @@ impl BoundedTombstones {
         order.push_back(pid);
         let mut evicted = None;
         if order.len() > self.capacity {
-            // Loop to skip any pid already removed from the legacy map. Outcomes
-            // deliberately remain until their consumer takes them.
+            // Loop to skip any pid already removed from the legacy map. The
+            // finalized entry deliberately remains; taking only releases its
+            // owned term and never removes its publication token.
             while let Some(oldest) = order.pop_front() {
                 if let Some((evicted_pid, _)) = self.reasons.remove(&oldest) {
                     evicted = Some(evicted_pid);
@@ -192,6 +231,8 @@ impl BoundedTombstones {
 mod tests {
     use super::*;
     use crate::term::Term;
+    use std::sync::Barrier;
+    use std::time::Duration;
 
     fn insert(store: &BoundedTombstones, pid: u64, reason: ExitReason) -> Option<u64> {
         store.insert_outcome(pid, reason, OwnedTerm::immediate(Term::NIL))
@@ -298,5 +339,116 @@ mod tests {
             .expect("legacy overwrite and eviction leave outcome retained");
         assert_eq!(reason, ExitReason::Normal);
         assert!(store.take_outcome(&1).is_none(), "outcome is take-once");
+    }
+
+    #[test]
+    fn duplicate_after_eviction_preserves_original_untaken_outcome_and_emits_no_event() {
+        let store = BoundedTombstones::with_capacity(2);
+        let subscription = store.subscribe().expect("first subscriber");
+
+        store.insert_outcome(
+            1,
+            ExitReason::Normal,
+            OwnedTerm::immediate(Term::small_int(11)),
+        );
+        assert_eq!(
+            subscription.recv(),
+            Ok(ExitEvent::Exited {
+                pid: 1,
+                reason: ExitReason::Normal,
+            })
+        );
+        for pid in 2..=3 {
+            store.insert_outcome(
+                pid,
+                ExitReason::Normal,
+                OwnedTerm::immediate(Term::small_int(pid as i64)),
+            );
+            assert!(matches!(
+                subscription.recv(),
+                Ok(ExitEvent::Exited { pid: event_pid, .. }) if event_pid == pid
+            ));
+            assert!(store.take_outcome(&pid).is_some());
+        }
+        assert_eq!(store.get(&1), None, "pid 1 tombstone was evicted");
+
+        store.insert_outcome(
+            1,
+            ExitReason::Kill,
+            OwnedTerm::immediate(Term::small_int(99)),
+        );
+
+        let (reason, outcome) = store
+            .take_outcome(&1)
+            .expect("first terminal transition remains takeable");
+        assert_eq!(reason, ExitReason::Normal);
+        assert_eq!(outcome.root().as_small_int(), Some(11));
+        assert_eq!(
+            subscription.recv_timeout(Duration::ZERO),
+            Err(super::super::ExitEventRecvError::Timeout),
+            "duplicate finalization cannot emit another event"
+        );
+    }
+
+    #[test]
+    fn concurrent_terminal_callers_publish_one_authoritative_outcome_and_event() {
+        let store = BoundedTombstones::with_capacity(4);
+        let subscription = store.subscribe().expect("first subscriber");
+        let start = Barrier::new(3);
+
+        std::thread::scope(|scope| {
+            let normal = scope.spawn(|| {
+                start.wait();
+                store.insert_outcome(
+                    1,
+                    ExitReason::Normal,
+                    OwnedTerm::immediate(Term::small_int(10)),
+                );
+            });
+            let killed = scope.spawn(|| {
+                start.wait();
+                store.insert_outcome(
+                    1,
+                    ExitReason::Kill,
+                    OwnedTerm::immediate(Term::small_int(20)),
+                );
+            });
+            start.wait();
+            normal.join().expect("normal finalizer completes");
+            killed.join().expect("kill finalizer completes");
+        });
+
+        let (event_reason, expected_value) = match subscription.recv() {
+            Ok(ExitEvent::Exited { pid: 1, reason }) => match reason {
+                ExitReason::Normal => (reason, 10),
+                ExitReason::Kill => (reason, 20),
+                other => panic!("unexpected authoritative reason {other:?}"),
+            },
+            other => panic!("expected one exit event, got {other:?}"),
+        };
+        let (outcome_reason, outcome) = store
+            .take_outcome(&1)
+            .expect("authoritative outcome is installed once");
+        assert_eq!(outcome_reason, event_reason);
+        assert_eq!(outcome.root().as_small_int(), Some(expected_value));
+        assert!(
+            store.take_outcome(&1).is_none(),
+            "the losing finalizer cannot install another outcome"
+        );
+        assert_eq!(
+            subscription.recv_timeout(Duration::ZERO),
+            Err(super::super::ExitEventRecvError::Timeout),
+            "the losing finalizer cannot emit an event"
+        );
+        let later_legacy_reason = match event_reason {
+            ExitReason::Normal => ExitReason::Kill,
+            ExitReason::Kill => ExitReason::Normal,
+            _ => unreachable!("event reason was restricted above"),
+        };
+        assert_eq!(
+            store.get(&1),
+            Some(later_legacy_reason),
+            "legacy overwrite is compatibility-only; the additive reason is authoritative"
+        );
     }
 }
