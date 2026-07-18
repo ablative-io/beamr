@@ -54,7 +54,7 @@ pub(super) fn hot_load_module_in_shared_with_origin(
     bytes: &[u8],
     origin: ModuleOrigin,
 ) -> Result<HotLoadResult, LoadError> {
-    let (staged, _report) = loader::prepare_module_with_origin_and_policy(
+    let (staged, report) = loader::prepare_module_with_origin_and_policy(
         bytes,
         &shared.atom_table,
         registry,
@@ -80,6 +80,7 @@ pub(super) fn hot_load_module_in_shared_with_origin(
                 had_old_version,
                 on_load_required: true,
                 on_load_succeeded: false,
+                unresolved: report,
             });
         }
     }
@@ -95,6 +96,7 @@ pub(super) fn hot_load_module_in_shared_with_origin(
         had_old_version,
         on_load_required: on_load_ip.is_some(),
         on_load_succeeded: on_load_ip.is_some(),
+        unresolved: report,
     })
 }
 
