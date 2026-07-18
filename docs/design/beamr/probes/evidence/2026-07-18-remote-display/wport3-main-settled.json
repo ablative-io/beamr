@@ -1,0 +1,133 @@
+{
+  "smoke": false,
+  "probe": "wport3",
+  "mode": "main",
+  "leg": "settled",
+  "capturedAt": "2026-07-18T05:07:02.960Z",
+  "backgroundMs": 390000,
+  "data": {
+    "mode": "main",
+    "receiveAfter": {
+      "sinceArmMs": 30953.80000001192,
+      "result": "timed_out"
+    },
+    "nativeDeliver": {
+      "sinceArmMs": 45961.5,
+      "result": "got_it"
+    },
+    "bothDeliveredExactlyOnce": true,
+    "lateButComplete": true,
+    "fireTimeline": [
+      {
+        "which": "receive-after",
+        "perf": 31182.20000000298,
+        "epoch": 1784350861763,
+        "sinceArmMs": 30953.80000001192,
+        "elapsedSinceStartMs": 30953.5,
+        "completion": {
+          "pid": 1,
+          "reason": null,
+          "result": "timed_out",
+          "state": "exited",
+          "summary": {
+            "errored": [],
+            "executed": 1,
+            "exited": [
+              1
+            ],
+            "next_native_deadline_ms": 14013.6,
+            "results": [
+              {
+                "pid": 1,
+                "value": "timed_out"
+              }
+            ],
+            "runnable_remaining": 0,
+            "state": "idle",
+            "waiting": [],
+            "yielded": []
+          }
+        },
+        "armsSoFar": 3,
+        "clearsSoFar": 0,
+        "nextArmedDelaysMs": [
+          14014
+        ]
+      },
+      {
+        "which": "native-deliver",
+        "perf": 46189.89999999106,
+        "epoch": 1784350876771,
+        "sinceArmMs": 45961.5,
+        "elapsedSinceStartMs": 45961.19999998808,
+        "completion": {
+          "pid": 2,
+          "reason": null,
+          "result": "got_it",
+          "state": "exited",
+          "summary": {
+            "errored": [],
+            "executed": 1,
+            "exited": [
+              2
+            ],
+            "next_native_deadline_ms": null,
+            "results": [
+              {
+                "pid": 2,
+                "value": "got_it"
+              }
+            ],
+            "runnable_remaining": 0,
+            "state": "idle",
+            "waiting": [],
+            "yielded": []
+          }
+        },
+        "armsSoFar": 3,
+        "clearsSoFar": 0,
+        "nextArmedDelaysMs": [
+          14014
+        ]
+      }
+    ],
+    "finalSpy": {
+      "armCount": 3,
+      "clearCount": 0,
+      "deadlineScaleArmCount": 2,
+      "zeroDelayArmCount": 0,
+      "deadlineArmDelays": [
+        30000,
+        14014
+      ],
+      "arms": [
+        {
+          "t": 195.5,
+          "delay": 30000,
+          "handle": "1"
+        },
+        {
+          "t": 195.79999999701977,
+          "delay": 30,
+          "handle": "2"
+        },
+        {
+          "t": 31181.59999999404,
+          "delay": 14014,
+          "handle": "3"
+        }
+      ],
+      "clears": []
+    }
+  },
+  "complete": {
+    "kind": "suite-complete",
+    "probe": "wport3",
+    "mode": "main",
+    "legs": [
+      "armed",
+      "fire",
+      "settled"
+    ]
+  }
+}

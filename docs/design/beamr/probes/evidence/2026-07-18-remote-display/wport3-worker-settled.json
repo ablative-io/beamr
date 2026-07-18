@@ -1,0 +1,23 @@
+{
+  "smoke": false,
+  "probe": "wport3",
+  "mode": "worker",
+  "leg": "settled",
+  "capturedAt": "2026-07-18T05:13:34.736Z",
+  "backgroundMs": 390000,
+  "data": {
+    "mode": "worker",
+    "bothDeliveredExactlyOnce": true,
+    "note": "worker-mode both classes delivered"
+  },
+  "complete": {
+    "kind": "suite-complete",
+    "probe": "wport3",
+    "mode": "worker",
+    "legs": [
+      "armed",
+      "fire",
+      "settled"
+    ]
+  }
+}
