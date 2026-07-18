@@ -27,8 +27,17 @@ use beamr::term::Term;
 
 const FIXTURE: &[u8] = include_bytes!("fixtures/guard_bif_probe.beam");
 
-/// The exact one-log-line refusal the 2026-07-18 sanction demanded, as landed.
+/// The exact one-log-line refusal the 2026-07-18 sanction demanded, rendered
+/// through the runtime atom table (`format_with_atoms`) — the true MFA channel.
 const EXPECTED_DISPLAY: &str = "guard bif erlang:+/2 unavailable: import resolved Deferred \
+    (native BIF registry has no entry and the target module is not loaded)";
+
+/// The plain-`Display` fallback channel: `ExecError`'s `Display` resolves atoms
+/// through a fresh `AtomTable::with_common_atoms()`, and neither `erlang` nor
+/// `+` is a common atom, so both render the shared `#<unknown atom>` fallback
+/// token (identical to the `Undef` arm's behaviour). Pinned so both channels
+/// are load-bearing; the exact-string carrier choice awaits the fold amendment.
+const EXPECTED_DISPLAY_FALLBACK: &str = "guard bif #<unknown atom>:#<unknown atom>/2 unavailable: import resolved Deferred \
     (native BIF registry has no entry and the target module is not loaded)";
 
 /// spawn -> mailbox delivery has a visibility window: `send_to_mailbox` returns
@@ -96,10 +105,19 @@ fn empty_registry_refusal_names_the_mfa_and_deferred_resolution() {
         }
         other => panic!("expected GuardBifUnavailable, got {other:?}"),
     }
+    // Channel 1 (the exact-string carrier): format_with_atoms renders the true
+    // MFA through the runtime atom table — the sanctioned one-log-line.
     assert_eq!(
         exit_error.format_with_atoms(&atoms),
         EXPECTED_DISPLAY,
         "the refusal renders the sanction's one-log-line standard"
+    );
+    // Channel 2 (the deliberate carrier arm, walled so it cannot silently rot):
+    // plain Display renders the same shape with the common-atom fallback token.
+    assert_eq!(
+        exit_error.to_string(),
+        EXPECTED_DISPLAY_FALLBACK,
+        "the plain-Display fallback channel is byte-exact too"
     );
 }
 
