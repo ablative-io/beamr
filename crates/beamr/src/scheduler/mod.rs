@@ -72,8 +72,9 @@ pub use crate::loader::UnresolvedImportReport;
 /// `unresolved` carries the import resolution the load actually performed —
 /// deferred/denied/unresolved by module, byte-identical to what
 /// [`loader::load_module`](crate::loader::load_module) returns. Against the
-/// empty-registry default composition (see [`Scheduler::with_services`]) a
-/// module importing `erlang:*` lands its imports under
+/// empty-registry default composition (see [`Scheduler::with_services`]), and
+/// absent a loaded bytecode `erlang` module, a module importing `erlang:*`
+/// lands those imports under
 /// [`deferred_by_module`](UnresolvedImportReport::deferred_by_module); reading
 /// it after every load is how an embedder catches the composition footgun
 /// before the process-fatal guard-BIF refusal instead of after. This is the
@@ -1009,14 +1010,18 @@ impl Scheduler {
     /// # Empty BIF registry (composition footgun)
     ///
     /// **This constructor defaults the native BIF registry to an EMPTY one**
-    /// (`BifRegistryImpl::new()`). With zero native BIFs registered, every
-    /// `erlang:*` import in every module you subsequently load resolves
-    /// [`Deferred`](crate::error::GuardBifResolution::Deferred) — and that is
-    /// essentially EVERY erlc-compiled module, because `module_info` alone
-    /// imports `erlang:get_module_info`. The first guard-BIF execution
-    /// (any arithmetic, comparison, or type guard) then refuses with a
-    /// process-fatal [`ExecError::GuardBifUnavailable`](crate::error::ExecError).
-    /// A deterministic child-death at its first arithmetic instruction, once
+    /// (`BifRegistryImpl::new()`). Under this default composition — empty BIF
+    /// registry, no loaded bytecode `erlang` module — every `erlang:*` import
+    /// (essentially every erlc-compiled module: `module_info` alone imports
+    /// `erlang:get_module_info`) resolves
+    /// [`Deferred`](crate::error::GuardBifResolution::Deferred), and the first
+    /// guard-BIF execution (any arithmetic, comparison, or type guard) refuses
+    /// with a process-fatal
+    /// [`ExecError::GuardBifUnavailable`](crate::error::ExecError). If a bytecode
+    /// `erlang` module IS loaded the same imports resolve `Code` (exported) or
+    /// `Unresolved` (missing export) instead — still non-native, still
+    /// guard-refused, so the hazard stands; only the mechanism narrows. A
+    /// deterministic child-death at its first arithmetic instruction, once
     /// mistaken for an interpreter wedge, traced to exactly this default.
     ///
     /// To execute real BEAM bytecode, construct through a registry-carrying
@@ -1056,14 +1061,17 @@ impl Scheduler {
     ///
     /// **Like [`Scheduler::new`], this constructor defaults the native BIF
     /// registry to an EMPTY one** (`BifRegistryImpl::new()`). It composes the
-    /// ancillary SERVICES you ask for, but it registers ZERO native BIFs — so
-    /// every `erlang:*` import in every subsequently loaded module resolves
+    /// ancillary SERVICES you ask for, but registers ZERO native BIFs — so under
+    /// this default composition (empty registry, no loaded bytecode `erlang`
+    /// module) every `erlang:*` import resolves
     /// [`Deferred`](crate::error::GuardBifResolution::Deferred) and the first
     /// guard-BIF execution refuses, process-fatal, with
-    /// [`ExecError::GuardBifUnavailable`](crate::error::ExecError).
-    /// This default is the strongest single hazard on the embedder surface: a
-    /// scaffolded host that never registers a BIF appears to load modules fine
-    /// and then dies at the first arithmetic instruction.
+    /// [`ExecError::GuardBifUnavailable`](crate::error::ExecError); a loaded
+    /// bytecode `erlang` module shifts that to `Code`/`Unresolved`, still
+    /// non-native and still refused. This default is the strongest single hazard
+    /// on the embedder surface — a scaffolded host that never registers a BIF
+    /// appears to load modules fine and then dies at the first arithmetic
+    /// instruction.
     ///
     /// Embedders executing real BEAM bytecode must construct through a
     /// registry-carrying constructor — [`Scheduler::with_services_and_code_server`]
@@ -1137,11 +1145,29 @@ impl Scheduler {
     }
 
     /// Create a scheduler in deterministic replay mode over `log`.
+    ///
+    /// # Empty BIF registry (composition footgun)
+    ///
+    /// **Defaults the native BIF registry to an EMPTY one** (via the private
+    /// `construct` mint shared with [`Scheduler::new_replay_with_registry`]), so
+    /// a replayed module importing `erlang:*` refuses at its first guard-BIF
+    /// execution exactly as under [`Scheduler::new`] — see that constructor for
+    /// the full explanation and the registry-carrying alternatives.
     pub fn new_replay(config: SchedulerConfig, log: ReplayLog) -> Result<Self, String> {
         Self::new_replay_with_registry(config, Arc::new(ModuleRegistry::new()), log)
     }
 
     /// Create a replay scheduler using an explicit module registry.
+    ///
+    /// # Empty BIF registry (composition footgun)
+    ///
+    /// **Defaults the native BIF registry to an EMPTY one** (the private
+    /// `construct` mint) — the same footgun as [`Scheduler::new`]: `erlang:*`
+    /// imports resolve non-native and refuse process-fatal at the first
+    /// guard-BIF execution. Embedders replaying real BEAM bytecode need a
+    /// registry-carrying construction path with at least
+    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs); see
+    /// [`Scheduler::new`] for the full explanation.
     pub fn new_replay_with_registry(
         config: SchedulerConfig,
         module_registry: Arc<ModuleRegistry>,
