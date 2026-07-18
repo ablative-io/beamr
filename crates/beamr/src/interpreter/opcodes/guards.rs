@@ -3,11 +3,11 @@
 use std::cmp::Ordering;
 
 use crate::atom::{Atom, AtomTable};
-use crate::error::ExecError;
+use crate::error::{ExecError, GuardBifResolution};
 use crate::interpreter::InstructionOutcome;
 use crate::loader::decode::compact::Operand;
 use crate::loader::decode::{BifOp, ComparisonOp, TypeTestOp};
-use crate::module::{Module, ResolvedImportTarget};
+use crate::module::{Module, ResolvedImport, ResolvedImportTarget};
 use crate::native::ProcessContext;
 use crate::process::{CodePosition, Process};
 use crate::term::boxed::{Closure, Cons, Float, Map, Tuple};
@@ -163,6 +163,17 @@ pub fn jump(module: &Module, target: &Operand) -> Result<InstructionOutcome, Exe
     jump_label(module, target)
 }
 
+/// Build the diagnosable guard-BIF refusal from the import that failed to
+/// resolve to a native entry, carrying its MFA and the resolution state.
+fn guard_bif_unavailable(resolved: &ResolvedImport, resolution: GuardBifResolution) -> ExecError {
+    ExecError::GuardBifUnavailable {
+        module: resolved.module,
+        function: resolved.function,
+        arity: resolved.arity,
+        resolution,
+    }
+}
+
 pub fn bif(
     process: &mut Process,
     module: &Module,
@@ -190,8 +201,34 @@ pub fn bif(
         return Err(ExecError::InvalidOperand("bif arity mismatch"));
     }
 
-    let ResolvedImportTarget::Native(entry) = resolved.target else {
-        return Err(ExecError::InvalidOperand("guard bif native import"));
+    // A guard/BIF opcode can only call a native entry. Every other resolution
+    // shape is a composition or bytecode-shape error: name the MFA and the
+    // resolution state rather than a bare operand refusal (composition-honesty,
+    // extended from `ServiceUnavailable`). Same mint point, same process-fatal
+    // outcome — the fail-label handling below is untouched.
+    let entry = match resolved.target {
+        ResolvedImportTarget::Native(entry) => entry,
+        ResolvedImportTarget::Deferred { .. } => {
+            return Err(guard_bif_unavailable(
+                resolved,
+                GuardBifResolution::Deferred,
+            ));
+        }
+        ResolvedImportTarget::Denied { .. } => {
+            return Err(guard_bif_unavailable(resolved, GuardBifResolution::Denied));
+        }
+        ResolvedImportTarget::Code { .. } => {
+            return Err(guard_bif_unavailable(
+                resolved,
+                GuardBifResolution::CodeTarget,
+            ));
+        }
+        ResolvedImportTarget::Unresolved { .. } => {
+            return Err(guard_bif_unavailable(
+                resolved,
+                GuardBifResolution::Unresolved,
+            ));
+        }
     };
 
     let mut args = Vec::with_capacity(parsed.args.len());

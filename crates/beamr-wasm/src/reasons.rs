@@ -66,6 +66,7 @@ fn variant_name(error: &ExecError) -> &'static str {
         ExecError::HeapFull { .. } => "heap_full",
         ExecError::NoConnection => "no_connection",
         ExecError::ServiceUnavailable { .. } => "service_unavailable",
+        ExecError::GuardBifUnavailable { .. } => "guard_bif_unavailable",
         ExecError::ReplayMismatch(_) => "replay_mismatch",
     }
 }
