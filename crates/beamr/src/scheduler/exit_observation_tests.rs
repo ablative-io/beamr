@@ -100,34 +100,46 @@ fn receiver_contests_publication_without_misses_under_coordinated_multi_worker_c
         .subscribe_exit_events()
         .expect("first exit subscription");
     let mut spawned = HashSet::with_capacity(PROCESS_COUNT);
-    let (receiver_armed_tx, receiver_armed_rx) = mpsc::sync_channel(0);
+    let (publication_phase_tx, publication_phase_rx) =
+        mpsc::channel::<super::exit_events::ExitEventPublicationObserver>();
 
     std::thread::scope(|scope| {
-        let observer = scope.spawn(|| {
+        let observer_scheduler = &scheduler;
+        let observer = scope.spawn(move || {
             let mut observed = HashSet::with_capacity(PROCESS_COUNT);
-            // This rendezvous hands off immediately before the first blocking
-            // receive. Native spawning begins only after the handoff, and every
-            // terminal producer then parks at its round's release wall before it
-            // can publish, putting the observer in `recv` ahead of that release.
-            receiver_armed_tx
-                .send(())
-                .expect("spawning thread waits for receiver arm");
-            for _ in 0..PROCESS_COUNT {
-                let (pid, event_reason) = recv_exit(&subscription);
-                let (reason, _value) = scheduler
-                    .take_exit_outcome(pid)
-                    .unwrap_or_else(|| panic!("event for pid {pid} must happen after its outcome"));
-                assert!(observed.insert(pid), "exit pid {pid} published twice");
-                assert_eq!(reason, event_reason);
+            for _ in 0..ROUND_COUNT {
+                let publication_phase = publication_phase_rx
+                    .recv_timeout(EVENT_TIMEOUT)
+                    .expect("each round installs a publication gate");
+                for _ in 0..PROCESSES_PER_ROUND {
+                    let (pid, event_reason) = recv_exit(&subscription);
+                    let (reason, _value) = observer_scheduler
+                        .take_exit_outcome(pid)
+                        .unwrap_or_else(|| {
+                            panic!("event for pid {pid} must happen after its outcome")
+                        });
+                    assert!(observed.insert(pid), "exit pid {pid} published twice");
+                    assert_eq!(reason, event_reason);
+                }
+                // Every publisher sent its event and is blocked at the test-only
+                // post-send rendezvous. Release the round only after receiving
+                // every event and immediately taking every corresponding outcome.
+                for _ in 0..PROCESSES_PER_ROUND {
+                    publication_phase.acknowledge_observed(EVENT_TIMEOUT);
+                }
             }
             observed
         });
 
-        receiver_armed_rx
-            .recv()
-            .expect("receiver reaches blocking receive wall");
         let scheduler_ref = &scheduler;
         for _ in 0..ROUND_COUNT {
+            let publication_phase = scheduler
+                .shared
+                .exit_tombstones
+                .install_event_publication_gate();
+            publication_phase_tx
+                .send(publication_phase)
+                .expect("observer joins each round's publication phase");
             let release_wall = Arc::new(Barrier::new(PROCESSES_PER_ROUND + 1));
             let mut producers = Vec::with_capacity(PROCESSES_PER_ROUND);
             for _ in 0..PROCESSES_PER_ROUND {
@@ -141,14 +153,19 @@ fn receiver_contests_publication_without_misses_under_coordinated_multi_worker_c
                     scheduler_ref.terminate_process(pid, ExitReason::Normal);
                 }));
             }
-            // All terminal callers cross the wall together while the
-            // subscriber is already draining and the scheduler's workers are
-            // concurrently dispatching the newly spawned native processes.
+            // All terminal callers cross the release wall together. After each
+            // successful event send, the installed test-only gate holds every
+            // caller inside publication until the observer receives the whole
+            // round, immediately takes each outcome, and releases the phase.
             release_wall.wait();
             for producer in producers {
                 producer.join().expect("terminal producer completes");
             }
         }
+        scheduler
+            .shared
+            .exit_tombstones
+            .clear_event_publication_gate();
 
         let observed = observer.join().expect("exit observer completes");
         assert_eq!(

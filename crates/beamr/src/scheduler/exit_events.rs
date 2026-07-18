@@ -1,6 +1,8 @@
 //! Bounded, single-subscriber process-exit event delivery.
 
 use std::sync::Arc;
+#[cfg(test)]
+use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -103,10 +105,25 @@ impl ExitEventSubscription {
     }
 }
 
+#[cfg(test)]
+#[derive(Clone)]
+struct ExitEventPublicationGate {
+    published: Sender<()>,
+    observed: Receiver<()>,
+}
+
+#[cfg(test)]
+pub(super) struct ExitEventPublicationObserver {
+    published: Receiver<()>,
+    observed: Sender<()>,
+}
+
 pub(super) struct ExitEventPublisher {
     sender: OnceLock<Sender<ExitEvent>>,
     overflowed: Arc<AtomicBool>,
     capacity: usize,
+    #[cfg(test)]
+    publication_gate: Mutex<Option<ExitEventPublicationGate>>,
 }
 
 impl ExitEventPublisher {
@@ -119,6 +136,8 @@ impl ExitEventPublisher {
             sender: OnceLock::new(),
             overflowed: Arc::new(AtomicBool::new(false)),
             capacity: capacity.max(1),
+            #[cfg(test)]
+            publication_gate: Mutex::new(None),
         }
     }
 
@@ -136,9 +155,75 @@ impl ExitEventPublisher {
             return;
         };
         match sender.try_send(event) {
-            Ok(()) | Err(TrySendError::Disconnected(_)) => {}
+            Ok(()) => {
+                #[cfg(test)]
+                self.wait_at_publication_gate();
+            }
+            Err(TrySendError::Disconnected(_)) => {}
             Err(TrySendError::Full(_)) => self.overflowed.store(true, Ordering::Release),
         }
+    }
+
+    /// Install a zero-capacity, post-send rendezvous for one test phase.
+    ///
+    /// A successful publisher cannot return from [`Self::publish`] until the
+    /// observer confirms that it received the event. This is deliberately
+    /// after `try_send`: outcome installation and event publication retain
+    /// their production order, while the observer can prove it contested the
+    /// actual publication call rather than merely running before it.
+    #[cfg(test)]
+    pub(super) fn install_publication_gate(&self) -> ExitEventPublicationObserver {
+        let (published, observe_publication) = crossbeam_channel::bounded(0);
+        let (observation_complete, observed) = crossbeam_channel::bounded(0);
+        let mut publication_gate = match self.publication_gate.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *publication_gate = Some(ExitEventPublicationGate {
+            published,
+            observed,
+        });
+        ExitEventPublicationObserver {
+            published: observe_publication,
+            observed: observation_complete,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn clear_publication_gate(&self) {
+        let mut publication_gate = match self.publication_gate.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *publication_gate = None;
+    }
+
+    #[cfg(test)]
+    fn wait_at_publication_gate(&self) {
+        let gate = match self.publication_gate.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        let Some(gate) = gate else {
+            return;
+        };
+        if gate.published.send(()).is_ok() {
+            // Disconnection means the observer failed and is unwinding; do not
+            // turn its finite receive timeout into a stuck publisher thread.
+            let _ = gate.observed.recv();
+        }
+    }
+}
+
+#[cfg(test)]
+impl ExitEventPublicationObserver {
+    pub(super) fn acknowledge_observed(&self, timeout: Duration) {
+        self.published
+            .recv_timeout(timeout)
+            .expect("event publisher must reach the post-send gate");
+        self.observed
+            .send_timeout((), timeout)
+            .expect("event publisher must remain at the post-send gate");
     }
 }
 
