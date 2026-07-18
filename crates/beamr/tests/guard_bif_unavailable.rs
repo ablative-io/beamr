@@ -36,7 +36,8 @@ const EXPECTED_DISPLAY: &str = "guard bif erlang:+/2 unavailable: import resolve
 /// through a fresh `AtomTable::with_common_atoms()`, and neither `erlang` nor
 /// `+` is a common atom, so both render the shared `#<unknown atom>` fallback
 /// token (identical to the `Undef` arm's behaviour). Pinned so both channels
-/// are load-bearing; the exact-string carrier choice awaits the fold amendment.
+/// are load-bearing; the fold amendment (dff20af) ruled `format_with_atoms` the
+/// exact-string carrier and this dual-channel wall its rot-guard.
 const EXPECTED_DISPLAY_FALLBACK: &str = "guard bif #<unknown atom>:#<unknown atom>/2 unavailable: import resolved Deferred \
     (native BIF registry has no entry and the target module is not loaded)";
 
