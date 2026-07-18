@@ -58,18 +58,39 @@ impl std::fmt::Display for MailboxSendError {
 #[cfg(feature = "threads")]
 impl std::error::Error for MailboxSendError {}
 
+/// The loader's grouped unresolved/deferred/denied import report, re-exported
+/// at the scheduler surface so a [`HotLoadResult`] consumer can read it without
+/// reaching into `loader`.
+pub use crate::loader::UnresolvedImportReport;
+
 /// Result returned by a successful hot module load.
 ///
 /// Plain metadata returned by the threaded code server. It is named in the
 /// platform-neutral `CodeManagementFacility` trait, so it is defined here (always
 /// available) even though only the threaded scheduler can produce one.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+///
+/// `unresolved` carries the import resolution the load actually performed —
+/// deferred/denied/unresolved by module, byte-identical to what
+/// [`loader::load_module`](crate::loader::load_module) returns. Against the
+/// empty-registry default composition (see [`Scheduler::with_services`]) a
+/// module importing `erlang:*` lands its imports under
+/// [`deferred_by_module`](UnresolvedImportReport::deferred_by_module); reading
+/// it after every load is how an embedder catches the composition footgun
+/// before the process-fatal guard-BIF refusal instead of after. This is the
+/// honest API surface for that signal — carrying the report (not a getter on
+/// mutable scheduler state) keeps it bound to the load RESULT.
+///
+/// Because the report owns per-module maps it is not `Copy`; `HotLoadResult` is
+/// therefore `Clone` but no longer `Copy`.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HotLoadResult {
     pub module_name: crate::atom::Atom,
     pub generation: u64,
     pub had_old_version: bool,
     pub on_load_required: bool,
     pub on_load_succeeded: bool,
+    /// The import resolution this load performed, grouped by module.
+    pub unresolved: UnresolvedImportReport,
 }
 
 /// Result returned by safe or forced module purge.
