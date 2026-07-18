@@ -35,7 +35,7 @@ Haematite (storage), Liminal (messaging), and Aion (workflows) all run on Beamr.
 
 ## Current Status
 
-**Version 0.x** — Beamr is in active development and used internally by Ablative. It has over 1,500 tests and 117,000 lines of code. Core features (running Gleam code, crash recovery, scheduling, WebAssembly) are working. Performance optimisation and browser support are ongoing.
+**Version 0.x** — Beamr is in active development and used internally by Ablative. It has over 1,900 tests and 110,000 lines of production Rust (160,000+ including tests). Core features (running Gleam code, crash recovery, scheduling, WebAssembly) are working. Performance optimisation and browser support are ongoing.
 
 ## Getting Started
 
@@ -83,14 +83,17 @@ If you're building a Rust application that needs to run Gleam code, add Beamr as
 
 ```toml
 [dependencies]
-beamr = "0.x"
+beamr = "0.15"
 ```
 
-```rust
-use beamr::vm::Vm;
+The crate's entry point is the `Scheduler` — you give it your loaded
+modules, an atom table, and a registry of native functions, and it runs
+your processes across threads:
 
-let vm = Vm::new();
-// Load and run Gleam bytecode
+```rust
+use beamr::scheduler::{Scheduler, SchedulerConfig, SchedulerServices};
+// See https://docs.rs/beamr for constructing a scheduler with your
+// modules and native functions.
 ```
 
 ## Key Concepts
