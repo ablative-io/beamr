@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use beamr::atom::{Atom, AtomTable};
 use beamr::constant_pool::ConstantPool;
@@ -49,6 +50,21 @@ fn wrapped_spawn_link(args: &[Term], context: &mut ProcessContext) -> Result<Ter
         );
     }
     result
+}
+
+fn run_until_exit_bounded(
+    scheduler: &Arc<Scheduler>,
+    pid: u64,
+) -> (ExitReason, beamr::ets::OwnedTerm) {
+    let (sender, completion) = std::sync::mpsc::channel();
+    let scheduler_for_wait = Arc::clone(scheduler);
+    std::thread::spawn(move || {
+        let _ = sender.send(scheduler_for_wait.run_until_exit(pid));
+    });
+
+    completion
+        .recv_timeout(Duration::from_secs(30))
+        .unwrap_or_else(|_| panic!("process {pid} never exited"))
 }
 
 fn label_index(code: &[Instruction]) -> HashMap<u32, usize> {
@@ -180,20 +196,22 @@ fn full_gate3_then_replace_spawn_wrappers_delegate_and_children_complete() {
     let modules = Arc::new(ModuleRegistry::new());
     let module_name = atoms.intern("registry_replacement_consumer");
     let module = modules.insert(spawn_consumer_module(&atoms, &bifs, module_name));
-    let scheduler = Scheduler::with_services_and_code_server(
-        SchedulerConfig {
-            thread_count: Some(1),
-            ..SchedulerConfig::default()
-        },
-        SchedulerServices::minimal(),
-        Arc::clone(&modules),
-        Arc::clone(&atoms),
-        Arc::clone(&bifs),
-    )
-    .expect("start scheduler with the replaced Gate-3 registry");
+    let scheduler = Arc::new(
+        Scheduler::with_services_and_code_server(
+            SchedulerConfig {
+                thread_count: Some(1),
+                ..SchedulerConfig::default()
+            },
+            SchedulerServices::minimal(),
+            Arc::clone(&modules),
+            Arc::clone(&atoms),
+            Arc::clone(&bifs),
+        )
+        .expect("start scheduler with the replaced Gate-3 registry"),
+    );
 
     let parent_pid = scheduler.spawn_process(&module);
-    let (parent_reason, parent_value) = scheduler.run_until_exit(parent_pid);
+    let (parent_reason, parent_value) = run_until_exit_bounded(&scheduler, parent_pid);
     let spawn_child_pid = SPAWN_CHILD_PID.load(Ordering::Acquire);
     let spawn_link_child_pid = SPAWN_LINK_CHILD_PID.load(Ordering::Acquire);
 
@@ -207,8 +225,9 @@ fn full_gate3_then_replace_spawn_wrappers_delegate_and_children_complete() {
     );
     assert_eq!(parent_value.root().as_pid(), Some(spawn_link_child_pid));
 
-    let (spawn_reason, spawn_value) = scheduler.run_until_exit(spawn_child_pid);
-    let (spawn_link_reason, spawn_link_value) = scheduler.run_until_exit(spawn_link_child_pid);
+    let (spawn_reason, spawn_value) = run_until_exit_bounded(&scheduler, spawn_child_pid);
+    let (spawn_link_reason, spawn_link_value) =
+        run_until_exit_bounded(&scheduler, spawn_link_child_pid);
 
     assert_eq!(spawn_reason, ExitReason::Normal);
     assert_eq!(spawn_value.root().as_small_int(), Some(71));
