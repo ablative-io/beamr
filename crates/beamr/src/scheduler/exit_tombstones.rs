@@ -26,12 +26,13 @@
 //!   in practice (a just-closed connection, never one buried 64Ki exits deep),
 //!   so for them too the cap is effectively unreachable.
 //!
-//! The satellite maps (`exit_results` / `exit_errors` / `exit_exceptions`) are
-//! evicted *together* with the tombstone they pair with — see
-//! [`SharedState::insert_exit_tombstone`] — so a satellite can never outlive
-//! its tombstone and the "tombstone observed ⇒ paired result already present"
-//! invariant is preserved.
+//! The additive outcome store has a different retention contract: its complete
+//! owned `(reason, term)` value is retained until consumed, even if this legacy
+//! tombstone is evicted. The legacy result and diagnostic satellites remain
+//! bounded with the legacy tombstone, preserving their existing semantics.
 
+use super::exit_events::{ExitEvent, ExitEventPublisher, ExitEventSubscription};
+use crate::ets::copy::OwnedTerm;
 use crate::process::ExitReason;
 use dashmap::DashMap;
 use std::collections::VecDeque;
@@ -59,11 +60,15 @@ pub(super) const TOMBSTONE_CAPACITY: usize = 65_536;
 /// evict the paired satellite entries.
 pub(super) struct BoundedTombstones {
     reasons: DashMap<u64, ExitReason>,
+    /// Complete take-once outcomes. Unlike legacy tombstones, these are
+    /// retained until consumed and therefore close the eviction TOCTOU.
+    outcomes: DashMap<u64, (ExitReason, OwnedTerm)>,
     /// Insertion order of currently-live pids, oldest at the front. Guarded
-    /// independently of the DashMap shards; only touched on the (lower-volume)
-    /// insert path, never on reads.
+    /// independently of the DashMap shards; it also serializes writers so an
+    /// complete outcome is always visible before its legacy tombstone.
     order: Mutex<VecDeque<u64>>,
     capacity: usize,
+    events: ExitEventPublisher,
 }
 
 impl BoundedTombstones {
@@ -78,8 +83,10 @@ impl BoundedTombstones {
     pub(super) fn with_capacity(capacity: usize) -> Self {
         Self {
             reasons: DashMap::new(),
+            outcomes: DashMap::new(),
             order: Mutex::new(VecDeque::new()),
             capacity: capacity.max(1),
+            events: ExitEventPublisher::new(),
         }
     }
 
@@ -97,37 +104,81 @@ impl BoundedTombstones {
         self.reasons.contains_key(pid)
     }
 
-    /// Insert (or overwrite) the tombstone for `pid`.
+    /// Consume the complete retained outcome for `pid` exactly once.
+    pub(super) fn take_outcome(&self, pid: &u64) -> Option<(ExitReason, OwnedTerm)> {
+        self.outcomes.remove(pid).map(|(_, outcome)| outcome)
+    }
+
+    /// Create the scheduler's sole exit-event subscription.
+    pub(super) fn subscribe(&self) -> Option<ExitEventSubscription> {
+        self.events.subscribe()
+    }
+
+    /// Insert a legacy tombstone without publishing an additive outcome.
     ///
-    /// Returns `Some(evicted_pid)` when inserting this entry pushed the live
-    /// count past the capacity and the oldest pid was evicted — the caller is
-    /// responsible for evicting that pid's paired satellite entries so they
-    /// cannot outlive their tombstone. Returns `None` when nothing was evicted
-    /// (either below capacity, or this was an overwrite of an existing pid).
+    /// Used by internal lifecycle tests that need to simulate an already-dead
+    /// process. Production exits use [`Self::insert_outcome`].
+    #[cfg(test)]
     pub(super) fn insert(&self, pid: u64, reason: ExitReason) -> Option<u64> {
-        // Overwrite of an existing tombstone: update the reason in place and do
-        // not touch the order queue, so a re-insert cannot duplicate the pid in
-        // the FIFO or evict a different live pid.
-        if self.reasons.insert(pid, reason).is_some() {
-            return None;
-        }
+        self.insert_inner(pid, reason, None)
+    }
+
+    /// Insert a tombstone together with a complete retained outcome.
+    ///
+    /// A fresh pid publishes one retained outcome and, after all state is
+    /// visible, one event. An overwrite changes only the legacy reason and
+    /// cannot re-arm an already-consumed outcome or emit a duplicate event.
+    pub(super) fn insert_outcome(
+        &self,
+        pid: u64,
+        reason: ExitReason,
+        outcome: OwnedTerm,
+    ) -> Option<u64> {
+        self.insert_inner(pid, reason, Some(outcome))
+    }
+
+    fn insert_inner(
+        &self,
+        pid: u64,
+        reason: ExitReason,
+        outcome: Option<OwnedTerm>,
+    ) -> Option<u64> {
         let mut order = match self.order.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        order.push_back(pid);
-        if order.len() <= self.capacity {
+        if self.reasons.contains_key(&pid) {
+            self.reasons.insert(pid, reason);
             return None;
         }
-        // Over capacity: evict the oldest pid. Loop to skip any pid that was
-        // already removed from the map (defensive — production never removes
-        // tombstones out of band, but this keeps the structure self-correcting).
-        while let Some(oldest) = order.pop_front() {
-            if let Some((evicted, _)) = self.reasons.remove(&oldest) {
-                return Some(evicted);
+
+        // Keep this order: a reader can never observe the legacy tombstone
+        // before the exactly-once outcome, and the event follows both.
+        let publish_event = if let Some(outcome) = outcome {
+            self.outcomes.insert(pid, (reason, outcome));
+            true
+        } else {
+            false
+        };
+        self.reasons.insert(pid, reason);
+        order.push_back(pid);
+        let mut evicted = None;
+        if order.len() > self.capacity {
+            // Loop to skip any pid already removed from the legacy map. Outcomes
+            // deliberately remain until their consumer takes them.
+            while let Some(oldest) = order.pop_front() {
+                if let Some((evicted_pid, _)) = self.reasons.remove(&oldest) {
+                    evicted = Some(evicted_pid);
+                    break;
+                }
             }
         }
-        None
+        drop(order);
+
+        if publish_event {
+            self.events.publish(ExitEvent::Exited { pid, reason });
+        }
+        evicted
     }
 
     /// Number of live tombstones. Test/diagnostic helper.
@@ -140,6 +191,11 @@ impl BoundedTombstones {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::term::Term;
+
+    fn insert(store: &BoundedTombstones, pid: u64, reason: ExitReason) -> Option<u64> {
+        store.insert_outcome(pid, reason, OwnedTerm::immediate(Term::NIL))
+    }
 
     /// (a) Inserting far more than the cap keeps the live count bounded at the
     /// cap and never above it.
@@ -148,7 +204,7 @@ mod tests {
         let cap = 8;
         let store = BoundedTombstones::with_capacity(cap);
         for pid in 0..1_000u64 {
-            store.insert(pid, ExitReason::Normal);
+            insert(&store, pid, ExitReason::Normal);
             assert!(
                 store.len() <= cap,
                 "len {} exceeded cap {} after inserting pid {}",
@@ -172,7 +228,7 @@ mod tests {
             } else {
                 ExitReason::Kill
             };
-            store.insert(pid, reason);
+            insert(&store, pid, reason);
         }
         // The last `cap` pids (92..=99) must all be present with their reason.
         for pid in 92..100u64 {
@@ -198,7 +254,7 @@ mod tests {
         let cap = 4;
         let store = BoundedTombstones::with_capacity(cap);
         for pid in 0..10u64 {
-            store.insert(pid, ExitReason::Normal);
+            insert(&store, pid, ExitReason::Normal);
         }
         // Oldest 6 (0..=5) evicted.
         for pid in 0..6u64 {
@@ -221,20 +277,26 @@ mod tests {
     fn overwrite_does_not_duplicate_or_misevict() {
         let cap = 3;
         let store = BoundedTombstones::with_capacity(cap);
-        store.insert(1, ExitReason::Normal);
-        store.insert(2, ExitReason::Normal);
-        store.insert(3, ExitReason::Normal);
+        insert(&store, 1, ExitReason::Normal);
+        insert(&store, 2, ExitReason::Normal);
+        insert(&store, 3, ExitReason::Normal);
         // Overwrite the oldest; reason updates, order is unchanged.
-        store.insert(1, ExitReason::Kill);
+        insert(&store, 1, ExitReason::Kill);
         assert_eq!(store.get(&1), Some(ExitReason::Kill));
         assert_eq!(store.len(), cap);
         // Next fresh insert evicts pid 1 (still the oldest by first-insert
         // order), not pid 2 or 3.
-        store.insert(4, ExitReason::Normal);
+        let insertion = insert(&store, 4, ExitReason::Normal);
+        assert_eq!(insertion, Some(1));
         assert_eq!(store.get(&1), None, "first-inserted pid is the one evicted");
         assert_eq!(store.get(&2), Some(ExitReason::Normal));
         assert_eq!(store.get(&3), Some(ExitReason::Normal));
         assert_eq!(store.get(&4), Some(ExitReason::Normal));
         assert_eq!(store.len(), cap);
+        let (reason, _term) = store
+            .take_outcome(&1)
+            .expect("legacy overwrite and eviction leave outcome retained");
+        assert_eq!(reason, ExitReason::Normal);
+        assert!(store.take_outcome(&1).is_none(), "outcome is take-once");
     }
 }

@@ -117,9 +117,13 @@ mod distribution_service;
 #[cfg(feature = "threads")]
 mod execution;
 #[cfg(feature = "threads")]
+mod exit_events;
+#[cfg(feature = "threads")]
 mod exit_tombstones;
 #[cfg(feature = "threads")]
 mod inventory;
+#[cfg(feature = "threads")]
+pub use exit_events::{EXIT_EVENT_CAPACITY, ExitEvent, ExitEventRecvError, ExitEventSubscription};
 #[cfg(feature = "readiness")]
 mod readiness;
 #[cfg(feature = "threads")]
@@ -726,16 +730,28 @@ impl SharedState {
             .expect("dist sender present in test")
     }
 
-    /// Insert an exit tombstone for `pid`, evicting the oldest tombstone (and
-    /// its paired satellite entries) if the bounded store is over capacity.
+    /// Publish an exit outcome and insert its bounded legacy tombstone.
     ///
-    /// This is the single write path for tombstones. Eviction removes the
-    /// evicted pid's `exit_results` / `exit_errors` / `exit_exceptions` along
-    /// with its tombstone, so a satellite can never outlive the tombstone it
-    /// pairs with and the "tombstone observed ⇒ paired result already present"
-    /// invariant the readers rely on is preserved.
+    /// This is the single write path. A private owned copy of the result is
+    /// installed before the takeable event, establishing the exit-event
+    /// happens-before guarantee without changing any legacy consuming store.
+    /// Legacy tombstone eviction continues to remove all legacy satellites;
+    /// only the additive outcome copy is retained until taken.
     pub(super) fn insert_exit_tombstone(&self, pid: u64, reason: ExitReason) {
-        if let Some(evicted) = self.exit_tombstones.insert(pid, reason) {
+        use dashmap::mapref::entry::Entry;
+
+        match self.exit_results.entry(pid) {
+            Entry::Occupied(_) => {}
+            Entry::Vacant(entry) => {
+                entry.insert(OwnedTerm::immediate(crate::term::Term::NIL));
+            }
+        }
+        let outcome = self
+            .exit_results
+            .get(&pid)
+            .map(|result| exit_capture::capture_term(result.root()))
+            .unwrap_or_else(|| OwnedTerm::immediate(crate::term::Term::NIL));
+        if let Some(evicted) = self.exit_tombstones.insert_outcome(pid, reason, outcome) {
             self.exit_results.remove(&evicted);
             self.exit_errors.remove(&evicted);
             self.exit_exceptions.remove(&evicted);
@@ -2326,6 +2342,9 @@ mod closure_spawn_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod connection_lifecycle_tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
+mod exit_observation_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod inventory_tests;

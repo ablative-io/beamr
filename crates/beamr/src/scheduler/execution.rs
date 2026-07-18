@@ -178,7 +178,46 @@ impl Scheduler {
         self.shared.exit_tombstones.get(&pid)
     }
 
+    /// Non-blockingly consume a process's exit outcome exactly once.
+    ///
+    /// Returns `Some((reason, term))` after `pid` exits and `None` before exit
+    /// or after the outcome was consumed. Outcomes are retained until consumed,
+    /// independently of the bounded legacy tombstones used by
+    /// [`Scheduler::peek_exit_reason`], so tombstone churn cannot turn a
+    /// delivered exit event into a false not-yet-exited result.
+    ///
+    /// This additive outcome is independent of the legacy
+    /// [`Scheduler::run_until_exit`] value and the diagnostic stores. Calling
+    /// this method never consumes `run_until_exit`,
+    /// [`Scheduler::take_exit_error`], or [`Scheduler::take_exit_exception`],
+    /// and consuming any of those surfaces never consumes this outcome.
+    pub fn take_exit_outcome(&self, pid: u64) -> Option<(ExitReason, OwnedTerm)> {
+        self.shared.exit_tombstones.take_outcome(&pid)
+    }
+
+    /// Subscribe to this scheduler's bounded process-exit event stream.
+    ///
+    /// Exactly one subscription can be created for a scheduler's lifetime;
+    /// later calls return `None`. Every process exit after successful
+    /// subscription publishes [`super::ExitEvent::Exited`] only after
+    /// [`Scheduler::take_exit_outcome`] can observe its retained outcome. The
+    /// channel buffers at most [`super::EXIT_EVENT_CAPACITY`] events and never
+    /// busy-polls. If that bound is exceeded, the receiver observes a typed
+    /// [`super::ExitEvent::Lagged`] marker instead of a silent drop and can
+    /// recover by taking outcomes for the process identifiers it tracks.
+    ///
+    /// Exit outcomes are retained until consumed even when their legacy
+    /// tombstones or event notifications are evicted. Consumers should keep
+    /// draining this single stream and take each outcome promptly so retained
+    /// outcome memory remains proportional to their processing lag.
+    pub fn subscribe_exit_events(&self) -> Option<super::ExitEventSubscription> {
+        self.shared.exit_tombstones.subscribe()
+    }
+
     /// Retrieve the execution error that caused a process to exit, if any.
+    ///
+    /// This diagnostic is consumed independently of [`Scheduler::take_exit_outcome`]:
+    /// taking either value does not remove the other.
     pub fn take_exit_error(&self, pid: u64) -> Option<ExecError> {
         self.shared.exit_errors.remove(&pid).map(|(_, e)| e)
     }
@@ -187,6 +226,9 @@ impl Scheduler {
     ///
     /// The exception terms are owning deep copies that remain valid after the
     /// process heap is freed.
+    ///
+    /// This diagnostic is consumed independently of [`Scheduler::take_exit_outcome`]:
+    /// taking either value does not remove the other.
     pub fn take_exit_exception(&self, pid: u64) -> Option<super::OwnedException> {
         self.shared.exit_exceptions.remove(&pid).map(|(_, e)| e)
     }
