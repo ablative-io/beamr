@@ -1,0 +1,53 @@
+diff --git a/crates/beamr-wasm/src/lib.rs b/crates/beamr-wasm/src/lib.rs
+index c9d59e8..9ee8f7c 100644
+--- a/crates/beamr-wasm/src/lib.rs
++++ b/crates/beamr-wasm/src/lib.rs
+@@ -199,6 +199,30 @@ impl WasmVm {
+         json_to_js(&result)
+     }
+ 
++    /// PROBE SCRATCH (WPORT-7 §1 — UNCOMMITTED, harness-only): register a
++    /// native BIF `probe:panic_now/0` that panics with the same message style
++    /// as the cfg(test) panic wall (`failure_tests.rs` `panicking_test_bif`).
++    /// This mirrors that test's plain-seam registration
++    /// (`bif_registry.register(module, function, arity, fn, capability)`)
++    /// adapted to the non-test code path (private crate access is fine here).
++    /// It exists ONLY to give the browser/Worker panic-surfacing probe a real
++    /// SYNC-entry panic source; the shipped surface needs no panic source, so
++    /// this method is never committed. Call before loading a workload that
++    /// imports `probe:panic_now/0` so the import resolves at load time.
++    pub fn install_probe_panic_bif(&self) -> Result<(), JsValue> {
++        let module_atom = self.atom_table.intern("probe");
++        let function_atom = self.atom_table.intern("panic_now");
++        self.bif_registry
++            .register(
++                module_atom,
++                function_atom,
++                0,
++                probe_panic_now_bif,
++                Capability::ProcessLocal,
++            )
++            .map_err(registration_error_to_js)
++    }
++
+     /// Send a JavaScript value to a BEAM process mailbox by local PID.
+     pub fn send_message(&mut self, pid: u64, value: JsValue) -> Result<(), JsValue> {
+         let message = js_value_to_owned_term(value, &self.atom_table)?;
+@@ -1610,6 +1634,17 @@ fn is_promise_like(value: &JsValue) -> bool {
+         .is_some_and(|then| then.is_function())
+ }
+ 
++/// PROBE SCRATCH (WPORT-7 §1 — UNCOMMITTED, harness-only): a plain fn-pointer
++/// native that panics with the message style of the cfg(test) panic wall
++/// (`failure_tests.rs` `panicking_test_bif`). Registered via
++/// [`WasmVm::install_probe_panic_bif`] as `probe:panic_now/0`.
++fn probe_panic_now_bif(
++    _args: &[Term],
++    _context: &mut beamr::native::ProcessContext<'_>,
++) -> Result<Term, Term> {
++    panic!("wport7 intentional panic wall probe");
++}
++
+ fn register_wasm_safe_bifs(
+     registry: &BifRegistryImpl,
+     atom_table: &AtomTable,

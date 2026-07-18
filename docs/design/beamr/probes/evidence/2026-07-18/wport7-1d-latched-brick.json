@@ -1,0 +1,54 @@
+{
+  "smoke": false,
+  "probe": "wport7",
+  "leg": "1d-latched-brick",
+  "capturedAt": "2026-07-18T04:10:35.042Z",
+  "data": {
+    "run_step": {
+      "trapped": true,
+      "errorName": "Error",
+      "message": "recursive use of an object detected which would lead to unsafe aliasing in rust"
+    },
+    "send_message": {
+      "trapped": true,
+      "errorName": "Error",
+      "message": "recursive use of an object detected which would lead to unsafe aliasing in rust"
+    },
+    "terminal_error": {
+      "trapped": true,
+      "errorName": "Error",
+      "message": "recursive use of an object detected which would lead to unsafe aliasing in rust"
+    },
+    "await_exit": {
+      "syncTrapped": true,
+      "errorName": "Error",
+      "message": "recursive use of an object detected which would lead to unsafe aliasing in rust"
+    },
+    "freshVmWorks": true,
+    "freshVmResult": {
+      "pid": 1,
+      "reason": null,
+      "result": "got_probe",
+      "state": "exited",
+      "summary": {
+        "errored": [],
+        "executed": 1,
+        "exited": [
+          1
+        ],
+        "next_native_deadline_ms": null,
+        "results": [
+          {
+            "pid": 1,
+            "value": "got_probe"
+          }
+        ],
+        "runnable_remaining": 0,
+        "state": "idle",
+        "waiting": [],
+        "yielded": []
+      }
+    },
+    "platformNote": "On this wasm-bindgen toolchain the aborted &mut self borrow from run_step poisons the JS object's borrow guard, so EVERY method on the bricked object re-traps ('recursive use of an object ...') — terminal_error does not reach its null return and await_exit does not return a hanging promise; both re-trap synchronously. The arbiter-internal last_error=None / stuck-Draining reasoning is real but unobservable from JS because the wrapper guard intercepts first."
+  }
+}

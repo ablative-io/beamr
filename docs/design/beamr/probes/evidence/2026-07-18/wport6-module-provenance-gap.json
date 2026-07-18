@@ -1,0 +1,10 @@
+{
+  "smoke": false,
+  "probe": "wport6",
+  "leg": "module-provenance-gap",
+  "capturedAt": "2026-07-18T04:10:33.745Z",
+  "data": {
+    "reachableFromJs": false,
+    "detail": "ModuleOrigin::Fetched is set in load_module_with_origin but not exposed through any #[wasm_bindgen] surface; the batch report and load_module JSON carry no origin/provenance field. Provenance is verified in Node/Rust tests, not observable from the browser here."
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "smoke": false,
+  "probe": "wport6",
+  "leg": "spy-summary",
+  "capturedAt": "2026-07-18T04:10:33.745Z",
+  "data": {
+    "armCount": 0,
+    "clearCount": 0,
+    "deadlineScaleArmCount": 0,
+    "zeroDelayArmCount": 0,
+    "deadlineArmDelays": [],
+    "arms": [],
+    "clears": []
+  }
+}

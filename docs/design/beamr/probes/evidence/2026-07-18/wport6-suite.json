@@ -1,0 +1,16 @@
+{
+  "smoke": false,
+  "probe": "wport6",
+  "complete": {
+    "kind": "suite-complete",
+    "probe": "wport6",
+    "legs": [
+      "report",
+      "run",
+      "network-window",
+      "bad-url-rejection",
+      "module-provenance-gap"
+    ]
+  },
+  "capturedAt": "2026-07-18T04:10:33.745Z"
+}

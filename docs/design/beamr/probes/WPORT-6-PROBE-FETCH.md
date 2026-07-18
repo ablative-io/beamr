@@ -65,3 +65,51 @@ A browser host passes exactly this adapter:
 
 Late observations append below this line; the probe stays authored-not-run
 until then.
+
+---
+
+## OBSERVATIONS — OFFICIAL RUN 2026-07-18 (status now: RUN)
+
+**Operator:** Artemis Peach, official run at own hands (harness authored by an
+Opus worker, smoke-verified, then overwritten official). **Environment:**
+headless Chrome 150.0.7871.125 (`--headless=new`) driven over CDP by a
+zero-dependency Node-stdlib driver (pattern: Apollo Biscuit's haematite
+CDP harness, credited); Node v26.5.0; macOS (Darwin 25.5.0); real HTTP origin
+(`127.0.0.1`, Node stdlib server). **Bundle:** the real generated `beamr-wasm`
+bundle at main `a399b54`, wasm-bindgen **0.2.123** (side-root pin; the lock's
+exact resolution). Disclosure: the bundle carries the WPORT-7 sitting's
+uncommitted panic-source diff (`evidence/2026-07-18/wport7-panic-source.diff`,
+sha256 `5fd1ac71fda6b227…`) — it adds one panic BIF and touches nothing on the
+fetch surface. Raw observation JSONs: `evidence/2026-07-18/wport6-*.json`.
+
+Per the expected-observations list:
+
+1. **Batch report — GREEN.** `ok: true`; `loaded` order exactly
+   `fetch_chain_c`, `fetch_chain_b`, `fetch_chain_a`; empty
+   `unresolved`/`deferred`/`denied` per module; empty `cycles` and
+   `missing_dependencies` (`wport6-report.json`).
+2. **Network — GREEN.** CDP network log: exactly four requests for the
+   successful load (manifest + three artifacts), dependencies before
+   dependants, each artifact fetched once (`wport6-network.json`; the log's
+   further four requests belong to the deliberate bad-manifest leg below).
+3. **Execution — GREEN.** `spawn("fetch_chain_a","run","[]")` settles via
+   `await_exit` with result **42** — real execution through runtime-fetched
+   code, zero manual pumps, zero recurring callbacks (`wport6-run.json`;
+   the page's `setTimeout`/`clearTimeout` spies recorded no recurring arms).
+4. **Bad-URL rejection — GREEN.** A manifest naming a missing artifact URL
+   rejects with an `ArtifactLoadError` whose message starts
+   `artifact_fetch_failed: ` (adapter threw on `!r.ok`, 404) and whose `data`
+   names the artifact (`fetch_chain_a`), the URL, stage `fetch`, and the
+   already-loaded list `[fetch_chain_c, fetch_chain_b]`
+   (`wport6-bad-url-rejection.json`).
+5. **Provenance — HONEST GAP.** `ModuleOrigin::Fetched` is set in core by the
+   loader but no `#[wasm_bindgen]` surface exposes `module_info`/origin, so
+   provenance is NOT observable from the browser page; it remains proven by
+   the Rust/Node tests (`wport6-module-provenance-gap.json`,
+   `reachableFromJs: false`). Recorded as a surface gap, not a failure; the
+   WPORT-9 conformance gate is the place a JS-visible provenance claim would
+   have to earn its wall.
+
+The one-line adapter was used verbatim as specified above. This closes the
+fetch pillar's browser-run board item; the probe's status line at the top of
+this file is superseded by this section.

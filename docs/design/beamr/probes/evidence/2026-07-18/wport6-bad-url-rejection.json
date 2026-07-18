@@ -1,0 +1,20 @@
+{
+  "smoke": false,
+  "probe": "wport6",
+  "leg": "bad-url-rejection",
+  "capturedAt": "2026-07-18T04:10:33.745Z",
+  "data": {
+    "message": "artifact_fetch_failed: 404",
+    "messageStartsArtifactFetchFailed": true,
+    "errorName": "Error",
+    "data": {
+      "artifact": "fetch_chain_a",
+      "loaded": [
+        "fetch_chain_c",
+        "fetch_chain_b"
+      ],
+      "stage": "fetch",
+      "url": "http://127.0.0.1:52955/artifacts/fetch_chain_a_DELIBERATELY_MISSING.beam"
+    }
+  }
+}

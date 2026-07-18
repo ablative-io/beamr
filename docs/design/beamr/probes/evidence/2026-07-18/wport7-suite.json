@@ -1,0 +1,17 @@
+{
+  "smoke": false,
+  "probe": "wport7",
+  "complete": {
+    "kind": "suite-complete",
+    "probe": "wport7",
+    "legs": [
+      "strand",
+      "console-ordering",
+      "1a-caught",
+      "1d-latched-brick",
+      "1a-uncaught",
+      "1c-queued-turn"
+    ]
+  },
+  "capturedAt": "2026-07-18T04:10:35.043Z"
+}

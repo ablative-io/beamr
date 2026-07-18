@@ -1,0 +1,44 @@
+{
+  "smoke": false,
+  "probe": "wport6",
+  "leg": "report",
+  "capturedAt": "2026-07-18T04:10:33.745Z",
+  "data": {
+    "reportString": "{\"cycles\":[],\"loaded\":[{\"deferred\":[],\"denied\":[],\"module\":\"fetch_chain_c\",\"unresolved\":[]},{\"deferred\":[],\"denied\":[],\"module\":\"fetch_chain_b\",\"unresolved\":[]},{\"deferred\":[],\"denied\":[],\"module\":\"fetch_chain_a\",\"unresolved\":[]}],\"missing_dependencies\":[],\"ok\":true}",
+    "report": {
+      "cycles": [],
+      "loaded": [
+        {
+          "deferred": [],
+          "denied": [],
+          "module": "fetch_chain_c",
+          "unresolved": []
+        },
+        {
+          "deferred": [],
+          "denied": [],
+          "module": "fetch_chain_b",
+          "unresolved": []
+        },
+        {
+          "deferred": [],
+          "denied": [],
+          "module": "fetch_chain_a",
+          "unresolved": []
+        }
+      ],
+      "missing_dependencies": [],
+      "ok": true
+    },
+    "loadedOrder": [
+      "fetch_chain_c",
+      "fetch_chain_b",
+      "fetch_chain_a"
+    ],
+    "orderIsCBA": true,
+    "ok": true,
+    "cyclesEmpty": true,
+    "missingDepsEmpty": true,
+    "perModuleBucketsEmpty": true
+  }
+}

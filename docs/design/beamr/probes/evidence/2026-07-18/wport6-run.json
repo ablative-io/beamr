@@ -1,0 +1,12 @@
+{
+  "smoke": false,
+  "probe": "wport6",
+  "leg": "run",
+  "capturedAt": "2026-07-18T04:10:33.745Z",
+  "data": {
+    "state": "exited",
+    "result": 42,
+    "resultIs42": true,
+    "manualPumps": 0
+  }
+}

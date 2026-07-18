@@ -1,0 +1,12 @@
+{
+  "smoke": false,
+  "probe": "wport7-worker",
+  "complete": {
+    "kind": "suite-complete",
+    "probe": "wport7-worker",
+    "legs": [
+      "1b-worker"
+    ]
+  },
+  "capturedAt": "2026-07-18T04:10:36.953Z"
+}

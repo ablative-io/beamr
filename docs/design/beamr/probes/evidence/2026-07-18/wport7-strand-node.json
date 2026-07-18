@@ -1,0 +1,243 @@
+{
+  "smoke": false,
+  "probe": "wport7",
+  "leg": "strand-node",
+  "capturedAt": "2026-07-18T04:15:45.223Z",
+  "nodeVersion": "v26.5.0",
+  "data": {
+    "environment": "node",
+    "samples": [
+      {
+        "i": 0,
+        "latencyMs": 4.401,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 1,
+        "latencyMs": 1.423,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 2,
+        "latencyMs": 1.39,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 3,
+        "latencyMs": 0.11,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 4,
+        "latencyMs": 1.333,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 5,
+        "latencyMs": 1.328,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 6,
+        "latencyMs": 1.322,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 7,
+        "latencyMs": 1.433,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 8,
+        "latencyMs": 1.35,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 9,
+        "latencyMs": 1.322,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 10,
+        "latencyMs": 1.353,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 11,
+        "latencyMs": 1.344,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 12,
+        "latencyMs": 1.333,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 13,
+        "latencyMs": 1.34,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 14,
+        "latencyMs": 1.312,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 15,
+        "latencyMs": 1.341,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 16,
+        "latencyMs": 1.31,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 17,
+        "latencyMs": 1.33,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 18,
+        "latencyMs": 1.337,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      },
+      {
+        "i": 19,
+        "latencyMs": 1.375,
+        "state": "exited",
+        "result": "got_probe",
+        "armsDuringWait": 1,
+        "clearsDuringWait": 0,
+        "armDelaysDuringWait": [
+          0
+        ]
+      }
+    ],
+    "latency": {
+      "n": 20,
+      "min": 0.11,
+      "p50": 1.34,
+      "p90": 1.433,
+      "max": 4.401,
+      "mean": 1.439
+    },
+    "allExitedGotProbe": true,
+    "maxArmsDuringWait": 1,
+    "note": "CONFIRM if latency clusters near ~1000ms with arm churn per macrotask; KILL if macrotask-scale with one arm -> one fire."
+  }
+}

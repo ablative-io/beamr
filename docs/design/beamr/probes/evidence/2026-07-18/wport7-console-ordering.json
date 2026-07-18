@@ -1,0 +1,79 @@
+{
+  "smoke": false,
+  "probe": "wport7",
+  "leg": "console-ordering",
+  "capturedAt": "2026-07-18T04:10:35.042Z",
+  "data": {
+    "state": "exited",
+    "result": "done",
+    "defaultSinkConsoleOrder": [
+      "out:probe-out-1\n",
+      "err:probe-err-1\n",
+      "out:probe-out-2\n",
+      "err:probe-err-2\n",
+      "out:probe-out-3\n",
+      "err:probe-err-3\n"
+    ],
+    "note": "Default sink routes out->console.log, err->console.error. A browser devtools console shows one interleaved timeline; Node splits stdout/stderr. Cross-stream order is OUT-OF-CONTRACT (io_sink.rs); the runner's CDP console log is the platform-truth channel.",
+    "orderedSinkStream": [
+      {
+        "stream": "out",
+        "text": "probe-out-1"
+      },
+      {
+        "stream": "err",
+        "text": "probe-err-1"
+      },
+      {
+        "stream": "out",
+        "text": "probe-out-2"
+      },
+      {
+        "stream": "err",
+        "text": "probe-err-2"
+      },
+      {
+        "stream": "out",
+        "text": "probe-out-3"
+      },
+      {
+        "stream": "err",
+        "text": "probe-err-3"
+      }
+    ],
+    "orderedSinkIsInterleavedInOrder": true,
+    "cdpConsoleOrder": [
+      {
+        "t": 1784347834428.677,
+        "type": "log",
+        "text": "probe-out-1\n"
+      },
+      {
+        "t": 1784347834428.757,
+        "type": "error",
+        "text": "probe-err-1\n"
+      },
+      {
+        "t": 1784347834428.782,
+        "type": "log",
+        "text": "probe-out-2\n"
+      },
+      {
+        "t": 1784347834428.807,
+        "type": "error",
+        "text": "probe-err-2\n"
+      },
+      {
+        "t": 1784347834428.824,
+        "type": "log",
+        "text": "probe-out-3\n"
+      },
+      {
+        "t": 1784347834428.84,
+        "type": "error",
+        "text": "probe-err-3\n"
+      }
+    ],
+    "cdpConsoleNote": "type 'log' == console.log (out), type 'error' == console.error (err). This is how the real browser devtools console timeline ordered the interleaved streams."
+  }
+}

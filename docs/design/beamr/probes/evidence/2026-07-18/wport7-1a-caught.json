@@ -1,0 +1,21 @@
+{
+  "smoke": false,
+  "probe": "wport7",
+  "leg": "1a-caught",
+  "capturedAt": "2026-07-18T04:10:35.042Z",
+  "data": {
+    "caught": {
+      "trapped": true,
+      "errorName": "RuntimeError",
+      "message": "unreachable"
+    },
+    "caughtRuntimeError": true,
+    "panicCallbackFired": true,
+    "panicCallbackBeforeReturn": true,
+    "panicCallbackBeforeTrap": true,
+    "callbackPayload": "beamr-wasm panicked: wport7 intentional panic wall probe (crates/beamr-wasm/src/lib.rs:1645:5)",
+    "payloadHasMessage": true,
+    "payloadHasLocation": true,
+    "consoleErrorLine": "beamr-wasm panicked: wport7 intentional panic wall probe (crates/beamr-wasm/src/lib.rs:1645:5)"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "smoke": false,
+  "probe": "wport7",
+  "leg": "1a-uncaught",
+  "capturedAt": "2026-07-18T04:10:35.042Z",
+  "data": {
+    "windowOnerrorFired": true,
+    "onerrorEvents": [
+      {
+        "t": 277.90000000596046,
+        "message": "Uncaught RuntimeError: unreachable",
+        "errorName": "RuntimeError"
+      },
+      {
+        "t": 281.80000001192093,
+        "message": "Uncaught arbiter is already draining",
+        "errorName": "String"
+      }
+    ],
+    "panicCallbackFired": true,
+    "panicCallbackBeforeOnerror": true,
+    "callbackPayload": "beamr-wasm panicked: wport7 intentional panic wall probe (crates/beamr-wasm/src/lib.rs:1645:5)"
+  }
+}

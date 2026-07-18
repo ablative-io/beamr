@@ -1,0 +1,22 @@
+{
+  "smoke": false,
+  "probe": "wport7",
+  "leg": "1c-queued-turn",
+  "capturedAt": "2026-07-18T04:10:35.042Z",
+  "data": {
+    "sendReturned": true,
+    "sendGuard": {},
+    "trapSurface": "window.onerror/unhandledrejection",
+    "onerrorEvents": [
+      {
+        "t": 580.6000000089407,
+        "message": "Uncaught RuntimeError: unreachable",
+        "errorName": "RuntimeError"
+      }
+    ],
+    "panicCallbackFired": true,
+    "panicCallbackBeforeTrap": true,
+    "callbackPayload": "beamr-wasm panicked: wport7 intentional panic wall probe (crates/beamr-wasm/src/lib.rs:1645:5)",
+    "hostDispatchAfter": "the queued turn aborted mid-microtask; the VM is bricked (same latched state as 1d). No further turns run for this VM."
+  }
+}

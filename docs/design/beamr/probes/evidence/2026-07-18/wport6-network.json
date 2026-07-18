@@ -1,0 +1,26 @@
+{
+  "smoke": false,
+  "probe": "wport6",
+  "leg": "network",
+  "capturedAt": "2026-07-18T04:10:33.745Z",
+  "data": {
+    "allArtifactRequests": [
+      "http://127.0.0.1:52955/artifacts/manifest.json",
+      "http://127.0.0.1:52955/artifacts/fetch_chain_c.beam",
+      "http://127.0.0.1:52955/artifacts/fetch_chain_b.beam",
+      "http://127.0.0.1:52955/artifacts/fetch_chain_a.beam",
+      "http://127.0.0.1:52955/artifacts/manifest_bad.json",
+      "http://127.0.0.1:52955/artifacts/fetch_chain_c.beam",
+      "http://127.0.0.1:52955/artifacts/fetch_chain_b.beam",
+      "http://127.0.0.1:52955/artifacts/fetch_chain_a_DELIBERATELY_MISSING.beam"
+    ],
+    "artifactRequestCount": 8,
+    "note": "Expect 4 successful-load requests (manifest.json + fetch_chain_c/b/a.beam, deps before dependants) plus the bad-manifest leg's requests (manifest_bad.json + c + b + the 404 miss). Each good artifact fetched exactly once.",
+    "window": {
+      "fetchStart": 33.29999999701977,
+      "fetchEnd": 43.8999999910593,
+      "expectedRequests": 4,
+      "note": "runner attaches the CDP network log; count /artifacts/ requests in this window"
+    }
+  }
+}

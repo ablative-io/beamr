@@ -1,0 +1,63 @@
+{
+  "smoke": false,
+  "probe": "wport7-worker",
+  "leg": "1b-worker",
+  "capturedAt": "2026-07-18T04:10:36.953Z",
+  "data": {
+    "workerReady": true,
+    "panicCallbackFired": true,
+    "callbackPayload": "beamr-wasm panicked: wport7 intentional panic wall probe (crates/beamr-wasm/src/lib.rs:1645:5)",
+    "payloadHasMessage": true,
+    "workerSelfOnerrorFired": true,
+    "workerSelfOnerror": {
+      "type": "self-onerror",
+      "t": 28.700000002980232,
+      "message": "Uncaught RuntimeError: unreachable",
+      "errorName": "RuntimeError"
+    },
+    "ownerPageWorkerOnerrorFired": true,
+    "ownerPageWorkerOnerror": [
+      {
+        "t": 53.8999999910593,
+        "message": "Uncaught RuntimeError: unreachable",
+        "filename": "http://127.0.0.1:52991/pkg/beamr_wasm_bg.wasm",
+        "lineno": 1
+      },
+      {
+        "t": 53.8999999910593,
+        "message": "Uncaught arbiter is already draining",
+        "filename": "http://127.0.0.1:52991/pkg/beamr_wasm.js",
+        "lineno": 278
+      }
+    ],
+    "callbackBeforeTrap": true,
+    "allWorkerMessages": [
+      {
+        "type": "ready",
+        "t": 2.5999999940395355
+      },
+      {
+        "type": "armed",
+        "t": 27.599999994039536
+      },
+      {
+        "type": "cb",
+        "t": 28.700000002980232,
+        "payload": "beamr-wasm panicked: wport7 intentional panic wall probe (crates/beamr-wasm/src/lib.rs:1645:5)"
+      },
+      {
+        "type": "self-onerror",
+        "t": 28.700000002980232,
+        "message": "Uncaught RuntimeError: unreachable",
+        "errorName": "RuntimeError"
+      },
+      {
+        "type": "self-onerror",
+        "t": 28.799999997019768,
+        "message": "Uncaught arbiter is already draining",
+        "errorName": "String"
+      }
+    ],
+    "note": "The panic callback (process-global in the worker realm) must fire BEFORE the trap; onerror routing (worker self.onerror vs owner-page worker.onerror) is engine-dependent and recorded as observed."
+  }
+}
