@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, Barrier, mpsc};
 use std::time::Duration;
 
 use super::exit_capture::OwnedException;
@@ -79,59 +79,104 @@ fn take_exit_outcome_is_non_blocking_and_exactly_once() {
     scheduler.shutdown();
 }
 
-struct StopImmediately;
+struct WaitForTermination;
 
-impl NativeHandler for StopImmediately {
+impl NativeHandler for WaitForTermination {
     fn handle(&mut self, _ctx: &mut NativeContext<'_>) -> NativeOutcome {
-        NativeOutcome::Stop(ExitReason::Normal)
+        NativeOutcome::Wait
     }
 }
 
 #[test]
-fn exit_events_wake_and_take_without_misses_under_concurrent_process_exits() {
-    const PROCESS_COUNT: usize = 256;
+fn receiver_contests_publication_without_misses_under_coordinated_multi_worker_churn() {
+    const WORKER_COUNT: usize = 4;
+    const ROUND_COUNT: usize = 100;
+    const PROCESSES_PER_ROUND: usize = WORKER_COUNT;
+    const PROCESS_COUNT: usize = ROUND_COUNT * PROCESSES_PER_ROUND;
+    const _: () = assert!(PROCESS_COUNT < EXIT_EVENT_CAPACITY);
 
-    let scheduler = test_scheduler(4);
+    let scheduler = test_scheduler(WORKER_COUNT);
     let subscription = scheduler
         .subscribe_exit_events()
         .expect("first exit subscription");
-    let mut outstanding = HashSet::with_capacity(PROCESS_COUNT);
-    for _ in 0..PROCESS_COUNT {
-        let pid = scheduler
-            .spawn_native(Box::new(|| Box::new(StopImmediately)))
-            .expect("native process spawns");
-        assert!(outstanding.insert(pid));
-    }
+    let mut spawned = HashSet::with_capacity(PROCESS_COUNT);
+    let (receiver_armed_tx, receiver_armed_rx) = mpsc::sync_channel(0);
 
-    for _ in 0..PROCESS_COUNT {
-        let (pid, event_reason) = recv_exit(&subscription);
-        assert!(outstanding.remove(&pid), "event pid is unique and spawned");
-        let (reason, _value) = scheduler
-            .take_exit_outcome(pid)
-            .unwrap_or_else(|| panic!("event for pid {pid} must happen after its outcome"));
-        assert_eq!(reason, event_reason);
-    }
-    assert!(
-        outstanding.is_empty(),
-        "every spawned process produced an event"
-    );
+    std::thread::scope(|scope| {
+        let observer = scope.spawn(|| {
+            let mut observed = HashSet::with_capacity(PROCESS_COUNT);
+            // This rendezvous hands off immediately before the first blocking
+            // receive. Native spawning begins only after the handoff, and every
+            // terminal producer then parks at its round's release wall before it
+            // can publish, putting the observer in `recv` ahead of that release.
+            receiver_armed_tx
+                .send(())
+                .expect("spawning thread waits for receiver arm");
+            for _ in 0..PROCESS_COUNT {
+                let (pid, event_reason) = recv_exit(&subscription);
+                let (reason, _value) = scheduler
+                    .take_exit_outcome(pid)
+                    .unwrap_or_else(|| panic!("event for pid {pid} must happen after its outcome"));
+                assert!(observed.insert(pid), "exit pid {pid} published twice");
+                assert_eq!(reason, event_reason);
+            }
+            observed
+        });
+
+        receiver_armed_rx
+            .recv()
+            .expect("receiver reaches blocking receive wall");
+        let scheduler_ref = &scheduler;
+        for _ in 0..ROUND_COUNT {
+            let release_wall = Arc::new(Barrier::new(PROCESSES_PER_ROUND + 1));
+            let mut producers = Vec::with_capacity(PROCESSES_PER_ROUND);
+            for _ in 0..PROCESSES_PER_ROUND {
+                let pid = scheduler
+                    .spawn_native(Box::new(|| Box::new(WaitForTermination)))
+                    .expect("native process spawns");
+                assert!(spawned.insert(pid), "spawned pid {pid} is unique");
+                let producer_wall = Arc::clone(&release_wall);
+                producers.push(scope.spawn(move || {
+                    producer_wall.wait();
+                    scheduler_ref.terminate_process(pid, ExitReason::Normal);
+                }));
+            }
+            // All terminal callers cross the wall together while the
+            // subscriber is already draining and the scheduler's workers are
+            // concurrently dispatching the newly spawned native processes.
+            release_wall.wait();
+            for producer in producers {
+                producer.join().expect("terminal producer completes");
+            }
+        }
+
+        let observed = observer.join().expect("exit observer completes");
+        assert_eq!(
+            observed, spawned,
+            "every spawned pid publishes exactly once"
+        );
+    });
 
     scheduler.shutdown();
 }
 
 #[test]
-fn delivered_outcomes_survive_legacy_tombstone_churn_until_taken() {
+fn durable_finalization_survives_take_and_untaken_outcome_tombstone_eviction() {
     let scheduler = test_scheduler(1);
     let subscription = scheduler
         .subscribe_exit_events()
         .expect("first exit subscription");
-    let retained_pid = 10_000_000;
+    let taken_pid = 10_000_000;
+    let retained_pid = taken_pid + 1;
 
+    publish_synthetic_exit(&scheduler, taken_pid, Term::small_int(6));
+    assert_eq!(recv_exit(&subscription).0, taken_pid);
+    assert!(scheduler.take_exit_outcome(taken_pid).is_some());
     publish_synthetic_exit(&scheduler, retained_pid, Term::small_int(7));
     assert_eq!(recv_exit(&subscription).0, retained_pid);
 
-    for offset in 1..=(TOMBSTONE_CAPACITY as u64 + 1) {
-        let pid = retained_pid + offset;
+    for offset in 2..=(TOMBSTONE_CAPACITY as u64 + 1) {
+        let pid = taken_pid + offset;
         publish_synthetic_exit(&scheduler, pid, Term::small_int(offset as i64));
         assert_eq!(recv_exit(&subscription).0, pid);
         assert!(
@@ -140,12 +185,25 @@ fn delivered_outcomes_survive_legacy_tombstone_churn_until_taken() {
         );
     }
 
+    assert_eq!(scheduler.peek_exit_reason(taken_pid), None);
     assert_eq!(scheduler.peek_exit_reason(retained_pid), None);
+    scheduler.terminate_process(taken_pid, ExitReason::Kill);
+    scheduler.terminate_process(retained_pid, ExitReason::Kill);
+
+    assert!(
+        scheduler.take_exit_outcome(taken_pid).is_none(),
+        "a taken outcome cannot be re-armed after tombstone eviction"
+    );
     let (reason, value) = scheduler
         .take_exit_outcome(retained_pid)
-        .expect("untaken outcome survives tombstone eviction");
+        .expect("duplicate cleanup preserves the original untaken outcome");
     assert_eq!(reason, ExitReason::Normal);
     assert_eq!(value.root().as_small_int(), Some(7));
+    assert_eq!(
+        subscription.recv_timeout(Duration::ZERO),
+        Err(ExitEventRecvError::Timeout),
+        "duplicate cleanup cannot publish a second event"
+    );
 
     scheduler.shutdown();
 }
