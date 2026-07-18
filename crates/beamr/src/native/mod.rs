@@ -70,6 +70,8 @@ pub mod process_info_bifs;
 #[cfg(feature = "readiness")]
 pub mod readiness;
 pub mod registry;
+#[cfg(test)]
+mod registry_replacement_tests;
 pub mod select;
 pub mod selector_ffi;
 pub mod spawn;
@@ -213,6 +215,38 @@ impl fmt::Display for NativeRegistrationError {
 #[cfg(feature = "std")]
 impl std::error::Error for NativeRegistrationError {}
 
+/// Errors returned while replacing registered built-in functions.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum NativeReplacementError {
+    /// No native function exists for the given module/function/arity.
+    MissingMfa {
+        /// Module atom.
+        module: Atom,
+        /// Function atom.
+        function: Atom,
+        /// Function arity.
+        arity: u8,
+    },
+}
+
+impl fmt::Display for NativeReplacementError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingMfa {
+                module,
+                function,
+                arity,
+            } => write!(
+                formatter,
+                "no native function registered for {module:?}:{function:?}/{arity}"
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for NativeReplacementError {}
+
 /// Trait used by import resolution to query built-in functions.
 pub trait BifRegistry {
     /// Look up a BIF by module/function/arity.
@@ -268,6 +302,23 @@ impl NativeRegistry {
         }
     }
 
+    fn replace_existing(
+        &self,
+        module: Atom,
+        function: Atom,
+        arity: u8,
+        native_entry: NativeEntry,
+    ) -> Result<NativeEntry, NativeReplacementError> {
+        match self.entries.entry((module, function, arity)) {
+            Entry::Occupied(mut entry) => Ok(entry.insert(native_entry)),
+            Entry::Vacant(_) => Err(NativeReplacementError::MissingMfa {
+                module,
+                function,
+                arity,
+            }),
+        }
+    }
+
     fn lookup(&self, module: Atom, function: Atom, arity: u8) -> Option<NativeEntry> {
         self.entries
             .get(&(module, function, arity))
@@ -299,6 +350,49 @@ impl BifRegistryImpl {
     ) -> Result<(), NativeRegistrationError> {
         self.registry
             .register(module, function, arity, native_function, None, capability)
+    }
+
+    /// Replaces an already-registered normal built-in function and returns its
+    /// previous entry.
+    ///
+    /// This is a replacement, not an upsert: an absent MFA returns
+    /// [`NativeReplacementError::MissingMfa`] and leaves the registry unchanged.
+    /// The returned [`NativeEntry`] can be retained by a wrapper and called to
+    /// delegate to the replaced implementation.
+    ///
+    /// # Registration-time intent and concurrent dispatch
+    ///
+    /// This method is intended for registry construction, after installing a
+    /// complete BIF table and before starting scheduler workers or resolving
+    /// module imports. Callers should not use it for runtime hot-patching: an
+    /// import that already copied a [`NativeEntry`] keeps that entry, and an
+    /// in-flight dispatch is not waited on or cancelled.
+    ///
+    /// The registry remains safe if a lookup does race with replacement. The
+    /// `DashMap` occupied-entry operation holds the key's shard write lock while
+    /// replacing the complete `NativeEntry`; lookup holds the corresponding
+    /// shard read lock while copying the complete entry. At the byte level, a
+    /// lookup therefore observes either the entire previous entry or the entire
+    /// replacement, never fields or bytes torn between the two. The replacement
+    /// linearizes at `OccupiedEntry::insert`.
+    pub fn replace_existing(
+        &self,
+        module: Atom,
+        function: Atom,
+        arity: u8,
+        native_function: NativeFn,
+        capability: Capability,
+    ) -> Result<NativeEntry, NativeReplacementError> {
+        self.registry.replace_existing(
+            module,
+            function,
+            arity,
+            NativeEntry {
+                function: native_function,
+                dirty_kind: None,
+                capability,
+            },
+        )
     }
 
     /// Registers a built-in function that should use dirty scheduling later.
