@@ -134,6 +134,18 @@ impl BoundedTombstones {
         self.events.subscribe()
     }
 
+    #[cfg(test)]
+    pub(super) fn install_event_publication_gate(
+        &self,
+    ) -> super::exit_events::ExitEventPublicationObserver {
+        self.events.install_publication_gate()
+    }
+
+    #[cfg(test)]
+    pub(super) fn clear_event_publication_gate(&self) {
+        self.events.clear_publication_gate();
+    }
+
     /// Insert a legacy tombstone without publishing an additive outcome.
     ///
     /// Used by internal lifecycle tests that need to simulate an already-dead
@@ -233,6 +245,8 @@ mod tests {
     use crate::term::Term;
     use std::sync::Barrier;
     use std::time::Duration;
+
+    const EVENT_TIMEOUT: Duration = Duration::from_secs(10);
 
     fn insert(store: &BoundedTombstones, pid: u64, reason: ExitReason) -> Option<u64> {
         store.insert_outcome(pid, reason, OwnedTerm::immediate(Term::NIL))
@@ -352,7 +366,7 @@ mod tests {
             OwnedTerm::immediate(Term::small_int(11)),
         );
         assert_eq!(
-            subscription.recv(),
+            subscription.recv_timeout(EVENT_TIMEOUT),
             Ok(ExitEvent::Exited {
                 pid: 1,
                 reason: ExitReason::Normal,
@@ -364,10 +378,12 @@ mod tests {
                 ExitReason::Normal,
                 OwnedTerm::immediate(Term::small_int(pid as i64)),
             );
-            assert!(matches!(
-                subscription.recv(),
-                Ok(ExitEvent::Exited { pid: event_pid, .. }) if event_pid == pid
-            ));
+            match subscription.recv_timeout(EVENT_TIMEOUT) {
+                Ok(ExitEvent::Exited { pid: event_pid, .. }) if event_pid == pid => {}
+                other => {
+                    panic!("expected exit event for pid {pid}, got {other:?}")
+                }
+            }
             assert!(store.take_outcome(&pid).is_some());
         }
         assert_eq!(store.get(&1), None, "pid 1 tombstone was evicted");
@@ -418,7 +434,7 @@ mod tests {
             killed.join().expect("kill finalizer completes");
         });
 
-        let (event_reason, expected_value) = match subscription.recv() {
+        let (event_reason, expected_value) = match subscription.recv_timeout(EVENT_TIMEOUT) {
             Ok(ExitEvent::Exited { pid: 1, reason }) => match reason {
                 ExitReason::Normal => (reason, 10),
                 ExitReason::Kill => (reason, 20),
