@@ -265,6 +265,154 @@ fn dirty_nif_error_resumes_and_raises_exception() {
     scheduler.shutdown();
 }
 
+/// OS-thread names observed inside `dirty_spawn_path_probe`, proving each
+/// invocation ran ON a dirty worker rather than a normal scheduler thread.
+static DIRTY_SPAWN_PATH_THREADS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn dirty_spawn_path_probe(_args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+    let thread_name = std::thread::current().name().unwrap_or_default().to_owned();
+    DIRTY_SPAWN_PATH_THREADS
+        .lock()
+        .expect("dirty spawn-path thread log lock")
+        .push(thread_name);
+    Err(Term::atom(Atom::BADARG))
+}
+
+/// Exported zero-arity entry whose body makes one dirty-CPU native call that
+/// raises `badarg`, so the child dies abnormally and its link fires.
+fn exported_dirty_child(name: Atom, entry: Atom) -> Module {
+    let mut child = module(
+        name,
+        vec![
+            Instruction::Label { label: 1 },
+            Instruction::CallExt {
+                arity: Operand::Unsigned(0),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Return,
+        ],
+    );
+    child.exports.insert((entry, 0), 1);
+    child.resolved_imports.push(native_import(
+        dirty_spawn_path_probe,
+        Some(DirtySchedulerKind::Cpu),
+    ));
+    child
+}
+
+/// Exported zero-arity entry that parks in `receive` forever, staying live
+/// until a link exit signal arrives.
+fn exported_parked_parent(name: Atom, entry: Atom) -> Module {
+    let mut parent = module(
+        name,
+        vec![
+            Instruction::Label { label: 1 },
+            Instruction::Label { label: 10 },
+            Instruction::LoopRec {
+                fail: Operand::Label(20),
+                destination: Operand::X(0),
+            },
+            Instruction::RemoveMessage,
+            Instruction::Return,
+            Instruction::Label { label: 20 },
+            Instruction::Wait {
+                fail: Operand::Label(10),
+            },
+        ],
+    );
+    parent.exports.insert((entry, 0), 1);
+    parent
+}
+
+/// THE WALL for `Scheduler::spawn_link_dirty`'s documented contract: the
+/// method is behaviorally identical to `spawn_link` — the link is real (the
+/// child's abnormal death kills the parked parent) — and dirty dispatch is a
+/// property of the NATIVE ENTRY, not the spawn path: the child's dirty-CPU
+/// native executes on a named dirty worker thread through the pool in both
+/// halves, identically.
+#[test]
+fn spawn_link_dirty_is_spawn_link_and_dirty_dispatch_is_per_entry() {
+    use beamr::atom::AtomTable;
+    use beamr::native::BifRegistryImpl;
+
+    DIRTY_SPAWN_PATH_THREADS
+        .lock()
+        .expect("dirty spawn-path thread log lock")
+        .clear();
+
+    let atoms = Arc::new(AtomTable::new());
+    let parent_module_name = atoms.intern("dirty_spawn_path_parent");
+    let parent_entry = atoms.intern("park");
+    let child_module_name = atoms.intern("dirty_spawn_path_child");
+    let child_entry = atoms.intern("crash_dirty");
+
+    let registry = Arc::new(ModuleRegistry::new());
+    registry.insert(exported_parked_parent(parent_module_name, parent_entry));
+    registry.insert(exported_dirty_child(child_module_name, child_entry));
+
+    let scheduler = beamr::scheduler::Scheduler::with_code_server(
+        SchedulerConfig {
+            thread_count: Some(1),
+            dirty_cpu_threads: Some(1),
+            dirty_io_threads: Some(1),
+            dirty_queue_depth: Some(8),
+            ..SchedulerConfig::default()
+        },
+        Arc::clone(&registry),
+        Arc::clone(&atoms),
+        Arc::new(BifRegistryImpl::new()),
+    )
+    .expect("scheduler starts");
+
+    for use_dirty_entrypoint in [true, false] {
+        let parent_pid = scheduler
+            .spawn(parent_module_name, parent_entry, Vec::new())
+            .expect("spawn parked parent");
+        // Let the parent materialize and reach its receive park.
+        std::thread::sleep(Duration::from_millis(100));
+
+        let child_pid = if use_dirty_entrypoint {
+            scheduler.spawn_link_dirty(parent_pid, child_module_name, child_entry, Vec::new())
+        } else {
+            scheduler.spawn_link(parent_pid, child_module_name, child_entry, Vec::new())
+        }
+        .expect("linked spawn succeeds");
+
+        let (child_reason, _child_value) = scheduler.run_until_exit(child_pid);
+        assert_eq!(
+            child_reason,
+            ExitReason::Error,
+            "the child's dirty badarg raises and kills it"
+        );
+        let (parent_reason, _parent_value) = scheduler.run_until_exit(parent_pid);
+        assert_eq!(
+            parent_reason,
+            ExitReason::Error,
+            "the link is real: the child's abnormal death kills the parked parent \
+             (entrypoint dirty={use_dirty_entrypoint})"
+        );
+    }
+
+    let observed_threads = DIRTY_SPAWN_PATH_THREADS
+        .lock()
+        .expect("dirty spawn-path thread log lock")
+        .clone();
+    assert_eq!(
+        observed_threads.len(),
+        2,
+        "each half ran the dirty native exactly once"
+    );
+    for thread_name in &observed_threads {
+        assert!(
+            thread_name.starts_with("dirty-cpu"),
+            "the dirty native executed ON a dirty worker (got thread {thread_name:?}) — \
+             per-entry dispatch, independent of the spawn entrypoint"
+        );
+    }
+
+    scheduler.shutdown();
+}
+
 static DISABLED_PEER_PROGRESS: AtomicUsize = AtomicUsize::new(0);
 
 fn dirty_unreachable(_args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
