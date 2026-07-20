@@ -1,9 +1,12 @@
 # The hosting ladder — design of record (destination)
 
-- **Revision:** r1 — DRAFT for Tom's veto pass. Written at the coordination
-  seat (Waffles, 2026-07-20) from a vision conversation between Tom and the
-  seat, under the standing keep-it-moving authority: recorded for veto, never
-  queued.
+- **Revision:** r1.1 — domain-owner verdict GREEN (Artemis Peach,
+  2026-07-20, every ground-truth row byte-verified at her own hands in both
+  repos); her amendment and both fold-size notes folded at the tear, plus
+  her #13 consume-or-supersede ruling in §5. Recorded for Tom's veto, never
+  queued. Originally r1, written at the coordination seat (Waffles,
+  2026-07-20) from a vision conversation between Tom and the seat, under the
+  standing keep-it-moving authority.
 - **Kind:** DESTINATION document, tagged *design*, not briefed work. It
   records where beamr is going as a **generic host runtime** — the ladder of
   things beamr can host, the honest guarantee at each rung, what exists at
@@ -109,14 +112,19 @@ The design pins four properties:
 2. **Memory isolation by construction.** Linear memory is the sandbox; the
    guest cannot address host memory. This is the one place a rung-2 guest
    matches rung 1's isolation without effort.
-3. **Preemption restored via wasmtime-style epoch interruption.** Wasm has
-   no reduction counter; epoch interruption gives the scheduler back its
-   right to preempt. Preemption granularity is epoch-quantized, not
-   reduction-fine — stated per §6(c), never papered over.
+3. **Preemption restored via wasmtime-style epoch interruption — on the
+   server engine only.** Wasm has no reduction counter; epoch interruption
+   gives the server-side scheduler back its right to preempt. Preemption
+   granularity is epoch-quantized, not reduction-fine — stated per §6(c),
+   never papered over. The browser face does NOT get this property: its
+   preemption class is stated separately in Browser symmetry below.
 4. **Wasm calls scheduled with dirty-CPU discipline.** A wasm export call is
    a native-length operation from the scheduler's view; it runs under the
    dirty-pool rules (`scheduler/dirty.rs`), keeping the normal schedulers
-   honest.
+   honest. This property inherits the §0 caveat: the dirty pools' spawn-path
+   integration is itself still scaffolded (`scheduler/spawning.rs:315`), so
+   the rung-2 brief depends on that rung-1 maintenance item completing — it
+   must not treat dirty discipline as landed.
 
 Four build pieces when this rung briefs: the **embedded engine** (wasmtime),
 the **process wrapper** (mailbox pump bridged to exports/imports — one ABI),
@@ -127,7 +135,16 @@ the **scheduling discipline** (epoch + dirty-CPU), and the
 way, so the page's module loader and the server host are **the same
 concept** — one ABI, two engines (wasmtime on the server, the browser's own
 wasm runtime on the page). Today beamr-wasm loads only BEAM modules
-(§0); this rung extends both sides together.
+(§0); this rung extends both sides together. **Symmetry of concept is not
+symmetry of guarantee** (§6(c)): the browser engine has no epoch
+interruption — a running export on the page cannot be preempted by the
+host; control returns only when the call returns. The browser face's
+preemption class is therefore **run-to-completion per export call —
+cooperative always, Worker isolation at best** — and rung-2 briefs state
+the two faces' guarantees separately, never as one number. The browser
+face's mailbox pump rides the landed WPORT-2 arbiter contract —
+edge-triggered, no recurring pump — so rung-2 briefs inherit the NO-POLLING
+law from that contract rather than rediscovering it.
 
 **First consumer:** frame's class-(b) fragment mount. Fragments v1 excludes
 `stage-frame`/class-(b) modules (GraphMother, Iridium) as a named v2 seam
@@ -201,6 +218,14 @@ The far rung: a deployment profile that produces **one binary**.
   what those already do by hand.
 
 The tension between AOT and hot loading is a law, not a footnote — §6(b).
+
+**Relation to the prior AOT arc (task #13, ruled by the domain owner at her
+seat, 2026-07-20):** the ladder **consumes** that arc's A1 (JIT wire-up) and
+A2 (coverage) — they are demand-JIT completeness work on the rung-1
+maintenance track that rung 5 depends on, dispatchable on Tom's word
+independent of ladder timing — and **supersedes** its A3 (the standalone AOT
+design document): this section plus the eventual rung-5 brief ARE that
+document. Task #13 is re-scoped accordingly at the domain owner's seat.
 
 ---
 
