@@ -49,7 +49,7 @@ Beamr paths are repo-relative; frame paths are prefixed `frame:`.
 | Links, monitors, exit-signal trapping (the substrate supervision trees execute on) | **Landed.** | `crates/beamr/src/supervision/link.rs` (`trap_exit` semantics), `crates/beamr/src/supervision/monitor.rs` |
 | Hot code loading with `on_load` and purge | **Landed.** | `crates/beamr/src/scheduler/module_management.rs` (`hot_load_module`, `PurgeResult`) |
 | Cranelift JIT | **Landed** behind the `jit` feature. | `crates/beamr/Cargo.toml:16-20,79` (cranelift-codegen/frontend/jit/module/native), `crates/beamr/src/jit/` |
-| Dirty pools (CPU and IO) | **Landed, integration partial.** `DirtyPool` with CPU/IO defaults exists; the spawn-path integration is scaffolded, per the in-tree comment. | `crates/beamr/src/scheduler/dirty.rs` (`DirtyPool`, CPU/IO constructors); caveat at `crates/beamr/src/scheduler/spawning.rs:315` ("dirty pool integration is scaffolded") |
+| Dirty pools (CPU and IO) | **Landed.** `DirtyPool` with CPU/IO defaults; per-call dispatch is complete end to end (`dirty_kind` at registration → `InstructionOutcome::DirtyCall` → submit/suspend/resume through the completion bridge, production registrants, dedicated e2e suite). The former spawn-path "scaffold" was a consumer-less API promising a per-process dirty property this design has no semantic for — dirtiness is per NATIVE ENTRY, matching BEAM's per-NIF model. Resolved 2026-07-20 (`65f499c`): `spawn_link_dirty` documented as a behavioral `spawn_link` alias, equivalence + per-entry dispatch pinned by e2e, slated for removal at the next breaking release (0.16.0-class). | `crates/beamr/src/scheduler/dirty.rs`; `native_call.rs:96` (`DirtyCall`); `tests/dirty_scheduler.rs` (incl. `spawn_link_dirty_is_spawn_link_and_dirty_dispatch_is_per_entry`) |
 | AOT | **Precursor only — NOT object emission.** The current AOT bundle (`BEAMR_AOT` v1) is a host-target-validated *cache envelope* around the original BEAM bytes plus the identities of functions that compiled; native pointers are not persisted, and loading recompiles through the demand-JIT path. Rung 5's Cranelift *object emission* does not exist. | `crates/beamr/src/jit/aot.rs` module doc (states exactly this), `crates/beamr/src/jit/aot_format.rs` |
 | Embedded module archive (load modules baked into the binary) | **Landed.** | `crates/beamr/src/scheduler/module_management.rs` (`load_embedded_module`) |
 | Capability system (audit + sandbox) | **Landed.** | `crates/beamr/src/capability/audit.rs`, `crates/beamr/src/capability/sandbox.rs` |
@@ -87,8 +87,8 @@ against. Beamr executes BEAM bytecode with:
   (`crates/beamr/src/scheduler/module_management.rs`).
 - **Cranelift JIT** — demand compilation behind the `jit` feature
   (`crates/beamr/src/jit/`).
-- **Dirty pools** for long-running native work (`scheduler/dirty.rs`; spawn
-  integration still scaffolded — see §0).
+- **Dirty pools** for long-running native work (`scheduler/dirty.rs`;
+  per-entry dispatch complete — see §0).
 
 **The guarantee (gold standard):** a crashing process cannot corrupt a
 sibling; a looping process cannot starve one; a message send costs a heap
@@ -121,10 +121,10 @@ The design pins four properties:
 4. **Wasm calls scheduled with dirty-CPU discipline.** A wasm export call is
    a native-length operation from the scheduler's view; it runs under the
    dirty-pool rules (`scheduler/dirty.rs`), keeping the normal schedulers
-   honest. This property inherits the §0 caveat: the dirty pools' spawn-path
-   integration is itself still scaffolded (`scheduler/spawning.rs:315`), so
-   the rung-2 brief depends on that rung-1 maintenance item completing — it
-   must not treat dirty discipline as landed.
+   honest. The §0 caveat this property inherited is RESOLVED (2026-07-20,
+   `65f499c`): dirty discipline is landed per native entry, so this rung-2
+   dependency is already satisfied — one less precursor on the wasm-host
+   path.
 
 Four build pieces when this rung briefs: the **embedded engine** (wasmtime),
 the **process wrapper** (mailbox pump bridged to exports/imports — one ABI),
@@ -313,8 +313,9 @@ to its first consumer.
 - **The tree-shaker's reachability analysis and the AOT object format** —
   rung-5 brief; today's `BEAMR_AOT` cache envelope is not that format and is
   not extended by this document.
-- **Dirty-pool spawn-path completion** — an existing rung-1 gap
-  (`scheduler/spawning.rs:315`), owned by beamr's ordinary maintenance
-  track, not by this ladder.
+- **Dirty-pool spawn-path completion** — RESOLVED 2026-07-20 (`65f499c`):
+  the maintenance track found the gap's premise inverted (per-call dispatch
+  was already complete; the scaffold was a consumer-less API) and closed it
+  honestly. `spawn_link_dirty` removal rides the next breaking release.
 - **Any Meridian-side integration** — the strategic section names the
   direction; no Meridian work is designed or implied here.
