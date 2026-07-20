@@ -278,6 +278,16 @@ D4/lease-authority design** and lands on that arc's schedule.
 This document opens no arcs. Each rung briefs separately when its time
 comes, at the coordination seat, with Tom's veto standing.
 
+**Sequencing ratified (2026-07-20, Tom, via coordination seat):** the
+pinned order above is the schedule of record — rung 2 briefs when frame
+reaches its class-(b) loader seam (the ABI co-design partner). This is on
+the docket, not shelved: the dirty-pool spawn-path completion (§2's named
+rung-1 dependency, `spawning.rs`) opened the same day at the beamr seat as
+independent maintenance. The server-only first-leg alternative (wasmtime +
+wrapper + scheduling + import tables against a synthetic consumer,
+deferring the browser face and joint ABI) remains available on Tom's word
+if priority shifts ahead of frame's seam.
+
 ## 8. Strategic context (brief)
 
 This ladder is the named path toward the longer-term sightings, nothing
