@@ -1,8 +1,10 @@
 //! Process utility BIFs for gleam_erlang_ffi.
 //!
 //! These are thin wrappers around existing facility traits, registered under
-//! the `gleam_erlang_ffi` module atom alongside the selector BIFs from
-//! `selector_ffi.rs`.
+//! the `gleam_erlang_ffi` module atom. The selector family is deliberately NOT
+//! shadowed natively: the loaded `gleam_erlang_ffi.beam` bytecode serves it at
+//! the user's own gleam_erlang version (the native shadow was retired after it
+//! rotted against gleam_erlang 1.3.0's selector protocol).
 //!
 //! Gleam's `Nil` type compiles to the atom `nil` in BEAM bytecode, so all
 //! functions that return Gleam Nil use `Term::atom(Atom::NIL)` (the atom `nil`)
