@@ -1824,6 +1824,72 @@ fn process_info_reads_executing_process_metadata() {
 }
 
 #[test]
+fn process_info_current_function_is_derived_from_module_and_ip() {
+    // Fail-first (current_mfa lane #1): a process parked mid-function carries
+    // `current_module` + `code_position` but NO stored MFA (func_info, its only
+    // writer, runs only on dispatch failure). process_info(current_function)
+    // must DERIVE the MFA from the module's func_info bounds at the current ip.
+    // RED on `main`: the stale/None stored field answers `{undefined,undefined,0}`.
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("parked_mod");
+    let waiter = atoms.intern("waiter");
+    // A module whose func_info table bounds `waiter/0` from ip 0 onward. The
+    // process is positioned at ip 1 (inside those bounds), as a receive-parked
+    // process would be between scheduler slices.
+    let mut module = test_module(
+        module_name,
+        vec![
+            Instruction::FuncInfo {
+                module: Operand::Atom(Some(module_name)),
+                function: Operand::Atom(Some(waiter)),
+                arity: Operand::Unsigned(0),
+            },
+            Instruction::Label { label: 1 },
+        ],
+    );
+    module.function_table = vec![(0, waiter, 0)];
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = registry.insert(module);
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        Arc::clone(&registry),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
+    scheduler.shutdown();
+    let pid = scheduler.spawn_test_process_in(NamespaceId::DEFAULT, Arc::clone(&module));
+    {
+        let entry = scheduler
+            .shared
+            .process_bodies
+            .get(&pid)
+            .unwrap_or_else(|| panic!("process body exists"));
+        let mut slot = lock_or_recover(&entry);
+        let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot else {
+            panic!("test process should be present");
+        };
+        process.set_code_position(Some(CodePosition {
+            module: module_name,
+            instruction_pointer: 1,
+        }));
+    }
+
+    assert_eq!(
+        scheduler
+            .shared
+            .process_info(pid, ProcessInfoItem::CurrentFunction),
+        Some(ProcessInfoValue::CurrentFunction(Some((
+            module_name,
+            waiter,
+            0
+        )))),
+        "current_function must derive `waiter/0` from (module, ip), not answer undefined"
+    );
+}
+
+#[test]
 fn tombstone_after_wait_store_prevents_wait_parking() {
     let atom_table = Arc::new(crate::atom::AtomTable::new());
     // One owned distribution bundle, no outbound sender (spec §3.6).
