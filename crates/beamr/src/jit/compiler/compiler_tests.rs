@@ -3871,9 +3871,10 @@ fn coverage_walk_agrees_with_prepass_and_dispatch_for_all_75_variants() {
     }
 
     // The Supported count is DERIVED from the table over the walk, not a
-    // duplicated literal. Post-R1/R2/R3: 47 baseline + 12 (R1 8 + R2 3 + R3 1).
+    // duplicated literal. Post-R1/R2/R3: 47 baseline + 12 (R1 8 + R2 3 + R3 1);
+    // LEG 1c A2 adds FuncInfo (the function_clause DEOPT terminal) → 60.
     assert_eq!(
-        supported, 59,
+        supported, 60,
         "Supported count derived from the coverage table"
     );
 }

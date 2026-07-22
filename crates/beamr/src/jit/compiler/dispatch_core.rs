@@ -415,6 +415,14 @@ pub(super) fn lower_core_instruction(
             return_status_raw(builder, JIT_STATUS_DEOPT, JIT_DEOPT_SENTINEL);
             Ok(Some(true))
         }
+        // LEG 1c A2: the func_info function-clause landing pad. Reached only via a
+        // dispatch fail edge (normal calls enter at the label AFTER it), it deopts
+        // so the restarted interpreter raises error:function_clause. Same seam as
+        // the recv-marker punt — no new exception machinery.
+        Instruction::FuncInfo { .. } => {
+            return_status_raw(builder, JIT_STATUS_DEOPT, JIT_DEOPT_SENTINEL);
+            Ok(Some(true))
+        }
         // -- exception handling --
         Instruction::Try { destination, label } => {
             let catch_block = blocks.label_block(label_operand(label)?)?;

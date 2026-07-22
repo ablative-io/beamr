@@ -268,7 +268,18 @@ impl JitCompiler {
 
             let exhausted = builder.ins().call(helpers.charge, &[process]);
             let exhausted = builder.inst_results(exhausted)[0];
-            let first_instruction = blocks.block_for_instruction(0);
+            // LEG 1c A2: the slice retains the func_info prelude, so the native
+            // entry branches to the EXPORT label (the instruction after the
+            // FuncInfo) — never the prelude, which is the function_clause DEOPT
+            // landing pad. Slices with no func_info prelude (synthetic / edge
+            // slices) enter at instruction 0.
+            let entry_index = instructions
+                .iter()
+                .position(|instruction| {
+                    matches!(instruction, crate::loader::Instruction::FuncInfo { .. })
+                })
+                .map_or(0, |funcinfo_index| funcinfo_index + 1);
+            let first_instruction = blocks.block_for_instruction(entry_index);
             branch_to_yield_if_exhausted(
                 &mut builder,
                 exhausted,

@@ -348,19 +348,51 @@ fn exported_instructions<'a>(
         .get(&export.label)
         .copied()
         .ok_or_else(|| format!("export label {} is absent from module code", export.label))?;
-    let start = match parsed.instructions.get(entry) {
-        Some(Instruction::Label { .. }) | Some(Instruction::FuncInfo { .. }) => entry + 1,
-        Some(_) => entry,
+    // LEG 1c A1+A2: retain the func_info prelude. Kept ELEMENT-IDENTICAL to
+    // `Module::function_instructions` — the R8 slice-equality pin is the wall.
+    // Locate this function's `FuncInfo` (the export `entry` is the label right
+    // after it), start at the prelude label (backing up over line markers — the
+    // dispatch fail-edge target), and end at the NEXT function's `FuncInfo`.
+    let funcinfo_ip = match parsed.instructions.get(entry) {
+        Some(Instruction::FuncInfo { .. }) => entry,
+        Some(_) => entry
+            .checked_sub(1)
+            .filter(|&ip| {
+                matches!(
+                    parsed.instructions.get(ip),
+                    Some(Instruction::FuncInfo { .. })
+                )
+            })
+            .ok_or_else(|| {
+                format!(
+                    "export label {} entry has no func_info prelude",
+                    export.label
+                )
+            })?,
         None => return Err(format!("entry instruction {entry} is outside module code")),
     };
-    // The boundary scan includes `start` itself — an empty function's `start`
-    // already sits on the next `FuncInfo`. Kept element-identical to
-    // `Module::function_instructions` (the slice-equality pin is the wall).
+    let mut start = funcinfo_ip;
+    while start > 0
+        && matches!(
+            parsed.instructions.get(start - 1),
+            Some(Instruction::Line { .. })
+        )
+    {
+        start -= 1;
+    }
+    if start > 0
+        && matches!(
+            parsed.instructions.get(start - 1),
+            Some(Instruction::Label { .. })
+        )
+    {
+        start -= 1;
+    }
     let end = parsed
         .instructions
         .iter()
         .enumerate()
-        .skip(start)
+        .skip(funcinfo_ip + 1)
         .find_map(|(index, instruction)| match instruction {
             Instruction::FuncInfo { .. } => Some(index),
             _ => None,

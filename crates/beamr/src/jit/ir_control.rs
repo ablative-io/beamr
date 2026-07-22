@@ -112,7 +112,12 @@ pub fn coverage(instruction: &Instruction) -> Coverage {
         | Instruction::CallExtLast { .. }
         | Instruction::ApplyLast { .. }
         // -- Supported: JIT-002 R3 (+1) --
-        | Instruction::CallFun2 { .. } => Coverage::Supported,
+        | Instruction::CallFun2 { .. }
+        // -- Supported: LEG 1c A2 — func_info retained as the function_clause
+        // -- landing pad. Lowered as a DEOPT terminal (RecvMarker precedent): the
+        // -- restarted interpreter raises error:function_clause. Reached only via
+        // -- a dispatch fail edge; normal calls enter at the label AFTER it.
+        | Instruction::FuncInfo { .. } => Coverage::Supported,
 
         // -- RejectedIncremental: wave 2 (the arc's next brief) --
         Instruction::SelectTupleArity { .. } => Coverage::RejectedIncremental {
@@ -137,9 +142,6 @@ pub fn coverage(instruction: &Instruction) -> Coverage {
         },
 
         // -- RejectedInherent: rejected by design; no lowering attempts --
-        Instruction::FuncInfo { .. } => Coverage::RejectedInherent {
-            reason: "structural prelude, stripped by the AOT/edge slicer",
-        },
         Instruction::OnLoad => Coverage::RejectedInherent {
             reason: "module-lifecycle pseudo-op, not steady-state execution",
         },
@@ -325,10 +327,11 @@ pub(crate) fn is_runtime_deopt_capable(instruction: &Instruction) -> bool {
         | Instruction::PutTuple2 { .. }
         | Instruction::MakeFun { .. }
         | Instruction::BinaryOp { .. }
-        | Instruction::Fmove { .. } => true,
+        | Instruction::Fmove { .. }
+        // LEG 1c A2: func_info is lowered as an unconditional DEOPT terminal.
+        | Instruction::FuncInfo { .. } => true,
         Instruction::Label { .. }
         | Instruction::Line { .. }
-        | Instruction::FuncInfo { .. }
         | Instruction::Move { .. }
         | Instruction::Swap { .. }
         | Instruction::Jump { .. }
@@ -717,6 +720,14 @@ impl TranslationPlan {
                 }
                 Instruction::RecvMarkerClear { marker } | Instruction::RecvMarkerUse { marker } => {
                     validate_read_operand(marker)?;
+                    block_starts.insert(index + 1);
+                }
+                // Function-clause landing pad (LEG 1c A2): a DEOPT terminal reached
+                // only via a dispatch fail edge (a select_val/test fail targeting
+                // the func_info prelude label). Normal calls enter at the label
+                // AFTER it; when reached, it deopts and the restarted interpreter
+                // raises error:function_clause.
+                Instruction::FuncInfo { .. } => {
                     block_starts.insert(index + 1);
                 }
                 other => {

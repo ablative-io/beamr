@@ -227,18 +227,36 @@ impl Module {
         if !self.is_function_entry(entry_ip) {
             return None;
         }
-        let start = match self.code.get(entry_ip)? {
-            Instruction::Label { .. } | Instruction::FuncInfo { .. } => entry_ip + 1,
-            _ => entry_ip,
+        // LEG 1c A1+A2: retain the func_info prelude. `is_function_entry` accepts
+        // either the `FuncInfo` ip or the export label right after it; locate this
+        // function's `FuncInfo`, then start the slice at its preceding prelude
+        // label (the dispatch fail-edge target) so a multi-clause `select_val`
+        // fail and a self `call_last {f,entry}` both resolve. The `FuncInfo` is
+        // the function_clause landing pad (lowered as a DEOPT terminal); normal
+        // calls enter at the export label, which sits inside the slice. Kept
+        // element-identical to `aot::exported_instructions` (the R8 pin is wall).
+        let funcinfo_ip = match self.code.get(entry_ip)? {
+            Instruction::FuncInfo { .. } => entry_ip,
+            _ => entry_ip
+                .checked_sub(1)
+                .filter(|&ip| matches!(self.code.get(ip), Some(Instruction::FuncInfo { .. })))?,
         };
-        // The boundary scan includes `start` itself: an empty function's
-        // `start` already sits on the NEXT function's `FuncInfo`, and the
-        // slice must be empty there rather than absorb that function.
+        // The prelude is `Label(prelude), [Line...], FuncInfo`; back up over any
+        // line markers to the prelude label (the dispatch fail-edge target).
+        let mut start = funcinfo_ip;
+        while start > 0 && matches!(self.code.get(start - 1), Some(Instruction::Line { .. })) {
+            start -= 1;
+        }
+        if start > 0 && matches!(self.code.get(start - 1), Some(Instruction::Label { .. })) {
+            start -= 1;
+        }
+        // The slice ends at the NEXT function's `FuncInfo`, searched from AFTER
+        // this function's own retained `FuncInfo` so it does not self-terminate.
         let end = self
             .code
             .iter()
             .enumerate()
-            .skip(start)
+            .skip(funcinfo_ip + 1)
             .find_map(|(index, instruction)| match instruction {
                 Instruction::FuncInfo { .. } => Some(index),
                 _ => None,
@@ -654,15 +672,16 @@ mod tests {
             (3, crate::atom::Atom::BADARG, 0),
         ];
 
-        // Entry label of the first function: the slice stops before the next
-        // FuncInfo, not at code end.
+        // LEG 1c A1+A2: the slice RETAINS the func_info prelude (starts at the
+        // FuncInfo, or its preceding prelude label when present) and stops before
+        // the next FuncInfo.
         assert_eq!(
             module.function_instructions(1),
-            Some(&module.code[2..3]),
-            "first function's slice must end before the next FuncInfo"
+            Some(&module.code[0..3]),
+            "first function's slice retains the func_info prelude and ends before the next FuncInfo"
         );
         // Entry label of the last function: the slice runs to code end.
-        assert_eq!(module.function_instructions(4), Some(&module.code[5..7]));
+        assert_eq!(module.function_instructions(4), Some(&module.code[3..7]));
         // A mid-function ip is NOT a canonical entry: compiling a suffix under
         // the containing function's MFA would let entry calls execute the
         // suffix in place of the whole function.
@@ -700,9 +719,10 @@ mod tests {
         module.function_table = vec![(0, crate::atom::Atom::OK, 0)];
 
         // The entry position holds a body instruction (no entry label): it is
-        // canonical and included, not skipped.
+        // canonical. The slice retains the func_info prelude (LEG 1c A2), so it
+        // spans the FuncInfo through the body.
         assert!(module.is_function_entry(1));
-        assert_eq!(module.function_instructions(1), Some(&module.code[1..3]));
+        assert_eq!(module.function_instructions(1), Some(&module.code[0..3]));
     }
 
     #[test]
@@ -728,15 +748,16 @@ mod tests {
             (2, crate::atom::Atom::BADARG, 0),
         ];
 
-        // The empty function's start already sits on the next FuncInfo: the
-        // slice must be empty, not absorb the following function.
+        // LEG 1c A2: with prelude retention an empty (bodyless) function yields
+        // its FuncInfo prelude + entry label, ending before the next FuncInfo.
         assert_eq!(
             module.function_instructions(1),
-            Some(&module.code[2..2]),
-            "an empty non-final function must yield an empty slice"
+            Some(&module.code[0..2]),
+            "an empty non-final function retains its func_info prelude + entry label"
         );
-        // The following function still slices correctly.
-        assert_eq!(module.function_instructions(3), Some(&module.code[4..5]));
+        // The following function slices from its own prelude label (the label
+        // immediately before its FuncInfo) through its body.
+        assert_eq!(module.function_instructions(3), Some(&module.code[1..5]));
     }
 
     #[test]
@@ -765,7 +786,8 @@ mod tests {
             None,
             "an ip outside the code bounds yields no slice"
         );
-        assert_eq!(module.function_instructions(3), Some(&module.code[4..5]));
+        // LEG 1c A2: the slice retains the func_info prelude (code[2] here).
+        assert_eq!(module.function_instructions(3), Some(&module.code[2..5]));
     }
 
     #[test]
