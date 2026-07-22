@@ -2105,9 +2105,14 @@ fn compiled_call_fun_copies_free_vars_after_explicit_args_and_returns_value() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
     let native = compiler
         .compile(
-            &[Instruction::CallFun {
-                arity: Operand::Unsigned(1),
-            }],
+            // Tail-position wall (R3): the call is admitted only immediately
+            // before a Return (the lowering already returns the callee's result).
+            &[
+                Instruction::CallFun {
+                    arity: Operand::Unsigned(1),
+                },
+                Instruction::Return,
+            ],
             caller_atom,
             function_atom,
             1,
@@ -2166,11 +2171,15 @@ fn compiled_call_fun2_dispatches_the_admitted_lowering() {
     let native = JitCompiler::new(JitSettings)
         .unwrap()
         .compile(
-            &[Instruction::CallFun2 {
-                function: Operand::X(1),
-                arity: Operand::Unsigned(1),
-                destination: Operand::X(0),
-            }],
+            // Tail-position wall (R3): CallFun2 admitted immediately before Return.
+            &[
+                Instruction::CallFun2 {
+                    function: Operand::X(1),
+                    arity: Operand::Unsigned(1),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+            ],
             caller_atom,
             function_atom,
             1,
@@ -2216,9 +2225,13 @@ fn compiled_apply_wrong_arity_raises_badarity() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
     let native = compiler
         .compile(
-            &[Instruction::Apply {
-                arity: Operand::Unsigned(1),
-            }],
+            // Tail-position wall (R3): Apply admitted immediately before Return.
+            &[
+                Instruction::Apply {
+                    arity: Operand::Unsigned(1),
+                },
+                Instruction::Return,
+            ],
             caller_atom,
             function_atom,
             1,
@@ -2267,9 +2280,11 @@ fn compiled_make_fun_survives_gc_before_apply() {
                     destination: Operand::X(2),
                     elements: Operand::List(vec![Operand::X(0)]),
                 },
+                // Tail-position wall (R3): CallFun admitted immediately before Return.
                 Instruction::CallFun {
                     arity: Operand::Unsigned(0),
                 },
+                Instruction::Return,
             ],
             Atom::MODULE,
             Atom::OK,
@@ -3014,6 +3029,107 @@ fn reports_unsupported_opcode() {
         JitError::UnsupportedOpcode {
             opcode: "unknown (255)".to_owned()
         }
+    );
+}
+
+// -- JIT-002 R3: the tail-position wall. The tier has no body-call model, so a
+// -- body-position CallExt/Apply/CallFun/CallFun2/Call would silently drop its
+// -- continuation. The pre-pass rejects the whole function; the mis-compile is
+// -- unreachable. This is the 777 probe (a body CallExt followed by Move 777),
+// -- armed as a wall.
+
+#[test]
+fn tail_position_wall_rejects_every_body_position_call() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    // The 777 probe: a body CallExt whose continuation (Move 777 -> X0) the
+    // tail-only lowering would silently drop. Plus the other four call forms in
+    // body position. Each must be rejected as an unsupported opcode by the wall.
+    let body_position_slices = [
+        vec![
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Move {
+                source: Operand::Integer(777),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+        vec![
+            Instruction::Apply {
+                arity: Operand::Unsigned(1),
+            },
+            Instruction::Move {
+                source: Operand::Integer(777),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+        vec![
+            Instruction::CallFun {
+                arity: Operand::Unsigned(1),
+            },
+            Instruction::Move {
+                source: Operand::Integer(777),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+        vec![
+            Instruction::CallFun2 {
+                function: Operand::X(1),
+                arity: Operand::Unsigned(1),
+                destination: Operand::X(0),
+            },
+            Instruction::Move {
+                source: Operand::Integer(777),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+        vec![
+            Instruction::Call {
+                arity: Operand::Unsigned(0),
+                label: Operand::Label(1),
+            },
+            Instruction::Move {
+                source: Operand::Integer(777),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+            Instruction::Label { label: 1 },
+            Instruction::Return,
+        ],
+    ];
+    for slice in &body_position_slices {
+        let result = compiler.compile(slice, Atom::MODULE, Atom::OK, 1);
+        assert!(
+            matches!(result, Err(JitError::UnsupportedOpcode { .. })),
+            "body-position call must be rejected by the tail-position wall, got {result:?} for {slice:?}",
+        );
+    }
+}
+
+#[test]
+fn tail_position_wall_admits_a_tail_external_call() {
+    // The positive control: the SAME CallExt immediately before Return clears the
+    // wall (the *Only/*Last forms and tail CallExt are the legal shape).
+    let native = JitCompiler::new(JitSettings).unwrap().compile(
+        &[
+            Instruction::CallExt {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(0),
+            },
+            Instruction::Return,
+        ],
+        Atom::MODULE,
+        Atom::OK,
+        1,
+    );
+    assert!(
+        native.is_ok(),
+        "a tail-position CallExt must compile: {native:?}"
     );
 }
 

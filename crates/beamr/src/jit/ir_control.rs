@@ -43,6 +43,11 @@ pub enum Coverage {
 /// must agree with (enforced by the 75-variant consistency walk in the compiler
 /// tests). JIT-002 and JIT-003 move variants across the tier ONLY by editing
 /// this function.
+///
+/// The classification is PER-OPCODE: `Supported` means the opcode is lowerable
+/// under the tier's tail-only call model. Body-position structure (a call must
+/// be in tail position — see `require_tail_position`) is the pre-pass wall's
+/// business, like label resolution, and does not move an opcode's class here.
 pub fn coverage(instruction: &Instruction) -> Coverage {
     match instruction {
         // -- Supported: the baseline 47 (dispatch_core / dispatch_call / dispatch_data) --
@@ -313,14 +318,27 @@ impl TranslationPlan {
                     validate_write_operand(source)?;
                     block_starts.insert(index + 1);
                 }
-                Instruction::Call { label, .. }
-                | Instruction::CallOnly { label, .. }
-                | Instruction::CallLast { label, .. } => {
+                // Plain Call lowers to a bare in-slice jump; the *Only/*Last forms
+                // are inherently tail. A body-position Call would drop everything
+                // after it, so it is admitted only immediately before a Return.
+                Instruction::Call { label, .. } => {
+                    require_tail_position(instruction, instructions.get(index + 1))?;
                     validate_label_operand(label)?;
                     block_starts.insert(index + 1);
                 }
-                Instruction::CallExt { import, .. }
-                | Instruction::CallExtOnly { import, .. }
+                Instruction::CallOnly { label, .. } | Instruction::CallLast { label, .. } => {
+                    validate_label_operand(label)?;
+                    block_starts.insert(index + 1);
+                }
+                // CallExt returns the callee's result and terminates the compiled
+                // function (no body-call model), so it is admitted only in tail
+                // position; CallExtOnly/CallExtLast are inherently tail.
+                Instruction::CallExt { import, .. } => {
+                    require_tail_position(instruction, instructions.get(index + 1))?;
+                    validate_import_operand(import)?;
+                    block_starts.insert(index + 1);
+                }
+                Instruction::CallExtOnly { import, .. }
                 | Instruction::CallExtLast { import, .. } => {
                     validate_import_operand(import)?;
                     block_starts.insert(index + 1);
@@ -382,12 +400,18 @@ impl TranslationPlan {
                     validate_float_register_operand(dest, "fnegate destination")?;
                     block_starts.insert(index + 1);
                 }
-                Instruction::Apply { .. }
-                | Instruction::ApplyLast { .. }
-                | Instruction::CallFun { .. }
+                // Apply/CallFun/CallFun2 are helper-return calls that terminate the
+                // compiled function, so they too are admitted only in tail position.
                 // CallFun2's lowering already exists at dispatch_call.rs; admitting
-                // it here makes that dead lowering reachable (JIT-002 R3).
+                // it here (in tail position) makes that dead lowering reachable
+                // (JIT-002 R3). ApplyLast is inherently tail.
+                Instruction::Apply { .. }
+                | Instruction::CallFun { .. }
                 | Instruction::CallFun2 { .. } => {
+                    require_tail_position(instruction, instructions.get(index + 1))?;
+                    block_starts.insert(index + 1);
+                }
+                Instruction::ApplyLast { .. } => {
                     block_starts.insert(index + 1);
                 }
                 Instruction::BinaryOp { .. } => {
@@ -587,6 +611,32 @@ impl BlockMap {
             .get(&label)
             .copied()
             .ok_or(JitError::UnknownLabel { label })
+    }
+}
+
+/// The tail-position wall (JIT-002 R3 tail-only-call-model ruling).
+///
+/// The tier has NO body-call model: every helper-return call lowering
+/// (CallExt/Apply/CallFun/CallFun2) writes X0 then `return_status`
+/// unconditionally — it terminates the compiled function and returns the
+/// callee's result to the edge — and a plain Call lowers to a bare in-slice
+/// jump. A body-position call's continuation is therefore silently dropped. This
+/// structural pre-pass check (like label resolution) admits those five opcodes
+/// only when immediately followed by `Return`; the `*Only`/`*Last` forms are
+/// inherently tail and never reach it. A violation rejects the WHOLE function
+/// through the normal `UnsupportedOpcode` path into `mark_unsupported` /
+/// interpreter fallback — no new rejection channel.
+fn require_tail_position(call: &Instruction, next: Option<&Instruction>) -> Result<(), JitError> {
+    if matches!(next, Some(Instruction::Return)) {
+        Ok(())
+    } else {
+        Err(JitError::UnsupportedOpcode {
+            opcode: format!(
+                "{} in body position (not immediately followed by Return): \
+                 the JIT tier has no body-call model",
+                opcode_name(call)
+            ),
+        })
     }
 }
 

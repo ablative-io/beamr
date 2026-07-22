@@ -156,6 +156,81 @@ fn local_unsupported_module(name: Atom, function: Atom, calls: usize, result: i6
     finish_module(name, code, HashMap::new(), Vec::new())
 }
 
+/// A module whose hot `f/0` carries a BODY-position external call — a value live
+/// in Y across a non-tail call, exactly real erlc's frame shape. The JIT tier's
+/// tail-position wall (R3) rejects the whole function (the tier has no body-call
+/// model), so it must fall back to the interpreter, which runs it correctly.
+/// `f/0` returns `result` (the Y-saved value), the callee `g/0`'s result being
+/// overwritten by the restore — proving the interpreter honored the continuation
+/// the JIT would have dropped.
+fn local_body_call_module(
+    name: Atom,
+    function: Atom,
+    callee: Atom,
+    calls: usize,
+    result: i64,
+) -> Module {
+    let mut code = vec![Instruction::Label { label: 1 }];
+    for _ in 0..calls {
+        code.push(Instruction::Call {
+            arity: Operand::Unsigned(0),
+            label: Operand::Label(2),
+        });
+    }
+    code.push(Instruction::Return);
+    code.push(Instruction::FuncInfo {
+        module: Operand::Atom(Some(name)),
+        function: Operand::Atom(Some(function)),
+        arity: Operand::Unsigned(0),
+    });
+    code.push(Instruction::Label { label: 2 });
+    code.push(Instruction::Allocate {
+        stack_need: Operand::Unsigned(1),
+        live: Operand::Unsigned(0),
+    });
+    code.push(Instruction::Move {
+        source: Operand::Integer(result),
+        destination: Operand::Y(0),
+    });
+    // Body-position external call: NOT followed by Return — the tail-position
+    // wall rejects the whole function here.
+    code.push(Instruction::CallExt {
+        arity: Operand::Unsigned(0),
+        import: Operand::Unsigned(0),
+    });
+    code.push(Instruction::Move {
+        source: Operand::Y(0),
+        destination: Operand::X(0),
+    });
+    code.push(Instruction::Deallocate {
+        words: Operand::Unsigned(1),
+    });
+    code.push(Instruction::Return);
+    code.push(Instruction::FuncInfo {
+        module: Operand::Atom(Some(name)),
+        function: Operand::Atom(Some(callee)),
+        arity: Operand::Unsigned(0),
+    });
+    code.push(Instruction::Label { label: 7 });
+    code.push(Instruction::Move {
+        source: Operand::Integer(99),
+        destination: Operand::X(0),
+    });
+    code.push(Instruction::Return);
+    let imports = vec![ResolvedImport {
+        module: name,
+        function: callee,
+        arity: 0,
+        target: ResolvedImportTarget::Code {
+            module: name,
+            label: 7,
+        },
+    }];
+    let mut exports = HashMap::new();
+    exports.insert((callee, 0), 7);
+    finish_module(name, code, exports, imports)
+}
+
 /// A callee module exporting a JIT-supported `g/0`, plus a caller module whose
 /// entry makes `calls` external body calls to it.
 fn external_pair(
@@ -681,6 +756,53 @@ fn unsupported_function_retries_at_the_new_generation() {
             == 2),
         "the retry must reach the tier again at the new generation"
     );
+    scheduler.shutdown();
+}
+
+/// Tail-position wall (R3), demand path: a body-call erlc-shaped function heats,
+/// is marked unsupported by the wall (the tier has no body-call model), and falls
+/// back to the interpreter — which honors the continuation the JIT would have
+/// dropped and returns the correct answer.
+#[test]
+fn body_position_call_function_is_walled_and_falls_back_to_the_interpreter() {
+    let atoms = AtomTable::with_common_atoms();
+    let module_name = atoms.intern("jit_wireup_body_call");
+    let f = atoms.intern("f");
+    let g = atoms.intern("g");
+    let threshold = 2;
+
+    let registry = Arc::new(ModuleRegistry::new());
+    let v1 = registry.insert(local_body_call_module(module_name, f, g, 1, 42));
+    let scheduler =
+        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+
+    // The interpreter runs the body-call function correctly every time.
+    for _ in 0..threshold {
+        assert_eq!(
+            run_to_value(&scheduler, &v1),
+            Term::small_int(42),
+            "the interpreter honors the continuation after the body call"
+        );
+    }
+    // The JIT tier submits f/0 and the tail-position wall refuses it.
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .unsupported
+            == 1),
+        "the tail-position wall must reject the body-call function"
+    );
+    assert!(scheduler.jit_profiler().is_unsupported(module_name, f, 0));
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module_name, f, 0, v1.generation())
+            .is_none(),
+        "a walled function must not be cached native"
+    );
+    // After the unsupported verdict the process keeps running bytecode correctly.
+    assert_eq!(run_to_value(&scheduler, &v1), Term::small_int(42));
     scheduler.shutdown();
 }
 
