@@ -3049,7 +3049,7 @@ fn compiled_send_records_destination_and_message_safepoint_roots() {
 }
 
 #[test]
-fn wait_timeout_and_timeout_lower_and_blocking_receive_is_walled() {
+fn wait_timeout_and_blocking_receive_lower_under_path_sensitivity() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
 
     // wait_timeout / timeout lower in a sound arrangement (no observable side
@@ -3072,37 +3072,38 @@ fn wait_timeout_and_timeout_lower_and_blocking_receive_is_walled() {
         )
         .unwrap();
 
-    // LEG 1b wall: a real blocking receive places wait/wait_timeout after loop_rec
-    // (an observable, deopt-capable peek), so the whole blocking-receive shape is
-    // walled until Leg 3's precise-resume deopt. (Documented de-admission — see
-    // the leg-1 handoff.)
-    let receive_with_wait = compiler.compile(
-        &[
-            Instruction::Label { label: 1 },
-            Instruction::LoopRec {
-                fail: Operand::Label(2),
-                destination: Operand::X(0),
-            },
-            Instruction::LoopRecEnd {
-                fail: Operand::Label(1),
-            },
-            Instruction::Label { label: 2 },
-            Instruction::WaitTimeout {
-                fail: Operand::Label(3),
-                timeout: Operand::Unsigned(0),
-            },
-            Instruction::Label { label: 3 },
-            Instruction::Timeout,
-            Instruction::Return,
-        ],
-        Atom::MODULE,
-        Atom::OK,
-        0,
-    );
-    assert!(
-        matches!(receive_with_wait, Err(JitError::UnsupportedOpcode { .. })),
-        "a blocking receive (loop_rec then wait_timeout) is walled by 1b: {receive_with_wait:?}"
-    );
+    // CFG-SENSITIVE UN-WALLING: a real blocking receive places wait/wait_timeout
+    // after loop_rec, but the peek/park are PURE (not observable side effects) and
+    // no observable effect is reachable on the path to the deopt edges — so the
+    // whole blocking-receive shape now ADMITS. (Under the old linear guard this
+    // was walled; the path-true dataflow admits it. RemoveMessage — the real loss
+    // effect — is absent here; see `two_sequential_receives_...` for the loss
+    // path that stays rejected.)
+    compiler
+        .compile(
+            &[
+                Instruction::Label { label: 1 },
+                Instruction::LoopRec {
+                    fail: Operand::Label(2),
+                    destination: Operand::X(0),
+                },
+                Instruction::LoopRecEnd {
+                    fail: Operand::Label(1),
+                },
+                Instruction::Label { label: 2 },
+                Instruction::WaitTimeout {
+                    fail: Operand::Label(3),
+                    timeout: Operand::Unsigned(0),
+                },
+                Instruction::Label { label: 3 },
+                Instruction::Timeout,
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            0,
+        )
+        .expect("a blocking receive with no consume effect admits under path-sensitivity");
 }
 
 #[test]
@@ -3393,6 +3394,109 @@ fn deopt_capable_op_after_a_side_effect_is_rejected_by_the_guard() {
     assert!(
         bif_before_send.is_ok(),
         "a deopt-capable Bif BEFORE the side effect must stay admitted: {bif_before_send:?}"
+    );
+}
+
+/// DIAMOND MERGE-POINT TAINT (CFG-sensitive guard, union/may-reach join): an
+/// effect on ONE arm of a branch, both arms joining at a merge, and a
+/// deopt-capable op AFTER the merge — MUST be rejected. This is the classic
+/// soundness hole: a must-join (intersection) implementation lets the effect-free
+/// arm "wash" the merge and silently admit the hazard. This test alone
+/// distinguishes union from must-join, and the existing same-block /
+/// sequential-receive walls do not cross a merge point.
+#[test]
+fn diamond_merge_point_is_tainted_from_either_arm() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    // entry: select_val x0 -> {ok: arm A (Send), error: arm B (pure)}; both jump to
+    // the merge M; M holds a deopt-capable RecvMarkerReserve.
+    let result = compiler.compile(
+        &[
+            Instruction::Label { label: 1 },
+            Instruction::SelectVal {
+                value: Operand::X(0),
+                fail: Operand::Label(5),
+                list: Operand::List(vec![
+                    Operand::Atom(Some(Atom::OK)),
+                    Operand::Label(2),
+                    Operand::Atom(Some(Atom::ERROR)),
+                    Operand::Label(3),
+                ]),
+            },
+            Instruction::Label { label: 2 }, // arm A: carries the effect
+            Instruction::Send,
+            Instruction::Jump {
+                target: Operand::Label(4),
+            },
+            Instruction::Label { label: 3 }, // arm B: pure
+            Instruction::Move {
+                source: Operand::X(1),
+                destination: Operand::X(2),
+            },
+            Instruction::Jump {
+                target: Operand::Label(4),
+            },
+            Instruction::Label { label: 4 }, // merge M
+            Instruction::RecvMarkerReserve {
+                dest: Operand::X(3),
+            },
+            Instruction::Return,
+            Instruction::Label { label: 5 }, // select_val fail path
+            Instruction::Return,
+        ],
+        Atom::MODULE,
+        Atom::OK,
+        2,
+    );
+    assert!(
+        matches!(result, Err(JitError::UnsupportedOpcode { .. })),
+        "the merge must be tainted by the Send on arm A (union join); a must-join \
+         implementation would let the pure arm B wash it and wrongly admit: {result:?}"
+    );
+}
+
+/// MESSAGE-LOSS PATH (two sequential receives): `RemoveMessage` on the first
+/// receive's matched path, then a second receive whose peek/wait deopt edge — a
+/// deopt at the second receive restarts a function whose first receive already
+/// CONSUMED a message, losing it. Must be REJECTED. (Contrast the single blocking
+/// receive, which admits: there the consume is on the matched path that exits.)
+#[test]
+fn two_sequential_receives_with_a_consume_between_are_rejected() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let result = compiler.compile(
+        &[
+            Instruction::Label { label: 1 }, // receive 1
+            Instruction::LoopRec {
+                fail: Operand::Label(2),
+                destination: Operand::X(0),
+            },
+            Instruction::RemoveMessage, // the consume (message-loss effect)
+            Instruction::Jump {
+                target: Operand::Label(3),
+            },
+            Instruction::Label { label: 2 },
+            Instruction::Wait {
+                fail: Operand::Label(1),
+            },
+            Instruction::Label { label: 3 }, // receive 2: its peek is reachable after the consume
+            Instruction::LoopRec {
+                fail: Operand::Label(4),
+                destination: Operand::X(1),
+            },
+            Instruction::RemoveMessage,
+            Instruction::Return,
+            Instruction::Label { label: 4 },
+            Instruction::Wait {
+                fail: Operand::Label(3),
+            },
+        ],
+        Atom::MODULE,
+        Atom::OK,
+        0,
+    );
+    assert!(
+        matches!(result, Err(JitError::UnsupportedOpcode { .. })),
+        "a deopt at the second receive restarts a function whose first receive already \
+         consumed a message (the loss path) — must be rejected: {result:?}"
     );
 }
 

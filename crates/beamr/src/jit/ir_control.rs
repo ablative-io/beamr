@@ -160,28 +160,28 @@ pub fn coverage(instruction: &Instruction) -> Coverage {
 /// instruction that already ran would double the effect. The classification is
 /// EXHAUSTIVE WITH NO WILDCARD, sitting beside `coverage` so a later wave adding
 /// an `Instruction` variant must decide its side-effect class here — the guard
-/// cannot rot silently. The observable set is message send + the mailbox/receive
-/// family (a sent message, a consumed/advanced mailbox, a mutated receive
-/// marker) plus every call form (arbitrary callee effects; calls are tail-only
-/// under R3's wall so they cannot actually precede a Bif, classified
-/// conservatively). Register/heap/stack mutation is NOT observable — a restart
-/// redoes it harmlessly.
+/// cannot rot silently. The observable set is the effects a deopt-restart would
+/// wrongly REPEAT: a message send (duplication), an ACCEPTED message
+/// (`RemoveMessage` — the message-loss consume), a mutated receive marker, a
+/// consumed receive timeout, and every call form (arbitrary callee effects).
+///
+/// The receive PEEK/PARK edges (`LoopRec`/`LoopRecEnd`/`Wait`/`WaitTimeout`) are
+/// NOT observable: peeking/scanning/parking is idempotent on replay — the message
+/// is not consumed until `RemoveMessage`, which happens only on the matched path
+/// (which exits the receive loop). Treating the peek as pure is what admits a
+/// single blocking receive while still rejecting the true loss path (a prior
+/// `RemoveMessage` reaching a later receive's peek/wait deopt edge).
+/// Register/heap/stack mutation is likewise NOT observable — a restart redoes it
+/// harmlessly.
 pub(crate) fn is_observable_side_effect(instruction: &Instruction) -> bool {
     match instruction {
         Instruction::Send
         | Instruction::RemoveMessage
         | Instruction::Timeout
-        | Instruction::LoopRec { .. }
-        | Instruction::LoopRecEnd { .. }
-        | Instruction::Wait { .. }
-        | Instruction::WaitTimeout { .. }
         | Instruction::RecvMarkerReserve { .. }
         | Instruction::RecvMarkerBind { .. }
         | Instruction::RecvMarkerClear { .. }
         | Instruction::RecvMarkerUse { .. }
-        | Instruction::Call { .. }
-        | Instruction::CallOnly { .. }
-        | Instruction::CallLast { .. }
         | Instruction::CallExt { .. }
         | Instruction::CallExtOnly { .. }
         | Instruction::CallExtLast { .. }
@@ -189,7 +189,20 @@ pub(crate) fn is_observable_side_effect(instruction: &Instruction) -> bool {
         | Instruction::ApplyLast { .. }
         | Instruction::CallFun { .. }
         | Instruction::CallFun2 { .. } => true,
-        Instruction::Label { .. }
+        // Local Call/CallOnly/CallLast lower to an IN-SLICE jump to a validated
+        // in-slice label; their target's real effects are tracked by the dataflow's
+        // control-flow edge into it, so the transfer itself is not an opaque
+        // effect. (Marking them effects wrongly taints a self-tail-recursion loop
+        // head through the CallLast back edge.) External CallExt*/Apply*/CallFun*
+        // reach opaque callees and stay observable above.
+        Instruction::Call { .. }
+        | Instruction::CallOnly { .. }
+        | Instruction::CallLast { .. }
+        | Instruction::LoopRec { .. }
+        | Instruction::LoopRecEnd { .. }
+        | Instruction::Wait { .. }
+        | Instruction::WaitTimeout { .. }
+        | Instruction::Label { .. }
         | Instruction::FuncInfo { .. }
         | Instruction::Move { .. }
         | Instruction::Swap { .. }
@@ -385,26 +398,7 @@ impl TranslationPlan {
 
         let mut labels = HashMap::new();
         let mut block_starts = HashSet::from([0, instructions.len()]);
-        // Deopt-after-side-effect guard (LEG 1b): a native deopt restarts the
-        // callee interpreted from its start, replaying any side effect already
-        // committed. Reject the WHOLE function (normal `mark_unsupported` /
-        // interpreter fallback — no new channel) when a runtime-deopt-capable
-        // instruction follows an observable side effect in the slice. The two
-        // authorities are the table-adjacent `is_runtime_deopt_capable` and
-        // `is_observable_side_effect`; this walks them in order so the check is
-        // O(n) and no earlier side effect can be missed.
-        let mut side_effect_seen = false;
         for (index, instruction) in instructions.iter().enumerate() {
-            if side_effect_seen && is_runtime_deopt_capable(instruction) {
-                return Err(JitError::UnsupportedOpcode {
-                    opcode: format!(
-                        "runtime-deopt-capable {} follows an observable side effect \
-                         (deopt-restart would replay the effect)",
-                        opcode_name(instruction)
-                    ),
-                });
-            }
-            side_effect_seen |= is_observable_side_effect(instruction);
             match instruction {
                 Instruction::Label { label } => {
                     labels.insert(*label, index);
@@ -797,11 +791,184 @@ impl TranslationPlan {
             }
         }
 
+        reject_deopt_after_side_effect(instructions, &labels)?;
+
         Ok(Self {
             labels,
             block_starts,
         })
     }
+}
+
+/// Successor instruction indices of `instructions[index]` in the slice's control
+/// flow — the edges the deopt-after-side-effect dataflow propagates along.
+///
+/// The critical distinction is FALL-THROUGH vs no-fall-through: an instruction
+/// that leaves the function (Return, the helper-return / tail call forms, the
+/// FuncInfo deopt terminal, the recv-marker deopt terminals) has NO in-function
+/// successor, so an effect on ITS path never reaches a sibling clause — that is
+/// what a linear scan got wrong. Explicit branch/jump/fail targets are resolved
+/// through the already-validated `labels`. Deopt edges are NOT successors: a
+/// deopt exits native to the interpreter, it does not continue in-slice.
+fn control_flow_successors(
+    index: usize,
+    instructions: &[Instruction],
+    labels: &HashMap<u32, usize>,
+) -> Vec<usize> {
+    use crate::loader::decode::Operand;
+    let len = instructions.len();
+    let fall_through = if index + 1 < len {
+        Some(index + 1)
+    } else {
+        None
+    };
+    let resolve = |operand: &Operand| -> Option<usize> {
+        match operand {
+            Operand::Label(label) => labels.get(label).copied(),
+            _ => None,
+        }
+    };
+    let mut succ = Vec::new();
+    match &instructions[index] {
+        // Leaves the function: no in-slice successor. (Helper-return / tail calls
+        // return the callee result; FuncInfo and the recv-markers deopt; Return
+        // returns.) An effect before these never reaches a later slice instruction
+        // by fall-through — only a real branch can, and that branch is its own
+        // edge below.
+        Instruction::Return
+        | Instruction::CallExt { .. }
+        | Instruction::CallExtOnly { .. }
+        | Instruction::CallExtLast { .. }
+        | Instruction::Apply { .. }
+        | Instruction::ApplyLast { .. }
+        | Instruction::CallFun { .. }
+        | Instruction::CallFun2 { .. }
+        | Instruction::FuncInfo { .. }
+        | Instruction::RecvMarkerReserve { .. }
+        | Instruction::RecvMarkerBind { .. }
+        | Instruction::RecvMarkerClear { .. }
+        | Instruction::RecvMarkerUse { .. } => {}
+        // Unconditional in-slice transfers: target only, never fall-through.
+        Instruction::Jump { target } => succ.extend(resolve(target)),
+        Instruction::Call { label, .. }
+        | Instruction::CallOnly { label, .. }
+        | Instruction::CallLast { label, .. } => succ.extend(resolve(label)),
+        // Park/scan that loop back to the receive head: the `fail` operand is the
+        // loop label. No fall-through (Wait parks; LoopRecEnd jumps to the loop).
+        Instruction::Wait { fail } | Instruction::LoopRecEnd { fail } => {
+            succ.extend(resolve(fail));
+        }
+        // Multi-way dispatch: the fail label AND every case target. No fall-through.
+        Instruction::SelectVal { fail, list, .. } => {
+            succ.extend(resolve(fail));
+            if let Ok(pairs) = parse_select_pairs(list) {
+                for (_, target) in pairs {
+                    succ.extend(resolve(target));
+                }
+            }
+        }
+        // Conditional edges: the fail/alternate label AND fall-through.
+        Instruction::TypeTest { fail, .. }
+        | Instruction::Comparison { fail, .. }
+        | Instruction::TestArity { fail, .. }
+        | Instruction::IsTaggedTuple { fail, .. }
+        | Instruction::LoopRec { fail, .. }
+        | Instruction::WaitTimeout { fail, .. }
+        | Instruction::Try { label: fail, .. }
+        | Instruction::Fadd { fail, .. }
+        | Instruction::Fsub { fail, .. }
+        | Instruction::Fmul { fail, .. }
+        | Instruction::Fdiv { fail, .. }
+        | Instruction::Fnegate { fail, .. } => {
+            succ.extend(resolve(fail));
+            succ.extend(fall_through);
+        }
+        // Bif: fall-through plus a REAL fail label (the `{f,0}` route is a deopt
+        // exit, never an edge).
+        Instruction::Bif { op, operands } => {
+            if let Ok(parsed) = ParsedBif::parse(*op, operands)
+                && !is_no_fail_label(parsed.fail)
+            {
+                succ.extend(resolve(parsed.fail));
+            }
+            succ.extend(fall_through);
+        }
+        Instruction::MapOp { op, operands } => {
+            let fail = match op {
+                MapOp::PutMapAssoc | MapOp::PutMapExact => {
+                    parse_put_map_operands(operands).ok().map(|parsed| parsed.0)
+                }
+                MapOp::GetMapElements => parse_get_map_elements_operands(operands)
+                    .ok()
+                    .map(|parsed| parsed.0),
+                MapOp::HasMapFields => parse_has_map_fields_operands(operands)
+                    .ok()
+                    .map(|parsed| parsed.0),
+            };
+            if let Some(fail) = fail {
+                succ.extend(resolve(fail));
+            }
+            succ.extend(fall_through);
+        }
+        // Straight-line: fall-through only.
+        _ => succ.extend(fall_through),
+    }
+    succ
+}
+
+/// Deopt-after-side-effect guard (LEG 1b, CFG-sensitive revision).
+///
+/// A native deopt restarts the callee interpreted from ITS START, replaying any
+/// observable side effect already committed. The hazard is PATH-DEFINED — "an
+/// effect EXECUTED before the deopt" — so the honest guard is control-flow
+/// reachability, not slice order (the linear scan was only an approximation, and
+/// it false-rejected multi-clause functions whose mutually-exclusive clauses each
+/// end in a tail call). This is a forward, monotone boolean dataflow over the
+/// slice's control-flow graph: `effect_in[i]` is true iff some observable side
+/// effect is executed on SOME path reaching `i`. The join is UNION (may-reach):
+/// a merge is tainted if ANY incoming edge carries an effect — a must-join would
+/// silently admit the diamond hazard (one effect-free arm "washing" the merge).
+/// A runtime-deopt-capable instruction is rejected iff an effect can reach it.
+/// Rejection is the normal `mark_unsupported` / interpreter fallback — no new
+/// channel. Authorities reused unchanged in role: `is_observable_side_effect`
+/// (what taints) and `is_runtime_deopt_capable` (what is guarded).
+fn reject_deopt_after_side_effect(
+    instructions: &[Instruction],
+    labels: &HashMap<u32, usize>,
+) -> Result<(), JitError> {
+    let len = instructions.len();
+    let successors: Vec<Vec<usize>> = (0..len)
+        .map(|index| control_flow_successors(index, instructions, labels))
+        .collect();
+
+    // Forward union dataflow to fixpoint: seed every node, propagate an effect to
+    // successors, re-enqueue on any false->true flip (monotone, so it terminates).
+    let mut effect_in = vec![false; len];
+    let mut worklist: Vec<usize> = (0..len).collect();
+    while let Some(index) = worklist.pop() {
+        let effect_out = effect_in[index] || is_observable_side_effect(&instructions[index]);
+        if effect_out {
+            for &successor in &successors[index] {
+                if !effect_in[successor] {
+                    effect_in[successor] = true;
+                    worklist.push(successor);
+                }
+            }
+        }
+    }
+
+    for (index, instruction) in instructions.iter().enumerate() {
+        if effect_in[index] && is_runtime_deopt_capable(instruction) {
+            return Err(JitError::UnsupportedOpcode {
+                opcode: format!(
+                    "runtime-deopt-capable {} is reachable after an observable side effect \
+                     (a deopt would replay the effect on restart)",
+                    opcode_name(instruction)
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 pub(crate) struct BlockMap {
