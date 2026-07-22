@@ -9,7 +9,7 @@ use crate::jit::ir_binary::{
     BinaryLoweringContext, binary_allocation_roots, fail_operand, lower_binary_op,
 };
 use crate::jit::ir_common::{RegisterAccess, label_operand};
-use crate::jit::ir_control::{BlockMap, opcode_name};
+use crate::jit::ir_control::{BlockMap, Coverage, coverage, opcode_name};
 use crate::jit::ir_exceptions::JIT_STATUS_EXCEPTION;
 use crate::jit::ir_float::{
     FloatBinaryOp, FloatLoweringContext, FloatRegisterMap, float_boxing_roots, translate_fconv,
@@ -330,8 +330,18 @@ pub(super) fn lower_data_instruction(
                 }
             }
         }
-        other => Err(JitError::UnsupportedOpcode {
-            opcode: opcode_name(other),
-        }),
+        other => {
+            // Defense-in-depth twin of the pre-pass catch-all: a variant the
+            // dispatch cannot lower must not be marked Supported by the table.
+            debug_assert_ne!(
+                coverage(other),
+                Coverage::Supported,
+                "dispatch could not lower a variant the coverage table marks Supported: {}",
+                opcode_name(other)
+            );
+            Err(JitError::UnsupportedOpcode {
+                opcode: opcode_name(other),
+            })
+        }
     }
 }

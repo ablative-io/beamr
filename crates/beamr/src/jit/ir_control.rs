@@ -21,6 +21,132 @@ use super::ir_map::{
     parse_get_map_elements_operands, parse_has_map_fields_operands, parse_put_map_operands,
 };
 
+/// Where an `Instruction` variant sits in the demand-JIT coverage tier.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Coverage {
+    /// Admitted end-to-end: the pre-pass accepts it and a dispatch lowering exists.
+    Supported,
+    /// Rejected at this head but owned by a named later wave; moved into
+    /// `Supported` only by editing this table.
+    RejectedIncremental { reason: &'static str },
+    /// Rejected by design; never lowered by any wave.
+    RejectedInherent { reason: &'static str },
+}
+
+/// THE coverage table of record for whole-function JIT admission.
+///
+/// This match is the single source of truth for which `Instruction` variants the
+/// demand-JIT tier admits, and it is EXHAUSTIVE WITH NO WILDCARD ARM: adding an
+/// `Instruction` variant breaks compilation here until it is classified — the
+/// wall the pre-pass and dispatch catch-alls never gave us. Those two catch-alls
+/// keep their `UnsupportedOpcode` returns, but this table is the authority they
+/// must agree with (enforced by the 75-variant consistency walk in the compiler
+/// tests). JIT-002 and JIT-003 move variants across the tier ONLY by editing
+/// this function.
+pub(crate) fn coverage(instruction: &Instruction) -> Coverage {
+    match instruction {
+        // -- Supported: the baseline 47 (dispatch_core / dispatch_call / dispatch_data) --
+        Instruction::Label { .. }
+        | Instruction::Move { .. }
+        | Instruction::Swap { .. }
+        | Instruction::Bif { .. }
+        | Instruction::TypeTest { .. }
+        | Instruction::Comparison { .. }
+        | Instruction::TestArity { .. }
+        | Instruction::IsTaggedTuple { .. }
+        | Instruction::SelectVal { .. }
+        | Instruction::Jump { .. }
+        | Instruction::Send
+        | Instruction::LoopRec { .. }
+        | Instruction::LoopRecEnd { .. }
+        | Instruction::RemoveMessage
+        | Instruction::Wait { .. }
+        | Instruction::WaitTimeout { .. }
+        | Instruction::Timeout
+        | Instruction::RecvMarkerReserve { .. }
+        | Instruction::RecvMarkerBind { .. }
+        | Instruction::RecvMarkerClear { .. }
+        | Instruction::RecvMarkerUse { .. }
+        | Instruction::Try { .. }
+        | Instruction::TryEnd { .. }
+        | Instruction::TryCase { .. }
+        | Instruction::Return
+        | Instruction::CallExt { .. }
+        | Instruction::CallExtOnly { .. }
+        | Instruction::MakeFun { .. }
+        | Instruction::CallFun { .. }
+        | Instruction::Call { .. }
+        | Instruction::CallOnly { .. }
+        | Instruction::Apply { .. }
+        | Instruction::Fmove { .. }
+        | Instruction::Fconv { .. }
+        | Instruction::Fadd { .. }
+        | Instruction::Fsub { .. }
+        | Instruction::Fmul { .. }
+        | Instruction::Fdiv { .. }
+        | Instruction::Fnegate { .. }
+        | Instruction::PutList { .. }
+        | Instruction::GetList { .. }
+        | Instruction::GetHd { .. }
+        | Instruction::GetTl { .. }
+        | Instruction::PutTuple2 { .. }
+        | Instruction::GetTupleElement { .. }
+        | Instruction::BinaryOp { .. }
+        | Instruction::MapOp { .. }
+        // -- Supported: JIT-002 R1 structural frame set (+8) --
+        | Instruction::Line { .. }
+        | Instruction::Allocate { .. }
+        | Instruction::AllocateHeap { .. }
+        | Instruction::AllocateZero { .. }
+        | Instruction::Deallocate { .. }
+        | Instruction::TestHeap { .. }
+        | Instruction::InitYregs { .. }
+        | Instruction::Trim { .. }
+        // -- Supported: JIT-002 R2 tail calls (+3) --
+        | Instruction::CallLast { .. }
+        | Instruction::CallExtLast { .. }
+        | Instruction::ApplyLast { .. }
+        // -- Supported: JIT-002 R3 (+1) --
+        | Instruction::CallFun2 { .. } => Coverage::Supported,
+
+        // -- RejectedIncremental: wave 2 (the arc's next brief) --
+        Instruction::SelectTupleArity { .. } => Coverage::RejectedIncremental {
+            reason: "wave 2: SelectTupleArity (sibling of SelectVal)",
+        },
+        Instruction::Catch { .. }
+        | Instruction::CatchEnd { .. }
+        | Instruction::TryCaseEnd { .. }
+        | Instruction::Raise { .. }
+        | Instruction::RawRaise
+        | Instruction::BuildStacktrace => Coverage::RejectedIncremental {
+            reason: "wave 2: exception machinery / error terminals",
+        },
+        Instruction::Badmatch { .. }
+        | Instruction::Badrecord { .. }
+        | Instruction::CaseEnd { .. }
+        | Instruction::IfEnd => Coverage::RejectedIncremental {
+            reason: "wave 2: error-raising terminals",
+        },
+        Instruction::UpdateRecord { .. } => Coverage::RejectedIncremental {
+            reason: "wave 2: UpdateRecord (record update over tuples)",
+        },
+
+        // -- RejectedInherent: rejected by design; no lowering attempts --
+        Instruction::FuncInfo { .. } => Coverage::RejectedInherent {
+            reason: "structural prelude, stripped by the AOT/edge slicer",
+        },
+        Instruction::OnLoad => Coverage::RejectedInherent {
+            reason: "module-lifecycle pseudo-op, not steady-state execution",
+        },
+        Instruction::NifStart => Coverage::RejectedInherent {
+            reason: "module-lifecycle pseudo-op, not interpreter-dispatched",
+        },
+        Instruction::Generic { .. } => Coverage::RejectedInherent {
+            reason: "unknown-by-construction loader escape hatch",
+        },
+    }
+}
+
 pub(crate) struct TranslationPlan {
     pub(crate) labels: HashMap<u32, usize>,
     pub(crate) block_starts: HashSet<usize>,
@@ -258,7 +384,10 @@ impl TranslationPlan {
                 }
                 Instruction::Apply { .. }
                 | Instruction::ApplyLast { .. }
-                | Instruction::CallFun { .. } => {
+                | Instruction::CallFun { .. }
+                // CallFun2's lowering already exists at dispatch_call.rs; admitting
+                // it here makes that dead lowering reachable (JIT-002 R3).
+                | Instruction::CallFun2 { .. } => {
                     block_starts.insert(index + 1);
                 }
                 Instruction::BinaryOp { .. } => {
@@ -326,6 +455,14 @@ impl TranslationPlan {
                     block_starts.insert(index + 1);
                 }
                 other => {
+                    // The pre-pass rejects here only variants the coverage table
+                    // marks non-Supported; a divergence is a coverage-table bug.
+                    debug_assert_ne!(
+                        coverage(other),
+                        Coverage::Supported,
+                        "pre-pass rejected a variant the coverage table marks Supported: {}",
+                        opcode_name(other)
+                    );
                     return Err(JitError::UnsupportedOpcode {
                         opcode: opcode_name(other),
                     });

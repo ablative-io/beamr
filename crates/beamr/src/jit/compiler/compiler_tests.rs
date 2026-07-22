@@ -6,7 +6,8 @@ use crate::jit::ir_exceptions::{
     JIT_STATUS_DEOPT, JIT_STATUS_EXCEPTION, JIT_STATUS_NORMAL, JIT_STATUS_YIELD, JitReturn,
 };
 use crate::jit::type_info::{FunctionSignature, TypeDescriptor};
-use crate::loader::decode::{BifOp, ComparisonOp, MapOp, Operand, TypeTestOp};
+use crate::jit::ir_control::{Coverage, coverage};
+use crate::loader::decode::{BifOp, BinaryOp, ComparisonOp, MapOp, Operand, TypeTestOp};
 use crate::loader::{Instruction, LambdaEntry};
 use crate::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use crate::process::{JitRuntimeContext, Process};
@@ -2135,6 +2136,67 @@ fn compiled_call_fun_copies_free_vars_after_explicit_args_and_returns_value() {
 }
 
 #[test]
+fn compiled_call_fun2_dispatches_the_admitted_lowering() {
+    // JIT-002 R3: CallFun2's lowering already existed but the pre-pass rejected
+    // it, leaving it dead. With CallFun2 admitted, a CallFun2-bearing function
+    // compiles and dispatches the closure, result equal to the interpreter's.
+    let caller_atom = Atom::MODULE;
+    let function_atom = Atom::OK;
+    let unique_id = 0xc0ffee;
+    let mut module = test_module(
+        caller_atom,
+        vec![
+            Instruction::Label { label: 7 },
+            Instruction::Move {
+                source: Operand::X(1),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+    );
+    module
+        .lambdas
+        .push(test_lambda(function_atom, 1, 7, 1, unique_id));
+    module.function_table.push((0, function_atom, 1));
+    let registry = ModuleRegistry::new();
+    let module = registry.insert(module);
+    let native = JitCompiler::new(JitSettings)
+        .unwrap()
+        .compile(
+            &[Instruction::CallFun2 {
+                function: Operand::X(1),
+                arity: Operand::Unsigned(1),
+                destination: Operand::X(0),
+            }],
+            caller_atom,
+            function_atom,
+            1,
+        )
+        .unwrap();
+    let mut process = Process::new(0, 233);
+    let closure = heap_closure(
+        &mut process,
+        caller_atom,
+        0,
+        1,
+        module.generation(),
+        unique_id,
+        &[Term::small_int(99)],
+    );
+    process.set_current_module(module.clone());
+    process.set_jit_runtime_context(Some(JitRuntimeContext::new(
+        module.as_ref() as *const Module,
+        &registry as *const ModuleRegistry,
+        std::ptr::null(),
+    )));
+    let mut registers = vec![Term::small_int(5).raw(), closure.raw()];
+
+    let returned = call_native_with_process(&native, &mut registers, &mut process);
+
+    assert_eq!(returned, Term::small_int(99).raw());
+}
+
+#[test]
 fn compiled_apply_wrong_arity_raises_badarity() {
     let caller_atom = Atom::MODULE;
     let function_atom = Atom::OK;
@@ -2950,4 +3012,349 @@ fn reports_unsupported_opcode() {
             opcode: "unknown (255)".to_owned()
         }
     );
+}
+
+// -- JIT-002 R4: the coverage source of truth. One classification (ir_control::
+// -- coverage), exhaustive with no wildcard arm, consumed by the pre-pass and
+// -- dispatch catch-alls (debug-assert agreement) and by this walk.
+
+/// One representative `Instruction` per enum variant — all 75, in enum order.
+///
+/// Operand shapes only matter enough to keep a Supported variant off BOTH
+/// catch-alls: any operand yields at worst `UnsupportedOperand`, never
+/// `UnsupportedOpcode`, EXCEPT `BinaryOp`, whose lowering is guarded by a
+/// supported-sub-op check, so its representative uses a supported sub-op.
+fn all_instruction_variants() -> Vec<Instruction> {
+    let l = || Operand::Label(99);
+    vec![
+        Instruction::Label { label: 1 },
+        Instruction::FuncInfo {
+            module: Operand::Atom(Some(Atom::MODULE)),
+            function: Operand::Atom(Some(Atom::OK)),
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::Move {
+            source: Operand::X(1),
+            destination: Operand::X(0),
+        },
+        Instruction::Call {
+            arity: Operand::Unsigned(0),
+            label: l(),
+        },
+        Instruction::CallOnly {
+            arity: Operand::Unsigned(0),
+            label: l(),
+        },
+        Instruction::CallExt {
+            arity: Operand::Unsigned(1),
+            import: Operand::Unsigned(0),
+        },
+        Instruction::CallExtOnly {
+            arity: Operand::Unsigned(1),
+            import: Operand::Unsigned(0),
+        },
+        Instruction::Fmove {
+            source: Operand::FloatRegister(0),
+            dest: Operand::X(0),
+        },
+        Instruction::Fconv {
+            source: Operand::X(0),
+            dest: Operand::FloatRegister(0),
+        },
+        Instruction::Fadd {
+            fail: l(),
+            left: Operand::FloatRegister(0),
+            right: Operand::FloatRegister(1),
+            dest: Operand::FloatRegister(0),
+        },
+        Instruction::Fsub {
+            fail: l(),
+            left: Operand::FloatRegister(0),
+            right: Operand::FloatRegister(1),
+            dest: Operand::FloatRegister(0),
+        },
+        Instruction::Fmul {
+            fail: l(),
+            left: Operand::FloatRegister(0),
+            right: Operand::FloatRegister(1),
+            dest: Operand::FloatRegister(0),
+        },
+        Instruction::Fdiv {
+            fail: l(),
+            left: Operand::FloatRegister(0),
+            right: Operand::FloatRegister(1),
+            dest: Operand::FloatRegister(0),
+        },
+        Instruction::Fnegate {
+            fail: l(),
+            source: Operand::FloatRegister(0),
+            dest: Operand::FloatRegister(0),
+        },
+        Instruction::CallLast {
+            arity: Operand::Unsigned(0),
+            label: l(),
+            deallocate: Operand::Unsigned(0),
+        },
+        Instruction::CallExtLast {
+            arity: Operand::Unsigned(1),
+            import: Operand::Unsigned(0),
+            deallocate: Operand::Unsigned(0),
+        },
+        Instruction::Return,
+        Instruction::Allocate {
+            stack_need: Operand::Unsigned(0),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::AllocateHeap {
+            stack_need: Operand::Unsigned(0),
+            heap_need: Operand::Unsigned(0),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::AllocateZero {
+            stack_need: Operand::Unsigned(0),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Deallocate {
+            words: Operand::Unsigned(0),
+        },
+        Instruction::TestHeap {
+            heap_need: Operand::Unsigned(0),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::PutList {
+            head: Operand::X(0),
+            tail: Operand::X(1),
+            destination: Operand::X(0),
+        },
+        Instruction::PutTuple2 {
+            destination: Operand::X(0),
+            elements: Operand::List(vec![Operand::X(0)]),
+        },
+        Instruction::GetTupleElement {
+            source: Operand::X(0),
+            index: Operand::Unsigned(0),
+            destination: Operand::X(0),
+        },
+        Instruction::GetList {
+            source: Operand::X(0),
+            head: Operand::X(0),
+            tail: Operand::X(1),
+        },
+        Instruction::GetHd {
+            source: Operand::X(0),
+            destination: Operand::X(0),
+        },
+        Instruction::GetTl {
+            source: Operand::X(0),
+            destination: Operand::X(0),
+        },
+        Instruction::TypeTest {
+            op: TypeTestOp::IsInteger,
+            fail: l(),
+            value: Operand::X(0),
+        },
+        Instruction::Comparison {
+            op: ComparisonOp::EqExact,
+            fail: l(),
+            left: Operand::X(0),
+            right: Operand::X(1),
+        },
+        Instruction::TestArity {
+            fail: l(),
+            tuple: Operand::X(0),
+            arity: Operand::Unsigned(2),
+        },
+        Instruction::IsTaggedTuple {
+            fail: l(),
+            value: Operand::X(0),
+            arity: Operand::Unsigned(2),
+            tag: Operand::Atom(Some(Atom::OK)),
+        },
+        Instruction::SelectVal {
+            value: Operand::X(0),
+            fail: l(),
+            list: Operand::List(vec![]),
+        },
+        Instruction::SelectTupleArity {
+            value: Operand::X(0),
+            fail: l(),
+            list: Operand::List(vec![]),
+        },
+        Instruction::Jump { target: l() },
+        Instruction::Bif {
+            op: BifOp::Bif2,
+            operands: vec![
+                l(),
+                Operand::Unsigned(0),
+                Operand::X(0),
+                Operand::X(1),
+                Operand::X(0),
+            ],
+        },
+        Instruction::Send,
+        Instruction::RemoveMessage,
+        Instruction::Timeout,
+        Instruction::LoopRec {
+            fail: l(),
+            destination: Operand::X(0),
+        },
+        Instruction::LoopRecEnd { fail: l() },
+        Instruction::Wait { fail: l() },
+        Instruction::WaitTimeout {
+            fail: l(),
+            timeout: Operand::X(0),
+        },
+        Instruction::RecvMarkerReserve { dest: Operand::X(0) },
+        Instruction::RecvMarkerBind {
+            marker: Operand::X(0),
+            reference: Operand::X(1),
+        },
+        Instruction::RecvMarkerClear { marker: Operand::X(0) },
+        Instruction::RecvMarkerUse { marker: Operand::X(0) },
+        Instruction::Catch {
+            destination: Operand::Y(0),
+            label: l(),
+        },
+        Instruction::CatchEnd { source: Operand::Y(0) },
+        Instruction::Try {
+            destination: Operand::Y(0),
+            label: l(),
+        },
+        Instruction::TryEnd { source: Operand::Y(0) },
+        Instruction::TryCase { source: Operand::Y(0) },
+        Instruction::TryCaseEnd { source: Operand::Y(0) },
+        Instruction::BinaryOp {
+            op: BinaryOp::BsInitWritable,
+            operands: vec![Operand::Unsigned(0), Operand::X(0)],
+        },
+        Instruction::MapOp {
+            op: MapOp::HasMapFields,
+            operands: vec![],
+        },
+        Instruction::MakeFun {
+            operands: vec![Operand::Unsigned(0)],
+        },
+        Instruction::CallFun {
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::CallFun2 {
+            function: Operand::X(1),
+            arity: Operand::Unsigned(0),
+            destination: Operand::X(0),
+        },
+        Instruction::Apply {
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::ApplyLast {
+            arity: Operand::Unsigned(0),
+            deallocate: Operand::Unsigned(0),
+        },
+        Instruction::Badmatch { value: Operand::X(0) },
+        Instruction::Badrecord { value: Operand::X(0) },
+        Instruction::CaseEnd { value: Operand::X(0) },
+        Instruction::IfEnd,
+        Instruction::Raise {
+            stacktrace: Operand::X(0),
+            reason: Operand::X(1),
+        },
+        Instruction::RawRaise,
+        Instruction::Line {
+            index: Operand::Unsigned(0),
+        },
+        Instruction::Trim {
+            words: Operand::Unsigned(0),
+            remaining: Operand::Unsigned(0),
+        },
+        Instruction::OnLoad,
+        Instruction::BuildStacktrace,
+        Instruction::Swap {
+            left: Operand::X(0),
+            right: Operand::X(1),
+        },
+        Instruction::InitYregs {
+            registers: Operand::List(vec![Operand::Y(0)]),
+        },
+        Instruction::NifStart,
+        Instruction::UpdateRecord {
+            operands: vec![
+                Operand::Atom(Some(Atom::OK)),
+                Operand::Unsigned(1),
+                Operand::X(0),
+                Operand::X(0),
+            ],
+        },
+        Instruction::Generic {
+            opcode: 254,
+            name: "generic",
+            operands: vec![],
+        },
+    ]
+}
+
+/// Does compiling this slice reject it specifically as an UNSUPPORTED OPCODE
+/// (the two catch-alls), as opposed to succeeding or failing on operand shape?
+fn rejected_as_unsupported_opcode(result: &Result<crate::jit::types::NativeCode, JitError>) -> bool {
+    matches!(result, Err(JitError::UnsupportedOpcode { .. }))
+}
+
+#[test]
+fn coverage_table_has_one_entry_per_instruction_variant() {
+    let variants = all_instruction_variants();
+    // Exactly 75 variants, all distinct — no duplicate or missing representative.
+    let distinct: std::collections::HashSet<std::mem::Discriminant<Instruction>> =
+        variants.iter().map(std::mem::discriminant).collect();
+    assert_eq!(variants.len(), 75, "expected one representative per variant");
+    assert_eq!(distinct.len(), 75, "representatives must be distinct variants");
+}
+
+#[test]
+fn coverage_walk_agrees_with_prepass_and_dispatch_for_all_75_variants() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let variants = all_instruction_variants();
+
+    let mut supported = 0_usize;
+    for variant in &variants {
+        // A slice that lets label-bearing variants resolve their target (Label 99)
+        // so Supported variants reach and pass dispatch, not just the pre-pass.
+        // TryEnd needs an open try scope (its lowering reports the state error as
+        // an UnsupportedOpcode), so it gets a Try prelude.
+        let mut slice = Vec::new();
+        if matches!(variant, Instruction::TryEnd { .. }) {
+            slice.push(Instruction::Try {
+                destination: Operand::Y(0),
+                label: Operand::Label(99),
+            });
+        }
+        slice.push(variant.clone());
+        slice.push(Instruction::Return);
+        slice.push(Instruction::Label { label: 99 });
+        slice.push(Instruction::Return);
+        let compiled = compiler.compile(&slice, Atom::MODULE, Atom::OK, 0);
+        let is_opcode_rejected = rejected_as_unsupported_opcode(&compiled);
+
+        match coverage(variant) {
+            Coverage::Supported => {
+                supported += 1;
+                // (a) + (c): a Supported variant hits neither the pre-pass nor the
+                // dispatch UnsupportedOpcode catch-all.
+                assert!(
+                    !is_opcode_rejected,
+                    "coverage table marks {variant:?} Supported but compilation \
+                     rejected it as an unsupported opcode: {compiled:?}",
+                );
+            }
+            Coverage::RejectedIncremental { .. } | Coverage::RejectedInherent { .. } => {
+                // (b): a Rejected variant is rejected as an unsupported opcode.
+                assert!(
+                    is_opcode_rejected,
+                    "coverage table marks {variant:?} Rejected but compilation did \
+                     not reject it as an unsupported opcode: {compiled:?}",
+                );
+            }
+        }
+    }
+
+    // The Supported count is DERIVED from the table over the walk, not a
+    // duplicated literal. Post-R1/R2/R3: 47 baseline + 12 (R1 8 + R2 3 + R3 1).
+    assert_eq!(supported, 59, "Supported count derived from the coverage table");
 }
