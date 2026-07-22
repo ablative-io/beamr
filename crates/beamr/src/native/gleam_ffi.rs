@@ -16,6 +16,7 @@ use crate::native::{
 };
 use crate::scheduler::DirtySchedulerKind;
 use crate::term::Term;
+use crate::term::reference_ref::ReferenceRef;
 
 /// The Gleam `nil` atom, distinct from the BEAM empty list (`Term::NIL`).
 const GLEAM_NIL: Term = Term::atom(Atom::NIL);
@@ -154,14 +155,22 @@ pub fn bif_gleam_demonitor(args: &[Term], context: &mut ProcessContext) -> Resul
     let [ref_term] = args else {
         return Err(badarg());
     };
-    let reference = ref_term.as_small_int().ok_or_else(badarg)?;
-    if reference < 0 {
-        return Err(badarg());
-    }
+    // `erlang:monitor/2` returns a boxed reference (the monitor/2 landing), so a
+    // monitor value arrives as a `ReferenceRef`; accept that, keeping the legacy
+    // small-int form as a fallback. Mirrors `bif_demonitor_2`.
+    let reference = if let Some(reference) = ReferenceRef::new(*ref_term) {
+        reference.id()
+    } else {
+        let legacy_reference = ref_term.as_small_int().ok_or_else(badarg)?;
+        if legacy_reference < 0 {
+            return Err(badarg());
+        }
+        legacy_reference as u64
+    };
     let caller_pid = context.pid().ok_or_else(badarg)?;
     let facility = context.supervision_facility().ok_or_else(badarg)?;
     facility
-        .demonitor(caller_pid, reference as u64)
+        .demonitor(caller_pid, reference)
         .map_err(|_| badarg())?;
     Ok(GLEAM_NIL)
 }
