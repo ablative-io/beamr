@@ -87,6 +87,30 @@ instance than §2 predicted:
    differential-equal to until the interpreter is fixed. See §4 Leg 1c
    (amended).
 
+## 2b. CORRECTION (2026-07-23, Leg-1 landing) — the §3B guard is CFG-sensitive, not linear
+
+§3B's interim guard was scoped here as a LINEAR slice-order scan ("following an
+observable side effect"). Landing Leg 1c empirically refuted that formulation:
+a multi-clause function whose mutually-exclusive clauses each end in a tail
+call false-positives under slice order (clause N's tail call taints clause
+N+1's, though no path executes both) — the linear guard rejected exactly the
+shapes 1c exists to admit. No sound linear refinement exists (counterexample:
+an effect-carrying jump to a post-exit label defeats reset-after-exit). Ruled
+at the beamr seat, ratified 2026-07-22: the guard is a forward, monotone,
+UNION-join (may-reach) boolean dataflow over the slice's control-flow graph —
+an effect-reachability analysis. This is MORE faithful to §2's class, which is
+path-defined ("an effect EXECUTED before the deopt"); the linear scan was the
+approximation. Rejection mechanism unchanged (`mark_unsupported` fallback).
+Soundness walls, all tested in the landed lane: same-block Send-then-deopt
+rejected; two-sequential-receives loss path rejected; the replay probe stays
+green; a DIAMOND merge-point taint test proves the join direction (a must-join
+would let a pure arm wash the merge — bar-stage mutation confirmed the test
+discriminates). Un-walling tested, not silent: a frameless blocking receive
+admits; a REAL erlc receive stays walled by its frame teardown
+(`deallocate`-after-`remove_message`, the same loss class) — honest limit
+reported, retired by Leg 3's precise resume, not forced early. §3B and §4.1b
+below are amended to this formulation.
+
 ## 3. Blocker map → four work classes
 
 - **A. Slicer label retention** — two sub-shapes: (A1) retain the entry label
@@ -99,13 +123,14 @@ instance than §2 predicted:
   wall). A2 reclassifies `FuncInfo` in the 75-variant table
   (RejectedInherent → Supported-as-terminal), which the exhaustive no-wildcard
   `coverage()` forces us to do honestly.
-- **B. Deopt-restart soundness** — interim: extend the purity discipline from
-  "{f,0} Bifs" to "any runtime-deopt-capable instruction following an observable
-  side effect" in the pre-pass, reusing the existing
-  `is_observable_side_effect` authority (new use, no new machinery — the R3
-  tail-wall precedent: a conservative wall that stays correct forever, not a
-  half-measure to redo). Permanent: precise-resume deopt, which is a Leg 3
-  outcome (§4).
+- **B. Deopt-restart soundness** (AMENDED per §2b) — interim: extend the purity
+  discipline from "{f,0} Bifs" to "any runtime-deopt-capable instruction
+  REACHABLE after an observable side effect" — a CFG-sensitive forward
+  effect-reachability dataflow over the slice (union join), not slice order —
+  in the pre-pass, reusing the existing `is_observable_side_effect` authority
+  (new use, no new machinery — the R3 tail-wall precedent: a conservative wall
+  that stays correct forever, not a half-measure to redo). Permanent:
+  precise-resume deopt, which is a Leg 3 outcome (§4).
 - **C. Body-call continuation model** — native CP, mid-function resume, frame
   interop with the interpreter. Retires the R3 tail wall, makes frames/
   `call_ext_last`/Y-across-call reachable on real erlc, and provides the
@@ -124,8 +149,11 @@ proof pattern — `[Send, Move #lit→X, typed arith that overflows]` through th
 wired demand path, asserting the send count. If red (double send): the guard in
 1b is a defect fix and the commit carries the red. If unreachable: 1b lands as
 hardening with the probe as its permanent wall.
-1b. *Deopt-after-side-effect guard* (class B interim): pre-pass rejects slices
-where a runtime-deopt-capable instruction follows an observable side effect.
+1b. *Deopt-after-side-effect guard* (class B interim; AMENDED per §2b): pre-pass
+rejects slices where a runtime-deopt-capable instruction is REACHABLE after an
+observable side effect — CFG-sensitive effect-reachability dataflow, union
+join, over the slice's control-flow graph (the linear "follows in the slice"
+formulation false-positived multi-clause tail exits and was replaced in-lane).
 Must land **no later than** 1c, because 1c widens admission of exactly the
 multi-clause shapes that contain Send-then-arithmetic.
 1c. *Slicer retention A1+A2* (AMENDED per §2a.3): both slicers co-updated under
