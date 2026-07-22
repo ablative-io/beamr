@@ -1,0 +1,122 @@
+{
+  "id": "JIT-002",
+  "cluster": "jit",
+  "title": "JIT coverage 1 of 2 — the every-function structural set, so real compiled code reaches the demand path at all",
+  "depends_on": ["JIT-001"],
+  "blocked_by": [],
+  "checklist": [],
+  "stories": [],
+  "purpose": "Ledger A2, first brief. LADDER RECONCILIATION (binding context, folded here per the coordinator's rider rather than side-noted): the hosting-ladder's §0 row 'Cranelift JIT — Landed' (DESIGN.md:51) is true and, post-JIT-001, means RUNTIME-REACHABLE — the profiler heats at both call edges and compilation rides the dirty-CPU service. But ground truth at 41d4535 is that the reachable tier is effectively INERT on real code: the Instruction enum has 75 variants, the pre-pass accepts 47, and the rejected 28 include Line, Allocate/AllocateHeap/AllocateZero, Deallocate, TestHeap, InitYregs, Trim, CallLast, CallExtLast, and ApplyLast (pre-pass catch-all, ir_control.rs:297-301; independently verified at the bytes). Every erlc-emitted function body carries Line; nearly all carry a frame. So the compilable set today is synthetic-leaf-only, and the demand path's unsupported verdict (mark_unsupported → STATE_UNSUPPORTED, terminal within a generation, retried at a newer one — profiler.rs:235-247,343-361) is what actually fires on production-shaped code. JIT-001's boundary declared lowerings out of scope and named A2 as the lane that reopens the supported set (JIT-001.json boundaries; JIT-001.json:147). This brief is that lane's first wave: the STRUCTURAL set that gates whole-function admission. It CONSUMES the post-JIT-001 profiler contract unchanged — generation+epoch dual-key (profiler.rs:44-56), monotonic generations across delete (02e7509) — and changes nothing about it. Sub-op widening (TypeTest beyond 6/17 incl. IsFloat, the Bif import-table reach beyond 5 hard-coded arithmetic slots, Bs*/BinaryOp beyond 13/21, fmove operand forms) is WAVE 2 (the arc's next brief), and exception/error-terminal lowerings ride with it. Base: beamr main at 41d4535 or later.",
+  "task": "Lower the ten structural opcodes that gate real-function admission (Line; the frame family Allocate/AllocateHeap/AllocateZero/Deallocate/TestHeap/InitYregs/Trim; the tail-call family CallLast/CallExtLast/ApplyLast), admit CallFun2 to the pre-pass whose lowering already exists dead at dispatch_call.rs:169-203, and replace the two silent catch-alls' implicit knowledge with ONE compile-enforced coverage classification that the pre-pass, the dispatch, and the tests all consume — so a new Instruction variant cannot be silently unclassified and the supported set has a single source of truth. Prove the outcome on a REAL erlc-produced module through the wired demand path, differential-equal to the interpreter. Deviations from this brief — including improvements — STOP and report; they are not improvised.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "The every-function structural set — Line + frame family lowered",
+      "spec": "Lower, with semantics identical to the interpreter's dispatch arms (interpreter/opcodes/ is the semantic reference, per-opcode): Line (no-op in execution — the interpreter treats it so at opcodes/mod.rs:236; the JIT skips it in both the pre-pass block-structure scan and dispatch); Allocate, AllocateHeap, AllocateZero (stack-frame reservation, with AllocateZero's NIL-initialization and AllocateHeap's heap-need guard honored); Deallocate; TestHeap (heap-need guard); InitYregs (NIL-init of named y registers); Trim (frame window shift). Frame and heap-guard lowerings MUST reuse the existing runtime-helper seam (runtime.rs / safepoint.rs) the way current lowerings reach process state; heap guards compose with the existing GC discipline the same way the interpreter's arms do — the JIT'd code must never grow the heap around the collector. STOP-AND-REPORT TRIPWIRE (binding): if any opcode in this set requires NEW GC, safepoint, or stack-representation machinery — rather than new uses of existing helpers — stop and report with the blocking fact; that is an architecture decision above this brief, and 'a helper that almost fits, adjusted' counts as new machinery for this clause.",
+      "acceptance": [
+        "Per-opcode compiled_* walls in compiler_tests.rs for each of the eight non-trivial opcodes (Line needs only the admission proof below), matching the existing per-opcode wall style",
+        "A function containing the full set (frame allocate → y-reg use → trim → deallocate) compiles and its JIT execution is value-identical to interpreter execution on the same inputs",
+        "Heap-guard behavior pinned: a TestHeap/AllocateHeap function whose guard must trip still produces correct results through the JIT path (no silent heap overrun; observed via a heap-pressure fixture)",
+        "No new #[allow]; no unwrap/expect/panic outside tests"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/jit/ir_control.rs",
+          "crates/beamr/src/jit/compiler/dispatch_core.rs",
+          "crates/beamr/src/jit/ir_allocation.rs",
+          "crates/beamr/src/jit/compiler/compiler_tests.rs"
+        ]
+      }
+    },
+    {
+      "id": "R2",
+      "title": "Tail calls — CallLast, CallExtLast, ApplyLast",
+      "spec": "Lower the three Last-form calls with true tail semantics: frame teardown (the Deallocate component rides R1's mechanism) followed by transfer that composes with the existing call lowerings' dispatch shape (dispatch_call.rs's Call/CallExt/Apply arms are the semantic base). The JIT boundary contract holds: where the existing non-last call lowerings return control to the trampoline/edge rather than native-inlining the callee, the Last forms do the same — a tail call from JIT'd code MUST NOT grow native stack per iteration. A self-recursive tail loop is the acceptance instrument: it must run a depth that would overflow any per-call native stack growth (1e6 iterations minimum) with flat memory.",
+      "acceptance": [
+        "compiled_* walls for all three opcodes",
+        "Tail-recursion flatness pin: 1e6-deep self tail-recursion through the JIT path completes with results equal to the interpreter's and no stack growth (the pin fails if a per-iteration native frame sneaks in)",
+        "CallExtLast exercised against a genuinely external callee (cross-module fixture), not just a same-module alias"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/jit/ir_control.rs",
+          "crates/beamr/src/jit/compiler/dispatch_call.rs",
+          "crates/beamr/src/jit/compiler/compiler_tests.rs"
+        ]
+      }
+    },
+    {
+      "id": "R3",
+      "title": "CallFun2 pre-pass admission — the dead lowering wired, and the class of defect walled",
+      "spec": "Admit CallFun2 to the pre-pass (ir_control.rs:230 currently reads Apply | CallFun only) so its existing, complete lowering (dispatch_call.rs:169-203) becomes reachable. Then wall the DEFECT CLASS, not just the instance: a test that derives the pre-pass-accepted set and the dispatch-handled set (via R4's classification table once it exists — see R4's consistency clause) and fails on any variant the dispatch can lower but the pre-pass rejects, or vice versa. The two catch-alls made this divergence silent; after this brief it is structurally loud.",
+      "acceptance": [
+        "A CallFun2-bearing function compiles and runs JIT with results equal to the interpreter's",
+        "The pre-pass/dispatch consistency wall exists, passes, and FAILS if either side is modified without the other (fail-first: re-introduce the CallFun2 omission and observe the wall go red; recorded in the handoff, not committed)"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/jit/ir_control.rs",
+          "crates/beamr/src/jit/compiler/compiler_tests.rs"
+        ]
+      }
+    },
+    {
+      "id": "R4",
+      "title": "Coverage source of truth — one classification, compile-enforced, consumed everywhere",
+      "spec": "Introduce a single classification of every Instruction variant into Supported | RejectedIncremental { reason } | RejectedInherent { reason } (naming is the builder's call within house style), living in the jit module beside the pre-pass. The classifying match is EXHAUSTIVE WITH NO WILDCARD ARM — adding an Instruction variant must break compilation until the variant is classified (this is the wall the two silent catch-alls never gave us; new-variant drift today falls through both of them unnoticed, and no #[deny]/exhaustiveness guard exists anywhere in the compiler — verified at the bytes). The pre-pass catch-all and the dispatch catch-all both keep their UnsupportedOpcode returns but the classification becomes the documented authority they must agree with: a consistency test walks all 75 variants and asserts (a) every Supported variant is pre-pass-accepted, (b) every Rejected variant is pre-pass-rejected, (c) the R3 pre-pass/dispatch wall holds through the same walk. INHERENT classifications at this head: FuncInfo (structural prelude, stripped by the slicer — aot.rs:352), OnLoad and NifStart (module-lifecycle pseudo-ops, not steady-state execution; NifStart is not even interpreter-dispatched — opcodes/mod.rs:461), Generic (unknown-by-construction). Everything else rejected at this head is RejectedIncremental with the wave that owns it named in the reason (wave-2 items per the purpose). The classification's rustdoc states it is the coverage table of record and that JIT-002/JIT-003 move variants only by editing it.",
+      "acceptance": [
+        "Exhaustiveness proof: the classifying match has no wildcard arm (grep-level check in review) — a mock new variant breaking compilation is demonstrated in the handoff, not committed",
+        "The 75-variant consistency walk passes and is 10x stable",
+        "Post-R1/R2/R3 the Supported count is exactly 47 + 11 = 58 and the walk derives that count from the table, not a hard-coded literal duplicated in the test"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/jit/mod.rs",
+          "crates/beamr/src/jit/ir_control.rs",
+          "crates/beamr/src/jit/compiler/compiler_tests.rs"
+        ]
+      }
+    },
+    {
+      "id": "R5",
+      "title": "Real-function acceptance — an erlc module JITs end-to-end, and the unsupported-representative re-pin",
+      "spec": "The proof this brief changed reality rather than counts: a fixture module produced by REAL erlc (OTP-29, the house fixture toolchain; committed .beam with its .erl source beside it, probe-workload precedent) whose exported function is an ordinary compiled-Erlang shape — frame allocation, y-register use across a call, a tail-recursive loop, Line instructions throughout — heats through record_call at the wired edges, compiles on the dirty-CPU service, dispatches native, and produces results equal to the same module run under a minimal (JIT-absent) composition. Consume public API only (first-external-consumer doctrine). Bounded waits on the JIT-001 telemetry counters, never bare sleeps. RE-PIN RIDER (binding): jit_wireup.rs:582's unsupported_function_retries_at_the_new_generation currently uses Trim as its unsupported representative; R1 makes Trim supported, so that test's premise dies. Re-pin it on a variant the R4 table still classifies RejectedIncremental (Catch or UpdateRecord are the natural picks), and derive the representative's rejected-ness FROM the table in the test setup — so wave 2 flipping that variant breaks the test loudly at the table lookup instead of silently hollowing the retry proof.",
+      "acceptance": [
+        "erlc fixture (committed .beam + .erl) compiles through the demand path and dispatches native: counter-verified (1 submission, 1 success), result-equal to the minimal-composition run, 10x stable",
+        "unsupported_function_retries_at_the_new_generation green with a table-derived representative; fail-first evidence that the test reddens when the representative is classified Supported (handoff, not committed)",
+        "All 16 existing jit_wireup acceptance tests remain green unmodified except the re-pin"
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/tests/jit_wireup.rs"
+        ],
+        "create": [
+          "crates/beamr/tests/fixtures/jit_real_function.erl (name is builder's call; .beam committed beside it)"
+        ]
+      }
+    },
+    {
+      "id": "R6",
+      "title": "Full gate bar on the final head",
+      "spec": "The composition-campaign bar, unchanged: cargo fmt --check; cargo check -p beamr; cargo clippy --all-targets -- -D warnings AND --all-targets --all-features -- -D warnings; cargo test -p beamr --lib; cargo test -p beamr --test '*'; 10x stability loops on every new pin. Zero new #[allow] anywhere. No unwrap/expect/panic outside tests. wasm32 check unaffected (beamr-wasm builds; the jit feature is not in its graph — verify, don't assume). Handoff pack states toolchain versions measured on the final head.",
+      "acceptance": [
+        "All gates exit 0 on the final head, toolchain-stamped",
+        "grep proves zero new #[allow] in the diff",
+        "beamr-wasm wasm32 build exits 0 at the final head"
+      ],
+      "files": {
+        "modify": []
+      }
+    }
+  ],
+  "boundaries": [
+    "Wave 2 (the arc's next brief) owns ALL sub-op widening: TypeTest beyond the supported 6 (incl. IsFloat, ir_control_validation.rs:36), the Bif import-table reach beyond the 5 hard-coded arithmetic slots (ir_arithmetic.rs:36), Bif0/Bif1/GcBif1/GcBif3 (ir_arithmetic.rs:98), Bs*/BinaryOp widening (ir_binary.rs:150), fmove operand forms — OUT here",
+    "Exception-machinery and error-terminal lowerings (Catch, CatchEnd, TryCaseEnd, Badmatch, Badrecord, CaseEnd, IfEnd, Raise, RawRaise, BuildStacktrace), SelectTupleArity, and UpdateRecord are OUT — wave 2 pool; R4 classifies them RejectedIncremental with the wave named",
+    "The INHERENT set stays rejected BY DESIGN: FuncInfo, OnLoad, NifStart, Generic — R4 records why; no lowering attempts",
+    "The profiler/fallback contract is CONSUMED, not modified: no changes to generation/epoch semantics, mark_* signatures, or retry behavior — JIT-001's machinery is the platform, not the patient",
+    "No emitted-.beam-bytes or encode-surface changes of any kind (standing cross-repo assurance to aion's BC-4 differential harness, 2026-07-22); no loader changes; no interpreter semantic changes — the interpreter is the semantic REFERENCE for every lowering, never the modified party",
+    "No new services, threads, or inventory lines; the operand-range try_from guards (the ~70 INHERENT robustness bounds) are boundaries of supported lowerings and stay exactly as they are",
+    "The ledger's A1-2 (CLI .beamr_native companion loading) remains its own future brief — untouched here"
+  ],
+  "verification": "Full R6 bar on the final head. The acceptance spine is R5's real-function end-to-end (10x, counter-verified, minimal-composition differential) + R4's 75-variant consistency walk + R2's tail-flatness pin. Fail-first evidence where each R names it (R3 wall, R5 re-pin), recorded in the handoff. Reviewer-of-record per house convention; Sol pre-review of the folded brief text against pinned bytes before the build leg (house standard), norn adversarial rounds when norn returns to service, Fable tear at the domain seat before declaration to the coordinator's tear."
+}
