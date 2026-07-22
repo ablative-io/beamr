@@ -87,6 +87,7 @@ impl Atom {
     pub const BS_SKIP: Self = Self(73);
     pub const BS_GET_TAIL: Self = Self(74);
     pub const BS_EQ_EXACT: Self = Self(75);
+    pub const INFINITY: Self = Self(76);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -174,6 +175,7 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("skip", Atom::BS_SKIP),
     ("get_tail", Atom::BS_GET_TAIL),
     ("=:=", Atom::BS_EQ_EXACT),
+    ("infinity", Atom::INFINITY),
 ];
 
 /// Concurrent intern table for atom strings.

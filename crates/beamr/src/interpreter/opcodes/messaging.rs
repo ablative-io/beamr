@@ -271,10 +271,16 @@ pub fn wait_timeout(
         module: module.name,
         instruction_pointer: next_instruction_pointer(continuation.instruction_pointer)?,
     }));
-    process.set_receive_timeout(Some(ReceiveTimeout {
-        timeout_position,
-        milliseconds,
-    }));
+    // `after infinity`: no timer is armed, so only a message wakeup (resuming at
+    // the fail label above) ever re-runs the receive — an unbounded wait,
+    // matching `wait`.
+    match milliseconds {
+        Some(milliseconds) => process.set_receive_timeout(Some(ReceiveTimeout {
+            timeout_position,
+            milliseconds,
+        })),
+        None => process.set_receive_timeout(None),
+    }
     transition_to_waiting(process)?;
     Ok(InstructionOutcome::Waiting)
 }
@@ -317,18 +323,33 @@ fn transition_to_waiting(process: &mut Process) -> Result<(), ExecError> {
     Ok(())
 }
 
+/// Resolve a `wait_timeout` timeout operand to milliseconds.
+///
+/// Returns `Ok(None)` for the `infinity` atom (BEAM's `receive ... after
+/// infinity`, an unbounded wait — no timer), `Ok(Some(ms))` for a bounded
+/// timeout, and `Badarg` for any other non-timeout term. `infinity` compares by
+/// the stable [`Atom::INFINITY`] index, which `AtomTable::with_common_atoms`
+/// pre-interns (the interpreter's atom table).
 fn timeout_milliseconds(
     process: &Process,
     module: &Module,
     operand: &Operand,
-) -> Result<u64, ExecError> {
+) -> Result<Option<u64>, ExecError> {
     match operand {
-        Operand::Unsigned(value) => Ok(*value),
-        Operand::Integer(value) => u64::try_from(*value).map_err(|_| ExecError::Badarg),
-        _ => core::read_term(process, module, operand)?
-            .as_small_int()
-            .and_then(|value| u64::try_from(value).ok())
-            .ok_or(ExecError::Badarg),
+        Operand::Unsigned(value) => Ok(Some(*value)),
+        Operand::Integer(value) => u64::try_from(*value)
+            .map(Some)
+            .map_err(|_| ExecError::Badarg),
+        _ => {
+            let term = core::read_term(process, module, operand)?;
+            if term.as_atom() == Some(crate::atom::Atom::INFINITY) {
+                return Ok(None);
+            }
+            term.as_small_int()
+                .and_then(|value| u64::try_from(value).ok())
+                .map(Some)
+                .ok_or(ExecError::Badarg)
+        }
     }
 }
 
