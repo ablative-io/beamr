@@ -143,7 +143,7 @@
     }
   ],
   "boundaries": [
-    "A1-2 (CLI .beamr_native companion loading) is OUT — it is the arc's second brief",
+    "A1-2 (CLI .beamr_native companion loading) is OUT — its own future brief, numbered when it earns a timeline (coordinator's numbering ruling 2026-07-22: brief numbers record dispatch order; JIT-002 went to the coverage lane)",
     "A2 lowerings are OUT: no changes to the compiler, IR modules, or supported-opcode set; if the differential test needs a 'JIT-supported function', pick one the current tier already compiles",
     "tune_threshold exists but stays unwired — adaptive thresholds are not this brief",
     "No changes to replay semantics beyond the R1 gating; no changes to dirty-pool machinery, teardown admissions, or ServiceMode arms — this brief CONSUMES the composed surface, it does not extend it",
