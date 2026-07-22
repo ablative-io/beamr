@@ -73,7 +73,6 @@ pub mod registry;
 #[cfg(test)]
 mod registry_replacement_tests;
 pub mod select;
-pub mod selector_ffi;
 pub mod spawn;
 pub mod stdlib_stubs;
 pub mod supervision;

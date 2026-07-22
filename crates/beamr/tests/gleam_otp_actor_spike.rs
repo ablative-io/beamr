@@ -22,14 +22,15 @@
 //! exactly the module-closure of `actor_spike:run/0` (computed with `beam_lib`),
 //! committed per the house pre-compiled-fixture convention.
 //!
-//! NOTE: the spike's BIF registry deliberately does NOT register the native
-//! `gleam_erlang_ffi` selector BIFs. Those shadow the loaded module and are
-//! pinned to an older gleam_erlang selector protocol (bare-tag matching, a bare
-//! `select` result), incompatible with gleam_erlang 1.3.0's `#(tag, arity)` keys
-//! and `Result`-wrapped `selector_receive`. Leaving them unregistered lets the
-//! real, loaded `gleam_erlang_ffi.beam` bytecode serve `select/1,2` etc. (a plain
-//! `receive` with `is_map_key`/`element`/`tuple_size` guards over a handler map)
-//! — the faithful path, and the one this spike proves. See the handoff.
+//! NOTE: the native `gleam_erlang_ffi` selector shadow has been RETIRED (it was
+//! pinned to an older gleam_erlang selector protocol — bare-tag matching, a bare
+//! `select` result — incompatible with gleam_erlang 1.3.0's `#(tag, arity)` keys
+//! and `Result`-wrapped `selector_receive`). No BIF registry registers it any
+//! more, so the real, loaded `gleam_erlang_ffi.beam` bytecode serves `select/1,2`
+//! etc. (a plain `receive` with `is_map_key`/`element`/`tuple_size` guards over a
+//! handler map) — the faithful, version-matched path. `selector_family_absent...`
+//! below pins the honest-undef behaviour when neither shadow nor bytecode serve
+//! the family. See the handoff for the retirement migration table.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -44,7 +45,6 @@ use beamr::native::gleam_ffi::register_gleam_ffi_bifs;
 use beamr::native::meridian_ffi::register_meridian_ffi;
 use beamr::native::otp_stubs::{init_otp_atoms, register_otp_stubs};
 use beamr::native::process_bifs::register_gate2_bifs;
-use beamr::native::selector_ffi::register_selector_bifs;
 use beamr::native::stdlib_stubs::register_stdlib_stubs;
 use beamr::process::ExitReason;
 use beamr::scheduler::{Scheduler, SchedulerConfig};
@@ -56,11 +56,10 @@ fn full_bif_registry(atom_table: &AtomTable) -> BifRegistryImpl {
     register_gate2_bifs(&registry, atom_table).expect("gate2");
     register_gate3_bifs(&registry, atom_table).expect("gate3");
     register_stdlib_stubs(&registry, atom_table).expect("stdlib");
-    // The native `gleam_erlang_ffi` selector BIFs are intentionally NOT
-    // registered: they are pinned to an older gleam_erlang selector protocol.
-    // Leaving them unregistered lets the loaded gleam_erlang_ffi.beam bytecode
-    // serve the selector family for gleam_erlang 1.3.0 (see the module docs).
-    let _ = register_selector_bifs;
+    // The native `gleam_erlang_ffi` selector shadow has been RETIRED (it was
+    // pinned to an older gleam_erlang selector protocol and silently mismatched
+    // gleam_erlang >= 1.3). The selector family is now served by the loaded
+    // `gleam_erlang_ffi.beam` bytecode — the faithful, version-matched path.
     register_gleam_ffi_bifs(&registry, atom_table).expect("gleam_ffi");
     register_meridian_ffi(&registry, atom_table).expect("meridian_ffi");
     init_otp_atoms(atom_table);
@@ -68,13 +67,15 @@ fn full_bif_registry(atom_table: &AtomTable) -> BifRegistryImpl {
     registry
 }
 
-/// Load every committed actor-spike beam into a fresh module registry and boot a
-/// single-threaded scheduler wired to the shared atom + BIF tables (so
-/// cross-module dispatch and export funs resolve).
+/// Load the committed actor-spike beams (optionally skipping one, by file name)
+/// into a fresh module registry and boot a single-threaded scheduler wired to
+/// the shared atom + BIF tables (so cross-module dispatch and export funs
+/// resolve).
 fn load_and_boot(
     atom_table: &Arc<AtomTable>,
     module_registry: &Arc<ModuleRegistry>,
     bif_registry: Arc<BifRegistryImpl>,
+    exclude: Option<&str>,
 ) -> Scheduler {
     let beams_dir =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/gleam_otp_spike/beams");
@@ -87,6 +88,9 @@ fn load_and_boot(
         .expect("read beams dir")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .filter(|path| path.extension().is_some_and(|ext| ext == "beam"))
+        .filter(|path| {
+            exclude.is_none_or(|name| path.file_name().and_then(|n| n.to_str()) != Some(name))
+        })
         .collect();
     paths.sort();
     assert!(!paths.is_empty(), "no .beam files in beams dir");
@@ -108,13 +112,24 @@ fn load_and_boot(
     .expect("scheduler starts")
 }
 
-/// Spawn `actor_spike:MODULE_ENTRY/0`, run it to exit, and return its exit
-/// reason plus the value it returned (deep-copied at the exit boundary).
+/// Spawn `actor_spike:MODULE_ENTRY/0` (loading all committed beams), run it to
+/// exit, and return its exit reason plus the value it returned (deep-copied at
+/// the exit boundary).
 fn run_entry(entry: &str) -> (ExitReason, Term, Option<String>) {
+    run_entry_inner(entry, None)
+}
+
+/// As [`run_entry`], but skips the named fixture beam, so its exports resolve
+/// neither to the (retired) native shadow nor to loaded bytecode.
+fn run_entry_without(entry: &str, exclude: &str) -> (ExitReason, Term, Option<String>) {
+    run_entry_inner(entry, Some(exclude))
+}
+
+fn run_entry_inner(entry: &str, exclude: Option<&str>) -> (ExitReason, Term, Option<String>) {
     let atom_table = Arc::new(AtomTable::with_common_atoms());
     let bif_registry = Arc::new(full_bif_registry(&atom_table));
     let module_registry = Arc::new(ModuleRegistry::new());
-    let scheduler = load_and_boot(&atom_table, &module_registry, bif_registry);
+    let scheduler = load_and_boot(&atom_table, &module_registry, bif_registry, exclude);
 
     let pid = scheduler
         .spawn(
@@ -152,9 +167,13 @@ fn gleam_otp_actor_call_round_trip_returns_count() {
     );
 }
 
-/// Regression for cross-process local send + the gleam_erlang 1.3.0 compound-key
-/// selector path: a spawned closure captures a subject, sends across the process
-/// boundary, and the parent `selector_receive`s the value.
+/// Hazard fail-first (GREEN side): cross-process local send + the gleam_erlang
+/// 1.3.0 compound-key selector path — a spawned closure captures a subject,
+/// sends across the process boundary, and the parent `selector_receive`s the
+/// value. With the native selector shadow RETIRED, the loaded gleam_erlang_ffi
+/// bytecode serves `select` and this returns the correct 77. (Pre-retirement,
+/// with the shadow registered, this returned `error:badarg` — the shadow's bare
+/// `select` result fails the `Result` match; see the retirement commit.)
 #[test]
 fn spawned_closure_subject_send_selector_receives() {
     let (reason, result, diagnostic) = run_entry("subject_probe");
@@ -167,6 +186,28 @@ fn spawned_closure_subject_send_selector_receives() {
         result,
         Term::small_int(77),
         "selector must receive the cross-process send"
+    );
+}
+
+/// Hazard fail-first (honest-undef side): with the native shadow retired AND the
+/// `gleam_erlang_ffi.beam` bytecode NOT loaded, the selector family resolves to
+/// neither — so exercising it raises a catchable `error:undef`, not a
+/// silently-wrong value. This pins that the retirement replaced silently-wrong
+/// shapes with an honest, diagnosable failure.
+#[test]
+fn selector_family_absent_yields_honest_undef() {
+    let (reason, _result, diagnostic) = run_entry_without("subject_probe", "gleam_erlang_ffi.beam");
+    assert_eq!(
+        reason,
+        ExitReason::Error,
+        "subject_probe/0 must fail (not return a value) when the selector family is unserved; \
+         diagnostic: {diagnostic:?}"
+    );
+    let diagnostic = diagnostic.unwrap_or_default();
+    assert!(
+        diagnostic.contains("undef") || diagnostic.contains("gleam_erlang_ffi"),
+        "the failure must be an honest undef naming the unserved selector function, got: \
+         {diagnostic}"
     );
 }
 

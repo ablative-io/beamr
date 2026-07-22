@@ -434,25 +434,11 @@ fn register_gleam_ffi_bifs_fails_on_duplicate() {
     assert!(register_gleam_ffi_bifs(&registry, &atom_table).is_err());
 }
 
-#[test]
-fn gleam_ffi_coexists_with_selector_bifs() {
-    use crate::native::selector_ffi::register_selector_bifs;
-
-    let atom_table = AtomTable::with_common_atoms();
-    let registry = BifRegistryImpl::new();
-    register_selector_bifs(&registry, &atom_table).expect("selector");
-    register_gleam_ffi_bifs(&registry, &atom_table).expect("gleam ffi");
-
-    let module = atom_table.intern("gleam_erlang_ffi");
-
-    // Selector BIF still present.
-    let new_sel = atom_table.intern("new_selector");
-    assert!(registry.lookup(module, new_sel, 0).is_some());
-
-    // Gleam FFI BIF present.
-    let trap = atom_table.intern("trap_exits");
-    assert!(registry.lookup(module, trap, 1).is_some());
-}
+// NOTE: `gleam_ffi_coexists_with_selector_bifs` was removed with the native
+// `gleam_erlang_ffi` selector shadow (retired — see gleam_otp_actor_spike.rs).
+// Its selector-coexistence scenario no longer exists; the surviving half (that
+// `register_gleam_ffi_bifs` registers `gleam_erlang_ffi:trap_exits/1`) is
+// covered by `register_gleam_ffi_bifs_registers_all_expected` above.
 
 // ---------------------------------------------------------------------------
 // Mock facilities

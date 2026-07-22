@@ -15,7 +15,6 @@ use beamr::native::{
     meridian_ffi::register_meridian_ffi,
     otp_stubs::{init_otp_atoms, register_otp_stubs},
     process_bifs::register_gate2_bifs,
-    selector_ffi::register_selector_bifs,
     stdlib_stubs::register_stdlib_stubs,
 };
 use beamr::process::ExitReason;
@@ -354,7 +353,10 @@ fn load_context(path: &Path, dirs: &[PathBuf]) -> Result<LoadContext, CliError> 
     register_gate2_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_gate3_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_stdlib_stubs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
-    register_selector_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
+    // The native `gleam_erlang_ffi` selector shadow was retired: it was pinned to
+    // an older gleam_erlang selector protocol and silently mismatched
+    // gleam_erlang >= 1.3. The selector family is now served by the loaded
+    // `gleam_erlang_ffi.beam` bytecode shipped with the user's gleam_erlang.
     register_gleam_ffi_bifs(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     register_meridian_ffi(&bif_registry, &atom_table).map_err(CliError::NativeRegistration)?;
     init_otp_atoms(&atom_table);

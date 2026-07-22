@@ -11,7 +11,6 @@ use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
 use beamr::native::gate3_bifs::register_gate3_bifs;
 use beamr::native::process_bifs::register_gate2_bifs;
-use beamr::native::selector_ffi::register_selector_bifs;
 use beamr::native::stdlib_stubs::register_stdlib_stubs;
 
 /// Helper: set up the full BIF registry matching what the CLI creates.
@@ -21,7 +20,6 @@ fn full_bif_registry(atom_table: &AtomTable) -> BifRegistryImpl {
     register_gate2_bifs(&registry, atom_table).expect("gate2");
     register_gate3_bifs(&registry, atom_table).expect("gate3");
     register_stdlib_stubs(&registry, atom_table).expect("stdlib");
-    register_selector_bifs(&registry, atom_table).expect("selector");
     registry
 }
 

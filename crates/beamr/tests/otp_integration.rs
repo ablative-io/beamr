@@ -19,7 +19,6 @@ use beamr::native::gate3_bifs::register_gate3_bifs;
 use beamr::native::gleam_ffi::register_gleam_ffi_bifs;
 use beamr::native::otp_stubs::{init_otp_atoms, register_otp_stubs};
 use beamr::native::process_bifs::register_gate2_bifs;
-use beamr::native::selector_ffi::register_selector_bifs;
 use beamr::native::stdlib_stubs::register_stdlib_stubs;
 use beamr::process::Process;
 use beamr::term::Term;
@@ -32,7 +31,8 @@ fn full_bif_registry(atom_table: &AtomTable) -> BifRegistryImpl {
     register_gate2_bifs(&registry, atom_table).expect("gate2");
     register_gate3_bifs(&registry, atom_table).expect("gate3");
     register_stdlib_stubs(&registry, atom_table).expect("stdlib");
-    register_selector_bifs(&registry, atom_table).expect("selector");
+    // The native gleam_erlang_ffi selector shadow was retired; the loaded
+    // gleam_erlang_ffi.beam supplies the selector exports for import resolution.
     register_gleam_ffi_bifs(&registry, atom_table).expect("gleam_ffi");
     init_otp_atoms(atom_table);
     register_otp_stubs(&registry, atom_table).expect("otp_stubs");
