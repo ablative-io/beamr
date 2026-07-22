@@ -2975,13 +2975,15 @@ fn compiled_external_call_returns_deopt_sentinel_without_runtime_context() {
 }
 
 #[test]
-fn compiles_message_send_and_selective_receive_opcodes() {
+fn selective_receive_peek_lowers_and_send_then_receive_is_walled() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
 
+    // The receive PEEK/accept lowering (loop_rec / remove_message / loop_rec_end)
+    // compiles in a sound arrangement: the first loop_rec has no observable side
+    // effect before it, and no deopt-capable op follows the accept.
     compiler
         .compile(
             &[
-                Instruction::Send,
                 Instruction::Label { label: 1 },
                 Instruction::LoopRec {
                     fail: Operand::Label(2),
@@ -2993,15 +2995,37 @@ fn compiles_message_send_and_selective_receive_opcodes() {
                     fail: Operand::Label(1),
                 },
                 Instruction::Label { label: 2 },
-                Instruction::Wait {
-                    fail: Operand::Label(1),
-                },
+                Instruction::Return,
             ],
             Atom::MODULE,
             Atom::OK,
             2,
         )
         .unwrap();
+
+    // LEG 1b wall: a Send followed by the receive peek (loop_rec is deopt-capable)
+    // is rejected — a deopt at the peek would replay the Send.
+    let send_then_receive = compiler.compile(
+        &[
+            Instruction::Send,
+            Instruction::Label { label: 1 },
+            Instruction::LoopRec {
+                fail: Operand::Label(2),
+                destination: Operand::X(0),
+            },
+            Instruction::RemoveMessage,
+            Instruction::Return,
+            Instruction::Label { label: 2 },
+            Instruction::Return,
+        ],
+        Atom::MODULE,
+        Atom::OK,
+        2,
+    );
+    assert!(
+        matches!(send_then_receive, Err(JitError::UnsupportedOpcode { .. })),
+        "Send-then-receive is deopt-after-side-effect and must be walled: {send_then_receive:?}"
+    );
 }
 
 #[test]
@@ -3025,26 +3049,20 @@ fn compiled_send_records_destination_and_message_safepoint_roots() {
 }
 
 #[test]
-fn compiles_wait_timeout_and_timeout_opcodes() {
+fn wait_timeout_and_timeout_lower_and_blocking_receive_is_walled() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
 
+    // wait_timeout / timeout lower in a sound arrangement (no observable side
+    // effect precedes the deopt-capable wait_timeout).
     compiler
         .compile(
             &[
                 Instruction::Label { label: 1 },
-                Instruction::LoopRec {
-                    fail: Operand::Label(2),
-                    destination: Operand::X(0),
-                },
-                Instruction::LoopRecEnd {
-                    fail: Operand::Label(1),
-                },
-                Instruction::Label { label: 2 },
                 Instruction::WaitTimeout {
-                    fail: Operand::Label(3),
+                    fail: Operand::Label(2),
                     timeout: Operand::Unsigned(0),
                 },
-                Instruction::Label { label: 3 },
+                Instruction::Label { label: 2 },
                 Instruction::Timeout,
                 Instruction::Return,
             ],
@@ -3053,6 +3071,38 @@ fn compiles_wait_timeout_and_timeout_opcodes() {
             0,
         )
         .unwrap();
+
+    // LEG 1b wall: a real blocking receive places wait/wait_timeout after loop_rec
+    // (an observable, deopt-capable peek), so the whole blocking-receive shape is
+    // walled until Leg 3's precise-resume deopt. (Documented de-admission — see
+    // the leg-1 handoff.)
+    let receive_with_wait = compiler.compile(
+        &[
+            Instruction::Label { label: 1 },
+            Instruction::LoopRec {
+                fail: Operand::Label(2),
+                destination: Operand::X(0),
+            },
+            Instruction::LoopRecEnd {
+                fail: Operand::Label(1),
+            },
+            Instruction::Label { label: 2 },
+            Instruction::WaitTimeout {
+                fail: Operand::Label(3),
+                timeout: Operand::Unsigned(0),
+            },
+            Instruction::Label { label: 3 },
+            Instruction::Timeout,
+            Instruction::Return,
+        ],
+        Atom::MODULE,
+        Atom::OK,
+        0,
+    );
+    assert!(
+        matches!(receive_with_wait, Err(JitError::UnsupportedOpcode { .. })),
+        "a blocking receive (loop_rec then wait_timeout) is walled by 1b: {receive_with_wait:?}"
+    );
 }
 
 #[test]
@@ -3255,10 +3305,10 @@ fn no_fail_bif_computes_small_ints_and_deopts_on_badarith() {
 }
 
 #[test]
-fn no_fail_bif_after_a_side_effect_is_rejected_by_the_purity_guard() {
+fn deopt_capable_op_after_a_side_effect_is_rejected_by_the_guard() {
     let compiler = JitCompiler::new(JitSettings).unwrap();
     // Deopt restarts the callee from its start, so a {f,0} Bif after a Send would
-    // re-send on restart — the purity guard rejects the whole function.
+    // re-send on restart — the LEG 1b guard rejects the whole function.
     let after_send = compiler.compile(
         &[
             Instruction::Send,
@@ -3281,12 +3331,13 @@ fn no_fail_bif_after_a_side_effect_is_rejected_by_the_purity_guard() {
     );
     assert!(
         matches!(after_send, Err(JitError::UnsupportedOpcode { .. })),
-        "a no-fail Bif after a Send must be rejected by the purity guard, got {after_send:?}"
+        "a {{f,0}} Bif after a Send must be rejected, got {after_send:?}"
     );
-    // Control: the SAME Bif with a REAL in-slice fail label is unaffected — a real
-    // handler means no deopt-restart, so the preceding Send is not the guard's
-    // concern.
-    let with_handler = compiler.compile(
+    // LEG 1b WIDENS the JIT-002 {f,0}-only guard: a REAL-fail-label Bif after a
+    // Send is ALSO rejected now, because the typed-overflow route branches to the
+    // deopt block regardless of the fail label (SCOPING §2's un-guarded gap) — the
+    // Bif is deopt-capable, so a deopt-restart could still re-send.
+    let real_fail_after_send = compiler.compile(
         &[
             Instruction::Send,
             Instruction::Bif {
@@ -3309,8 +3360,39 @@ fn no_fail_bif_after_a_side_effect_is_rejected_by_the_purity_guard() {
         2,
     );
     assert!(
-        with_handler.is_ok(),
-        "a real-fail-label Bif after a Send is not the purity guard's concern: {with_handler:?}"
+        matches!(
+            real_fail_after_send,
+            Err(JitError::UnsupportedOpcode { .. })
+        ),
+        "a real-fail-label Bif after a Send is deopt-capable (typed overflow) and \
+         must be rejected: {real_fail_after_send:?}"
+    );
+    // POSITIVE CONTROL: the SAME deopt-capable Bif BEFORE the side effect is
+    // admitted — nothing observable precedes the deopt, so a restart replays
+    // nothing.
+    let bif_before_send = compiler.compile(
+        &[
+            Instruction::Bif {
+                op: BifOp::GcBif2,
+                operands: vec![
+                    Operand::Label(0),
+                    Operand::Unsigned(0),
+                    Operand::Unsigned(1),
+                    Operand::X(0),
+                    Operand::X(1),
+                    Operand::X(0),
+                ],
+            },
+            Instruction::Send,
+            Instruction::Return,
+        ],
+        Atom::MODULE,
+        Atom::OK,
+        2,
+    );
+    assert!(
+        bif_before_send.is_ok(),
+        "a deopt-capable Bif BEFORE the side effect must stay admitted: {bif_before_send:?}"
     );
 }
 

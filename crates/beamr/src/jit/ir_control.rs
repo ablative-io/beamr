@@ -246,6 +246,125 @@ pub(crate) fn is_observable_side_effect(instruction: &Instruction) -> bool {
     }
 }
 
+/// Whether lowering `instruction` CAN emit a runtime deopt branch.
+///
+/// Table-adjacent authority for the deopt-after-side-effect pre-pass guard
+/// (ADMISSION ARC LEG 1b, generalizing the JIT-002 R3 BIF NO-FAIL RULING from
+/// "`{f,0}` arithmetic Bif" to "any runtime-deopt-capable instruction"). A native
+/// deopt restarts the callee interpreted from its start (interpreter/opcodes/
+/// core.rs:850 -> Ok(None) -> re-enter at the entry label), so a deopt reached
+/// AFTER an observable side effect replays that effect. `TranslationPlan::new`
+/// rejects any slice where an instruction classified `true` here follows an
+/// [`is_observable_side_effect`] instruction.
+///
+/// EXHAUSTIVE WITH NO WILDCARD, sitting beside [`coverage`] and
+/// [`is_observable_side_effect`]: a later wave adding an `Instruction` variant
+/// MUST classify its deopt-capability here or compilation breaks — the guard
+/// cannot rot silently. Classification is derived from the lowerings, not from
+/// memory; `true` is the conservative (sound) default when a lowering's deopt
+/// edge is in doubt.
+///
+/// The `true` set, with its deopt edge, is: arithmetic `Bif` (the typed-overflow
+/// branch `ir_typed.rs:32-55` and the `{f,0}` no-fail route both target the deopt
+/// block); the frame ops `Allocate`/`AllocateHeap`/`AllocateZero`/`Deallocate`/
+/// `TestHeap`/`Trim` (`frame_guard` deopts on a frame-helper failure); the
+/// receive peek/wait edges `LoopRec`/`Wait`/`WaitTimeout` (deopt on an unexpected
+/// mailbox status, `ir_message.rs:64,197`); the recv-marker ops
+/// `RecvMarkerReserve`/`RecvMarkerBind`/`RecvMarkerClear`/`RecvMarkerUse` (an
+/// UNCONDITIONAL deopt, `dispatch_core.rs:411-417`); every helper-return /
+/// frame-teardown call form `CallExt`/`CallExtOnly`/`CallExtLast`/`CallLast`/
+/// `CallFun`/`CallFun2`/`Apply`/`ApplyLast` (`handle_helper_return` / the tail
+/// `dealloc` `frame_guard` deopt); the heap-allocating data ops `PutList`/
+/// `PutTuple2`/`MakeFun` and `BinaryOp` (deopt on a null heap allocation); and
+/// `Fmove` (deopt on a zero/invalid float box, `ir_float.rs:96`).
+///
+/// Everything else is `false`: pure register/heap reads, the guards and the plain
+/// float/map ops (which branch only to REAL in-slice fail labels, never deopt),
+/// `Send`/`RemoveMessage`/`Timeout`/`LoopRecEnd` (observable but non-deopting
+/// lowerings), the plain in-slice `Call`/`CallOnly` jumps, the exception-seam
+/// ops, and every non-`Supported` variant (never lowered — the pre-pass rejects
+/// the whole function first, so their class never gates a live decision).
+pub(crate) fn is_runtime_deopt_capable(instruction: &Instruction) -> bool {
+    match instruction {
+        Instruction::Bif { .. }
+        | Instruction::Allocate { .. }
+        | Instruction::AllocateHeap { .. }
+        | Instruction::AllocateZero { .. }
+        | Instruction::Deallocate { .. }
+        | Instruction::TestHeap { .. }
+        | Instruction::Trim { .. }
+        | Instruction::LoopRec { .. }
+        | Instruction::Wait { .. }
+        | Instruction::WaitTimeout { .. }
+        | Instruction::RecvMarkerReserve { .. }
+        | Instruction::RecvMarkerBind { .. }
+        | Instruction::RecvMarkerClear { .. }
+        | Instruction::RecvMarkerUse { .. }
+        | Instruction::CallExt { .. }
+        | Instruction::CallExtOnly { .. }
+        | Instruction::CallExtLast { .. }
+        | Instruction::CallLast { .. }
+        | Instruction::CallFun { .. }
+        | Instruction::CallFun2 { .. }
+        | Instruction::Apply { .. }
+        | Instruction::ApplyLast { .. }
+        | Instruction::PutList { .. }
+        | Instruction::PutTuple2 { .. }
+        | Instruction::MakeFun { .. }
+        | Instruction::BinaryOp { .. }
+        | Instruction::Fmove { .. } => true,
+        Instruction::Label { .. }
+        | Instruction::Line { .. }
+        | Instruction::FuncInfo { .. }
+        | Instruction::Move { .. }
+        | Instruction::Swap { .. }
+        | Instruction::Jump { .. }
+        | Instruction::Return
+        | Instruction::Call { .. }
+        | Instruction::CallOnly { .. }
+        | Instruction::TypeTest { .. }
+        | Instruction::Comparison { .. }
+        | Instruction::TestArity { .. }
+        | Instruction::IsTaggedTuple { .. }
+        | Instruction::SelectVal { .. }
+        | Instruction::GetList { .. }
+        | Instruction::GetHd { .. }
+        | Instruction::GetTl { .. }
+        | Instruction::GetTupleElement { .. }
+        | Instruction::InitYregs { .. }
+        | Instruction::Send
+        | Instruction::RemoveMessage
+        | Instruction::Timeout
+        | Instruction::LoopRecEnd { .. }
+        | Instruction::MapOp { .. }
+        | Instruction::Fconv { .. }
+        | Instruction::Fadd { .. }
+        | Instruction::Fsub { .. }
+        | Instruction::Fmul { .. }
+        | Instruction::Fdiv { .. }
+        | Instruction::Fnegate { .. }
+        | Instruction::Try { .. }
+        | Instruction::TryEnd { .. }
+        | Instruction::TryCase { .. }
+        // -- non-Supported variants: never lowered (pre-pass rejects first) --
+        | Instruction::SelectTupleArity { .. }
+        | Instruction::Catch { .. }
+        | Instruction::CatchEnd { .. }
+        | Instruction::TryCaseEnd { .. }
+        | Instruction::Raise { .. }
+        | Instruction::RawRaise
+        | Instruction::BuildStacktrace
+        | Instruction::Badmatch { .. }
+        | Instruction::Badrecord { .. }
+        | Instruction::CaseEnd { .. }
+        | Instruction::IfEnd
+        | Instruction::UpdateRecord { .. }
+        | Instruction::OnLoad
+        | Instruction::NifStart
+        | Instruction::Generic { .. } => false,
+    }
+}
+
 /// erlc's `{f,0}` fail-label sentinel: "no local handler" — emitted on all
 /// body-position arithmetic. It is NOT a real label; it routes to the deopt
 /// block in the lowering.
@@ -266,7 +385,26 @@ impl TranslationPlan {
 
         let mut labels = HashMap::new();
         let mut block_starts = HashSet::from([0, instructions.len()]);
+        // Deopt-after-side-effect guard (LEG 1b): a native deopt restarts the
+        // callee interpreted from its start, replaying any side effect already
+        // committed. Reject the WHOLE function (normal `mark_unsupported` /
+        // interpreter fallback — no new channel) when a runtime-deopt-capable
+        // instruction follows an observable side effect in the slice. The two
+        // authorities are the table-adjacent `is_runtime_deopt_capable` and
+        // `is_observable_side_effect`; this walks them in order so the check is
+        // O(n) and no earlier side effect can be missed.
+        let mut side_effect_seen = false;
         for (index, instruction) in instructions.iter().enumerate() {
+            if side_effect_seen && is_runtime_deopt_capable(instruction) {
+                return Err(JitError::UnsupportedOpcode {
+                    opcode: format!(
+                        "runtime-deopt-capable {} follows an observable side effect \
+                         (deopt-restart would replay the effect)",
+                        opcode_name(instruction)
+                    ),
+                });
+            }
+            side_effect_seen |= is_observable_side_effect(instruction);
             match instruction {
                 Instruction::Label { label } => {
                     labels.insert(*label, index);
@@ -447,22 +585,13 @@ impl TranslationPlan {
                 Instruction::Bif { op, operands } => {
                     let parsed = ParsedBif::parse(*op, operands)?;
                     let _ = ArithmeticOp::from_import(parsed.import)?;
-                    // {f,0} (no local handler) routes to deopt in the lowering.
-                    // Deopt restarts the callee interpreted from its start, so it
-                    // is admitted only when no observable side effect precedes it
-                    // in the slice — a restart would double the effect. The side
-                    // effect set is derived from the table-adjacent authority.
-                    if is_no_fail_label(parsed.fail) {
-                        if instructions[..index].iter().any(is_observable_side_effect) {
-                            return Err(JitError::UnsupportedOpcode {
-                                opcode: format!(
-                                    "no-fail Bif preceded by an observable side effect \
-                                     (deopt-restart would double it): {}",
-                                    opcode_name(instruction)
-                                ),
-                            });
-                        }
-                    } else {
+                    // {f,0} (no local handler) routes to deopt in the lowering; a
+                    // real fail label is validated as an in-slice target. The
+                    // deopt-after-side-effect hazard (both the {f,0} route and the
+                    // typed-overflow route target the deopt block) is handled
+                    // uniformly by the pre-pass guard above through
+                    // `is_runtime_deopt_capable(Bif)`.
+                    if !is_no_fail_label(parsed.fail) {
                         validate_label_operand(parsed.fail)?;
                     }
                     validate_read_operand(parsed.left)?;
