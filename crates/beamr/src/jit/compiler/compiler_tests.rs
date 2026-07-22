@@ -417,6 +417,78 @@ fn compiled_test_heap_guard_survives_a_collection_with_a_live_y_register() {
 }
 
 #[test]
+fn typed_int_moved_to_y_survives_gc_as_a_tagged_term() {
+    // GC-safety pin for the typed-register X-only restriction. The typed
+    // optimization keeps int values UNTAGGED in registers; a Y slot is
+    // GC-rooted, so it must never hold an untagged payload (the collector would
+    // trace it as a bogus term). A KNOWN-INT (typed arithmetic result) is moved
+    // to a Y slot, a forced collection runs (TestHeap pressure), and the value is
+    // read back: it must be the correct fully-tagged small int. Under the pre-fix
+    // behavior (typed value written straight to Y) the read-back is the untagged
+    // payload, not the tagged term.
+    let signature = int_int_signature("y_gc");
+    let native = JitCompiler::new(JitSettings)
+        .unwrap()
+        .compile_typed(
+            &[
+                // X0 = X0 + X1 (typed int path; import 0 = Add) -> untagged in X0.
+                Instruction::Bif {
+                    op: BifOp::Bif2,
+                    operands: vec![
+                        Operand::Label(9),
+                        Operand::Unsigned(0),
+                        Operand::X(0),
+                        Operand::X(1),
+                        Operand::X(0),
+                    ],
+                },
+                Instruction::Allocate {
+                    stack_need: Operand::Unsigned(1),
+                    live: Operand::Unsigned(0),
+                },
+                // The hazard site: a typed-int X0 moved into a GC-rooted Y slot.
+                Instruction::Move {
+                    source: Operand::X(0),
+                    destination: Operand::Y(0),
+                },
+                // Force a collection while Y(0) is live.
+                Instruction::TestHeap {
+                    heap_need: Operand::Unsigned(64),
+                    live: Operand::Unsigned(1),
+                },
+                Instruction::Move {
+                    source: Operand::Y(0),
+                    destination: Operand::X(0),
+                },
+                Instruction::Return,
+                Instruction::Label { label: 9 },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            2,
+            signature,
+        )
+        .unwrap();
+    let mut process = process_with_current_module();
+    // Leave the nursery nearly full so the compiled TestHeap must collect.
+    let free = process.heap().available();
+    if free > 2 {
+        process
+            .heap_mut()
+            .alloc(free - 2)
+            .expect("nursery fill fits");
+    }
+    process.set_x_reg(0, Term::small_int(5));
+    process.set_x_reg(1, Term::small_int(3));
+    let returned = call_native_with_process_x_regs(&native, &mut process);
+
+    // 5 + 3 = 8, and it must come back as a fully-tagged small int.
+    assert_eq!(returned, Term::small_int(8).raw());
+    assert_eq!(process.stack().y_reg(0), Ok(Term::small_int(8)));
+}
+
+#[test]
 fn compiled_full_frame_set_roundtrips_a_y_value() {
     // allocate -> y-reg use -> trim -> read back -> deallocate, all on the
     // stack-backed substrate. The known result doubles as a value pin; the real

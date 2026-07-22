@@ -50,6 +50,12 @@ pub(crate) enum Register {
     Y(u32),
 }
 
+/// Whether `operand` names a Y register (a GC-rooted process-stack slot that
+/// must only ever hold a fully tagged term).
+pub(crate) fn is_y_operand(operand: &Operand) -> bool {
+    matches!(register_operand(operand), Ok(Register::Y(_)))
+}
+
 pub(crate) fn register_operand(operand: &Operand) -> Result<Register, JitError> {
     match operand {
         Operand::X(index) => Ok(Register::X(*index)),

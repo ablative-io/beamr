@@ -4,8 +4,8 @@ use crate::jit::ir_arithmetic::{
     ArithmeticLowering, ArithmeticOp, ParsedBif, lower_arithmetic_bif, lower_comparison,
 };
 use crate::jit::ir_common::{
-    JIT_DEOPT_SENTINEL, RegisterAccess, branch_to_fail_if, label_operand, read_operand_term,
-    write_operand_term,
+    JIT_DEOPT_SENTINEL, RegisterAccess, branch_to_fail_if, is_y_operand, label_operand,
+    read_operand_term, write_operand_term,
 };
 use crate::jit::ir_control::{BlockMap, is_no_fail_label};
 use crate::jit::ir_exceptions::{
@@ -152,12 +152,31 @@ pub(super) fn lower_core_instruction(
             source,
             destination,
         } => {
+            // A Y destination is GC-rooted and must receive a FULLY TAGGED term:
+            // materialize a typed-int source (re-tag it in place) before the
+            // write, so an untagged payload never lands in a Y slot.
+            if is_y_operand(destination) {
+                typed_state.materialize_operands_for_untyped_lowering(
+                    builder,
+                    register_file,
+                    std::iter::once(source),
+                );
+            }
             let value = typed_state.read_operand_value(builder, register_file, source)?;
             write_operand_term(builder, register_file, destination, value)?;
             typed_state.copy(source, destination);
             Ok(Some(false))
         }
         Instruction::Swap { left, right } => {
+            // Same rule as Move: if either side is a Y register, materialize both
+            // so only fully tagged terms are exchanged into the GC-rooted slot.
+            if is_y_operand(left) || is_y_operand(right) {
+                typed_state.materialize_operands_for_untyped_lowering(
+                    builder,
+                    register_file,
+                    [left, right],
+                );
+            }
             let left_value = read_operand_term(builder, register_file, left)?;
             let right_value = read_operand_term(builder, register_file, right)?;
             write_operand_term(builder, register_file, left, right_value)?;

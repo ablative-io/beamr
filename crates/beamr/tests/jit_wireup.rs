@@ -11,6 +11,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use beamr::atom::{Atom, AtomTable};
+use beamr::error::ExecError;
 use beamr::jit::CompileOutcomeCounters;
 use beamr::loader::Instruction;
 use beamr::loader::decode::compact::Operand;
@@ -1727,4 +1728,91 @@ fn real_erlc_countdown_loop_compiles_through_the_demand_path_and_matches_minimal
         "the JIT-compiled run/0 result equals the minimal-composition result"
     );
     assert_eq!(reference, expected);
+}
+
+/// A real OTP-29 erlc module: `driver/1` tail-calls `?MODULE:f/1` (heating f/1 at
+/// the external edge), and `f/1` is `X - 1` — a body-position `{f,0}` arithmetic
+/// Bif that routes to deopt. Driving a non-integer X provokes a badarith through
+/// the native -> deopt -> interpreter path.
+const REAL_BADARITH_FIXTURE: &[u8] = include_bytes!("fixtures/jit_badarith.beam");
+
+/// R3 BIF NO-FAIL RULING, badarith-through-deopt END TO END: a {f,0}-arithmetic
+/// function heats, compiles, dispatches native, DEOPTS on a badarith operand, and
+/// the interpreter raises — the observable exception must equal the minimal
+/// (JIT-absent) composition on the same input. That is "interpreter-equal".
+#[test]
+fn no_fail_bif_badarith_deopts_to_interpreter_equal_exception() {
+    let atoms = Arc::new(AtomTable::with_common_atoms());
+    let driver = atoms.intern("driver");
+    let f = atoms.intern("f");
+    let good = Term::small_int(5);
+    let bad = Term::atom(atoms.intern("not_an_integer"));
+
+    // JIT-live: heat f/1 via driver's tail call with a good operand, wait for the
+    // native compile, then drive the badarith operand through native -> deopt.
+    let jit = countdown_scheduler(&atoms, SchedulerServices::from_config());
+    let load = jit
+        .hot_load_module(REAL_BADARITH_FIXTURE)
+        .expect("badarith fixture hot-loads");
+    let module = load.module_name;
+    for _ in 0..2 {
+        let pid = jit
+            .spawn(module, driver, vec![good])
+            .expect("spawn driver/1");
+        assert_eq!(
+            jit.run_until_exit(pid).0,
+            ExitReason::Normal,
+            "the good operand exits normally while f/1 heats"
+        );
+    }
+    assert!(
+        wait_until(|| jit.jit_profiler().compile_outcome_counters().successes == 1),
+        "f/1 must compile on the dirty-CPU service"
+    );
+    assert!(
+        jit.jit_cache()
+            .lookup(module, f, 1, load.generation)
+            .is_some(),
+        "f/1 is cached native before the badarith drive"
+    );
+    let jit_pid = jit
+        .spawn(module, driver, vec![bad])
+        .expect("spawn driver/1 with a badarith operand");
+    let jit_reason = jit.run_until_exit(jit_pid).0;
+    let jit_error = jit.take_exit_error(jit_pid);
+    jit.shutdown();
+
+    // Minimal composition: interpreter-only, the same badarith input.
+    let minimal = countdown_scheduler(&atoms, SchedulerServices::minimal());
+    let minimal_module = minimal
+        .hot_load_module(REAL_BADARITH_FIXTURE)
+        .expect("badarith fixture hot-loads (minimal)")
+        .module_name;
+    let minimal_pid = minimal
+        .spawn(minimal_module, driver, vec![bad])
+        .expect("spawn driver/1 (minimal)");
+    let minimal_reason = minimal.run_until_exit(minimal_pid).0;
+    let minimal_error = minimal.take_exit_error(minimal_pid);
+    assert_zero_counters(
+        minimal.jit_profiler().compile_outcome_counters(),
+        "minimal composition",
+    );
+    minimal.shutdown();
+
+    // The observable exception is equal across compositions — the deopt handed
+    // the badarith to the interpreter, which raised exactly as it does standalone.
+    assert_eq!(
+        jit_reason,
+        ExitReason::Error,
+        "the bad operand is process-fatal"
+    );
+    assert_eq!(jit_reason, minimal_reason, "same exit reason");
+    // The observable equality is the assertion: the deopt handed the arithmetic
+    // fault to the interpreter, which raised exactly the error it raises
+    // standalone (erlang:'-'(atom, 1) -> Badarg under the gate-1 arithmetic BIF).
+    assert_eq!(
+        jit_error, minimal_error,
+        "same ExecError across compositions"
+    );
+    assert_eq!(jit_error, Some(ExecError::Badarg));
 }

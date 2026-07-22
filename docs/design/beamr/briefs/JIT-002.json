@@ -44,6 +44,7 @@
         "modify": [
           "crates/beamr/src/jit/ir_control.rs",
           "crates/beamr/src/jit/compiler/dispatch_call.rs",
+          "crates/beamr/src/jit/compiler/ir_typed.rs (trued post-build: the typed untagged-int optimization is restricted to X registers so no untagged payload can reach a GC-rooted Y slot — a necessary correctness consequence of the Y-substrate ruling, disclosed by the build leg and confirmed at pre-review; carries a dedicated test)",
           "crates/beamr/src/jit/compiler/compiler_tests.rs"
         ]
       }
