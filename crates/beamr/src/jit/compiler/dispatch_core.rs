@@ -419,7 +419,7 @@ pub(super) fn lower_core_instruction(
 }
 
 /// Calls a frame-management helper and deopts when it reports failure (non-zero).
-fn frame_guard(
+pub(super) fn frame_guard(
     builder: &mut FunctionBuilder<'_>,
     helper: cranelift_codegen::ir::FuncRef,
     args: &[cranelift_codegen::ir::Value],

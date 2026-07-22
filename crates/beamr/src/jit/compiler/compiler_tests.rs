@@ -451,6 +451,193 @@ fn compiled_full_frame_set_roundtrips_a_y_value() {
     assert!(process.stack().is_empty());
 }
 
+// -- JIT-002 R2: tail calls. CallLast/ApplyLast tear down the frame before an
+// -- in-slice/closure transfer; CallExtLast before a cross-module transfer.
+
+#[test]
+fn compiled_call_last_self_tail_recursion_stays_flat_at_one_million() {
+    // Tail-flatness pin: a self-recursive tail loop must not grow the native
+    // stack per iteration. CallLast pops the frame before the in-slice jump, so a
+    // 1e6-deep countdown re-allocates exactly one frame per turn and returns with
+    // an empty stack. A per-iteration native frame would overflow the native
+    // stack long before a million turns; completing proves the transfer is a jump.
+    let native = compile_body(&[
+        Instruction::Label { label: 1 },
+        Instruction::Allocate {
+            stack_need: Operand::Unsigned(0),
+            live: Operand::Unsigned(0),
+        },
+        // X0 == 0 -> fall through and return; else jump to the recurse block.
+        Instruction::Comparison {
+            op: ComparisonOp::EqExact,
+            fail: Operand::Label(2),
+            left: Operand::X(0),
+            right: Operand::Integer(0),
+        },
+        Instruction::Deallocate {
+            words: Operand::Unsigned(0),
+        },
+        Instruction::Return,
+        Instruction::Label { label: 2 },
+        // X0 = X0 - 1 (import slot 1 = subtract).
+        Instruction::Bif {
+            op: BifOp::Bif2,
+            operands: vec![
+                Operand::Label(3),
+                Operand::Unsigned(1),
+                Operand::X(0),
+                Operand::Integer(1),
+                Operand::X(0),
+            ],
+        },
+        Instruction::CallLast {
+            arity: Operand::Unsigned(1),
+            label: Operand::Label(1),
+            deallocate: Operand::Unsigned(0),
+        },
+        Instruction::Label { label: 3 },
+        Instruction::Return,
+    ]);
+    let mut process = process_with_current_module();
+    // A budget large enough that the loop never yields on reductions.
+    process.reset_reductions(3_000_000);
+    process.set_x_reg(0, Term::small_int(1_000_000));
+    let returned = call_native_with_process_x_regs(&native, &mut process);
+
+    assert_eq!(returned, Term::small_int(0).raw());
+    assert!(process.stack().is_empty());
+}
+
+#[test]
+fn compiled_call_ext_last_tail_calls_a_cross_module_function() {
+    // CallExtLast against a genuinely external module (not a same-module alias):
+    // the frame is torn down, the callee runs in another module, and its result
+    // returns from the compiled body in tail position.
+    let caller_atom = Atom::MODULE;
+    let target_atom = Atom::ERROR;
+    let function_atom = Atom::OK;
+    let mut caller = test_module(
+        caller_atom,
+        vec![
+            Instruction::Allocate {
+                stack_need: Operand::Unsigned(0),
+                live: Operand::Unsigned(0),
+            },
+            Instruction::CallExtLast {
+                arity: Operand::Unsigned(1),
+                import: Operand::Unsigned(0),
+                deallocate: Operand::Unsigned(0),
+            },
+        ],
+    );
+    caller.resolved_imports.push(ResolvedImport {
+        module: target_atom,
+        function: function_atom,
+        arity: 1,
+        target: ResolvedImportTarget::Code {
+            module: target_atom,
+            label: 1,
+        },
+    });
+    let mut target = test_module(
+        target_atom,
+        vec![
+            Instruction::Label { label: 1 },
+            Instruction::Move {
+                source: Operand::X(0),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+    );
+    target.exports.insert((function_atom, 1), 1);
+    let registry = ModuleRegistry::new();
+    let caller = registry.insert(caller);
+    let _target = registry.insert(target);
+    let native = JitCompiler::new(JitSettings)
+        .unwrap()
+        .compile(&caller.code, caller_atom, function_atom, 1)
+        .unwrap();
+    let mut process = Process::new(0, 233);
+    process.set_current_module(caller.clone());
+    process.set_jit_runtime_context(Some(JitRuntimeContext::new(
+        caller.as_ref() as *const Module,
+        &registry as *const ModuleRegistry,
+        std::ptr::null(),
+    )));
+    process.set_x_reg(0, Term::small_int(17));
+    let returned = call_native_with_process_x_regs(&native, &mut process);
+
+    // The cross-module callee echoed X0; the tail call returned it, frame popped.
+    assert_eq!(returned, Term::small_int(17).raw());
+    assert!(process.stack().is_empty());
+}
+
+#[test]
+fn compiled_apply_last_tail_calls_a_closure() {
+    let caller_atom = Atom::MODULE;
+    let function_atom = Atom::OK;
+    let unique_id = 0x5eed;
+    let mut module = test_module(
+        caller_atom,
+        vec![
+            Instruction::Label { label: 7 },
+            Instruction::Move {
+                source: Operand::X(1),
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+    );
+    module
+        .lambdas
+        .push(test_lambda(function_atom, 1, 7, 1, unique_id));
+    module.function_table.push((0, function_atom, 1));
+    let registry = ModuleRegistry::new();
+    let module = registry.insert(module);
+    let native = JitCompiler::new(JitSettings)
+        .unwrap()
+        .compile(
+            &[
+                Instruction::Allocate {
+                    stack_need: Operand::Unsigned(0),
+                    live: Operand::Unsigned(0),
+                },
+                Instruction::ApplyLast {
+                    arity: Operand::Unsigned(1),
+                    deallocate: Operand::Unsigned(0),
+                },
+            ],
+            caller_atom,
+            function_atom,
+            1,
+        )
+        .unwrap();
+    let mut process = Process::new(0, 233);
+    let closure = heap_closure(
+        &mut process,
+        caller_atom,
+        0,
+        1,
+        module.generation(),
+        unique_id,
+        &[Term::small_int(99)],
+    );
+    process.set_current_module(module.clone());
+    process.set_jit_runtime_context(Some(JitRuntimeContext::new(
+        module.as_ref() as *const Module,
+        &registry as *const ModuleRegistry,
+        std::ptr::null(),
+    )));
+    process.set_x_reg(0, Term::small_int(5));
+    process.set_x_reg(1, closure);
+    let returned = call_native_with_process_x_regs(&native, &mut process);
+
+    // The closure returns its free var (99) after the tail frame teardown.
+    assert_eq!(returned, Term::small_int(99).raw());
+    assert!(process.stack().is_empty());
+}
+
 #[test]
 fn compiled_swap_reads_before_writing() {
     let compiler = JitCompiler::new(JitSettings).unwrap();

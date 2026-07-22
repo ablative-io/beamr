@@ -187,11 +187,15 @@ impl TranslationPlan {
                     validate_write_operand(source)?;
                     block_starts.insert(index + 1);
                 }
-                Instruction::Call { label, .. } | Instruction::CallOnly { label, .. } => {
+                Instruction::Call { label, .. }
+                | Instruction::CallOnly { label, .. }
+                | Instruction::CallLast { label, .. } => {
                     validate_label_operand(label)?;
                     block_starts.insert(index + 1);
                 }
-                Instruction::CallExt { import, .. } | Instruction::CallExtOnly { import, .. } => {
+                Instruction::CallExt { import, .. }
+                | Instruction::CallExtOnly { import, .. }
+                | Instruction::CallExtLast { import, .. } => {
                     validate_import_operand(import)?;
                     block_starts.insert(index + 1);
                 }
@@ -252,7 +256,9 @@ impl TranslationPlan {
                     validate_float_register_operand(dest, "fnegate destination")?;
                     block_starts.insert(index + 1);
                 }
-                Instruction::Apply { .. } | Instruction::CallFun { .. } => {
+                Instruction::Apply { .. }
+                | Instruction::ApplyLast { .. }
+                | Instruction::CallFun { .. } => {
                     block_starts.insert(index + 1);
                 }
                 Instruction::BinaryOp { .. } => {
@@ -342,7 +348,8 @@ impl TranslationPlan {
                 Instruction::Jump { target }
                 | Instruction::Try { label: target, .. }
                 | Instruction::Call { label: target, .. }
-                | Instruction::CallOnly { label: target, .. } => {
+                | Instruction::CallOnly { label: target, .. }
+                | Instruction::CallLast { label: target, .. } => {
                     ensure_known_label(&labels, target)?
                 }
                 Instruction::Bif { op, operands } => {

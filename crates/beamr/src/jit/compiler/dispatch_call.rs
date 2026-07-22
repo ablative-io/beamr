@@ -15,6 +15,7 @@ use crate::loader::decode::compact::Operand;
 use cranelift_codegen::ir::{InstBuilder, types};
 use cranelift_frontend::FunctionBuilder;
 
+use super::dispatch_core::frame_guard;
 use super::dispatch_helpers::{
     charge_reduction_or_yield, handle_helper_return, immediate_u8, import_index,
     make_fun_lambda_index,
@@ -45,11 +46,22 @@ pub(super) fn lower_call_instruction(
 ) -> Result<Option<bool>, JitError> {
     match instruction {
         Instruction::CallExt { arity: _, import }
-        | Instruction::CallExtOnly { arity: _, import } => {
+        | Instruction::CallExtOnly { arity: _, import }
+        | Instruction::CallExtLast {
+            arity: _, import, ..
+        } => {
+            // Tail teardown: CallExtLast pops the caller's Y frame before the
+            // transfer, then composes with the CallExt dispatch shape (which
+            // returns the callee's result to the edge — already tail-shaped).
+            if matches!(instruction, Instruction::CallExtLast { .. }) {
+                frame_guard(builder, helpers.frame.dealloc, &[process], blocks.deopt);
+            }
             typed_state.materialize_all_for_untyped_call(builder, register_file);
             let import_idx = import_index(import)?;
             let call_arity = match instruction {
-                Instruction::CallExt { arity, .. } | Instruction::CallExtOnly { arity, .. } => {
+                Instruction::CallExt { arity, .. }
+                | Instruction::CallExtOnly { arity, .. }
+                | Instruction::CallExtLast { arity, .. } => {
                     immediate_u8(arity, "external call arity")?
                 }
                 _ => 0,
@@ -201,13 +213,25 @@ pub(super) fn lower_call_instruction(
             typed_state.clear_operand(destination);
             Ok(Some(true))
         }
-        Instruction::Call { label, .. } | Instruction::CallOnly { label, .. } => {
+        Instruction::Call { label, .. }
+        | Instruction::CallOnly { label, .. }
+        | Instruction::CallLast { label, .. } => {
             let target = blocks.label_block(label_operand(label)?)?;
+            // Tail teardown before the in-slice transfer: a self-recursive tail
+            // loop re-allocates one frame per iteration and never grows the
+            // native stack (the transfer is a jump, not a call).
+            if matches!(instruction, Instruction::CallLast { .. }) {
+                frame_guard(builder, helpers.frame.dealloc, &[process], blocks.deopt);
+            }
             charge_reduction_or_yield(builder, helpers.charge, process, blocks.yield_block);
             builder.ins().jump(target, &[]);
             Ok(Some(true))
         }
-        Instruction::Apply { arity } => {
+        Instruction::Apply { arity } | Instruction::ApplyLast { arity, .. } => {
+            // ApplyLast pops the caller's Y frame before the tail closure call.
+            if matches!(instruction, Instruction::ApplyLast { .. }) {
+                frame_guard(builder, helpers.frame.dealloc, &[process], blocks.deopt);
+            }
             typed_state.materialize_all_for_untyped_call(builder, register_file);
             let call_arity = immediate_u8(arity, "closure apply arity")?;
             let fun = Operand::X(u32::from(call_arity));
