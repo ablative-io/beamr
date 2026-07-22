@@ -15,6 +15,7 @@ use crate::process::{ExitReason, Priority};
 use crate::term::Term;
 use crate::term::boxed::{Closure, Cons, Tuple};
 use crate::term::pid_ref::PidRef;
+use crate::term::reference_ref::ReferenceRef;
 
 type Gate2Bif = (&'static str, u8, Capability, NativeFn);
 
@@ -237,8 +238,14 @@ fn priority_to_atom(context: &ProcessContext, priority: Priority) -> Result<Atom
 
 /// erlang:monitor/2 — establish a unidirectional monitor from caller to target.
 ///
-/// Note: the returned reference is currently a small integer, not a boxed
-/// reference term, because BIFs cannot allocate boxed terms on the process heap.
+/// Returns a BOXED reference term allocated via `alloc_reference` (GC-safe
+/// general allocation) carrying the SAME id the DOWN delivery path writes into
+/// `{'DOWN', Ref, process, Pid, Reason}` (see `supervision::monitor`,
+/// `enqueue_down_message`). This term-rank match is what the universal OTP
+/// idiom `Ref = monitor(process, P), receive {'DOWN', Ref, ...}` depends on: a
+/// small int and a boxed reference are different term ranks and never compare
+/// equal. (The historical small-int return predated boxed-reference allocation
+/// in BIFs — `make_ref/0` and `spawn_monitor` already allocate boxed refs.)
 ///
 /// External pids deliberately badarg (`as_pid()` is `None` for boxed pids):
 /// remote monitors are staged behind the reserved `BEAMR_MONITOR` opcode and
@@ -258,10 +265,15 @@ pub fn bif_monitor(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
     let result = facility
         .monitor(caller_pid, target_pid)
         .map_err(|_| badarg())?;
-    Term::try_small_int(result.reference as i64).ok_or_else(badarg)
+    context.alloc_reference(result.reference)
 }
 
 /// erlang:demonitor/1 — remove a monitor identified by its reference.
+///
+/// Accepts a boxed reference term (as returned by `monitor/2` and
+/// `spawn_monitor`) via `ReferenceRef`, falling back to a legacy non-negative
+/// small-int reference — the same dual parse as `demonitor/2`, for coherence
+/// (CHECKLIST C141).
 ///
 /// References naming remote monitors cannot exist yet: `bif_monitor` badargs
 /// on external pids until the `BEAMR_MONITOR` stage lands (wire spec §1.3/D3),
@@ -270,14 +282,19 @@ pub fn bif_demonitor(args: &[Term], context: &mut ProcessContext) -> Result<Term
     let [ref_term] = args else {
         return Err(badarg());
     };
-    let reference = ref_term.as_small_int().ok_or_else(badarg)?;
-    if reference < 0 {
-        return Err(badarg());
-    }
+    let reference = if let Some(reference) = ReferenceRef::new(*ref_term) {
+        reference.id()
+    } else {
+        let legacy_reference = ref_term.as_small_int().ok_or_else(badarg)?;
+        if legacy_reference < 0 {
+            return Err(badarg());
+        }
+        legacy_reference as u64
+    };
     let caller_pid = context.pid().ok_or_else(badarg)?;
     let facility = context.supervision_facility().ok_or_else(badarg)?;
     facility
-        .demonitor(caller_pid, reference as u64)
+        .demonitor(caller_pid, reference)
         .map_err(|_| badarg())?;
     Ok(Term::atom(Atom::TRUE))
 }

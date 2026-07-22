@@ -16,7 +16,7 @@ use crate::native::{
 use crate::process::{ExitReason, Priority, Process, RemotePid};
 use crate::term::Term;
 use crate::term::boxed::{
-    Reference, Tuple, write_closure, write_cons, write_external_pid, write_tuple,
+    Reference, Tuple, write_closure, write_cons, write_external_pid, write_reference, write_tuple,
 };
 use crate::term::pid_ref::PidRef;
 use std::sync::{Arc, Mutex};
@@ -1004,14 +1004,52 @@ fn gate1_and_gate2_coexist() {
 #[test]
 fn monitor_returns_reference() {
     let (f, mut ctx) = sup_ctx(42, 1);
-    let result = bif_monitor(&[Term::atom(Atom::PROCESS), Term::pid(2)], &mut ctx);
-    assert_eq!(result, Ok(Term::small_int(42)));
+    let result = bif_monitor(&[Term::atom(Atom::PROCESS), Term::pid(2)], &mut ctx)
+        .expect("monitor/2 returns a reference");
+    // monitor/2 returns a BOXED reference term (not a small int), carrying the
+    // same id the supervision facility handed back.
+    assert_eq!(
+        Reference::new(result)
+            .expect("monitor/2 returns a boxed reference")
+            .id(),
+        42
+    );
+    assert!(
+        result.as_small_int().is_none(),
+        "monitor/2 must not return a small-int reference"
+    );
     assert_eq!(
         f.records(),
         vec![SupervisionRecord::Monitor {
             caller_pid: 1,
             target_pid: 2
         }]
+    );
+}
+
+/// Fail-first (a): the universal OTP idiom
+/// `Ref = monitor(process, P), receive {'DOWN', Ref, ...}` requires monitor/2's
+/// return to be TERM-EQUAL to the reference the DOWN message carries. The DOWN
+/// delivery path (`supervision::monitor::enqueue_down_message`, monitor.rs:291)
+/// writes that reference with `boxed::write_reference` using the monitor's id.
+/// Before the boxed-ref fix, monitor/2 returned a small int while the DOWN ref
+/// was boxed — different term ranks that never compare equal — so this asserts
+/// the term-rank match at the exact seam where the defect lived.
+#[test]
+fn monitor_return_is_term_equal_to_down_reference() {
+    let reference_id = 42;
+    let (_f, mut ctx) = sup_ctx(reference_id, 1);
+    let monitor_return = bif_monitor(&[Term::atom(Atom::PROCESS), Term::pid(2)], &mut ctx)
+        .expect("monitor/2 returns a reference");
+
+    // The DOWN message reference, built exactly as the delivery path builds it.
+    let mut down_heap = [0u64; 2];
+    let down_reference =
+        write_reference(&mut down_heap, reference_id).expect("DOWN reference fits");
+
+    assert_eq!(
+        monitor_return, down_reference,
+        "monitor/2's return must be term-equal to the DOWN message reference"
     );
 }
 
@@ -1054,6 +1092,46 @@ fn demonitor_returns_true() {
     );
     assert_eq!(
         f.records(),
+        vec![SupervisionRecord::Demonitor {
+            caller_pid: 1,
+            reference: 42
+        }]
+    );
+}
+
+/// Fail-first (b): spawn_monitor/3 hands back a BOXED reference; demonitor/1
+/// must accept it. Before the fix, demonitor/1 parsed only `as_small_int`, so
+/// spawn_monitor's boxed refs were un-demonitorable (badarg).
+#[test]
+fn demonitor1_accepts_spawn_monitor_boxed_reference() {
+    let mut process = Process::new(1, 128);
+    let (_spawn_f, mut spawn_ctx) = attached_spawn_ctx(8, 42, 1, &mut process);
+    let spawned = bif_spawn_monitor_3(
+        &[Term::atom(Atom::OK), Term::atom(Atom::OK), Term::NIL],
+        &mut spawn_ctx,
+    )
+    .expect("spawn_monitor/3 succeeds");
+    let boxed_reference = Tuple::new(spawned)
+        .expect("spawn_monitor returns a tuple")
+        .get(1)
+        .expect("reference element");
+    // The reference is genuinely boxed, not a small int.
+    assert_eq!(
+        Reference::new(boxed_reference)
+            .expect("spawn_monitor returns a boxed reference")
+            .id(),
+        42
+    );
+    assert!(boxed_reference.as_small_int().is_none());
+
+    // demonitor/1 must accept that boxed reference and forward its id.
+    let (sup_f, mut sup_context) = sup_ctx(0, 1);
+    assert_eq!(
+        bif_demonitor(&[boxed_reference], &mut sup_context),
+        Ok(Term::atom(Atom::TRUE))
+    );
+    assert_eq!(
+        sup_f.records(),
         vec![SupervisionRecord::Demonitor {
             caller_pid: 1,
             reference: 42

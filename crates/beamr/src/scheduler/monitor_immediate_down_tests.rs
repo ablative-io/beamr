@@ -63,6 +63,16 @@ fn tombstoned_target_monitor_while_watcher_executing_survives_store_back() {
     let reference = boxed::Reference::new(message[1])
         .unwrap_or_else(|| panic!("DOWN contains a monitor reference"));
     assert_eq!(reference.id(), result.reference);
+    // Strengthened re-pin: the DOWN reference is term-equal (not merely
+    // id-equal) to a canonical boxed reference of the monitor's id — the same
+    // term rank monitor/2 now returns, on which the OTP {'DOWN', Ref, ...}
+    // selective receive depends.
+    let mut expected_ref = [0u64; 2];
+    assert_eq!(
+        message[1],
+        boxed::write_reference(&mut expected_ref, result.reference)
+            .unwrap_or_else(|| panic!("canonical DOWN reference fits"))
+    );
     assert_eq!(message[2], Term::atom(Atom::PROCESS));
     assert_eq!(message[3].as_pid(), Some(target));
     assert_eq!(message[4], Term::atom(Atom::ERROR));
@@ -92,6 +102,14 @@ fn tombstoned_target_monitor_wakes_present_parked_watcher() {
     let reference = boxed::Reference::new(message[1])
         .unwrap_or_else(|| panic!("DOWN contains a monitor reference"));
     assert_eq!(reference.id(), result.reference);
+    // Strengthened re-pin: term-equality (not merely id-equality) against a
+    // canonical boxed reference of the monitor's id.
+    let mut expected_ref = [0u64; 2];
+    assert_eq!(
+        message[1],
+        boxed::write_reference(&mut expected_ref, result.reference)
+            .unwrap_or_else(|| panic!("canonical DOWN reference fits"))
+    );
     assert!(result.immediate_down);
 
     let wait_set = lock_or_recover(&shared.wait_set);
