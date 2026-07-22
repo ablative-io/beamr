@@ -14,7 +14,7 @@ use cranelift_codegen::ir::{Block, FuncRef, InstBuilder, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{Register, read_register_term, register_operand, write_register_term};
+use super::ir_common::{RegisterAccess, Register, read_register_term, register_operand, write_register_term};
 
 pub(crate) const JIT_STATUS_NORMAL: u8 = 0;
 pub(crate) const JIT_STATUS_EXCEPTION: u8 = 1;
@@ -127,7 +127,7 @@ impl ExceptionLoweringState {
     pub(crate) fn translate_try_case(
         &mut self,
         builder: &mut FunctionBuilder<'_>,
-        register_file: Value,
+        register_file: RegisterAccess,
         source: &crate::loader::decode::Operand,
     ) -> Result<CaughtExceptionValues, JitError> {
         let frame = match self.try_stack.pop() {
@@ -178,7 +178,7 @@ fn try_register_triplet(
 
 pub(crate) fn read_caught_exception(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     frame: TryCatchFrame,
 ) -> CaughtExceptionValues {
     CaughtExceptionValues {
@@ -202,7 +202,7 @@ pub(crate) struct ExceptionDispatch {
     pub(crate) frame: Option<TryCatchFrame>,
     pub(crate) compiled_frame: CompiledFrameInfo,
     pub(crate) process: Value,
-    pub(crate) register_file: Value,
+    pub(crate) register_file: RegisterAccess,
     pub(crate) status: Value,
     pub(crate) value: Value,
     pub(crate) continuation: Block,

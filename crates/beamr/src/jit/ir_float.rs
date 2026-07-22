@@ -6,7 +6,7 @@ use cranelift_codegen::ir::{Block, FuncRef, InstBuilder, MemFlags, Value, types}
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{
+use super::ir_common::{RegisterAccess, 
     SMALL_INT_SHIFT, SMALL_INT_TAG_MASK, branch_to_fail_if, read_operand_term, write_operand_term,
 };
 
@@ -53,7 +53,7 @@ pub(crate) enum FloatBinaryOp {
 
 #[derive(Clone, Copy)]
 pub(crate) struct FloatLoweringContext {
-    pub(crate) register_file: Value,
+    pub(crate) register_file: RegisterAccess,
     pub(crate) process: Value,
     pub(crate) deopt: Block,
     pub(crate) box_float: FuncRef,
@@ -61,7 +61,7 @@ pub(crate) struct FloatLoweringContext {
 
 pub(crate) fn translate_fconv(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     float_registers: &mut FloatRegisterMap,
     term_src: &Operand,
     fr_dest: &Operand,

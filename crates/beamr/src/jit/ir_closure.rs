@@ -144,7 +144,7 @@ pub(crate) fn lower_call_fun(
             context.process,
             fun_term,
             arity_value,
-            context.register_file,
+            context.register_file.file,
         ],
     );
     let results = builder.inst_results(returned).to_vec();

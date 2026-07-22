@@ -8,7 +8,7 @@ use cranelift_codegen::ir::{
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{branch_to_fail_if, read_operand_term, write_operand_term};
+use super::ir_common::{RegisterAccess, branch_to_fail_if, read_operand_term, write_operand_term};
 
 const WORD_BYTES: usize = 8;
 
@@ -22,7 +22,7 @@ pub(crate) struct MapHelpers {
 
 #[derive(Clone, Copy)]
 pub(crate) struct MapLoweringContext {
-    pub(crate) register_file: Value,
+    pub(crate) register_file: RegisterAccess,
     pub(crate) process: Value,
 }
 
@@ -207,7 +207,7 @@ pub(crate) fn map_allocation_roots(
 
 fn stage_pairs(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     pairs: &[Operand],
 ) -> Result<(Value, Value), JitError> {
     if !pairs.len().is_multiple_of(2) {

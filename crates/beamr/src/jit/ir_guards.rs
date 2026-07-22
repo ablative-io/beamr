@@ -7,7 +7,7 @@ use cranelift_codegen::ir::{Block, InstBuilder, MemFlags, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{branch_to_fail_if, read_operand_term};
+use super::ir_common::{RegisterAccess, branch_to_fail_if, read_operand_term};
 
 const TERM_TAG_MASK: i64 = 0b111;
 const SMALL_INT_TAG: i64 = 0b000;
@@ -25,7 +25,7 @@ const EXTERNAL_PID_HEADER_TAG: i64 = 0x1c;
 
 pub(crate) fn lower_type_test(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     op: TypeTestOp,
     value: &Operand,
     fail: Block,
@@ -81,7 +81,7 @@ pub(crate) fn lower_type_test(
 
 pub(crate) fn lower_test_arity(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     tuple: &Operand,
     arity: &Operand,
     fail: Block,
@@ -100,7 +100,7 @@ pub(crate) fn lower_test_arity(
 
 pub(crate) fn lower_is_tagged_tuple(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     value: &Operand,
     arity: &Operand,
     tag: &Operand,
@@ -132,7 +132,7 @@ pub(crate) fn lower_is_tagged_tuple(
 
 pub(crate) fn lower_select_val(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     value: &Operand,
     fail: Block,
     pairs: &[SelectPair],

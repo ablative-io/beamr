@@ -5,6 +5,7 @@ use cranelift_module::{Linkage, Module};
 use crate::jit::ir_allocation::AllocationHelpers;
 use crate::jit::ir_binary::BinaryHelpers;
 use crate::jit::ir_closure::ClosureHelpers;
+use crate::jit::ir_common::FrameHelpers;
 use crate::jit::ir_exceptions::ExceptionHelpers;
 use crate::jit::ir_map::MapHelpers;
 use crate::jit::ir_message::MessageHelpers;
@@ -20,9 +21,12 @@ pub(super) struct CompileHelpers {
     pub(super) binary: BinaryHelpers,
     pub(super) map: MapHelpers,
     pub(super) message: MessageHelpers,
+    pub(super) frame: FrameHelpers,
     pub(super) charge: FuncRef,
     pub(super) call_interpreted: FuncRef,
     pub(super) box_float: FuncRef,
+    pub(super) y_read: FuncRef,
+    pub(super) y_write: FuncRef,
 }
 
 /// Declare all Cranelift helper function references used by the instruction dispatch loop.
@@ -158,6 +162,20 @@ pub(super) fn declare_compile_helpers(
     let binary_helpers = declare_binary_helpers(jit_module, ctx)?;
     let map_helpers = declare_map_helpers(jit_module, ctx)?;
     let message_helpers = declare_message_helpers(jit_module, ctx)?;
+    let frame_helpers = declare_frame_helpers(jit_module, ctx)?;
+    let y_read_helper = declare_helper(
+        jit_module,
+        ctx,
+        "beamr_jit_y_read",
+        &[types::I64, types::I64],
+        types::I64,
+    )?;
+    let y_write_helper = declare_void_helper(
+        jit_module,
+        ctx,
+        "beamr_jit_y_write",
+        &[types::I64, types::I64, types::I64],
+    )?;
 
     Ok(CompileHelpers {
         allocation: AllocationHelpers {
@@ -178,9 +196,48 @@ pub(super) fn declare_compile_helpers(
         binary: binary_helpers,
         map: map_helpers,
         message: message_helpers,
+        frame: frame_helpers,
         charge: charge_helper,
         call_interpreted: call_interpreted_helper,
         box_float: box_float_helper,
+        y_read: y_read_helper,
+        y_write: y_write_helper,
+    })
+}
+
+fn declare_frame_helpers(
+    module: &mut JITModule,
+    func: &mut cranelift_codegen::ir::Function,
+) -> Result<FrameHelpers, JitError> {
+    Ok(FrameHelpers {
+        alloc: declare_helper(
+            module,
+            func,
+            "beamr_jit_alloc_frame",
+            &[types::I64, types::I64],
+            types::I64,
+        )?,
+        dealloc: declare_helper(
+            module,
+            func,
+            "beamr_jit_dealloc_frame",
+            &[types::I64],
+            types::I64,
+        )?,
+        test_heap: declare_helper(
+            module,
+            func,
+            "beamr_jit_test_heap",
+            &[types::I64, types::I64, types::I64],
+            types::I64,
+        )?,
+        trim: declare_helper(
+            module,
+            func,
+            "beamr_jit_trim_frame",
+            &[types::I64, types::I64, types::I64],
+            types::I64,
+        )?,
     })
 }
 

@@ -2,7 +2,7 @@
 
 use crate::atom::Atom;
 use crate::jit::ir_binary::lower_exception_block;
-use crate::jit::ir_common::JIT_DEOPT_SENTINEL;
+use crate::jit::ir_common::{JIT_DEOPT_SENTINEL, RegisterAccess};
 use crate::jit::ir_control::{BlockMap, TranslationPlan};
 use crate::jit::ir_exceptions::{
     CompiledFrameInfo, ExceptionLoweringState, JIT_STATUS_DEOPT, JIT_STATUS_NORMAL,
@@ -10,8 +10,9 @@ use crate::jit::ir_exceptions::{
 };
 use crate::jit::ir_float::FloatRegisterMap;
 use crate::jit::runtime::{
-    JIT_YIELD_SENTINEL, jit_alloc_cons, jit_alloc_tuple, jit_box_float, jit_call_interpreted,
-    jit_charge_reduction,
+    JIT_YIELD_SENTINEL, jit_alloc_cons, jit_alloc_frame, jit_alloc_tuple, jit_box_float,
+    jit_call_interpreted, jit_charge_reduction, jit_dealloc_frame, jit_test_heap, jit_trim_frame,
+    jit_y_read, jit_y_write,
 };
 use crate::jit::runtime_binary_build::{
     jit_bs_finish, jit_bs_init, jit_bs_put_binary, jit_bs_put_integer, jit_bs_put_utf8,
@@ -80,6 +81,12 @@ impl JitCompiler {
             "beamr_jit_call_interpreted",
             jit_call_interpreted as *const u8,
         );
+        builder.symbol("beamr_jit_alloc_frame", jit_alloc_frame as *const u8);
+        builder.symbol("beamr_jit_dealloc_frame", jit_dealloc_frame as *const u8);
+        builder.symbol("beamr_jit_test_heap", jit_test_heap as *const u8);
+        builder.symbol("beamr_jit_trim_frame", jit_trim_frame as *const u8);
+        builder.symbol("beamr_jit_y_read", jit_y_read as *const u8);
+        builder.symbol("beamr_jit_y_write", jit_y_write as *const u8);
         builder.symbol("beamr_jit_bs_start_match", jit_bs_start_match as *const u8);
         builder.symbol("beamr_jit_bs_get_integer", jit_bs_get_integer as *const u8);
         builder.symbol("beamr_jit_bs_get_binary", jit_bs_get_binary as *const u8);
@@ -240,9 +247,19 @@ impl JitCompiler {
         {
             let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
             let blocks = BlockMap::new(&mut builder, instructions, &plan);
-            let register_file = builder.block_params(blocks.entry)[0];
+            let register_file_ptr = builder.block_params(blocks.entry)[0];
             let process = builder.block_params(blocks.entry)[1];
             builder.switch_to_block(blocks.entry);
+
+            // Y registers are reached through the process-stack helpers, X
+            // registers through the flat `x_regs` pointer; both travel bundled so
+            // every leaf read/write can route Y off the flat buffer.
+            let register_file = RegisterAccess {
+                file: register_file_ptr,
+                process,
+                y_read: helpers.y_read,
+                y_write: helpers.y_write,
+            };
 
             let mut typed_state = TypedRegisterState::new(typed_signature.as_ref());
             typed_state.initialize_entry_values(&mut builder, register_file);

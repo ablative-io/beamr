@@ -6,7 +6,7 @@ use cranelift_codegen::ir::{Block, FuncRef, InstBuilder, Value};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{read_operand_term, write_operand_term};
+use super::ir_common::{RegisterAccess, read_operand_term, write_operand_term};
 
 const RECEIVE_STATUS_MESSAGE: i64 = 0;
 const RECEIVE_STATUS_EMPTY: i64 = 1;
@@ -29,7 +29,7 @@ pub(crate) struct MessageHelpers {
 /// Common SSA values needed by message opcode lowering.
 #[derive(Clone, Copy)]
 pub(crate) struct MessageLoweringContext {
-    pub(crate) register_file: Value,
+    pub(crate) register_file: RegisterAccess,
     pub(crate) process: Value,
     pub(crate) deopt: Block,
     pub(crate) yield_block: Block,

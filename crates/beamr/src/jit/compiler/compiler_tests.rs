@@ -162,10 +162,19 @@ fn compiles_return_only_function() {
 
 #[test]
 fn compiled_move_writes_register_file() {
+    // Re-pinned onto the stack-backed Y substrate (JIT-002 R1): the flat-Y
+    // predecessor asserted `Move x1 -> Y(0)` landed at `registers[1024]`, past
+    // the X-register file. Under the ruled substrate Y(0) lives in the frame the
+    // compiled `allocate` pushes onto the process call stack, so the write is
+    // observed through `process.stack().y_reg(0)`, GC-rooted like every Y slot.
     let compiler = JitCompiler::new(JitSettings).unwrap();
     let native = compiler
         .compile(
             &[
+                Instruction::Allocate {
+                    stack_need: Operand::Unsigned(1),
+                    live: Operand::Unsigned(0),
+                },
                 Instruction::Move {
                     source: Operand::Integer(42),
                     destination: Operand::X(1),
@@ -181,15 +190,265 @@ fn compiled_move_writes_register_file() {
             0,
         )
         .unwrap();
-    let mut registers = vec![0; X_REGISTER_COUNT as usize + 1];
-    let returned = call_native(&native, &mut registers);
+    let mut process = Process::new(0, 233);
+    process.set_current_module(std::sync::Arc::new(test_module(Atom::MODULE, Vec::new())));
+    let returned = call_native_with_process_x_regs(&native, &mut process);
 
-    assert_eq!(returned, 0);
-    assert_eq!(registers[1], Term::small_int(42).raw());
-    assert_eq!(
-        registers[X_REGISTER_COUNT as usize],
-        Term::small_int(42).raw()
-    );
+    // X(0) was untouched, so the returned value is the fresh process's NIL.
+    assert_eq!(returned, Term::NIL.raw());
+    assert_eq!(process.x_reg(1), Term::small_int(42));
+    assert_eq!(process.stack().y_reg(0), Ok(Term::small_int(42)));
+}
+
+// -- JIT-002 R1: the every-function structural frame set on the stack-backed
+// -- Y substrate. Each wall compiles one opcode and observes the process call
+// -- stack the collector roots.
+
+/// A process with a live current module so `allocate` can pin a frame, mirroring
+/// the interpreter's `push_y_frame`.
+fn process_with_current_module() -> Process {
+    let mut process = Process::new(0, 233);
+    process.set_current_module(std::sync::Arc::new(test_module(Atom::MODULE, Vec::new())));
+    process
+}
+
+fn compile_body(instructions: &[Instruction]) -> crate::jit::types::NativeCode {
+    JitCompiler::new(JitSettings)
+        .unwrap()
+        .compile(instructions, Atom::MODULE, Atom::OK, 0)
+        .unwrap()
+}
+
+#[test]
+fn compiled_allocate_pushes_frame_with_nil_y_slots() {
+    let native = compile_body(&[
+        Instruction::Allocate {
+            stack_need: Operand::Unsigned(2),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Return,
+    ]);
+    let mut process = process_with_current_module();
+    call_native_with_process_x_regs(&native, &mut process);
+
+    assert_eq!(process.stack().len(), 1);
+    assert_eq!(process.stack().y_reg(0), Ok(Term::NIL));
+    assert_eq!(process.stack().y_reg(1), Ok(Term::NIL));
+}
+
+#[test]
+fn compiled_allocate_zero_nil_initializes_slots() {
+    let native = compile_body(&[
+        Instruction::AllocateZero {
+            stack_need: Operand::Unsigned(2),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Return,
+    ]);
+    let mut process = process_with_current_module();
+    call_native_with_process_x_regs(&native, &mut process);
+
+    assert_eq!(process.stack().len(), 1);
+    assert_eq!(process.stack().y_reg(0), Ok(Term::NIL));
+    assert_eq!(process.stack().y_reg(1), Ok(Term::NIL));
+}
+
+#[test]
+fn compiled_allocate_heap_reserves_frame_after_the_heap_guard() {
+    let native = compile_body(&[
+        Instruction::AllocateHeap {
+            stack_need: Operand::Unsigned(1),
+            heap_need: Operand::Unsigned(2),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Return,
+    ]);
+    let mut process = process_with_current_module();
+    call_native_with_process_x_regs(&native, &mut process);
+
+    assert_eq!(process.stack().len(), 1);
+    assert_eq!(process.stack().y_reg(0), Ok(Term::NIL));
+}
+
+#[test]
+fn compiled_deallocate_pops_the_frame() {
+    let native = compile_body(&[
+        Instruction::Allocate {
+            stack_need: Operand::Unsigned(1),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Deallocate {
+            words: Operand::Unsigned(1),
+        },
+        Instruction::Return,
+    ]);
+    let mut process = process_with_current_module();
+    call_native_with_process_x_regs(&native, &mut process);
+
+    assert!(process.stack().is_empty());
+}
+
+#[test]
+fn compiled_test_heap_guard_permits_execution() {
+    let native = compile_body(&[
+        Instruction::TestHeap {
+            heap_need: Operand::Unsigned(2),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Return,
+    ]);
+    let mut process = process_with_current_module();
+    let returned = call_native_with_process_x_regs(&native, &mut process);
+
+    assert_eq!(returned, Term::NIL.raw());
+}
+
+#[test]
+fn compiled_init_yregs_nil_initializes_named_registers() {
+    let native = compile_body(&[
+        Instruction::Allocate {
+            stack_need: Operand::Unsigned(2),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Move {
+            source: Operand::Integer(5),
+            destination: Operand::Y(0),
+        },
+        Instruction::Move {
+            source: Operand::Integer(6),
+            destination: Operand::Y(1),
+        },
+        Instruction::InitYregs {
+            registers: Operand::List(vec![Operand::Y(0), Operand::Y(1)]),
+        },
+        Instruction::Return,
+    ]);
+    let mut process = process_with_current_module();
+    call_native_with_process_x_regs(&native, &mut process);
+
+    assert_eq!(process.stack().y_reg(0), Ok(Term::NIL));
+    assert_eq!(process.stack().y_reg(1), Ok(Term::NIL));
+}
+
+#[test]
+fn compiled_trim_discards_low_slots_and_renumbers_survivors() {
+    let native = compile_body(&[
+        Instruction::Allocate {
+            stack_need: Operand::Unsigned(3),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Move {
+            source: Operand::Integer(10),
+            destination: Operand::Y(0),
+        },
+        Instruction::Move {
+            source: Operand::Integer(20),
+            destination: Operand::Y(1),
+        },
+        Instruction::Move {
+            source: Operand::Integer(30),
+            destination: Operand::Y(2),
+        },
+        // trim words=2 remaining=1: discard the two lowest Y regs, y(2) -> y(0).
+        Instruction::Trim {
+            words: Operand::Unsigned(2),
+            remaining: Operand::Unsigned(1),
+        },
+        Instruction::Return,
+    ]);
+    let mut process = process_with_current_module();
+    call_native_with_process_x_regs(&native, &mut process);
+
+    assert_eq!(process.stack().current_frame().unwrap().y_slots(), 1);
+    assert_eq!(process.stack().y_reg(0), Ok(Term::small_int(30)));
+}
+
+#[test]
+fn compiled_test_heap_guard_survives_a_collection_with_a_live_y_register() {
+    // Heap-pressure fixture (R1 acc#4): a boxed term parked in a Y register must
+    // survive a collection the compiled TestHeap guard forces, with no silent
+    // heap overrun. Y lives on the process stack, so the collector roots and
+    // relocates it; the value read back after the guard is still correct.
+    let mut process = process_with_current_module();
+    let tuple = {
+        let ptr = process.heap_mut().alloc(3).expect("tuple heap fits");
+        // SAFETY: three contiguous heap words were just reserved for this tuple.
+        let heap = unsafe { std::slice::from_raw_parts_mut(ptr, 3) };
+        write_tuple(heap, &[Term::small_int(1), Term::small_int(2)]).expect("tuple layout fits")
+    };
+    // Fill the nursery so only a couple of words remain: the guard below must
+    // therefore collect rather than satisfy the request in place.
+    let free = process.heap().available();
+    if free > 2 {
+        process.heap_mut().alloc(free - 2).expect("nursery fill fits");
+    }
+    process.set_x_reg(0, tuple);
+
+    let native = compile_body(&[
+        Instruction::Allocate {
+            stack_need: Operand::Unsigned(1),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Move {
+            source: Operand::X(0),
+            destination: Operand::Y(0),
+        },
+        // Needs far more than the two remaining words, forcing a collection while
+        // the tuple is live only through Y(0).
+        Instruction::TestHeap {
+            heap_need: Operand::Unsigned(64),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Move {
+            source: Operand::Y(0),
+            destination: Operand::X(0),
+        },
+        Instruction::Return,
+    ]);
+    let returned = call_native_with_process_x_regs(&native, &mut process);
+
+    let survived = Tuple::new(Term::from_raw(returned)).expect("Y-rooted tuple survived the GC");
+    assert_eq!(survived.get(0), Some(Term::small_int(1)));
+    assert_eq!(survived.get(1), Some(Term::small_int(2)));
+}
+
+#[test]
+fn compiled_full_frame_set_roundtrips_a_y_value() {
+    // allocate -> y-reg use -> trim -> read back -> deallocate, all on the
+    // stack-backed substrate. The known result doubles as a value pin; the real
+    // interpreter differential on a frame-using function rides in R5.
+    let native = compile_body(&[
+        Instruction::Allocate {
+            stack_need: Operand::Unsigned(2),
+            live: Operand::Unsigned(0),
+        },
+        Instruction::Move {
+            source: Operand::Integer(42),
+            destination: Operand::Y(0),
+        },
+        Instruction::Move {
+            source: Operand::Integer(7),
+            destination: Operand::Y(1),
+        },
+        // trim to the single high slot: y(1)=7 becomes y(0).
+        Instruction::Trim {
+            words: Operand::Unsigned(1),
+            remaining: Operand::Unsigned(1),
+        },
+        Instruction::Move {
+            source: Operand::Y(0),
+            destination: Operand::X(0),
+        },
+        Instruction::Deallocate {
+            words: Operand::Unsigned(1),
+        },
+        Instruction::Return,
+    ]);
+    let mut process = process_with_current_module();
+    let returned = call_native_with_process_x_regs(&native, &mut process);
+
+    assert_eq!(returned, Term::small_int(7).raw());
+    assert!(process.stack().is_empty());
 }
 
 #[test]
@@ -2176,6 +2435,13 @@ fn compiled_try_catches_interpreted_exception_and_exposes_payload() {
     let mut caller = test_module(
         caller_atom,
         vec![
+            // Re-pinned for JIT-002 R1: the Try/TryCase Y triplet now lives on the
+            // process call stack, so the compiled body reserves it with `allocate`
+            // (three Y slots) instead of relying on the removed flat-Y buffer.
+            Instruction::Allocate {
+                stack_need: Operand::Unsigned(3),
+                live: Operand::Unsigned(0),
+            },
             Instruction::Try {
                 destination: Operand::Y(0),
                 label: Operand::Label(20),

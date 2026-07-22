@@ -6,7 +6,7 @@ use crate::jit::ir_closure::{
     ClosureCall, ClosureMetadata, lower_call_fun, lower_make_fun2, make_fun_free_var_operands,
     make_fun_free_var_roots,
 };
-use crate::jit::ir_common::label_operand;
+use crate::jit::ir_common::{RegisterAccess, label_operand};
 use crate::jit::ir_control::BlockMap;
 use crate::jit::ir_exceptions::{CompiledFrameInfo, ExceptionLoweringState};
 use crate::jit::safepoint::SafepointBuilder;
@@ -30,7 +30,7 @@ use super::{JitError, ModuleCompileMetadata};
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_call_instruction(
     builder: &mut FunctionBuilder<'_>,
-    register_file: cranelift_codegen::ir::Value,
+    register_file: RegisterAccess,
     process: cranelift_codegen::ir::Value,
     blocks: &BlockMap,
     typed_state: &mut TypedRegisterState,
@@ -69,7 +69,7 @@ pub(super) fn lower_call_instruction(
                     module_value,
                     import_value,
                     arity_value,
-                    register_file,
+                    register_file.file,
                 ],
             );
             let results = builder.inst_results(returned).to_vec();

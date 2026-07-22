@@ -43,6 +43,31 @@ impl TranslationPlan {
                 Instruction::Return => {
                     block_starts.insert(index + 1);
                 }
+                // Debug line marker: skipped in both the block scan and dispatch.
+                Instruction::Line { .. } => {}
+                // Stack-frame ops. Each emits a frame-management helper guard that
+                // deopts on failure, so the next instruction starts a fresh block.
+                Instruction::Allocate { .. }
+                | Instruction::AllocateHeap { .. }
+                | Instruction::AllocateZero { .. }
+                | Instruction::Deallocate { .. }
+                | Instruction::TestHeap { .. }
+                | Instruction::Trim { .. } => {
+                    block_starts.insert(index + 1);
+                }
+                // NIL-initialize named Y registers (branchless Y writes).
+                Instruction::InitYregs { registers } => {
+                    let crate::loader::decode::Operand::List(registers) = registers else {
+                        return Err(JitError::UnsupportedOperand {
+                            operand: format!(
+                                "init_yregs expected a register list, got {registers:?}"
+                            ),
+                        });
+                    };
+                    for register in registers {
+                        validate_write_operand(register)?;
+                    }
+                }
                 Instruction::Move {
                     source,
                     destination,

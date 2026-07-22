@@ -6,7 +6,7 @@ use cranelift_codegen::ir::{FuncRef, InstBuilder, MemFlags, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{read_operand_term, write_operand_term};
+use super::ir_common::{RegisterAccess, read_operand_term, write_operand_term};
 
 const TERM_TAG_MASK: i64 = 0b111;
 const BOXED_TAG: i64 = 0b100;
@@ -22,7 +22,7 @@ pub(crate) struct AllocationHelpers {
 }
 
 pub(crate) struct LoweringContext {
-    pub(crate) register_file: Value,
+    pub(crate) register_file: RegisterAccess,
     pub(crate) process: Value,
     pub(crate) deopt: cranelift_codegen::ir::Block,
 }
@@ -90,7 +90,7 @@ pub(crate) fn lower_put_tuple2(
 
 pub(crate) fn lower_get_list(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     source: &Operand,
     head: &Operand,
     tail: &Operand,
@@ -106,7 +106,7 @@ pub(crate) fn lower_get_list(
 
 pub(crate) fn lower_get_hd(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     source: &Operand,
     destination: &Operand,
 ) -> Result<(), JitError> {
@@ -117,7 +117,7 @@ pub(crate) fn lower_get_hd(
 
 pub(crate) fn lower_get_tl(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     source: &Operand,
     destination: &Operand,
 ) -> Result<(), JitError> {
@@ -130,7 +130,7 @@ pub(crate) fn lower_get_tl(
 
 pub(crate) fn lower_get_tuple_element(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     source: &Operand,
     index: usize,
     destination: &Operand,
@@ -175,7 +175,7 @@ fn tuple_elements_error(elements: &Operand) -> JitError {
 
 fn read_cons_pointer(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     source: &Operand,
 ) -> Result<Value, JitError> {
     let term = read_operand_term(builder, register_file, source)?;
@@ -184,7 +184,7 @@ fn read_cons_pointer(
 
 fn read_boxed_pointer(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     source: &Operand,
 ) -> Result<Value, JitError> {
     let term = read_operand_term(builder, register_file, source)?;

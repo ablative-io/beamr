@@ -8,7 +8,7 @@ use crate::jit::ir_allocation::{
 use crate::jit::ir_binary::{
     BinaryLoweringContext, binary_allocation_roots, fail_operand, lower_binary_op,
 };
-use crate::jit::ir_common::label_operand;
+use crate::jit::ir_common::{RegisterAccess, label_operand};
 use crate::jit::ir_control::{BlockMap, opcode_name};
 use crate::jit::ir_exceptions::JIT_STATUS_EXCEPTION;
 use crate::jit::ir_float::{
@@ -39,7 +39,7 @@ use super::ir_typed::{TypedRegisterState, float_fail_block};
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_data_instruction(
     builder: &mut FunctionBuilder<'_>,
-    register_file: cranelift_codegen::ir::Value,
+    register_file: RegisterAccess,
     process: cranelift_codegen::ir::Value,
     blocks: &BlockMap,
     typed_state: &mut TypedRegisterState,

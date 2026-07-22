@@ -7,7 +7,7 @@ use cranelift_codegen::ir::{InstBuilder, Value};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{
+use super::ir_common::{RegisterAccess, 
     SMALL_INT_SHIFT, branch_to_fail_if, checked_small_int_payload, read_operand_term,
     write_operand_term,
 };
@@ -104,7 +104,7 @@ impl<'a> ParsedBif<'a> {
 
 pub(crate) fn lower_arithmetic_bif(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     lowering: ArithmeticLowering<'_>,
 ) -> Result<(), JitError> {
     let left = read_operand_term(builder, register_file, lowering.left)?;
@@ -161,7 +161,7 @@ pub(crate) fn lower_arithmetic_bif(
 
 pub(crate) fn lower_comparison(
     builder: &mut FunctionBuilder<'_>,
-    register_file: Value,
+    register_file: RegisterAccess,
     op: ComparisonOp,
     left: &Operand,
     right: &Operand,

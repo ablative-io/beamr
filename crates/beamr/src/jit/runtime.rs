@@ -194,6 +194,133 @@ pub(crate) extern "C" fn jit_call_interpreted(
     }
 }
 
+/// Pushes a Y-register stack frame with `y_slots` NIL-initialized slots onto the
+/// process's canonical call stack (BEAM `allocate`/`allocate_zero`).
+///
+/// The frame lands on `process.stack()` exactly as the interpreter's
+/// `push_y_frame` does, so its Y registers are GC-rooted through
+/// `process.stack().y_regs()`. Returns `0` on success and `1` when compiled code
+/// must deopt (no live module to pin, or the frame limit was reached).
+pub(crate) extern "C" fn jit_alloc_frame(process: *mut Process, y_slots: u64) -> u64 {
+    let Some(process) = process_from_abi(process) else {
+        return 1;
+    };
+    let Ok(y_slots) = u16::try_from(y_slots) else {
+        return 1;
+    };
+    // Pin the currently-executing module the same way `push_y_frame` does. The
+    // frame's return metadata is discarded on deallocate; only the pin (purge
+    // protection) and the NIL-initialized Y slots are load-bearing.
+    let Some(module) = process.current_module().cloned() else {
+        return 1;
+    };
+    let name = module.name;
+    let return_ip = process
+        .code_position()
+        .map_or(0, |position| position.instruction_pointer);
+    match process.stack_mut().push_frame(name, return_ip, module, y_slots) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// Pops the current Y-register stack frame (BEAM `deallocate`). Returns `0` on
+/// success and `1` (deopt) when the stack is empty.
+pub(crate) extern "C" fn jit_dealloc_frame(process: *mut Process) -> u64 {
+    let Some(process) = process_from_abi(process) else {
+        return 1;
+    };
+    match process.stack_mut().pop_frame() {
+        Ok(_return_point) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// Honors a heap-need guard (BEAM `test_heap`, and the heap component of
+/// `allocate_heap`) by reusing `gc::ensure_space` — the same collector entry the
+/// interpreter's `test_heap` uses. `live` bounds the X registers GC roots.
+/// Returns `0` when space is available and `1` (deopt) on an unrecoverable
+/// heap-full so the interpreter re-runs and raises.
+pub(crate) extern "C" fn jit_test_heap(process: *mut Process, heap_need: u64, live: u64) -> u64 {
+    let Some(process) = process_from_abi(process) else {
+        return 1;
+    };
+    let Ok(heap_need) = usize::try_from(heap_need) else {
+        return 1;
+    };
+    let Ok(live) = usize::try_from(live) else {
+        return 1;
+    };
+    match gc::ensure_space(process, heap_need, live) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// Shifts the current frame's Y window (BEAM `trim`). `expected_slots` is the
+/// interpreter's `words + remaining` invariant; a mismatch is a malformed trim
+/// and deopts. Returns `0` on success and `1` (deopt) otherwise.
+pub(crate) extern "C" fn jit_trim_frame(
+    process: *mut Process,
+    expected_slots: u64,
+    remaining: u64,
+) -> u64 {
+    let Some(process) = process_from_abi(process) else {
+        return 1;
+    };
+    let Ok(expected_slots) = u16::try_from(expected_slots) else {
+        return 1;
+    };
+    let Ok(remaining) = u16::try_from(remaining) else {
+        return 1;
+    };
+    let Ok(frame) = process.stack().current_frame() else {
+        return 1;
+    };
+    if frame.y_slots() != expected_slots {
+        return 1;
+    }
+    match process.stack_mut().trim_y_regs(remaining) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// Reads Y register `index` from the current frame and returns its raw term.
+///
+/// Mirrors the unchecked, trusted nature of the JIT's X-register loads: a
+/// well-formed compiled body only reaches a Y index its `allocate` reserved, so
+/// the frame and index are always valid here. The safe stack API makes a
+/// spurious out-of-bounds read benign (returns NIL) rather than corrupting
+/// memory.
+pub(crate) extern "C" fn jit_y_read(process: *mut Process, index: u64) -> u64 {
+    let Some(process) = process_from_abi(process) else {
+        return Term::NIL.raw();
+    };
+    let Ok(index) = u16::try_from(index) else {
+        return Term::NIL.raw();
+    };
+    process
+        .stack()
+        .y_reg(index)
+        .map_or(Term::NIL.raw(), |term| term.raw())
+}
+
+/// Writes `value` to Y register `index` in the current frame.
+///
+/// Trusted like the X-register stores: a well-formed body only writes a Y index
+/// its frame reserved. A spurious out-of-bounds write is dropped by the safe
+/// stack API rather than corrupting memory.
+pub(crate) extern "C" fn jit_y_write(process: *mut Process, index: u64, value: u64) {
+    let Some(process) = process_from_abi(process) else {
+        return;
+    };
+    let Ok(index) = u16::try_from(index) else {
+        return;
+    };
+    let _ = process.stack_mut().set_y_reg(index, Term::from_raw(value));
+}
+
 pub(crate) fn process_from_abi(process: *mut Process) -> Option<&'static mut Process> {
     if process.is_null() {
         return None;

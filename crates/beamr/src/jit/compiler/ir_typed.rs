@@ -8,7 +8,7 @@ use cranelift_frontend::FunctionBuilder;
 use std::collections::HashMap;
 
 use crate::jit::ir_arithmetic::{ArithmeticLowering, ArithmeticOp};
-use crate::jit::ir_common::{
+use crate::jit::ir_common::{RegisterAccess, 
     Register, SMALL_INT_SHIFT, read_operand_term, read_register_term, register_operand,
     write_register_term,
 };
@@ -19,7 +19,7 @@ use super::JitError;
 
 pub(super) fn lower_typed_int_arithmetic(
     builder: &mut FunctionBuilder<'_>,
-    register_file: cranelift_codegen::ir::Value,
+    register_file: RegisterAccess,
     lowering: ArithmeticLowering<'_>,
     deopt: cranelift_codegen::ir::Block,
 ) -> Result<(), JitError> {
@@ -242,7 +242,7 @@ impl TypedRegisterState {
     pub(super) fn initialize_entry_values(
         &self,
         builder: &mut FunctionBuilder<'_>,
-        register_file: cranelift_codegen::ir::Value,
+        register_file: RegisterAccess,
     ) {
         for (register, type_) in &self.registers {
             if matches!(type_, TypeDescriptor::Int) {
@@ -256,7 +256,7 @@ impl TypedRegisterState {
     pub(super) fn read_return_value(
         &self,
         builder: &mut FunctionBuilder<'_>,
-        register_file: cranelift_codegen::ir::Value,
+        register_file: RegisterAccess,
     ) -> cranelift_codegen::ir::Value {
         let value = read_register_term(builder, register_file, Register::X(0));
         if matches!(
@@ -272,7 +272,7 @@ impl TypedRegisterState {
     pub(super) fn materialize_all_for_untyped_call(
         &mut self,
         builder: &mut FunctionBuilder<'_>,
-        register_file: cranelift_codegen::ir::Value,
+        register_file: RegisterAccess,
     ) {
         let registers = self.registers.keys().copied().collect::<Vec<_>>();
         self.materialize_registers(builder, register_file, registers);
@@ -281,7 +281,7 @@ impl TypedRegisterState {
     pub(super) fn materialize_operands_for_untyped_lowering<'a>(
         &mut self,
         builder: &mut FunctionBuilder<'_>,
-        register_file: cranelift_codegen::ir::Value,
+        register_file: RegisterAccess,
         operands: impl IntoIterator<Item = &'a Operand>,
     ) {
         let registers = operands
@@ -294,7 +294,7 @@ impl TypedRegisterState {
     pub(super) fn materialize_tuple_elements_for_untyped_lowering(
         &mut self,
         builder: &mut FunctionBuilder<'_>,
-        register_file: cranelift_codegen::ir::Value,
+        register_file: RegisterAccess,
         elements: &Operand,
     ) -> Result<(), JitError> {
         let Operand::List(elements) = elements else {
@@ -313,7 +313,7 @@ impl TypedRegisterState {
     pub(super) fn materialize_registers(
         &mut self,
         builder: &mut FunctionBuilder<'_>,
-        register_file: cranelift_codegen::ir::Value,
+        register_file: RegisterAccess,
         registers: impl IntoIterator<Item = Register>,
     ) {
         for register in registers {
@@ -328,7 +328,7 @@ impl TypedRegisterState {
     pub(super) fn read_operand_value(
         &self,
         builder: &mut FunctionBuilder<'_>,
-        register_file: cranelift_codegen::ir::Value,
+        register_file: RegisterAccess,
         operand: &Operand,
     ) -> Result<cranelift_codegen::ir::Value, JitError> {
         if matches!(self.operand_type(operand), Some(TypeDescriptor::Int)) {
@@ -357,7 +357,14 @@ impl TypedRegisterState {
         type_: Option<TypeDescriptor>,
     ) {
         if let Ok(register) = register_operand(operand) {
-            if let Some(type_) = type_.as_ref().and_then(supported_type) {
+            // Only X registers may carry the untagged-payload optimization. Y
+            // registers live on the GC-rooted process stack, so an untagged
+            // small-int payload in a Y slot would be traced as a bogus term.
+            if let Some(type_) = type_
+                .as_ref()
+                .filter(|_| matches!(register, Register::X(_)))
+                .and_then(supported_type)
+            {
                 self.registers.insert(register, type_);
             } else {
                 self.registers.remove(&register);
@@ -388,10 +395,12 @@ impl TypedRegisterState {
         };
         let left_type = self.registers.remove(&left_register);
         let right_type = self.registers.remove(&right_register);
-        if let Some(type_) = right_type {
+        // A type may only settle on an X register — Y slots are GC-rooted and
+        // must never hold an untagged payload (see `set_optional_operand_type`).
+        if let Some(type_) = right_type.filter(|_| matches!(left_register, Register::X(_))) {
             self.registers.insert(left_register, type_);
         }
-        if let Some(type_) = left_type {
+        if let Some(type_) = left_type.filter(|_| matches!(right_register, Register::X(_))) {
             self.registers.insert(right_register, type_);
         }
     }
@@ -402,7 +411,9 @@ impl TypedRegisterState {
     }
 
     pub(super) fn can_write_typed(&self, operand: &Operand) -> bool {
-        register_operand(operand).is_ok()
+        // Untagged typed results may only be written to X registers; a Y
+        // destination must take a fully tagged term (GC roots the stack).
+        matches!(register_operand(operand), Ok(Register::X(_)))
     }
 
     pub(super) fn list_type_from_head(&self, head: &Operand) -> Option<TypeDescriptor> {
@@ -453,13 +464,19 @@ impl TypedRegisterState {
     pub(super) fn mark_loaded_operand_type(
         &mut self,
         builder: &mut FunctionBuilder<'_>,
-        register_file: cranelift_codegen::ir::Value,
+        register_file: RegisterAccess,
         operand: &Operand,
         type_: Option<TypeDescriptor>,
     ) {
         let Ok(register) = register_operand(operand) else {
             return;
         };
+        // Y registers never carry the untagged optimization (GC roots the stack);
+        // leave the loaded tagged term in place and track no type for them.
+        if !matches!(register, Register::X(_)) {
+            self.registers.remove(&register);
+            return;
+        }
         let Some(type_) = type_.as_ref().and_then(supported_type) else {
             self.registers.remove(&register);
             return;

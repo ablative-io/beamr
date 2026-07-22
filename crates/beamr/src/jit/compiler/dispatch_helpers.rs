@@ -1,6 +1,6 @@
 //! Free helper functions used by instruction dispatch lowering.
 
-use crate::jit::ir_common::write_operand_term;
+use crate::jit::ir_common::{RegisterAccess, write_operand_term};
 use crate::jit::ir_exceptions::{
     CompiledFrameInfo, ExceptionDispatch, ExceptionHelpers, JIT_STATUS_DEOPT, JIT_STATUS_NORMAL,
     JIT_STATUS_YIELD, dispatch_exception_status, return_status,
@@ -116,7 +116,7 @@ pub(super) fn handle_helper_return(
     frame: Option<crate::jit::ir_exceptions::TryCatchFrame>,
     compiled_frame: CompiledFrameInfo,
     process: cranelift_codegen::ir::Value,
-    register_file: cranelift_codegen::ir::Value,
+    register_file: RegisterAccess,
 ) -> Result<(), JitError> {
     let status_continuation = builder.create_block();
     branch_to_status_blocks(

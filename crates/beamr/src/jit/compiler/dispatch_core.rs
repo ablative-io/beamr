@@ -4,15 +4,16 @@ use crate::jit::ir_arithmetic::{
     ArithmeticLowering, ArithmeticOp, ParsedBif, lower_arithmetic_bif, lower_comparison,
 };
 use crate::jit::ir_common::{
-    JIT_DEOPT_SENTINEL, label_operand, read_operand_term, write_operand_term,
+    JIT_DEOPT_SENTINEL, RegisterAccess, branch_to_fail_if, label_operand, read_operand_term,
+    write_operand_term,
 };
 use crate::jit::ir_control::BlockMap;
 use crate::jit::ir_exceptions::{
     ExceptionLoweringState, JIT_STATUS_DEOPT, JIT_STATUS_NORMAL, return_status, return_status_raw,
 };
 use crate::jit::ir_guards::{
-    SelectPair, immediate_raw_term, lower_is_tagged_tuple, lower_select_val, lower_test_arity,
-    lower_type_test, parse_select_pairs,
+    SelectPair, immediate_raw_term, immediate_usize, lower_is_tagged_tuple, lower_select_val,
+    lower_test_arity, lower_type_test, parse_select_pairs,
 };
 use crate::jit::ir_message::{
     MessageLoweringContext, translate_loop_rec, translate_loop_rec_end, translate_remove_message,
@@ -23,6 +24,7 @@ use crate::jit::type_info::TypeDescriptor;
 use crate::loader::Instruction;
 use crate::loader::decode::compact::Operand;
 use cranelift_codegen::ir::InstBuilder;
+use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_frontend::FunctionBuilder;
 
 use super::JitError;
@@ -38,7 +40,7 @@ use super::ir_typed::{
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_core_instruction(
     builder: &mut FunctionBuilder<'_>,
-    register_file: cranelift_codegen::ir::Value,
+    register_file: RegisterAccess,
     process: cranelift_codegen::ir::Value,
     blocks: &BlockMap,
     typed_state: &mut TypedRegisterState,
@@ -51,6 +53,88 @@ pub(super) fn lower_core_instruction(
 ) -> Result<Option<bool>, JitError> {
     match instruction {
         Instruction::Label { .. } => Ok(Some(false)),
+        // Debug line marker: a no-op in execution, exactly as the interpreter
+        // treats it (opcodes/mod.rs). It never reaches a runtime helper.
+        Instruction::Line { .. } => Ok(Some(false)),
+        // Stack-frame reservation. `allocate`/`allocate_zero` push a frame with
+        // NIL-initialized Y slots onto the process stack (push_frame NIL-inits,
+        // so the two are identical here, matching the interpreter). The Y slots
+        // are GC-rooted through the stack.
+        Instruction::Allocate { stack_need, .. } | Instruction::AllocateZero { stack_need, .. } => {
+            let slots = frame_slot_count(builder, stack_need)?;
+            frame_guard(builder, helpers.frame.alloc, &[process, slots], blocks.deopt);
+            Ok(Some(false))
+        }
+        // `allocate_heap` honors the heap guard first (reusing the existing GC
+        // discipline via `test_heap`), then pushes the frame.
+        Instruction::AllocateHeap {
+            stack_need,
+            heap_need,
+            live,
+        } => {
+            let heap_need = frame_slot_count(builder, heap_need)?;
+            let live = frame_slot_count(builder, live)?;
+            frame_guard(
+                builder,
+                helpers.frame.test_heap,
+                &[process, heap_need, live],
+                blocks.deopt,
+            );
+            let slots = frame_slot_count(builder, stack_need)?;
+            frame_guard(builder, helpers.frame.alloc, &[process, slots], blocks.deopt);
+            Ok(Some(false))
+        }
+        Instruction::Deallocate { .. } => {
+            frame_guard(builder, helpers.frame.dealloc, &[process], blocks.deopt);
+            Ok(Some(false))
+        }
+        // Heap-need guard: composes with the collector exactly as the
+        // interpreter's `test_heap` does; a live count roots the X registers.
+        Instruction::TestHeap { heap_need, live } => {
+            let heap_need = frame_slot_count(builder, heap_need)?;
+            let live = frame_slot_count(builder, live)?;
+            frame_guard(
+                builder,
+                helpers.frame.test_heap,
+                &[process, heap_need, live],
+                blocks.deopt,
+            );
+            Ok(Some(false))
+        }
+        // Frame-window shift. `expected_slots = words + remaining` is the
+        // interpreter's invariant; the helper rejects a mismatch (deopt).
+        Instruction::Trim { words, remaining } => {
+            let words = immediate_usize(words, "trim words")?;
+            let remaining_count = immediate_usize(remaining, "trim remaining")?;
+            let expected = words
+                .checked_add(remaining_count)
+                .ok_or_else(|| JitError::UnsupportedOperand {
+                    operand: format!("trim words {words} + remaining {remaining_count} overflow"),
+                })?;
+            let expected = frame_count_value(builder, expected, "trim expected slots")?;
+            let remaining_value =
+                frame_count_value(builder, remaining_count, "trim remaining slots")?;
+            frame_guard(
+                builder,
+                helpers.frame.trim,
+                &[process, expected, remaining_value],
+                blocks.deopt,
+            );
+            Ok(Some(false))
+        }
+        // NIL-initialize the named Y registers (they already exist in the frame).
+        Instruction::InitYregs { registers } => {
+            let Operand::List(registers) = registers else {
+                return Err(JitError::UnsupportedOperand {
+                    operand: format!("init_yregs expected a register list, got {registers:?}"),
+                });
+            };
+            let nil = read_operand_term(builder, register_file, &Operand::Atom(None))?;
+            for register in registers {
+                write_operand_term(builder, register_file, register, nil)?;
+            }
+            Ok(Some(false))
+        }
         Instruction::Move {
             source,
             destination,
@@ -332,4 +416,38 @@ pub(super) fn lower_core_instruction(
         }
         _ => Ok(None),
     }
+}
+
+/// Calls a frame-management helper and deopts when it reports failure (non-zero).
+fn frame_guard(
+    builder: &mut FunctionBuilder<'_>,
+    helper: cranelift_codegen::ir::FuncRef,
+    args: &[cranelift_codegen::ir::Value],
+    deopt: cranelift_codegen::ir::Block,
+) {
+    let call = builder.ins().call(helper, args);
+    let status = builder.inst_results(call)[0];
+    let failed = builder.ins().icmp_imm(IntCC::NotEqual, status, 0);
+    branch_to_fail_if(builder, failed, deopt);
+}
+
+/// Parses a frame operand (stack/heap need, live count) into an I64 SSA constant.
+fn frame_slot_count(
+    builder: &mut FunctionBuilder<'_>,
+    operand: &Operand,
+) -> Result<cranelift_codegen::ir::Value, JitError> {
+    let count = immediate_usize(operand, "frame slot count")?;
+    frame_count_value(builder, count, "frame slot count")
+}
+
+/// Emits an I64 constant for a frame count with an operand-range guard.
+fn frame_count_value(
+    builder: &mut FunctionBuilder<'_>,
+    count: usize,
+    context: &'static str,
+) -> Result<cranelift_codegen::ir::Value, JitError> {
+    let count = i64::try_from(count).map_err(|_| JitError::UnsupportedOperand {
+        operand: format!("{context} out of range: {count}"),
+    })?;
+    Ok(builder.ins().iconst(cranelift_codegen::ir::types::I64, count))
 }

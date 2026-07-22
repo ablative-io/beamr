@@ -6,6 +6,7 @@ use cranelift_codegen::ir::{Block, FuncRef, InstBuilder, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
+use super::ir_common::RegisterAccess;
 use super::ir_binary_lowering::{
     IntegerGetLowering, flags_to_raw, immediate_u64, invalid_operands, lower_bs_create_bin,
     lower_bs_get_tail, lower_bs_init_writable, lower_bs_match, lower_get_binary, lower_get_integer,
@@ -35,7 +36,7 @@ pub(crate) struct BinaryHelpers {
 
 #[derive(Clone, Copy)]
 pub(crate) struct BinaryLoweringContext {
-    pub(crate) register_file: Value,
+    pub(crate) register_file: RegisterAccess,
     pub(crate) process: Value,
     pub(crate) deopt: Block,
     pub(crate) exception: Block,
