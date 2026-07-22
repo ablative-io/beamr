@@ -2,6 +2,70 @@
 
 ## Unreleased
 
+## 0.16.0 — 2026-07-23
+
+The gleam-on-beamr enablement release: a real `gleam_otp` 1.2.0 actor
+(genuine gleam-built beams) starts, takes casts, and answers a synchronous
+`actor.call` on beamr. Four latent interpreter defects were surfaced by that
+spike's refusal to fake past an `undef` and are fixed here; none was reachable
+by any consumer's production path on 0.15.x (verified by grep-and-trace plus a
+disassembler census over every consumer's loaded bytecode), but all four sit on
+the hot path the moment `gleam_erlang`-based code loads.
+
+### Added
+
+- `proc_lib:spawn_link/1` BIF over the existing fenced closure-spawn facility
+  (admission honored; a bare `run()` without a scheduler refuses with a typed
+  error rather than pretending).
+- `receive ... after infinity` — the `infinity` atom now selects an unbounded,
+  timer-free wait (previously `badarg`), matching `wait` semantics with no
+  polling construct.
+- Multi-clause functions admit to the JIT: the admission guard's
+  effect-before-deopt analysis is now CFG-sensitive (forward may-reach
+  dataflow over the slice block graph, union join, fixpoint) instead of
+  linear-slice-order, so mutually exclusive clause exits no longer
+  false-positive. A single blocking receive is now admissible under
+  path-sensitivity, with a positive differential through the demand path.
+  The slicer retains the `func_info` prelude and lowers `FuncInfo` as a
+  DEOPT terminal.
+- `docs/design/beamr/probes/raiser-scan/` — rerunnable no-match raiser census
+  instrument (beam_disasm scanner + probe fixtures) used as this release's
+  check over consumer bytecode; positive-control verified.
+
+### Fixed
+
+- `erlang:send/2` silently dropped every cross-process local send (the
+  ignored `send_to_attached_self` return). It now routes through the
+  `LocalSendFacility` exactly like the `send` opcode — slot-locked delivery,
+  sender clock ticked, replay-valid. Anything driving `erlang:send/2` from
+  loaded bytecode (gleam `process.send` compiles to it) was affected.
+- `func_info` set the current MFA and fell through — a multi-clause no-match
+  re-dispatched forever, spinning a scheduler core. It now raises catchable
+  `error:function_clause` (bare atom, BEAM semantics), watchdog-proven
+  terminating.
+- `if_end` raised `error:{if_clause, []}` where BEAM raises the bare atom
+  `if_clause` — a loaded `catch error:if_clause` failed to match and the
+  process died where BEAM recovers. Bare atom now; the unit test that pinned
+  the wrapped shape is re-pinned to the true one.
+- `gleam_erlang_ffi:demonitor/1` rejected boxed references (stale
+  small-int-only parse — the same class as the 0.15.4 monitor fix). Dual
+  parse now: boxed `ReferenceRef` first, legacy small-int fallback.
+- JIT: a reachable deopt-after-side-effect divergence through the wired
+  demand path (RecvMarkerReserve) is guarded — the whole class is rejected
+  by the effect-reachability analysis above, with the replay probe green.
+
+### Removed
+
+- **BREAKING:** the native `gleam_erlang_ffi` selector shadow
+  (`register_selector_bifs` and the `selector_ffi` module) is retired. It was
+  pinned to a pre-1.3 `gleam_erlang` selector protocol and silently returned
+  wrong shapes under 1.3.x; the selector family is now served by the loaded
+  `gleam_erlang_ffi.beam` bytecode shipped with the user's `gleam_erlang`.
+  With no bytecode loaded the family fails as an honest, catchable
+  `error:undef` (pinned by regression test) instead of a silently-wrong
+  value. Embedders that registered the shadow should simply drop the call —
+  the maps BIFs the bytecode path needs are all present.
+
 ## 0.15.4 — 2026-07-18
 
 ### Added
