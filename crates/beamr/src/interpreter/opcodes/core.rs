@@ -77,7 +77,22 @@ pub fn func_info(
         operand_u8(arity, "func_info arity")?,
     );
     process.set_current_mfa(Some(metadata));
-    Ok(InstructionOutcome::Continue)
+    // `func_info` is the multi-clause dispatch LANDING PAD: normal calls enter at
+    // the label AFTER it, so reaching it means no clause matched. It must raise a
+    // catchable `error:function_clause` — NOT set-MFA-and-Continue, which fell
+    // back into the body and re-dispatched forever (the infinite-loop defect).
+    // The reason is the BARE atom `function_clause` (the args ride the stacktrace
+    // via the MFA just set); mirrors `case_end`/`if_end` through the same
+    // `raise_exception` seam, so a bytecode `catch error:function_clause` observes
+    // it. No new exception machinery.
+    super::exceptions::raise_exception(
+        process,
+        crate::process::Exception {
+            class: Term::atom(Atom::ERROR),
+            reason: Term::atom(Atom::FUNCTION_CLAUSE),
+            stacktrace: Term::NIL,
+        },
+    )
 }
 
 pub fn move_(

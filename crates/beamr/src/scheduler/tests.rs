@@ -664,16 +664,14 @@ fn shared_state_metric_accessors_report_scheduler_process_and_atom_counts() {
 fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("hook_loop");
-    let function = atoms.intern("main");
     let registry = Arc::new(ModuleRegistry::new());
+    // A real entry is AFTER func_info (its only reach is the no-match fail edge,
+    // where it now RAISES), so the happy path never runs func_info. Since
+    // func_info is also current_mfa's only setter, this scaffold's hook MFA is
+    // unset (NIL) — a pre-existing telemetry limitation the func_info fix exposes.
     let module = test_module(
         module_name,
         vec![
-            Instruction::FuncInfo {
-                module: Operand::Atom(Some(module_name)),
-                function: Operand::Atom(Some(function)),
-                arity: Operand::Unsigned(0),
-            },
             Instruction::Label { label: 1 },
             Instruction::CallOnly {
                 arity: Operand::Unsigned(0),
@@ -720,8 +718,10 @@ fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
     let events = events.lock().unwrap_or_else(|error| error.into_inner());
     let first = events.first().copied().expect("hook event recorded");
     assert_eq!(first.pid, pid);
-    assert_eq!(first.module, module_name);
-    assert_eq!(first.function, function);
+    // current_mfa's only setter is func_info, off the happy path, so the hook
+    // observes the unset MFA (see the module comment + the leg-1 handoff note).
+    assert_eq!(first.module, Atom::NIL);
+    assert_eq!(first.function, Atom::NIL);
     assert_eq!(first.arity, 0);
     assert_eq!(first.reductions_consumed, DEFAULT_REDUCTION_BUDGET);
     drop(events);
@@ -1180,16 +1180,12 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
 fn hook_fires_when_process_blocks_on_receive() {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("hook_wait");
-    let function = atoms.intern("main");
     let registry = Arc::new(ModuleRegistry::new());
+    // Entry is after func_info (which now RAISES on the no-match fail edge), so
+    // the happy path is the receive body only.
     let module = test_module(
         module_name,
         vec![
-            Instruction::FuncInfo {
-                module: Operand::Atom(Some(module_name)),
-                function: Operand::Atom(Some(function)),
-                arity: Operand::Unsigned(0),
-            },
             Instruction::Label { label: 10 },
             Instruction::Wait {
                 fail: Operand::Label(10),
@@ -1224,8 +1220,10 @@ fn hook_fires_when_process_blocks_on_receive() {
     });
     let events = events.lock().unwrap_or_else(|error| error.into_inner());
     assert_eq!(events[0].pid, pid);
-    assert_eq!(events[0].module, module_name);
-    assert_eq!(events[0].function, function);
+    // current_mfa's only setter is func_info, off the happy path, so the hook
+    // observes the unset MFA (NIL). See the leg-1 handoff note.
+    assert_eq!(events[0].module, Atom::NIL);
+    assert_eq!(events[0].function, Atom::NIL);
     assert_eq!(events[0].arity, 0);
     drop(events);
     scheduler.shutdown();
@@ -3402,16 +3400,12 @@ fn completion_published_while_executing_is_not_a_lost_wakeup() {
 fn hook_resume_in_the_suspend_park_gap_is_sticky_not_lost() {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("hook_gap_loop");
-    let function = atoms.intern("main");
     let registry = Arc::new(ModuleRegistry::new());
+    // Entry is after func_info (which now RAISES on the no-match fail edge), so
+    // the happy path is the self-tail-call loop only.
     let module = registry.insert(test_module(
         module_name,
         vec![
-            Instruction::FuncInfo {
-                module: Operand::Atom(Some(module_name)),
-                function: Operand::Atom(Some(function)),
-                arity: Operand::Unsigned(0),
-            },
             Instruction::Label { label: 1 },
             Instruction::CallOnly {
                 arity: Operand::Unsigned(0),

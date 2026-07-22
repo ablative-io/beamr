@@ -310,12 +310,16 @@ fn interpreter_local_call_dispatches_to_jit_cached_target() {
 }
 
 #[test]
-fn func_info_and_move_cover_metadata_register_literals_and_stack() {
+fn func_info_raises_function_clause_and_move_covers_registers_literals_and_stack() {
     let atoms = AtomTable::new();
     let module_atom = atoms.intern("sample");
     let function_atom = atoms.intern("main");
-    let literals = vec![Literal::Integer(7)];
-    let mut module = module(
+
+    // func_info is the multi-clause no-match landing pad: reaching it sets the MFA
+    // and RAISES a catchable error:function_clause (it no longer continues into
+    // the body). Real calls enter at the label AFTER it, so it is reached only on
+    // a failed dispatch — here we drive it directly.
+    let fc_module = module(
         module_atom,
         vec![
             Instruction::FuncInfo {
@@ -323,6 +327,32 @@ fn func_info_and_move_cover_metadata_register_literals_and_stack() {
                 function: Operand::Atom(Some(function_atom)),
                 arity: Operand::Unsigned(0),
             },
+            Instruction::Return,
+        ],
+    );
+    let mut fc_process = Process::new(1, 32);
+    assert_eq!(
+        run(&mut fc_process, &fc_module),
+        Ok(ExecutionResult::Exited(ExitReason::Error))
+    );
+    assert_eq!(
+        fc_process.current_mfa(),
+        Some((module_atom, function_atom, 0))
+    );
+    assert_eq!(
+        fc_process
+            .current_exception()
+            .map(|exception| exception.reason),
+        Some(Term::atom(Atom::FUNCTION_CLAUSE)),
+        "func_info raises the bare-atom function_clause reason"
+    );
+
+    // The move / register / literal / stack body, entered AFTER func_info as a
+    // real call does, runs to a normal return with no residual heap growth.
+    let literals = vec![Literal::Integer(7)];
+    let mut body = module(
+        module_atom,
+        vec![
             Instruction::AllocateZero {
                 stack_need: Operand::Unsigned(1),
                 live: Operand::Unsigned(0),
@@ -345,17 +375,16 @@ fn func_info_and_move_cover_metadata_register_literals_and_stack() {
             Instruction::Return,
         ],
     );
-    module.constant_pool =
+    body.constant_pool =
         crate::constant_pool::materialise_literals(&literals, Some(&atoms)).expect("literal pool");
-    module.literals = literals;
+    body.literals = literals;
     let mut process = Process::new(1, 32);
     let before_heap = process.heap().used();
 
     assert_eq!(
-        run(&mut process, &module),
+        run(&mut process, &body),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
-    assert_eq!(process.current_mfa(), Some((module_atom, function_atom, 0)));
     assert_eq!(process.x_reg(1), Term::small_int(7));
     assert_eq!(process.heap().used(), before_heap);
 }
@@ -2319,13 +2348,10 @@ fn proof_of_life_load_spawn_execute_exit_pipeline_fixture() {
     let fib_atom = atoms.intern("fib");
     let mut module = module(
         module_atom,
+        // Real entry is AFTER func_info (which now RAISES on the no-match fail
+        // edge), so the executed pipeline is the entry-label body only.
         vec![
             Instruction::Label { label: 1 },
-            Instruction::FuncInfo {
-                module: Operand::Atom(Some(module_atom)),
-                function: Operand::Atom(Some(fib_atom)),
-                arity: Operand::Unsigned(1),
-            },
             Instruction::Move {
                 source: Operand::Integer(55),
                 destination: Operand::X(0),
