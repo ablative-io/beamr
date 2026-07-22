@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## beamr-wasm 0.7.0 — 2026-07-23
+
+- Rides beamr 0.16.0 (dependency spec `0.15.0` → `0.16.0`) so downstream
+  wasm consumers resolve ONE beamr per lock. No API changes of its own.
+
 ## 0.16.0 — 2026-07-23
 
 The gleam-on-beamr enablement release: a real `gleam_otp` 1.2.0 actor

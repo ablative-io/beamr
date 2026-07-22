@@ -1,0 +1,49 @@
+{
+  "smoke": false,
+  "probe": "wport3",
+  "mode": "main",
+  "leg": "armed",
+  "capturedAt": "2026-07-18T04:50:23.364Z",
+  "data": {
+    "mode": "main",
+    "wallAnchor": {
+      "perf": 40.10000002384186,
+      "epoch": 1784350223297
+    },
+    "requestedDeadlines": {
+      "receiveAfterMs": 30000,
+      "nativeSendAfterMs": 45000
+    },
+    "unifiedArmedDelayMs": 30000,
+    "unifiedArmMatchesEarliest": true,
+    "recvPid": 1,
+    "nativePid": 2,
+    "armStamp": {
+      "perf": 106.39999997615814,
+      "epoch": 1784350223363
+    },
+    "spyAtArm": {
+      "armCount": 2,
+      "clearCount": 0,
+      "deadlineScaleArmCount": 1,
+      "zeroDelayArmCount": 0,
+      "deadlineArmDelays": [
+        30000
+      ],
+      "arms": [
+        {
+          "t": 75.39999997615814,
+          "delay": 30000,
+          "handle": "1"
+        },
+        {
+          "t": 75.89999997615814,
+          "delay": 30,
+          "handle": "2"
+        }
+      ],
+      "clears": []
+    },
+    "note": "Runner: background NOW; the one setTimeout is armed at the earliest (30s). The 45s native rides behind and re-arms after the 30s fires."
+  }
+}
