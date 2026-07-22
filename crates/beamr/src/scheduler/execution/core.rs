@@ -1497,6 +1497,7 @@ fn submit_dirty_call(
     context.set_spawn_facility(services.spawn_facility);
     context.set_remote_spawn_facility(services.remote_spawn_facility);
     context.set_link_facility(services.link_facility);
+    context.set_local_send_facility(services.local_send.clone());
     context.set_group_leader_facility(services.group_leader_facility);
     context.set_supervision_facility(services.supervision_facility);
     context.set_process_info_facility(services.process_info_facility);

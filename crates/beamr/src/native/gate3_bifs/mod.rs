@@ -188,16 +188,42 @@ pub fn bif_element(args: &[Term], _context: &mut ProcessContext) -> Result<Term,
 /// erlang:send/2 — the BIF form of `!`. Delivers a message to the target
 /// process's mailbox.
 ///
-/// Delivery to the attached current process is supported for self-send;
-/// sends to other processes are otherwise silently dropped for now. Returns
-/// Message, matching BEAM's return-value semantics.
+/// Delivery routes exactly like the `send` opcode: a self-send lands directly
+/// in the attached process's mailbox; a cross-process *local* send routes
+/// through the [`LocalSendFacility`](crate::native::LocalSendFacility) (the
+/// scheduler-implemented slot-locked delivery + wake, with the sender clock
+/// ticked for replay determinism); a remote send routes through the
+/// distribution facility. Without a local-send facility (e.g. a bare `run()`
+/// with no scheduler) a cross-process local send is a silent drop, matching
+/// BEAM and the opcode. Returns Message, matching BEAM's return-value semantics.
 pub fn bif_send(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [pid_term, message_term] = args else {
         return Err(badarg());
     };
     let target = PidRef::new(*pid_term).ok_or_else(badarg)?;
     if target.is_local() {
-        let _ = context.send_to_attached_self(target.pid_number(), *message_term);
+        let target_pid = target.pid_number();
+        // Self-send lands directly; a false return means the target is a
+        // different local process, which routes through the local-send facility.
+        if !context.send_to_attached_self(target_pid, *message_term)
+            && let Some(facility) = context.local_send_facility().cloned()
+        {
+            let sender_pid = context.pid().ok_or_else(badarg)?;
+            let sender_clock = {
+                let process = context.process_mut().ok_or_else(badarg)?;
+                process.tick_logical_clock()
+            };
+            let replay_driver = context.replay_driver().cloned();
+            facility
+                .send_local(crate::native::LocalSendRequest {
+                    target_pid,
+                    sender_pid,
+                    message: *message_term,
+                    sender_clock,
+                    replay_driver: replay_driver.as_ref(),
+                })
+                .map_err(|_| badarg())?;
+        }
     } else {
         let noconnection = Term::atom(
             context

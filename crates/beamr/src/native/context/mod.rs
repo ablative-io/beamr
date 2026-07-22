@@ -37,6 +37,7 @@ use super::ets_bifs::EtsFacility;
 use super::group_leader::GroupLeaderFacility;
 use super::io_message::IoMessageFacility;
 use super::links::LinkFacility;
+use super::local_send::LocalSendFacility;
 use super::process_info_bifs::ProcessInfoFacility;
 #[cfg(feature = "readiness")]
 use super::readiness::ReadinessFacility;
@@ -350,6 +351,7 @@ pub struct ProcessContext<'process> {
     spawn_facility: Option<Arc<dyn SpawnFacility>>,
     remote_spawn_facility: Option<Arc<dyn RemoteSpawnFacility>>,
     link_facility: Option<Arc<dyn LinkFacility>>,
+    local_send_facility: Option<Arc<dyn LocalSendFacility>>,
     #[cfg(feature = "net")]
     distribution_control_facility: Option<Arc<dyn DistributionControlFacility>>,
     #[cfg(feature = "net")]
@@ -517,6 +519,7 @@ impl<'process> ProcessContext<'process> {
             spawn_facility: None,
             remote_spawn_facility: None,
             link_facility: None,
+            local_send_facility: None,
             #[cfg(feature = "net")]
             distribution_control_facility: None,
             #[cfg(feature = "net")]
@@ -575,6 +578,7 @@ impl<'process> ProcessContext<'process> {
             spawn_facility: None,
             remote_spawn_facility: None,
             link_facility: None,
+            local_send_facility: None,
             #[cfg(feature = "net")]
             distribution_control_facility: None,
             #[cfg(feature = "net")]
@@ -921,6 +925,22 @@ impl<'process> ProcessContext<'process> {
     /// Set the link facility for link management BIFs.
     pub fn set_link_facility(&mut self, facility: Option<Arc<dyn LinkFacility>>) {
         self.link_facility = facility;
+    }
+
+    /// Return the local send facility, if one has been configured.
+    ///
+    /// Used by `erlang:send/2,3` to deliver a message to a *different* local
+    /// process, mirroring the `send` opcode's cross-process branch. Self-sends
+    /// go through [`Self::send_to_attached_self`]; remote sends go through
+    /// [`Self::distribution_send_facility`].
+    #[must_use]
+    pub fn local_send_facility(&self) -> Option<&Arc<dyn LocalSendFacility>> {
+        self.local_send_facility.as_ref()
+    }
+
+    /// Set the local send facility for cross-process local messaging.
+    pub fn set_local_send_facility(&mut self, facility: Option<Arc<dyn LocalSendFacility>>) {
+        self.local_send_facility = facility;
     }
 
     /// Return the distribution control facility, if one has been configured.

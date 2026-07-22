@@ -136,6 +136,7 @@ pub(crate) fn call_native_entry(
         context.set_distribution_send_facility(svc.distribution_send.clone());
         context.set_spawn_facility(svc.spawn_facility.clone());
         context.set_link_facility(svc.link_facility.clone());
+        context.set_local_send_facility(svc.local_send.clone());
         #[cfg(feature = "net")]
         context.set_distribution_control_facility(svc.distribution_control_facility.clone());
         #[cfg(feature = "net")]
