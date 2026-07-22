@@ -52,6 +52,41 @@ Reachability of a live end-to-end replay on main is NOT yet proven — the first
 work item of Leg 1 is the probe that settles it (§4, Leg 1a). Scoping treats it
 as presumed-reachable until the probe says otherwise.
 
+## 2a. CORRECTIONS (2026-07-22, post-Leg-1 build — visible correction, not a rewrite)
+
+Two §2 mechanism claims are corrected by Leg 1's byte-verified findings; the
+class verdict (presumed-reachable) was CONFIRMED LIVE, but by a different
+instance than §2 predicted:
+
+1. **The typed-overflow shape is NOT reachable after a side effect.** §2's
+   "literal moves re-arm typed state" is wrong: `Move` lowering uses
+   `typed_state.copy` (which clears on a literal source) and never calls
+   `mark_loaded_operand_type` — that marker is set only by
+   `GetHd/GetTl/GetList/GetTupleElement` from an already-typed container, and
+   every side-effecting op empties the typed map. The only Int-typing root is
+   the entry signature. So `lower_typed_int_arithmetic`'s overflow→deopt is
+   unreachable post-side-effect.
+2. **The LIVE instance is the unconditional-deopt lowerings** —
+   `RecvMarkerReserve` (a `Coverage::Supported` op lowered as unconditional
+   deopt) placed after a `Send` in one admitted slice. Probe red on main
+   `1a1ca1e`: JIT-live drive `(Error, Some(Badarg))` vs interpreter-only
+   `(Normal, None)` — a divergent crash (native clobbered x0 before the
+   restart), the §2 class exactly, different observable than the predicted
+   silent duplication.
+3. **NEW FINDING (changes Leg 1c's ground):** beamr's interpreter has NO
+   function_clause raise path at all. `core::func_info` sets the current MFA
+   and returns Continue (`interpreter/opcodes/core.rs:68-80`);
+   `ExecError::FunctionClause` (`error.rs:113`) is declared but never
+   constructed anywhere in src. Consequence, empirically confirmed via a real
+   erlc two-clause fixture driven through beamr-cli: a multi-clause no-match
+   falls through the prelude back into the dispatch and **loops forever**
+   (10s watchdog kill, ~full-core spin; fixture `fc_probe.erl`: `f(a) -> ok.`
+   called as `f(b)`). This is a production interpreter defect in the
+   wrong-quietly family, and it means Leg 1c's A2 ("FuncInfo as the
+   function_clause landing pad") has no correct interpreter semantics to stay
+   differential-equal to until the interpreter is fixed. See §4 Leg 1c
+   (amended).
+
 ## 3. Blocker map → four work classes
 
 - **A. Slicer label retention** — two sub-shapes: (A1) retain the entry label
@@ -93,8 +128,17 @@ hardening with the probe as its permanent wall.
 where a runtime-deopt-capable instruction follows an observable side effect.
 Must land **no later than** 1c, because 1c widens admission of exactly the
 multi-clause shapes that contain Send-then-arithmetic.
-1c. *Slicer retention A1+A2*: both slicers co-updated under the pin;
-`FuncInfo` lowered as function_clause terminal; table reclassified.
+1c. *Slicer retention A1+A2* (AMENDED per §2a.3): both slicers co-updated under
+the pin; the recommended A2 shape is now two-part — (i) **interpreter fix
+first**: `func_info` raises a catchable `error:function_clause` with the
+instruction's MFA (the BEAM semantic; fail-first = the fc_probe fixture,
+red = deadline-bounded non-termination, green = the proper error); then
+(ii) **FuncInfo lowered as DEOPT** (the RecvMarker precedent — existing seam,
+no new exception machinery), sound because the restarted interpreter now
+raises correctly and the prelude sits before any side effect in slice order,
+plus the entry-flow change (native entry branches to the export-label block,
+not instruction 0, so a normal call never touches the prelude). Table
+reclassified; `FuncInfo` joins `is_runtime_deopt_capable`.
 **Fail-first:** `frameless.erl` and `jit_real_function` (label half) go
 red→green through the demand path. `jit_real_function`'s frame half stays red
 (it needs Leg 3) — the test pins its rejection as honest fallback, not silence.
