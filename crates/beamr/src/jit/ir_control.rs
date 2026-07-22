@@ -152,6 +152,107 @@ pub fn coverage(instruction: &Instruction) -> Coverage {
     }
 }
 
+/// Whether re-executing `instruction` would repeat an OBSERVABLE side effect.
+///
+/// Table-adjacent authority for the no-fail-Bif purity guard (JIT-002 R3 BIF
+/// NO-FAIL RULING): an `{f,0}` arithmetic Bif routes to deopt, and deopt restarts
+/// the callee interpreted from its start, so re-execution of any side-effecting
+/// instruction that already ran would double the effect. The classification is
+/// EXHAUSTIVE WITH NO WILDCARD, sitting beside `coverage` so a later wave adding
+/// an `Instruction` variant must decide its side-effect class here — the guard
+/// cannot rot silently. The observable set is message send + the mailbox/receive
+/// family (a sent message, a consumed/advanced mailbox, a mutated receive
+/// marker) plus every call form (arbitrary callee effects; calls are tail-only
+/// under R3's wall so they cannot actually precede a Bif, classified
+/// conservatively). Register/heap/stack mutation is NOT observable — a restart
+/// redoes it harmlessly.
+pub(crate) fn is_observable_side_effect(instruction: &Instruction) -> bool {
+    match instruction {
+        Instruction::Send
+        | Instruction::RemoveMessage
+        | Instruction::Timeout
+        | Instruction::LoopRec { .. }
+        | Instruction::LoopRecEnd { .. }
+        | Instruction::Wait { .. }
+        | Instruction::WaitTimeout { .. }
+        | Instruction::RecvMarkerReserve { .. }
+        | Instruction::RecvMarkerBind { .. }
+        | Instruction::RecvMarkerClear { .. }
+        | Instruction::RecvMarkerUse { .. }
+        | Instruction::Call { .. }
+        | Instruction::CallOnly { .. }
+        | Instruction::CallLast { .. }
+        | Instruction::CallExt { .. }
+        | Instruction::CallExtOnly { .. }
+        | Instruction::CallExtLast { .. }
+        | Instruction::Apply { .. }
+        | Instruction::ApplyLast { .. }
+        | Instruction::CallFun { .. }
+        | Instruction::CallFun2 { .. } => true,
+        Instruction::Label { .. }
+        | Instruction::FuncInfo { .. }
+        | Instruction::Move { .. }
+        | Instruction::Swap { .. }
+        | Instruction::Bif { .. }
+        | Instruction::TypeTest { .. }
+        | Instruction::Comparison { .. }
+        | Instruction::TestArity { .. }
+        | Instruction::IsTaggedTuple { .. }
+        | Instruction::SelectVal { .. }
+        | Instruction::SelectTupleArity { .. }
+        | Instruction::Jump { .. }
+        | Instruction::Try { .. }
+        | Instruction::TryEnd { .. }
+        | Instruction::TryCase { .. }
+        | Instruction::TryCaseEnd { .. }
+        | Instruction::Catch { .. }
+        | Instruction::CatchEnd { .. }
+        | Instruction::Return
+        | Instruction::Fmove { .. }
+        | Instruction::Fconv { .. }
+        | Instruction::Fadd { .. }
+        | Instruction::Fsub { .. }
+        | Instruction::Fmul { .. }
+        | Instruction::Fdiv { .. }
+        | Instruction::Fnegate { .. }
+        | Instruction::PutList { .. }
+        | Instruction::PutTuple2 { .. }
+        | Instruction::GetTupleElement { .. }
+        | Instruction::GetList { .. }
+        | Instruction::GetHd { .. }
+        | Instruction::GetTl { .. }
+        | Instruction::MakeFun { .. }
+        | Instruction::BinaryOp { .. }
+        | Instruction::MapOp { .. }
+        | Instruction::Allocate { .. }
+        | Instruction::AllocateHeap { .. }
+        | Instruction::AllocateZero { .. }
+        | Instruction::Deallocate { .. }
+        | Instruction::TestHeap { .. }
+        | Instruction::InitYregs { .. }
+        | Instruction::Trim { .. }
+        | Instruction::Line { .. }
+        | Instruction::Badmatch { .. }
+        | Instruction::Badrecord { .. }
+        | Instruction::CaseEnd { .. }
+        | Instruction::IfEnd
+        | Instruction::Raise { .. }
+        | Instruction::RawRaise
+        | Instruction::BuildStacktrace
+        | Instruction::OnLoad
+        | Instruction::NifStart
+        | Instruction::UpdateRecord { .. }
+        | Instruction::Generic { .. } => false,
+    }
+}
+
+/// erlc's `{f,0}` fail-label sentinel: "no local handler" — emitted on all
+/// body-position arithmetic. It is NOT a real label; it routes to the deopt
+/// block in the lowering.
+pub(crate) fn is_no_fail_label(operand: &crate::loader::decode::Operand) -> bool {
+    matches!(operand, crate::loader::decode::Operand::Label(0))
+}
+
 pub(crate) struct TranslationPlan {
     pub(crate) labels: HashMap<u32, usize>,
     pub(crate) block_starts: HashSet<usize>,
@@ -346,7 +447,24 @@ impl TranslationPlan {
                 Instruction::Bif { op, operands } => {
                     let parsed = ParsedBif::parse(*op, operands)?;
                     let _ = ArithmeticOp::from_import(parsed.import)?;
-                    validate_label_operand(parsed.fail)?;
+                    // {f,0} (no local handler) routes to deopt in the lowering.
+                    // Deopt restarts the callee interpreted from its start, so it
+                    // is admitted only when no observable side effect precedes it
+                    // in the slice — a restart would double the effect. The side
+                    // effect set is derived from the table-adjacent authority.
+                    if is_no_fail_label(parsed.fail) {
+                        if instructions[..index].iter().any(is_observable_side_effect) {
+                            return Err(JitError::UnsupportedOpcode {
+                                opcode: format!(
+                                    "no-fail Bif preceded by an observable side effect \
+                                     (deopt-restart would double it): {}",
+                                    opcode_name(instruction)
+                                ),
+                            });
+                        }
+                    } else {
+                        validate_label_operand(parsed.fail)?;
+                    }
                     validate_read_operand(parsed.left)?;
                     validate_read_operand(parsed.right)?;
                     validate_write_operand(parsed.destination)?;
@@ -516,7 +634,11 @@ impl TranslationPlan {
                 Instruction::Bif { op, operands } => {
                     if matches!(op, BifOp::Bif2 | BifOp::GcBif2) {
                         let parsed = ParsedBif::parse(*op, operands)?;
-                        ensure_known_label(&labels, parsed.fail)?;
+                        // {f,0} is the no-fail sentinel (routes to deopt), not a
+                        // real label — skip the known-label check for it.
+                        if !is_no_fail_label(parsed.fail) {
+                            ensure_known_label(&labels, parsed.fail)?;
+                        }
                     }
                 }
                 Instruction::Fadd { fail, .. }

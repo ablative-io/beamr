@@ -15,6 +15,7 @@ use beamr::jit::CompileOutcomeCounters;
 use beamr::loader::Instruction;
 use beamr::loader::decode::compact::Operand;
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
+use beamr::native::BifRegistryImpl;
 use beamr::process::ExitReason;
 use beamr::replay::ReplayLog;
 use beamr::scheduler::dirty::{DirtyPool, DirtyTask};
@@ -1623,4 +1624,107 @@ fn internal_label_calls_never_touch_the_jit_surface() {
         "the canonical threshold-crossing submits exactly once"
     );
     scheduler.shutdown();
+}
+
+/// A real OTP-29 erlc module (source committed beside it): a two-clause
+/// tail-recursive countdown. The second clause is a variable catch-all, so no
+/// dispatch fail-edge targets the func_info prelude label the slicer strips; the
+/// self-call is `?MODULE`-qualified so erlc emits `call_ext_only` (frameless tail
+/// transfer), never referencing the stripped entry label; and `N - 1` is a
+/// body-position `{f,0}` arithmetic Bif whose pure prefix satisfies the R3
+/// no-fail purity guard, routing to deopt only on a badarith that never occurs
+/// on this counter. Verified at `erlc -S` (see the handoff).
+const REAL_COUNTDOWN_FIXTURE: &[u8] = include_bytes!("fixtures/jit_countdown_loop.beam");
+
+/// Spawns the countdown fixture's `run/0` once and returns its atom result.
+fn run_countdown(scheduler: &Scheduler, module: Atom, run: Atom) -> Term {
+    let pid = scheduler
+        .spawn(module, run, Vec::new())
+        .expect("spawn jit_countdown_loop:run/0");
+    let (reason, result) = scheduler.run_until_exit(pid);
+    assert_eq!(reason, ExitReason::Normal, "run/0 must exit normally");
+    result.root()
+}
+
+/// A scheduler over a supplied services profile, sharing one atom table so atom
+/// results compare across the JIT-live and minimal (JIT-absent) compositions.
+/// The gate-1 arithmetic BIFs are registered so the interpreter can execute
+/// `N - 1` (the JIT inlines it, but the interpreted run/0 and the recursive
+/// interpreted levels resolve it as a Native BIF).
+fn countdown_scheduler(atoms: &Arc<AtomTable>, services: SchedulerServices) -> Scheduler {
+    let bifs = BifRegistryImpl::new();
+    beamr::native::bifs::register_gate1_bifs(&bifs, atoms).expect("gate1 bifs register");
+    Scheduler::with_services_and_code_server(
+        config(2),
+        services,
+        Arc::new(ModuleRegistry::new()),
+        Arc::clone(atoms),
+        Arc::new(bifs),
+    )
+    .expect("scheduler starts")
+}
+
+/// R5 acceptance spine: a real erlc module JITs end-to-end through the wired
+/// demand path and is differential-equal to the minimal (JIT-absent) composition.
+/// The tail-recursive loop rides `call_ext_only` (the import-table tail transfer)
+/// and `{f,0}` arithmetic routed to deopt under the R3 purity guard.
+#[test]
+fn real_erlc_countdown_loop_compiles_through_the_demand_path_and_matches_minimal() {
+    let atoms = Arc::new(AtomTable::with_common_atoms());
+    let run = atoms.intern("run");
+    let loop_fn = atoms.intern("loop");
+    let expected = Term::atom(atoms.intern("ok"));
+
+    // JIT-live composition: hot-load the fixture and heat loop/2 through the wired
+    // external-call edge. Only ?MODULE:loop is a heatable MFA (arithmetic is an
+    // inline Bif), so the threshold crossing submits exactly one compilation.
+    let scheduler = countdown_scheduler(&atoms, SchedulerServices::from_config());
+    let load = scheduler
+        .hot_load_module(REAL_COUNTDOWN_FIXTURE)
+        .expect("real fixture hot-loads");
+    let module = load.module_name;
+    let generation = load.generation;
+
+    assert_eq!(run_countdown(&scheduler, module, run), expected);
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes
+            == 1),
+        "loop/2 must compile on the dirty-CPU service"
+    );
+    let counters = scheduler.jit_profiler().compile_outcome_counters();
+    assert_eq!(counters.submissions, 1, "exactly one submission");
+    assert_eq!(counters.successes, 1, "exactly one success");
+
+    assert!(
+        scheduler
+            .jit_cache()
+            .lookup(module, loop_fn, 2, generation)
+            .is_some(),
+        "loop/2 is cached native after the wired compile"
+    );
+    let jit_result = run_countdown(&scheduler, module, run);
+    scheduler.shutdown();
+
+    // Minimal composition (dirty-CPU Disabled -> profiler absent): identical bytes,
+    // interpreter-only, zero submissions.
+    let minimal = countdown_scheduler(&atoms, SchedulerServices::minimal());
+    let minimal_module = minimal
+        .hot_load_module(REAL_COUNTDOWN_FIXTURE)
+        .expect("real fixture hot-loads (minimal)")
+        .module_name;
+    let reference = run_countdown(&minimal, minimal_module, run);
+    assert_zero_counters(
+        minimal.jit_profiler().compile_outcome_counters(),
+        "minimal composition",
+    );
+    minimal.shutdown();
+
+    assert_eq!(
+        jit_result, reference,
+        "the JIT-compiled run/0 result equals the minimal-composition result"
+    );
+    assert_eq!(reference, expected);
 }

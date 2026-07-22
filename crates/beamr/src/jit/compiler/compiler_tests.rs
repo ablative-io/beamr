@@ -3133,6 +3133,115 @@ fn tail_position_wall_admits_a_tail_external_call() {
     );
 }
 
+// -- JIT-002 R3 BIF NO-FAIL RULING: erlc emits {f,0} (no local handler) on all
+// -- body-position arithmetic. It routes to the deopt block under a structural
+// -- purity guard (no observable side effect may precede it, since deopt restarts
+// -- the callee interpreted from its start).
+
+#[test]
+fn no_fail_bif_computes_small_ints_and_deopts_on_badarith() {
+    // {f,0} arithmetic routes to the deopt block: valid small ints compute in
+    // native; a non-small-int operand takes the deopt edge (JIT_STATUS_DEOPT ->
+    // Ok(None) -> the interpreter re-runs and raises the same badarith). GcBif2
+    // 6-operand form, import 1 = Subtract.
+    let native = JitCompiler::new(JitSettings)
+        .unwrap()
+        .compile(
+            &[
+                Instruction::Bif {
+                    op: BifOp::GcBif2,
+                    operands: vec![
+                        Operand::Label(0),
+                        Operand::Unsigned(0),
+                        Operand::Unsigned(1),
+                        Operand::X(0),
+                        Operand::X(1),
+                        Operand::X(0),
+                    ],
+                },
+                Instruction::Return,
+            ],
+            Atom::MODULE,
+            Atom::OK,
+            2,
+        )
+        .unwrap();
+    // Valid: 5 - 3 = 2, no deopt.
+    let mut registers = vec![Term::small_int(5).raw(), Term::small_int(3).raw()];
+    assert_eq!(
+        call_native(&native, &mut registers),
+        Term::small_int(2).raw()
+    );
+    // Badarith: an atom operand can't be a small int -> deopt to the interpreter.
+    let mut process = Process::new(0, 233);
+    let mut registers = vec![Term::atom(Atom::OK).raw(), Term::small_int(3).raw()];
+    let returned = call_native_status(&native, &mut registers, &mut process);
+    assert_eq!(
+        returned.status, JIT_STATUS_DEOPT,
+        "a non-small-int operand routes {{f,0}} arithmetic to the deopt fallback"
+    );
+}
+
+#[test]
+fn no_fail_bif_after_a_side_effect_is_rejected_by_the_purity_guard() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    // Deopt restarts the callee from its start, so a {f,0} Bif after a Send would
+    // re-send on restart — the purity guard rejects the whole function.
+    let after_send = compiler.compile(
+        &[
+            Instruction::Send,
+            Instruction::Bif {
+                op: BifOp::GcBif2,
+                operands: vec![
+                    Operand::Label(0),
+                    Operand::Unsigned(0),
+                    Operand::Unsigned(1),
+                    Operand::X(0),
+                    Operand::X(1),
+                    Operand::X(0),
+                ],
+            },
+            Instruction::Return,
+        ],
+        Atom::MODULE,
+        Atom::OK,
+        2,
+    );
+    assert!(
+        matches!(after_send, Err(JitError::UnsupportedOpcode { .. })),
+        "a no-fail Bif after a Send must be rejected by the purity guard, got {after_send:?}"
+    );
+    // Control: the SAME Bif with a REAL in-slice fail label is unaffected — a real
+    // handler means no deopt-restart, so the preceding Send is not the guard's
+    // concern.
+    let with_handler = compiler.compile(
+        &[
+            Instruction::Send,
+            Instruction::Bif {
+                op: BifOp::GcBif2,
+                operands: vec![
+                    Operand::Label(9),
+                    Operand::Unsigned(0),
+                    Operand::Unsigned(1),
+                    Operand::X(0),
+                    Operand::X(1),
+                    Operand::X(0),
+                ],
+            },
+            Instruction::Return,
+            Instruction::Label { label: 9 },
+            Instruction::Return,
+        ],
+        Atom::MODULE,
+        Atom::OK,
+        2,
+    );
+    assert!(
+        with_handler.is_ok(),
+        "a real-fail-label Bif after a Send is not the purity guard's concern: {with_handler:?}"
+    );
+}
+
 // -- JIT-002 R4: the coverage source of truth. One classification (ir_control::
 // -- coverage), exhaustive with no wildcard arm, consumed by the pre-pass and
 // -- dispatch catch-alls (debug-assert agreement) and by this walk.

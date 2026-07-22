@@ -7,7 +7,7 @@ use crate::jit::ir_common::{
     JIT_DEOPT_SENTINEL, RegisterAccess, branch_to_fail_if, label_operand, read_operand_term,
     write_operand_term,
 };
-use crate::jit::ir_control::BlockMap;
+use crate::jit::ir_control::{BlockMap, is_no_fail_label};
 use crate::jit::ir_exceptions::{
     ExceptionLoweringState, JIT_STATUS_DEOPT, JIT_STATUS_NORMAL, return_status, return_status_raw,
 };
@@ -168,7 +168,15 @@ pub(super) fn lower_core_instruction(
         Instruction::Bif { op, operands } => {
             let bif = ParsedBif::parse(*op, operands)?;
             let arithmetic = ArithmeticOp::from_import(bif.import)?;
-            let fail = blocks.label_block(label_operand(bif.fail)?)?;
+            // {f,0} (no local handler, all body-position arithmetic) routes to the
+            // existing deopt block — the same edge the typed-int overflow path
+            // already takes on this instruction shape (new use, no new machinery).
+            // The pre-pass purity guard has ensured no side effect precedes it.
+            let fail = if is_no_fail_label(bif.fail) {
+                blocks.deopt
+            } else {
+                blocks.label_block(label_operand(bif.fail)?)?
+            };
             let next = blocks.block_after(index);
             let lowering = ArithmeticLowering {
                 op: arithmetic,
