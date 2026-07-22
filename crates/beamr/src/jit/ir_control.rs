@@ -23,7 +23,7 @@ use super::ir_map::{
 
 /// Where an `Instruction` variant sits in the demand-JIT coverage tier.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Coverage {
+pub enum Coverage {
     /// Admitted end-to-end: the pre-pass accepts it and a dispatch lowering exists.
     Supported,
     /// Rejected at this head but owned by a named later wave; moved into
@@ -43,7 +43,7 @@ pub(crate) enum Coverage {
 /// must agree with (enforced by the 75-variant consistency walk in the compiler
 /// tests). JIT-002 and JIT-003 move variants across the tier ONLY by editing
 /// this function.
-pub(crate) fn coverage(instruction: &Instruction) -> Coverage {
+pub fn coverage(instruction: &Instruction) -> Coverage {
     match instruction {
         // -- Supported: the baseline 47 (dispatch_core / dispatch_call / dispatch_data) --
         Instruction::Label { .. }

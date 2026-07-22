@@ -113,8 +113,24 @@ fn local_hot_module(name: Atom, function: Atom, calls: usize, result: i64) -> Mo
     finish_module(name, code, HashMap::new(), Vec::new())
 }
 
-/// Like [`local_hot_module`], but `f/0`'s body carries a `Trim` — interpreted
-/// fine, refused by the JIT tier as an unsupported opcode.
+/// A body opcode the R4 coverage table still classifies `RejectedIncremental`,
+/// used as the JIT's unsupported representative. Placed with an empty candidate
+/// list so the interpreter always jumps straight to the fail label (harmless),
+/// while the JIT tier refuses the whole function. JIT-002 R1 made the former
+/// representative (`Trim`) Supported, so this re-pins onto a still-rejected
+/// variant; `retry_representative_is_table_rejected` derives its rejected-ness
+/// from the coverage table so a wave-2 flip breaks the retry proof loudly.
+fn unsupported_representative() -> Instruction {
+    Instruction::SelectTupleArity {
+        value: Operand::X(0),
+        fail: Operand::Label(3),
+        list: Operand::List(vec![]),
+    }
+}
+
+/// Like [`local_hot_module`], but `f/0`'s body carries a still-JIT-rejected
+/// opcode ([`unsupported_representative`]) — interpreted fine (it jumps to the
+/// fail label and returns `result`), refused by the JIT tier.
 fn local_unsupported_module(name: Atom, function: Atom, calls: usize, result: i64) -> Module {
     let mut code = vec![Instruction::Label { label: 1 }];
     for _ in 0..calls {
@@ -130,17 +146,8 @@ fn local_unsupported_module(name: Atom, function: Atom, calls: usize, result: i6
         arity: Operand::Unsigned(0),
     });
     code.push(Instruction::Label { label: 2 });
-    code.push(Instruction::Allocate {
-        stack_need: Operand::Unsigned(2),
-        live: Operand::Unsigned(0),
-    });
-    code.push(Instruction::Trim {
-        words: Operand::Unsigned(1),
-        remaining: Operand::Unsigned(1),
-    });
-    code.push(Instruction::Deallocate {
-        words: Operand::Unsigned(1),
-    });
+    code.push(unsupported_representative());
+    code.push(Instruction::Label { label: 3 });
     code.push(Instruction::Move {
         source: Operand::Integer(result),
         destination: Operand::X(0),
@@ -577,6 +584,21 @@ fn hot_reload_reheats_and_recompiles_at_the_new_generation() {
     scheduler.shutdown();
 }
 
+/// The retry proof depends on the JIT tier refusing `f/0`. Derive that from the
+/// coverage table of record: if a later wave makes this variant Supported, the
+/// retry test's premise dies and this guard fires loudly at the table lookup.
+#[test]
+fn retry_representative_is_table_rejected() {
+    assert!(
+        matches!(
+            beamr::jit::coverage(&unsupported_representative()),
+            beamr::jit::Coverage::RejectedIncremental { .. }
+        ),
+        "the unsupported-retry proof requires a table-rejected representative; \
+         if a later wave moved it to Supported, re-pin onto another rejected variant"
+    );
+}
+
 /// Unsupported retry (R2/T1): a new generation of a previously-UNSUPPORTED
 /// function retries — the old verdict is about code that no longer runs.
 #[test]
@@ -608,7 +630,7 @@ fn unsupported_function_retries_at_the_new_generation() {
             .compile_outcome_counters()
             .unsupported
             == 1),
-        "the JIT tier must refuse the Trim-carrying body"
+        "the JIT tier must refuse the select_tuple_arity-carrying body"
     );
     assert!(
         scheduler

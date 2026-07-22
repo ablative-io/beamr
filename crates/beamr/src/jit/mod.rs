@@ -38,6 +38,7 @@ pub use compile_job::{
     submit_jit_compilation, try_submit_jit_compilation,
 };
 pub use compiler::{JitCompiler, JitError, JitSettings};
+pub use ir_control::{Coverage, coverage};
 pub use profiler::{
     CompileOutcomeCounters, DEFAULT_JIT_THRESHOLD, JitProfiler, MfaKey, RecordResult,
 };
