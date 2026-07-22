@@ -2,11 +2,11 @@ use super::{JitCompiler, JitError, JitSettings, ModuleCompileMetadata};
 use crate::atom::Atom;
 use crate::jit::RootLocation;
 use crate::jit::ir_common::{JIT_DEOPT_SENTINEL, X_REGISTER_COUNT};
+use crate::jit::ir_control::{Coverage, coverage};
 use crate::jit::ir_exceptions::{
     JIT_STATUS_DEOPT, JIT_STATUS_EXCEPTION, JIT_STATUS_NORMAL, JIT_STATUS_YIELD, JitReturn,
 };
 use crate::jit::type_info::{FunctionSignature, TypeDescriptor};
-use crate::jit::ir_control::{Coverage, coverage};
 use crate::loader::decode::{BifOp, BinaryOp, ComparisonOp, MapOp, Operand, TypeTestOp};
 use crate::loader::{Instruction, LambdaEntry};
 use crate::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
@@ -381,7 +381,10 @@ fn compiled_test_heap_guard_survives_a_collection_with_a_live_y_register() {
     // therefore collect rather than satisfy the request in place.
     let free = process.heap().available();
     if free > 2 {
-        process.heap_mut().alloc(free - 2).expect("nursery fill fits");
+        process
+            .heap_mut()
+            .alloc(free - 2)
+            .expect("nursery fill fits");
     }
     process.set_x_reg(0, tuple);
 
@@ -3204,25 +3207,39 @@ fn all_instruction_variants() -> Vec<Instruction> {
             fail: l(),
             timeout: Operand::X(0),
         },
-        Instruction::RecvMarkerReserve { dest: Operand::X(0) },
+        Instruction::RecvMarkerReserve {
+            dest: Operand::X(0),
+        },
         Instruction::RecvMarkerBind {
             marker: Operand::X(0),
             reference: Operand::X(1),
         },
-        Instruction::RecvMarkerClear { marker: Operand::X(0) },
-        Instruction::RecvMarkerUse { marker: Operand::X(0) },
+        Instruction::RecvMarkerClear {
+            marker: Operand::X(0),
+        },
+        Instruction::RecvMarkerUse {
+            marker: Operand::X(0),
+        },
         Instruction::Catch {
             destination: Operand::Y(0),
             label: l(),
         },
-        Instruction::CatchEnd { source: Operand::Y(0) },
+        Instruction::CatchEnd {
+            source: Operand::Y(0),
+        },
         Instruction::Try {
             destination: Operand::Y(0),
             label: l(),
         },
-        Instruction::TryEnd { source: Operand::Y(0) },
-        Instruction::TryCase { source: Operand::Y(0) },
-        Instruction::TryCaseEnd { source: Operand::Y(0) },
+        Instruction::TryEnd {
+            source: Operand::Y(0),
+        },
+        Instruction::TryCase {
+            source: Operand::Y(0),
+        },
+        Instruction::TryCaseEnd {
+            source: Operand::Y(0),
+        },
         Instruction::BinaryOp {
             op: BinaryOp::BsInitWritable,
             operands: vec![Operand::Unsigned(0), Operand::X(0)],
@@ -3249,9 +3266,15 @@ fn all_instruction_variants() -> Vec<Instruction> {
             arity: Operand::Unsigned(0),
             deallocate: Operand::Unsigned(0),
         },
-        Instruction::Badmatch { value: Operand::X(0) },
-        Instruction::Badrecord { value: Operand::X(0) },
-        Instruction::CaseEnd { value: Operand::X(0) },
+        Instruction::Badmatch {
+            value: Operand::X(0),
+        },
+        Instruction::Badrecord {
+            value: Operand::X(0),
+        },
+        Instruction::CaseEnd {
+            value: Operand::X(0),
+        },
         Instruction::IfEnd,
         Instruction::Raise {
             stacktrace: Operand::X(0),
@@ -3293,7 +3316,9 @@ fn all_instruction_variants() -> Vec<Instruction> {
 
 /// Does compiling this slice reject it specifically as an UNSUPPORTED OPCODE
 /// (the two catch-alls), as opposed to succeeding or failing on operand shape?
-fn rejected_as_unsupported_opcode(result: &Result<crate::jit::types::NativeCode, JitError>) -> bool {
+fn rejected_as_unsupported_opcode(
+    result: &Result<crate::jit::types::NativeCode, JitError>,
+) -> bool {
     matches!(result, Err(JitError::UnsupportedOpcode { .. }))
 }
 
@@ -3303,8 +3328,16 @@ fn coverage_table_has_one_entry_per_instruction_variant() {
     // Exactly 75 variants, all distinct — no duplicate or missing representative.
     let distinct: std::collections::HashSet<std::mem::Discriminant<Instruction>> =
         variants.iter().map(std::mem::discriminant).collect();
-    assert_eq!(variants.len(), 75, "expected one representative per variant");
-    assert_eq!(distinct.len(), 75, "representatives must be distinct variants");
+    assert_eq!(
+        variants.len(),
+        75,
+        "expected one representative per variant"
+    );
+    assert_eq!(
+        distinct.len(),
+        75,
+        "representatives must be distinct variants"
+    );
 }
 
 #[test]
@@ -3356,5 +3389,8 @@ fn coverage_walk_agrees_with_prepass_and_dispatch_for_all_75_variants() {
 
     // The Supported count is DERIVED from the table over the walk, not a
     // duplicated literal. Post-R1/R2/R3: 47 baseline + 12 (R1 8 + R2 3 + R3 1).
-    assert_eq!(supported, 59, "Supported count derived from the coverage table");
+    assert_eq!(
+        supported, 59,
+        "Supported count derived from the coverage table"
+    );
 }

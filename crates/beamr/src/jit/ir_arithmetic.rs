@@ -7,9 +7,9 @@ use cranelift_codegen::ir::{InstBuilder, Value};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{RegisterAccess, 
-    SMALL_INT_SHIFT, branch_to_fail_if, checked_small_int_payload, read_operand_term,
-    write_operand_term,
+use super::ir_common::{
+    RegisterAccess, SMALL_INT_SHIFT, branch_to_fail_if, checked_small_int_payload,
+    read_operand_term, write_operand_term,
 };
 
 #[derive(Clone, Copy)]

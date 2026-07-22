@@ -8,9 +8,9 @@ use cranelift_frontend::FunctionBuilder;
 use std::collections::HashMap;
 
 use crate::jit::ir_arithmetic::{ArithmeticLowering, ArithmeticOp};
-use crate::jit::ir_common::{RegisterAccess, 
-    Register, SMALL_INT_SHIFT, read_operand_term, read_register_term, register_operand,
-    write_register_term,
+use crate::jit::ir_common::{
+    Register, RegisterAccess, SMALL_INT_SHIFT, read_operand_term, read_register_term,
+    register_operand, write_register_term,
 };
 use crate::jit::ir_exceptions::return_status_raw;
 use crate::jit::ir_guards::immediate_usize;

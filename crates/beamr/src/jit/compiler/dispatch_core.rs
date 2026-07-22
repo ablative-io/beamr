@@ -62,7 +62,12 @@ pub(super) fn lower_core_instruction(
         // are GC-rooted through the stack.
         Instruction::Allocate { stack_need, .. } | Instruction::AllocateZero { stack_need, .. } => {
             let slots = frame_slot_count(builder, stack_need)?;
-            frame_guard(builder, helpers.frame.alloc, &[process, slots], blocks.deopt);
+            frame_guard(
+                builder,
+                helpers.frame.alloc,
+                &[process, slots],
+                blocks.deopt,
+            );
             Ok(Some(false))
         }
         // `allocate_heap` honors the heap guard first (reusing the existing GC
@@ -81,7 +86,12 @@ pub(super) fn lower_core_instruction(
                 blocks.deopt,
             );
             let slots = frame_slot_count(builder, stack_need)?;
-            frame_guard(builder, helpers.frame.alloc, &[process, slots], blocks.deopt);
+            frame_guard(
+                builder,
+                helpers.frame.alloc,
+                &[process, slots],
+                blocks.deopt,
+            );
             Ok(Some(false))
         }
         Instruction::Deallocate { .. } => {
@@ -106,11 +116,14 @@ pub(super) fn lower_core_instruction(
         Instruction::Trim { words, remaining } => {
             let words = immediate_usize(words, "trim words")?;
             let remaining_count = immediate_usize(remaining, "trim remaining")?;
-            let expected = words
-                .checked_add(remaining_count)
-                .ok_or_else(|| JitError::UnsupportedOperand {
-                    operand: format!("trim words {words} + remaining {remaining_count} overflow"),
-                })?;
+            let expected =
+                words
+                    .checked_add(remaining_count)
+                    .ok_or_else(|| JitError::UnsupportedOperand {
+                        operand: format!(
+                            "trim words {words} + remaining {remaining_count} overflow"
+                        ),
+                    })?;
             let expected = frame_count_value(builder, expected, "trim expected slots")?;
             let remaining_value =
                 frame_count_value(builder, remaining_count, "trim remaining slots")?;
@@ -449,5 +462,7 @@ fn frame_count_value(
     let count = i64::try_from(count).map_err(|_| JitError::UnsupportedOperand {
         operand: format!("{context} out of range: {count}"),
     })?;
-    Ok(builder.ins().iconst(cranelift_codegen::ir::types::I64, count))
+    Ok(builder
+        .ins()
+        .iconst(cranelift_codegen::ir::types::I64, count))
 }

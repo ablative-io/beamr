@@ -6,8 +6,9 @@ use cranelift_codegen::ir::{Block, FuncRef, InstBuilder, MemFlags, Value, types}
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{RegisterAccess, 
-    SMALL_INT_SHIFT, SMALL_INT_TAG_MASK, branch_to_fail_if, read_operand_term, write_operand_term,
+use super::ir_common::{
+    RegisterAccess, SMALL_INT_SHIFT, SMALL_INT_TAG_MASK, branch_to_fail_if, read_operand_term,
+    write_operand_term,
 };
 
 const FLOAT_REGISTER_COUNT: usize = 16;

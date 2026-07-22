@@ -6,13 +6,13 @@ use cranelift_codegen::ir::{Block, FuncRef, InstBuilder, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::RegisterAccess;
 use super::ir_binary_lowering::{
     IntegerGetLowering, flags_to_raw, immediate_u64, invalid_operands, lower_bs_create_bin,
     lower_bs_get_tail, lower_bs_init_writable, lower_bs_match, lower_get_binary, lower_get_integer,
     lower_get_utf, lower_start_match, lower_test, parse_get_operands, parse_start_match_operands,
     parse_utf_get_operands, required_fail, segment_bits, segment_roots,
 };
+use super::ir_common::RegisterAccess;
 use super::ir_exceptions::{JIT_STATUS_EXCEPTION, return_status};
 
 #[derive(Clone, Copy)]

@@ -14,7 +14,9 @@ use cranelift_codegen::ir::{Block, FuncRef, InstBuilder, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
-use super::ir_common::{RegisterAccess, Register, read_register_term, register_operand, write_register_term};
+use super::ir_common::{
+    Register, RegisterAccess, read_register_term, register_operand, write_register_term,
+};
 
 pub(crate) const JIT_STATUS_NORMAL: u8 = 0;
 pub(crate) const JIT_STATUS_EXCEPTION: u8 = 1;

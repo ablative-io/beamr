@@ -218,7 +218,10 @@ pub(crate) extern "C" fn jit_alloc_frame(process: *mut Process, y_slots: u64) ->
     let return_ip = process
         .code_position()
         .map_or(0, |position| position.instruction_pointer);
-    match process.stack_mut().push_frame(name, return_ip, module, y_slots) {
+    match process
+        .stack_mut()
+        .push_frame(name, return_ip, module, y_slots)
+    {
         Ok(()) => 0,
         Err(_) => 1,
     }
