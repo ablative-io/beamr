@@ -1,9 +1,0 @@
-{
-  "format": "beamr-fetch-manifest",
-  "version": 1,
-  "modules": [
-    { "name": "fetch_chain_c", "url": "fetch_chain_c.beam", "deps": [] },
-    { "name": "fetch_chain_b", "url": "fetch_chain_b.beam", "deps": ["fetch_chain_c"] },
-    { "name": "fetch_chain_a", "url": "fetch_chain_a.beam", "deps": ["fetch_chain_b"] }
-  ]
-}
