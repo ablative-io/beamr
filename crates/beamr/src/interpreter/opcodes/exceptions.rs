@@ -163,8 +163,14 @@ pub fn case_end(
 }
 
 pub fn if_end(process: &mut Process) -> Result<InstructionOutcome, ExecError> {
-    let reason = two_tuple(process, Term::atom(Atom::IF_CLAUSE), Term::NIL)?;
-    raise_exception(process, Exception::error(reason, Term::NIL))
+    // BEAM's if_clause reason is the BARE atom `if_clause` — unlike `badmatch` /
+    // `case_clause`, which carry the offending value. A tuple-wrapped
+    // `{if_clause, []}` does not match `catch error:if_clause` in loaded bytecode,
+    // so the raise escaped and the process died where BEAM recovers.
+    raise_exception(
+        process,
+        Exception::error(Term::atom(Atom::IF_CLAUSE), Term::NIL),
+    )
 }
 
 pub fn raise_exception(
@@ -692,9 +698,10 @@ mod tests {
         try_(&mut process, &code, &Operand::X(0), &Operand::Label(20)).expect("try");
         assert_eq!(if_end(&mut process), Ok(jump_to_label20()));
         try_case(&mut process, &Operand::X(0)).expect("expose");
-        let reason = Tuple::new(process.x_reg(1)).expect("if_clause tuple");
-        assert_eq!(reason.get(0), Some(Term::atom(Atom::IF_CLAUSE)));
-        assert_eq!(reason.get(1), Some(Term::NIL));
+        // if_clause's reason is the BARE atom `if_clause` (BEAM-matching), NOT a
+        // `{if_clause, []}` tuple. The prior pin measured the artifact against
+        // itself; `error:if_clause` in loaded bytecode requires the bare atom.
+        assert_eq!(process.x_reg(1), Term::atom(Atom::IF_CLAUSE));
     }
 
     #[test]
