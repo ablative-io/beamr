@@ -448,7 +448,6 @@ mod tests {
             module: Atom::OK,
             instruction_pointer: ip,
         }));
-        process.set_current_mfa(Some((Atom::OK, Atom::BADARG, 1)));
     }
 
     #[test]
@@ -504,7 +503,11 @@ mod tests {
         assert_eq!(raw.len(), 4);
         assert!(Arc::ptr_eq(&raw[0].module, module_version));
         assert_eq!(raw[0].ip, current_ip);
-        assert_eq!(raw[0].mfa, Some((Atom::OK, Atom::BADARG, 1)));
+        // The head MFA is now DERIVED from (module, ip). This capture module has
+        // an empty func_info table, so derivation honestly yields None (the ip
+        // precedes any function entry); the real-module derivation is covered by
+        // the provenance e2e and the derivation-agreement unit test.
+        assert_eq!(raw[0].mfa, None);
         assert_eq!(raw[1].ip, 30);
         assert_eq!(raw[2].ip, 20);
         assert_eq!(raw[3].ip, 10);

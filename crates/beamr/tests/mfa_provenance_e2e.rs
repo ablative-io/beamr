@@ -21,8 +21,8 @@ use beamr::loader::load_module;
 use beamr::module::ModuleRegistry;
 use beamr::native::BifRegistryImpl;
 use beamr::process::ExitReason;
-use beamr::term::Term;
 use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::term::Term;
 
 const DEADLINE: Duration = Duration::from_secs(5);
 

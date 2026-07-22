@@ -335,10 +335,11 @@ fn func_info_raises_function_clause_and_move_covers_registers_literals_and_stack
         run(&mut fc_process, &fc_module),
         Ok(ExecutionResult::Exited(ExitReason::Error))
     );
-    assert_eq!(
-        fc_process.current_mfa(),
-        Some((module_atom, function_atom, 0))
-    );
+    // current_mfa is now DERIVED from (current_module, ip); the Exit path clears
+    // both, so a post-exit read is honestly None (the process is no longer in any
+    // function). The func_info-ip derivation agreement is pinned by
+    // `func_info_ip_derives_the_exact_mfa_it_names` in the interpreter tests.
+    assert_eq!(fc_process.current_mfa(), None);
     assert_eq!(
         fc_process
             .current_exception()
@@ -387,6 +388,54 @@ fn func_info_raises_function_clause_and_move_covers_registers_literals_and_stack
     );
     assert_eq!(process.x_reg(1), Term::small_int(7));
     assert_eq!(process.heap().used(), before_heap);
+}
+
+#[test]
+fn func_info_ip_derives_the_exact_mfa_it_names() {
+    // current_mfa lane #3 (agreement): the derive-at-read MFA at the func_info
+    // ip must equal the MFA func_info's operands name — the old dispatch-fail
+    // writer's exact value — so the function_clause stacktrace head is unchanged
+    // by the migration. The loader records (funcinfo_ip, function, arity) in the
+    // function table; here that entry is (0, clause, 1).
+    let atoms = AtomTable::new();
+    let module_atom = atoms.intern("agree");
+    let function_atom = atoms.intern("clause");
+    let mut fc_module = module(
+        module_atom,
+        vec![
+            Instruction::FuncInfo {
+                module: Operand::Atom(Some(module_atom)),
+                function: Operand::Atom(Some(function_atom)),
+                arity: Operand::Unsigned(1),
+            },
+            Instruction::Return,
+        ],
+    );
+    fc_module.function_table = vec![(0, function_atom, 1)];
+
+    // Direct derivation at the func_info ip reproduces the named MFA.
+    assert_eq!(
+        fc_module.mfa_at_ip(0),
+        Some((module_atom, function_atom, 1)),
+        "mfa_at_ip at the func_info ip reproduces the MFA the operands name"
+    );
+
+    // The raise path records that exact derived MFA in the stacktrace head —
+    // agreement with func_info's former explicit set.
+    let mut fc_process = Process::new(1, 32);
+    assert_eq!(
+        run(&mut fc_process, &fc_module),
+        Ok(ExecutionResult::Exited(ExitReason::Error))
+    );
+    let head = fc_process
+        .raw_stacktrace()
+        .first()
+        .expect("the function_clause raise captured a stacktrace head");
+    assert_eq!(
+        head.mfa,
+        Some((module_atom, function_atom, 1)),
+        "the derived head MFA agrees with the func_info operands"
+    );
 }
 
 #[test]

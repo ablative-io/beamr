@@ -175,7 +175,6 @@ pub struct Process {
     namespace_id: NamespaceId,
     code_position: Option<CodePosition>,
     current_module: Option<Arc<Module>>,
-    current_mfa: Option<(Atom, Atom, u8)>,
     #[cfg(feature = "jit")]
     jit_runtime_context: Option<JitRuntimeContext>,
     jit_status: Option<JitStatus>,
@@ -224,7 +223,6 @@ impl Clone for Process {
             namespace_id: self.namespace_id,
             code_position: self.code_position,
             current_module: self.current_module.clone(),
-            current_mfa: self.current_mfa,
             #[cfg(feature = "jit")]
             jit_runtime_context: self.jit_runtime_context,
             jit_status: self.jit_status,
@@ -289,7 +287,6 @@ impl Process {
             namespace_id: NamespaceId::DEFAULT,
             code_position: None,
             current_module: None,
-            current_mfa: None,
             #[cfg(feature = "jit")]
             jit_runtime_context: None,
             jit_status: None,
@@ -1012,15 +1009,22 @@ impl Process {
         self.current_module = None;
     }
 
-    /// Current module/function/arity metadata from the most recent func_info.
+    /// Module/function/arity of the function this process is currently
+    /// positioned in, DERIVED at read time from the pinned module's `func_info`
+    /// bounds ([`Module::mfa_at_ip`]) and the current instruction pointer.
+    ///
+    /// Replaces a stored field that only one production writer (the `func_info`
+    /// opcode, reached solely on a failed multi-clause dispatch) ever updated,
+    /// so every diagnostic reader saw a stale or absent MFA. `None` for
+    /// native-only and exited processes (no module/ip in reach) — derivation
+    /// never invents provenance. Pairs `current_module` with
+    /// `code_position().instruction_pointer`, the same pairing
+    /// `capture_raw_stacktrace` already trusts for the stacktrace head.
     #[must_use]
-    pub const fn current_mfa(&self) -> Option<(Atom, Atom, u8)> {
-        self.current_mfa
-    }
-
-    /// Store module/function/arity metadata for later error reporting.
-    pub const fn set_current_mfa(&mut self, current_mfa: Option<(Atom, Atom, u8)>) {
-        self.current_mfa = current_mfa;
+    pub fn current_mfa(&self) -> Option<(Atom, Atom, u8)> {
+        let module = self.current_module.as_ref()?;
+        let ip = self.code_position?.instruction_pointer;
+        module.mfa_at_ip(ip)
     }
 
     /// Runtime context visible to JIT helper calls for the current native invocation.
@@ -1171,7 +1175,6 @@ impl Process {
         self.reduction_counter = 0;
         self.code_position = None;
         self.current_module = None;
-        self.current_mfa = None;
     }
 
     /// Close FD-backed resources owned by this process. The `io` subsystem only

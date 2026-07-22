@@ -185,6 +185,20 @@ impl Module {
         Some((function, arity))
     }
 
+    /// Derives the full `(module, function, arity)` of the function whose
+    /// `func_info` bounds contain `ip`, pairing [`Self::function_at_ip`] with
+    /// this module's own name. This is the derive-at-read provenance source for
+    /// `Process::current_mfa`: a process positioned at `ip` in this module is,
+    /// by construction, inside the returned function's bounds (the func_info
+    /// prelude ip sits within its own function). `None` when `ip` precedes the
+    /// first function entry — native/pre-entry positions carry no provenance,
+    /// and callers must not invent one.
+    #[must_use]
+    pub fn mfa_at_ip(&self, ip: usize) -> Option<(Atom, Atom, u8)> {
+        let (function, arity) = self.function_at_ip(ip)?;
+        Some((self.name, function, arity))
+    }
+
     /// Returns whether `ip` is a canonical function entry: the `FuncInfo`
     /// instruction itself, or the instruction immediately following it (the
     /// entry label position that `export_ip`/call-label resolution produce).

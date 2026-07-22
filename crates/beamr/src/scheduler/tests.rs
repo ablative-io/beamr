@@ -665,10 +665,10 @@ fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("hook_loop");
     let registry = Arc::new(ModuleRegistry::new());
-    // A real entry is AFTER func_info (its only reach is the no-match fail edge,
-    // where it now RAISES), so the happy path never runs func_info. Since
-    // func_info is also current_mfa's only setter, this scaffold's hook MFA is
-    // unset (NIL) — a pre-existing telemetry limitation the func_info fix exposes.
+    // current_mfa is now DERIVED from (current_module, ip) via the module's
+    // func_info table. This bare scaffold carries no func_info entries, so the
+    // derivation has no bounds to resolve and honestly yields None (NIL) — the
+    // hook MFA below is unset for that reason, not a stored-field limitation.
     let module = test_module(
         module_name,
         vec![
@@ -718,8 +718,8 @@ fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
     let events = events.lock().unwrap_or_else(|error| error.into_inner());
     let first = events.first().copied().expect("hook event recorded");
     assert_eq!(first.pid, pid);
-    // current_mfa's only setter is func_info, off the happy path, so the hook
-    // observes the unset MFA (see the module comment + the leg-1 handoff note).
+    // The scaffold module has no func_info table, so the derived MFA is None and
+    // the hook observes the unset (NIL) MFA (see the module comment above).
     assert_eq!(first.module, Atom::NIL);
     assert_eq!(first.function, Atom::NIL);
     assert_eq!(first.arity, 0);
@@ -1220,8 +1220,8 @@ fn hook_fires_when_process_blocks_on_receive() {
     });
     let events = events.lock().unwrap_or_else(|error| error.into_inner());
     assert_eq!(events[0].pid, pid);
-    // current_mfa's only setter is func_info, off the happy path, so the hook
-    // observes the unset MFA (NIL). See the leg-1 handoff note.
+    // current_mfa derives from the module's func_info table; this scaffold has
+    // none, so the derived MFA is None and the hook observes the unset (NIL) MFA.
     assert_eq!(events[0].module, Atom::NIL);
     assert_eq!(events[0].function, Atom::NIL);
     assert_eq!(events[0].arity, 0);
@@ -1776,7 +1776,20 @@ fn process_info_reads_executing_process_metadata() {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("executing_info");
     let function = atoms.intern("main");
-    let module = test_module(module_name, vec![Instruction::Label { label: 1 }]);
+    // func_info bounds `main/0` from ip 0; the process is positioned at ip 1
+    // (inside those bounds) so the Present->Executing snapshot DERIVES the MFA.
+    let mut module = test_module(
+        module_name,
+        vec![
+            Instruction::FuncInfo {
+                module: Operand::Atom(Some(module_name)),
+                function: Operand::Atom(Some(function)),
+                arity: Operand::Unsigned(0),
+            },
+            Instruction::Label { label: 1 },
+        ],
+    );
+    module.function_table = vec![(0, function, 0)];
     let registry = Arc::new(ModuleRegistry::new());
     let module = registry.insert(module);
     let scheduler = Scheduler::new(
@@ -1799,7 +1812,10 @@ fn process_info_reads_executing_process_metadata() {
         let ProcessSlot::Present(ScheduledProcess(process)) = &mut *slot else {
             panic!("test process should be present");
         };
-        process.set_current_mfa(Some((module_name, function, 0)));
+        process.set_code_position(Some(CodePosition {
+            module: module_name,
+            instruction_pointer: 1,
+        }));
     }
 
     let process = take_runnable_process(&scheduler.shared, pid)

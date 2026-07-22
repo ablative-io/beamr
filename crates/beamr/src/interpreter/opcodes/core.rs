@@ -67,22 +67,23 @@ pub fn label(_label: u32) -> Result<InstructionOutcome, ExecError> {
 
 pub fn func_info(
     process: &mut Process,
-    module: &Operand,
-    function: &Operand,
-    arity: &Operand,
+    _module: &Operand,
+    _function: &Operand,
+    _arity: &Operand,
 ) -> Result<InstructionOutcome, ExecError> {
-    let metadata = (
-        operand_atom(module)?,
-        operand_atom(function)?,
-        operand_u8(arity, "func_info arity")?,
-    );
-    process.set_current_mfa(Some(metadata));
+    // The failing MFA is DERIVED at read time from (current_module, ip): this
+    // func_info's ip sits inside its own function's func_info bounds, so
+    // `capture_raw_stacktrace` recovers the exact same MFA the operands name
+    // (asserted by the derivation-vs-func_info agreement test) without storing
+    // it here. The operands stay in the instruction for the loader's function
+    // table; the opcode itself only needs to raise.
+    //
     // `func_info` is the multi-clause dispatch LANDING PAD: normal calls enter at
     // the label AFTER it, so reaching it means no clause matched. It must raise a
     // catchable `error:function_clause` — NOT set-MFA-and-Continue, which fell
     // back into the body and re-dispatched forever (the infinite-loop defect).
     // The reason is the BARE atom `function_clause` (the args ride the stacktrace
-    // via the MFA just set); mirrors `case_end`/`if_end` through the same
+    // via the MFA derived at this func_info ip); mirrors `case_end`/`if_end` through the same
     // `raise_exception` seam, so a bytecode `catch error:function_clause` observes
     // it. No new exception machinery.
     super::exceptions::raise_exception(
