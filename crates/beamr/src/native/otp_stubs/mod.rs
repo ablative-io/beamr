@@ -70,6 +70,14 @@ const OTP_STUBS: &[OtpBif] = &[
     ),
     // string
     ("string", "split", 2, Capability::Pure, bif_string_split),
+    // proc_lib
+    (
+        "proc_lib",
+        "spawn_link",
+        1,
+        Capability::Spawn,
+        bif_proc_lib_spawn_link,
+    ),
 ];
 
 /// Registers all OTP stub BIFs under their respective module names.
@@ -119,6 +127,33 @@ pub fn bif_supervisor_start_link(
     let pid = context.pid().ok_or_else(badarg)?;
     let pid_term = Term::try_pid(pid).ok_or_else(badarg)?;
     context.alloc_tuple(&[Term::atom(Atom::OK), pid_term])
+}
+
+// ── proc_lib ──────────────────────────────────────────────────────────────
+
+/// `proc_lib:spawn_link/1` — spawn a linked process running a zero-arity fun.
+///
+/// This is the target of `gleam/erlang/process.spawn`
+/// (`@external(erlang, "proc_lib", "spawn_link")`), which gleam_otp's
+/// `actor.start` uses to launch the actor. The spawned fun typically captures
+/// free variables (the initialiser closes over the builder, the parent pid, and
+/// the ack subject), so it routes through the closure-spawn facility, which
+/// deep-copies the captured environment into the child heap before it runs.
+///
+/// proc_lib's process-dictionary bookkeeping (`$ancestors` / `$initial_call`)
+/// is deliberately not reproduced: nothing on the actor start/call/monitor path
+/// reads it. Should a supervisor-tree caller later depend on that ancestry, this
+/// stub is the seam to revisit.
+pub fn bif_proc_lib_spawn_link(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
+    let [fun_term] = args else {
+        return Err(badarg());
+    };
+    let caller_pid = context.pid().ok_or_else(badarg)?;
+    let facility = context.spawn_facility().ok_or_else(badarg)?;
+    let new_pid = facility
+        .spawn_closure_link(caller_pid, *fun_term)
+        .map_err(|_| badarg())?;
+    Term::try_pid(new_pid).ok_or_else(badarg)
 }
 
 fn badarg() -> Term {

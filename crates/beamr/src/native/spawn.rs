@@ -130,6 +130,23 @@ pub trait SpawnFacility: Send + Sync {
         lambda_index: u32,
         options: SpawnOptions,
     ) -> Result<SpawnOptionsResult, SpawnError>;
+
+    /// Spawn a linked process running a zero-arity closure, DEEP-COPYING its
+    /// captured environment (free variables) into the child heap.
+    ///
+    /// Unlike [`spawn_lambda`](Self::spawn_lambda), which enters a bare lambda
+    /// label with no environment, this carries the closure's free variables —
+    /// the shape `gleam/erlang/process.spawn` (`proc_lib:spawn_link/1`) needs,
+    /// since its fun typically closes over parent state (e.g. gleam_otp
+    /// `actor.start`'s initialiser closes over the builder, parent pid, and ack
+    /// subject). The child is linked to `caller_pid` atomically at spawn.
+    ///
+    /// The default implementation refuses (so non-scheduler test mocks need not
+    /// implement closure spawning); the real scheduler facility overrides it.
+    fn spawn_closure_link(&self, caller_pid: u64, closure_term: Term) -> Result<u64, SpawnError> {
+        let _ = (caller_pid, closure_term);
+        Err(SpawnError::UnresolvedMfa)
+    }
 }
 
 /// Options accepted by `erlang:spawn_opt/2,4`.

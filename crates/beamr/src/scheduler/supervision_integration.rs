@@ -1590,6 +1590,12 @@ impl SpawnFacility for SchedulerSpawnFacility {
     ) -> Result<SpawnOptionsResult, SpawnError> {
         self.spawn_lambda_with_options_impl(caller_pid, module, lambda_index, options)
     }
+
+    fn spawn_closure_link(&self, caller_pid: u64, closure_term: Term) -> Result<u64, SpawnError> {
+        let _admission = self.admit_or_refuse()?;
+        self.spawn_closure_linked(caller_pid, closure_term)
+            .map_err(|_| SpawnError::UnresolvedMfa)
+    }
 }
 
 impl SchedulerSpawnFacility {
