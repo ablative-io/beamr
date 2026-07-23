@@ -56,3 +56,29 @@ resident set size 542,146,560 bytes (~517 MiB; the earlier green measured
 
 Sparse-negative runs (encode_gc_repro_badarg.beam): unchanged — that fixture
 was not edited and its committed runs stand.
+
+FINDING 6 (walk-frames wording; domain owner, mid-tear round 2, DM 2026-07-23
+22:18Z). FINDING 5 above and the first trued README claimed the two committed
+captures show "IDENTICAL walk frames (Vec::len ← release_proc_bin_arc ←
+release_refcounted_resources_in_young ← visit_allocated_boxed_objects)".
+Overclaim: the committed trued-bytes capture does NOT contain the three
+release-path frames — its innermost symbolicated frame is
+visit_allocated_boxed_objects, with the release path inlined out of the
+symbolication. What IS identical across all captures is the FAULT SIGNATURE:
+KERN_INVALID_ADDRESS at 0x21 with the atom-false raw 0x19 live in a register
+as the dereferenced pointer — which only release_proc_bin_arc's Arc::from_raw
++ Vec::len (field at offset 8) produces. Trued wording, superseding FINDING
+5's walk-frames sentence and the prior README section: identical fault
+signature in every capture; frames CONSISTENT WITH the same walk; the
+walk-NAMING frames are present only in the variant-A capture.
+
+Third capture, cited for the record as offered by the domain owner from her
+own independent verification at the committed fixture bytes (same sha256;
+her machine, M5 Pro): 5/5 debug runs exit 139; identical fault signature;
+significant register values matching (her report: x0=0xcc, x2=0x8, x10=0x19,
+x22=0xe9 — slot assignments per her capture; in the committed trued-bytes
+capture here, 0xe9 sits in x20); symbolication inlined deeper still, top
+frame collect_minor_with_live. Consistent with the same walk.
+
+This record is append-only: FINDING 5's text above is not rewritten; this
+finding supersedes its walk-frames sentence where they differ.

@@ -35,37 +35,50 @@ versions in committed lockfiles, not checked-out source.
 
 ## The backtrace ties expression to mechanism at the locked artifact
 
-Two captures, both debug-build at the 0.16.0 lock, IDENTICAL fault and
-walk: `EXC_BAD_ACCESS / KERN_INVALID_ADDRESS at 0x21` with the atom
-`false` raw encoding **`0x19`** live in a register as the pointer being
-dereferenced (`0x21` = `0x19` + the 8-byte offset of `Vec::len`'s field),
-frames innermost-out:
+Three captures, all debug-build at the 0.16.0 lock, IDENTICAL **fault
+signature**: `EXC_BAD_ACCESS / KERN_INVALID_ADDRESS at 0x21` with the
+atom `false` raw encoding **`0x19`** live in a register as the pointer
+being dereferenced (`0x21` = `0x19` + the 8-byte offset of `Vec::len`'s
+field) — a fault only `release_proc_bin_arc`'s `Arc::from_raw` +
+`Vec::len` on a misread false-headed cons produces. The walk-NAMING
+frames appear in the variant-A capture; the captures at the committed
+bytes symbolicate with the release path inlined out and are
+**consistent with** the same walk (finding 6, corrections record):
 
-```
-Vec::len
-release_proc_bin_arc                      ← the misread release
-release_refcounted_resources_in_young
-HeapRegion::visit_allocated_boxed_objects ← the word[0]-inference visitor
-minor::collect ← ensure_space ← …
-```
-
-- `runs/red-segv-backtrace-trued-bytes.txt` — **at the committed fixture
-  bytes** (sha256 in the file): the triggering collection enters from the
-  fixture's bytecode binary construction (`bs_init_or_create` →
-  `allocate_binary`) — building the very report strings the encode
-  consumes; 5/5 classified crashes at these bytes trigger there,
-  deterministically.
 - `runs/red-segv-backtrace.txt` — from a pre-commit fixture variant
-  (provenance disclosed in the corrections record): the same walk faults
-  with `…ensure_space ← alloc_binary ← bif_json_encode_binary` — the
-  collection triggered **inside `json:encode_binary`**, the exact BIF
-  that badarg'd on the crash host.
+  (provenance disclosed in the corrections record): frames
+  innermost-out `Vec::len ← release_proc_bin_arc ←
+  release_refcounted_resources_in_young ←
+  HeapRegion::visit_allocated_boxed_objects ← minor::collect ←
+  ensure_space ← alloc_binary ← bif_json_encode_binary` — the walk
+  named end to end, with the collection triggered **inside
+  `json:encode_binary`**, the exact BIF that badarg'd on the crash
+  host.
+- `runs/red-segv-backtrace-trued-bytes.txt` — **at the committed fixture
+  bytes** (sha256 in the file): same fault signature; innermost
+  symbolicated frame is `visit_allocated_boxed_objects`, the release
+  path inlined out of the symbolication. The triggering collection
+  enters from the fixture's bytecode binary construction
+  (`bs_init_or_create` → `allocate_binary`) — building the very report
+  strings the encode consumes; 5/5 classified crashes at these bytes
+  trigger there, deterministically.
+- Independent third capture at the committed bytes at the domain
+  owner's hands (Artemis Peach, offered for the record, her
+  verification DM 2026-07-23 22:18Z): 5/5 exit 139; identical fault
+  signature; the significant register values matching (her report:
+  x0=0xcc, x2=0x8, x10=0x19, x22=0xe9 — slot assignments per her
+  capture; in the committed trued-bytes capture 0xe9 sits in x20);
+  symbolication inlined deeper still (top frame
+  `collect_minor_with_live`), consistent with the same walk.
 
-Together: the misread walk and fault signature are byte-identical across
-fixture layouts; only the collection's entry point moves with layout —
-one more face of the layout-luck reading below. The walk-naming frames
-retire the objection that production's badarg might have been a
-different 0.16.0 bug: mechanism is recorded fact at the locked artifact.
+Together: the fault signature is byte-identical across fixture layouts
+and across machines; the collection's entry point and the
+symbolication's inlining depth move with layout and build — one more
+face of the layout-luck reading below. The signature that only the
+misread release produces, the walk-naming frames in the variant-A
+capture, and the independent third capture retire the objection that
+production's badarg might have been a different 0.16.0 bug: mechanism
+is recorded fact at the locked artifact.
 
 ## Expression difference, stated plainly (ruling of record: Artemis, 2026-07-23)
 
