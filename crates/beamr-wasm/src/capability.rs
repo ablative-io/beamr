@@ -43,6 +43,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::{JsFuture, spawn_local};
 
 use beamr::atom::{Atom, AtomTable};
+use beamr::ets::OwnedTerm;
 use beamr::native::{NativeKey, ProcessContext};
 use beamr::scheduler::WasmAsyncCompletion;
 use beamr::term::Term;
@@ -523,11 +524,12 @@ impl CapabilityBridge {
         }
 
         let Some(completion) = self.build_completion(entry.caller, outcome) else {
-            // Term construction failed (allocation): deliver the honest
-            // rejected leg rather than nothing; if that also fails, the
-            // caller's death is observable via the suspended process — but
-            // this arm is not reachable for the value shapes this module
-            // builds (small tuples + validated payloads).
+            // Term construction genuinely failed (an allocation or codec
+            // error in the fresh detached context): nothing is delivered
+            // and the caller stays parked. Immediate roots do NOT land
+            // here — build_completion owns them via the OwnedTerm::
+            // immediate fallback (the 2026-07-24 tear finding: this arm
+            // once swallowed immediate-success completions).
             return;
         };
         let delivered = self
@@ -571,6 +573,18 @@ impl CapabilityBridge {
                 context.alloc_tuple(&[kind_term, detail_term]).ok()?
             }
         };
+        // `take_detached_result` returns `None` for an EMPTY detached
+        // allocation set — which is exactly what a valid immediate root
+        // builds (native kv success `true`, get-absent `undefined`), not a
+        // failure. Fall back to `OwnedTerm::immediate` (the convert.rs
+        // pattern); the 2026-07-24 tear finding: treating that `None` as
+        // construction failure dropped the completion and hung the parked
+        // native caller.
+        let own = |context: &mut ProcessContext<'_>, root: Term| {
+            context
+                .take_detached_result(root)
+                .unwrap_or_else(|| OwnedTerm::immediate(root))
+        };
         match (caller, outcome.is_ok()) {
             (CallerType::Bytecode, ok) => {
                 let tag = if ok {
@@ -579,16 +593,11 @@ impl CapabilityBridge {
                     Term::atom(Atom::ERROR)
                 };
                 let tagged = context.alloc_tuple(&[tag, built]).ok()?;
-                let owned = context.take_detached_result(tagged)?;
-                Some(WasmAsyncCompletion::Ok(owned))
+                Some(WasmAsyncCompletion::Ok(own(&mut context, tagged)))
             }
-            (CallerType::Native, true) => {
-                let owned = context.take_detached_result(built)?;
-                Some(WasmAsyncCompletion::Ok(owned))
-            }
+            (CallerType::Native, true) => Some(WasmAsyncCompletion::Ok(own(&mut context, built))),
             (CallerType::Native, false) => {
-                let owned = context.take_detached_result(built)?;
-                Some(WasmAsyncCompletion::Error(owned))
+                Some(WasmAsyncCompletion::Error(own(&mut context, built)))
             }
         }
     }
