@@ -2422,12 +2422,19 @@ mod tests {
         assert_eq!(settled["pid"], pid);
         assert_eq!(settled["result"], "timed_out");
         let counters = vm.unified_deadline_snapshot();
-        assert_eq!(counters.requests, 1);
-        assert_eq!(counters.executions, 1);
+        // The host may fire the one-shot EARLY relative to the wasm Instant
+        // clock (EARLY-UNDER-CACHED-CLOCK, probes/WPORT-3-PROBE-EARLY-FIRE.md),
+        // and each early fire benignly re-arms the remainder — so absolute arm
+        // counts are not assertable across a real fire. The load-bearing
+        // claims kept: every arm was admitted and fired (no stale callback
+        // ever executes, nothing was cancelled), and the service is quiescent
+        // after exactly-once delivery.
+        assert!(counters.requests >= 1);
+        assert_eq!(counters.executions, counters.requests);
+        assert_eq!(counters.next_arms, counters.requests);
+        assert_eq!(counters.cancellations, 0);
         assert_eq!(counters.queued_now, 0);
         assert_eq!(counters.armed_deadline, None);
-        assert_eq!(counters.next_arms, 1);
-        assert_eq!(counters.cancellations, 0);
     }
 
     /// The host is allowed to fire a one-shot EARLY relative to the wasm
