@@ -20,7 +20,9 @@ Do not publish crates, push tags, or create a GitHub release without explicit ap
 - [ ] Run `cargo check`.
 - [ ] Run `cargo test --package beamr --lib`.
 - [ ] Run `cargo test --package beamr --test '*'`.
-- [ ] Run `cargo test --package beamr --features differential --test differential`.
+- [ ] Run `cargo test --package beamr --test differential` (ungated since de67453 — the
+      `differential` feature no longer exists, so `--features differential` errors; the suite
+      also rides `cargo test --workspace` in gates.json).
 - [ ] Run `cargo bench --package beamr --no-run`.
 - [ ] Run `cargo clippy --package beamr --all-targets`.
 - [ ] Run `cargo doc --package beamr --no-deps`.

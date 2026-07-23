@@ -3,6 +3,7 @@
   "legs": [
     {"name": "fmt", "cmd": "cargo fmt --all --check", "kind": "check"},
     {"name": "clippy", "cmd": "cargo clippy --workspace --all-targets -- -D warnings", "kind": "check"},
+    {"name": "wasm32-check", "cmd": "cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked", "kind": "check"},
     {"name": "tests", "cmd": "cargo test --workspace", "kind": "cargo-test"}
   ]
 }
