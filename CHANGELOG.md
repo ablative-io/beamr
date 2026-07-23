@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+## 0.16.2 — 2026-07-23
+
+Memory-safety patch: the two critical findings from the 2026-07-23 external
+review (docs/REVIEW-23-07.md), fixed red-first and torn PASS before release.
+
+### Fixed
+
+- **C1 — GC refc-release walk could free foreign memory.** The release walk
+  inferred object type from `word[0]`, but a headerless cons whose head is
+  atom `false` (encoding 0x19) is indistinguishable from a `BoxedTag::ProcBin`
+  header — the walk then executed `Arc::from_raw` on a heap-cons payload:
+  arbitrary free + heap corruption at the next minor GC. Fixed structurally:
+  every allocation now records an `AllocKind` at allocation time and all three
+  release walks (minor young-region, process-death `release_all`, major
+  compacted-sources) visit only allocations marked refcounted. `word[0]`
+  inference is retired entirely; the fail-safe direction is documented at the
+  type (a missed mark can only leak, never free foreign memory). A
+  completeness sweep marked five additional refcounted-into-process-heap
+  paths the review had not named (mailbox proc-bin delivery, tcp active +
+  closed socket messages, udp, io results, jit sub-binary extraction), each
+  pinned by a fail-first leak test. The debugger's heap census gets an
+  explicitly inspection-only unfiltered walk, documented never-for-release.
+- **C2 — ETS stored borrowed caller-heap terms.** `insert` kept `Term`s
+  pointing into the inserting process's heap, so a post-insert GC (or process
+  death) left tables reading freed/moved memory. ETS now deep-copies terms
+  into table-owned storage on insert (`ProcBin`/`SubBinary` flattened to
+  table-owned inline bytes — tables hold no Arcs) and copies out to the
+  caller's heap on read. Map keys own their own copies (`OwnedEtsKey` /
+  `OwnedTermKey` with structural `Borrow`, so probes never copy).
+
+### Caveat
+
+- `EtsTable`'s public `lookup`/`tab2list` signatures changed — required by
+  the soundness fix (bare `Term`s in the trait contract WERE the bug).
+  Technically breaking inside a patch release; no known external
+  implementors or callers (verified across haematite, liminal, frame, aion,
+  beamr-wasm — all touch only `OwnedTerm`/`copy_term_to_ets`, unchanged).
+  Precedent: Rust's soundness-fix policy (RFC 1122).
+- ETS round-trips now flatten large binaries inline: Arc sharing is lost
+  through insert/lookup, a memory cost on big-binary tables. Documented in
+  code; revisit candidate for the 0.17 window.
+
 ## 0.16.1 — 2026-07-23
 
 ### Added
