@@ -1,0 +1,20 @@
+# M5 red run — mutation applied locally, never committed to tree
+# mutation: gc::ensure_space grows the nursery instead of collecting (allocation pressure never collects)
+# designated wall: encode_result_allocation_collects_with_multibyte_input_live
+# command: cargo test -p beamr --lib json_bifs_tests
+
+test native::stdlib_stubs::json_bifs_tests::encode_integer_formats_small_and_big ... ok
+test native::stdlib_stubs::json_bifs_tests::decode_handles_bignums_and_surrogate_pairs ... ok
+test native::stdlib_stubs::json_bifs_tests::encode_binary_rejects_invalid_utf8 ... ok
+test native::stdlib_stubs::json_bifs_tests::encode_float_keeps_a_decimal_point ... ok
+test native::stdlib_stubs::json_bifs_tests::encode_binary_passes_multibyte_utf8_through_byte_exact ... ok
+test native::stdlib_stubs::json_bifs_tests::encode_binary_escapes_json_string_characters ... ok
+test native::stdlib_stubs::json_bifs_tests::encode_term_handles_nested_structures ... ok
+test native::stdlib_stubs::json_bifs_tests::decode_parses_objects_arrays_and_scalars ... ok
+test native::stdlib_stubs::json_bifs_tests::decode_reports_otp_error_reasons ... ok
+test native::stdlib_stubs::json_bifs_tests::encoded_multibyte_binary_round_trips_through_decode ... ok
+test native::stdlib_stubs::json_bifs_tests::encode_result_allocation_collects_with_multibyte_input_live ... FAILED
+test native::stdlib_stubs::json_bifs_tests::multibyte_binary_moved_by_minor_gc_encodes_byte_exact ... ok
+thread 'native::stdlib_stubs::json_bifs_tests::encode_result_allocation_collects_with_multibyte_input_live' (22222546) panicked at crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs:285:5:
+the result allocation must have run a collection
+test result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 1720 filtered out; finished in 0.01s

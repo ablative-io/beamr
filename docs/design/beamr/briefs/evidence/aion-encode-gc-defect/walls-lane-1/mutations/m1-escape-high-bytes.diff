@@ -1,0 +1,14 @@
+diff --git a/crates/beamr/src/native/stdlib_stubs/json_bifs.rs b/crates/beamr/src/native/stdlib_stubs/json_bifs.rs
+index 6f5d012..0967663 100644
+--- a/crates/beamr/src/native/stdlib_stubs/json_bifs.rs
++++ b/crates/beamr/src/native/stdlib_stubs/json_bifs.rs
+@@ -105,6 +105,9 @@ fn escape_json_string(bytes: &[u8]) -> Vec<u8> {
+             byte if byte < 0x20 => {
+                 out.extend_from_slice(format!("\\u{byte:04X}").as_bytes());
+             }
++            byte if byte >= 0x80 => {
++                out.extend_from_slice(format!("\\u{byte:04X}").as_bytes());
++            }
+             byte => out.push(byte),
+         }
+     }

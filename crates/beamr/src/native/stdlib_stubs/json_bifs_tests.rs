@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
+use crate::gc::collect_minor;
 use crate::native::ProcessContext;
 use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, Float, Map, Tuple};
+use crate::term::shared_binary::alloc_binary_word_count;
 
 use super::json_bifs::{
     bif_json_decode, bif_json_encode, bif_json_encode_binary, bif_json_encode_float,
@@ -146,6 +148,154 @@ fn decode_reports_otp_error_reasons() {
     let error = bif_json_decode(&[trailing], &mut ctx).expect_err("trailing garbage");
     let tuple = Tuple::new(error).expect("invalid_byte tuple");
     assert_eq!(tuple.get(0), Some(Term::atom(table.intern("invalid_byte"))));
+}
+
+// Multibyte-encode walls (AION-ENCODE-GC-DEFECT lane). OTP `json` passes
+// non-ASCII UTF-8 through unescaped, so encoded output must carry multibyte
+// sequences byte-for-byte — em-dashes are the canonical production payload.
+
+#[test]
+fn encode_binary_passes_multibyte_utf8_through_byte_exact() {
+    let mut process = Process::new(1, 512);
+    let mut ctx = context(&mut process);
+
+    let dash = ctx.alloc_binary("—".as_bytes()).expect("binary");
+    let encoded = bif_json_encode_binary(&[dash], &mut ctx).expect("encode");
+    let bytes = BinaryRef::new(encoded).expect("binary result");
+    assert_eq!(bytes.as_bytes(), b"\"\xE2\x80\x94\"");
+
+    let mixed = ctx
+        .alloc_binary("café — naïve 😀\n\"quoted\"".as_bytes())
+        .expect("binary");
+    let encoded = bif_json_encode_binary(&[mixed], &mut ctx).expect("encode");
+    assert_eq!(
+        binary_string(encoded),
+        "\"café — naïve 😀\\n\\\"quoted\\\"\""
+    );
+}
+
+#[test]
+fn encode_binary_rejects_invalid_utf8() {
+    let mut process = Process::new(1, 512);
+    let mut ctx = context(&mut process);
+
+    // A truncated em-dash prefix is the invalid shape closest to the valid
+    // production payload; the rest cover the distinct invalidity classes.
+    let invalid: [&[u8]; 5] = [
+        &[0xE2, 0x80],       // truncated em-dash
+        &[0xFF],             // never-valid byte
+        &[0x80],             // lone continuation
+        &[0xC0, 0xAF],       // overlong encoding
+        &[0xED, 0xA0, 0xBD], // UTF-8-encoded surrogate
+    ];
+    for bytes in invalid {
+        let input = ctx.alloc_binary(bytes).expect("binary");
+        let error = bif_json_encode_binary(&[input], &mut ctx).expect_err("invalid utf8");
+        assert_eq!(error, Term::atom(Atom::BADARG), "input {bytes:X?}");
+    }
+
+    let complete = ctx.alloc_binary(&[0xE2, 0x80, 0x94]).expect("binary");
+    assert!(bif_json_encode_binary(&[complete], &mut ctx).is_ok());
+}
+
+#[test]
+fn encoded_multibyte_binary_round_trips_through_decode() {
+    let mut process = Process::new(1, 1024);
+    let mut ctx = context(&mut process);
+
+    let raw = "reason — “style” quotes — 😀".as_bytes();
+    let input = ctx.alloc_binary(raw).expect("binary");
+    let encoded = bif_json_encode_binary(&[input], &mut ctx).expect("encode");
+    let decoded = bif_json_decode(&[encoded], &mut ctx).expect("decode");
+    let bytes = BinaryRef::new(decoded).expect("string");
+    assert_eq!(bytes.as_bytes(), raw);
+
+    let escaped = ctx.alloc_binary(b"\"\\u2014\"").expect("binary");
+    let decoded = bif_json_decode(&[escaped], &mut ctx).expect("decode");
+    let bytes = BinaryRef::new(decoded).expect("string");
+    assert_eq!(bytes.as_bytes(), b"\xE2\x80\x94");
+    let encoded = bif_json_encode_binary(&[decoded], &mut ctx).expect("encode");
+    let bytes = BinaryRef::new(encoded).expect("binary result");
+    assert_eq!(bytes.as_bytes(), b"\"\xE2\x80\x94\"");
+}
+
+#[test]
+fn multibyte_binary_moved_by_minor_gc_encodes_byte_exact() {
+    // A ≤64-byte binary lives inline on the young heap, so a minor collection
+    // physically moves its bytes; encoding the forwarded term must read the
+    // moved bytes, not the original allocation.
+    let mut process = Process::new(1, 256);
+    let raw = "— gc-moved — 😀 —".as_bytes();
+    let input = {
+        let mut ctx = context(&mut process);
+        ctx.alloc_binary(raw).expect("binary")
+    };
+    process.set_x_reg(0, input);
+    {
+        let mut ctx = context(&mut process);
+        for _ in 0..8 {
+            ctx.alloc_cons(Term::small_int(0), Term::NIL)
+                .expect("garbage");
+        }
+    }
+
+    collect_minor(&mut process).expect("minor GC succeeds");
+
+    let moved = process.x_reg(0);
+    assert_ne!(moved, input, "young heap binary should move under minor GC");
+    let mut ctx = context(&mut process);
+    let encoded = bif_json_encode_binary(&[moved], &mut ctx).expect("encode");
+    assert_eq!(binary_string(encoded), "\"— gc-moved — 😀 —\"");
+}
+
+#[test]
+fn encode_result_allocation_collects_with_multibyte_input_live() {
+    // Forced geometry: the nursery is filled until the encode's result
+    // allocation cannot fit, so `alloc_binary` inside the BIF must run a
+    // collection while the multibyte input is live in X0. The input is read
+    // and escaped before that allocation, so the call must survive its own
+    // collection with both input and output byte-exact.
+    let mut process = Process::new(1, 256);
+    let raw = "—".repeat(12);
+    let input = {
+        let mut ctx = context(&mut process);
+        ctx.alloc_binary(raw.as_bytes()).expect("binary")
+    };
+    process.set_x_reg(0, input);
+
+    let needed = alloc_binary_word_count(raw.len() + 2);
+    {
+        let mut ctx = context(&mut process);
+        while ctx.process_heap().expect("heap").available() >= needed {
+            ctx.alloc_cons(Term::small_int(1), Term::NIL)
+                .expect("filler");
+        }
+    }
+    assert!(
+        process.heap().available() < needed,
+        "geometry must force the result allocation to collect"
+    );
+    assert_eq!(process.heap().old_used(), 0);
+
+    let encoded = {
+        let mut ctx = ProcessContext::new();
+        ctx.set_atom_table(Some(Arc::new(AtomTable::with_common_atoms())));
+        ctx.attach_process(&mut process, 1);
+        bif_json_encode_binary(&[input], &mut ctx).expect("encode")
+    };
+
+    assert!(
+        process.heap().old_used() > 0,
+        "the result allocation must have run a collection"
+    );
+    let survivor = process.x_reg(0);
+    assert_ne!(
+        survivor, input,
+        "live input should be promoted by the collection"
+    );
+    let survivor = BinaryRef::new(survivor).expect("moved input");
+    assert_eq!(survivor.as_bytes(), raw.as_bytes());
+    assert_eq!(binary_string(encoded), format!("\"{raw}\""));
 }
 
 #[test]

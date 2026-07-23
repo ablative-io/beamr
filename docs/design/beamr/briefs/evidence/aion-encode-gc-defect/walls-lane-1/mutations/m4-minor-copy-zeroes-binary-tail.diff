@@ -1,0 +1,20 @@
+diff --git a/crates/beamr/src/gc/minor.rs b/crates/beamr/src/gc/minor.rs
+index 294abbe..f40d7e4 100644
+--- a/crates/beamr/src/gc/minor.rs
++++ b/crates/beamr/src/gc/minor.rs
+@@ -70,7 +70,14 @@ fn copy_young_term(
+             process.heap().old_available(),
+         )));
+     }
+-    let copied_words = process.heap().copy_words_from_ptr(src, words);
++    let mut copied_words = process.heap().copy_words_from_ptr(src, words);
++    if term.is_boxed()
++        && crate::term::boxed::BoxedHeader::tag(copied_words[0])
++            == Some(crate::term::boxed::BoxedTag::Binary)
++    {
++        let last = copied_words.len() - 1;
++        copied_words[last] = 0;
++    }
+     let dst = process.heap_mut().alloc_old(words)?;
+     crate::process::heap::Heap::write_words(dst, &copied_words);
+     let copied = term_from_ptr_like(term, dst.cast_const());

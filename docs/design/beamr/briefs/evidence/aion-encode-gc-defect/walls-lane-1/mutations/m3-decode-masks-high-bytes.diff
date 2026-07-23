@@ -1,0 +1,13 @@
+diff --git a/crates/beamr/src/native/stdlib_stubs/json_bifs.rs b/crates/beamr/src/native/stdlib_stubs/json_bifs.rs
+index 6f5d012..21a1565 100644
+--- a/crates/beamr/src/native/stdlib_stubs/json_bifs.rs
++++ b/crates/beamr/src/native/stdlib_stubs/json_bifs.rs
+@@ -424,7 +424,7 @@ impl Parser<'_> {
+                 }
+                 byte if byte < 0x20 => return Err(self.invalid_byte_here(context)),
+                 byte => {
+-                    out.push(byte);
++                    out.push(byte & 0x7F);
+                     self.pos += 1;
+                 }
+             }
