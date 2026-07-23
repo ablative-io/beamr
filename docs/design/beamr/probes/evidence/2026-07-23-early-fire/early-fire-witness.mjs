@@ -32,7 +32,14 @@ function sample(i) {
       delay_ms: DELAY_MS,
       samples: SAMPLES,
       early_fires: early,
-      worst_early_ms: worst === Infinity ? null : Number(worst.toFixed(3)),
+      // Field names fixed post-tear (Waffles' ruling at the 2026-07-23
+      // landing): the as-run outputs of that date carry the old name
+      // `worst_early_ms`, which actually held the worst ELAPSED time at an
+      // early fire, not the worst delta. Future runs emit both, named for
+      // what they hold; the committed 2026-07-23 outputs stay as-run.
+      worst_early_elapsed_ms: worst === Infinity ? null : Number(worst.toFixed(3)),
+      worst_early_delta_ms:
+        worst === Infinity ? null : Number((DELAY_MS - worst).toFixed(3)),
       early_deltas_ms: earlyDeltas.slice(0, 20).map(d => Number(d.toFixed(3))),
     }, null, 2));
     return;
