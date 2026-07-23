@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Removed (breaking — 0.17.0 window)
+
+- **`Scheduler::spawn_link_dirty`.** A behavioral `spawn_link` alias since
+  2026-07-20 (`65f499c`): dirty scheduling is a property of the NATIVE
+  ENTRY, not the process, so the method's dirty hint never did anything.
+  Zero consumers estate-wide at removal (the last, aion `handle.rs:330`,
+  migrated to `spawn_link` at the 2026-07-23 family convergence).
+  Migration: call `spawn_link` and register dirty natives
+  (`BifRegistryImpl::register_dirty`) — behavior is identical. Per-entry
+  dirty dispatch and real-link coverage stay pinned by
+  `spawn_link_dirty_dispatch_is_per_entry_on_the_linked_path` in
+  `tests/dirty_scheduler.rs`.
+
 ## 0.16.2 — 2026-07-23
 
 Memory-safety patch: the two critical findings from the 2026-07-23 external

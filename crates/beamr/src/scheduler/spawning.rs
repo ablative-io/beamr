@@ -361,32 +361,6 @@ impl Scheduler {
         facility.spawn_closure_linked(parent_pid, closure_term)
     }
 
-    /// Spawn a linked process, accepting the historical dirty-eligibility
-    /// hint for API stability.
-    ///
-    /// Dirty scheduling in beamr is a property of the NATIVE ENTRY, not of
-    /// the process: a native registered with a dirty kind
-    /// ([`register_dirty`](crate::native::BifRegistryImpl::register_dirty),
-    /// [`NativeEntry::dirty_kind`](crate::native::NativeEntry)) is dispatched
-    /// to the dirty pool at its call site — submit, suspend, resume through
-    /// the scheduler's dirty-completion bridge — regardless of how the
-    /// calling process was spawned. A process has no dirty property to set
-    /// at spawn, so this method is behaviorally identical to
-    /// [`spawn_link`](Self::spawn_link); the equivalence is pinned by
-    /// `spawn_link_dirty_is_spawn_link_and_dirty_dispatch_is_per_entry` in
-    /// `tests/dirty_scheduler.rs`. Retained for API stability and slated for
-    /// removal at the next breaking release — new code calls `spawn_link`
-    /// and registers dirty natives instead.
-    pub fn spawn_link_dirty(
-        &self,
-        parent_pid: u64,
-        entry_module: Atom,
-        entry_function: Atom,
-        args: Vec<Term>,
-    ) -> Result<u64, ExecError> {
-        self.spawn_link(parent_pid, entry_module, entry_function, args)
-    }
-
     fn enqueue_spawn(
         &self,
         module_version: Arc<Module>,

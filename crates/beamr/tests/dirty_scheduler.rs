@@ -324,14 +324,15 @@ fn exported_parked_parent(name: Atom, entry: Atom) -> Module {
     parent
 }
 
-/// THE WALL for `Scheduler::spawn_link_dirty`'s documented contract: the
-/// method is behaviorally identical to `spawn_link` — the link is real (the
-/// child's abnormal death kills the parked parent) — and dirty dispatch is a
-/// property of the NATIVE ENTRY, not the spawn path: the child's dirty-CPU
-/// native executes on a named dirty worker thread through the pool in both
-/// halves, identically.
+/// THE WALL for per-entry dirty dispatch on the linked spawn path: dirty
+/// scheduling is a property of the NATIVE ENTRY, not the spawn path — the
+/// child's dirty-CPU native executes on a named dirty worker thread through
+/// the pool, and the link is real (the child's abnormal death kills the
+/// parked parent). The `spawn_link_dirty` alias this wall once compared
+/// against was removed at the 0.17.0 breaking window; `spawn_link` is the
+/// one linked MFA spawn path.
 #[test]
-fn spawn_link_dirty_is_spawn_link_and_dirty_dispatch_is_per_entry() {
+fn spawn_link_dirty_dispatch_is_per_entry_on_the_linked_path() {
     use beamr::atom::AtomTable;
     use beamr::native::BifRegistryImpl;
 
@@ -364,34 +365,28 @@ fn spawn_link_dirty_is_spawn_link_and_dirty_dispatch_is_per_entry() {
     )
     .expect("scheduler starts");
 
-    for use_dirty_entrypoint in [true, false] {
-        let parent_pid = scheduler
-            .spawn(parent_module_name, parent_entry, Vec::new())
-            .expect("spawn parked parent");
-        // Let the parent materialize and reach its receive park.
-        std::thread::sleep(Duration::from_millis(100));
+    let parent_pid = scheduler
+        .spawn(parent_module_name, parent_entry, Vec::new())
+        .expect("spawn parked parent");
+    // Let the parent materialize and reach its receive park.
+    std::thread::sleep(Duration::from_millis(100));
 
-        let child_pid = if use_dirty_entrypoint {
-            scheduler.spawn_link_dirty(parent_pid, child_module_name, child_entry, Vec::new())
-        } else {
-            scheduler.spawn_link(parent_pid, child_module_name, child_entry, Vec::new())
-        }
+    let child_pid = scheduler
+        .spawn_link(parent_pid, child_module_name, child_entry, Vec::new())
         .expect("linked spawn succeeds");
 
-        let (child_reason, _child_value) = scheduler.run_until_exit(child_pid);
-        assert_eq!(
-            child_reason,
-            ExitReason::Error,
-            "the child's dirty badarg raises and kills it"
-        );
-        let (parent_reason, _parent_value) = scheduler.run_until_exit(parent_pid);
-        assert_eq!(
-            parent_reason,
-            ExitReason::Error,
-            "the link is real: the child's abnormal death kills the parked parent \
-             (entrypoint dirty={use_dirty_entrypoint})"
-        );
-    }
+    let (child_reason, _child_value) = scheduler.run_until_exit(child_pid);
+    assert_eq!(
+        child_reason,
+        ExitReason::Error,
+        "the child's dirty badarg raises and kills it"
+    );
+    let (parent_reason, _parent_value) = scheduler.run_until_exit(parent_pid);
+    assert_eq!(
+        parent_reason,
+        ExitReason::Error,
+        "the link is real: the child's abnormal death kills the parked parent"
+    );
 
     let observed_threads = DIRTY_SPAWN_PATH_THREADS
         .lock()
@@ -399,8 +394,8 @@ fn spawn_link_dirty_is_spawn_link_and_dirty_dispatch_is_per_entry() {
         .clone();
     assert_eq!(
         observed_threads.len(),
-        2,
-        "each half ran the dirty native exactly once"
+        1,
+        "the dirty native ran exactly once, dispatched per entry"
     );
     for thread_name in &observed_threads {
         assert!(
