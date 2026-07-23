@@ -67,6 +67,23 @@ fn collect_modules(beam_dir: &Path) -> Result<Vec<BeamModule>, Box<dyn std::erro
         };
         println!("cargo:rerun-if-changed={}", path.display());
         let bytes = fs::read(&path)?;
+        // The sweep filter is extension-only; a *.beam file whose bytes are
+        // not a BEAM module would be embedded verbatim and fail only at the
+        // consumer's first `vm.load_module()` (the 2026-07-24 sitting-kit
+        // incident, WPORT-9 R7). Verify the IFF container magic before
+        // embedding: "FOR1" at bytes 0-3 and "BEAM" at bytes 8-11.
+        let has_beam_magic =
+            bytes.len() >= 12 && &bytes[0..4] == b"FOR1" && &bytes[8..12] == b"BEAM";
+        if !has_beam_magic {
+            return Err(format!(
+                "bundle sweep refused: `{}` has a .beam extension but no BEAM \
+                 container magic (expected `FOR1` at bytes 0-3 and `BEAM` at \
+                 bytes 8-11); remove the file from the bundle directory or \
+                 point BEAMR_WASM_BUNDLE_DIR at a directory of real modules",
+                path.display()
+            )
+            .into());
+        }
         modules.push(BeamModule {
             name: name.to_owned(),
             path,
