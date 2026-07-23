@@ -67,16 +67,17 @@ F-0d shim pattern): zero recurring callbacks while awaiting the completion;
 the settle produces exactly one arbiter turn. EARLY-UNDER-CACHED-CLOCK
 applies: no wall asserts absolute arm counts across the real fire.
 
-## Sitting-scope truing note (2026-07-24 — amends the endorsed protocol; confirmation: awaiting Artemis Peach)
+## Sitting-scope truing note (2026-07-24 — amends the endorsed protocol; CONFIRMED by Artemis Peach, 2026-07-23 DM, verified at the bytes)
 
 Folded on the sitting-kit branch before the runsheet ships (Waffles'
 condition), so the artifact promises exactly what the sitting evidence
 delivers:
 
 1. **Counter observations are Node-wall territory.** The bridge counters
-   (`dead_pid_completions`) and the arbiter turn counters are
-   `cfg(test)`-gated — they do not exist on the real bundle, so no sitting
-   evidence can cite them. They are covered by the landed suite by exact
+   (`dead_pid_completions`) and the arbiter turn counters increment in the
+   real bundle too, but their observation surface (the `counters()`
+   accessors) is `cfg(test)`-gated and the counter group is `pub(crate)` —
+   nothing is JS-visible, so they are not citable by sitting evidence. They are covered by the landed suite by exact
    name: `dying_caller_auto_aborts_in_flight_and_late_completion_is_counted`
    and `late_abort_after_completion_is_a_harmless_noop` (the dead-pid
    counter), `fetch_success_from_true_idle_delivers_the_codec_map_in_one_turn`
