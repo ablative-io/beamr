@@ -1,0 +1,8 @@
+{
+  "repo": "beamr",
+  "legs": [
+    {"name": "fmt", "cmd": "cargo fmt --all --check", "kind": "check"},
+    {"name": "clippy", "cmd": "cargo clippy --workspace --all-targets -- -D warnings", "kind": "check"},
+    {"name": "tests", "cmd": "cargo test --workspace", "kind": "cargo-test"}
+  ]
+}
