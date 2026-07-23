@@ -1,4 +1,4 @@
-   Compiling beamr v0.16.0 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr)
-   Compiling beamr-wasm v0.7.0 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr-wasm)
-    Checking beamr-cli v0.4.0 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr-cli)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 33.56s
+    Checking beamr v0.16.0 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/coverage-extract/crates/beamr)
+    Checking beamr-wasm v0.7.0 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/coverage-extract/crates/beamr-wasm)
+    Checking beamr-cli v0.4.0 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/coverage-extract/crates/beamr-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 17.23s
