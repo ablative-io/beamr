@@ -179,6 +179,8 @@ The citable-state law binds every boundary below: every current-state justificat
 **Size:** L  
 **Dependencies:** WPORT-2 through WPORT-8.
 
+**Status (2026-07-24):** CLOSED — landed on `main` at `541ad3f` (merge `5c56cb8`, chain-landed by Waffles the Terrible on a full battery at the merged tree; chain: ground pack `briefs/WPORT-9-GROUND-PACK.md` TORN PASS at `83b5628` → brief `briefs/WPORT-9.json` TORN PASS ZERO AMENDMENTS, landed ff at main `ef5e379` → thirteen build commits `7faf58b..3448a24` TORN PASS by Artemis Peach, one tear finding — the R3 successor pointer in `briefs/FIX-BUNDLE-PACKAGER-NOARG.md` — fixed pointer-only at `3448a24`). Delivered: the `gates.json` `wasm-tests` leg — the 80-wall wasm suite, including the F-0d idle wall, on every release box, unconditional and fail-loud (R1); the committed conformance workload `conformance/workload/wport9_conformance.erl`+`.beam`, twelve entries exercising the supported surface from bytecode (R2); the conformance driver `conformance/driver.mjs` — Node-stdlib-only, three real artifacts (wasm-pack pkg + generated bootstrap in a real browser; packaged single-file `beamr.bundle.mjs` no-arg in Node AND in the browser), page and dedicated-Worker legs, F-0d shim windows, eleven exact-name legs (R3/R4/R5); the permanent `conformance` workflow job with provable browser provisioning and exact-name + exact-count carriers (R6); the `collect_modules` BEAM-magic sweep validity check — the rung's ONLY production motion, red-first (R7); and the conformance classing ledger below (R8). **Build STOP #1 ruling (domain owner):** the R5 panic leg is reclassified T1 + sitting with NO permanent T2 leg — a permanent leg would structurally require a SHIPPING deliberate-panic surface no consumer requirement justifies; ruling and derivation at `briefs/evidence/wport9/stop-panic-ruling.md`, landed in the ledger below (amendment-in-ledger; the brief text stays as-landed). **Runner record:** the `conformance` job ran GREEN on GitHub runners at four branch heads including the torn head, and the first `main` run at `541ad3f` is GREEN on both jobs — the tear's post-land-observable disclosure discharged. The D4c release binding is recorded in `conformance/README.md`: release declarations must cite the workflow's green browser-leg run at the release tree. G1 is discharged (every gate leg hermetic or classed in the ledger); G2 is discharged (the packaged no-arg path is a first-class leg in both hosts; the lane harness stays immutable with its successor pointer). **With this fold, WPORT-1 through WPORT-9 are all CLOSED and the arc is COMPLETE.**
+
 **Scope.** Establish permanent browser/Worker conformance CI using the real generated wasm bundle and a real Beamr workload. Exercise construction, artifact loading, supported BIFs, output and failure paths, and every wake class. Make the NO-POLLING wall a permanent release gate: idle means no recurring callbacks.
 
 **Boundary evidence.** The current workflow runs only `cargo check` and has no wasm runtime, packaging, browser, event-loop, timer, idle-CPU, or NO-POLLING test (`.github/workflows/cooperative-wasm.yml:13-20` at `d9de35e`). The crate has wasm-bindgen test dependencies and five Node-runnable tests (`crates/beamr-wasm/Cargo.toml:28-29`; `crates/beamr-wasm/src/lib.rs:894-1022`; `crates/beamr-wasm/src/convert.rs:340-404` at `d9de35e`), but current VM tests stop at the constructor failure. **VERIFIED addendum:** the edge-worker test replaces the bundle import with an in-memory JavaScript VM stub (`examples/edge-worker/test/worker.test.mjs:6-53` at `d9de35e`), and that stub implements its own `spawn`, `run_step`, `take_exit_result`, and synchronous `runUntilExit` loop (`examples/edge-worker/test/worker.test.mjs:8-48` at `d9de35e`). **INFERRED:** the present Miniflare test proves HTTP adaptation and an expected JS API shape, not wasm instantiation, Beamr bytecode execution, or cooperative scheduler behaviour.
@@ -188,6 +190,152 @@ The citable-state law binds every boundary below: every current-state justificat
 **Acceptance shape.** CI packages and instantiates `beamr_wasm_bg.wasm`, loads and executes real Beamr bytecode, and does not replace the VM with a JS stub. The suite independently proves mailbox send, cast, async-NIF/Promise completion, receive timeout, native deadline, native completion, and trapped-exit wakes; artifact fetching; supported and unsupported BIF behaviour; output; process error; pump/turn error; and panic surfacing. Callback instrumentation observes **zero recurring host callbacks while idle**, including while only future deadlines exist. The gate fails on rAF rechecks, intervals, repeating timeouts, synchronous bounded pump loops, or any ready process that waits for an external manual pump.
 
 **Named socket/gate filled.** Permanent F-0d / NO-POLLING browser conformance gate.
+
+## Conformance classing ledger
+
+**Standing arc authority, landed at the WPORT-9 close fold (2026-07-24).**
+Derivation record: `briefs/WPORT-9.json` (the D1–D8 decided text and its
+per-claim tier table) plus `briefs/evidence/wport9/stop-panic-ruling.md`
+(the build STOP #1 ruling and its ledger-row derivation). Future rungs cite
+THIS section for conformance placement; the brief remains the derivation
+record (D8). Where this ledger and the brief's tier table differ, the
+ledger carries the ruled state (amendment-in-ledger — the panic row below).
+
+### Tier definitions
+
+- **T1 — hermetic Node wall.** The 80-name wasm-bindgen suite: permanent CI
+  (the workflow's `wasm32-unknown-unknown` job, exact-name + exact-count
+  carriers) AND release-gated on every box by the `gates.json` `wasm-tests`
+  leg (R1). Host-independent logic; no browser required.
+- **T2 — hermetic real-engine wall.** The conformance driver's territory
+  (`conformance/driver.mjs`): the real generated bundle, real headless
+  Chrome (version echoed), a real dedicated Worker. Permanent-workflow
+  territory (the `conformance` job) and NEVER `gates.json` — a release box
+  without a browser must not be able to fake or skip the leg; absent
+  prerequisites ERROR by name (D4).
+- **T3 — sitting territory.** Never CI acceptance; carried by official
+  probe sittings with committed evidence, each row with its recorded
+  reason.
+
+### Per-claim table
+
+Driver leg names (the workflow's eleven carriers): `build-artifacts`,
+`node-singlefile-noarg`, `browser-bootstrap-{workload,loader,output,`
+`process-error,f0d-idle,f0d-armed}`, `browser-worker-{workload,f0d}`,
+`browser-singlefile-noarg`.
+
+| Claim | T1 (exact wall names) | T2 (legs, R-numbers) |
+|---|---|---|
+| Construction | constructor walls in the 80 | all three artifacts: pkg+bootstrap browser init (`browser-bootstrap-*`), single-file no-arg Node (`node-singlefile-noarg`), single-file no-arg browser (`browser-singlefile-noarg`) (R3) |
+| Artifact loading, embedded/preload | — | `createPreloadedVm` loads the committed workload modules through the real bundle on every workload leg (R2/R3) |
+| Artifact fetching, runtime manifest loader | the thirteen `artifact_loader::` walls | `browser-bootstrap-loader`: `load_artifacts` against a loopback-served manifest with the page's real fetch (R3) |
+| Supported BIF behaviour | profile walls in the 80 | the workload exercises the supported set from bytecode — `spawn/3`, `!`, `receive`/`after`, `send_after`/`cancel_timer`, maps, `io:put_chars` (R2/R3) |
+| Unsupported BIF behaviour | `statistics_and_memory_refuse_explicitly_instead_of_fabricating_zeros` | one workload entry proves the typed refusal VALUE from bytecode (`catch erlang:statistics(runtime)` → `badarg`) (R2/R3) |
+| Wake: mailbox send | `idle_to_runnable_burst_queues_one_arbiter_turn` | behavioral re-proof from bytecode: delivery observed in the workload exit map with shim silence (R2/R3/R4) |
+| Wake: cast | `cast_from_true_idle_queues_one_turn_and_coalesces_a_burst` | same posture (R2/R3/R4) |
+| Wake: Promise/async-NIF + capability completion | `promise_completion_from_true_idle_queues_one_turn_with_durable_result`, `fetch_success_from_true_idle_delivers_the_codec_map_in_one_turn` | capability fetch + KV workload entries through injected capability objects (R2/R3/R4) |
+| Wake: receive timeout | `await_exit_waits_for_armed_receive_timer` | `receive … after` entry (R2/R3/R4) |
+| Wake: native deadline | `await_exit_waits_for_armed_native_deliver_timer` | `send_after`/`cancel_timer` entry (R2/R3/R4) |
+| Wake: spawn edge | `bytecode_spawn_runs_child_under_the_cooperative_scheduler` | `spawn/3` + child-wake entry (R2/R3/R4) |
+| Output | the `io_sink::` wall family | `browser-bootstrap-output` + the Node leg: sink-routed `(stream, text)` output recorded in order (R5) |
+| Process error | the `take_exit_error` walls | `browser-bootstrap-process-error`: a crashing workload entry (cross-module undef) surfaces its typed JSON from JS (R5) |
+| NO-POLLING idle + armed-future-deadline | `idle_vm_schedules_zero_recurring_callbacks`, both halves (`lib.rs:2333-2382`) | `browser-bootstrap-f0d-idle`, `browser-bootstrap-f0d-armed`, `browser-worker-f0d`: zero recorded shim events between settlement points, page AND Worker (R3/R4) |
+| Prohibited mechanisms | — | the shim record classifies by API name (`setInterval`, repeating `setTimeout`, `requestAnimationFrame`); any recurring pattern attributable to the bundle inside an observation window fails the leg (R3/R4) |
+
+Wake-class law (the truing-note law, binding on every T2 wake row): the T2
+claim is delivery + shim silence observed from JS — NEVER counter
+arithmetic; the production counters are not JS-visible. All window claims
+are settlement-event form under EARLY-UNDER-CACHED-CLOCK: no absolute host
+arm counts, no promptness assertions across a real fire. The legs earning
+every T2 wake, BIF, and loading row are the workload legs
+(`browser-bootstrap-workload`, `browser-worker-workload`,
+`node-singlefile-noarg`, `browser-singlefile-noarg`), which drive the
+committed R2 workload end to end and machine-check every exit map.
+
+### T1-only rows (reason recorded; no T2 leg exists)
+
+- **Pump/turn error.** Walls: the five `failure::` failure-leg walls
+  (closed slug set {queued, manual, deadline, promise, spawn_edge}).
+  Reason: inducing an arbiter-turn failure requires primitive doubles
+  installed before VM construction (the `failure.rs:252-320` seam) —
+  unreachable through the real bundle without adulterating it.
+- **Trapped-exit wake (from the real bundle).** Wall:
+  `trapped_exit_wakes_linked_supervisor_without_external_pump`
+  (native-handler trapping). Reason: no link facility is injected for
+  bytecode processes — `spawn_link`/`process_flag(trap_exit,_)` refuse from
+  bytecode and bytecode exits perform no link propagation
+  (`scheduler/wasm.rs:566-575`, the documented latent gap owned by a future
+  bytecode-linking brief; WPORT-4 tear Ruling 7 lineage).
+- **Native-completion wake (from the real bundle).** Walls:
+  `native_completion_envelope_wakes_parked_handler_through_the_arbiter`,
+  `native_completion_direct_injection_wakes_parked_handler`. Reason: native
+  handlers are Rust-side constructs with no JS surface; the real bundle
+  cannot mint one.
+- **Panic surfacing — RULED at build STOP #1 (domain owner, 2026-07-24;
+  amendment-in-ledger, supersedes the brief tier table's T2 half).** Walls:
+  `panic_hook_installs_exactly_once_across_vm_constructions`,
+  `panic_reaches_console_and_registered_callback_before_the_trap`.
+  Real-engine record: the WPORT-7 official sitting (2026-07-18) with its
+  committed sha-pinned panic-source diff
+  (`probes/evidence/2026-07-18/wport7-panic-source.diff`). Reason: no
+  committed JS-reachable panic route exists in the real bundle; a permanent
+  T2 leg would structurally require a SHIPPING deliberate-panic surface no
+  consumer requirement justifies (the D7/WPORT-10 discipline). Revival: a
+  consumer requirement for a JS-reachable panic route + the domain owner's
+  word.
+
+**Classification observation (banked, not owned):** interpreter raises from
+bytecode (badmatch, witnessed at the build's bytes) classify EXITED with an
+empty result — the WPORT-7 board finding (`:146`) biting in practice; undef
+classifies ERRORED and carries the typed `take_exit_error` shape (which is
+why the process-error leg uses a cross-module undef). The exited/errored
+vocabulary stays NOT-owned by this rung; exercising process-error paths did
+not reopen classification.
+
+### T3 rows (sitting territory; each with its reason)
+
+- **Background-tab / intensive throttle magnitudes and thresholds** —
+  engine POLICY (CDP window manipulation); the THROTTLE sittings carry it.
+- **Worker-timer throttling divergence** — engine-specific policy, same
+  class.
+- **`net::ERR_UNSAFE_PORT` and all browser-authored detail texts** —
+  browser-owned strings; asserting them pins Chrome's prose, not our
+  contract. The WPORT-8 sitting carries the record.
+- **Real IndexedDB backing** — the adapter contract is
+  capability-object-shaped; the backend is host territory. CI uses
+  in-memory/loopback capability objects; the WPORT-8 sitting proved the
+  real backend.
+- **Browser console interleave vs Node stream split** — host presentation,
+  not contract.
+- **ASYNC-entry abort surface** — ruled non-CI (FAILURE probe `:51-61`
+  standing ruling).
+- **Multi-engine variation** — CI proves one real engine, version echoed;
+  other engines are sitting territory.
+
+### Banked rows (revival conditions)
+
+- **Leg B — the 80 under a real engine via chromedriver (D1).** BANKED AS A
+  DIAGNOSTIC LEVER. Reason: the 80 are tier-1 host-independent logic by the
+  classing's own argument; re-proving all of them on a browser engine is
+  redundancy carrying real permanent cost (a second driving mechanism, ×80
+  flake surface). Revives WITHOUT CEREMONY if a real-engine divergence in a
+  tier-1 claim is ever suspected.
+- **Miniflare-with-real-bundle (D3).** The edge-worker suite is a consumer
+  EXAMPLE — its stub and stub-fidelity pin stay as-is; putting the
+  Miniflare npm tree on the permanent gate path is a supply-surface change
+  no current requirement pays for. Revives on a consumer requirement (the
+  edge-worker becoming shipped surface) + the domain owner's word.
+- **JS-visible module provenance (D7 — the WPORT-10 discipline).** No
+  consumer requirement exists; the WPORT-6 honest-gap sentence stands;
+  Rust/Node tests carry the claim. Opens on a consumer requirement + the
+  domain owner's word.
+- **JS-reachable deliberate panic route.** See the panic row above — same
+  revival condition, same discipline.
+- **Uncommitted-CDP-driver uncitability (residue ratification).** The CDP
+  driver cited by the THROTTLE/FETCH/FAILURE probe docs is ABSENT from main
+  at the bytes and UNCITABLE; the committed driverless spawn+POST pattern
+  (the noarg harness, then the conformance driver) is the citable
+  precedent.
 
 ## Dependency graph
 
@@ -218,8 +366,8 @@ The frozen critical path is **WPORT-1 → WPORT-2**. WPORT-1 turns compilation i
 
 ## Open questions for the tear
 
-1. **Which host-turn primitive implements WPORT-2: microtask, macrotask, or an explicit hybrid?** The boundary permits a coalesced microtask/macrotask but the inputs do not decide starvation and fairness policy. Decide with a browser prototype measuring long runnable bursts, Promise ordering, rendering opportunity, and the explicit fairness-yield result while asserting the F-0d idle wall.
-2. **What is the exact Apollo Biscuit v0.2 event schema and subscription API?** The frozen socket requires one vocabulary with `connection_events.rs` and snapshot-at-subscribe, but the evidence pack does not contain that interface. Decide with the socket v0.2 specification plus cited native hub API/tests showing event names, payloads, ordering, subscription lifetime, and snapshot semantics.
-3. **Which BIFs are in the first supported browser profile?** The current registry is broader than injected services (`crates/beamr/src/native/bifs.rs:47-82`; `crates/beamr/src/scheduler/wasm.rs:610-615` at `d9de35e`), so source inspection alone cannot choose product support. Decide after WPORT-1 with a generated registry-to-facility inventory and executable workload traces from the first browser applications.
-4. **Does WPORT-6 standardise the existing generated manifest or introduce a versioned runtime manifest?** The build creates `manifest.json` and inline bootstrap assets (`crates/beamr-wasm/build.rs:19-49`; `crates/beamr-wasm/build.rs:52-72`; `crates/beamr-wasm/build.rs:148-173` at `d9de35e`), but the inputs do not establish that format as a runtime contract. Decide with the generated schema, its current consumers, representative dependency graphs, and failure cases for versioning, integrity, MIME, and unresolved imports.
+1. **Which host-turn primitive implements WPORT-2: microtask, macrotask, or an explicit hybrid?** The boundary permits a coalesced microtask/macrotask but the inputs do not decide starvation and fairness policy. Decide with a browser prototype measuring long runnable bursts, Promise ordering, rendering opportunity, and the explicit fairness-yield result while asserting the F-0d idle wall. **DECIDED (at the WPORT-2 land `c9bb64a`; marker trued 2026-07-24 at the WPORT-9 close fold):** an EXPLICIT HYBRID, pinned at the bytes in the arbiter's `queue_turn` (`crates/beamr-wasm/src/lib.rs`): external idle-to-runnable wakes queue via `queueMicrotask` (`HostTurnLeg::ExternalMicrotask`); the explicit fairness yield re-arms via a one-shot `setTimeout(0)` macrotask (`HostTurnLeg::FairnessMacrotask`); one coalesced turn per transition, no duplicates while queued, F-0d idle wall pinned in permanent CI.
+2. **What is the exact Apollo Biscuit v0.2 event schema and subscription API?** The frozen socket requires one vocabulary with `connection_events.rs` and snapshot-at-subscribe, but the evidence pack does not contain that interface. Decide with the socket v0.2 specification plus cited native hub API/tests showing event names, payloads, ordering, subscription lifetime, and snapshot semantics. **DECIDED (2026-07-17, at the WPORT-4 land `db9edb3`; marker trued 2026-07-24 at the WPORT-9 close fold):** the host-fed browser connection-event hub `crates/beamr-wasm/src/connection_events.rs` fills socket v0.2 — ruled subscription ABI, locally-minted generations, the seven-variant reason mapping, snapshot-at-subscribe, the ten-invariant classification in the module contract; see the WPORT-4 status block.
+3. **Which BIFs are in the first supported browser profile?** The current registry is broader than injected services (`crates/beamr/src/native/bifs.rs:47-82`; `crates/beamr/src/scheduler/wasm.rs:610-615` at `d9de35e`), so source inspection alone cannot choose product support. Decide after WPORT-1 with a generated registry-to-facility inventory and executable workload traces from the first browser applications. **DECIDED (2026-07-17, at the WPORT-5 land `1ec8ec9`; marker trued 2026-07-24 at the WPORT-9 close fold):** the sealed profile `docs/design/beamr/BROWSER-BIF-PROFILE.md` is the enumeration — every registered browser BIF classed supported / supported-with-defined-approximation / unsupported (197 rows at the seal; 202 after WPORT-8's INJECTED seal move); see the WPORT-5 status block.
+4. **Does WPORT-6 standardise the existing generated manifest or introduce a versioned runtime manifest?** The build creates `manifest.json` and inline bootstrap assets (`crates/beamr-wasm/build.rs:19-49`; `crates/beamr-wasm/build.rs:52-72`; `crates/beamr-wasm/build.rs:148-173` at `d9de35e`), but the inputs do not establish that format as a runtime contract. Decide with the generated schema, its current consumers, representative dependency graphs, and failure cases for versioning, integrity, MIME, and unresolved imports. **DECIDED (2026-07-17, at the WPORT-6 land `ae2bf12`; marker trued 2026-07-24 at the WPORT-9 close fold):** a VERSIONED RUNTIME MANIFEST was introduced — fetch manifest v1 (`docs/design/beamr/FETCH-MANIFEST.md`; integrity field reserved-unenforced per the tear fold); the build-time generated `manifest.json` stays a packaging artifact, not the runtime contract; see the WPORT-6 status block.
 5. **Which fetch and storage operations constitute WPORT-8's selected first capability set?** The async-NIF/Promise seam exists (`crates/beamr-wasm/src/lib.rs:154-175`; `crates/beamr-wasm/src/lib.rs:558-581` at `d9de35e`), but the frozen boundary intentionally does not choose the product API. Decide with named target workloads, least-authority capability requirements, browser compatibility evidence, cancellation semantics, and the WPORT-5 support-profile decision. **DECIDED (2026-07-23, domain-owner dispositions on the WPORT-8 ground pack's eight tear questions; ratified as decided text in `briefs/WPORT-8.json`):** FETCH + KV STORAGE — `wasm_fetch:request/1` and `wasm_kv:get/1`/`put/2`/`delete/1`/`list_by_prefix/1`, two capability-scoped modules with one injected capability object each; named workloads: the edge-worker platform class and the BROWSER-OTP north-star class; host-side cancellation with mandatory process-death auto-abort; response streaming and a BEAM-side cancel BIF BANKED.
