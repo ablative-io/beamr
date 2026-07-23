@@ -354,7 +354,12 @@ fn allocate_binary(process: &mut Process, bytes: &[u8]) -> Result<Term, ExecErro
     // Safe to collect here: every caller passes owned bytes (the segment
     // writer copies source binaries), never a slice into the process heap.
     crate::gc::ensure_space(process, words, 256).map_err(core::gc_error_to_exec)?;
-    let ptr = process.heap_mut().alloc(words).map_err(ExecError::from)?;
+    // Large binaries land as a refcounted ProcBin; mark the allocation so the GC
+    // release walk drops its Arc. See `process::heap::AllocKind`.
+    let ptr = process
+        .heap_mut()
+        .alloc_maybe_refcounted(words)
+        .map_err(ExecError::from)?;
     let heap = heap_slice(ptr, words);
     alloc_binary(heap, bytes).ok_or(ExecError::Badarg)
 }

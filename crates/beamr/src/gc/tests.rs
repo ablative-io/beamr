@@ -79,6 +79,9 @@ pub(crate) fn alloc_proc_bin(process: &mut Process, shared: &SharedBinary) -> Te
     // SAFETY: GC allocation returned three writable words.
     let words = unsafe { std::slice::from_raw_parts_mut(ptr, 3) };
     let term = write_proc_bin(words, shared).expect("proc bin writer should fit allocated words");
+    process
+        .heap_mut()
+        .mark_last_young_allocation_maybe_refcounted();
     process.increase_virtual_binary_heap(shared.len());
     term
 }
@@ -87,7 +90,12 @@ pub(crate) fn alloc_fd_resource(process: &mut Process, inner: Arc<FdInner>) -> T
     let ptr = alloc(process, FD_RESOURCE_WORDS).expect("fd resource allocation via GC should fit");
     // SAFETY: GC allocation returned the fixed FdResource word count.
     let words = unsafe { std::slice::from_raw_parts_mut(ptr, FD_RESOURCE_WORDS) };
-    write_fd_resource(words, inner).expect("fd resource writer should fit allocated words")
+    let term =
+        write_fd_resource(words, inner).expect("fd resource writer should fit allocated words");
+    process
+        .heap_mut()
+        .mark_last_young_allocation_maybe_refcounted();
+    term
 }
 
 pub(crate) fn snapshot(term: Term) -> Snapshot {

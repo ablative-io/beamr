@@ -625,7 +625,12 @@ fn match_bytes(context: MatchContext, bits: usize, expected: &[u8]) -> Result<bo
 /// source slice points into the heap.
 fn allocate_binary(process: &mut Process, bytes: &[u8]) -> Result<Term, ExecError> {
     let words = alloc_binary_word_count(bytes.len());
-    let ptr = process.heap_mut().alloc(words).map_err(ExecError::from)?;
+    // Large binaries land as a refcounted ProcBin; mark the allocation so the GC
+    // release walk drops its Arc. See `process::heap::AllocKind`.
+    let ptr = process
+        .heap_mut()
+        .alloc_maybe_refcounted(words)
+        .map_err(ExecError::from)?;
     alloc_binary(heap_slice(ptr, words), bytes).ok_or(ExecError::Badarg)
 }
 fn allocate_extracted_binary(

@@ -140,7 +140,12 @@ pub(crate) fn finalize_builder(process: &mut Process, builder: Term) -> Result<T
     let byte_len = builder.write_position_bits() / u8::BITS as usize;
     let bytes = builder.bytes(byte_len).ok_or(ExecError::Badarg)?;
     let words = alloc_binary_word_count(byte_len);
-    let ptr = process.heap_mut().alloc(words).map_err(ExecError::from)?;
+    // Large binaries land as a refcounted ProcBin; mark the allocation so the GC
+    // release walk drops its Arc. See `process::heap::AllocKind`.
+    let ptr = process
+        .heap_mut()
+        .alloc_maybe_refcounted(words)
+        .map_err(ExecError::from)?;
     let heap = heap_slice(ptr, words);
     alloc_binary(heap, bytes).ok_or(ExecError::Badarg)
 }
