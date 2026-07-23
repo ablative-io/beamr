@@ -1,7 +1,7 @@
 wasm-bindgen-test-runner 0.2.123
    Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr)
    Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-wasm)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.25s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.22s
      Running unittests src/lib.rs (target/wasm32-unknown-unknown/debug/deps/beamr_wasm-f073d3a3eeda5945.wasm)
 running 80 tests
 test connection_events::tests::subscription_synthetics_are_subscriber_local_and_unsubscribe_stops_delivery ... ok
