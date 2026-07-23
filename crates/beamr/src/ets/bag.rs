@@ -1,13 +1,22 @@
+use std::sync::Arc;
+
 use dashmap::{DashMap, mapref::entry::Entry};
 
+use crate::ets::copy::{OwnedTerm, copy_term_to_ets};
+use crate::ets::owned_key::OwnedEtsKey;
 use crate::term::{Term, compare, hash::EtsKey};
 
 use super::{EtsError, EtsTable, EtsTableMetadata, tuple_key};
 
+type BagStorage = DashMap<OwnedEtsKey, Vec<Arc<OwnedTerm>>>;
+
 /// ETS bag table storage: many distinct tuples per key.
+///
+/// Rows are deep-copied into ETS-owned storage on insert; nothing in the map
+/// points into any process heap.
 pub struct EtsBag {
     metadata: EtsTableMetadata,
-    storage: DashMap<EtsKey, Vec<Term>>,
+    storage: BagStorage,
 }
 
 impl EtsBag {
@@ -31,11 +40,10 @@ impl EtsTable for EtsBag {
             tuple_key(tuple, self.metadata.keypos)?,
             tuple,
             false,
-        );
-        Ok(())
+        )
     }
 
-    fn lookup(&self, key: Term) -> Vec<Term> {
+    fn lookup(&self, key: Term) -> Vec<Arc<OwnedTerm>> {
         lookup_key(&self.storage, key)
     }
 
@@ -47,7 +55,7 @@ impl EtsTable for EtsBag {
         delete_object(&self.storage, tuple, self.metadata.keypos)
     }
 
-    fn tab2list(&self) -> Vec<Term> {
+    fn tab2list(&self) -> Vec<Arc<OwnedTerm>> {
         tab2list(&self.storage)
     }
 }
@@ -55,7 +63,7 @@ impl EtsTable for EtsBag {
 /// ETS duplicate_bag table storage: many tuples per key, preserving duplicates.
 pub struct EtsDuplicateBag {
     metadata: EtsTableMetadata,
-    storage: DashMap<EtsKey, Vec<Term>>,
+    storage: BagStorage,
 }
 
 impl EtsDuplicateBag {
@@ -79,11 +87,10 @@ impl EtsTable for EtsDuplicateBag {
             tuple_key(tuple, self.metadata.keypos)?,
             tuple,
             true,
-        );
-        Ok(())
+        )
     }
 
-    fn lookup(&self, key: Term) -> Vec<Term> {
+    fn lookup(&self, key: Term) -> Vec<Arc<OwnedTerm>> {
         lookup_key(&self.storage, key)
     }
 
@@ -95,41 +102,48 @@ impl EtsTable for EtsDuplicateBag {
         delete_object(&self.storage, tuple, self.metadata.keypos)
     }
 
-    fn tab2list(&self) -> Vec<Term> {
+    fn tab2list(&self) -> Vec<Arc<OwnedTerm>> {
         tab2list(&self.storage)
     }
 }
 
 fn insert_bag_tuple(
-    storage: &DashMap<EtsKey, Vec<Term>>,
+    storage: &BagStorage,
     key: Term,
     tuple: Term,
     allow_duplicates: bool,
-) {
-    match storage.entry(EtsKey::new(key)) {
+) -> Result<(), EtsError> {
+    let row = Arc::new(copy_term_to_ets(tuple)?);
+    let key = OwnedEtsKey::copy_of(key)?;
+    match storage.entry(key) {
         Entry::Occupied(mut entry) => {
             let values = entry.get_mut();
-            if allow_duplicates || !values.contains(&tuple) {
-                values.push(tuple);
+            if allow_duplicates
+                || !values
+                    .iter()
+                    .any(|value| compare::exact_eq(value.root(), row.root()))
+            {
+                values.push(row);
             }
         }
         Entry::Vacant(entry) => {
-            entry.insert(vec![tuple]);
+            entry.insert(vec![row]);
         }
     }
+    Ok(())
 }
 
-fn lookup_key(storage: &DashMap<EtsKey, Vec<Term>>, key: Term) -> Vec<Term> {
+fn lookup_key(storage: &BagStorage, key: Term) -> Vec<Arc<OwnedTerm>> {
     storage
         .get(&EtsKey::new(key))
         .map_or_else(Vec::new, |entry| entry.value().clone())
 }
 
-fn delete_key(storage: &DashMap<EtsKey, Vec<Term>>, key: Term) -> bool {
+fn delete_key(storage: &BagStorage, key: Term) -> bool {
     storage.remove(&EtsKey::new(key)).is_some()
 }
 
-fn delete_object(storage: &DashMap<EtsKey, Vec<Term>>, tuple: Term, keypos: usize) -> bool {
+fn delete_object(storage: &BagStorage, tuple: Term, keypos: usize) -> bool {
     let Ok(key) = tuple_key(tuple, keypos) else {
         return false;
     };
@@ -138,7 +152,7 @@ fn delete_object(storage: &DashMap<EtsKey, Vec<Term>>, tuple: Term, keypos: usiz
         Some(mut entry) => {
             let values = entry.value_mut();
             let original_len = values.len();
-            values.retain(|value| !compare::exact_eq(*value, tuple));
+            values.retain(|value| !compare::exact_eq(value.root(), tuple));
             (values.len() != original_len, values.is_empty())
         }
         None => (false, false),
@@ -149,7 +163,7 @@ fn delete_object(storage: &DashMap<EtsKey, Vec<Term>>, tuple: Term, keypos: usiz
     deleted
 }
 
-fn tab2list(storage: &DashMap<EtsKey, Vec<Term>>) -> Vec<Term> {
+fn tab2list(storage: &BagStorage) -> Vec<Arc<OwnedTerm>> {
     storage
         .iter()
         .flat_map(|entry| entry.value().clone())
@@ -161,9 +175,10 @@ mod tests {
     use super::{EtsBag, EtsDuplicateBag};
     use crate::{
         atom::Atom,
-        ets::{EtsError, EtsTable, EtsTableMetadata, EtsTableType, Protection},
-        term::{Term, boxed::write_tuple},
+        ets::{EtsError, EtsTable, EtsTableMetadata, EtsTableType, OwnedTerm, Protection},
+        term::{Term, boxed::write_tuple, compare},
     };
+    use std::sync::Arc;
 
     fn metadata(table_type: EtsTableType) -> EtsTableMetadata {
         EtsTableMetadata::new(None, 1, table_type, Protection::Public, 7)
@@ -181,8 +196,10 @@ mod tests {
         tuple_with_terms(words, Term::atom(key), Term::small_int(value))
     }
 
-    fn assert_contains_once(values: &[Term], expected: Term) {
-        assert_eq!(values.iter().filter(|value| **value == expected).count(), 1);
+    fn count_matching(rows: &[Arc<OwnedTerm>], expected: Term) -> usize {
+        rows.iter()
+            .filter(|row| compare::exact_eq(row.root(), expected))
+            .count()
     }
 
     #[test]
@@ -198,8 +215,8 @@ mod tests {
 
         let values = table.lookup(Term::atom(Atom::OK));
         assert_eq!(values.len(), 2);
-        assert_contains_once(&values, first);
-        assert_contains_once(&values, second);
+        assert_eq!(count_matching(&values, first), 1);
+        assert_eq!(count_matching(&values, second), 1);
     }
 
     #[test]
@@ -211,7 +228,9 @@ mod tests {
         assert_eq!(table.insert(item), Ok(()));
         assert_eq!(table.insert(item), Ok(()));
 
-        assert_eq!(table.lookup(Term::atom(Atom::OK)), vec![item]);
+        let values = table.lookup(Term::atom(Atom::OK));
+        assert_eq!(values.len(), 1);
+        assert_eq!(count_matching(&values, item), 1);
     }
 
     #[test]
@@ -223,7 +242,9 @@ mod tests {
         assert_eq!(table.insert(item), Ok(()));
         assert_eq!(table.insert(item), Ok(()));
 
-        assert_eq!(table.lookup(Term::atom(Atom::OK)), vec![item, item]);
+        let values = table.lookup(Term::atom(Atom::OK));
+        assert_eq!(values.len(), 2);
+        assert_eq!(count_matching(&values, item), 2);
     }
 
     #[test]
@@ -256,7 +277,9 @@ mod tests {
         assert!(table.delete_key(Term::atom(Atom::OK)));
 
         assert!(table.lookup(Term::atom(Atom::OK)).is_empty());
-        assert_eq!(table.lookup(Term::atom(Atom::ERROR)), vec![second]);
+        let remaining = table.lookup(Term::atom(Atom::ERROR));
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(count_matching(&remaining, second), 1);
     }
 
     #[test]
@@ -301,7 +324,9 @@ mod tests {
 
         assert_eq!(table.insert(item), Ok(()));
 
-        assert_eq!(table.lookup(Term::small_int(42)), vec![item]);
+        let values = table.lookup(Term::small_int(42));
+        assert_eq!(values.len(), 1);
+        assert_eq!(count_matching(&values, item), 1);
         assert!(table.lookup(Term::atom(Atom::OK)).is_empty());
     }
 }

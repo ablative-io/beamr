@@ -2,6 +2,7 @@ use crate::atom::Atom;
 use crate::ets::OwnedTerm;
 use crate::term::Term;
 use std::fmt;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Unique, monotonically increasing ETS table identifier.
@@ -161,16 +162,21 @@ impl std::error::Error for EtsError {}
 ///
 /// Raw table operations do not carry a caller PID; the scheduler/BIF layer must
 /// call [`EtsTable::check_access`] before invoking reads or writes.
+///
+/// `insert` deep-copies the tuple into ETS-owned storage; reads return
+/// [`OwnedTerm`] rows whose `Arc` keeps them alive after concurrent deletes.
+/// Row roots must be deep-copied onto a process heap before they are handed
+/// to Erlang code.
 pub trait EtsTable: Send + Sync {
     fn metadata(&self) -> &EtsTableMetadata;
     fn transfer_owner(&self, new_owner: u64) {
         self.metadata().owner.set(new_owner);
     }
     fn insert(&self, tuple: Term) -> Result<(), EtsError>;
-    fn lookup(&self, key: Term) -> Vec<Term>;
+    fn lookup(&self, key: Term) -> Vec<Arc<OwnedTerm>>;
     fn delete_key(&self, key: Term) -> bool;
     fn delete_object(&self, tuple: Term) -> bool;
-    fn tab2list(&self) -> Vec<Term>;
+    fn tab2list(&self) -> Vec<Arc<OwnedTerm>>;
 
     fn check_access(&self, caller_pid: u64, operation: AccessOp) -> Result<(), EtsError> {
         let metadata = self.metadata();
@@ -229,7 +235,7 @@ mod tests {
             Ok(())
         }
 
-        fn lookup(&self, _key: Term) -> Vec<Term> {
+        fn lookup(&self, _key: Term) -> Vec<Arc<OwnedTerm>> {
             Vec::new()
         }
 
@@ -241,7 +247,7 @@ mod tests {
             false
         }
 
-        fn tab2list(&self) -> Vec<Term> {
+        fn tab2list(&self) -> Vec<Arc<OwnedTerm>> {
             Vec::new()
         }
     }

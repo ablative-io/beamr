@@ -5,6 +5,7 @@ pub mod copy;
 pub mod match_arena;
 pub mod match_spec;
 pub mod ordered_set;
+pub(crate) mod owned_key;
 pub mod set;
 pub mod table;
 pub mod term_key;
@@ -222,7 +223,9 @@ mod tests {
                 .expect("tuple fits");
 
         table.insert(tuple).expect("tuple inserts");
-        assert_eq!(table.lookup(Term::atom(Atom::OK)), vec![tuple]);
+        let rows = table.lookup(Term::atom(Atom::OK));
+        assert_eq!(rows.len(), 1);
+        assert!(crate::term::compare::exact_eq(rows[0].root(), tuple));
     }
 
     #[test]

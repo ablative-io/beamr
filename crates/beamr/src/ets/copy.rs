@@ -64,6 +64,12 @@ impl OwnedTerm {
         self.allocations.len()
     }
 
+    /// Split into the root term and the backing allocations, for callers that
+    /// adopt the allocations into their own storage (detached native contexts).
+    pub(crate) fn into_raw_parts(self) -> (Term, Vec<Box<[u64]>>) {
+        (self.root, self.allocations)
+    }
+
     /// Total heap words `copy_to_heap` will allocate for this term: the
     /// owned-side copier and the heap-side copier write identical boxed
     /// layouts object for object.

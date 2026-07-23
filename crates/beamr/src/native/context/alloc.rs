@@ -168,6 +168,39 @@ impl ProcessContext<'_> {
         }
     }
 
+    /// Deep-copy an ETS-owned term onto the calling process heap.
+    ///
+    /// Reserves the exact word budget first, so the copy itself cannot
+    /// collect. ETS-owned source memory is unaffected by process GC, so no
+    /// rooting is needed.
+    pub fn copy_owned_term(&mut self, owned: &crate::ets::OwnedTerm) -> Result<Term, Term> {
+        self.ensure_heap_space(owned.total_words())?;
+        self.copy_owned_term_prereserved(owned)
+    }
+
+    /// Deep-copy an ETS-owned term using pre-reserved heap space (no GC
+    /// trigger). Caller must have called `ensure_heap_space` for the total
+    /// budget (`OwnedTerm::total_words`).
+    ///
+    /// The copy materialises binaries inline (never as refcounted ProcBins),
+    /// so no allocation marking is needed. Detached contexts adopt a fresh
+    /// owned copy into their allocation list instead.
+    pub fn copy_owned_term_prereserved(
+        &mut self,
+        owned: &crate::ets::OwnedTerm,
+    ) -> Result<Term, Term> {
+        if let Some(process) = self.process.as_deref_mut() {
+            return owned
+                .copy_to_heap(process.heap_mut())
+                .map_err(|_| Term::atom(crate::atom::Atom::BADARG));
+        }
+        let copied = crate::ets::copy_term_to_ets(owned.root())
+            .map_err(|_| Term::atom(crate::atom::Atom::BADARG))?;
+        let (root, allocations) = copied.into_raw_parts();
+        self.detached_allocations.extend(allocations);
+        Ok(root)
+    }
+
     /// Allocate a big integer on the calling process heap.
     pub fn alloc_bigint(&mut self, negative: bool, limbs: &[u64]) -> Result<Term, Term> {
         let words = 3 + limbs.len();
