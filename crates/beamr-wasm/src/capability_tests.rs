@@ -752,6 +752,157 @@ async fn native_caller_receives_verbatim_contract_on_both_arms() {
     assert_eq!(vm.capability_counters().dead_pid_completions, 0);
 }
 
+// ---------------------------------------------------------------------------
+// Tear-finding walls (WPORT-8 tear, 2026-07-24): native callers must be
+// DELIVERED immediate-success completions. kv put/delete success (`true`)
+// and get-absent (`undefined`) build ZERO detached allocations, and at
+// 14f0cfc `build_completion`'s `take_detached_result(...)?` treated the
+// empty-allocations `None` as construction failure, so `finish_request`
+// dropped the completion and the parked native handler hung forever —
+// happy path, native caller class. Each wall bounds the await at two
+// macrotask turns (the verbatim-contract wall's bound) and asserts the
+// envelope arrived, so the red state fails bounded instead of hanging.
+// ---------------------------------------------------------------------------
+
+/// A native caller that issues one `wasm_kv` async call with immediate
+/// (atom) args and records the mailbox envelope it is resumed with.
+struct ImmediateKvCaller {
+    mfa: NativeKey,
+    args: Vec<Term>,
+    issued: bool,
+    atom_table: StdArc<AtomTable>,
+    envelopes: StdArc<Mutex<Vec<serde_json::Value>>>,
+}
+
+impl NativeHandler for ImmediateKvCaller {
+    fn handle(&mut self, ctx: &mut NativeContext<'_>) -> NativeOutcome {
+        if !self.issued {
+            self.issued = true;
+            return match ctx.start_async(self.mfa, &self.args) {
+                Ok(()) => NativeOutcome::Wait,
+                Err(_) => NativeOutcome::Stop(ExitReason::Error),
+            };
+        }
+        while let Some(message) = ctx.recv() {
+            if let Ok(value) = term_to_value(message, self.atom_table.as_ref()) {
+                self.envelopes.lock().expect("envelope sink").push(value);
+                return NativeOutcome::Stop(ExitReason::Normal);
+            }
+        }
+        NativeOutcome::Wait
+    }
+}
+
+/// Spawn a native `wasm_kv` caller and return every envelope recorded
+/// within the two-macrotask deadline (delivery-not-hang: an undelivered
+/// completion leaves this empty and the wall fails bounded).
+async fn native_kv_envelopes(
+    vm: &mut WasmVm,
+    function: &str,
+    args: Vec<Term>,
+) -> Vec<serde_json::Value> {
+    let mfa: NativeKey = (
+        vm.atom_table.intern("wasm_kv"),
+        vm.atom_table.intern(function),
+        args.len() as u8,
+    );
+    let envelopes = StdArc::new(Mutex::new(Vec::new()));
+    let atom_table = StdArc::clone(&vm.atom_table);
+    {
+        let envelopes = StdArc::clone(&envelopes);
+        let _pid = spawn_native_root_edge(
+            vm,
+            Box::new(move || {
+                Box::new(ImmediateKvCaller {
+                    mfa,
+                    args: args.clone(),
+                    issued: false,
+                    atom_table: StdArc::clone(&atom_table),
+                    envelopes: StdArc::clone(&envelopes),
+                })
+            }),
+        );
+    }
+    host_macrotask().await;
+    host_macrotask().await;
+    let recorded = envelopes.lock().expect("envelope sink").clone();
+    recorded
+}
+
+/// Tear finding, leg 1: native `wasm_kv:put/2` success is an immediate
+/// `true` — the completion resumes the parked caller with the verbatim
+/// `{ok, true}` envelope (delivery, not hang), and the put is real: a
+/// bytecode get round-trips the stored value afterwards.
+#[wasm_bindgen_test]
+async fn native_kv_put_success_delivers_immediate_true_envelope() {
+    let mut vm = WasmVm::new().expect("VM constructs");
+    vm.register_kv_capability(in_memory_kv_capability());
+    let key = Term::atom(vm.atom_table.intern("tear_key"));
+    let value = Term::atom(vm.atom_table.intern("tear_value"));
+
+    let envelopes = native_kv_envelopes(&mut vm, "put", vec![key, value]).await;
+    assert_eq!(
+        envelopes.as_slice(),
+        &[json!(["ok", true])],
+        "native put success delivers the immediate {{ok, true}} envelope"
+    );
+
+    capability_call_module(&vm, "wport8_tear_get", "wasm_kv", "get", 1);
+    assert_eq!(
+        run_kv(&mut vm, "wport8_tear_get", r#"["tear_key"]"#).await,
+        json!(["ok", "tear_value"]),
+        "the delivered put actually stored the value"
+    );
+    assert_eq!(vm.capability_counters().dead_pid_completions, 0);
+}
+
+/// Tear finding, leg 2: native `wasm_kv:get/1` on an ABSENT key is an
+/// immediate `undefined` atom — delivered as `{ok, undefined}`, never a
+/// hang.
+#[wasm_bindgen_test]
+async fn native_kv_get_absent_delivers_immediate_undefined_envelope() {
+    let mut vm = WasmVm::new().expect("VM constructs");
+    vm.register_kv_capability(in_memory_kv_capability());
+    let key = Term::atom(vm.atom_table.intern("never_put"));
+
+    let envelopes = native_kv_envelopes(&mut vm, "get", vec![key]).await;
+    assert_eq!(
+        envelopes.as_slice(),
+        &[json!(["ok", null])],
+        "native get-absent delivers the immediate {{ok, undefined}} envelope"
+    );
+    assert_eq!(vm.capability_counters().dead_pid_completions, 0);
+}
+
+/// Tear finding, leg 3: native `wasm_kv:delete/1` success is an immediate
+/// `true` — delivered as `{ok, true}` (not a hang), and the delete is
+/// real: a bytecode get of the deleted key reads absent afterwards.
+#[wasm_bindgen_test]
+async fn native_kv_delete_success_delivers_immediate_true_envelope() {
+    let mut vm = WasmVm::new().expect("VM constructs");
+    vm.register_kv_capability(in_memory_kv_capability());
+    capability_call_module(&vm, "wport8_tear_seed", "wasm_kv", "put", 2);
+    capability_call_module(&vm, "wport8_tear_check", "wasm_kv", "get", 1);
+    assert_eq!(
+        run_kv(&mut vm, "wport8_tear_seed", r#"["doomed", "value"]"#).await,
+        json!(["ok", true])
+    );
+
+    let key = Term::atom(vm.atom_table.intern("doomed"));
+    let envelopes = native_kv_envelopes(&mut vm, "delete", vec![key]).await;
+    assert_eq!(
+        envelopes.as_slice(),
+        &[json!(["ok", true])],
+        "native delete success delivers the immediate {{ok, true}} envelope"
+    );
+    assert_eq!(
+        run_kv(&mut vm, "wport8_tear_check", r#"["doomed"]"#).await,
+        json!(["ok", null]),
+        "the delivered delete actually removed the key"
+    );
+    assert_eq!(vm.capability_counters().dead_pid_completions, 0);
+}
+
 /// R3: the KV surface round-trips against the in-memory host — byte-exact
 /// get after put, `{ok, undefined}` for absent, idempotent delete, and
 /// lexicographic list_by_prefix (empty prefix = full listing).
