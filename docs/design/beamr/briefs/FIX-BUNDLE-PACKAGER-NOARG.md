@@ -72,3 +72,13 @@ defect stayed latent.
 
 Gate bar: the four-leg battery COLD at the final head (build.rs is
 beamr-wasm crate source); the wasm suite stays 80/80 untouched.
+
+## Successor (pointer only — WPORT-9, 2026-07-24)
+
+The no-arg init path this fix restored is now driven as **permanent CI**
+by the WPORT-9 conformance driver (`conformance/driver.mjs`, brief
+`docs/design/beamr/briefs/WPORT-9.json` R3): the `node-singlefile-noarg`
+and `browser-singlefile-noarg` legs call `createPreloadedVm()` with no
+argument — never bytes — in both hosts on every push. This lane's
+harness and its committed red/green outputs remain immutable as the
+discovery-time evidence; the driver's legs are their permanent successor.

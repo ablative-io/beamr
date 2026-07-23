@@ -1,0 +1,30 @@
+WPORT-9 R1 RED — the wasm-tests leg FAILS LOUD on a box without the runner
+==========================================================================
+base: wport9/build @ c66e68d (leg committed; gates runner binds to
+committed trees only)
+date: 2026-07-24
+
+Mechanism: a shadow PATH bin carrying every ~/.cargo/bin tool EXCEPT
+wasm-bindgen-test-runner (symlinks), PATH=<shadow>:/usr/bin:/bin — the
+exact shape of a release box that never installed the runner.
+
+  PATH=<shadow>:/usr/bin:/bin python3 <stack>/gates/gates.py run \
+    --config gates.json --out gate-logs/
+
+== gate run: beamr @ c66e68dbaf73 (tree 03fb334bea99) ==
+  fmt                    exit 0          0.6s
+  clippy                 exit 0          1.2s
+  wasm32-check           exit 0          0.4s
+  wasm-tests             exit 127        0.0s   0 passed, 0 failed (0 suites)
+  tests                  exit 0         25.0s   1998 passed, 0 failed (69 suites)
+VERDICT: RED
+
+gate-logs/wasm-tests.log:
+  /bin/sh: wasm-bindgen-test-runner: command not found
+
+The leg CANNOT be skipped and CANNOT pass vacuously: the version echo is
+the leg's first command, so an absent runner is exit 127 with the tool
+named before cargo is ever invoked. The battery verdict is RED on that
+alone. (Warm-cache timings — this is lane evidence for the fail-loud
+mechanic, not release evidence; the release-standard cold battery rides
+the final head.)

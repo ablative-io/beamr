@@ -1,0 +1,34 @@
+WPORT-9 R7 GREEN — the sweep validity check bites at build, loudly, by name
+===========================================================================
+base: wport9/build, check landed atop RED 7faf58b
+date: 2026-07-24
+
+1) THE CHECK BITES — same invocation as the RED (malformed_not_beam.beam
+   in the swept directory), now FAILS THE BUILD:
+
+  error: failed to run custom build command for `beamr-wasm v0.7.0 (...)`
+  Caused by:
+    process didn't exit successfully: ... (exit status: 1)
+    --- stderr
+    Error: "bundle sweep refused: `<abs>/wport9-sweep-red/malformed_not_beam.beam`
+    has a .beam extension but no BEAM container magic (expected `FOR1` at
+    bytes 0-3 and `BEAM` at bytes 8-11); remove the file from the bundle
+    directory or point BEAMR_WASM_BUNDLE_DIR at a directory of real modules"
+
+   The offending file is NAMED with its full path; the expected magic is
+   stated; the remedy is stated. No panic, no unwrap — an explicit error
+   through the build script's Result path.
+
+2) VALID SWEEP UNAFFECTED — the edge-worker README's own sweep dir:
+
+  BEAMR_WASM_BUNDLE_DIR=<abs>/crates/beamr/tests/fixtures/gleam_gate \
+    cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked
+  -> Finished `dev` profile ... (exit 0)
+
+3) ZERO-MODULE SWEEP PRESERVED — no env set, all four artifacts still
+   emitted (pack §3.5 behavior): bootstrap.js, manifest.json, modules.bin,
+   package-bundle.mjs present in OUT_DIR/beamr-wasm-bundle/.
+
+Check: IFF container magic, `FOR1` at bytes 0-3 and `BEAM` at bytes 8-11,
+verified after the extension filter and before embedding
+(crates/beamr-wasm/build.rs, collect_modules).

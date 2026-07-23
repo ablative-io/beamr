@@ -1,0 +1,99 @@
+wasm-bindgen-test-runner 0.2.123
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr)
+   Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-wasm)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.65s
+     Running unittests src/lib.rs (target/wasm32-unknown-unknown/debug/deps/beamr_wasm-f073d3a3eeda5945.wasm)
+running 80 tests
+test connection_events::tests::subscription_synthetics_are_subscriber_local_and_unsubscribe_stops_delivery ... ok
+test connection_events::tests::subscription_snapshot_delivers_synthetic_ups_then_live_events_in_shared_vocabulary ... ok
+test connection_events::tests::subscription_during_churn_misses_no_session_and_double_sees_none ... ok
+test capability::tests::uninjected_modules_refuse_typed_with_zero_counter_motion ... ok
+test capability::tests::refusal_precedes_arg_validation_and_badarg_stays_distinct ... ok
+test capability::tests::native_kv_put_success_delivers_immediate_true_envelope ... ok
+test capability::tests::native_kv_get_absent_delivers_immediate_undefined_envelope ... ok
+test capability::tests::native_kv_delete_success_delivers_immediate_true_envelope ... ok
+test capability::tests::native_caller_receives_verbatim_contract_on_both_arms ... ok
+test capability::tests::late_abort_after_completion_is_a_harmless_noop ... ok
+test capability::tests::kv_adapter_round_trips_get_put_delete_and_lexicographic_list ... ok
+test capability::tests::fetch_success_from_true_idle_delivers_the_codec_map_in_one_turn ... ok
+test capability::tests::dying_caller_auto_aborts_in_flight_and_late_completion_is_counted ... ok
+test capability::tests::capability_kind_slug_set_is_closed_and_exact ... ok
+test capability::tests::capability_injection_is_module_scoped_last_wins ... ok
+test capability::tests::capability_error_minter_follows_the_artifact_load_error_mold ... ok
+test capability::tests::bytecode_caller_survives_every_error_leg_and_the_slug_set_is_closed ... ok
+test artifact_loader::tests::rejecting_fetch_double_rejects_batch_with_artifact_fetch_failed_and_loaded_list ... ok
+test artifact_loader::tests::post_batch_verification_asserts_in_manifest_deferreds_healed_and_reports_absent_targets ... ok
+test artifact_loader::tests::non_promise_fetch_return_rejects_with_fetch_protocol ... ok
+test artifact_loader::tests::mutual_cycle_pair_loads_in_manifest_order_and_reports_the_scc ... ok
+test artifact_loader::tests::manifest_url_to_executed_module_end_to_end_reaches_settled_completion ... ok
+test artifact_loader::tests::manifest_chain_loads_dependencies_before_dependants_with_clean_report ... ok
+test artifact_loader::tests::malformed_artifact_bytes_reject_with_exact_decode_stage_kind_slugs ... ok
+test artifact_loader::tests::failing_manifest_fetch_rejects_with_manifest_fetch_failed ... ok
+test artifact_loader::tests::duplicate_module_names_in_manifest_reject_with_manifest_malformed ... ok
+test artifact_loader::tests::dependant_before_dependency_defers_then_heals_at_call_time ... ok
+test artifact_loader::tests::dep_edge_naming_module_absent_from_manifest_rejects_dependency_missing ... ok
+test artifact_loader::tests::artifact_load_error_kind_slug_set_is_closed_and_exact ... ok
+test io_sink::tests::throwing_callback_switches_flush_remainder_to_console_at_one_split_point ... ok
+test io_sink::tests::reentrant_run_step_mid_flush_receives_already_draining_refusal ... ok
+test io_sink::tests::multi_turn_fairness_output_order_is_total_across_turns ... ok
+test io_sink::tests::io_format_2_facility_absent_badarg_is_pinned ... ok
+test io_sink::tests::flush_on_failed_drain_delivers_output_before_typed_rejection ... ok
+test io_sink::tests::flush_decodes_bytes_as_lossy_utf8 ... ok
+test io_sink::tests::flush_completes_before_waiter_resolution_on_success_path ... ok
+test io_sink::tests::cross_process_interleave_is_slice_order ... ok
+test io_sink::tests::buffer_preserves_write_order_across_stream_tags ... ok
+test convert::tests::documents_boolean_atom_round_trip_as_atom_names ... ok
+test convert::tests::converts_terms_to_js_values ... ok
+test convert::tests::converts_complex_nested_js_object_to_term ... ok
+test tests::unified_deadline_keeps_one_host_callback_for_mixed_timer_burst ... ok
+test tests::trapped_exit_wakes_linked_supervisor_without_external_pump ... ok
+test tests::take_exit_error_distinguishes_refusal_reasons_from_js ... ok
+test tests::statistics_and_memory_refuse_explicitly_instead_of_fabricating_zeros ... ok
+test tests::promise_completion_from_true_idle_queues_one_turn_with_durable_result ... ok
+test tests::print_family_lands_in_registered_sink_with_stream_tags ... ok
+test tests::native_completion_envelope_wakes_parked_handler_through_the_arbiter ... ok
+test tests::native_completion_direct_injection_wakes_parked_handler ... ok
+test tests::native_and_cooperative_spawns_mint_distinct_pids ... ok
+test tests::later_deadline_does_not_rearm_the_unified_callback ... ok
+test tests::late_fire_delivers_all_due_timer_classes_queues_one_turn_and_arms_next ... ok
+test tests::idle_vm_schedules_zero_recurring_callbacks ... ok
+test tests::idle_to_runnable_burst_queues_one_arbiter_turn ... ok
+test tests::fairness_yield_reports_runnable_remaining ... ok
+test tests::early_host_fire_re_arms_the_remainder_and_still_delivers ... ok
+test tests::earlier_deadline_cancels_and_rearms_the_unified_callback ... ok
+test tests::default_sink_routes_output_to_console_with_zero_configuration ... ok
+test tests::cross_process_bytecode_send_delivers_and_coalesces_a_burst ... ok
+test tests::cooperative_bytecode_timer_bifs_round_trip_and_arm_unified_deadline ... ok
+test tests::cast_from_true_idle_queues_one_turn_and_coalesces_a_burst ... ok
+test tests::cancelling_earliest_deadline_moves_or_clears_the_unified_callback ... ok
+test tests::bytecode_spawn_runs_child_under_the_cooperative_scheduler ... ok
+test tests::await_vm_call_resolves_with_js_handler_reply ... ok
+test tests::await_exit_waits_for_armed_receive_timer ... ok
+test tests::await_exit_waits_for_armed_native_deliver_timer ... ok
+test tests::arbiter_reedges_after_true_idle ... ok
+test tests::arbiter_installation_rejects_missing_host_primitive ... ok
+test tests::arbiter_drives_an_actor_call_to_completion ... ok
+test tests::apply_and_export_fun_dispatch_registered_bifs_without_undef ... ok
+test failure::tests::terminal_error_returns_null_then_repeatable_json_after_failure ... ok
+test failure::tests::spawn_edge_wake_failure_swallows_into_latch_with_spawn_edge_leg ... ok
+test failure::tests::queued_drain_failure_rejects_await_exit_with_typed_scheduler_failure ... ok
+test failure::tests::promise_completion_wake_failure_reaches_both_surfaces ... ok
+test failure::tests::panic_reaches_console_and_registered_callback_before_the_trap ... ok
+test failure::tests::panic_hook_installs_exactly_once_across_vm_constructions ... ok
+test failure::tests::manual_drain_failure_returns_typed_error_resets_state_and_latches ... ok
+test failure::tests::failure_leg_slug_set_is_closed_and_exact ... ok
+test failure::tests::failure_callback_fires_exactly_once_at_first_failure ... ok
+test failure::tests::deadline_late_fire_wake_failure_reaches_both_surfaces ... ok
+
+test result: ok. 80 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.39s
+
+     Running tests/generated_bootstrap.rs (target/wasm32-unknown-unknown/debug/deps/generated_bootstrap-99f5bef8fc00ff28.wasm)
+no tests to run!
+     Running tests/profile_seal.rs (target/wasm32-unknown-unknown/debug/deps/profile_seal-4d75d5f7f210ab54.wasm)
+no tests to run!
+   Doc-tests beamr_wasm
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
