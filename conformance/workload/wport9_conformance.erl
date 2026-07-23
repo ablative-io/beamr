@@ -1,7 +1,10 @@
 %% WPORT-9 conformance workload — one exported entry per acceptance-shape
 %% surface, executed FROM BYTECODE through the real generated bundle by
-%% conformance/driver.mjs. Every entry terminates in a map the driver
-%% machine-checks (or, for process_error/0, a deliberate abnormal exit).
+%% conformance/driver.mjs. Every entry terminates by RETURNING a map the
+%% driver machine-checks via take_exit_result (normal exit carries the
+%% final expression; exit/1 would classify the process abnormal and carry
+%% nothing) — except process_error/0, which crashes error-class on
+%% purpose so the typed surface has something to say.
 %%
 %% Surface discipline (brief WPORT-9 R2): only BIFs reachable under the
 %% cooperative wasm registration set (gate1 + gate2 + stdlib stubs +
@@ -36,9 +39,9 @@ wake_send() ->
     Child = erlang:spawn(wport9_conformance, wake_send_child, [self()]),
     receive
         {wport9_child, Child, Value} ->
-            exit(#{<<"entry">> => <<"wake_send">>,
-                   <<"child_value">> => Value,
-                   <<"spawned">> => true})
+            #{<<"entry">> => <<"wake_send">>,
+              <<"child_value">> => Value,
+              <<"spawned">> => true}
     end.
 
 wake_send_child(Parent) ->
@@ -46,22 +49,24 @@ wake_send_child(Parent) ->
 
 %% Cast wake: parks in receive at true idle; the driver casts a
 %% codec-native map (JS objects marshal to maps — tuples are not
-%% JS-mintable).
+%% JS-mintable). Delivery shape observed at the bytes: the cast lands as
+%% a 2-tuple {Tag, Payload} envelope in the bytecode mailbox.
 wake_cast() ->
     receive
-        #{<<"cast">> := Payload} ->
-            exit(#{<<"entry">> => <<"wake_cast">>,
-                   <<"payload">> => Payload})
+        {_Tag, #{<<"cast">> := Payload}} ->
+            #{<<"entry">> => <<"wake_cast">>,
+              <<"payload">> => Payload}
     end.
 
 %% Receive-timeout wake: nothing arrives; the after-clause fires.
 wake_receive_timeout() ->
     receive
-        {never, _} -> exit(#{<<"entry">> => <<"wake_receive_timeout">>,
-                             <<"outcome">> => <<"unexpected_message">>})
+        {never, _} ->
+            #{<<"entry">> => <<"wake_receive_timeout">>,
+              <<"outcome">> => <<"unexpected_message">>}
     after 40 ->
-        exit(#{<<"entry">> => <<"wake_receive_timeout">>,
-               <<"outcome">> => <<"timed_out">>})
+        #{<<"entry">> => <<"wake_receive_timeout">>,
+          <<"outcome">> => <<"timed_out">>}
     end.
 
 %% Timer-deadline wake from bytecode: send_after arms the unified Deliver
@@ -73,17 +78,17 @@ wake_timer_deadline() ->
     erlang:send_after(40, self(), wport9_tick),
     receive
         wport9_tick ->
-            exit(#{<<"entry">> => <<"wake_timer_deadline">>,
-                   <<"tick">> => true,
-                   <<"cancelled_had_remaining">> => Remaining > 0})
+            #{<<"entry">> => <<"wake_timer_deadline">>,
+              <<"tick">> => true,
+              <<"cancelled_had_remaining">> => Remaining > 0}
     end.
 
 %% Async-NIF / Promise-completion wake, fetch arm: suspend on the
 %% capability op; the promise settlement is the wake.
 capability_fetch(Url) ->
     {ok, Response} = wasm_fetch:request(#{<<"url">> => Url}),
-    exit(#{<<"entry">> => <<"capability_fetch">>,
-           <<"response">> => Response}).
+    #{<<"entry">> => <<"capability_fetch">>,
+      <<"response">> => Response}.
 
 %% Async-NIF / Promise-completion wake, KV arm: put/get round-trip,
 %% delete idempotence, lexicographic listing.
@@ -93,10 +98,10 @@ capability_kv(Key, Value) ->
     {ok, Keys} = wasm_kv:list_by_prefix(<<"wport9:">>),
     {ok, true} = wasm_kv:delete(Key),
     {ok, undefined} = wasm_kv:get(Key),
-    exit(#{<<"entry">> => <<"capability_kv">>,
-           <<"stored">> => Stored,
-           <<"keys">> => Keys,
-           <<"deleted">> => true}).
+    #{<<"entry">> => <<"capability_kv">>,
+      <<"stored">> => Stored,
+      <<"keys">> => Keys,
+      <<"deleted">> => true}.
 
 %% Supported-BIF entry: maps construction/fold, term comparison, self/0 —
 %% the profile's supported core exercised as values.
@@ -105,11 +110,11 @@ bif_supported() ->
     Sum = maps:fold(fun(_K, V, Acc) -> Acc + V end, 0, Map),
     Ordered = <<"a">> < <<"b">>,
     SelfIsPid = is_pid(self()),
-    exit(#{<<"entry">> => <<"bif_supported">>,
-           <<"sum">> => Sum,
-           <<"ordered">> => Ordered,
-           <<"self_is_pid">> => SelfIsPid,
-           <<"keys">> => maps:keys(Map)}).
+    #{<<"entry">> => <<"bif_supported">>,
+      <<"sum">> => Sum,
+      <<"ordered">> => Ordered,
+      <<"self_is_pid">> => SelfIsPid,
+      <<"keys">> => maps:keys(Map)}.
 
 %% Unsupported-BIF entry: statistics/1 refuses badarg (no system_info
 %% facility — the deliberate WPORT-5 refusal); the catch shape IS the
@@ -120,22 +125,24 @@ bif_unsupported() ->
         {'EXIT', {badarg, _}} -> <<"badarg_caught">>;
         _ -> <<"unexpected">>
     end,
-    exit(#{<<"entry">> => <<"bif_unsupported">>,
-           <<"refusal">> => Refused}).
+    #{<<"entry">> => <<"bif_unsupported">>,
+      <<"refusal">> => Refused}.
 
 %% Output entry: two ordered sink writes; the driver asserts both arrive
 %% through the registered sink callback in order.
 output_entry() ->
     ok = io:put_chars(<<"wport9 output line one\n">>),
     ok = io:put_chars(<<"wport9 output line two\n">>),
-    exit(#{<<"entry">> => <<"output_entry">>,
-           <<"wrote">> => 2}).
+    #{<<"entry">> => <<"output_entry">>,
+      <<"wrote">> => 2}.
 
-%% Process-error entry: deliberate abnormal exit with a recognizable
-%% reason; the driver asserts the typed error surfaces via the JS-visible
-%% exit-error surface, not just a dead pid.
+%% Process-error entry: a deliberate ERROR-class crash via undef — the
+%% one bytecode crash class that reaches the errored surface at current
+%% bytes. Interpreter raises (badmatch and kin) classify as exited with
+%% x0 preserved — the banked WPORT-7 exited/errored classification gap
+%% (arc :146), NOT owned by this rung; the ledger carries the reasoning.
 process_error() ->
-    erlang:exit(wport9_deliberate_error).
+    wport9_missing_module:missing_fn().
 
 %% Armed-future-deadline hold: parks with a far-future receive timer so
 %% the F-0d window can observe that an armed deadline produces ONE
@@ -144,9 +151,9 @@ process_error() ->
 armed_hold() ->
     receive
         wport9_release ->
-            exit(#{<<"entry">> => <<"armed_hold">>,
-                   <<"outcome">> => <<"released">>})
+            #{<<"entry">> => <<"armed_hold">>,
+              <<"outcome">> => <<"released">>}
     after 600000 ->
-        exit(#{<<"entry">> => <<"armed_hold">>,
-               <<"outcome">> => <<"expired">>})
+        #{<<"entry">> => <<"armed_hold">>,
+          <<"outcome">> => <<"expired">>}
     end.
