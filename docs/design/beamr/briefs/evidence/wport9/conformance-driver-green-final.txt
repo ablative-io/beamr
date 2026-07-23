@@ -1,0 +1,35 @@
+wasm-pack: wasm-pack 0.15.0
+rustc: rustc 1.95.0 (59807616e 2026-04-14)
+node: v26.5.0
+[INFO]: 🎯  Checking for the Wasm target...
+[INFO]: 🌀  Compiling to Wasm...
+    Finished `release` profile [optimized] target(s) in 0.05s
+[INFO]: Optimizing wasm binaries with `wasm-opt`...
+[INFO]: License key is set in Cargo.toml but no LICENSE file(s) were found; Please add the LICENSE file(s) to your project directory
+[INFO]: ✨   Done in 1.55s
+[INFO]: 📦   Your wasm pkg is ready to publish at crates/beamr-wasm/pkg.
+leg PASS  build-artifacts
+leg PASS  node-singlefile-noarg
+leg PASS  browser-bootstrap-workload
+leg PASS  browser-bootstrap-loader
+leg PASS  browser-bootstrap-output
+leg PASS  browser-bootstrap-process-error
+leg PASS  browser-bootstrap-f0d-idle
+leg PASS  browser-bootstrap-f0d-armed
+leg PASS  browser-worker-workload
+leg PASS  browser-worker-f0d
+leg PASS  browser-singlefile-noarg
+
+=== WPORT-9 conformance verdicts ===
+PASS  build-artifacts
+PASS  node-singlefile-noarg
+PASS  browser-bootstrap-workload
+PASS  browser-bootstrap-loader
+PASS  browser-bootstrap-output
+PASS  browser-bootstrap-process-error
+PASS  browser-bootstrap-f0d-idle
+PASS  browser-bootstrap-f0d-armed
+PASS  browser-worker-workload
+PASS  browser-worker-f0d
+PASS  browser-singlefile-noarg
+result: 11/11 legs passed
