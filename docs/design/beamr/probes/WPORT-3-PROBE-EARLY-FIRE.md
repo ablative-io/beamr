@@ -1,6 +1,6 @@
 # WPORT-3 PROBE-EARLY-FIRE — triage of the `requests == 1` deadline-wall flake
 
-**Status:** `RUN 2026-07-23 — verdict proposed, awaiting tear`
+**Status:** `TORN PASS 2026-07-23 (Artemis Peach) — OVERCONSTRAINED WALL confirmed, service correct; hardened wall landed. Tear note: in early-fire-witness-output.json the worst_early_ms field holds the worst ELAPSED time (24.521), not the worst early delta — the early_deltas_ms array is the authoritative record; the emitter field name is corrected for future probe runs, committed evidence stands as-run.`
 **Authored by:** the flake triage ruled first act of the port-arc allocation
 (2026-07-23, Artemis Peach's rung confirmation; evidence bar per the same-day
 addendum: an accounting explanation carries the same evidence weight as a
