@@ -1,0 +1,48 @@
+diff --git a/crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs b/crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs
+index c0b0344..1a8d532 100644
+--- a/crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs
++++ b/crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs
+@@ -315,3 +315,43 @@ fn decode_handles_bignums_and_surrogate_pairs() {
+     let text = BinaryRef::new(decoded).expect("string");
+     assert_eq!(text.as_bytes(), "😀".as_bytes());
+ }
++
++#[test]
++fn probe_binary_part_result_under_forced_collection() {
++    // LOCAL PROBE — never committed. Forces the result allocation of
++    // binary:part/3 to collect while the borrow of the young inline input
++    // is still to be read inside alloc_binary.
++    use super::misc_bifs::bif_binary_part;
++    let mut process = Process::new(1, 256);
++    let raw: Vec<u8> = (1..=40).collect();
++    let input = {
++        let mut ctx = context(&mut process);
++        ctx.alloc_binary(&raw).expect("binary")
++    };
++    process.set_x_reg(0, input);
++    let needed = alloc_binary_word_count(20);
++    {
++        let mut ctx = context(&mut process);
++        while ctx.process_heap().expect("heap").available() >= needed {
++            ctx.alloc_cons(Term::small_int(1), Term::NIL).expect("filler");
++        }
++    }
++    assert!(process.heap().available() < needed);
++    let result = {
++        let mut ctx = ProcessContext::new();
++        ctx.set_atom_table(Some(Arc::new(AtomTable::with_common_atoms())));
++        ctx.attach_process(&mut process, 1);
++        bif_binary_part(
++            &[input, Term::small_int(10), Term::small_int(20)],
++            &mut ctx,
++        )
++        .expect("binary_part")
++    };
++    let collected = process.heap().old_used() > 0;
++    let bytes = BinaryRef::new(result).expect("result").as_bytes().to_vec();
++    let expected: Vec<u8> = (11..=30).collect();
++    panic!(
++        "PROBE RESULT: collected={collected} expected={expected:?} actual={bytes:?} match={}",
++        bytes == expected
++    );
++}

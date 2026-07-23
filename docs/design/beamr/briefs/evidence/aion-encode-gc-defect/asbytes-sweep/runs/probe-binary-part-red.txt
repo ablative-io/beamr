@@ -1,0 +1,8 @@
+# Probe red run — real-hazard red at unmutated main f684d60; probe applied
+# locally from mutations/probe-binary-part.diff, never applied in a commit.
+# site: misc_bifs.rs bif_binary_part (crossing class representative, site 4)
+# command: cargo test -p beamr --lib probe_binary_part_result_under_forced_collection
+
+thread 'native::stdlib_stubs::json_bifs_tests::probe_binary_part_result_under_forced_collection' (22901495) panicked at crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs:353:5:
+PROBE RESULT: collected=true expected=[11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] actual=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] match=false
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1735 filtered out; finished in 0.01s
