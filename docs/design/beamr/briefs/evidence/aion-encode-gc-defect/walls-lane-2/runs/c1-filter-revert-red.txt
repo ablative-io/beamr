@@ -1,0 +1,47 @@
+# C1-filter-revert red run — reverted locally, never committed to tree
+# mutation: AllocKind::MaybeRefcounted filter removed from
+#   HeapRegion::visit_allocated_boxed_objects (the C1 fix's release-walk
+#   filter, restoring the 0.16.0 word[0]-inference behavior)
+# designated walls: the three release_walk accounting walls (gc::tests)
+# command: cargo test -p beamr --lib release_walk -- --test-threads=1
+
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.04s
+     Running unittests src/lib.rs (target/debug/deps/beamr-a54e90cef130d868)
+
+running 3 tests
+test gc::tests::major_release_walk_accounts_compacted_source_proc_bins_exactly ... error: test failed, to rerun pass `-p beamr --lib`
+
+Caused by:
+  process didn't exit successfully: `/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/target/debug/deps/beamr-a54e90cef130d868 release_walk --test-threads=1` (signal: 11, SIGSEGV: invalid memory reference)
+
+# exit status: 0
+
+# Per-wall face record (each wall run alone under the reverted filter):
+
+## gc::tests::minor_release_walk_decrements_pacing_by_exactly_the_unreachable_proc_bin_bytes
+  process didn't exit successfully: `/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/target/debug/deps/beamr-a54e90cef130d868 'gc::tests::minor_release_walk_decrements_pacing_by_exactly_the_unreachable_proc_bin_bytes' --exact` (signal: 11, SIGSEGV: invalid memory reference)
+
+## gc::tests::terminate_release_walk_releases_each_proc_bin_arc_exactly_once_and_zeroes_pacing
+  process didn't exit successfully: `/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/target/debug/deps/beamr-a54e90cef130d868 'gc::tests::terminate_release_walk_releases_each_proc_bin_arc_exactly_once_and_zeroes_pacing' --exact` (signal: 11, SIGSEGV: invalid memory reference)
+
+## gc::tests::major_release_walk_accounts_compacted_source_proc_bins_exactly
+  process didn't exit successfully: `/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/target/debug/deps/beamr-a54e90cef130d868 'gc::tests::major_release_walk_accounts_compacted_source_proc_bins_exactly' --exact` (signal: 11, SIGSEGV: invalid memory reference)
+
+# Cross-check: the existing C1 collision wall under the same revert:
+test gc::tests::boolean_list_cons_is_not_walked_as_a_refcounted_binary ... FAILED
+thread 'gc::tests::boolean_list_cons_is_not_walked_as_a_refcounted_binary' (22345892) panicked at crates/beamr/src/gc/tests.rs:597:5:
+a headerless [false | _] cons was misclassified as a refcounted ProcBin by the GC release walk (reported tags: [ProcBin])
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1734 filtered out; finished in 0.00s
+
+# Reading of record: all three accounting walls die by the FATAL face
+# (SIGSEGV) under the reverted filter, before any accounting assert is
+# reached — the adversarial adjacency places a ProcBin header or another
+# false-head (both raw-0x19-tagged words) at each misread cons's word[2],
+# so Arc::from_raw dereferences a small raw and crashes. This is the same
+# face the parent lane's deployment-path repro rolled: dense [false|_]
+# adjacency rolls the fatal face first. The survivable face (silent
+# pacing corruption -> inexact virtual_binary_heap) is what the walls'
+# exact-value asserts pin if a future regression misreads more gently.
+# The collision wall reds in the same run (assert face), proving the two
+# walls compose: it pins WHO is visited, these pin WHAT the visit does.

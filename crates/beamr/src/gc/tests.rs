@@ -10,6 +10,7 @@ use crate::{
     io::resource::{FD_RESOURCE_WORDS, FdInner, FdResource, write_fd_resource},
     loader::{Instruction, Literal},
     module::{Module, ModuleOrigin},
+    process::ExitReason,
     term::{
         boxed::{BoxedTag, Closure, Cons, ProcBin, Tuple, write_closure, write_cons, write_tuple},
         shared_binary::{SharedBinary, write_proc_bin},
@@ -598,6 +599,147 @@ fn boolean_list_cons_is_not_walked_as_a_refcounted_binary() {
         "a headerless [false | _] cons was misclassified as a refcounted ProcBin \
          by the GC release walk (reported tags: {reported:?})"
     );
+}
+
+// Accounting-sanity walls (AION-ENCODE-GC-DEFECT walls lane 2). The C1
+// collision wall above pins WHICH allocations the release walks may visit;
+// these walls pin what the walks DO: every ProcBin Arc released exactly once,
+// and `virtual_binary_heap` pacing landing at the EXACT expected value after
+// each of the three release-walk entry points — young walk (minor), full walk
+// (terminate), compacted-sources walk (major) — on adversarial heaps where
+// live ProcBins with known byte totals sit adjacent to `[false | _]` conses
+// in both regions. Silent pacing corruption (the production ~25 GB residency
+// face) shows up here as an inexact value, not a crash.
+
+#[test]
+fn minor_release_walk_decrements_pacing_by_exactly_the_unreachable_proc_bin_bytes() {
+    let mut process = Process::new(1, 256);
+    let live_shared = SharedBinary::new(vec![0xE2; 100]);
+    let dead_shared = SharedBinary::new(vec![0x80; 77]);
+
+    let guard_before = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    let live_bin = alloc_proc_bin(&mut process, &live_shared);
+    let guard_between = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    let _dead_bin = alloc_proc_bin(&mut process, &dead_shared);
+    let guard_after = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    process.set_x_reg(0, live_bin);
+    process.set_x_reg(1, guard_before);
+    process.set_x_reg(2, guard_after);
+    let _ = guard_between; // unreachable, like the dead ProcBin
+
+    assert_eq!(process.virtual_binary_heap(), 177);
+    assert_eq!(live_shared.ref_count(), 2);
+    assert_eq!(dead_shared.ref_count(), 2);
+
+    collect_minor(&mut process).expect("minor GC succeeds");
+
+    assert_eq!(
+        process.virtual_binary_heap(),
+        100,
+        "pacing must drop by exactly the unreachable ProcBin's 77 bytes"
+    );
+    assert_eq!(
+        live_shared.ref_count(),
+        2,
+        "live ProcBin keeps exactly one heap-owned Arc across promotion"
+    );
+    assert_eq!(
+        dead_shared.ref_count(),
+        1,
+        "dead ProcBin's heap-owned Arc is released exactly once"
+    );
+    let promoted = ProcBin::new(process.x_reg(0)).expect("promoted ProcBin");
+    assert_eq!(promoted.as_bytes(), &[0xE2; 100][..]);
+}
+
+#[test]
+fn terminate_release_walk_releases_each_proc_bin_arc_exactly_once_and_zeroes_pacing() {
+    let mut process = Process::new(1, 256);
+    let old_shared = SharedBinary::new(vec![0x94; 64]);
+    let young_shared = SharedBinary::new(vec![0xAF; 33]);
+
+    // Old-region ProcBin flanked by [false | _] conses: allocate in the
+    // nursery, root everything, promote via one minor collection.
+    let guard_before = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    let old_bin = alloc_proc_bin(&mut process, &old_shared);
+    let guard_after = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    process.set_x_reg(0, guard_before);
+    process.set_x_reg(1, old_bin);
+    process.set_x_reg(2, guard_after);
+    collect_minor(&mut process).expect("minor GC succeeds");
+    assert_eq!(old_shared.ref_count(), 2);
+
+    // Young-region ProcBin with its own adjacent [false | _] cons, live at
+    // termination — the full walk covers both regions.
+    let young_guard = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    let young_bin = alloc_proc_bin(&mut process, &young_shared);
+    process.set_x_reg(3, young_guard);
+    process.set_x_reg(4, young_bin);
+    assert_eq!(process.virtual_binary_heap(), 97);
+    assert_eq!(young_shared.ref_count(), 2);
+
+    process.terminate(ExitReason::Normal);
+
+    assert_eq!(process.virtual_binary_heap(), 0);
+    assert_eq!(
+        old_shared.ref_count(),
+        1,
+        "old-region Arc released exactly once at termination"
+    );
+    assert_eq!(
+        young_shared.ref_count(),
+        1,
+        "young-region Arc released exactly once at termination"
+    );
+}
+
+#[test]
+fn major_release_walk_accounts_compacted_source_proc_bins_exactly() {
+    let mut process = Process::new(1, 256);
+    let old_live = SharedBinary::new(vec![0x11; 80]);
+    let old_dead = SharedBinary::new(vec![0x22; 55]);
+    let young_live = SharedBinary::new(vec![0x33; 40]);
+    let young_dead = SharedBinary::new(vec![0x44; 21]);
+
+    // Old region: two ProcBins interleaved with [false | _] conses, promoted
+    // by a minor collection while both are still rooted.
+    let guard_1 = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    let old_live_bin = alloc_proc_bin(&mut process, &old_live);
+    let guard_2 = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    let old_dead_bin = alloc_proc_bin(&mut process, &old_dead);
+    let guard_3 = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    process.set_x_reg(0, guard_1);
+    process.set_x_reg(1, old_live_bin);
+    process.set_x_reg(2, guard_2);
+    process.set_x_reg(3, old_dead_bin);
+    process.set_x_reg(4, guard_3);
+    collect_minor(&mut process).expect("minor GC succeeds");
+    process.set_x_reg(3, Term::NIL); // old_dead becomes unreachable in old space
+
+    // Young region: live and dead ProcBins behind a [false | _] cons.
+    let young_guard = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    let young_live_bin = alloc_proc_bin(&mut process, &young_live);
+    let _young_dead_bin = alloc_proc_bin(&mut process, &young_dead);
+    process.set_x_reg(5, young_guard);
+    process.set_x_reg(6, young_live_bin);
+
+    assert_eq!(process.virtual_binary_heap(), 196);
+
+    collect_major(&mut process).expect("major GC succeeds");
+
+    assert_eq!(
+        process.virtual_binary_heap(),
+        120,
+        "pacing must drop by exactly the two unreachable ProcBins' 76 bytes"
+    );
+    assert_eq!(old_live.ref_count(), 2);
+    assert_eq!(young_live.ref_count(), 2);
+    assert_eq!(old_dead.ref_count(), 1);
+    assert_eq!(young_dead.ref_count(), 1);
+    let compacted_old = ProcBin::new(process.x_reg(1)).expect("compacted old ProcBin");
+    assert_eq!(compacted_old.as_bytes(), &[0x11; 80][..]);
+    let compacted_young = ProcBin::new(process.x_reg(6)).expect("compacted young ProcBin");
+    assert_eq!(compacted_young.as_bytes(), &[0x33; 40][..]);
 }
 
 proptest! {

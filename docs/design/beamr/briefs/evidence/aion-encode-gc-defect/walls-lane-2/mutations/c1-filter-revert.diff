@@ -1,0 +1,14 @@
+diff --git a/crates/beamr/src/process/heap.rs b/crates/beamr/src/process/heap.rs
+index af1918e..dd722fe 100644
+--- a/crates/beamr/src/process/heap.rs
++++ b/crates/beamr/src/process/heap.rs
+@@ -210,9 +210,6 @@ impl HeapRegion {
+             // word[0] may be read as a tag. Skipping the rest is what makes a
+             // headerless cons cell (whose head word can alias a boxed tag)
+             // unable to be misread as a live ProcBin and freed. See [`AllocKind`].
+-            if allocation.kind != AllocKind::MaybeRefcounted {
+-                continue;
+-            }
+             let ptr = self.words.as_ptr().wrapping_add(allocation.offset);
+             let header = self.words[allocation.offset];
+             if let Some(tag) = BoxedHeader::tag(header) {
