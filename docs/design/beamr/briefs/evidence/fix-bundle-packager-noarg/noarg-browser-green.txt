@@ -1,0 +1,5 @@
+bundle: /Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-wasm/pkg/beamr.bundle.mjs
+chrome: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+call: createPreloadedVm()  (no argument)
+resolved: vm constructed, spawn surface present
+module loads: [{"module":"fetch_chain_a","ok":true,"unresolved":[]},{"module":"fetch_chain_b","ok":true,"unresolved":[]},{"module":"fetch_chain_c","ok":true,"unresolved":[]}]
