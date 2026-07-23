@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.16.1 — 2026-07-23
+
+### Added
+
+- `Scheduler::spawn_native_trap_exit` and `Scheduler::spawn_native_link_trap_exit`:
+  native processes spawned with `trap_exit` set BEFORE they are made runnable —
+  the native mirror of bytecode `spawn_trap_exit`. Closes the spawn-then-set
+  window in which host-side `set_trap_exit` returns `NoCaller` for a freshly
+  spawned native that is transiently `Executing` mid-first-slice (`NoCaller`
+  conflates that with a truly-dead process, so callers could not retry
+  honestly). Existing `spawn_native`/`spawn_native_link` behavior is
+  byte-identical (they delegate with the flag off; the `Process` default is
+  `false`). Found as a once-per-battery race in liminal's subscriber spawn on
+  high-core hosts; consumers using spawn-then-`set_trap_exit` on natives
+  should migrate to the new entry points.
+
 ## beamr-wasm 0.7.0 — 2026-07-23
 
 - Rides beamr 0.16.0 (dependency spec `0.15.0` → `0.16.0`) so downstream

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>WPORT-6 PROBE-FETCH</title></head>
+<body>
+<h1>WPORT-6 PROBE-FETCH — real-browser artifact-loader run</h1>
+<pre id="log"></pre>
+<script type="module">
+import {
+  installTimerSpies, spySummary, loadBundle, fetchAdapter, obs, suiteComplete, suiteFatal, now,
+} from "./probe-common.js";
+
+const log = (m) => { document.getElementById("log").textContent += m + "\n"; };
+
+async function main() {
+  const spy = installTimerSpies();            // WPORT-3/7 discipline: every page installs spies
+  const t0 = now();
+  const beamr = await loadBundle();
+  const ORIGIN = location.origin;
+  const manifestUrl = `${ORIGIN}/artifacts/manifest.json`;
+  const badManifestUrl = `${ORIGIN}/artifacts/manifest_bad.json`;
+
+  // --- Expected observation 1: the resolved batch report ---------------------
+  const vm = beamr.create_vm();
+  const fetchStart = now();
+  const reportStr = await vm.load_artifacts(manifestUrl, fetchAdapter);
+  const report = JSON.parse(reportStr);
+  const loadedOrder = report.loaded.map((m) => m.module);
+  obs("report", {
+    reportString: reportStr,
+    report,
+    loadedOrder,
+    orderIsCBA: JSON.stringify(loadedOrder) === JSON.stringify(["fetch_chain_c", "fetch_chain_b", "fetch_chain_a"]),
+    ok: report.ok === true,
+    cyclesEmpty: Array.isArray(report.cycles) && report.cycles.length === 0,
+    missingDepsEmpty: Array.isArray(report.missing_dependencies) && report.missing_dependencies.length === 0,
+    perModuleBucketsEmpty: report.loaded.every((m) => m.unresolved.length === 0 && (m.deferred || []).length === 0 && (m.denied || []).length === 0),
+  });
+  log("report loadedOrder=" + loadedOrder.join(","));
+
+  // --- Expected observation 3: spawned entry settles with result 42 ----------
+  const pid = vm.spawn("fetch_chain_a", "run", "[]");
+  const completion = JSON.parse(await vm.await_exit(pid));
+  obs("run", {
+    state: completion.state,
+    result: completion.result,
+    resultIs42: completion.result === 42,
+    manualPumps: 0,
+  });
+  log("run state=" + completion.state + " result=" + completion.result);
+
+  // Mark the network window for the runner (observation 2 is assembled from the
+  // driver's CDP Network log: expect exactly 4 requests — manifest + 3 beams,
+  // deps before dependants).
+  obs("network-window", { fetchStart, fetchEnd: now(), expectedRequests: 4, note: "runner attaches the CDP network log; count /artifacts/ requests in this window" });
+
+  // --- Expected observation 4: deliberately-wrong-URL rejection --------------
+  const vmBad = beamr.create_vm();
+  let rejection = null;
+  try {
+    await vmBad.load_artifacts(badManifestUrl, fetchAdapter);
+  } catch (e) {
+    let data = null;
+    try { data = JSON.parse(e.data); } catch { data = e.data ?? null; }
+    rejection = {
+      message: String(e.message || e),
+      messageStartsArtifactFetchFailed: String(e.message || e).startsWith("artifact_fetch_failed: "),
+      errorName: e && e.constructor ? e.constructor.name : null,
+      data,
+    };
+  }
+  obs("bad-url-rejection", rejection || { note: "NO REJECTION — unexpected" });
+  log("bad-url message=" + (rejection && rejection.message));
+
+  // --- Expected observation 5: module_info provenance (ModuleOrigin::Fetched) -
+  // Provenance is loaded with ModuleOrigin::Fetched in core, but NO JS export
+  // surfaces module_info / ModuleOrigin from the wasm bundle (grep of lib.rs:
+  // ModuleOrigin is only used internally; load_module/load_artifacts reports
+  // carry no origin field). Recorded honestly as an observation GAP.
+  obs("module-provenance-gap", {
+    reachableFromJs: false,
+    detail: "ModuleOrigin::Fetched is set in load_module_with_origin but not exposed through any #[wasm_bindgen] surface; the batch report and load_module JSON carry no origin/provenance field. Provenance is verified in Node/Rust tests, not observable from the browser here.",
+  });
+
+  obs("spy-summary", spySummary(spy, t0));
+  suiteComplete({ probe: "wport6", legs: ["report", "run", "network-window", "bad-url-rejection", "module-provenance-gap"] });
+  log("SUITE COMPLETE");
+}
+
+main().catch((e) => { suiteFatal(e); log("FATAL " + e); });
+</script>
+</body>
+</html>
