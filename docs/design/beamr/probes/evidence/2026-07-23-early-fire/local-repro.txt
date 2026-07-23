@@ -23,3 +23,12 @@ The full-battery CI rate is lower (the 65-test suite arms this wall once per
 battery; the filtered loop arms it once per second): CI showed green at
 5206e7a (run 30001395255, 10:59Z) and red at the docs-only fb3efcf push
 (run 30004895967, 11:54Z) — same code both runs.
+
+Hardened-wall repetition check (post-amendment, branch head 433b114+)
+=====================================================================
+Same machine, same filtered single-test loop, 200 iterations of the HARDENED
+await_exit_waits_for_armed_receive_timer: 0 failures / 200. At the measured
+~2% per-run early-fire rate, the original assertion would be expected to fail
+~4 times in 200 runs. The hardening removes the flake exposure; the
+early-fire mechanism itself stays pinned by the deterministic demonstration
+wall.
