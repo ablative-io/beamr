@@ -49,7 +49,11 @@ Found (behavior classes, checker-corrected ground vocabulary):
 
 Shipped (the arc's acceptance taxonomy): **supported** /
 **supported-with-defined-approximation** / **unsupported** (with the exact
-refusal shape named per row).
+refusal shape named per row) / **INJECTED** (WPORT-8, ruling D7): works when
+the named capability object is injected; stable typed refusal otherwise —
+`{error, {capability_missing, CapabilityAtom}}`, SYNCHRONOUS, no suspend, no
+host turn, no counter motion; each INJECTED row names the capability it keys
+on. The refusal is NOT badarg: the args are well-formed.
 
 ## Tallies
 
@@ -65,7 +69,8 @@ here + 14 rows this table refines into APPROX with their texts):
 | SILENT NO-OP (violation) | 9 |
 | FABRICATED zeros (violation) | 3 |
 | PROC-ERROR | 1 |
-| **total** | **197** |
+| ABSENT @ pin (registered by WPORT-8) | 5 |
+| **total** | **202** |
 
 Shipped @ build head (WPORT-5 R2 applied — both violation classes are DEAD):
 
@@ -75,7 +80,8 @@ Shipped @ build head (WPORT-5 R2 applied — both violation classes are DEAD):
 | supported-with-defined-approximation | 17 |
 | unsupported (catchable badarg) | 53 |
 | unsupported (process-fatal) | 1 |
-| **total** | **197** |
+| INJECTED (supported when capability injected) | 5 |
+| **total** | **202** |
 
 Class deltas R2 shipped: `erlang:display/1` + the 8-member sink family
 SILENT→supported; `erlang:statistics/1`, `erlang:memory/0`, `erlang:memory/1`
@@ -368,6 +374,25 @@ ANY registered BIF now dispatches instead of `Undef`
 | `erlang:fun_info/2` | Pure | APPROX | supported-with-defined-approximation | — | APPROXIMATION — WRONG DATA AS SUCCESS, the worst approximation in this table: `module`/`name`/`type` return the ITEM NAME ITSELF as a binary and `env` is always `[]` (`crates/beamr/src/native/stdlib_stubs/misc_bifs.rs:175-192`, fabrication at `:187`). Only `arity` is real. |
 | `io_lib_format:fwrite_g/1` | Pure | WORKS | supported | — |  |
 <!-- SEAL:END REGISTERED-MFA-TABLE -->
+### Capability adapters — WPORT-8 (5)
+
+Registered UNCONDITIONALLY at construction (`register_capability_bifs`,
+`crates/beamr-wasm/src/lib.rs`) so the sealed set never depends on injection
+state; served by the capability bridge through the async-NIF facility route.
+Completions re-enter through the single Promise-leg wake site; failures use
+the closed five-slug `CapabilityError` vocabulary, identical BEAM-side
+(`crates/beamr-wasm/src/capability.rs`).
+
+<!-- SEAL:BEGIN REGISTERED-MFA-TABLE -->
+| MFA | Capability | Found @ `6f1b51b` | Shipped @ build head | Guard-legal | Notes |
+|---|---|---|---|---|---|
+| `wasm_fetch:request/1` | ExternalIo | — (absent @ pin) | INJECTED | — | Keys on the `fetch` capability object (`register_fetch_capability`). Request map in, `{ok, #{<<"status">>, <<"headers">>, <<"body">>}}` out; refused/malformed_response/rejected/cancelled legs as `{error, {Slug, DetailBinary}}`. |
+| `wasm_kv:get/1` | ExternalIo | — (absent @ pin) | INJECTED | — | Keys on the `kv` capability object (`register_kv_capability`). `{ok, ValueBinary}` or `{ok, undefined}` when absent. |
+| `wasm_kv:put/2` | ExternalIo | — (absent @ pin) | INJECTED | — | Keys on the `kv` capability object. `{ok, true}`. |
+| `wasm_kv:delete/1` | ExternalIo | — (absent @ pin) | INJECTED | — | Keys on the `kv` capability object. `{ok, true}`, idempotent. |
+| `wasm_kv:list_by_prefix/1` | ExternalIo | — (absent @ pin) | INJECTED | — | Keys on the `kv` capability object. `{ok, [KeyBinary]}` in lexicographic key order. |
+<!-- SEAL:END REGISTERED-MFA-TABLE -->
+
 ## 2. Dynamic seams (P15) — classified, not sealed keys
 
 Two open-ended registration seams exist beyond the 197 static rows:

@@ -19,8 +19,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-/// The sealed static registration total (74 gate1 + 17 gate2 + 106 stdlib).
-const SEALED_ROW_COUNT: usize = 197;
+/// The sealed static registration total (74 gate1 + 17 gate2 + 106 stdlib
+/// + 5 WPORT-8 capability adapters).
+const SEALED_ROW_COUNT: usize = 202;
 
 const SEAL_BEGIN: &str = "<!-- SEAL:BEGIN REGISTERED-MFA-TABLE -->";
 const SEAL_END: &str = "<!-- SEAL:END REGISTERED-MFA-TABLE -->";
