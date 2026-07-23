@@ -147,3 +147,62 @@ jobs:
           if (( assertion_status != 0 )); then
             exit "$assertion_status"
           fi
+
+  # WPORT-9 R6: the permanent conformance job — real generated bundle,
+  # real browser, real Worker, F-0d windows. Provisioning is PROVABLE
+  # (every tool and the browser located, version-echoed, fail-loud) and
+  # the per-leg verdicts are exact-name carriers: a silently dropped leg
+  # fails the carrier check even if the driver exits 0.
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Locate browser (fail-loud — the gate never skips)
+        run: |
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || true)"
+          if [ -z "$CHROME_BIN" ]; then
+            echo "no Chrome/Chromium on this runner — the browser leg cannot be faked or skipped" >&2
+            exit 1
+          fi
+          "$CHROME_BIN" --version
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+      - name: Run conformance driver
+        shell: bash
+        run: |
+          set -o pipefail
+          node conformance/driver.mjs 2>&1 | tee conformance-driver.log
+      - name: Assert leg carriers
+        shell: bash
+        run: |
+          expected_legs=(
+            "build-artifacts"
+            "node-singlefile-noarg"
+            "browser-bootstrap-workload"
+            "browser-bootstrap-loader"
+            "browser-bootstrap-output"
+            "browser-bootstrap-process-error"
+            "browser-bootstrap-f0d-idle"
+            "browser-bootstrap-f0d-armed"
+            "browser-worker-workload"
+            "browser-worker-f0d"
+            "browser-singlefile-noarg"
+          )
+          carrier_status=0
+          for leg in "${expected_legs[@]}"; do
+            if ! grep -Fqx "PASS  ${leg}" conformance-driver.log; then
+              echo "missing passing conformance leg: ${leg}" >&2
+              carrier_status=1
+            fi
+          done
+          if ! grep -Fqx "result: 11/11 legs passed" conformance-driver.log; then
+            echo "missing exact eleven-leg success summary" >&2
+            carrier_status=1
+          fi
+          exit "$carrier_status"

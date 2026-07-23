@@ -1,0 +1,22 @@
+WPORT-9 R6 RED — the leg carriers bite on a silently dropped leg
+================================================================
+base: wport9/build, atop the driver GREEN e47f8e8
+date: 2026-07-24
+
+The workflow's carrier assertion (cooperative-wasm.yml, conformance job,
+"Assert leg carriers" step) run VERBATIM against two inputs:
+
+1) The committed green driver log
+   (docs/design/beamr/briefs/evidence/wport9/conformance-driver-green.txt):
+     carrier check exit: 0
+
+2) The same log with ONE verdict line deleted
+   ("PASS  browser-worker-f0d" removed — simulating a leg silently
+   dropped from the driver while it still exits 0):
+     missing passing conformance leg: browser-worker-f0d
+     carrier check exit: 1
+
+The exact-count line ("result: 11/11 legs passed") is a second
+independent carrier: any count drift fails "missing exact eleven-leg
+success summary" even if all names happen to survive. Names and count
+move together per commit (house carrier discipline).
