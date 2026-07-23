@@ -1,0 +1,73 @@
+{
+  "probe": "WPORT-8-PROBE-CAPABILITY",
+  "environment": {
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "page_url": "http://127.0.0.1:8787/",
+    "captured_at_iso": "2026-07-23T14:52:21.401Z",
+    "serving_shape": "wasm-pack pkg + generated bootstrap.js served directly (WPORT-6 sitting shape); single-file beamr.bundle.mjs bypassed — its no-arg init path is broken at the packager, flagged 2026-07-24 for its own lane",
+    "bundle_commit": "4bf2ab77df812b43397972b3a1d123f4c2cb6ecf",
+    "bundle_branch": "wport8/sitting-kit",
+    "working_tree_dirty_tracked_files": false,
+    "node_version": "v26.4.0",
+    "wasm_pack_version": "wasm-pack 0.15.0",
+    "os": "darwin 25.3.0",
+    "host": "Toms-MacBook-Pro.local",
+    "serve_origin": "http://127.0.0.1:8787"
+  },
+  "leg": "leg3 NO-POLLING under real completion (F-0d shim record)",
+  "target_url": "http://127.0.0.1:8787/probe/slow?ms=1500",
+  "in_flight_window": {
+    "spawn_at_ms": 40266.40000003576,
+    "settle_observed_at_ms": 41772.90000003576
+  },
+  "timer_shim_events_in_window": [],
+  "set_interval_calls_in_window": 0,
+  "request_animation_frame_calls_in_window": 0,
+  "set_timeout_arms_in_window": 0,
+  "harness_timer_use_disclosure": "the harness itself uses only saved pre-shim originals (watchdog, settlement announce), so every event above was armed by the bundle or the platform",
+  "exit_envelope": {
+    "pid": 1,
+    "reason": null,
+    "result": {
+      "body": "slow-body",
+      "headers": {
+        "connection": "keep-alive",
+        "content-length": "9",
+        "date": "Thu, 23 Jul 2026 14:53:03 GMT",
+        "keep-alive": "timeout=5",
+        "x-wport8-probe": "slow"
+      },
+      "status": 200
+    },
+    "state": "exited",
+    "summary": {
+      "errored": [],
+      "executed": 1,
+      "exited": [
+        1
+      ],
+      "next_native_deadline_ms": null,
+      "results": [
+        {
+          "pid": 1,
+          "value": {
+            "body": "slow-body",
+            "headers": {
+              "connection": "keep-alive",
+              "content-length": "9",
+              "date": "Thu, 23 Jul 2026 14:53:03 GMT",
+              "keep-alive": "timeout=5",
+              "x-wport8-probe": "slow"
+            },
+            "status": 200
+          }
+        }
+      ],
+      "runnable_remaining": 0,
+      "state": "idle",
+      "waiting": [],
+      "yielded": []
+    }
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "probe": "WPORT-8-PROBE-CAPABILITY",
+  "environment": {
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "page_url": "http://127.0.0.1:8787/",
+    "captured_at_iso": "2026-07-23T14:52:21.401Z",
+    "serving_shape": "wasm-pack pkg + generated bootstrap.js served directly (WPORT-6 sitting shape); single-file beamr.bundle.mjs bypassed — its no-arg init path is broken at the packager, flagged 2026-07-24 for its own lane",
+    "bundle_commit": "4bf2ab77df812b43397972b3a1d123f4c2cb6ecf",
+    "bundle_branch": "wport8/sitting-kit",
+    "working_tree_dirty_tracked_files": false,
+    "node_version": "v26.4.0",
+    "wasm_pack_version": "wasm-pack 0.15.0",
+    "os": "darwin 25.3.0",
+    "host": "Toms-MacBook-Pro.local",
+    "serve_origin": "http://127.0.0.1:8787"
+  },
+  "leg": "leg1 worker-shaped end-to-end (A4 rider 2)",
+  "bundle_module_loads": [
+    {
+      "module": "wport8_probe",
+      "ok": true,
+      "unresolved": []
+    }
+  ],
+  "spawn_args": [
+    "http://127.0.0.1:8787/probe/ok",
+    "wport8:sitting",
+    "browser-idb-value",
+    "wport8:"
+  ],
+  "exit_envelope": {
+    "pid": 1,
+    "reason": null,
+    "result": {
+      "fetch_response": {
+        "body": "{\"probe\":\"ok\"}",
+        "headers": {
+          "connection": "keep-alive",
+          "content-length": "14",
+          "content-type": "application/json; charset=utf-8",
+          "date": "Thu, 23 Jul 2026 14:53:01 GMT",
+          "keep-alive": "timeout=5",
+          "x-wport8-probe": "ok"
+        },
+        "status": 200
+      },
+      "kv_keys_under_prefix": [
+        "wport8:preexisting",
+        "wport8:sitting"
+      ],
+      "kv_stored_value": "browser-idb-value"
+    },
+    "state": "exited",
+    "summary": {
+      "errored": [],
+      "executed": 1,
+      "exited": [
+        1
+      ],
+      "next_native_deadline_ms": null,
+      "results": [
+        {
+          "pid": 1,
+          "value": {
+            "fetch_response": {
+              "body": "{\"probe\":\"ok\"}",
+              "headers": {
+                "connection": "keep-alive",
+                "content-length": "14",
+                "content-type": "application/json; charset=utf-8",
+                "date": "Thu, 23 Jul 2026 14:53:01 GMT",
+                "keep-alive": "timeout=5",
+                "x-wport8-probe": "ok"
+              },
+              "status": 200
+            },
+            "kv_keys_under_prefix": [
+              "wport8:preexisting",
+              "wport8:sitting"
+            ],
+            "kv_stored_value": "browser-idb-value"
+          }
+        }
+      ],
+      "runnable_remaining": 0,
+      "state": "idle",
+      "waiting": [],
+      "yielded": []
+    }
+  },
+  "idb_contents_after_settle": {
+    "wport8:preexisting": "seeded-before-spawn",
+    "wport8:sitting": "browser-idb-value"
+  },
+  "manual_observation_remaining": "network log: exactly one /probe/ok request for this leg (README checklist)"
+}
