@@ -1,3 +1,2 @@
-   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr)
    Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-wasm)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.14s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.34s

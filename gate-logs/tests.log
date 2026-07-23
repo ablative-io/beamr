@@ -1,72 +1,70 @@
-   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr)
    Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-wasm)
-   Compiling beamr-cli v0.4.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-cli)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.36s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.79s
      Running unittests src/lib.rs (target/debug/deps/beamr-4a9634037cd82434)
 
 running 1740 tests
 test capability::sandbox::tests::default_sandbox_is_unrestricted ... ok
-test capability::sandbox::tests::unrestricted_sandbox_grants_all_capabilities ... ok
 test capability::sandbox::tests::pure_sandbox_has_no_capabilities ... ok
 test capability::sandbox::tests::worker_sandbox_grants_external_io_without_spawn ... ok
 test capability::sandbox::tests::supervisor_sandbox_grants_process_supervision_without_io ... ok
+test capability::sandbox::tests::unrestricted_sandbox_grants_all_capabilities ... ok
 test constant_pool::tests::empty_string_literal_materialises_as_nil ... ok
 test constant_pool::tests::big_integer_literal_with_invalid_sign_is_rejected ... ok
-test constant_pool::tests::repeated_get_returns_the_same_pointer ... ok
 test constant_pool::tests::big_integer_literals_materialise_with_sign_and_limbs ... ok
-test constant_pool::tests::integer_literal_beyond_small_range_materialises_as_bignum_box ... ok
+test constant_pool::tests::repeated_get_returns_the_same_pointer ... ok
 test constant_pool::tests::big_integer_literal_in_small_range_demotes_to_immediate ... ok
 test constant_pool::tests::string_literal_materialises_as_proper_list_of_small_ints ... ok
+test constant_pool::tests::integer_literal_beyond_small_range_materialises_as_bignum_box ... ok
 test atom::table::tests::invalid_atom_resolves_to_none ... ok
-test atom::table::tests::different_strings_have_different_atoms ... ok
-test atom::table::tests::intern_resolve_round_trip ... ok
-test constant_pool::tests::export_fun_literal_materialises_as_callable_closure ... ok
-test constant_pool::tests::map_literals_are_sorted_with_atom_table_order ... ok
-test atom::table::tests::intern_is_idempotent ... ok
-test atom::table::tests::common_atoms_have_stable_constants ... ok
-test constant_pool::tests::materialises_literal_storage_and_returns_stable_roots ... ok
 test constant_pool::tests::cloned_pool_rebases_all_nested_pointers_to_cloned_blocks ... ok
 test distribution::atom_cache::tests::missing_cached_atom_reference_fails ... ok
+test atom::table::tests::different_strings_have_different_atoms ... ok
+test constant_pool::tests::export_fun_literal_materialises_as_callable_closure ... ok
+test atom::table::tests::intern_resolve_round_trip ... ok
+test atom::table::tests::intern_is_idempotent ... ok
+test atom::table::tests::common_atoms_have_stable_constants ... ok
+test constant_pool::tests::map_literals_are_sorted_with_atom_table_order ... ok
 test distribution::atom_cache::tests::cached_atom_reference_does_not_add_header_entry ... ok
+test constant_pool::tests::materialises_literal_storage_and_returns_stable_roots ... ok
 test distribution::atom_cache::tests::encode_new_atom_header_then_decode_populates_peer_cache ... ok
 test distribution::atom_cache::tests::too_many_new_atoms_fails_without_partial_payload_or_cache_insert ... ok
 test distribution::atom_cache::tests::lookup_refreshes_lru_recency ... ok
-test distribution::connection::tests::connect_node_returns_false_for_unresolved_node ... ok
+test atom::table::tests::concurrent_interning_same_strings_converges ... ok
+test atom::table::tests::concurrent_interning_distinct_strings_are_unique_and_resolvable ... ok
 test distribution::connection::tests::empty_manager_has_no_connections ... ok
-test distribution::connection::tests::hs3_responder_rejects_when_local_name_is_greater ... ok
-test distribution::connection::tests::connect_node_is_idempotent_and_lists_node ... ok
+test distribution::connection::tests::connect_node_returns_false_for_unresolved_node ... ok
+test distribution::atom_cache::tests::insert_256_atoms_then_257th_evicts_first ... ok
 test distribution::connection::tests::hs2_two_simultaneous_installs_keep_exactly_one_no_orphan_reader ... ok
-test distribution::connection::tests::connect_keys_table_by_remote_handshake_name_not_resolver_key ... ok
-test distribution::connection::tests::connect_rejects_wrong_cookie_and_records_no_entry ... ok
 test distribution::connection::tests::hs3_connect_node_treats_nok_abort_as_success ... ok
 test distribution::connection::tests::hs3_outbound_nok_is_a_benign_simultaneous_abort ... ok
+test distribution::connection::tests::hs3_responder_rejects_when_local_name_is_greater ... ok
+test distribution::connection::tests::connect_rejects_wrong_cookie_and_records_no_entry ... ok
+test distribution::connection::tests::connect_node_is_idempotent_and_lists_node ... ok
 test distribution::connection::tests::inbound_peer_registers_under_its_handshake_name ... ok
+test distribution::connection::tests::connect_keys_table_by_remote_handshake_name_not_resolver_key ... ok
 test distribution::connection::tests::hs4_connect_node_redials_a_down_but_unreaped_entry ... ok
-test distribution::atom_cache::tests::insert_256_atoms_then_257th_evicts_first ... ok
-test distribution::connection::tests::manual_disconnect_removes_connection_and_notifies_once ... ok
 test distribution::connection::tests::hs4_connecting_guard_clears_on_every_exit_path ... ok
+test distribution::connection::tests::manual_disconnect_removes_connection_and_notifies_once ... ok
 test distribution::connection::tests::outbound_connect_inserts_table_entry ... ok
 test distribution::connection_events_tests::callback_may_disconnect_and_subscribe_reentrantly_on_same_manager ... ok
 test distribution::connection_events_tests::canonical_incumbent_displaced_by_new_peer_creation_emits_down_then_up ... ok
-test distribution::connection_events_tests::canonical_incumbent_still_wins_against_same_or_sentinel_creation ... ok
 test distribution::connection_events_tests::connected_peers_excludes_down_links_and_last_generation_survives_them ... ok
-test distribution::connection_events_tests::displacement_inherits_generation_and_emits_no_events ... ok
 test distribution::connection_events_tests::generations_start_at_one_and_increase_per_peer_independently ... ok
-test atom::table::tests::concurrent_interning_same_strings_converges ... ok
+test distribution::connection_events_tests::displacement_inherits_generation_and_emits_no_events ... ok
+test distribution::connection_events_tests::canonical_incumbent_still_wins_against_same_or_sentinel_creation ... ok
 test distribution::connection_events_tests::generations_strictly_increase_across_redial ... ok
 test distribution::connection_events_tests::hs4_down_but_unreaped_incumbent_emits_down_then_up_exactly_once ... ok
-test atom::table::tests::concurrent_interning_distinct_strings_are_unique_and_resolvable ... ok
 test distribution::connection_events_tests::inv_down_visibility_down_callback_never_observes_closed_generation ... ok
 test distribution::connection_events_tests::inv_up_visibility_up_callback_observes_installed_connection ... ok
 test distribution::connection_events_tests::late_subscriber_recipe_reconciles_without_double_counting ... ok
 test distribution::connection_events_tests::legacy_slot_fires_last_down_only_with_legacy_shape ... ok
 test distribution::connection_events_tests::live_displacement_by_new_peer_creation_emits_down_then_up ... ok
 test distribution::connection_events_tests::live_displacement_same_nonzero_peer_creation_inherits_and_emits_nothing ... ok
-test distribution::connection_events_tests::panicking_subscriber_does_not_wedge_dispatch ... ok
+test distribution::connection_events_tests::exactly_once_per_generation_under_racing_downs_and_redials ... ok
 test distribution::connection_events_tests::r2_legacy_registration_no_longer_evicts_hub_subscribers ... ok
+test distribution::connection_events_tests::panicking_subscriber_does_not_wedge_dispatch ... ok
 test distribution::connection_events_tests::reentrant_dispatch_from_callback_delivers_after_current_callback ... ok
 test distribution::connection_events_tests::reentrant_snapshot_subscribe_from_callback_registers_without_synthetics ... ok
-test distribution::connection_events_tests::exactly_once_per_generation_under_racing_downs_and_redials ... ok
 test distribution::connection_events_tests::snapshot_subscribe_delivers_synthetic_ups_before_any_subsequent_real_event ... ok
 test distribution::connection_events_tests::subscriber_may_unsubscribe_itself_mid_callback ... ok
 test distribution::connection_events_tests::subscribers_fire_in_registration_order ... ok
@@ -75,27 +73,26 @@ test distribution::connection_events_tests::unsubscribe_returns_true_then_false_
 test distribution::control::tests::alloc_spawn_reply_encodes_op_31 ... ok
 test distribution::control::tests::decodes_spawn_request_with_link_monitor_options ... ok
 test distribution::control::tests::handle_frame_routes_pg_join_to_delivery ... ok
-test distribution::control::tests::handle_frame_routes_pg_leave_to_delivery ... ok
-test distribution::control::tests::handle_spawn_request_creates_local_process_and_reply ... ok
-test distribution::control::tests::pg_control_without_pg_sink_is_dropped ... ok
-test distribution::control::tests::pg_update_join_round_trips_preserving_node_pid_serial ... ok
-test distribution::control::tests::pg_update_leave_round_trips_preserving_node_pid_serial ... ok
-test distribution::control::tests::pg_update_opcode_is_outside_otp_control_range ... ok
-test distribution::control::tests::reg_send_control_resolves_name_before_delivery ... ok
 test distribution::connection_events_tests::inv_down_visibility_holds_under_concurrent_dispatch ... ok
+test distribution::control::tests::handle_spawn_request_creates_local_process_and_reply ... ok
+test distribution::control::tests::handle_frame_routes_pg_leave_to_delivery ... ok
+test distribution::control::tests::pg_update_join_round_trips_preserving_node_pid_serial ... ok
+test distribution::control::tests::pg_control_without_pg_sink_is_dropped ... ok
+test distribution::control::tests::pg_update_opcode_is_outside_otp_control_range ... ok
+test distribution::control::tests::pg_update_leave_round_trips_preserving_node_pid_serial ... ok
+test distribution::control::tests::reg_send_control_resolves_name_before_delivery ... ok
+test distribution::control::tests::send_control_delivers_payload_to_pid ... ok
 test distribution::control_link::tests::beamr_private_opcodes_are_outside_otp_control_range ... ok
 test distribution::control_link::tests::control_op_mapping_is_exact ... ok
-test distribution::control::tests::send_control_delivers_payload_to_pid ... ok
-test distribution::connection::tests::hs4_redial_after_drop_reestablishes_writable_link ... ok
 test distribution::control_link::tests::control_op_round_trips_all_tabled_opcodes ... ok
 test distribution::control_link::tests::dispatch_drops_link_controls_whose_from_forges_another_origin ... ok
 test distribution::control_link::tests::dispatch_without_a_links_sink_drops_link_controls ... ok
 test distribution::control_link::tests::dispatch_routes_all_four_link_controls_to_the_links_sink ... ok
 test distribution::control_link::tests::exit2_frame_round_trips_carrying_a_raw_kill ... ok
-test distribution::control_link::tests::exit_decode_coerces_an_unknown_reason_atom_to_error ... ok
 test distribution::control_link::tests::exit_encoder_rejects_non_exit_ops ... ok
-test distribution::control_link::tests::exit_frame_round_trips_carrying_the_terminal_reason ... ok
+test distribution::control_link::tests::exit_decode_coerces_an_unknown_reason_atom_to_error ... ok
 test distribution::control_link::tests::exit_reason_from_wire_maps_known_atoms_and_coerces_unknown_to_error ... ok
+test distribution::control_link::tests::exit_frame_round_trips_carrying_the_terminal_reason ... ok
 test distribution::control_link::tests::in_memory_node_less_pids_are_rejected_by_the_endpoint_extractor ... ok
 test distribution::control_link::tests::legacy_handle_frame_now_drops_link_controls_instead_of_erroring ... ok
 test distribution::control_link::tests::link_control_addressed_to_a_third_node_is_misaddressed ... ok
@@ -110,41 +107,42 @@ test distribution::control_link::tests::unlink_frame_round_trips_through_split_a
 test distribution::control_link::tests::worst_case_link_control_fits_the_64_word_decode_heap ... ok
 test distribution::control_link::tests::wrong_arities_are_invalid_control ... ok
 test distribution::etf::tests::decodes_boxed_payloads_to_heap_terms ... ok
-test distribution::etf::tests::deframe_rejects_bad_frames ... ok
 test distribution::etf::tests::decodes_invalid_input_as_errors ... ok
 test distribution::etf::tests::decodes_round_trip_for_distribution_terms ... ok
+test distribution::etf::tests::deframe_rejects_bad_frames ... ok
 test distribution::etf::tests::encodes_and_decodes_external_pid_and_reference ... ok
 test distribution::etf::tests::encodes_atoms_with_utf8_tags ... ok
 test distribution::etf::tests::encodes_small_integer_and_integer_ext ... ok
-test distribution::etf::tests::frames_and_deframes_distribution_messages ... ok
 test distribution::etf::tests::encodes_tuple_nil_list_binary_float_map_pid_and_reference ... ok
+test distribution::etf::tests::frames_and_deframes_distribution_messages ... ok
 test distribution::global::tests::lower_node_name_wins_when_atom_indexes_differ ... ok
 test distribution::global::tests::lower_node_name_wins_conflict_and_loser_is_notified ... ok
 test distribution::global::tests::register_returns_conflict_when_caller_loses_existing_registration ... ok
 test distribution::global::tests::remove_node_cleans_disconnected_registrations ... ok
 test distribution::global::tests::snapshot_merge_propagates_registration_between_nodes ... ok
+test distribution::handshake::tests::async_handshake_round_trip_over_loopback ... ok
+test distribution::handshake::tests::async_handshake_rejects_wrong_cookie ... ok
 test distribution::handshake::tests::bad_status_maps_to_handshake_error ... ok
 test distribution::handshake::tests::complete_handshake_between_two_local_nodes ... ok
-test distribution::handshake::tests::async_handshake_rejects_wrong_cookie ... ok
-test distribution::handshake::tests::digest_uses_cookie_text_concatenated_with_challenge_text ... ok
 test distribution::handshake::tests::flag_negotiation_intersects_capabilities ... ok
 test distribution::handshake::tests::malformed_packet_maps_to_handshake_error ... ok
 test distribution::handshake::tests::missing_required_flag_is_rejected ... ok
-test distribution::handshake::tests::async_handshake_round_trip_over_loopback ... ok
+test distribution::handshake::tests::digest_uses_cookie_text_concatenated_with_challenge_text ... ok
 test distribution::handshake::tests::offered_flags_exclude_atom_cache ... ok
+test distribution::connection_events_tests::snapshot_subscriber_during_churn_misses_nothing_and_double_sees_nothing ... ok
 test distribution::handshake::tests::wrong_cookie_is_rejected ... ok
 test distribution::handshake::tests::responder_reject_emits_nok_and_aborts_before_challenge ... ok
 test distribution::handshake::tests::responder_ok_simultaneous_completes_handshake ... ok
-test distribution::pg_tests::duplicate_join_does_not_duplicate_members ... ok
+test distribution::connection::tests::hs4_redial_after_drop_reestablishes_writable_link ... ok
 test distribution::pg_tests::join_get_members_leave_round_trips ... ok
 test distribution::pg_tests::process_exit_removes_pid_from_all_groups_and_broadcasts_leaves ... ok
-test distribution::pg_tests::remote_apply_join_visible_only_in_all_members_and_purged_on_node_down ... ok
-test distribution::connection_events_tests::snapshot_subscriber_during_churn_misses_nothing_and_double_sees_nothing ... ok
+test distribution::pg_tests::duplicate_join_does_not_duplicate_members ... ok
 test distribution::resolver::tests::mock_resolver_returns_configured_address ... ok
 test distribution::resolver::tests::static_resolver_resolves_configured_nodes ... ok
 test distribution::pg_tests::scoped_groups_are_independent ... ok
-test distribution::sender::tests::control_frame_pinned_to_down_generation_never_reaches_redialed_socket ... ok
+test distribution::pg_tests::remote_apply_join_visible_only_in_all_members_and_purged_on_node_down ... ok
 test distribution::sender::tests::control_lane_per_node_fifo_ordering ... ok
+test distribution::sender::tests::control_frame_pinned_to_down_generation_never_reaches_redialed_socket ... ok
 test distribution::sender::tests::dead_peer_does_not_stall_drain ... ok
 test distribution::sender::tests::control_lane_overflow_flood_marks_wedged_peer_down_exactly_once ... ok
 test distribution::sender::tests::enqueue_is_non_blocking_and_drops_when_full ... ok
@@ -326,27 +324,28 @@ test interpreter::opcodes::closures::tests::apply_last_uses_latest_registry_expo
 test interpreter::opcodes::closures::tests::apply_uses_latest_registry_export_after_module_reload ... ok
 test interpreter::opcodes::closures::tests::apply_uses_registry_exports_and_rejects_missing_or_private_targets ... ok
 test interpreter::opcodes::closures::tests::call_fun_dispatches_export_fun_to_loaded_module_export ... ok
-test interpreter::opcodes::closures::tests::call_fun_dispatches_export_fun_to_native_bif ... ok
+test etf::decode::proptests::encode_decode_round_trips ... ok
 test interpreter::opcodes::closures::tests::call_fun_reports_badfun_and_badarity ... ok
+test interpreter::opcodes::closures::tests::call_fun_dispatches_export_fun_to_native_bif ... ok
 test interpreter::opcodes::closures::tests::call_fun_reports_badfun_when_reloaded_lambda_removed ... ok
 test interpreter::opcodes::closures::tests::call_fun_reports_undef_for_unloaded_export_target ... ok
-test interpreter::opcodes::closures::tests::call_fun_resolves_reloaded_module_by_unique_id ... ok
 test interpreter::opcodes::closures::tests::call_fun_restores_captured_variables_and_jumps_to_lambda_label ... ok
-test interpreter::opcodes::closures::tests::dispatch_and_run_with_registry_execute_new_opcode_families ... ok
+test interpreter::opcodes::closures::tests::call_fun_resolves_reloaded_module_by_unique_id ... ok
 test interpreter::opcodes::closures::tests::make_fun_captures_exact_free_variables ... ok
-test interpreter::opcodes::closures::tests::make_fun_survives_heap_exhaustion_via_gc_and_grow ... ok
+test interpreter::opcodes::closures::tests::dispatch_and_run_with_registry_execute_new_opcode_families ... ok
 test interpreter::opcodes::closures::tests::make_fun_with_no_free_variables_creates_empty_closure ... ok
+test interpreter::opcodes::closures::tests::make_fun_survives_heap_exhaustion_via_gc_and_grow ... ok
 test interpreter::opcodes::closures::tests::map_assoc_creates_map_and_get_map_elements_extracts_values ... ok
 test interpreter::opcodes::closures::tests::map_tests_and_exact_update_branch_on_missing_keys ... ok
-test interpreter::opcodes::closures::tests::put_map_survives_heap_exhaustion_via_gc_and_grow ... ok
 test interpreter::opcodes::exceptions::tests::build_stacktrace_dispatch_is_supported ... ok
+test interpreter::opcodes::closures::tests::put_map_survives_heap_exhaustion_via_gc_and_grow ... ok
 test interpreter::opcodes::exceptions::tests::build_stacktrace_empty_raw_trace_sets_nil ... ok
-test interpreter::opcodes::exceptions::tests::build_stacktrace_heap_pressure_returns_heap_full ... ok
 test interpreter::opcodes::exceptions::tests::build_stacktrace_resolves_mfa_and_line_info ... ok
 test interpreter::opcodes::exceptions::tests::case_if_and_try_case_end_build_catchable_error_reasons ... ok
 test interpreter::opcodes::exceptions::tests::catch_end_clears_exception_state_after_caught_exception ... ok
 test interpreter::opcodes::exceptions::tests::catch_end_pops_handler_clears_source_and_preserves_x0 ... ok
 test interpreter::opcodes::exceptions::tests::catch_handler_passes_throw_reason_through ... ok
+test interpreter::opcodes::exceptions::tests::build_stacktrace_heap_pressure_returns_heap_full ... ok
 test interpreter::opcodes::exceptions::tests::catch_handler_records_kind_and_dispatch_does_not_report_unsupported ... ok
 test interpreter::opcodes::exceptions::tests::catch_handler_wraps_error_class_as_exit_reason_stacktrace ... ok
 test interpreter::opcodes::exceptions::tests::catch_handler_wraps_exit_class_as_exit_reason ... ok
@@ -397,12 +396,11 @@ test interpreter::opcodes::tests::dispatch_handles_is_tagged_tuple_without_unkno
 test interpreter::opcodes::trampoline::tests::apply_mailbox_removal_removes_correct_message ... ok
 test interpreter::opcodes::trampoline::tests::build_mailbox_snapshot_captures_messages ... ok
 test interpreter::opcodes::trampoline::tests::build_mailbox_snapshot_empty_returns_none ... ok
-test interpreter::opcodes::trampoline::tests::continuation_resume_can_request_a_trampoline ... ok
 test interpreter::opcodes::trampoline::tests::continuation_resume_can_request_await_suspend ... ok
+test interpreter::opcodes::trampoline::tests::continuation_resume_can_request_a_trampoline ... ok
 test interpreter::opcodes::trampoline::tests::handle_suspend_message_wakeable_installs_record_with_allocated_id ... ok
 test interpreter::opcodes::trampoline::tests::handle_suspend_transitions_to_waiting ... ok
 test interpreter::opcodes::trampoline::tests::handle_trampoline_rejects_arity_mismatch ... ok
-test etf::decode::proptests::encode_decode_round_trips ... ok
 test interpreter::opcodes::trampoline::tests::handle_trampoline_resolves_reloaded_closure_by_unique_id ... ok
 test interpreter::opcodes::trampoline::tests::native_continuation_fires_only_at_its_recorded_position ... ok
 test interpreter::pattern::tests::select_tuple_arity_jumps_to_arity_match_or_fail ... ok
@@ -413,10 +411,10 @@ test interpreter::tests::audit_sink_receives_granted_native_call_event ... ok
 test interpreter::tests::bad_tuple_access_and_heap_exhaustion_report_errors ... ok
 test interpreter::tests::branching_opcode_sequence_dispatches_like_case_expression ... ok
 test interpreter::tests::call_chain_executes_in_sequence_and_returns ... ok
-test interpreter::tests::call_ext_bif_error_preserves_exception_class_and_stacktrace ... ok
 test interpreter::tests::call_ext_code_target_uses_latest_export_ip_after_reload ... ok
 test interpreter::tests::call_ext_deferred_target_resolves_when_module_loads_later ... ok
 test interpreter::tests::call_ext_denied_target_returns_mfa_rich_undef ... ok
+test interpreter::tests::call_ext_bif_error_preserves_exception_class_and_stacktrace ... ok
 test interpreter::tests::call_ext_invokes_registered_native_and_tail_call_deallocates ... ok
 test interpreter::tests::call_ext_last_native_tail_call_deallocates_then_returns_to_caller ... ok
 test interpreter::tests::call_ext_only_native_tail_call_does_not_fall_through_to_next_function ... ok
@@ -427,8 +425,8 @@ test interpreter::tests::custom_violation_handler_receives_denied_native_call_co
 test interpreter::tests::dirty_native_returns_dirty_call_without_inline_execution ... ok
 test interpreter::tests::external_return_restores_caller_version_and_qualified_self_call_upgrades ... ok
 test interpreter::tests::func_info_ip_derives_the_exact_mfa_it_names ... ok
-test interpreter::tests::func_info_raises_function_clause_and_move_covers_registers_literals_and_stack ... ok
 test interpreter::tests::guard_bif_failure_branches_without_exiting_process ... ok
+test interpreter::tests::func_info_raises_function_clause_and_move_covers_registers_literals_and_stack ... ok
 test interpreter::tests::interpreter_binary_opcodes_construct_and_match_binary_patterns ... ok
 test interpreter::tests::intra_module_calls_continue_on_pinned_version_after_reload ... ok
 test interpreter::tests::native_call_denied_by_process_capability_returns_error_tuple ... ok
@@ -463,29 +461,29 @@ test interpreter::tests::update_record_rejects_bad_source_and_invalid_operands .
 test interpreter::tests::update_record_survives_gc_before_allocation ... ok
 test interpreter::tests::update_record_without_pairs_allocates_identical_copy ... ok
 test io::bridge::tests::bridge_dispatches_message_completion ... ok
-test interpreter::tests::interpreter_local_call_dispatches_to_jit_cached_target ... ok
 test io::bridge::tests::bridge_dispatches_x_register_completion_and_shuts_down ... ok
+test io::bridge::tests::registry_is_safe_for_concurrent_registration ... ok
 test io::bridge::tests::registry_register_and_take_removes_pending_entry ... ok
 test io::facility::tests::bound_submit_uses_bound_pid ... ok
 test io::facility::tests::submit_for_pid_registers_pending_operation ... ok
 test io::facility::tests::unbound_submit_reports_missing_pid ... ok
 test io::resource::tests::explicit_close_then_drop_does_not_submit_or_close_twice ... ok
-test io::bridge::tests::registry_is_safe_for_concurrent_registration ... ok
 test io::resource::tests::fd_resource_accessor_rejects_invalid_tag_size_and_null_pointer ... ok
 test io::resource::tests::last_arc_drop_closes_fd ... ok
 test io::resource::tests::write_and_access_fd_resource_round_trips_fd_and_owner ... ok
 test io::resource::tests::write_fd_resource_rejects_too_small_heap_slice ... ok
-test io::tests::errno_mapping_returns_erlang_reason_atoms ... ok
 test io::standard_io::gc_release_tests::large_io_result_binary_is_released_by_minor_gc ... ok
+test io::tests::errno_mapping_returns_erlang_reason_atoms ... ok
 test io::tests::one_argument_ring_factories_stay_source_compatible_with_the_default_prefix ... ok
 test io::thread_pool::tests::read_and_write_temp_file_complete ... ok
 test jit::aot::tests::function_instructions_matches_aot_slicer_for_every_export ... ok
-test jit::cache::tests::insert_and_lookup_round_trip ... ok
-test jit::cache::tests::invalidate_module_evicts_all_generations_for_module ... ok
-test jit::cache::tests::invalidate_generation_evicts_only_matching_module_generation ... ok
-test jit::compile_job::tests::disabled_pool_refuses_jit_submission ... ok
-test jit::cache::tests::lookup_requires_matching_generation ... ok
 test interpreter::opcodes::binary::tests::interpreter_binary_match_extracts_sub_binary_from_proc_bin_without_copying ... ok
+test jit::cache::tests::insert_and_lookup_round_trip ... ok
+test interpreter::tests::interpreter_local_call_dispatches_to_jit_cached_target ... ok
+test jit::cache::tests::lookup_requires_matching_generation ... ok
+test jit::compile_job::tests::disabled_pool_refuses_jit_submission ... ok
+test jit::cache::tests::invalidate_generation_evicts_only_matching_module_generation ... ok
+test jit::cache::tests::invalidate_module_evicts_all_generations_for_module ... ok
 test jit::compiler::compiler_tests::compiled_add_at_end_falls_through_to_return_x0 ... ok
 test jit::compiler::compiler_tests::compiled_add_returns_small_int_result ... ok
 test jit::compiler::compiler_tests::compiled_allocate_heap_reserves_frame_after_the_heap_guard ... ok
@@ -528,14 +526,14 @@ test jit::compiler::compiler_tests::compiled_map_pattern_ops_are_read_only_and_e
 test jit::compiler::compiler_tests::compiled_make_fun_survives_gc_before_apply ... ok
 test jit::compiler::compiler_tests::compiled_move_writes_register_file ... ok
 test jit::compiler::compiler_tests::compiled_multiply_overflow_takes_fail_label ... ok
-test jit::compiler::compiler_tests::compiled_put_list_emits_safepoint_and_allocates_cons ... ok
 test jit::compiler::compiler_tests::compiled_pattern_match_on_ok_tuple ... ok
+test jit::compiler::compiler_tests::compiled_put_list_emits_safepoint_and_allocates_cons ... ok
 test jit::compiler::compiler_tests::compiled_put_map_assoc_allocates_empty_map ... ok
 test jit::compiler::compiler_tests::compiled_put_map_assoc_emits_safepoint_and_allocates_map ... ok
-test jit::compiler::compiler_tests::compiled_put_tuple2_emits_safepoint_and_allocates_tuple ... ok
 test jit::compiler::compiler_tests::compiled_put_map_exact_updates_existing_key_and_fails_missing_key ... ok
-test jit::compiler::compiler_tests::compiled_select_val_does_not_fall_through_after_match ... ok
+test jit::compiler::compiler_tests::compiled_put_tuple2_emits_safepoint_and_allocates_tuple ... ok
 test jit::compiler::compiler_tests::compiled_select_val_dispatches_matching_atom ... ok
+test jit::compiler::compiler_tests::compiled_select_val_does_not_fall_through_after_match ... ok
 test jit::compiler::compiler_tests::compiled_send_records_destination_and_message_safepoint_roots ... ok
 test jit::compiler::compiler_tests::compiled_swap_reads_before_writing ... ok
 test jit::compiler::compiler_tests::compiled_test_heap_guard_permits_execution ... ok
@@ -545,21 +543,21 @@ test jit::compiler::compiler_tests::compiled_zero_arity_is_tagged_tuple_takes_fa
 test jit::compiler::compiler_tests::compiles_return_only_function ... ok
 test jit::compiler::compiler_tests::coverage_table_has_one_entry_per_instruction_variant ... ok
 test jit::compiler::compiler_tests::compiled_try_catches_interpreted_exception_and_exposes_payload ... ok
-test jit::compiler::compiler_tests::deopt_capable_op_after_a_side_effect_is_rejected_by_the_guard ... ok
+test distribution::net_kernel_tests::stalled_resolver_cannot_wedge_net_kernel_shutdown ... ok
 test jit::compiler::compiler_tests::diamond_merge_point_is_tainted_from_either_arm ... ok
-test jit::compiler::compiler_tests::no_fail_bif_computes_small_ints_and_deopts_on_badarith ... ok
+test jit::compiler::compiler_tests::deopt_capable_op_after_a_side_effect_is_rejected_by_the_guard ... ok
 test jit::compiler::compiler_tests::recv_marker_opcodes_compile_to_deopt ... ok
 test jit::compiler::compiler_tests::reports_unsupported_opcode ... ok
+test jit::compiler::compiler_tests::no_fail_bif_computes_small_ints_and_deopts_on_badarith ... ok
 test jit::compiler::compiler_tests::selective_receive_peek_lowers_and_send_then_receive_is_walled ... ok
-test distribution::connection::tests::net_tick_marks_black_holed_peer_down_within_deadline ... ok
 test jit::compiler::compiler_tests::tail_position_wall_rejects_every_body_position_call ... ok
 test jit::compiler::compiler_tests::two_sequential_receives_with_a_consume_between_are_rejected ... ok
 test jit::compiler::compiler_tests::tail_position_wall_admits_a_tail_external_call ... ok
-test distribution::net_kernel_tests::stalled_resolver_cannot_wedge_net_kernel_shutdown ... ok
 test jit::compiler::compiler_tests::typed_add_overflow_deopts_for_bignum_promotion ... ok
 test jit::compiler::compiler_tests::typed_add_returns_small_int_result ... ok
 test jit::compiler::compiler_tests::typed_div_by_zero_takes_badarith_fail_label ... ok
 test jit::compiler::compiler_tests::typed_div_min_by_minus_one_completes_without_overflow ... ok
+test distribution::connection::tests::net_tick_marks_black_holed_peer_down_within_deadline ... ok
 test jit::compiler::compiler_tests::typed_is_atom_guard_on_known_int_jumps_to_fail_label ... ok
 test jit::compiler::compiler_tests::typed_is_integer_guard_elides_known_int_and_returns_tagged_value ... ok
 test jit::compiler::compiler_tests::typed_int_moved_to_y_survives_gc_as_a_tagged_term ... ok
@@ -567,12 +565,12 @@ test jit::compiler::compiler_tests::typed_mixed_known_unknown_arithmetic_materia
 test jit::compiler::compiler_tests::typed_put_list_stores_tagged_int_and_typed_head_load_returns_tagged_result ... ok
 test jit::compiler::compiler_tests::typed_put_tuple_stores_tagged_int_and_typed_element_load_returns_tagged_result ... ok
 test jit::compiler::compiler_tests::typed_test_arity_uses_known_tuple_length ... ok
+test jit::compiler::compiler_tests::typed_rem_by_zero_takes_badarith_fail_label ... ok
 test jit::ir_binary::tests::allocating_binary_ops_do_not_silently_return_empty_roots_for_malformed_operands ... ok
 test jit::ir_binary::tests::bs_match_get_binary_roots_match_context_and_destination ... ok
 test jit::ir_binary::tests::bs_match_get_tail_roots_match_context_and_destination ... ok
 test jit::ir_binary::tests::bs_match_multiple_allocating_commands_root_all_destinations ... ok
 test jit::ir_binary::tests::bs_match_non_allocating_commands_add_no_roots ... ok
-test jit::compiler::compiler_tests::typed_rem_by_zero_takes_badarith_fail_label ... ok
 test jit::ir_binary::tests::bs_match_rest_command_layout_roots_allocating_destinations ... ok
 test jit::ir_binary::tests::well_formed_allocating_binary_ops_return_non_empty_roots ... ok
 test jit::ir_float::tests::float_register_map_stores_separate_slots ... ok
@@ -581,8 +579,8 @@ test jit::profiler::tests::completion_mark_no_ops_when_profile_generation_is_new
 test jit::profiler::tests::completion_marks_never_resurrect_a_deleted_profile ... ok
 test jit::profiler::tests::completion_marks_refuse_a_job_generation_above_the_stamp ... ok
 test jit::profiler::tests::completion_marks_refuse_a_stale_job_when_the_generation_number_is_reused ... ok
-test jit::profiler::tests::call_at_threshold_triggers_compile_once ... ok
 test jit::profiler::tests::default_jit_threshold_is_b130_value ... ok
+test jit::profiler::tests::call_at_threshold_triggers_compile_once ... ok
 test jit::profiler::tests::first_call_to_new_mfa_continues_and_sets_counter ... ok
 test jit::profiler::tests::generation_stamping_reuses_one_slot_per_mfa_across_reloads ... ok
 test jit::profiler::tests::mark_compiled_prevents_retriggering ... ok
@@ -590,11 +588,11 @@ test jit::profiler::tests::newer_generation_reheats_compiled_function ... ok
 test jit::profiler::tests::newer_generation_retries_unsupported_function ... ok
 test jit::profiler::tests::older_generation_call_neither_resets_nor_counts ... ok
 test jit::profiler::tests::publish_compiled_refuses_after_remove_module_and_stale_generations ... ok
-test jit::profiler::tests::tune_threshold_fast_compile_high_speedup_decreases_threshold ... ok
 test jit::profiler::tests::remove_module_drops_only_that_modules_entries ... ok
+test jit::profiler::tests::tune_threshold_fast_compile_high_speedup_decreases_threshold ... ok
 test jit::profiler::tests::tune_threshold_never_goes_above_maximum ... ok
-test jit::profiler::tests::tune_threshold_never_goes_below_minimum ... ok
 test jit::profiler::tests::tune_threshold_slow_compile_low_speedup_increases_threshold ... ok
+test jit::profiler::tests::tune_threshold_never_goes_below_minimum ... ok
 test jit::safepoint::tests::records_unique_register_roots_in_operand_order ... ok
 test jit::runtime_binary_match::gc_release_tests::large_extracted_binary_is_released_by_minor_gc ... ok
 test jit::type_info::tests::missing_file_returns_not_found ... ok
@@ -603,15 +601,15 @@ test jit::type_info::tests::loads_and_queries_function_signature ... ok
 test loader::decode::chunks::tests::decode_atom_chunk_rejects_excessive_unique_atoms ... ok
 test loader::decode::chunks::tests::decode_atom_chunk_rejects_impossible_count_without_huge_alloc ... ok
 test loader::decode::chunks::tests::decode_import_chunk_rejects_impossible_count_without_huge_alloc ... ok
-test jit::compiler::compiler_tests::wait_timeout_and_blocking_receive_lower_under_path_sensitivity ... ok
 test loader::decode::chunks::tests::decode_literal_chunk_decodes_new_float_ext ... ok
 test loader::decode::chunks::tests::decode_literal_chunk_rejects_truncated_new_float_ext ... ok
+test jit::compiler::compiler_tests::wait_timeout_and_blocking_receive_lower_under_path_sensitivity ... ok
 test loader::decode::code::tests::float_opcodes_decode_to_dedicated_variants ... ok
 test loader::decode::code::tests::opcode_115_decodes_is_function2_with_function_and_arity_pair ... ok
 test loader::decode::chunks::tests::decode_literal_chunk_rejects_zlib_output_over_byte_budget ... ok
 test loader::decode::code::tests::opcode_159_decodes_to_is_tagged_tuple ... ok
-test loader::decode::code::tests::opcodes_173_to_176_decode_to_recv_marker_instructions ... ok
 test loader::decode::code::tests::opcode_65_decodes_to_get_list ... ok
+test loader::decode::code::tests::opcodes_173_to_176_decode_to_recv_marker_instructions ... ok
 test loader::decode::code::tests::recv_marker_instruction_opcodes_are_available_for_opcode_max_validation ... ok
 test loader::decode::compact::tests::big_literal_indices_start_after_existing_literal_table ... ok
 test loader::decode::compact::tests::nine_byte_negative_integer_keeps_sign_through_twos_complement ... ok
@@ -638,8 +636,8 @@ test loader::embed::tests::archive_pack_empty_directory_is_valid_empty_archive .
 test loader::embed::tests::archive_round_trip_returns_original_beam_bytes ... ok
 test loader::embed::tests::invalid_magic_or_version_returns_invalid_archive ... ok
 test loader::embed::tests::parse_empty_bytes_returns_invalid_archive ... ok
-test loader::load::tests::denied_bif_import_is_bound_to_denied_target_and_reported ... ok
 test loader::embed::tests::archive_pack_sorts_beam_files_and_skips_non_beam_files ... ok
+test loader::load::tests::denied_bif_import_is_bound_to_denied_target_and_reported ... ok
 test loader::load::tests::fixture_load_registers_module_with_nonfatal_unresolved_imports ... ok
 test loader::load::tests::load_module_defaults_to_all_capabilities_for_compatibility ... ok
 test loader::load::tests::load_module_rejects_garbage_bytes_as_invalid_format ... ok
@@ -647,21 +645,21 @@ test loader::load::tests::missing_import_module_is_deferred_and_kept_resolved_by
 test loader::load::tests::missing_loaded_export_is_unresolved_not_deferred ... ok
 test loader::load::tests::module_from_parsed_builds_function_and_line_tables ... ok
 test loader::load::tests::resolved_bif_import_points_to_native_entry ... ok
-test loader::load::tests::unresolved_report_groups_by_module_and_displays ... ok
 test loader::load::tests::resolved_cross_module_import_points_to_code_label ... ok
+test loader::load::tests::unresolved_report_groups_by_module_and_displays ... ok
 test loader::parser::tests::parses_valid_container_chunks ... ok
-test loader::parser::tests::loads_committed_fixture ... ok
 test loader::parser::tests::rejects_bad_magic ... ok
+test loader::parser::tests::loads_committed_fixture ... ok
 test loader::parser::tests::rejects_wrong_form_type ... ok
-test loader::validate::tests::float_fail_label_is_validation_error_when_missing ... ok
 test loader::validate::tests::float_register_out_of_range_is_validation_error ... ok
+test loader::validate::tests::float_fail_label_is_validation_error_when_missing ... ok
 test loader::validate::tests::missing_label_is_validation_error ... ok
 test loader::validate::tests::valid_operands_pass_validation ... ok
 test loader::validate::tests::x_register_out_of_range_is_validation_error ... ok
 test mailbox::selective::tests::empty_receive_returns_none_and_preserves_zero_save_pointer ... ok
 test mailbox::selective::tests::messages_before_save_pointer_are_not_retested ... ok
-test mailbox::selective::tests::receive_with_matching_message_returns_and_removes_it ... ok
 test mailbox::selective::tests::new_messages_after_failed_scan_are_tested_from_save_pointer ... ok
+test mailbox::selective::tests::receive_with_matching_message_returns_and_removes_it ... ok
 test mailbox::selective::tests::receive_with_no_matching_messages_returns_none_and_saves_end ... ok
 test mailbox::selective::tests::save_pointer_resets_after_success_following_previous_miss ... ok
 test mailbox::tests::fifo_order_is_preserved_within_one_sender ... ok
@@ -674,20 +672,20 @@ test mailbox::tests::send_fails_without_enqueuing_when_receiver_heap_is_full ...
 test mailbox::tests::send_small_integer_arrives_with_same_value ... ok
 test mailbox::tests::sending_list_deep_copies_all_cons_cells ... ok
 test mailbox::tests::sending_tuple_deep_copies_nested_boxed_elements ... ok
-test module::tests::deleted_names_do_not_reuse_generations ... ok
 test module::tests::fetched_origin_reports_fetched_source_atom ... ok
+test module::tests::deleted_names_do_not_reuse_generations ... ok
 test module::tests::find_lambda_by_id_resolves_reordered_lambda_tables ... ok
 test module::tests::function_at_ip_resolves_last_preceding_func_info ... ok
 test module::tests::function_instructions_includes_a_non_prelude_entry_instruction ... ok
 test module::tests::function_instructions_refuses_out_of_code_and_pre_function_ips ... ok
-test module::tests::function_instructions_yields_an_empty_slice_for_an_empty_non_final_function ... ok
 test module::tests::function_instructions_slices_one_function_between_func_info_boundaries ... ok
+test module::tests::function_instructions_yields_an_empty_slice_for_an_empty_non_final_function ... ok
 test module::tests::generations_are_tracked_per_module_name ... ok
 test module::tests::line_at_ip_resolves_last_preceding_line_marker ... ok
 test module::tests::lookup_mfa_reports_undef_for_missing_targets ... ok
 test module::tests::lookup_mfa_returns_code_pointer_for_export ... ok
-test module::tests::module_reports_invalid_label_for_export_missing_from_index ... ok
 test module::tests::module_reports_undef_for_missing_export ... ok
+test module::tests::module_reports_invalid_label_for_export_missing_from_index ... ok
 test module::tests::module_resolves_exports_to_instruction_indices ... ok
 test module::tests::module_resolves_labels_from_index ... ok
 test module::tests::purge_old_requires_no_external_references ... ok
@@ -699,8 +697,8 @@ test native::actor::cooperative::tests::call_async_rejects_on_timeout_when_no_re
 test native::actor::cooperative::tests::concurrent_call_asyncs_never_cross_replies ... ok
 test native::actor::dynamic::tests::dyn_actor_call_async_round_trips_an_opaque_term_graph ... ok
 test native::actor::tests::decodes_call_cast_and_reply_envelopes ... ok
-test native::actor::tests::non_envelope_terms_decode_to_none ... ok
 test native::actor::dynamic::tests::dyn_actor_call_async_rejects_on_timeout_when_no_reply_arrives ... ok
+test native::actor::tests::non_envelope_terms_decode_to_none ... ok
 test native::actor::tests::refs_are_unique_and_monotonic ... ok
 test native::bifs::tests::arithmetic_bifs_return_badarith_for_invalid_inputs ... ok
 test native::bifs::tests::arithmetic_bifs_return_small_integer_results ... ok
@@ -714,8 +712,8 @@ test native::bifs::tests::register_gate1_bifs_fails_when_called_twice ... ok
 test native::bifs::tests::register_gate1_bifs_registers_all_minimum_mfas ... ok
 test native::bifs::tests::timer_bifs_schedule_start_and_cancel_round_trips ... ok
 test native::bifs::tests::utility_bifs_return_badarg_for_wrong_arity ... ok
-test native::bifs::tests::utility_bifs_exit_or_return_true ... ok
 test native::capability::tests::all_capabilities_grants_everything ... ok
+test native::bifs::tests::utility_bifs_exit_or_return_true ... ok
 test native::capability::tests::capability_set_grants_exact_members ... ok
 test native::capability::tests::least_authority_grants_only_pure ... ok
 test native::context::tests::allocation_helpers_write_valid_terms_on_process_heap ... ok
@@ -735,8 +733,8 @@ test native::distribution_bifs::tests::whereis_returns_remote_pid_boxed_on_calle
 test native::etf_bifs::tests::binary_to_term_1_rejects_trailing_bytes ... ok
 test native::etf_bifs::tests::binary_to_term_2_safe_known_atom_succeeds_and_novel_atom_fails ... ok
 test native::etf_bifs::tests::binary_to_term_2_used_returns_term_and_bytes_used ... ok
-test native::etf_bifs::tests::parse_decode_options_rejects_non_atoms_and_improper_lists ... ok
 test native::etf_bifs::tests::register_etf_bifs_registers_term_to_binary_and_binary_to_term_arities ... ok
+test native::etf_bifs::tests::parse_decode_options_rejects_non_atoms_and_improper_lists ... ok
 test native::etf_bifs::tests::term_to_binary_2_accepts_minor_version_two_noop ... ok
 test native::etf_bifs::tests::term_to_binary_2_compressed_zero_is_uncompressed ... ok
 test native::etf_bifs::tests::term_to_binary_2_rejects_malformed_encode_options ... ok
@@ -748,8 +746,8 @@ test native::etf_bifs::tests::term_to_iovec_2_rejects_malformed_encode_options .
 test native::etf_bifs::tests::term_to_iovec_2_reuses_encode_options_and_preserves_references ... ok
 test native::etf_bifs::tests::term_to_iovec_iolist_to_binary_matches_term_to_binary ... ok
 test native::etf_bifs::tests::term_to_iovec_returns_iolist_with_large_binary_reference ... ok
-test native::ets_bifs::tests::delete_key_and_member_round_trip ... ok
 test native::ets_bifs::tests::delete_one_removes_named_table ... ok
+test native::ets_bifs::tests::delete_key_and_member_round_trip ... ok
 test native::ets_bifs::tests::ets_bifs_are_registered_under_ets_module ... ok
 test native::ets_bifs::tests::ets_entries_survive_the_inserting_process_gc ... ok
 test native::ets_bifs::tests::ets_new_accepts_explicit_false_concurrency_options ... ok
@@ -772,17 +770,17 @@ test native::ets_bifs::tests::insert_and_lookup_round_trip_for_set_bag_and_order
 test native::ets_bifs::tests::match_delete_removes_only_matching_bag_objects ... ok
 test native::ets_bifs::tests::match_returns_bound_variable_lists_and_match_object_returns_tuples ... ok
 test native::ets_bifs::tests::ordered_set_cursor_traversal_visits_keys_in_order ... ok
-test native::ets_bifs::tests::match_and_select_pagination_consumes_all_rows ... ok
 test native::ets_bifs::tests::select_copies_constructed_results_to_process_heap ... ok
+test native::ets_bifs::tests::match_and_select_pagination_consumes_all_rows ... ok
 test native::ets_bifs::tests::select_runs_match_spec_with_guard ... ok
 test native::ets_bifs::tests::set_cursor_traversal_visits_all_keys_once_and_empty_tables_end ... ok
-test native::ets_bifs::tests::tab2list_returns_all_inserted_tuples ... ok
 test native::ets_bifs::tests::tab2list_empty_table_returns_nil_and_ordered_set_is_key_sorted ... ok
 test native::exception_bifs::tests::bif_raise_3_rejects_invalid_class ... ok
+test native::ets_bifs::tests::tab2list_returns_all_inserted_tuples ... ok
 test native::exception_bifs::tests::bif_raise_3_sets_exception_metadata_and_returns_reason_error ... ok
 test native::exception_bifs::tests::register_exception_bifs_registers_raise_3 ... ok
-test native::file_bifs::tests::close_file_already_closed_returns_closed_error ... ok
 test native::file_bifs::tests::close_file_submits_close_tracks_resource_and_marks_closed_on_completion ... ok
+test native::file_bifs::tests::close_file_already_closed_returns_closed_error ... ok
 test native::file_bifs::tests::file_seek_bof_and_cur_update_tracked_offset ... ok
 test native::file_bifs::tests::file_seek_eof_submits_statx_and_sets_size_relative_offset ... ok
 test native::file_bifs::tests::file_seek_rejects_negative_result_and_preserves_offset_with_einval ... ok
@@ -794,8 +792,8 @@ test native::file_bifs::tests::pread_submits_explicit_offset_and_does_not_advanc
 test native::file_bifs::tests::pwrite_submits_explicit_offset_and_does_not_advance_tracked_offset ... ok
 test native::file_bifs::tests::read_and_write_reject_closed_resource ... ok
 test native::file_bifs::tests::read_file_submits_tracked_offset_and_advances_on_success ... ok
-test native::file_bifs::tests::registers_positional_file_bifs ... ok
 test native::file_bifs::tests::write_file_submits_tracked_offset_and_advances_on_success_or_partial ... ok
+test native::file_bifs::tests::registers_positional_file_bifs ... ok
 test native::file_meta_bifs::tests::completion_handlers_reject_mismatched_file_io_continuations ... ok
 test native::file_meta_bifs::tests::file_info_submits_statx_and_finishes_record_tuple ... ok
 test native::file_meta_bifs::tests::blocking_helpers_cover_real_directory_cycle ... ok
@@ -823,16 +821,16 @@ test native::gate3_bifs::demonitor2_tests::demonitor2_flush_and_info_combined ..
 test native::gate3_bifs::demonitor2_tests::demonitor2_flush_option ... ok
 test native::gate3_bifs::demonitor2_tests::demonitor2_info_option_returns_false_when_not_active ... ok
 test native::gate3_bifs::demonitor2_tests::demonitor2_info_option_returns_true_when_active ... ok
-test native::gate3_bifs::registry_bifs::tests::register_associates_name_with_pid ... ok
 test native::gate3_bifs::registry_bifs::tests::register_badarg_name_taken ... ok
+test native::gate3_bifs::registry_bifs::tests::register_associates_name_with_pid ... ok
 test native::gate3_bifs::registry_bifs::tests::register_badarg_no_facility ... ok
 test native::gate3_bifs::registry_bifs::tests::register_badarg_non_atom_name ... ok
 test native::gate3_bifs::registry_bifs::tests::register_badarg_non_pid ... ok
 test native::gate3_bifs::registry_bifs::tests::register_badarg_wrong_arity ... ok
 test native::gate3_bifs::registry_bifs::tests::unregister_badarg_no_facility ... ok
 test native::gate3_bifs::registry_bifs::tests::unregister_badarg_non_atom ... ok
-test native::gate3_bifs::registry_bifs::tests::unregister_removes_registration ... ok
 test native::gate3_bifs::registry_bifs::tests::unregister_badarg_not_registered ... ok
+test native::gate3_bifs::registry_bifs::tests::unregister_removes_registration ... ok
 test native::gate3_bifs::registry_bifs::tests::whereis_badarg_no_facility ... ok
 test native::gate3_bifs::registry_bifs::tests::whereis_badarg_non_atom ... ok
 test native::gate3_bifs::registry_bifs::tests::whereis_returns_pid ... ok
@@ -844,26 +842,27 @@ test native::gate3_bifs::tests::byte_size_returns_binary_length ... ok
 test native::gate3_bifs::tests::all_three_gates_coexist ... ok
 test native::gate3_bifs::tests::element_badarg_index_out_of_range ... ok
 test native::gate3_bifs::tests::element_badarg_index_zero ... ok
+test loader::decode::chunks::tests::decode_literal_chunk_rejects_decompression_bomb ... ok
 test native::gate3_bifs::tests::element_badarg_negative_index ... ok
 test native::gate3_bifs::tests::element_badarg_non_integer_index ... ok
 test native::gate3_bifs::tests::element_badarg_non_tuple ... ok
-test native::gate3_bifs::tests::disconnect_node_removes_node_from_nodes ... ok
 test native::gate3_bifs::tests::element_badarg_wrong_arity ... ok
+test native::gate3_bifs::tests::disconnect_node_removes_node_from_nodes ... ok
 test native::gate3_bifs::tests::element_returns_first_element ... ok
 test native::gate3_bifs::tests::element_returns_last_element ... ok
 test native::gate3_bifs::tests::iolist_size_rejects_complex_iolist_stub ... ok
 test native::gate3_bifs::tests::iolist_size_returns_binary_length ... ok
+test native::gate3_bifs::tests::is_alive_false_without_distribution_node ... ok
 test native::gate3_bifs::tests::is_alive_false_for_default_node_name ... ok
 test native::gate3_bifs::tests::is_alive_false_for_real_node_name_without_distribution_service ... ok
-test native::gate3_bifs::tests::is_alive_false_without_distribution_node ... ok
 test native::gate3_bifs::tests::is_process_alive_badarg_non_pid ... ok
 test native::gate3_bifs::tests::is_process_alive_badarg_wrong_arity ... ok
 test native::gate3_bifs::tests::is_process_alive_false_dead_process ... ok
 test native::gate3_bifs::tests::is_process_alive_false_without_facility ... ok
 test native::gate3_bifs::tests::is_process_alive_self_is_true ... ok
-test native::gate3_bifs::tests::is_alive_true_for_real_node_name_with_distribution_service ... ok
 test native::gate3_bifs::tests::is_process_alive_true_with_facility ... ok
 test native::gate3_bifs::tests::make_ref_badarg_wrong_arity ... ok
+test native::gate3_bifs::tests::is_alive_true_for_real_node_name_with_distribution_service ... ok
 test native::gate3_bifs::tests::make_ref_returns_local_reference ... ok
 test native::gate3_bifs::tests::make_ref_returns_unique_values ... ok
 test native::gate3_bifs::tests::monotonic_time_is_nondecreasing ... ok
@@ -877,13 +876,13 @@ test native::gate3_bifs::tests::node_1_returns_remote_node_for_remote_reference 
 test native::gate3_bifs::tests::phash2_is_deterministic_and_range_bounded ... ok
 test native::gate3_bifs::tests::phash2_rejects_invalid_range ... ok
 test native::gate3_bifs::tests::register_gate3_bifs_fails_twice ... ok
-test native::gate3_bifs::tests::nodes_returns_connected_node_atoms ... ok
-test native::gate3_bifs::tests::send_badarg_non_pid ... ok
 test native::gate3_bifs::tests::register_gate3_bifs_registers_all ... ok
+test native::gate3_bifs::tests::send_badarg_non_pid ... ok
 test native::gate3_bifs::tests::send_badarg_wrong_arity ... ok
 test native::gate3_bifs::tests::send_returns_message ... ok
-test native::gate3_bifs::tests::spawn_1_badarg_no_facility ... ok
+test native::gate3_bifs::tests::nodes_returns_connected_node_atoms ... ok
 test native::gate3_bifs::tests::send_remote_pid_without_connection_returns_noconnection_atom ... ok
+test native::gate3_bifs::tests::spawn_1_badarg_no_facility ... ok
 test native::gate3_bifs::tests::spawn_1_badarg_non_closure ... ok
 test native::gate3_bifs::tests::spawn_1_badarg_non_zero_arity ... ok
 test native::gate3_bifs::tests::spawn_1_badarg_with_captures ... ok
@@ -891,7 +890,6 @@ test native::gate3_bifs::tests::spawn_1_badarg_wrong_arity ... ok
 test native::gate3_bifs::tests::spawn_1_with_zero_arity_closure ... ok
 test native::gate3_bifs::tests::spawn_link_1_badarg_without_pid ... ok
 test native::gate3_bifs::tests::spawn_link_1_sets_link_to_parent ... ok
-test loader::decode::chunks::tests::decode_literal_chunk_rejects_decompression_bomb ... ok
 test native::gate3_bifs::tests::system_time_and_time_offset_return_small_ints ... ok
 test native::gate3_bifs::tests::tuple_size_badarg_non_tuple ... ok
 test native::gate3_bifs::tests::tuple_size_badarg_wrong_arity ... ok
@@ -916,8 +914,8 @@ test native::gate3_bifs::type_conversion::tests::atom_to_list_converts_atom_name
 test native::gate3_bifs::type_conversion::tests::binary_to_atom_badarg_invalid_utf8 ... ok
 test native::gate3_bifs::type_conversion::tests::binary_to_atom_interns_utf8_binary ... ok
 test native::gate3_bifs::type_conversion::tests::binary_to_existing_atom_2_badarg_unknown ... ok
-test native::gate3_bifs::type_conversion::tests::binary_to_existing_atom_2_resolves_encoding_by_name ... ok
 test native::gate3_bifs::type_conversion::tests::binary_to_existing_atom_2_finds_interned_atom ... ok
+test native::gate3_bifs::type_conversion::tests::binary_to_existing_atom_2_resolves_encoding_by_name ... ok
 test native::gate3_bifs::type_conversion::tests::binary_to_existing_atom_badarg_no_atom_table ... ok
 test native::gate3_bifs::type_conversion::tests::binary_to_existing_atom_badarg_non_binary ... ok
 test native::gate3_bifs::type_conversion::tests::binary_to_existing_atom_badarg_unknown ... ok
@@ -954,8 +952,8 @@ test native::gleam_ffi::tests::gleam_demonitor_badarg_negative ... ok
 test native::gleam_ffi::tests::gleam_demonitor_badarg_no_facility ... ok
 test native::gleam_ffi::tests::gleam_demonitor_badarg_non_integer ... ok
 test native::gleam_ffi::tests::gleam_demonitor_delegates_and_returns_nil ... ok
-test native::gleam_ffi::tests::gleam_link_badarg_no_facility ... ok
 test native::gleam_ffi::tests::gleam_link_badarg_non_pid ... ok
+test native::gleam_ffi::tests::gleam_link_badarg_no_facility ... ok
 test native::gleam_ffi::tests::gleam_link_delegates_and_returns_nil ... ok
 test native::gleam_ffi::tests::pid_from_dynamic_badarg_wrong_arity ... ok
 test native::gleam_ffi::tests::pid_from_dynamic_returns_error_for_atom ... ok
@@ -967,14 +965,14 @@ test native::gleam_ffi::tests::process_named_returns_error_nil_when_not_found ..
 test native::gleam_ffi::tests::process_named_returns_ok_tuple_when_found ... ok
 test native::gleam_ffi::tests::register_process_badarg_already_registered ... ok
 test native::gleam_ffi::tests::register_process_badarg_no_facility ... ok
-test native::gleam_ffi::tests::register_gleam_ffi_bifs_fails_on_duplicate ... ok
 test native::gleam_ffi::tests::register_process_badarg_non_atom_name ... ok
+test native::gleam_ffi::tests::register_gleam_ffi_bifs_fails_on_duplicate ... ok
 test native::gleam_ffi::tests::register_gleam_ffi_bifs_registers_all_expected ... ok
 test native::gleam_ffi::tests::register_process_badarg_non_pid ... ok
 test native::gleam_ffi::tests::register_process_delegates_and_returns_nil ... ok
 test native::gleam_ffi::tests::sleep_badarg_negative ... ok
-test native::gleam_ffi::tests::sleep_badarg_non_integer ... ok
 test native::gleam_ffi::tests::sleep_badarg_wrong_arity ... ok
+test native::gleam_ffi::tests::sleep_badarg_non_integer ... ok
 test native::gleam_ffi::tests::sleep_forever_badarg_wrong_arity ... ok
 test native::gleam_ffi::tests::sleep_zero_returns_immediately ... ok
 test native::gleam_ffi::tests::trap_exits_accepts_false ... ok
@@ -994,18 +992,18 @@ test native::inet_bifs::tests::peername_on_unconnected_udp_returns_enotconn ... 
 test native::inet_bifs::tests::peername_and_sockname_return_ipv4_address_port_tuples ... ok
 test native::meridian_ffi::tests::register_meridian_ffi_marks_blocking_io_nifs_dirty ... ok
 test native::native_process::tests::process_with_native_body_reports_is_native ... ok
-test native::inet_bifs::tests::setopts_and_getopts_round_trip_nodelay ... ok
-test native::otp_stubs::tests::application_stopped_rejects_args ... ok
 test native::native_process::tests::structural_clone_is_non_native ... ok
+test native::otp_stubs::tests::application_stopped_rejects_args ... ok
 test native::otp_stubs::tests::application_stopped_returns_ok ... ok
+test native::inet_bifs::tests::setopts_and_getopts_round_trip_nodelay ... ok
 test native::otp_stubs::tests::code_priv_dir_returns_error_bad_name_for_missing_app ... ok
 test native::otp_stubs::tests::ensure_all_started_reports_loaded_and_missing_modules ... ok
 test native::otp_stubs::tests::erlang_length_counts_empty_list ... ok
 test native::otp_stubs::tests::erlang_not_negates_booleans ... ok
 test native::otp_stubs::tests::os_getenv_0_returns_non_empty_environment_list ... ok
+test native::otp_stubs::tests::code_priv_dir_resolves_sibling_priv_for_loaded_filesystem_module ... ok
 test native::otp_stubs::tests::os_getenv_returns_binary_values_and_false_for_missing ... ok
 test native::otp_stubs::tests::os_putenv_and_unsetenv_round_trip ... ok
-test native::otp_stubs::tests::code_priv_dir_resolves_sibling_priv_for_loaded_filesystem_module ... ok
 test native::otp_stubs::tests::os_type_returns_platform_tuple ... ok
 test native::otp_stubs::tests::register_otp_stubs_registers_all_entries ... ok
 test native::otp_stubs::tests::string_split_preserves_binary_and_list_representations ... ok
@@ -1020,8 +1018,8 @@ test native::process_bifs::tests::exit_1_returns_reason_and_sets_exit_class ... 
 test native::process_bifs::tests::exit_badarg_non_pid ... ok
 test native::process_bifs::tests::exit_badarg_unknown_reason_atom ... ok
 test native::process_bifs::tests::exit_normal_reason ... ok
-test native::process_bifs::tests::exit_remote_pid_routes_through_distribution_control_and_returns_true ... ok
 test native::process_bifs::tests::exit_remote_pid_without_facility_is_badarg ... ok
+test native::process_bifs::tests::exit_remote_pid_routes_through_distribution_control_and_returns_true ... ok
 test native::process_bifs::tests::exit_sends_signal_and_returns_true ... ok
 test native::process_bifs::tests::link_badarg_no_pid ... ok
 test native::process_bifs::tests::link_badarg_non_pid_arg ... ok
@@ -1076,12 +1074,12 @@ test native::process_bifs::tests::spawn_monitor_3_badarg_without_facility ... ok
 test native::process_bifs::tests::spawn_monitor_1_with_zero_arity_closure ... ok
 test native::process_bifs::tests::spawn_monitor_3_passes_list_args ... ok
 test native::process_bifs::tests::spawn_monitor_3_returns_pid_and_boxed_reference ... ok
-test native::process_bifs::tests::spawn_opt_2_with_zero_arity_closure_and_monitor_returns_tuple ... ok
 test native::process_bifs::tests::spawn_opt_4_records_link_and_priority ... ok
+test native::process_bifs::tests::spawn_opt_2_with_zero_arity_closure_and_monitor_returns_tuple ... ok
 test native::process_bifs::tests::spawn_opt_4_with_monitor_returns_pid_and_reference ... ok
 test native::process_bifs::tests::spawn_opt_4_without_monitor_returns_pid ... ok
-test native::process_bifs::tests::spawn_opt_capabilities_attenuate_but_never_escalate ... ok
 test native::process_bifs::tests::spawn_opt_sandbox_attenuates_but_never_escalates ... ok
+test native::process_bifs::tests::spawn_opt_capabilities_attenuate_but_never_escalate ... ok
 test native::process_bifs::tests::spawn_passes_list_args ... ok
 test native::process_bifs::tests::spawn_returns_new_pid ... ok
 test native::process_bifs::tests::unlink_remote_pid_routes_through_distribution_control ... ok
@@ -1109,18 +1107,17 @@ test native::stdlib_stubs::b038_tests::maps_keys_values_and_to_list_project_sort
 test native::stdlib_stubs::b038_tests::maps_put_inserts_and_replaces_entries ... ok
 test native::stdlib_stubs::b038_tests::maps_with_and_without_select_entries_and_validate_keys_list ... ok
 test native::stdlib_stubs::b127_tests::filter_uses_continuation_trampoline ... ok
+test jit::compiler::compiler_tests::coverage_walk_agrees_with_prepass_and_dispatch_for_all_75_variants ... ok
 test native::stdlib_stubs::b127_tests::foreach_discards_results_and_finishes_with_ok ... ok
 test native::stdlib_stubs::b127_tests::key_manipulation_bifs_preserve_order_and_key_semantics ... ok
 test native::stdlib_stubs::b127_tests::list_query_bifs_reject_invalid_positions_and_empty_last ... ok
 test native::stdlib_stubs::b127_tests::list_query_bifs_return_expected_terms ... ok
 test native::stdlib_stubs::b127_tests::list_transform_bifs_build_expected_results ... ok
-test native::stdlib_stubs::b127_tests::maps_map_uses_continuation_trampoline_and_preserves_original ... ok
 test native::stdlib_stubs::b127_tests::transform_bifs_reject_improper_shapes ... ok
+test native::stdlib_stubs::b127_tests::maps_map_uses_continuation_trampoline_and_preserves_original ... ok
 test native::stdlib_stubs::bitwise_bifs_tests::bitwise_acceptance_values_match_erlang ... ok
 test native::stdlib_stubs::bitwise_bifs_tests::bitwise_bigint_values_use_twos_complement_and_demote ... ok
-test jit::compiler::compiler_tests::coverage_walk_agrees_with_prepass_and_dispatch_for_all_75_variants ... ok
 test native::stdlib_stubs::bitwise_bifs_tests::bitwise_rejects_non_integer_arguments ... ok
-test jit::compiler::compiler_tests::compiled_call_last_self_tail_recursion_stays_flat_at_one_million ... ok
 test native::stdlib_stubs::collection_bifs_tests::lists_reverse_empty_list_returns_empty ... ok
 test native::stdlib_stubs::collection_bifs_tests::lists_reverse_rejects_non_list ... ok
 test native::stdlib_stubs::collection_bifs_tests::lists_reverse_rejects_wrong_arity ... ok
@@ -1131,11 +1128,11 @@ test native::stdlib_stubs::collection_bifs_tests::maps_from_list_duplicate_keys_
 test native::stdlib_stubs::collection_bifs_tests::maps_from_list_empty_list_returns_empty_map ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_from_list_rejects_list_of_non_tuples ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_from_list_rejects_non_list ... ok
-test native::stdlib_stubs::collection_bifs_tests::maps_map_empty_map_returns_fresh_empty_map ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_from_list_rejects_wrong_arity ... ok
+test native::stdlib_stubs::collection_bifs_tests::maps_map_empty_map_returns_fresh_empty_map ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_map_non_empty_sets_continuation_trampoline ... ok
-test native::stdlib_stubs::collection_bifs_tests::maps_merge_combines_two_maps ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_map_rejects_wrong_arity ... ok
+test native::stdlib_stubs::collection_bifs_tests::maps_merge_combines_two_maps ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_merge_empty_maps ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_merge_rejects_non_maps ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_merge_rejects_wrong_arity ... ok
@@ -1145,38 +1142,38 @@ test native::stdlib_stubs::collection_bifs_tests::maps_remove_rejects_non_map ..
 test native::stdlib_stubs::collection_bifs_tests::maps_remove_rejects_wrong_arity ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_remove_removes_existing_key ... ok
 test native::stdlib_stubs::collection_bifs_tests::maps_remove_returns_same_structure_if_key_not_present ... ok
+test native::stdlib_stubs::collection_bifs_tests::timer_sleep_rejects_negative ... ok
 test native::stdlib_stubs::collection_bifs_tests::register_stdlib_stubs_includes_collection_bifs ... ok
 test native::stdlib_stubs::collection_bifs_tests::timer_sleep_rejects_non_integer ... ok
-test native::stdlib_stubs::collection_bifs_tests::timer_sleep_rejects_negative ... ok
 test native::stdlib_stubs::collection_bifs_tests::timer_sleep_rejects_wrong_arity ... ok
 test native::stdlib_stubs::collection_bifs_tests::timer_sleep_returns_ok_for_zero ... ok
 test native::stdlib_stubs::gc_rooting_tests::alloc_tuple_roots_boxed_arguments_across_gc ... ok
-test native::stdlib_stubs::gc_rooting_tests::list_from_vec_preserves_boxed_floats_under_gc_pressure ... ok
 test native::stdlib_stubs::gc_rooting_tests::list_from_vec_handles_more_elements_than_x_registers ... ok
+test native::stdlib_stubs::gc_rooting_tests::list_from_vec_preserves_boxed_floats_under_gc_pressure ... ok
 test native::stdlib_stubs::gc_rooting_tests::native_continuation_terms_are_gc_roots ... ok
 test native::stdlib_stubs::gc_rooting_tests::rooted_push_accumulation_survives_gc ... ok
+test native::stdlib_stubs::gleam_stdlib_ffi2_tests::gleam_stdlib_natives_are_print_family_only ... ok
 test native::stdlib_stubs::gleam_stdlib_ffi2_tests::print_wrappers_write_to_configured_sink_and_return_nil ... ok
 test native::stdlib_stubs::io_bifs_tests::io_format_helpers_and_init_stop_are_covered ... ok
-test native::stdlib_stubs::gleam_stdlib_ffi2_tests::gleam_stdlib_natives_are_print_family_only ... ok
-test native::stdlib_stubs::io_bifs_tests::io_put_chars_uses_group_leader_protocol ... ok
+test native::stdlib_stubs::collection_bifs_tests::timer_sleep_returns_ok_for_small_duration ... ok
 test native::stdlib_stubs::io_bifs_tests::io_get_line_sends_get_line_request ... ok
+test native::stdlib_stubs::io_bifs_tests::io_put_chars_uses_group_leader_protocol ... ok
 test native::stdlib_stubs::json_bifs_tests::decode_handles_bignums_and_surrogate_pairs ... ok
 test native::stdlib_stubs::json_bifs_tests::decode_parses_objects_arrays_and_scalars ... ok
 test native::stdlib_stubs::json_bifs_tests::decode_reports_otp_error_reasons ... ok
 test native::stdlib_stubs::json_bifs_tests::encode_binary_escapes_json_string_characters ... ok
 test native::stdlib_stubs::json_bifs_tests::encode_float_keeps_a_decimal_point ... ok
 test native::stdlib_stubs::json_bifs_tests::encode_integer_formats_small_and_big ... ok
-test native::stdlib_stubs::math_bifs_tests::exp_returns_boxed_float ... ok
 test native::stdlib_stubs::json_bifs_tests::encode_term_handles_nested_structures ... ok
+test native::stdlib_stubs::math_bifs_tests::exp_returns_boxed_float ... ok
 test native::stdlib_stubs::math_bifs_tests::math_acceptance_values_match_expected_results ... ok
-test native::stdlib_stubs::collection_bifs_tests::timer_sleep_returns_ok_for_small_duration ... ok
 test native::stdlib_stubs::math_bifs_tests::math_accepts_small_int_numbers ... ok
 test native::stdlib_stubs::math_bifs_tests::math_rejects_invalid_inputs ... ok
 test native::stdlib_stubs::rand_bifs_tests::rand_uniform_rejects_arguments ... ok
 test native::stdlib_stubs::rand_bifs_tests::rand_uniform_returns_float_in_half_open_unit_range ... ok
-test native::stdlib_stubs::tests::binary_part_extracts_slices_and_rejects_out_of_bounds ... ok
 test native::stdlib_stubs::rand_bifs_tests::rand_uniform_successive_calls_vary ... ok
 test native::stdlib_stubs::tests::characters_to_binary_converts_empty_list ... ok
+test native::stdlib_stubs::tests::binary_part_extracts_slices_and_rejects_out_of_bounds ... ok
 test native::stdlib_stubs::tests::characters_to_binary_converts_integer_code_point_list ... ok
 test native::stdlib_stubs::tests::characters_to_binary_handles_nested_and_improper_chardata ... ok
 test native::stdlib_stubs::tests::characters_to_binary_passes_through_binary ... ok
@@ -1185,8 +1182,8 @@ test native::stdlib_stubs::tests::characters_to_binary_rejects_non_binary_non_li
 test native::stdlib_stubs::tests::characters_to_binary_rejects_wrong_arity ... ok
 test native::stdlib_stubs::tests::characters_to_list_accepts_chardata_list ... ok
 test native::stdlib_stubs::tests::characters_to_list_converts_ascii_binary ... ok
-test native::stdlib_stubs::tests::characters_to_list_rejects_non_chardata ... ok
 test native::stdlib_stubs::tests::characters_to_list_handles_multibyte_utf8 ... ok
+test native::stdlib_stubs::tests::characters_to_list_rejects_non_chardata ... ok
 test native::stdlib_stubs::tests::characters_to_list_rejects_wrong_arity ... ok
 test native::stdlib_stubs::tests::characters_to_list_returns_nil_for_empty_binary ... ok
 test native::stdlib_stubs::tests::debug_options_accepts_any_term ... ok
@@ -1196,11 +1193,12 @@ test native::stdlib_stubs::tests::debug_options_returns_empty_list ... ok
 test native::stdlib_stubs::tests::logger_warning_rejects_wrong_arity ... ok
 test native::stdlib_stubs::tests::logger_warning_returns_ok_for_atom_format ... ok
 test native::stdlib_stubs::tests::logger_warning_returns_ok_for_binary_format ... ok
-test native::stdlib_stubs::tests::string_bifs_handle_binary_cases ... ok
 test native::stdlib_stubs::tests::register_stdlib_stubs_fails_on_duplicate ... ok
-test native::stdlib_stubs::tests::string_split_returns_list_of_binaries_and_rejects_invalid_input ... ok
+test native::gleam_ffi::tests::sleep_returns_nil_after_delay ... ok
+test native::stdlib_stubs::tests::string_bifs_handle_binary_cases ... ok
 test native::stdlib_stubs::tests::register_stdlib_stubs_registers_all_expected_mfas ... ok
 test native::stdlib_stubs::type_conversion_bifs_tests::binary_to_float_parses_float_text ... ok
+test native::stdlib_stubs::tests::string_split_returns_list_of_binaries_and_rejects_invalid_input ... ok
 test native::stdlib_stubs::type_conversion_bifs_tests::binary_to_integer_parses_decimal ... ok
 test native::stdlib_stubs::type_conversion_bifs_tests::atom_to_binary_converts_common_atom ... ok
 test native::stdlib_stubs::type_conversion_bifs_tests::binary_to_integer_parses_radix ... ok
@@ -1221,34 +1219,35 @@ test native::stdlib_stubs::type_conversion_bifs_tests::list_to_bitstring_returns
 test native::stdlib_stubs::type_conversion_bifs_tests::list_to_tuple_converts_values ... ok
 test native::stdlib_stubs::type_conversion_bifs_tests::tuple_to_list_converts_values ... ok
 test native::stdlib_stubs::type_conversion_bifs_tests::type_conversion_rejects_non_matching_types ... ok
+test jit::compiler::compiler_tests::compiled_call_last_self_tail_recursion_stays_flat_at_one_million ... ok
 test native::stdlib_stubs::uri_bifs_tests::dissect_query_returns_pairs_with_form_decoding ... ok
 test native::stdlib_stubs::uri_bifs_tests::maps_get_returns_value_or_raises_badkey ... ok
 test native::stdlib_stubs::uri_bifs_tests::uri_parse_extracts_all_components_with_integer_port ... ok
 test native::stdlib_stubs::uri_bifs_tests::uri_parse_omits_absent_components ... ok
-test native::stdlib_stubs::uri_bifs_tests::register_stdlib_stubs_includes_uri_bifs ... ok
 test native::stdlib_stubs::uri_bifs_tests::uri_parse_rejects_invalid_port_with_error_tuple ... ok
 test native::stdlib_stubs::uri_bifs_tests::uri_parse_strips_ipv6_brackets ... ok
+test native::stdlib_stubs::uri_bifs_tests::register_stdlib_stubs_includes_uri_bifs ... ok
 test native::system_info_bifs::tests::badarg_for_unknown_item_non_atom_wrong_arity_and_missing_facility ... ok
 test native::system_info_bifs::tests::memory_badarg_for_unknown_item_non_atom_and_wrong_arity ... ok
-test native::system_info_bifs::tests::binary_items_return_expected_bytes ... ok
 test native::system_info_bifs::tests::port_stubs_return_otp_compatible_defaults ... ok
 test native::system_info_bifs::tests::port_stubs_validate_arity ... ok
 test native::system_info_bifs::tests::registers_erlang_system_info_bifs ... ok
+test native::system_info_bifs::tests::binary_items_return_expected_bytes ... ok
 test native::system_info_bifs::tests::statistics_badarg_for_unknown_item_non_atom_and_wrong_arity ... ok
-test native::system_info_bifs::tests::memory_zero_returns_expected_proplist_and_memory_one_matches ... ok
-test native::system_info_bifs::tests::statistics_returns_total_since_last_tuples ... ok
-test native::system_info_bifs::tests::numeric_items_return_small_integers ... ok
 test native::tcp_bifs::tests::register_tcp_bifs_includes_setopts_and_controlling_process ... ok
+test native::system_info_bifs::tests::statistics_returns_total_since_last_tuples ... ok
 test native::tcp_bifs::tests::register_tcp_bifs_registers_listener_accept_connect_send_recv_mfas ... ok
+test native::system_info_bifs::tests::memory_zero_returns_expected_proplist_and_memory_one_matches ... ok
+test native::system_info_bifs::tests::numeric_items_return_small_integers ... ok
 test native::tcp_bifs::tests::tcp_accept_completion_returns_ok_fd_resource ... ok
 test native::tcp_bifs::tests::tcp_accept_submits_accept_and_suspends ... ok
-test native::tcp_bifs::tests::tcp_accept_timeout_does_not_leak_fd ... ok
 test native::tcp_bifs::tests::tcp_accept_timeout_reentry_returns_timeout ... ok
-test native::tcp_bifs::tests::tcp_connect_completion_returns_ok_fd_resource ... ok
 test native::tcp_bifs::tests::tcp_accept_timeout_zero_returns_timeout_without_submit ... ok
+test native::tcp_bifs::tests::tcp_connect_completion_returns_ok_fd_resource ... ok
+test native::tcp_bifs::tests::tcp_accept_timeout_does_not_leak_fd ... ok
 test native::tcp_bifs::tests::tcp_connect_refused_returns_econnrefused ... ok
-test native::tcp_bifs::tests::tcp_connect_submits_connect_and_suspends ... ok
 test native::tcp_bifs::tests::tcp_controlling_process_transfers_only_from_current_controller ... ok
+test native::tcp_bifs::tests::tcp_connect_submits_connect_and_suspends ... ok
 test native::tcp_bifs::tests::tcp_listen_in_use_port_returns_error_tuple ... ok
 test native::tcp_bifs::tests::tcp_listen_parses_ipv4_backlog_and_reuseaddr_options ... ok
 test native::tcp_bifs::tests::tcp_listen_returns_fd_resource_for_random_port ... ok
@@ -1256,36 +1255,35 @@ test native::tcp_bifs::tests::tcp_recv_exact_length_accumulates_multiple_reads .
 test native::tcp_bifs::tests::tcp_recv_large_exact_length_reads_in_bounded_chunks ... ok
 test native::tcp_bifs::tests::tcp_recv_submits_stream_read_with_timeout ... ok
 test native::tcp_bifs::tests::tcp_recv_timeout_returns_timeout ... ok
-test native::tcp_bifs::tests::tcp_recv_zero_byte_close_returns_closed ... ok
 test native::tcp_bifs::tests::tcp_recv_zero_length_uses_default_buffer ... ok
-test native::gleam_ffi::tests::sleep_returns_nil_after_delay ... ok
 test native::tcp_bifs::tests::tcp_send_connection_reset_returns_closed ... ok
+test native::tcp_bifs::tests::tcp_recv_zero_byte_close_returns_closed ... ok
 test native::tcp_bifs::tests::tcp_send_resubmits_partial_write_then_returns_ok ... ok
-test native::tcp_bifs::tests::tcp_setopts_active_from_passive_starts_read_loop ... ok
 test native::tcp_bifs::tests::tcp_send_submits_stream_write ... ok
 test native::tcp_bifs::tests::tcp_setopts_active_once_from_active_does_not_start_duplicate_read ... ok
+test native::tcp_bifs::tests::tcp_setopts_active_from_passive_starts_read_loop ... ok
 test native::tests::bif_registry_registers_and_looks_up_entries ... ok
 test native::tests::bif_registry_rejects_duplicate_mfas ... ok
-test native::tcp_bifs::tests::tcp_setopts_passive_stops_future_resubmits_without_facility ... ok
 test native::tests::coverage_is_empty_when_all_imports_are_registered ... ok
-test native::tests::coverage_returns_only_imports_not_registered_as_bifs ... ok
 test native::tests::dirty_nif_capability_constructors_preserve_capability ... ok
+test native::tests::coverage_returns_only_imports_not_registered_as_bifs ... ok
+test native::tcp_bifs::tests::tcp_setopts_passive_stops_future_resubmits_without_facility ... ok
 test native::tests::dirty_nif_cpu_constructor_sets_cpu_dirty_kind ... ok
 test native::tests::dirty_nif_io_constructor_sets_io_dirty_kind ... ok
 test native::tests::dirty_registration_can_target_cpu_pool ... ok
 test native::tests::dirty_registration_sets_entry_flag ... ok
-test native::tests::nif_registry_dirty_kind_can_target_cpu_pool ... ok
 test native::tests::native_lookup_checks_bifs_before_nifs ... ok
+test native::tests::nif_registry_dirty_kind_can_target_cpu_pool ... ok
 test native::tests::nif_registry_is_separate_from_bif_registry ... ok
-test native::tests::nif_registry_register_entry_preserves_dirty_nif_metadata ... ok
 test native::tests::process_context_allocates_immediate_terms_without_exposing_process ... ok
+test native::tests::nif_registry_register_entry_preserves_dirty_nif_metadata ... ok
 test native::udp_bifs::tests::registered_udp_bifs_have_external_io_capability ... ok
-test process::gc::tests::root_set_includes_only_live_x_prefix ... ok
 test native::udp_bifs::tests::udp_open_parses_ip_and_active_once_options ... ok
-test native::udp_bifs::tests::udp_open_zero_returns_passive_fd_resource_bound_to_udp_socket ... ok
 test native::udp_bifs::tests::udp_recv_zero_length_submits_default_sized_recvmsg ... ok
-test process::heap::tests::alloc_returns_pointer_in_young_and_advances_used ... ok
+test process::gc::tests::root_set_includes_only_live_x_prefix ... ok
 test process::gc::tests::root_set_includes_y_registers_mailbox_and_exception_payload ... ok
+test process::heap::tests::alloc_returns_pointer_in_young_and_advances_used ... ok
+test native::udp_bifs::tests::udp_open_zero_returns_passive_fd_resource_bound_to_udp_socket ... ok
 test process::heap::tests::allocation_regions_do_not_overlap ... ok
 test process::heap::tests::grows_follow_fibonacci_like_sequence ... ok
 test process::heap::tests::heap_full_preserves_usage ... ok
@@ -1329,16 +1327,16 @@ test process::tests::remove_link_preserves_remaining_order ... ok
 test process::tests::take_links_returns_ordered_links_and_clears_storage ... ok
 test process::tests::terminate_clears_current_module_pin ... ok
 test process::tests::terminate_clears_float_registers ... ok
-test process::tests::terminate_releases_heap_proc_bins_and_resets_virtual_binary_heap ... ok
 test process::tests::valid_status_transitions_succeed ... ok
 test process::tests::x_registers_are_independently_addressable ... ok
+test process::tests::terminate_releases_heap_proc_bins_and_resets_virtual_binary_heap ... ok
 test replay::debugger::tests::backward_restores_boxed_terms_to_snapshot_heap ... ok
 test replay::debugger::tests::backward_restores_cons_cells_with_rebased_tail_terms ... ok
 test replay::driver::tests::driver_consumes_message_deliveries_in_total_order ... ok
 test replay::driver::tests::driver_consumes_schedule_and_validates_reductions ... ok
 test replay::driver::tests::driver_consumes_select_decisions_in_order ... ok
-test replay::driver::tests::driver_reports_log_exhaustion_for_schedule_without_advancing ... ok
 test replay::debugger::tests::step_forward_ten_and_back_five_restores_each_state ... ok
+test replay::driver::tests::driver_reports_log_exhaustion_for_schedule_without_advancing ... ok
 test replay::driver::tests::driver_reports_message_delivery_mismatch_without_advancing ... ok
 test replay::debugger::tests::inspect_paused_state_reports_registers_stack_heap_and_mailbox ... ok
 test replay::driver::tests::driver_reports_mismatch_without_advancing_log_mutation ... ok
@@ -1347,70 +1345,70 @@ test replay::driver::tests::replay_select_facility_exposes_recorded_index_only .
 test replay::file_tests::replay_log_load_rejects_unknown_header_flags ... ok
 test replay::file_tests::replay_log_save_load_preserves_cli_transcript ... ok
 test replay::file_tests::replay_log_save_load_round_trips_all_event_variants ... ok
-test scheduler::closure_spawn_tests::non_closure_and_wrong_arity_and_dead_parent_are_typed_errors ... ok
 test scheduler::closure_spawn_tests::killing_the_parent_kills_the_linked_thunk_child ... ok
+test scheduler::closure_spawn_tests::non_closure_and_wrong_arity_and_dead_parent_are_typed_errors ... ok
 test native::registry_replacement_tests::concurrent_lookup_and_replacement_never_observe_a_torn_entry ... ok
 test scheduler::connection_lifecycle_tests::d9_non_trapping_executing_target_is_tombstoned_then_fully_cleaned_at_store_back ... ok
 test scheduler::connection_lifecycle_tests::noconnection_to_trapping_executing_target_is_delivered_on_store_back ... ok
 test scheduler::closure_spawn_tests::export_fun_thunk_spawns_through_the_export_table ... ok
-test scheduler::closure_spawn_tests::environment_larger_than_the_default_heap_forces_doubling_and_survives ... ok
 test scheduler::connection_lifecycle_tests::probe_after_scheduler_observes_post_purge_state_and_delivered_noconnection ... ok
-test scheduler::connection_lifecycle_tests::redelivered_down_produces_exactly_one_noconnection_exit ... ok
-test scheduler::dirty::tests::dirty_pool_executes_submitted_job_and_returns_result ... ok
 test scheduler::connection_lifecycle_tests::r2_late_legacy_registrant_leaves_purge_and_noconnection_intact ... ok
+test scheduler::closure_spawn_tests::spawn_link_closure_runs_thunk_with_deep_copied_env ... ok
+test scheduler::closure_spawn_tests::environment_larger_than_the_default_heap_forces_doubling_and_survives ... ok
+test scheduler::closure_spawn_tests::stale_generation_closure_resolves_through_unique_id_fallback ... ok
+test scheduler::dirty::tests::dirty_pool_executes_submitted_job_and_returns_result ... ok
 test scheduler::dirty::tests::dirty_scheduler_kind_distinguishes_cpu_and_io ... ok
 test scheduler::dirty::tests::dirty_pool_starts_named_threads_and_shuts_down_cleanly ... ok
+test scheduler::connection_lifecycle_tests::redelivered_down_produces_exactly_one_noconnection_exit ... ok
 test scheduler::dirty::tests::service_mode_facade_refuses_disabled_and_forwards_owned ... ok
-test scheduler::closure_spawn_tests::spawn_link_closure_runs_thunk_with_deep_copied_env ... ok
-test scheduler::closure_spawn_tests::stale_generation_closure_resolves_through_unique_id_fallback ... ok
 test scheduler::execution::native_slice::tests::native_send_rolls_back_on_replay_mismatch ... ok
 test scheduler::execution::native_slice::tests::native_send_validates_recorded_delivery_under_replay ... ok
+test scheduler::execution::native_slice::tests::tombstone_is_checked_before_handler_runs ... ok
 test scheduler::execution::socket_message_gc_tests::tcp_active_message_arcs_are_released_by_receiver_minor_gc ... ok
-test scheduler::execution::socket_message_gc_tests::tcp_closed_message_fd_arc_is_released_by_receiver_minor_gc ... ok
+test scheduler::connection_lifecycle_tests::node_death_via_real_hook_delivers_noconnection_outcomes ... ok
 test scheduler::exit_capture::tests::captured_exception_views_owned_terms ... ok
-test scheduler::execution::socket_message_gc_tests::udp_active_message_arcs_are_released_by_receiver_minor_gc ... ok
 test scheduler::exit_capture::tests::captured_list_survives_source_heap_teardown ... ok
 test scheduler::exit_events::tests::overflow_is_typed_and_queue_stays_bounded ... ok
-test scheduler::execution::native_slice::tests::tombstone_is_checked_before_handler_runs ... ok
+test scheduler::execution::socket_message_gc_tests::tcp_closed_message_fd_arc_is_released_by_receiver_minor_gc ... ok
+test scheduler::execution::socket_message_gc_tests::udp_active_message_arcs_are_released_by_receiver_minor_gc ... ok
 test scheduler::exit_observation_tests::outcome_and_error_exception_diagnostics_consume_independently ... ok
-test scheduler::connection_lifecycle_tests::node_death_via_real_hook_delivers_noconnection_outcomes ... ok
 test scheduler::exit_observation_tests::take_exit_outcome_is_non_blocking_and_exactly_once ... ok
 test scheduler::exit_observation_tests::event_queue_overflow_is_typed_and_outcomes_remain_recoverable ... ok
+test scheduler::exit_tombstones::tests::duplicate_after_eviction_preserves_original_untaken_outcome_and_emits_no_event ... ok
 test scheduler::exit_tombstones::tests::concurrent_terminal_callers_publish_one_authoritative_outcome_and_event ... ok
 test scheduler::exit_tombstones::tests::finalized_outcome_residue_is_size_bounded_and_payload_free_after_take ... ok
-test scheduler::exit_tombstones::tests::duplicate_after_eviction_preserves_original_untaken_outcome_and_emits_no_event ... ok
 test scheduler::exit_tombstones::tests::most_recent_survive_and_are_readable ... ok
 test scheduler::exit_tombstones::tests::oldest_are_evicted_recent_retained ... ok
+test scheduler::exit_tombstones::tests::insert_over_cap_stays_bounded ... ok
 test scheduler::exit_tombstones::tests::overwrite_does_not_duplicate_or_misevict ... ok
 test scheduler::inventory_tests::default_profile_pins_as_built_service_inventory ... ok
-test scheduler::exit_tombstones::tests::insert_over_cap_stays_bounded ... ok
 test scheduler::inventory_tests::dirty_complete_is_a_policy_line_not_a_thread_line ... ok
 test scheduler::inventory_tests::disabled_dirty_pools_report_disabled_entries_and_policy ... ok
 test scheduler::inventory_tests::distribution_none_disables_the_bundle_and_some_names_both_runtimes ... ok
 test scheduler::inventory_tests::idle_park_floor_is_pinned_at_five_ms ... ok
 test scheduler::exit_observation_tests::receiver_contests_publication_without_misses_under_coordinated_multi_worker_churn ... ok
 test scheduler::inventory_tests::instance_ids_are_stable_across_inventory_calls ... ok
+test distribution::connection_events_tests::inv_sync_disconnect_return_implies_delivery_under_contention ... ok
 test scheduler::inventory_tests::post_shutdown_inventory_reports_all_joined_services_as_zero ... ok
 test scheduler::inventory_tests::process_wide_aggregate_dedups_shared_instances_once ... ok
 test scheduler::inventory_tests::service_inventory_threads_are_all_live_in_the_os_probe ... ok
 test scheduler::mailbox_send_tests::concurrent_senders_all_succeed_without_content_loss ... ok
-test distribution::connection_events_tests::inv_sync_disconnect_return_implies_delivery_under_contention ... ok
+test distribution::sender::tests::disconnect_all_closes_a_connection_whose_writer_is_wedged ... ok
 test scheduler::mailbox_send_tests::dead_pid_returns_typed_failure ... ok
 test scheduler::mailbox_send_tests::delivery_during_long_running_slice_lands_on_next_receive ... ok
-test distribution::sender::tests::disconnect_all_closes_a_connection_whose_writer_is_wedged ... ok
 test scheduler::dirty::tests::live_worker_names_track_joins_not_the_shutdown_flag ... ok
 test scheduler::mailbox_send_tests::fifo_interleaving_with_atom_send_is_preserved ... ok
+test scheduler::mailbox_send_tests::typed_tagged_tuple_round_trips_by_content ... ok
 test scheduler::monitor_immediate_down_tests::tombstoned_target_monitor_is_not_immediate_when_watcher_cannot_accept_down ... ok
 test scheduler::monitor_immediate_down_tests::tombstoned_target_monitor_wakes_present_parked_watcher ... ok
 test scheduler::monitor_immediate_down_tests::tombstoned_target_monitor_while_watcher_executing_survives_store_back ... ok
-test scheduler::mailbox_send_tests::typed_tagged_tuple_round_trips_by_content ... ok
-test scheduler::mailbox_send_tests::waiting_process_is_woken_exactly_once ... ok
 test scheduler::readiness_contract_tests::c1_delivery_in_the_register_to_recheck_gap_schedules_exactly_once ... ok
-test scheduler::readiness_contract_tests::c1_delivery_while_executing_merges_at_store_back_and_wakes ... ok
+test scheduler::monitor_immediate_down_tests::monitor_with_result_reports_immediate_down_for_present_queued_watcher ... ok
+test scheduler::mailbox_send_tests::waiting_process_is_woken_exactly_once ... ok
 test scheduler::readiness_contract_tests::c1_delivery_in_the_store_to_register_gap_is_observed_before_sleep ... ok
+test scheduler::readiness_contract_tests::c1_delivery_while_executing_merges_at_store_back_and_wakes ... ok
 test scheduler::readiness_contract_tests::c1_marker_to_a_parked_process_wakes_and_is_observed ... ok
 test scheduler::readiness_contract_tests::c3_enqueue_to_a_dead_or_absent_pid_returns_false ... ok
-test scheduler::monitor_immediate_down_tests::monitor_with_result_reports_immediate_down_for_present_queued_watcher ... ok
 test scheduler::readiness_contract_tests::c4_delivery_after_the_final_probe_is_caught_by_the_park_recheck ... ok
 test scheduler::readiness_contract_tests::c4_delivery_between_arm_and_final_probe_is_seen_by_the_probe ... ok
 test scheduler::readiness_contract_tests::cascade_kill_in_the_store_to_register_gap_finalizes_and_leaves_no_residue ... ok
@@ -1419,19 +1417,19 @@ test scheduler::readiness_contract_tests::kill_storm_returns_the_wait_set_to_bas
 test scheduler::inventory_tests::generic_io_configured_is_stable_across_shutdown ... ok
 test scheduler::readiness_contract_tests::bare_wake_before_registration_is_lost_which_is_why_markers_are_durable ... ok
 test scheduler::readiness_tests::failed_poller_refuses_and_deregister_recovers_poisoned_table ... ok
-test scheduler::readiness_contract_tests::c2_gated_suspension_retains_marker_and_observes_at_completion ... ok
 test scheduler::readiness_tests::deregistration_is_bounded_and_invalid_fd_refuses_without_record ... ok
+test scheduler::readiness_contract_tests::c2_gated_suspension_retains_marker_and_observes_at_completion ... ok
 test scheduler::remote_supervision_tests::backstop_then_late_wire_exit_delivers_exactly_one_signal ... ok
 test scheduler::remote_supervision_tests::cascade_killed_process_sends_exit_for_its_remote_link_and_is_finalized ... ok
 test scheduler::remote_supervision_tests::control_overflow_to_healthy_peer_converges_to_noconnection_blip ... ok
 test scheduler::remote_supervision_tests::d9_kill_to_trapping_executing_target_dies_killed_untrapped ... ok
 test scheduler::remote_supervision_tests::direct_exit_leaves_links_alone_and_link_exit_consumes_exactly_once ... ok
 test scheduler::readiness_contract_tests::c3_true_then_death_before_next_slice_drops_the_marker_harmlessly ... ok
-test scheduler::readiness_tests::shared_routes_home_survives_peer_shutdown_and_refuses_straggler ... ok
+test scheduler::readiness_tests::stale_generation_never_routes_to_recycled_slot_on_other_consumer ... ok
 test scheduler::remote_supervision_tests::duplicate_link_is_idempotent_and_link_to_dead_pid_replies_exit ... ok
 test scheduler::remote_supervision_tests::establish_remote_link_returns_false_only_for_dead_or_absent_targets ... ok
 test scheduler::remote_supervision_tests::executing_link_removal_survives_store_back_without_double_fire ... ok
-test scheduler::readiness_tests::stale_generation_never_routes_to_recycled_slot_on_other_consumer ... ok
+test scheduler::readiness_tests::shared_routes_home_survives_peer_shutdown_and_refuses_straggler ... ok
 test scheduler::remote_supervision_tests::facility_link_and_unlink_ride_the_wire_and_track_the_local_half ... ok
 test scheduler::remote_supervision_tests::facility_link_remote_preconditions_and_best_effort_exit2 ... ok
 test scheduler::remote_supervision_tests::forged_origin_and_misaddressed_link_controls_do_not_apply ... ok
@@ -1442,6 +1440,7 @@ test scheduler::remote_supervision_tests::manual_disconnect_from_plain_thread_de
 test scheduler::remote_supervision_tests::misaddressed_send_is_dropped_but_node_less_send_delivers ... ok
 test scheduler::remote_supervision_tests::nonzero_embedder_serial_cannot_dodge_the_wire_exit_gate ... ok
 test scheduler::remote_supervision_tests::pids_beyond_the_wire_u32_range_are_refused_not_a_connection_teardown ... ok
+test scheduler::remote_supervision_tests::presend_messages_precede_wire_exit_and_trapping_target_survives ... ok
 test scheduler::exit_observation_tests::durable_finalization_survives_take_and_untaken_outcome_tombstone_eviction ... ok
 test scheduler::remote_supervision_tests::scheduler_link_remote_and_unlink_remote_delegate_with_preconditions ... ok
 test scheduler::remote_supervision_tests::unlink_while_executing_survives_store_back_without_spurious_noconnection ... ok
@@ -1449,33 +1448,32 @@ test scheduler::remote_supervision_tests::wire_exit_then_connection_down_deliver
 test scheduler::remote_supervision_tests::wire_exit_to_non_trapping_executing_target_tombstones_with_full_cascade ... ok
 test scheduler::remote_supervision_tests::wire_exit_to_trapping_executing_target_is_delivered_at_store_back ... ok
 test scheduler::remote_supervision_tests::wire_killed_reason_is_trappable_by_the_linked_target ... ok
-test scheduler::remote_supervision_tests::wire_normal_exit_spares_non_trapper_and_traps_as_normal_tuple ... ok
 test scheduler::run_queue::tests::low_priority_progresses_under_high_pressure ... ok
 test scheduler::run_queue::tests::max_priority_dequeues_before_normal ... ok
 test scheduler::run_queue::tests::owner_pop_is_fifo_within_priority ... ok
 test scheduler::run_queue::tests::push_and_steal_from_different_threads_do_not_race ... ok
+test distribution::connection::tests::inbound_wrong_cookie_registers_no_entry ... ok
 test scheduler::run_queue::tests::push_then_pop_returns_same_process ... ok
+test scheduler::remote_supervision_tests::wire_normal_exit_spares_non_trapper_and_traps_as_normal_tuple ... ok
 test scheduler::run_queue::tests::steal_from_empty_queue_returns_nothing ... ok
 test scheduler::run_queue::tests::steal_from_single_item_queue_returns_nothing ... ok
-test scheduler::run_queue::tests::steal_half_from_ten_takes_approximately_five ... ok
 test scheduler::service::tests::disabled_slot_reports_disabled_identity_and_no_service ... ok
+test scheduler::run_queue::tests::steal_half_from_ten_takes_approximately_five ... ok
 test scheduler::service::tests::minted_ids_are_process_unique_and_distinct_from_disabled ... ok
 test scheduler::service::tests::shared_handle_clone_propagates_one_id_across_two_schedulers ... ok
 test scheduler::service::tests::shutdown_if_owned_releases_shared_without_stopping_it ... ok
 test scheduler::service::tests::shutdown_if_owned_stops_owned_exactly_once_and_empties_the_slot ... ok
 test scheduler::service::tests::shutdown_owned_stops_only_owned_and_leaves_the_slot_readable ... ok
 test scheduler::steal::tests::all_empty_returns_empty ... ok
-test scheduler::steal::tests::empty_thread_steals_from_thread_with_processes ... ok
-test distribution::connection::tests::inbound_wrong_cookie_registers_no_entry ... ok
 test scheduler::steal::tests::queue_with_one_process_is_not_stolen_from ... ok
+test scheduler::steal::tests::empty_thread_steals_from_thread_with_processes ... ok
 test scheduler::steal::tests::round_robin_victim_selection_visits_all_threads_before_repeating ... ok
-test scheduler::remote_supervision_tests::presend_messages_precede_wire_exit_and_trapping_target_survives ... ok
-test scheduler::supervision_tests::cleanup_exited_process_closes_fd_resources_owned_by_process ... ok
-test scheduler::supervision_tests::cascade_link_exit_propagates_through_chain ... ok
 test scheduler::supervision_tests::cleanup_exited_process_deletes_table_when_heir_is_not_live ... ok
+test scheduler::supervision_tests::cascade_link_exit_propagates_through_chain ... ok
+test scheduler::supervision_tests::cleanup_exited_process_closes_fd_resources_owned_by_process ... ok
 test scheduler::supervision_tests::cleanup_exited_process_does_not_explicitly_close_fd_resources_owned_elsewhere ... ok
-test scheduler::supervision_tests::cleanup_exited_process_transfers_table_to_executing_heir ... ok
 test scheduler::supervision_tests::cleanup_exited_process_deletes_tables_owned_by_process ... ok
+test scheduler::supervision_tests::cleanup_exited_process_transfers_table_to_executing_heir ... ok
 test scheduler::supervision_tests::connection_down_delivers_noconnection_to_all_remote_links_on_node ... ok
 test scheduler::supervision_tests::cleanup_exited_process_transfers_table_to_live_heir ... ok
 test scheduler::supervision_tests::cross_namespace_link_exit_propagates ... ok
@@ -1485,18 +1483,18 @@ test scheduler::supervision_tests::exit_signal_queues_message_for_executing_trap
 test scheduler::supervision_tests::exit_signal_tombstones_executing_non_trapping_process ... ok
 test scheduler::supervision_tests::killed_signal_is_trappable_by_linked_process ... ok
 test scheduler::supervision_tests::kill_propagates_killed_and_non_trapping_processes_die ... ok
-test scheduler::supervision_tests::linked_process_survives_normal_exit ... ok
 test scheduler::supervision_tests::linked_process_dies_on_error_exit ... ok
+test scheduler::supervision_tests::linked_process_survives_normal_exit ... ok
 test scheduler::supervision_tests::monitor_and_link_both_fire_on_exit ... ok
 test scheduler::supervision_tests::monitor_delivers_down_message_on_exit ... ok
-test scheduler::supervision_tests::monitor_down_for_executing_watcher_is_delivered_on_store_back ... ok
 test scheduler::supervision_tests::process_terminate_closes_owned_fd_resources_before_heap_reset ... ok
+test scheduler::supervision_tests::monitor_down_for_executing_watcher_is_delivered_on_store_back ... ok
 test scheduler::supervision_tests::normal_exit_signal_queues_message_for_executing_trapping_process ... ok
 test scheduler::supervision_tests::reference_message_to_executing_receiver_round_trips_via_etf ... ok
 test scheduler::supervision_tests::remote_exit_to_trapping_process_enqueues_remote_exit_tuple ... ok
+test scheduler::supervision_tests::take_links_from_reads_executing_sentinel_links ... ok
 test scheduler::supervision_tests::remote_link_exit_sends_exit_control ... ok
 test scheduler::supervision_tests::sentinel_links_merge_into_body_on_store_back ... ok
-test scheduler::supervision_tests::take_links_from_reads_executing_sentinel_links ... ok
 test scheduler::supervision_tests::trap_exit_receives_exit_message ... ok
 test scheduler::teardown_admission_tests::all_five_commit6_riders_admit_before_drain_and_refuse_after ... ok
 test scheduler::tests::cleanup_exited_process_purges_all_suspension_state ... ok
@@ -1511,8 +1509,8 @@ test scheduler::tests::delivery_in_the_wait_park_gap_is_not_a_lost_wakeup ... ok
 test scheduler::tests::dirty_native_can_trampoline_a_closure ... ok
 test scheduler::tests::dirty_resume_in_the_suspend_park_gap_is_not_lost ... ok
 test distribution::connection::tests::without_net_tick_black_holed_peer_is_never_marked_down ... ok
-test scheduler::tests::disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler ... ok
 test scheduler::tests::disabled_file_ring_refuses_file_submit_before_registering_a_suspension ... ok
+test scheduler::tests::disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler ... ok
 test scheduler::tests::disabled_standard_io_ring_registers_no_process_zero_and_reports_disabled ... ok
 test scheduler::tests::ets_registry_create_lookup_name_and_delete ... ok
 test scheduler::tests::every_spawn_facility_method_refuses_after_teardown ... ok
@@ -1521,11 +1519,11 @@ test scheduler::tests::failing_jit_compiler_construction_surfaces_from_the_sched
 test scheduler::tests::file_io_result_for_a_dead_pid_does_not_orphan ... ok
 test scheduler::tests::fired_timer_mark_for_a_dead_pid_does_not_orphan ... ok
 test scheduler::tests::exported_spawn_starts_at_entry_function_with_args ... ok
-test scheduler::tests::hook_fires_when_process_blocks_on_receive ... ok
-test scheduler::remote_supervision_tests::direct_send_to_a_never_reading_peer_is_bounded_and_retires_the_connection ... ok
 test scheduler::tests::dirty_native_can_resuspend_as_a_gated_host_await ... ok
-test scheduler::tests::hook_resume_in_the_suspend_park_gap_is_sticky_not_lost ... ok
+test scheduler::remote_supervision_tests::direct_send_to_a_never_reading_peer_is_bounded_and_retires_the_connection ... ok
+test scheduler::tests::hook_fires_when_process_blocks_on_receive ... ok
 test scheduler::remote_supervision_tests::downing_the_parked_writer_unparks_the_drain_before_write_timeout ... ok
+test scheduler::tests::hook_resume_in_the_suspend_park_gap_is_sticky_not_lost ... ok
 test scheduler::tests::linked_test_spawn_inherits_parent_group_leader_not_child_pid ... ok
 test scheduler::tests::mailbox_send_does_not_wake_when_copy_fails ... ok
 test scheduler::tests::mailbox_send_wakes_waiting_process_event_driven ... ok
@@ -1535,15 +1533,14 @@ test scheduler::tests::hook_suspend_does_not_stomp_an_await_parked_slice ... ok
 test scheduler::tests::multiple_processes_fairly_complete ... ok
 test scheduler::tests::message_to_a_colocated_busy_poll_native_process_is_observed ... ok
 test scheduler::tests::messages_to_saturated_busy_poll_native_processes_are_all_observed ... ok
-test scheduler::tests::hook_records_reduction_yield_metadata_and_can_suspend_then_resume ... ok
 test scheduler::tests::process_info_current_function_is_derived_from_module_and_ip ... ok
+test scheduler::tests::peek_exit_reason_observes_external_termination_without_consuming ... ok
 test scheduler::tests::process_info_reads_executing_process_metadata ... ok
 test scheduler::tests::receive_timeout_timer_does_not_deliver_a_message ... ok
+test scheduler::tests::hook_records_reduction_yield_metadata_and_can_suspend_then_resume ... ok
 test scheduler::tests::replay_driver_exposes_recorded_schedule_order_without_run_queue_pop ... ok
 test scheduler::tests::replay_scheduler_forces_single_worker_even_with_thread_override ... ok
 test scheduler::tests::replay_and_disabled_dirty_cpu_compose_the_jit_handle_away ... ok
-test scheduler::tests::peek_exit_reason_returns_none_for_live_and_unknown_pids ... ok
-test scheduler::tests::peek_exit_reason_observes_external_termination_without_consuming ... ok
 test scheduler::tests::scheduler_creates_requested_thread_count_and_names ... ok
 test scheduler::tests::scheduler_default_thread_count_matches_available_parallelism ... ok
 test scheduler::tests::scheduler_defaults_to_nonode_nohost_local_node ... ok
@@ -1552,21 +1549,22 @@ test scheduler::tests::scheduler_uses_configured_local_node_identity ... ok
 test scheduler::tests::scheduler_uses_explicit_jit_threshold ... ok
 test scheduler::tests::shared_state_metric_accessors_report_scheduler_process_and_atom_counts ... ok
 test scheduler::tests::shutdown_closes_active_distribution_connections_before_returning ... ok
+test scheduler::tests::peek_exit_reason_returns_none_for_live_and_unknown_pids ... ok
 test scheduler::tests::shutdown_is_idempotent ... ok
 test scheduler::tests::result_beats_timeout_and_clears_the_timed_await_metadata ... ok
 test scheduler::tests::host_results_and_resumes_cannot_touch_an_in_flight_dirty_call ... ok
 test scheduler::tests::single_process_runs_to_completion_and_is_removed ... ok
 test scheduler::tests::spawn_facility_options_apply_link_monitor_priority_and_heap_before_wake ... ok
+test scheduler::tests::shutdown_drains_completion_bridges_while_a_shared_pool_job_is_still_running ... ok
 test scheduler::tests::spawn_link_uses_executing_parent_namespace_and_merges_parent_link ... ok
 test scheduler::tests::spawn_native_root_leader_matches_the_standard_io_pid ... ok
 test scheduler::tests::stale_publisher_cannot_clobber_a_fresher_completion ... ok
 test scheduler::tests::spawn_facility_restricts_child_to_explicit_capabilities ... ok
-test scheduler::tests::shutdown_drains_completion_bridges_while_a_shared_pool_job_is_still_running ... ok
-test scheduler::tests::timer_expiry_after_wait_registration_schedules_the_process_once ... ok
 test scheduler::tests::terminate_while_executing_finalizes_without_resurrecting_the_body ... ok
-test scheduler::tests::tombstone_after_wait_store_prevents_wait_parking ... ok
 test scheduler::tests::timer_expiry_in_the_wait_park_gap_is_not_a_lost_timeout ... ok
-test scheduler::tests::top_level_group_leader_is_process_zero_when_owned_and_sentinel_when_disabled ... ok
+test scheduler::tests::timer_expiry_after_wait_registration_schedules_the_process_once ... ok
+test scheduler::tests::tombstone_after_wait_store_prevents_wait_parking ... ok
+test scheduler::tests::message_delivery_does_not_wake_or_reexecute_a_gated_await ... ok
 test scheduler::wasm::tests::async_completion_injects_result_and_advances_call ... ok
 test scheduler::wasm::tests::async_completion_rejects_missing_pid_without_recording_result ... ok
 test scheduler::wasm::tests::async_rejection_maps_to_error_exit ... ok
@@ -1597,7 +1595,6 @@ test scheduler::wasm_native::tests::native_handler_starts_host_async_op_suspends
 test scheduler::wasm_native::tests::run_until_idle_drains_ready_queue_in_priority_order ... ok
 test scheduler::wasm_native::tests::run_until_idle_exit_results_and_pending_work_consistent_after_mid_round_exit ... ok
 test scheduler::wasm_native::tests::run_until_idle_interleaves_native_timer_delivery_with_a_ready_process ... ok
-test scheduler::tests::message_delivery_does_not_wake_or_reexecute_a_gated_await ... ok
 test scheduler::wasm_native::tests::run_until_idle_reports_fairness_yield_with_runnable_remaining ... ok
 test scheduler::wasm_native::tests::run_until_idle_summary_counts_executed_and_yielded_across_reyields ... ok
 test scheduler::wasm_native::tests::start_async_without_facility_errors_and_does_not_park ... ok
@@ -1610,6 +1607,7 @@ test supervision::link::tests::non_normal_exit_kills_all_linked_processes_and_ca
 test supervision::link::tests::normal_exit_signals_but_does_not_kill_linked_processes ... ok
 test supervision::link::tests::remote_exit_on_near_full_heap_keeps_the_source_pid_intact ... ok
 test supervision::link::tests::trap_exit_converts_exit_signal_to_mailbox_message ... ok
+test scheduler::tests::top_level_group_leader_is_process_zero_when_owned_and_sentinel_when_disabled ... ok
 test supervision::link::tests::trapped_exit_delivery_grows_mailbox_heap_instead_of_dropping_signal ... ok
 test supervision::link::tests::trapped_exit_signals_follow_link_insertion_order ... ok
 test supervision::link::tests::trapped_exit_signals_preserve_order_after_unlink ... ok
@@ -1619,8 +1617,8 @@ test supervision::monitor::tests::demonitor_preserves_remaining_monitor_order ..
 test supervision::monitor::tests::demonitor_prevents_down_delivery ... ok
 test supervision::monitor::tests::down_delivery_grows_mailbox_heap_instead_of_dropping_signal ... ok
 test supervision::monitor::tests::down_delivery_with_exactly_seven_free_words_still_delivers ... ok
-test supervision::monitor::tests::down_delivery_without_growth_room_terminates_instead_of_panicking ... ok
 test supervision::monitor::tests::down_on_near_full_heap_preserves_live_young_terms ... ok
+test supervision::monitor::tests::down_delivery_without_growth_room_terminates_instead_of_panicking ... ok
 test supervision::monitor::tests::monitor_dead_process_delivers_immediate_down ... ok
 test supervision::monitor::tests::monitor_returns_unique_references_and_down_message_without_killing_watcher ... ok
 test term::bigint_convert::tests::from_str_radix_round_trips_and_rejects_malformed_input ... ok
@@ -1629,10 +1627,10 @@ test term::bigint_convert::tests::multi_limb_decimal_round_trip ... ok
 test term::bigint_convert::tests::sign_magnitude_round_trips_and_trims_zero_bytes ... ok
 test term::bigint_convert::tests::to_string_radix_formats_decimal_hex_and_zero ... ok
 test term::bigint_convert::tests::twos_complement_decodes_positive_and_negative_values ... ok
-test term::bigint_math::tests::add_carries_across_limbs ... ok
 test term::bigint_math::tests::abs_clears_sign_for_any_magnitude ... ok
-test term::bigint_math::tests::divmod_returns_quotient_and_remainder ... ok
+test term::bigint_math::tests::add_carries_across_limbs ... ok
 test term::bigint_math::tests::multiply_schoolbook_multiple_limbs ... ok
+test term::bigint_math::tests::divmod_returns_quotient_and_remainder ... ok
 test term::bigint_math::tests::negate_flips_sign_and_keeps_zero_canonical ... ok
 test term::bigint_math::tests::sign_and_zero_normalization_are_canonical ... ok
 test term::bigint_math::tests::subtract_borrows_across_limbs ... ok
@@ -1645,8 +1643,8 @@ test term::binary_ref::tests::binary_ref_wraps_proc_bin ... ok
 test term::binary_ref::tests::binary_ref_wraps_sub_binary ... ok
 test term::boxed::tests::bigint_write_then_read_round_trip ... ok
 test term::boxed::tests::boxed_header_encodes_distinct_tags_and_payload_size ... ok
-test term::boxed::tests::cons_cell_write_then_read_round_trip_without_header ... ok
 test term::boxed::tests::closure_write_then_read_round_trip_and_bounds_check ... ok
+test term::boxed::tests::cons_cell_write_then_read_round_trip_without_header ... ok
 test term::boxed::tests::empty_tuple_is_valid_one_word_boxed_value ... ok
 test term::boxed::tests::external_pid_write_then_read_round_trip ... ok
 test term::boxed::tests::external_reference_write_then_read_round_trip ... ok
@@ -1656,8 +1654,8 @@ test term::boxed::tests::map_write_then_read_round_trip_and_linear_get ... ok
 test term::boxed::tests::proper_list_has_three_cons_cells_ending_in_nil ... ok
 test term::boxed::tests::reference_write_then_read_round_trip ... ok
 test term::boxed::tests::tuple_write_then_read_round_trip_and_bounds_check ... ok
-test term::compare::tests::atom_ordering_uses_names_when_interned_reverse_alphabetically ... ok
 test term::compare::tests::atom_ordering_uses_names_when_interned_alphabetically ... ok
+test term::compare::tests::atom_ordering_uses_names_when_interned_reverse_alphabetically ... ok
 test term::compare::tests::beam_ordering_across_available_types_follows_rank_order ... ok
 test term::compare::tests::beam_ordering_compares_within_types ... ok
 test term::compare::tests::closure_comparison_includes_generation_and_unique_id_metadata ... ok
@@ -1674,8 +1672,8 @@ test term::compare::tests::numeric_ordering_compares_bigints_by_value ... ok
 test term::compare::tests::proper_lists_compare_head_then_tail_iteratively ... ok
 test term::compare::tests::sorting_atom_terms_is_stable_across_intern_sequences ... ok
 test term::format::tests::formats_common_atom_by_name ... ok
-test term::compare::tests::comparing_long_lists_does_not_stack_overflow ... ok
 test term::format::tests::formats_printable_charlists_as_strings_like_the_otp_shell ... ok
+test term::compare::tests::comparing_long_lists_does_not_stack_overflow ... ok
 test term::format::tests::formats_proper_and_improper_lists ... ok
 test term::format::tests::formats_tuple_binary_map_pid_nil_closure_and_bigint ... ok
 test term::hash::tests::bigint_hash_canonicalizes_small_integer_values ... ok
@@ -1687,8 +1685,8 @@ test term::hash::tests::exact_distinct_numeric_terms_hash_differently ... ok
 test term::hash::tests::improper_list_tail_contributes_to_hash ... ok
 test term::hash::tests::independently_allocated_equal_tuples_lists_and_binaries_hash_equal ... ok
 test term::hash::tests::variety_of_different_terms_hash_differently ... ok
-test term::json::tests::map_atom_keys_use_atom_names_even_for_json_special_atoms ... ok
 test term::json::tests::null_round_trips_as_null_atom ... ok
+test term::json::tests::map_atom_keys_use_atom_names_even_for_json_special_atoms ... ok
 test term::json::tests::round_trip_preserves_object_keys_named_like_special_atoms ... ok
 test term::json::tests::round_trip_preserves_representable_json_shapes ... ok
 test term::json::tests::term_to_value_converts_immediates ... ok
@@ -1699,8 +1697,8 @@ test term::json::tests::term_to_value_converts_tuple_list_map_float_and_bigint .
 test term::json::tests::value_to_term_converts_arrays_to_proper_lists ... ok
 test term::json::tests::value_to_term_converts_json_scalars ... ok
 test term::json::tests::value_to_term_objects_work_without_atom_table ... ok
-test term::json::tests::value_to_term_requires_atom_table_for_null ... ok
 test term::json::tests::value_to_term_converts_objects_to_binary_keyed_maps ... ok
+test term::json::tests::value_to_term_requires_atom_table_for_null ... ok
 test term::pid_ref::tests::pid_ref_wraps_local_immediate_pid ... ok
 test term::pid_ref::tests::pid_ref_wraps_remote_boxed_pid ... ok
 test term::reference_ref::tests::reference_ref_wraps_local_reference ... ok
@@ -1731,8 +1729,8 @@ test timer::tests::timer_cancellation_is_constant_time_and_returns_remaining_tim
 test timer::tests::timer_reports_earliest_absolute_deadline ... ok
 test timer::tests::timer_reserved_reference_cannot_be_scheduled_twice ... ok
 test timer::tests::timer_schedule_and_tick_expire_due_timers ... ok
-test timer::tests::timer_handles_ten_thousand_concurrent_timers ... ok
 test distribution::connection::tests::net_tick_keeps_healthy_idle_link_up ... ok
+test timer::tests::timer_handles_ten_thousand_concurrent_timers ... ok
 test scheduler::tests::yielded_process_is_rescheduled ... ok
 test scheduler::tests::stale_result_for_a_superseded_await_is_dropped_not_applied ... ok
 test scheduler::inventory_tests::idle_wake_rate_stays_within_signed_bound ... ok
@@ -1746,38 +1744,38 @@ test scheduler::tests::busy_poll_natives_all_progress_under_spawn_exit_churn ...
 test distribution::sender::tests::wedged_peer_does_not_stall_drain_indefinitely ... ok
 test scheduler::tests::busy_poll_natives_all_progress_under_heavy_concurrent_churn ... ok
 
-test result: ok. 1740 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.09s
+test result: ok. 1740 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.14s
 
      Running tests/bif_registry_replacement.rs (target/debug/deps/bif_registry_replacement-ba32059d74ad9d4f)
 
 running 1 test
 test full_gate3_then_replace_spawn_wrappers_delegate_and_children_complete ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 
      Running tests/bignum_edges.rs (target/debug/deps/bignum_edges-d8cce34cb69bee85)
 
 running 1 test
 test bignum_fixture_runs_all_edge_functions_correctly ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
 
      Running tests/bs_create_bin.rs (target/debug/deps/bs_create_bin-4c7a1ed374746ac1)
 
 running 1 test
 test bs_create_bin_fixture_matches_beam_results ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
      Running tests/capability_policy.rs (target/debug/deps/capability_policy-58173a564563abbd)
 
 running 4 tests
-test custom_capability_set_grants_clock_and_denies_entropy ... ok
 test all_capabilities_resolves_external_io_normally ... ok
+test custom_capability_set_grants_clock_and_denies_entropy ... ok
 test least_authority_grants_pure_and_denies_external_io ... ok
 test scheduler_policy_can_deny_external_io_at_load_time ... ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 
      Running tests/caught_exception_exit.rs (target/debug/deps/caught_exception_exit-e1d742492f0ae0ba)
 
@@ -1785,7 +1783,7 @@ running 2 tests
 test rethrown_unmatched_class_keeps_the_original_class ... ok
 test handled_exception_does_not_surface_at_normal_exit ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
 
      Running tests/composition_report.rs (target/debug/deps/composition_report-2ffad72bc8445c0c)
 
@@ -1793,37 +1791,37 @@ running 2 tests
 test gate1_registry_hot_load_report_has_no_deferred_plus ... ok
 test empty_registry_hot_load_report_flags_deferred_erlang_and_refuses_at_execution ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
 
      Running tests/connection_events_e2e.rs (target/debug/deps/connection_events_e2e-4155ef71a7836207)
 
 running 4 tests
-test generation_monotonic_across_reconnect_and_down_synchronous_with_disconnect ... ok
 test peer_bounce_changes_peer_creation_on_next_up ... ok
 test embedder_probe_alongside_scheduler_subscriber_leaves_pg_semantics_unchanged ... ok
+test generation_monotonic_across_reconnect_and_down_synchronous_with_disconnect ... ok
 test h1_regression_purge_for_old_generation_precedes_new_generations_read_loop ... ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
 
      Running tests/differential.rs (target/debug/deps/differential-fa4d2e4157d5e5ce)
 
 running 18 tests
 test runner_new_forces_immediate_compilation_threshold ... ok
+test side_effect_comparison_reports_difference ... ok
 test nested_list_diff_reports_path ... ok
 test identical_deep_tuples_are_equal ... ok
-test side_effect_comparison_reports_difference ... ok
 test exception_comparison_ignores_stacktrace_line_numbers ... ok
 test side_effect_traces_compare_nested_heap_terms_structurally ... ok
-test side_effect_traces_normalise_pid_values ... ok
-test divergence_report_formats_nested_tuple_diff_and_saves_bytecode ... ok
-test unsupported_map_operation_is_logged_as_compilation_skipped ... ok
-test pattern_matching_scenario_runs_differentially ... ok
-test maps_map_hof_runs_differentially ... ok
 test aot_compiled_path_matches_jit_for_fixture_function ... ok
 test fibonacci_interpreter_fixture_still_returns_55 ... ok
+test maps_map_hof_runs_differentially ... ok
+test list_processing_scenario_runs_differentially ... ok
 test compiled_wrapper_calling_maps_map_hof_returns_transformed_map ... ok
 test fibonacci_differential_wrapper_skips_until_jit_supports_recursive_bytecode ... ok
-test list_processing_scenario_runs_differentially ... ok
+test pattern_matching_scenario_runs_differentially ... ok
+test side_effect_traces_normalise_pid_values ... ok
+test unsupported_map_operation_is_logged_as_compilation_skipped ... ok
+test divergence_report_formats_nested_tuple_diff_and_saves_bytecode ... ok
 test broken_compiled_executor_reports_divergence ... ok
 test generated_programs_match_or_skip ... ok
 
@@ -1837,14 +1835,14 @@ test disabled_dirty_cpu_pool_refuses_call_and_lets_peers_progress ... ok
 test dirty_nif_round_trip_does_not_block_normal_scheduler ... ok
 test spawn_link_dirty_is_spawn_link_and_dirty_dispatch_is_per_entry ... ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
 
      Running tests/distribution_e2e.rs (target/debug/deps/distribution_e2e-006a79dee9e69373)
 
 running 1 test
 test loopback_cross_node_pid_send_round_trip ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
 
      Running tests/distribution_mesh_handshake.rs (target/debug/deps/distribution_mesh_handshake-59ba7d3392aecd41)
 
@@ -1858,7 +1856,7 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 1 test
 test decompressed_archive_fixture_loads_with_embedded_origin ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
      Running tests/encode_round_trip.rs (target/debug/deps/encode_round_trip-8695bc33fd0731fd)
 
@@ -1869,34 +1867,34 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
      Running tests/function_clause_e2e.rs (target/debug/deps/function_clause_e2e-607481e94e19cddd)
 
 running 2 tests
-test no_matching_clause_raises_function_clause_instead_of_looping ... ok
 test function_clause_is_catchable_in_loaded_bytecode ... ok
+test no_matching_clause_raises_function_clause_instead_of_looping ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
 
      Running tests/gc_integration.rs (target/debug/deps/gc_integration-63f58fd8d486bbb5)
 
 running 1 test
 test interpreter_survives_10_000_allocations_under_gc_pressure ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
 
      Running tests/gleam_gate_e2e.rs (target/debug/deps/gleam_gate_e2e-73b6a4cb0481f6b2)
 
 running 1 test
 test fresh_gleam_project_runs_end_to_end ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
 
      Running tests/gleam_otp_actor_spike.rs (target/debug/deps/gleam_otp_actor_spike-c5a6794431b74476)
 
 running 4 tests
-test gleam_otp_actor_call_round_trip_returns_count ... ok
-test selector_family_absent_yields_honest_undef ... ok
 test spawned_closure_subject_send_selector_receives ... ok
+test selector_family_absent_yields_honest_undef ... ok
 test spawned_closure_subject_send_plain_receive ... ok
+test gleam_otp_actor_call_round_trip_returns_count ... ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
 
      Running tests/guard_bif_unavailable.rs (target/debug/deps/guard_bif_unavailable-da12ebaabedeb223)
 
@@ -1904,7 +1902,7 @@ running 2 tests
 test populated_registry_runs_the_arithmetic_clean ... ok
 test empty_registry_refusal_names_the_mfa_and_deferred_resolution ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
 
      Running tests/hot_code_loading.rs (target/debug/deps/hot_code_loading-dca812ddb9875bae)
 
@@ -1912,52 +1910,52 @@ running 6 tests
 test purging_last_arc_drops_module_owned_constant_pool ... ok
 test hot_load_replacement_blocks_third_load_until_purge ... ok
 test hot_load_evicts_jit_cache_entries_for_old_generation ... ok
-test new_processes_use_new_version_and_purge_after_old_process_exits ... ok
 test closure_fixtures_hot_load_and_versions_are_tracked ... ok
+test new_processes_use_new_version_and_purge_after_old_process_exits ... ok
 test on_load_success_commits_and_failure_rolls_back ... ok
 
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
 
      Running tests/if_clause_e2e.rs (target/debug/deps/if_clause_e2e-faf5442aac022e78)
 
 running 1 test
 test if_clause_is_catchable_in_loaded_bytecode ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
 
      Running tests/is_function2_guard.rs (target/debug/deps/is_function2_guard-1b497c49a597e7cf)
 
 running 3 tests
-test guard_falls_through_for_a_non_fun ... ok
 test guard_passes_for_a_fun_of_the_stated_arity ... ok
 test guard_falls_through_for_a_fun_of_the_wrong_arity ... ok
+test guard_falls_through_for_a_non_fun ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
      Running tests/is_function_bif.rs (target/debug/deps/is_function_bif-5c046db26260d9c7)
 
 running 5 tests
-test body_position_is_function_1_returns_booleans ... ok
-test negative_arity_in_body_position_is_badarg ... ok
 test variable_arity_guard_routes_through_the_bif ... ok
 test invalid_arity_in_guard_position_takes_the_false_branch ... ok
+test body_position_is_function_1_returns_booleans ... ok
+test negative_arity_in_body_position_is_badarg ... ok
 test body_position_is_function_2_checks_exact_arity ... ok
 
-test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 
      Running tests/jit_blocking_receive_e2e.rs (target/debug/deps/jit_blocking_receive_e2e-5f64315288a04f2b)
 
 running 1 test
 test real_erlc_blocking_receive_is_walled_by_the_frame_teardown_after_consume ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
      Running tests/jit_deopt_replay_probe.rs (target/debug/deps/jit_deopt_replay_probe-5337fc3751565098)
 
 running 1 test
 test deopt_after_send_is_interpreter_equal ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
 
      Running tests/jit_slicer_retention.rs (target/debug/deps/jit_slicer_retention-00b7ea68e0e7166d)
 
@@ -1965,46 +1963,46 @@ running 2 tests
 test frameless_multi_clause_compiles_through_the_demand_path_and_matches_minimal ... ok
 test real_function_prev_compiles_and_loop_stays_an_honest_frame_rejection ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
 
      Running tests/jit_wireup.rs (target/debug/deps/jit_wireup-cd9321dd56bf1baa)
 
 running 20 tests
-test minimal_composition_runs_interpreter_only_with_zero_submissions ... ok
-test retry_representative_is_table_rejected ... ok
 test replay_composition_submits_nothing_and_outputs_match ... ok
 test delete_module_through_the_scheduler_drops_hot_profiles_and_cached_code ... ok
+test retry_representative_is_table_rejected ... ok
+test minimal_composition_runs_interpreter_only_with_zero_submissions ... ok
 test external_call_edge_heats_and_compiles_through_scheduler ... ok
 test queued_compilation_completing_after_delete_publishes_nothing ... ok
-test hot_reload_reheats_and_recompiles_at_the_new_generation ... ok
-test body_position_call_function_is_walled_and_falls_back_to_the_interpreter ... ok
-test local_hot_function_compiles_through_scheduler_and_matches_minimal_composition ... ok
-test internal_label_calls_never_touch_the_jit_surface ... ok
-test refused_submission_leaves_bytecode_running_and_the_profile_reheatable ... ok
-test queued_stale_job_never_stamps_a_replacement_profile ... ok
 test real_erlc_countdown_loop_compiles_through_the_demand_path_and_matches_minimal ... ok
-test aliased_export_never_runs_or_heats_another_functions_code ... ok
+test body_position_call_function_is_walled_and_falls_back_to_the_interpreter ... ok
+test hot_reload_reheats_and_recompiles_at_the_new_generation ... ok
+test local_hot_function_compiles_through_scheduler_and_matches_minimal_composition ... ok
+test queued_stale_job_never_stamps_a_replacement_profile ... ok
+test internal_label_calls_never_touch_the_jit_surface ... ok
 test no_fail_bif_badarith_deopts_to_interpreter_equal_exception ... ok
-test stale_unsupported_verdict_never_wedges_a_same_generation_replacement ... ok
+test refused_submission_leaves_bytecode_running_and_the_profile_reheatable ... ok
+test aliased_export_never_runs_or_heats_another_functions_code ... ok
 test stale_record_call_after_delete_cannot_wedge_a_monotonic_reload ... ok
-test unsupported_function_retries_at_the_new_generation ... ok
+test stale_unsupported_verdict_never_wedges_a_same_generation_replacement ... ok
 test threshold_minus_one_calls_submit_nothing_and_the_crossing_call_submits_once ... ok
+test unsupported_function_retries_at_the_new_generation ... ok
 test old_generation_calls_do_not_count_while_the_new_generation_heats ... ok
 
-test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
 
      Running tests/link_distribution_e2e.rs (target/debug/deps/link_distribution_e2e-c0176a574d11934c)
 
 running 7 tests
 test kill_crosses_the_wire_as_killed_and_the_trapping_peer_survives ... ok
-test read_loop_survives_hostile_frame_and_subsequent_frames_deliver ... ok
-test pg_members_are_purged_before_noconnection_is_observable ... ok
 test cross_node_link_and_abnormal_exit_kill_the_linked_peer_both_directions ... ok
-test node_death_delivers_noconnection_to_every_remote_linked_process ... ok
+test pg_members_are_purged_before_noconnection_is_observable ... ok
+test read_loop_survives_hostile_frame_and_subsequent_frames_deliver ... ok
 test normal_remote_exit_never_kills_the_linked_peer ... ok
+test node_death_delivers_noconnection_to_every_remote_linked_process ... ok
 test consumed_link_is_not_resignalled_as_noconnection_by_node_death ... ok
 
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.30s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.31s
 
      Running tests/local_send_gate.rs (target/debug/deps/local_send_gate-0d4f75bec2a1da12)
 
@@ -2012,7 +2010,7 @@ running 2 tests
 test cross_process_send_via_real_scheduler_delivers ... ok
 test receive_timeout_path_still_fires_when_no_send ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.15s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
 
      Running tests/memory_stability.rs (target/debug/deps/memory_stability-adb97c8ab3137d31)
 
@@ -2026,28 +2024,28 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 1 test
 test stacktrace_head_attributes_the_true_raising_function_not_a_stale_mfa ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
 
      Running tests/monitor_down_e2e.rs (target/debug/deps/monitor_down_e2e-9d18de95e3fc2f43)
 
 running 1 test
 test monitor_then_receive_down_matches_on_bound_ref ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
 
      Running tests/namespace_isolation.rs (target/debug/deps/namespace_isolation-d94a23498bd8e302)
 
 running 8 tests
 test missing_namespace_errors_are_explicit_for_load_and_undef_for_spawn ... ok
 test cross_namespace_pid_message_delivery_remains_global ... ok
-test force_purge_module_in_only_affects_target_namespace ... ok
 test default_namespace_spawn_matches_existing_api ... ok
-test namespaces_load_same_module_name_independently ... ok
+test force_purge_module_in_only_affects_target_namespace ... ok
 test namespace_hot_load_does_not_affect_other_namespace ... ok
-test deferred_import_resolves_only_in_calling_namespace ... ok
+test namespaces_load_same_module_name_independently ... ok
 test spawn_from_process_inherits_parent_namespace ... ok
+test deferred_import_resolves_only_in_calling_namespace ... ok
 
-test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
 
      Running tests/native_actor.rs (target/debug/deps/native_actor-afb98fde212b64e4)
 
@@ -2057,7 +2055,7 @@ test intra_actor_request_reply_uses_cast_plus_reply ... ok
 test cast_to_absent_pid_is_silently_dropped ... ok
 test two_concurrent_calls_do_not_cross_replies ... ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
 
      Running tests/native_process.rs (target/debug/deps/native_process-e47ebcbe3e9d04d5)
 
@@ -2069,24 +2067,24 @@ test native_parks_on_empty_mailbox_then_wakes_on_delivery ... ok
 test native_replies_to_message_sent_from_rust ... ok
 test beam_to_native_to_beam_round_trip ... ok
 
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
 
      Running tests/native_supervision.rs (target/debug/deps/native_supervision-cc34ab1de5091594)
 
 running 14 tests
 test factory_builds_a_fresh_independent_instance_each_call ... ok
 test spawn_native_trap_exit_traps_from_first_slice ... ok
-test monitor_native_delivers_down_on_normal_exit ... ok
 test monitor_native_delivers_down_on_abnormal_exit ... ok
-test trap_exit_native_receives_abnormal_exit_message ... ok
+test monitor_native_delivers_down_on_normal_exit ... ok
 test trap_exit_native_receives_normal_exit_message ... ok
 test spawn_native_trap_exit_receives_linked_child_exit_without_dying ... ok
+test trap_exit_native_receives_abnormal_exit_message ... ok
 test supervisor_restarts_crashed_native_child_via_factory ... ok
 test spawn_native_invokes_factory_exactly_once ... ok
 test crashing_beam_propagates_exit_to_linked_native ... ok
-test native_stop_cleans_up_body_and_propagates_to_links ... ok
-test beam_process_receives_down_for_native_target ... ok
 test crashing_native_propagates_exit_to_linked_beam ... ok
+test beam_process_receives_down_for_native_target ... ok
+test native_stop_cleans_up_body_and_propagates_to_links ... ok
 test native_normal_stop_does_not_kill_non_trapping_link ... ok
 
 test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
@@ -2098,7 +2096,7 @@ test natives_without_configured_private_data_see_none ... ok
 test dirty_natives_see_their_own_schedulers_private_data ... ok
 test clean_natives_see_their_own_schedulers_private_data ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
 
      Running tests/no_box_leak.rs (target/debug/deps/no_box_leak-94ce8298a1027f88)
 
@@ -2107,26 +2105,26 @@ test tests::cfg_test_blocks_cover_standard_test_modules ... ok
 test tests::cfg_test_blocks_cover_inline_attribute_items ... ok
 test production_source_contains_no_box_leak_outside_atom_interning ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
 
      Running tests/otp_integration.rs (target/debug/deps/otp_integration-215d80183a319f2a)
 
 running 13 tests
-test otp_external_application_stopped_returns_ok ... ok
-test gleam_modules_are_not_shadowed_by_native_stubs ... ok
 test bif_registry_covers_all_required_otp_external_imports ... ok
+test gleam_modules_are_not_shadowed_by_native_stubs ... ok
+test erlang_not_negates ... ok
+test otp_external_application_stopped_returns_ok ... ok
 test erlang_not_equal_compares ... ok
+test erlang_list_append_concatenates ... ok
+test erlang_get_returns_empty_list ... ok
+test erlang_pid_to_list_formats_correctly ... ok
 test bif_registry_covers_all_non_module_level_otp_imports ... ok
 test erlang_length_counts_list ... ok
-test erlang_list_append_concatenates ... ok
-test erlang_pid_to_list_formats_correctly ... ok
-test erlang_not_negates ... ok
-test erlang_get_returns_empty_list ... ok
 test otp_supervisor_module_exports_are_resolvable ... ok
-test actor_module_exports_key_functions ... ok
 test process_module_exports_key_functions ... ok
+test actor_module_exports_key_functions ... ok
 
-test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
      Running tests/otp_loading.rs (target/debug/deps/otp_loading-e8fed4accb80e8e3)
 
@@ -2134,7 +2132,7 @@ running 2 tests
 test gleam_otp_actor_has_export_ext_literals ... ok
 test all_otp_fixtures_load_without_errors ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
      Running tests/otp_zero_unresolved.rs (target/debug/deps/otp_zero_unresolved-6680ea9a928294f4)
 
@@ -2150,8 +2148,8 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 6 tests
 test pg_join_visible_on_peer_and_purged_on_node_down ... ok
 test pg_join_broadcasts_to_every_connected_node ... ok
-test reconnection_down_up_rejoin_reestablishes_membership_without_stale_resurrection ... ok
 test process_exit_purges_local_and_propagates_leave ... ok
+test reconnection_down_up_rejoin_reestablishes_membership_without_stale_resurrection ... ok
 test pg_local_leave_transmits_and_removes_remote_member ... ok
 test pg_join_is_connected_only_and_not_replayed ... ok
 
@@ -2160,17 +2158,17 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
      Running tests/proof_of_life.rs (target/debug/deps/proof_of_life-300dea351f9dd545)
 
 running 13 tests
-test proof_5_type_guards_and_pattern_matching ... ok
-test proof_8_proof_beam_gleam_114_fixture_loads_with_two_byte_compact_encoding ... ok
-test proof_9_gleam_answer_returns_42 ... ok
 test proof_3_data_structures_build_tuple_and_list ... ok
-test proof_11_gleam_pipeline_transforms_input ... ok
-test proof_1_arithmetic_add_two_numbers_via_bif ... ok
-test proof_10_gleam_add_computes_17_plus_25 ... ok
 test proof_2_branching_case_expression_selects_correct_arm ... ok
-test proof_6_reduction_counting_yields_and_resumes ... ok
-test proof_7_hello_beam_fixture_loads_and_reports_imports ... ok
 test proof_4_function_calls_with_stack_frames ... ok
+test proof_6_reduction_counting_yields_and_resumes ... ok
+test proof_5_type_guards_and_pattern_matching ... ok
+test proof_7_hello_beam_fixture_loads_and_reports_imports ... ok
+test proof_8_proof_beam_gleam_114_fixture_loads_with_two_byte_compact_encoding ... ok
+test proof_1_arithmetic_add_two_numbers_via_bif ... ok
+test proof_11_gleam_pipeline_transforms_input ... ok
+test proof_10_gleam_add_computes_17_plus_25 ... ok
+test proof_9_gleam_answer_returns_42 ... ok
 test proof_12_gleam_factorial_computes_recursively ... ok
 test proof_13_gleam_fibonacci_computes_recursively ... ok
 
@@ -2179,10 +2177,10 @@ test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
      Running tests/readiness_facility.rs (target/debug/deps/readiness_facility-f7193efc148d5a20)
 
 running 2 tests
-test disabled_scheduler_exposes_typed_absence_to_native_handler ... ok
 test native_handler_registers_receives_rearms_and_receives_again ... ok
+test disabled_scheduler_exposes_typed_absence_to_native_handler ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 
      Running tests/recv_after_timeout.rs (target/debug/deps/recv_after_timeout-7c0f0762a864a575)
 
@@ -2191,7 +2189,7 @@ test matching_message_still_completes_the_receive ... ok
 test empty_mailbox_receive_after_runs_the_after_clause ... ok
 test timeout_survives_non_matching_message_wakeups ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.26s
 
      Running tests/recv_marker.rs (target/debug/deps/recv_marker-c7b867f4e26317bb)
 
@@ -2200,20 +2198,20 @@ test otp_24_recv_marker_fixture_decodes_all_marker_opcodes ... ok
 test compiled_recv_marker_receive_timeout_path_returns_timeout_atom ... ok
 test compiled_recv_marker_receive_returns_sent_message ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
      Running tests/sample_workflow_e2e.rs (target/debug/deps/sample_workflow_e2e-095b715c38916afa)
 
 running 1 test
 test sample_workflow_run_completes_end_to_end ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
 
      Running tests/stdlib_loading.rs (target/debug/deps/stdlib_loading-8ea2640c0946c46d)
 
 running 5 tests
-test stdlib_lists_exports_higher_order_functions ... ok
 test stdlib_lists_beam_parses_without_errors ... ok
+test stdlib_lists_exports_higher_order_functions ... ok
 test maps_map_stub_resolves_in_bif_registry ... ok
 test stdlib_lists_loads_into_module_registry ... ok
 test calling_module_resolves_lists_map_via_loaded_module ... ok
@@ -2223,14 +2221,14 @@ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
      Running tests/supervision_integration.rs (target/debug/deps/supervision_integration-1eecfa8b4977352a)
 
 running 10 tests
-test link_set_records_multiple_tombstones ... ok
 test monitor_set_reference_allocation_is_unique ... ok
 test link_set_tombstone_records_dead_reason ... ok
+test link_set_records_multiple_tombstones ... ok
 test monitor_set_collect_watchers_removes_entries ... ok
 test monitor_set_remove_cleans_internal_state ... ok
 test scheduler_initializes_supervision_data_structures ... ok
-test process_exits_normally_and_is_removed ... ok
 test multiple_processes_exit_independently ... ok
+test process_exits_normally_and_is_removed ... ok
 test unlinked_process_survives_normal_exit ... ok
 test waiting_process_stays_alive_without_exit_signal ... ok
 
@@ -2239,9 +2237,9 @@ test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
      Running tests/suspend_reexec.rs (target/debug/deps/suspend_reexec-71275dd65656cf0e)
 
 running 4 tests
+test host_result_at_a_call_ext_last_park_returns_to_the_caller ... ok
 test precomputed_argument_tail_call_survives_wake_reexecution ... ok
 test host_result_at_a_call_ext_only_park_returns_to_the_caller ... ok
-test host_result_at_a_call_ext_last_park_returns_to_the_caller ... ok
 test cross_module_argument_tail_call_survives_wake_reexecution ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
@@ -2249,11 +2247,11 @@ test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
      Running tests/suspend_result_binary.rs (target/debug/deps/suspend_result_binary-380157351bcb121c)
 
 running 5 tests
-test suspension_result_heap_binary_survives_resume ... ok
-test host_published_refc_binary_result_is_owned_across_the_publish_window ... ok
+test suspension_result_refc_binary_survives_resume ... ok
 test suspension_result_large_refc_binary_survives_resume ... ok
 test host_published_large_binary_result_is_owned_across_the_publish_window ... ok
-test suspension_result_refc_binary_survives_resume ... ok
+test host_published_refc_binary_result_is_owned_across_the_publish_window ... ok
+test suspension_result_heap_binary_survives_resume ... ok
 
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 
@@ -2270,8 +2268,8 @@ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 4 tests
 test decoded_is_tagged_tuple_handler_checks_tuple_arity_and_first_atom ... ok
 test compiled_record_pattern_fixture_uses_is_tagged_tuple ... ok
-test compiled_record_pattern_branches_execute_correctly ... ok
 test compiled_nested_record_patterns_execute_correctly ... ok
+test compiled_record_pattern_branches_execute_correctly ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
@@ -2280,35 +2278,35 @@ test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 1 test
 test inventory_matches_os_probe_exactly_and_idle_bound_holds ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.58s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
 
      Running tests/thread_inventory_disabled.rs (target/debug/deps/thread_inventory_disabled-8c339be0c4adefc1)
 
 running 1 test
 test disabled_dirty_pools_own_zero_os_threads ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
      Running tests/thread_inventory_distribution.rs (target/debug/deps/thread_inventory_distribution-73439fb5e6be1538)
 
 running 1 test
 test distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
 
      Running tests/thread_inventory_minimal.rs (target/debug/deps/thread_inventory_minimal-e0c8160a1839470f)
 
 running 1 test
 test minimal_profile_runs_only_the_requested_workers_and_nothing_else ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
      Running tests/timer_resident_cost.rs (target/debug/deps/timer_resident_cost-13d2e17467d1fe1a)
 
 running 1 test
 test a_thousand_pending_timers_add_no_thread_no_wake_and_no_park_shortening ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
 
      Running tests/with_services.rs (target/debug/deps/with_services-7ac7f1a05a23e846)
 
@@ -2316,31 +2314,31 @@ running 7 tests
 test crossed_shared_ring_handles_are_refused_as_a_kind_mismatch ... ok
 test shared_io_ring_injection_is_refused_naming_commit_6 ... ok
 test minimal_disables_every_ancillary_service ... ok
-test shared_dirty_pool_is_used_by_two_schedulers_and_stopped_by_neither ... ok
 test explicit_service_choice_wins_over_the_legacy_config_knob ... ok
 test replay_disables_the_distribution_bundle_even_with_some_config ... ok
+test shared_dirty_pool_is_used_by_two_schedulers_and_stopped_by_neither ... ok
 test full_runtime_turns_distribution_on_and_keeps_other_services_from_config ... ok
 
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
      Running unittests src/main.rs (target/debug/deps/beamr-6988746ec0850462)
 
 running 23 tests
-test tests::parses_help_flags ... ok
-test tests::parses_beam_file_only_as_run_without_entry ... ok
-test tests::parses_imports_command ... ok
-test tests::parses_record_command_with_log_and_runtime_args ... ok
-test tests::parses_replay_command ... ok
-test tests::parses_dir_flag_with_beam_file ... ok
-test tests::parses_entry_flag_and_runtime_args ... ok
-test tests::parses_multiple_dir_flags ... ok
 test tests::error_display_formats_io_load_and_exec_errors ... ok
-test tests::parses_version_flags ... ok
-test tests::parses_compile_command_with_verbose ... ok
-test tests::parses_beam_file_and_entry_as_run_with_entry ... ok
 test tests::rejects_dir_without_value ... ok
-test tests::rejects_log_flag_outside_record_command ... ok
+test tests::parses_imports_command ... ok
+test tests::parses_replay_command ... ok
+test tests::parses_compile_command_with_verbose ... ok
+test tests::parses_beam_file_only_as_run_without_entry ... ok
+test tests::parses_version_flags ... ok
+test tests::parses_help_flags ... ok
+test tests::parses_beam_file_and_entry_as_run_with_entry ... ok
+test tests::parses_entry_flag_and_runtime_args ... ok
+test tests::parses_record_command_with_log_and_runtime_args ... ok
+test tests::parses_dir_flag_with_beam_file ... ok
+test tests::parses_multiple_dir_flags ... ok
 test tests::rejects_invalid_run_entry ... ok
+test tests::rejects_log_flag_outside_record_command ... ok
 test tests::rejects_non_beam_path ... ok
 test tests::rejects_record_log_without_value ... ok
 test tests::rejects_unknown_flag ... ok
@@ -2350,7 +2348,7 @@ test tests::malformed_beam_bytes_return_load_error_without_panicking ... ok
 test tests::imports_report_for_fixture_is_informational_and_omits_gate1_bifs ... ok
 test tests::record_then_replay_fixture_preserves_stdout_and_exit_code ... ok
 
-test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
 
      Running unittests src/lib.rs (target/debug/deps/beamr_wasm-de98f119ef85af56)
 
@@ -2363,7 +2361,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 1 test
 test generated_bootstrap_uses_await_exit_without_a_step_loop ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
      Running tests/profile_seal.rs (target/debug/deps/profile_seal-f332b97c5181091f)
 
@@ -2371,7 +2369,7 @@ running 2 tests
 test synthetic_registration_without_a_row_breaks_the_seal ... ok
 test profile_rows_exactly_match_the_registered_browser_surface ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
      Running unittests src/lib.rs (target/debug/deps/gleam_types-cf0e3c1b817246f0)
 
@@ -2379,7 +2377,7 @@ running 2 tests
 test format::tests::round_trips_result_signature ... ok
 test extractor::tests::extracts_annotated_add_signature ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
      Running unittests src/main.rs (target/debug/deps/gleam_types-3bb5557b018c224f)
 
@@ -2399,9 +2397,9 @@ running 2 tests
 test crates/beamr/src/process/mod.rs - process::Process (line 136) - compile fail ... ok
 test crates/beamr/src/process/mod.rs - process::Process (line 145) - compile fail ... ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
 
-all doctests ran in 0.56s; merged doctests compilation took 0.14s
+all doctests ran in 1.08s; merged doctests compilation took 0.36s
    Doc-tests beamr_wasm
 
 running 0 tests
