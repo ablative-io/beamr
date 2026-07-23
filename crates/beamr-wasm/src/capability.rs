@@ -149,12 +149,13 @@ struct InFlightRequest {
 /// counted, never silent.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct CapabilityCounters {
-    /// Completions whose scheduler delivery was refused (pid dead at
-    /// `complete_async` time).
+    /// Completions arriving for a DEAD caller, counted at either arm: the
+    /// in-flight entry was already drained by the death sweep (the only
+    /// drainer besides delivery, so entry-absence ⟺ the pid died — the
+    /// stale-token analogue), or scheduler delivery was refused
+    /// (`complete_async` returned false). One honest counter for the one
+    /// ruled concept (R6): a completion for a dead pid is a counted no-op.
     pub(crate) dead_pid_completions: u64,
-    /// Completions arriving for a request no longer in flight (the death
-    /// sweep already drained it) — the stale-token analogue.
-    pub(crate) stale_completion_noops: u64,
 }
 
 /// The five BEAM-facing operations across the two modules.
@@ -507,7 +508,7 @@ impl CapabilityBridge {
     ) {
         let entry = self.take_in_flight(pid, token);
         let Some(entry) = entry else {
-            self.counters.borrow_mut().stale_completion_noops += 1;
+            self.counters.borrow_mut().dead_pid_completions += 1;
             return;
         };
 

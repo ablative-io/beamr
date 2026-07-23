@@ -3139,7 +3139,7 @@ mod tests {
     /// Prove TRUE IDLE (idle-wall precedent): nothing queued, and an
     /// intervening host macrotask changes no arbiter counter and arms nothing.
     /// Returns the settled counter snapshot the wall diffs against.
-    async fn assert_true_idle(vm: &WasmVm) -> ArbiterCounterSnapshot {
+    pub(crate) async fn assert_true_idle(vm: &WasmVm) -> ArbiterCounterSnapshot {
         let before = vm.arbiter_counters();
         assert_eq!(before.arbiter.queued_now, 0, "true idle: no queued turn");
         assert_eq!(
@@ -3391,7 +3391,7 @@ mod tests {
 
     /// Spawn a native root and request the edge-triggered turn the same way
     /// every production entry point does (test plumbing, not a pump).
-    fn spawn_native_root_edge(vm: &mut WasmVm, factory: NativeHandlerFactory) -> u64 {
+    pub(crate) fn spawn_native_root_edge(vm: &mut WasmVm, factory: NativeHandlerFactory) -> u64 {
         let pid = vm.scheduler.borrow_mut().spawn_native_root(factory);
         vm.schedule_external_edge(FailureLeg::Queued)
             .expect("native root spawn schedules the arbiter");

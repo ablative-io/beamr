@@ -68,6 +68,10 @@ jobs:
             "capability::tests::uninjected_modules_refuse_typed_with_zero_counter_motion"
             "capability::tests::refusal_precedes_arg_validation_and_badarg_stays_distinct"
             "capability::tests::capability_injection_is_module_scoped_last_wins"
+            "capability::tests::fetch_success_from_true_idle_delivers_the_codec_map_in_one_turn"
+            "capability::tests::bytecode_caller_survives_every_error_leg_and_the_slug_set_is_closed"
+            "capability::tests::native_caller_receives_verbatim_contract_on_both_arms"
+            "capability::tests::kv_adapter_round_trips_get_put_delete_and_lexicographic_list"
             "connection_events::tests::subscription_snapshot_delivers_synthetic_ups_then_live_events_in_shared_vocabulary"
             "connection_events::tests::subscription_synthetics_are_subscriber_local_and_unsubscribe_stops_delivery"
             "connection_events::tests::subscription_during_churn_misses_no_session_and_double_sees_none"
@@ -119,9 +123,9 @@ jobs:
             fi
           done
           if ! grep -Fq \
-            "test result: ok. 71 passed; 0 failed; 0 ignored; 0 filtered out" \
+            "test result: ok. 75 passed; 0 failed; 0 ignored; 0 filtered out" \
             "$output_file"; then
-            echo "missing exact seventy-one-test success summary" >&2
+            echo "missing exact seventy-five-test success summary" >&2
             assertion_status=1
           fi
 
