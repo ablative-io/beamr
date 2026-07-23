@@ -1,0 +1,23 @@
+# green leg run — beamr =0.16.2 registry-locked, release build, fixture encode_gc_repro.beam
+# 2026-07-24, /usr/bin/time -l
+leg: green (beamr =0.16.2, registry-locked)
+exit_reason: Normal
+result: OwnedTerm { root: Term(52498088036), allocations: [[784, 2865, 200000, 800000]] }
+      102.51 real        99.44 user         2.92 sys
+           934313984  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2939568  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+               18717  involuntary context switches
+       2383703135994  instructions retired
+        451382402921  cycles elapsed
+           919258648  peak memory footprint

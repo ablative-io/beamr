@@ -1,0 +1,75 @@
+# SEGV backtrace — red leg (beamr =0.16.0 registry-locked), debug build
+# Source: macOS crash report encode-gc-repro-red 2026-07-24 07:09:22.00 +1000
+# Extracted from encode-gc-repro-red-2026-07-24-070922.ips (full .ips retained on the runner box)
+
+exception: {
+  "codes": "0x0000000000000001, 0x0000000000000021",
+  "rawCodes": [
+    1,
+    33
+  ],
+  "type": "EXC_BAD_ACCESS",
+  "signal": "SIGSEGV",
+  "subtype": "KERN_INVALID_ADDRESS at 0x0000000000000021"
+}
+
+faulting thread frames (top 24):
+   0  alloc::vec::Vec$LT$T$C$A$GT$::len::h7df911704c37aa27  (encode-gc-repro-red)
+   1  beamr::gc::release_proc_bin_arc::h82d6a433abc26bf1  (encode-gc-repro-red)
+   2  beamr::gc::release_refcounted_resources_in_young::_$u7b$$u7b$closure$u7d$$u7d$::hdc2642557b0f6034  (encode-gc-repro-red)
+   3  beamr::process::heap::HeapRegion::visit_allocated_boxed_objects::h5b982445d1fa8676  (encode-gc-repro-red)
+   4  beamr::process::heap::Heap::visit_young_boxed_objects::h954625e752cc8ced  (encode-gc-repro-red)
+   5  beamr::gc::release_refcounted_resources_in_young::hadbd944cc4c4ebc5  (encode-gc-repro-red)
+   6  beamr::gc::minor::collect::h789689931879148a  (encode-gc-repro-red)
+   7  beamr::gc::collect_minor_with_live::h77065e014419170e  (encode-gc-repro-red)
+   8  beamr::gc::ensure_space::h90262c4ef9ba131a  (encode-gc-repro-red)
+   9  beamr::native::context::ProcessContext::ensure_heap_space::h19bfbbf132362a27  (encode-gc-repro-red)
+  10  beamr::native::context::ProcessContext::alloc_words::h2e89e3ba99f4e24e  (encode-gc-repro-red)
+  11  beamr::native::context::alloc::_$LT$impl$u20$beamr..native..context..ProcessContext$GT$::alloc_binary::h83d1e57a761135cc  (encode-gc-repro-red)
+  12  beamr::native::stdlib_stubs::json_bifs::bif_json_encode_binary::h2ff71117476c45fd  (encode-gc-repro-red)
+  13  beamr::interpreter::opcodes::native_call::call_native_entry::ha3b8a14b71c7f8b4  (encode-gc-repro-red)
+  14  beamr::interpreter::opcodes::core::call_external_target::h9ee710e77bbda148  (encode-gc-repro-red)
+  15  beamr::interpreter::opcodes::core::call_ext::h2e7485e5c010ccb3  (encode-gc-repro-red)
+  16  beamr::interpreter::opcodes::dispatch_common::h2cccd41d66be07bc  (encode-gc-repro-red)
+  17  beamr::interpreter::opcodes::dispatch_with_services::hb598ad3594af9d6c  (encode-gc-repro-red)
+  18  beamr::interpreter::run_loop::h708f3ef50e2fd441  (encode-gc-repro-red)
+  19  beamr::interpreter::run_with_native_services::h7fe36fb2cfaf5090  (encode-gc-repro-red)
+  20  beamr::scheduler::execution::core::execute_slice_with_budget::h00acf573f36069b6  (encode-gc-repro-red)
+  21  beamr::scheduler::execution::core::execute_slice::he16993a4bb957655  (encode-gc-repro-red)
+  22  beamr::scheduler::execution::core::run_process::h809fedd5d9b47af4  (encode-gc-repro-red)
+  23  beamr::scheduler::execution::scheduler_loop::h64858e5426257136  (encode-gc-repro-red)
+
+register state (arm64 x0-x28):
+  x0  = 0x0000000000000011
+  x1  = 0x000000010504bc08
+  x2  = 0x0000000000000019
+  x3  = 0x0000000000000001
+  x4  = 0x0000000000000008
+  x5  = 0x0000000105095030
+  x6  = 0x000000096ccd0340
+  x7  = 0xfffff0003ffff800
+  x8  = 0x0000000000000011
+  x9  = 0x0000000000000010
+  x10 = 0x0000000105cb3b30
+  x11 = 0x0000000000000000
+  x12 = 0x00000000007fffff
+  x13 = 0x0001900c0049e875
+  x14 = 0x000000000009f000
+  x15 = 0x0000000000000010
+  x16 = 0x000000018c613360
+  x17 = 0x000000001900c075
+  x18 = 0x0000000000000000
+  x19 = 0x000000010aa64000
+  x20 = 0x0000000105cb1b30
+  x21 = 0x0000000105044c90
+  x22 = 0x000000096d00c900
+  x23 = 0x0000000000000000
+  x24 = 0x0000000000000000
+  x25 = 0x0000000000000000
+  x26 = 0x0000000000000000
+  x27 = 0x0000000000000000
+  x28 = 0x0000000000000000
+  lr  = 0x00000001046a073c
+  sp  = 0x000000017006a4a0
+  pc  = 0x00000001046eb9d8
+  fp  = 0x000000017006a500

@@ -1,0 +1,7 @@
+# red leg runs — beamr =0.16.0 registry-locked, release build, fixture encode_gc_repro.beam
+# 2026-07-24, exit code 139 = SIGSEGV, no stdout (crash precedes completion output)
+run 1: exit 139, stdout/stderr empty
+run 2: exit 139, stdout/stderr empty
+run 3: exit 139, stdout/stderr empty
+timed run: exit 139, real 0.00 s
+debug-build run (backtrace source): exit 139 — see red-segv-backtrace.txt

@@ -1,0 +1,15 @@
+# sparse-fixture runs (encode_gc_repro_badarg.beam) on the RED leg (=0.16.0) — the recorded NEGATIVE
+# 2026-07-24: completes NORMALLY at 0.16.0, 3/3 — documents that the GENTLE (badarg) expression
+# needs layout conditions this shape does not manufacture. It does NOT document 0.16.0 ever being safe.
+--- run 1 (exit 0):
+leg: red (beamr =0.16.0, registry-locked)
+exit_reason: Normal
+result: OwnedTerm { root: Term(38566630436), allocations: [[528, 2865, 400000]] }
+--- run 2 (exit 0):
+leg: red (beamr =0.16.0, registry-locked)
+exit_reason: Normal
+result: OwnedTerm { root: Term(53301855620), allocations: [[528, 2865, 400000]] }
+--- run 3 (exit 0):
+leg: red (beamr =0.16.0, registry-locked)
+exit_reason: Normal
+result: OwnedTerm { root: Term(31826675364), allocations: [[528, 2865, 400000]] }

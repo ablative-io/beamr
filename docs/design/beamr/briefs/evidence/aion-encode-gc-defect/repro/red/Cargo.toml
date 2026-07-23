@@ -1,0 +1,15 @@
+# RED leg: beamr locked at exactly 0.16.0 from the registry — the
+# version aion's Cargo.lock resolved on the crash host (cargo-installed
+# from that lock hours before the crashes). The committed Cargo.lock
+# beside this manifest is the deployment-path pin: the defect is proven
+# against the shipped artifact, not checked-out source.
+[package]
+name = "encode-gc-repro-red"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+beamr = { version = "=0.16.0", features = ["json", "encode"] }
+
+[workspace]

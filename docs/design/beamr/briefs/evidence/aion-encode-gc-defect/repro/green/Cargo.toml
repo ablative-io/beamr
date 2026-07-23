@@ -1,0 +1,14 @@
+# GREEN leg: beamr locked at exactly 0.16.2 from the registry — the
+# release carrying the C1 fix (AllocKind recorded at allocation; the
+# refc-release walk visits only marked refcounted allocations). Same
+# harness body and fixture as the red leg; only the registry pin moves.
+[package]
+name = "encode-gc-repro-green"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+beamr = { version = "=0.16.2", features = ["json", "encode"] }
+
+[workspace]
