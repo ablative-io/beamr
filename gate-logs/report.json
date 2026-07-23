@@ -1,21 +1,21 @@
 {
   "schema": "gate-report/v1",
   "repo": "beamr",
-  "commit_sha": "7d9b52430b883d67a4aaad1368c749bf61152d5e",
-  "tree_sha": "e25f1e29d54d1f5b0985433618039a50894a57e8",
-  "branch": "wport8/build",
+  "commit_sha": "371dba80180d20168d7520e36bc755cd8c757b3b",
+  "tree_sha": "36b26c74b4c219375893d404b1e4eccdd3f0d868",
+  "branch": "fix/bundle-packager-noarg-init",
   "dirty": false,
-  "untracked_count": 2,
+  "untracked_count": 3,
   "toolchain": {
     "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
     "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
   },
   "host": "Mac.modem",
-  "started_at": "2026-07-23T14:12:25Z",
-  "finished_at": "2026-07-23T14:13:52Z",
-  "duration_s": 87.271,
+  "started_at": "2026-07-23T15:08:44Z",
+  "finished_at": "2026-07-23T15:10:05Z",
+  "duration_s": 80.695,
   "concurrent_cargo_at_start": [
-    "94810 /Users/deanwhiting/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo test --workspace --no-fail-fast"
+    "53031 /Users/deanwhiting/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo test -p frame-conv --test characterize_join_"
   ],
   "legs": [
     {
@@ -23,7 +23,7 @@
       "cmd": "cargo fmt --all --check",
       "kind": "check",
       "exit": 0,
-      "duration_s": 0.607,
+      "duration_s": 0.618,
       "log": "gate-logs/fmt.log",
       "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "tests": null,
@@ -34,9 +34,9 @@
       "cmd": "cargo clippy --workspace --all-targets -- -D warnings",
       "kind": "check",
       "exit": 0,
-      "duration_s": 9.881,
+      "duration_s": 9.913,
       "log": "gate-logs/clippy.log",
-      "log_sha256": "978a061a936fe8b511d47b62a0b45321444a25203963caf5e52ab39686332345",
+      "log_sha256": "45b4b5f208e4e71a26d3c0c2fc5085e2003cce2626d40083dca702abddd15009",
       "tests": null,
       "failures": []
     },
@@ -45,9 +45,9 @@
       "cmd": "cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked",
       "kind": "check",
       "exit": 0,
-      "duration_s": 1.607,
+      "duration_s": 1.166,
       "log": "gate-logs/wasm32-check.log",
-      "log_sha256": "28e9946bed85f014a624222bfd6a7341df74c5f004cb1c55b107f921c6bc8e44",
+      "log_sha256": "32005ceb33b6f40c9a4f06d5259a1e88571896d6eac5e910265d316d79ffe652",
       "tests": null,
       "failures": []
     },
@@ -56,9 +56,9 @@
       "cmd": "cargo test --workspace",
       "kind": "cargo-test",
       "exit": 0,
-      "duration_s": 75.175,
+      "duration_s": 68.996,
       "log": "gate-logs/tests.log",
-      "log_sha256": "ff957529945288fa47ecba84598d3518b94b98e8b95c206fc1c053f7fbf73bf2",
+      "log_sha256": "3a3ce81a5f06fa66a327a8c7fa02c67487c1a442e9d504149321d7922e4eada5",
       "tests": {
         "suites": 69,
         "passed": 1998,
