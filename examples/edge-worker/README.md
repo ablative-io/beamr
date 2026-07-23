@@ -61,3 +61,29 @@ The smoke test verifies HTTP request/response handling, the explicit WebSocket r
 - Bricked-VM recovery (WPORT-7): the module-level `preloadedVmPromise` caches one VM for the isolate's lifetime and is never invalidated. After a Rust panic the instance is latched (borrowed RefCells, stuck Draining) — every scheduler-touching call re-traps — and after a terminal scheduler failure every `await_exit` rejects with the latched `SchedulerFailureError` (`vm.terminal_error()` reads it non-consumingly; `register_failure_callback`/`register_panic_callback` push-report both). Either way the cached VM serves nothing useful afterwards: recovery is a fresh `WasmVm` on a fresh isolate — let the failing requests surface and the platform recycle the worker rather than retrying into the bricked instance.
 - HTTP request/response only: WebSocket upgrades return `426` and Durable Objects or persistent state are intentionally not used.
 - WASM-safe execution only: handlers must avoid dirty native calls, blocking I/O, OS threads, and distribution.
+
+## Capabilities (WPORT-8)
+
+The worker injects the platform's authority into the VM as capability
+objects — the BEAM side reaches no ambient global:
+
+- `register_fetch_capability`: the platform `fetch`, with an
+  AbortController-backed abort hook on the request slot. When a BEAM caller
+  dies with a request in flight, the VM's death sweep fires the hook and the
+  request aborts (process-death auto-abort).
+- `register_kv_capability`: the `env.KV` Workers KV binding
+  (`get`/`put`/`delete`/`list_by_prefix`), registered only when the binding
+  exists. An env without KV leaves the whole `wasm_kv` module refusing typed
+  — `{error, {capability_missing, kv}}` — never `undef`, never a hang.
+
+Registration is idempotent last-wins and happens per request, binding the
+current `env`. A BEAM handler result of shape `["error", [Slug, Detail]]`
+(a capability failure value) maps to an observable `502` JSON response
+naming the slug — typed refusals surface, nothing hangs, and nothing maps
+silently to success. The Miniflare suite proves this WIRING (real
+registrations, recorded capability objects driven against real platform
+fetch/KV, plus a stub-fidelity pin that fails if `worker.js` calls any VM
+surface the real bundle does not export); the adapters themselves are
+proven by the beamr-wasm in-crate walls, and the real-bundle end-to-end
+(a BEAM handler performing a fetch + KV round trip) is recorded at the
+WPORT-8 capability probe sitting (`docs/design/beamr/probes/`).
