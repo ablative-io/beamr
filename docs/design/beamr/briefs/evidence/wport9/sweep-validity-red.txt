@@ -1,0 +1,35 @@
+WPORT-9 R7 RED — bundle sweep embeds non-BEAM bytes verbatim (current bytes)
+============================================================================
+base: wport9/build @ ef5e379 (== main; brief landed ff)
+date: 2026-07-24
+
+Staged sweep directory (absolute path law; scratch, two files):
+  fetch_chain_a.beam        (valid module, committed fixture)
+  malformed_not_beam.beam   (WPORT-6 deliberate non-BEAM fixture — first
+                             bytes are ASCII prose "WPORT-6 malforme...",
+                             no FOR1/BEAM IFF header)
+
+Command (build script runs under cargo check; env resolves against the
+crate dir, so the absolute path is mandatory):
+
+  BEAMR_WASM_BUNDLE_DIR=<abs scratch dir> \
+    cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked
+
+Result: EXIT 0 — the build ACCEPTS the sweep.
+
+  Compiling beamr-wasm v0.7.0 (.../crates/beamr-wasm)
+  Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.68s
+
+Emitted manifest.json (OUT_DIR/beamr-wasm-bundle/), proving the malformed
+file was embedded verbatim as a module:
+
+  "modules": [
+    { "name": "fetch_chain_a", "file": "fetch_chain_a.beam", "bytes": 804 },
+    { "name": "malformed_not_beam", "file": "malformed_not_beam.beam", "bytes": 209 }
+  ]
+
+The failure this defers to runtime is already on the record: the WPORT-8
+sitting-kit green-run incident (2026-07-24) hit "invalid BEAM file format"
+at first `vm.load_module()` when this fixture rode a sweep — the board
+line that became this requirement. The check (next commit) moves the
+failure to the build, loudly, naming the file.
