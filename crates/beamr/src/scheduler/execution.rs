@@ -663,11 +663,21 @@ pub(in crate::scheduler) fn build_tcp_active_message_for_process(
         return None;
     }
     let socket = {
-        let heap = process.heap_mut().alloc_slice(FD_RESOURCE_WORDS).ok()?;
+        // The message owns a strong FdInner reference; mark the allocation so
+        // the GC release walk drops it. See `process::heap::AllocKind`.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(FD_RESOURCE_WORDS)
+            .ok()?;
         write_fd_resource(heap, std::sync::Arc::clone(fd))?
     };
     let binary = {
-        let heap = process.heap_mut().alloc_slice(binary_words).ok()?;
+        // A large payload lands as a refcounted ProcBin; mark the allocation
+        // so the GC release walk drops its Arc.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(binary_words)
+            .ok()?;
         alloc_binary(heap, data)?
     };
     let tcp = Term::atom(atom_table.intern("tcp"));
@@ -690,7 +700,12 @@ fn build_tcp_closed_message_for_process(
         return None;
     }
     let socket = {
-        let heap = process.heap_mut().alloc_slice(FD_RESOURCE_WORDS).ok()?;
+        // The message owns a strong FdInner reference; mark the allocation so
+        // the GC release walk drops it. See `process::heap::AllocKind`.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(FD_RESOURCE_WORDS)
+            .ok()?;
         write_fd_resource(heap, std::sync::Arc::clone(fd))?
     };
     let tcp_closed = Term::atom(atom_table.intern("tcp_closed"));
@@ -718,7 +733,12 @@ pub(in crate::scheduler) fn build_udp_active_message_for_process(
         return None;
     }
     let socket = {
-        let heap = process.heap_mut().alloc_slice(FD_RESOURCE_WORDS).ok()?;
+        // The message owns a strong FdInner reference; mark the allocation so
+        // the GC release walk drops it. See `process::heap::AllocKind`.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(FD_RESOURCE_WORDS)
+            .ok()?;
         write_fd_resource(heap, std::sync::Arc::clone(fd))?
     };
     let ip = {
@@ -733,7 +753,12 @@ pub(in crate::scheduler) fn build_udp_active_message_for_process(
         write_tuple(heap, &terms)?
     };
     let binary = {
-        let heap = process.heap_mut().alloc_slice(binary_words).ok()?;
+        // A large datagram lands as a refcounted ProcBin; mark the allocation
+        // so the GC release walk drops its Arc.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(binary_words)
+            .ok()?;
         alloc_binary(heap, datagram)?
     };
     let udp = Term::atom(atom_table.intern("udp"));

@@ -246,6 +246,11 @@ pub(super) fn allocate_binary(process: &mut Process, bytes: &[u8]) -> Option<Ter
     if ptr.is_null() {
         return None;
     }
+    // A large extraction lands as a refcounted ProcBin; mark the allocation so
+    // the GC release walk drops its Arc. See `process::heap::AllocKind`.
+    process
+        .heap_mut()
+        .mark_last_young_allocation_maybe_refcounted();
     let heap = unsafe { std::slice::from_raw_parts_mut(ptr, words) };
     alloc_binary(heap, bytes)
 }

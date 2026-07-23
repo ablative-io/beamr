@@ -483,7 +483,10 @@ fn copy_proc_bin(proc_bin: &ProcBin, heap: &mut Heap) -> Result<Term, SendError>
         return shared_binary::alloc_binary(words, shared.as_bytes())
             .ok_or(SendError::InvalidBoxedTerm);
     }
-    let words = alloc_words(heap, shared_binary::alloc_binary_word_count(shared.len()))?;
+    // The receiver's copy owns a fresh strong reference; mark the allocation
+    // so the GC release walk drops it. See `process::heap::AllocKind`.
+    let words =
+        alloc_words_maybe_refcounted(heap, shared_binary::alloc_binary_word_count(shared.len()))?;
     shared_binary::write_proc_bin(words, &shared).ok_or(SendError::InvalidBoxedTerm)
 }
 
@@ -491,7 +494,10 @@ fn copy_proc_bin(proc_bin: &ProcBin, heap: &mut Heap) -> Result<Term, SendError>
 /// receiver never retains the parent binary's full storage.
 fn copy_sub_binary(sub_binary: &SubBinary, heap: &mut Heap) -> Result<Term, SendError> {
     let bytes = sub_binary.as_bytes();
-    let words = alloc_words(heap, shared_binary::alloc_binary_word_count(bytes.len()))?;
+    // A copy above the refc threshold lands as a ProcBin; mark the allocation
+    // so the GC release walk drops its Arc. See `process::heap::AllocKind`.
+    let words =
+        alloc_words_maybe_refcounted(heap, shared_binary::alloc_binary_word_count(bytes.len()))?;
     shared_binary::alloc_binary(words, bytes).ok_or(SendError::InvalidBoxedTerm)
 }
 
@@ -499,6 +505,17 @@ fn alloc_words(heap: &mut Heap, word_count: usize) -> Result<&mut [u64], SendErr
     let ptr = heap.alloc(word_count)?;
     // SAFETY: `Heap::alloc` reserves `word_count` contiguous words in the heap;
     // the returned slice is used immediately to initialize the allocation.
+    Ok(unsafe { std::slice::from_raw_parts_mut(ptr, word_count) })
+}
+
+fn alloc_words_maybe_refcounted(
+    heap: &mut Heap,
+    word_count: usize,
+) -> Result<&mut [u64], SendError> {
+    let ptr = heap.alloc_maybe_refcounted(word_count)?;
+    // SAFETY: `Heap::alloc_maybe_refcounted` reserves `word_count` contiguous
+    // words in the heap; the returned slice is used immediately to initialize
+    // the allocation.
     Ok(unsafe { std::slice::from_raw_parts_mut(ptr, word_count) })
 }
 

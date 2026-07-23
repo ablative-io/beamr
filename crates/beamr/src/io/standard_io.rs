@@ -281,7 +281,12 @@ fn heap_alloc_tuple(process: &mut Process, elements: &[Term]) -> Option<Term> {
 
 fn heap_alloc_binary(process: &mut Process, bytes: &[u8]) -> Option<Term> {
     let word_count = crate::term::shared_binary::alloc_binary_word_count(bytes.len());
-    let heap = process.heap_mut().alloc_slice(word_count).ok()?;
+    // A large result lands as a refcounted ProcBin; mark the allocation so the
+    // GC release walk drops its Arc. See `process::heap::AllocKind`.
+    let heap = process
+        .heap_mut()
+        .alloc_slice_maybe_refcounted(word_count)
+        .ok()?;
     crate::term::shared_binary::alloc_binary(heap, bytes)
 }
 
