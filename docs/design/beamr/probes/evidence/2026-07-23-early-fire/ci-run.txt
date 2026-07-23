@@ -17,6 +17,14 @@ GREEN: run 30001395255 (2026-07-23 10:59Z), push of 5206e7a (0.16.2 release
        evidence). Identical beamr-wasm code — fb3efcf touched only
        docs/notes/osiris-compact-anchor.md.
 
+RED (second, same stock code): run 30005660439 (2026-07-23 12:06Z), the
+       triage branch-creation push of fb3efcf — before any triage commit.
+       Identical assertion and value (lib.rs:2425, left: 2), 64/65 passed.
+       Two independent CI reds on the same stock bytes within 15 minutes:
+       the flake is not a one-off runner anomaly, and the per-battery rate
+       on the CI runner is materially higher than a single observation
+       suggested.
+
 The failing assertion is the FIRST of the final counter block; the flaked
 run's observable set is therefore: mid-test armed snapshot green
 (queued_now == 1, armed_deadline Some), final requests == 2. executions,
