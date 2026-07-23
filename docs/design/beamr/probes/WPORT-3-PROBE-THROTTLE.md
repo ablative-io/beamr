@@ -223,3 +223,15 @@ different display context (remote/unattended vs live/watched), and a
 different Chrome patch level (150.0.7871.125 vs .128). The two-environment
 close is real: both official sittings independently satisfy the probe's
 stated expectation, and no observation in either contradicts the other.
+
+## Sibling platform bound (2026-07-23): EARLY-UNDER-CACHED-CLOCK
+
+This probe pinned the LATE direction (throttling). The 2026-07-23 flake
+triage pinned the EARLY direction: Node/browser hosts may fire a one-shot
+timeout sub-millisecond EARLY relative to `performance.now()` (cached
+event-loop clocks, integer-ms due comparison). The unified deadline service
+tolerates it by construction — empty due delivery, one self-quenching re-arm
+of the remainder — but the `requests` total-arm counter increments, so **no
+acceptance test may assert absolute arm counts across a real timer fire**.
+Full mechanism, witnesses, and the hardened-wall consequence:
+[`WPORT-3-PROBE-EARLY-FIRE.md`](WPORT-3-PROBE-EARLY-FIRE.md).

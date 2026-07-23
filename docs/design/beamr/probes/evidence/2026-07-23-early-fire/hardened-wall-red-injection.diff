@@ -1,0 +1,33 @@
+diff --git a/crates/beamr-wasm/src/lib.rs b/crates/beamr-wasm/src/lib.rs
+index 32bad89..4e40460 100644
+--- a/crates/beamr-wasm/src/lib.rs
++++ b/crates/beamr-wasm/src/lib.rs
+@@ -1815,6 +1815,20 @@ impl WasmVm {
+         }
+         self.deadline.deadline_callback_fired(token, now);
+     }
++
++    /// EVIDENCE-ONLY defect injection: arm a second host one-shot WITHOUT
++    /// consuming the active arm — the duplicate-active-callback defect class
++    /// the hardened wall must catch. Never lands enabled.
++    fn inject_duplicate_active_arm(&self) {
++        let deadline = self
++            .deadline
++            .active_arm
++            .borrow()
++            .as_ref()
++            .map(|arm| arm.deadline)
++            .expect("an arm is active");
++        self.deadline.arm(deadline).expect("duplicate arm");
++    }
+ }
+ 
+ #[cfg(all(test, target_arch = "wasm32"))]
+@@ -2409,6 +2423,7 @@ mod tests {
+ 
+         let first = JsFuture::from(race).await.expect("race resolves");
+         assert_eq!(first.as_string(), marker.as_string());
++        vm.inject_duplicate_active_arm();
+         let armed = vm.unified_deadline_snapshot();
+         assert_eq!(armed.queued_now, 1);
+         assert!(armed.armed_deadline.is_some());

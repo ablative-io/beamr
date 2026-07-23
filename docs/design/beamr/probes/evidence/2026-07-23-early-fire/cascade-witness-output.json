@@ -1,0 +1,14 @@
+{
+  "script": "cascade-witness.mjs",
+  "environment": {
+    "node": "v26.5.0",
+    "platform": "darwin (macOS, Darwin 25.5.0)"
+  },
+  "delay_ms": 25,
+  "samples": 400,
+  "early_samples": 1,
+  "max_chain_length": 1,
+  "chain_length_histogram": { "0": 399, "1": 1 },
+  "early_deltas_ms": [0.368],
+  "note": "chain length = extra one-shot arms beyond the first, re-armed per millis_until_ceil semantics (ceil of remaining micros, 1ms floor for any positive sub-ms remainder). Max observed chain: 1 extra arm; no sample ever needed a second re-arm."
+}

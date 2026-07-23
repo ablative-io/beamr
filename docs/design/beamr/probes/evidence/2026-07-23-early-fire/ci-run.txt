@@ -1,0 +1,24 @@
+CI evidence for the flake
+=========================
+
+RED:   run 30004895967 (2026-07-23 11:54Z), push of fb3efcf (docs-only commit
+       on main). Failing excerpt:
+
+  ---- tests::await_exit_waits_for_armed_receive_timer output ----
+      error output:
+          beamr-wasm panicked: assertion `left == right` failed
+            left: 2
+           right: 1 (crates/beamr-wasm/src/lib.rs:2425:9)
+  test result: FAILED. 64 passed; 1 failed; 0 ignored; 0 filtered out
+  missing passing wasm test: tests::await_exit_waits_for_armed_receive_timer
+  missing exact sixty-five-test success summary
+
+GREEN: run 30001395255 (2026-07-23 10:59Z), push of 5206e7a (0.16.2 release
+       evidence). Identical beamr-wasm code — fb3efcf touched only
+       docs/notes/osiris-compact-anchor.md.
+
+The failing assertion is the FIRST of the final counter block; the flaked
+run's observable set is therefore: mid-test armed snapshot green
+(queued_now == 1, armed_deadline Some), final requests == 2. executions,
+next_arms, cancellations, queued_now were never reached. The deterministic
+demonstration wall reproduces the full consistent counter set.

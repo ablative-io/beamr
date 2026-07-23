@@ -1,0 +1,26 @@
+Fail-first proof: the hardened wall goes RED on a duplicate ACTIVE arm
+======================================================================
+
+Injection: hardened-wall-red-injection.diff applied on branch head 433b114 —
+a test-only seam arms a second host one-shot WITHOUT consuming the active arm
+(the real defect class: two concurrent live host callbacks). Line numbers in
+the output below are of the injected tree (the injection method shifts the
+test module down).
+
+Run (wasm-bindgen-test-runner, Node v26.5.0, filtered to the hardened wall):
+
+  running 1 test
+  Invoking test: tests::await_exit_waits_for_armed_receive_timer
+  beamr-wasm panicked: assertion `left == right` failed
+    left: 2
+   right: 1 (crates/beamr-wasm/src/lib.rs:2428:9)
+  test tests::await_exit_waits_for_armed_receive_timer ... FAIL
+  test result: FAILED. 0 passed; 1 failed; 0 ignored; 65 filtered out
+
+The catch point is the mid-test active-arm cardinality gauge —
+`assert_eq!(armed.queued_now, 1)` observes 2 the moment a second arm exists
+concurrently. The defect class is caught a second time at the final
+accounting identities: the duplicated arm's stale-token callback is refused
+admission by the shared callback logic, so `executions == requests` fails
+(2 arms, 1 admitted execution). The injection was reverted after this run;
+the committed wall carries no injection seam.

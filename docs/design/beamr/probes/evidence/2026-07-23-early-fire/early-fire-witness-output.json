@@ -1,0 +1,13 @@
+{
+  "script": "early-fire-witness.mjs",
+  "environment": {
+    "node": "v26.5.0",
+    "platform": "darwin (macOS, Darwin 25.5.0)",
+    "clock_pair": "setTimeout (libuv cached ms-granularity loop clock) vs performance.now() (sub-ms, the web_time::Instant clock under wasm32-unknown-unknown)"
+  },
+  "delay_ms": 25,
+  "samples": 400,
+  "early_fires": 3,
+  "worst_early_ms": 24.521,
+  "early_deltas_ms": [0.479, 0.262, 0.267]
+}

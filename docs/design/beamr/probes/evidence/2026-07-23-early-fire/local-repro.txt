@@ -1,0 +1,25 @@
+Local reproduction of the CI flake on STOCK code at fb3efcf
+===========================================================
+
+Environment: macOS (Darwin 25.5.0), Node v26.5.0, rustc stable,
+wasm-bindgen-cli 0.2.123 (CI-pinned version), wasm-bindgen-test-runner
+invoked directly on the built test binary, filtered to the single test.
+
+Run 1 (stop-at-first-failure loop, max 300 iterations):
+  FAILED at iteration 1 — identical assertion to CI run 30004895967:
+
+    running 1 test
+    Invoking test: tests::await_exit_waits_for_armed_receive_timer
+    beamr-wasm panicked: assertion `left == right` failed
+      left: 2
+     right: 1 (crates/beamr-wasm/src/lib.rs:2425:9)
+    test tests::await_exit_waits_for_armed_receive_timer ... FAIL
+
+Run 2 (fixed 100 iterations, count failures):
+  failures: 1 / 100
+
+Total observed: 2 failures / 101 filtered single-test runs (~2%).
+The full-battery CI rate is lower (the 65-test suite arms this wall once per
+battery; the filtered loop arms it once per second): CI showed green at
+5206e7a (run 30001395255, 10:59Z) and red at the docs-only fb3efcf push
+(run 30004895967, 11:54Z) — same code both runs.
