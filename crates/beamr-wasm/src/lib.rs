@@ -1,6 +1,7 @@
 //! JavaScript bindings for the cooperative Beamr WASM runtime.
 
 pub mod artifact_loader;
+mod capability;
 mod connection_events;
 mod convert;
 mod failure;
@@ -36,7 +37,7 @@ use failure::{
     FailureLeg, PHASE_QUEUE_MICROTASK, PHASE_RECONCILE, PHASE_SET_TIMEOUT, scheduler_failure_error,
 };
 use io_sink::HostIoSinkBridge;
-use js_sys::{Function, Promise, Reflect};
+use js_sys::{Function, Object, Promise, Reflect};
 use reasons::exec_error_to_reason;
 use serde_json::{Value, json};
 use wasm_bindgen::JsCast;
@@ -64,6 +65,7 @@ pub struct WasmVm {
     actor_handlers: Rc<HostActorHandlers>,
     connection_events: Rc<BrowserConnectionHub>,
     io_sink: Rc<HostIoSinkBridge>,
+    capabilities: Rc<capability::CapabilityBridge>,
 }
 
 #[wasm_bindgen]
@@ -108,9 +110,16 @@ impl WasmVm {
             Rc::downgrade(&scheduler),
             Rc::downgrade(&arbiter),
         ));
+        let capabilities = capability::CapabilityBridge::new(Arc::clone(&atom_table));
+        capabilities.set_sink(Rc::new(CapabilityDelivery {
+            scheduler: Rc::downgrade(&scheduler),
+            arbiter: Rc::downgrade(&arbiter),
+        }));
+        arbiter.set_capability_bridge(Rc::clone(&capabilities));
         let facility: Rc<dyn WasmAsyncNifFacility> = Rc::new(HostWasmFacility {
             async_nifs: Rc::clone(&async_bridge),
             js_callbacks: Rc::clone(&js_callbacks),
+            capabilities: Rc::clone(&capabilities),
             js_callback_module: atom_table.intern("wasm_ffi"),
             js_callback_function: atom_table.intern("js_callback"),
         });
@@ -130,7 +139,22 @@ impl WasmVm {
             actor_handlers,
             connection_events: Rc::new(BrowserConnectionHub::new()),
             io_sink,
+            capabilities,
         })
+    }
+
+    /// Inject the fetch capability object (WPORT-8 R1) — the module's whole
+    /// authority; no ambient global is reached. Idempotent last-wins.
+    /// `wasm_fetch` MFAs are registered at construction and refuse typed
+    /// (`{error, {capability_missing, fetch}}`) until this is called.
+    pub fn register_fetch_capability(&mut self, capability: Object) {
+        self.capabilities.register_fetch(capability);
+    }
+
+    /// Inject the KV capability object (WPORT-8 R1). Same contract as
+    /// [`WasmVm::register_fetch_capability`], keyed `kv`.
+    pub fn register_kv_capability(&mut self, capability: Object) {
+        self.capabilities.register_kv(capability);
     }
 
     /// Register a JavaScript IO sink callback `(stream, text)` receiving the
@@ -581,6 +605,10 @@ struct HostArbiter {
     /// `fail()` that finds it registered; never polled, never re-armed.
     failure_callback: RefCell<Option<Function>>,
     instrumentation: RefCell<CallbackCounters>,
+    /// WPORT-8 A1: the capability bridge whose in-flight abort hooks fire at
+    /// this arbiter's exit-observation sweep — the same observation that
+    /// settles ExitWaiters; one death-observation point, never two.
+    capabilities: RefCell<Option<Rc<capability::CapabilityBridge>>>,
 }
 
 impl HostArbiter {
@@ -614,8 +642,13 @@ impl HostArbiter {
                 last_error: RefCell::new(None),
                 failure_callback: RefCell::new(None),
                 instrumentation: RefCell::new(CallbackCounters::default()),
+                capabilities: RefCell::new(None),
             }
         })
+    }
+
+    fn set_capability_bridge(&self, bridge: Rc<capability::CapabilityBridge>) {
+        *self.capabilities.borrow_mut() = Some(bridge);
     }
 
     fn request_external_turn(self: &Rc<Self>, failure_leg: FailureLeg) -> Result<(), JsValue> {
@@ -866,6 +899,15 @@ impl HostArbiter {
     }
 
     fn resolve_waiters(&self, summary: &WasmRunSummary, summary_json: &Value) {
+        // WPORT-8 A1: the exit-observation sweep is ALSO the capability
+        // auto-abort trigger — a dying pid's in-flight requests abort at the
+        // same observation that settles its ExitWaiters (host-direction
+        // calls; zero wake-path involvement).
+        if let Some(bridge) = self.capabilities.borrow().as_ref() {
+            for pid in summary.exited.iter().chain(summary.errored.iter()) {
+                bridge.on_pid_exit(*pid);
+            }
+        }
         for pid in &summary.exited {
             let Some(waiters) = self.waiters.borrow_mut().remove(pid) else {
                 continue;
@@ -1391,20 +1433,48 @@ impl HostAsyncNifs {
                         )))
                     }),
             };
-            if let Some(scheduler) = scheduler.upgrade() {
-                let edge = {
-                    let mut scheduler = scheduler.borrow_mut();
-                    let _completed = scheduler.complete_async(pid, completion);
-                    scheduler.take_external_runnable_edge()
-                };
-                if edge
-                    && let Some(arbiter) = arbiter.upgrade()
-                    && let Err(error) = arbiter.request_external_turn(FailureLeg::Promise)
-                {
-                    arbiter.fail(error);
-                }
-            }
+            let _delivered = deliver_promise_completion(&scheduler, &arbiter, pid, completion);
         });
+    }
+}
+
+/// The ONE Promise-leg completion-delivery + wake site (WPORT-8 A3): shared
+/// by the generic async-NIF completion path and the capability bridge so the
+/// wake-path closed-site inventory gains no members. Returns whether the
+/// scheduler accepted delivery (`false` = the pid is gone).
+fn deliver_promise_completion(
+    scheduler: &Weak<RefCell<WasmScheduler>>,
+    arbiter: &Weak<HostArbiter>,
+    pid: u64,
+    completion: WasmAsyncCompletion,
+) -> bool {
+    let Some(scheduler) = scheduler.upgrade() else {
+        return false;
+    };
+    let (delivered, edge) = {
+        let mut scheduler = scheduler.borrow_mut();
+        let delivered = scheduler.complete_async(pid, completion);
+        (delivered, scheduler.take_external_runnable_edge())
+    };
+    if edge
+        && let Some(arbiter) = arbiter.upgrade()
+        && let Err(error) = arbiter.request_external_turn(FailureLeg::Promise)
+    {
+        arbiter.fail(error);
+    }
+    delivered
+}
+
+/// lib.rs's implementation of the capability bridge's completion sink over
+/// the shared delivery site.
+struct CapabilityDelivery {
+    scheduler: Weak<RefCell<WasmScheduler>>,
+    arbiter: Weak<HostArbiter>,
+}
+
+impl capability::CompletionSink for CapabilityDelivery {
+    fn deliver(&self, pid: u64, completion: WasmAsyncCompletion) -> bool {
+        deliver_promise_completion(&self.scheduler, &self.arbiter, pid, completion)
     }
 }
 
@@ -1565,6 +1635,7 @@ fn error_reply_term(atom_table: &Arc<AtomTable>, reason: &str) -> OwnedTerm {
 struct HostWasmFacility {
     async_nifs: Rc<HostAsyncNifs>,
     js_callbacks: Rc<HostJsCallbacks>,
+    capabilities: Rc<capability::CapabilityBridge>,
     js_callback_module: beamr::atom::Atom,
     js_callback_function: beamr::atom::Atom,
 }
@@ -1576,7 +1647,9 @@ impl WasmAsyncNifFacility for HostWasmFacility {
         args: &[Term],
         context: &mut beamr::native::ProcessContext<'_>,
     ) -> Result<Term, Term> {
-        if mfa.0 == self.js_callback_module && mfa.1 == self.js_callback_function {
+        if self.capabilities.routes(mfa) {
+            self.capabilities.start_capability_call(mfa, args, context)
+        } else if mfa.0 == self.js_callback_module && mfa.1 == self.js_callback_function {
             self.js_callbacks.start_js_callback(args, context)
         } else {
             self.async_nifs.start_async_nif(mfa, args, context)
@@ -1617,6 +1690,37 @@ fn register_wasm_safe_bifs(
     register_gate1_bifs(registry, atom_table)?;
     register_gate2_bifs(registry, atom_table)?;
     register_stdlib_stubs(registry, atom_table)?;
+    register_capability_bifs(registry, atom_table)?;
+    Ok(())
+}
+
+/// WPORT-8 R1: the `wasm_fetch`/`wasm_kv` MFAs are registered
+/// UNCONDITIONALLY at construction — the registered set never depends on
+/// injection state (deterministic profile seal), and a pre-injection call
+/// receives the typed `capability_missing` refusal rather than `undef`.
+/// The MFAs share the async-NIF trampoline; the facility routes them to the
+/// capability bridge.
+fn register_capability_bifs(
+    registry: &BifRegistryImpl,
+    atom_table: &AtomTable,
+) -> Result<(), NativeRegistrationError> {
+    let wasm_fetch = atom_table.intern("wasm_fetch");
+    let wasm_kv = atom_table.intern("wasm_kv");
+    for (module, function, arity) in [
+        (wasm_fetch, atom_table.intern("request"), 1),
+        (wasm_kv, atom_table.intern("get"), 1),
+        (wasm_kv, atom_table.intern("put"), 2),
+        (wasm_kv, atom_table.intern("delete"), 1),
+        (wasm_kv, atom_table.intern("list_by_prefix"), 1),
+    ] {
+        registry.register(
+            module,
+            function,
+            arity,
+            wasm_async_nif_stub,
+            Capability::ExternalIo,
+        )?;
+    }
     Ok(())
 }
 
@@ -1775,6 +1879,10 @@ impl WasmVm {
             next_arms: counters.next_arms,
             armed_deadline,
         }
+    }
+
+    fn capability_counters(&self) -> capability::CapabilityCounters {
+        self.capabilities.counters()
     }
 
     fn unified_arm_token(&self) -> Option<u64> {
