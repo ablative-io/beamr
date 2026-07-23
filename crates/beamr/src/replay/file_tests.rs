@@ -152,3 +152,52 @@ fn temp_replay_path(label: &str) -> std::path::PathBuf {
             .as_nanos()
     ))
 }
+
+/// THE WALL for the decoded scratch heaps' resource discipline: a loaded
+/// replay log whose events carry refcounted binaries must release those
+/// Arcs when the log drops. The scratch heaps never run a GC, so the
+/// release walk at drop is the ONLY release those allocations ever get —
+/// without it every large decoded binary leaks for the process lifetime.
+#[test]
+fn decoded_proc_bin_arcs_release_when_the_log_drops() {
+    use crate::replay::RecordedSelect;
+    use crate::term::boxed::ProcBin;
+    use crate::term::shared_binary::{REFC_BINARY_THRESHOLD, SharedBinary, write_proc_bin};
+
+    let path = temp_replay_path("procbin-release");
+    // Comfortably past the inline threshold so the decode allocates a
+    // ProcBin (leaked-Arc layout), never an inline binary.
+    let bytes = vec![0xAB_u8; REFC_BINARY_THRESHOLD * 4];
+    let source = SharedBinary::new(bytes);
+    let mut proc_bin_words = [0_u64; 3];
+    let message = write_proc_bin(&mut proc_bin_words, &source).expect("proc bin writes");
+
+    ReplayLog::new(vec![ReplayEvent::Select(RecordedSelect {
+        pid: 1,
+        index: 0,
+        message,
+    })])
+    .save(&path)
+    .expect("replay log saves");
+
+    let loaded = ReplayLog::load(&path).expect("replay log loads");
+    let ReplayEvent::Select(select) = &loaded.events()[0] else {
+        panic!("loaded log carries the recorded select event");
+    };
+    let decoded = ProcBin::new(select.message).expect("decoded message is a ProcBin");
+    let handle = decoded.shared_binary();
+    assert_eq!(handle.as_bytes()[0], 0xAB, "decoded bytes round-tripped");
+    assert_eq!(
+        handle.ref_count(),
+        2,
+        "the scratch heap retains one Arc, this test the other"
+    );
+
+    drop(loaded);
+    assert_eq!(
+        handle.ref_count(),
+        1,
+        "dropping the log releases the scratch heap's Arc — a survivor is the leak"
+    );
+    std::fs::remove_file(&path).ok();
+}
