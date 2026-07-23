@@ -1,0 +1,12 @@
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.worktrees/native-trap-exit/crates/beamr/tests/native_supervision.rs:742:
+         spawn_born_trapper(&scheduler, Some(worker_spec(None, crash, stop)));
+ 
+     let seen = poll_until(Duration::from_secs(5), || *observed.lock().unwrap());
+[31m-    assert!(seen, "the parent is born trapping, before its first slice runs");
+(B[m[32m+    assert!(
+(B[m[32m+        seen,
+(B[m[32m+        "the parent is born trapping, before its first slice runs"
+(B[m[32m+    );
+(B[m     let child = poll_until(Duration::from_secs(5), || *child_pid.lock().unwrap());
+ 
+     // Crash the linked child abnormally; the link propagates an exit signal.

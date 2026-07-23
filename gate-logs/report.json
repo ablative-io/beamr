@@ -1,9 +1,9 @@
 {
   "schema": "gate-report/v1",
   "repo": "beamr",
-  "commit_sha": "ca4f461eb37be7de0cf17a69faf4f5a297de1cb7",
-  "tree_sha": "e63a4c51aed5f3bc668655a67d853152964be6a9",
-  "branch": "refactor/jit-coverage-module",
+  "commit_sha": "1f7606e15b8c7a6dacdcf593c6b4084458cea74e",
+  "tree_sha": "2694bdb3718ec4d7d45af8d607abb7adeebb3a17",
+  "branch": "feat/spawn-native-trap-exit",
   "dirty": false,
   "untracked_count": 0,
   "toolchain": {
@@ -11,19 +11,27 @@
     "cargo": "cargo 1.94.1 (29ea6fb6a 2026-03-24)"
   },
   "host": "Annabels-MacBook-Pro.local",
-  "started_at": "2026-07-23T02:25:34Z",
-  "finished_at": "2026-07-23T02:26:57Z",
-  "duration_s": 83.878,
-  "concurrent_cargo_at_start": [],
+  "started_at": "2026-07-23T05:09:07Z",
+  "finished_at": "2026-07-23T05:13:01Z",
+  "duration_s": 233.553,
+  "concurrent_cargo_at_start": [
+    "77692 /Users/annabel/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo test --workspace",
+    "83419 /Users/annabel/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo --offline --config=build.rustflags=[\"--cfg\", \"tr",
+    "83482 /Users/annabel/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name serde_core --edition=2021 /Users/an",
+    "83487 /Users/annabel/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name regalloc2 --edition=2018 /Users/ann",
+    "83488 /Users/annabel/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name icu_locale_core --edition=2021 /Use",
+    "83489 /Users/annabel/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name libm --edition=2021 /Users/annabel/",
+    "83512 /Users/annabel/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name gimli --edition=2024 /Users/annabel"
+  ],
   "legs": [
     {
       "name": "fmt",
       "cmd": "cargo fmt --all --check",
       "kind": "check",
-      "exit": 0,
-      "duration_s": 1.464,
+      "exit": 1,
+      "duration_s": 2.277,
       "log": "gate-logs/fmt.log",
-      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_sha256": "addb1a52ab3569983f346353b9d636758c3b4df60535cfba5c40d78ceb9e4259",
       "tests": null,
       "failures": []
     },
@@ -31,10 +39,10 @@
       "name": "clippy",
       "cmd": "cargo clippy --workspace --all-targets -- -D warnings",
       "kind": "check",
-      "exit": 0,
-      "duration_s": 17.339,
+      "exit": 101,
+      "duration_s": 58.055,
       "log": "gate-logs/clippy.log",
-      "log_sha256": "395df2729cd35b9d190791d0034440ce5b8e85e7f62421667e6c3eb88a80a7a4",
+      "log_sha256": "ec165be2696297fb6e4cfe7e57d710ab5eaf2c6f77160f83eb91d9fbb8089719",
       "tests": null,
       "failures": []
     },
@@ -43,9 +51,9 @@
       "cmd": "cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked",
       "kind": "check",
       "exit": 0,
-      "duration_s": 0.399,
+      "duration_s": 25.758,
       "log": "gate-logs/wasm32-check.log",
-      "log_sha256": "2461b00c8697c4189b2de92ca6fb05b5d72273c78a0a47b1ce4e83ccca077b70",
+      "log_sha256": "c03156707f76e7536a9a1c96aa3d1d1c28fae1ecf6830b6709bcc9e6941d70ae",
       "tests": null,
       "failures": []
     },
@@ -54,16 +62,16 @@
       "cmd": "cargo test --workspace",
       "kind": "cargo-test",
       "exit": 0,
-      "duration_s": 64.671,
+      "duration_s": 147.459,
       "log": "gate-logs/tests.log",
-      "log_sha256": "1bec0344ae799e89444426e7f4916f40d91477ae54e09280d8fa7482d945bf21",
+      "log_sha256": "8aa59e70c0104dd0a036aaf879fbc793455939dad509e314067c6b55060c8255",
       "tests": {
         "suites": 69,
-        "passed": 1986,
+        "passed": 1988,
         "failed": 0
       },
       "failures": []
     }
   ],
-  "verdict": "green"
+  "verdict": "red"
 }

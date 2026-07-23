@@ -1,4 +1,182 @@
-    Checking beamr v0.16.0 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/coverage-extract/crates/beamr)
-    Checking beamr-wasm v0.7.0 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/coverage-extract/crates/beamr-wasm)
-    Checking beamr-cli v0.4.0 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/coverage-extract/crates/beamr-cli)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 17.23s
+    Checking cfg-if v1.0.4
+    Checking foldhash v0.2.0
+    Checking pin-project-lite v0.2.17
+    Checking once_cell v1.21.4
+    Checking log v0.4.32
+    Checking libc v0.2.186
+    Checking hashbrown v0.16.1
+   Compiling cranelift-codegen-shared v0.131.2
+    Checking fnv v1.0.7
+    Checking hashbrown v0.17.1
+    Checking smallvec v1.15.1
+    Checking libm v0.2.16
+    Checking crossbeam-utils v0.8.21
+    Checking serde_core v1.0.228
+    Checking allocator-api2 v0.2.21
+    Checking equivalent v1.0.2
+    Checking futures-core v0.3.32
+    Checking rand_core v0.10.1
+   Compiling cranelift-codegen-meta v0.131.2
+   Compiling syn v2.0.117
+    Checking arbitrary v1.4.2
+    Checking rustc-hash v2.1.2
+    Checking cranelift-assembler-x64 v0.131.2
+    Checking target-lexicon v0.13.5
+   Compiling serde_json v1.0.150
+    Checking futures-sink v0.3.32
+    Checking zmij v1.0.21
+    Checking camino v1.2.2
+    Checking futures-task v0.3.32
+    Checking memchr v2.8.1
+    Checking itoa v1.0.18
+    Checking bitflags v2.13.0
+    Checking slab v0.4.12
+    Checking ecow v0.2.6
+   Compiling num-traits v0.2.19
+    Checking anyhow v1.0.102
+    Checking bumpalo v3.20.3
+    Checking bitflags v1.3.2
+    Checking simd-adler32 v0.3.9
+    Checking adler2 v2.0.1
+    Checking scopeguard v1.2.0
+    Checking bytes v1.11.1
+    Checking gleam-types v0.4.3 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/native-trap-exit/crates/gleam-types)
+    Checking lock_api v0.4.14
+    Checking crossbeam-epoch v0.9.18
+    Checking miniz_oxide v0.8.9
+    Checking crc32fast v1.5.0
+    Checking chacha20 v0.10.0
+    Checking hashbrown v0.14.5
+    Checking crossbeam-channel v0.5.15
+    Checking crossbeam-queue v0.3.12
+    Checking crossbeam-deque v0.8.6
+    Checking base64 v0.22.1
+    Checking unicode-segmentation v1.13.3
+    Checking web-time v1.1.0
+    Checking md5 v0.8.0
+    Checking getrandom v0.4.2
+    Checking errno v0.3.14
+    Checking mio v1.2.1
+    Checking socket2 v0.6.4
+    Checking rustix v1.1.4
+    Checking mach2 v0.4.3
+    Checking parking_lot_core v0.9.12
+    Checking rand v0.10.1
+    Checking indexmap v2.14.0
+   Compiling jobserver v0.1.34
+    Checking regalloc2 v0.15.1
+    Checking flate2 v1.1.9
+    Checking dashmap v6.2.1
+    Checking num_cpus v1.17.0
+    Checking getrandom v0.3.4
+    Checking cast v0.3.0
+    Checking rand_core v0.9.5
+   Compiling cc v1.2.63
+    Checking cranelift-control v0.131.2
+    Checking oorandom v11.1.5
+    Checking regex-syntax v0.8.10
+    Checking either v1.16.0
+    Checking fastrand v2.4.1
+    Checking wasmtime-internal-core v44.0.2
+    Checking region v3.0.2
+    Checking plotters-backend v0.3.7
+    Checking anstyle v1.0.14
+    Checking ciborium-io v0.2.2
+    Checking clap_lex v1.1.0
+    Checking tracing-core v0.1.36
+    Checking plotters-svg v0.3.7
+    Checking rayon-core v1.13.0
+    Checking wait-timeout v0.2.1
+    Checking quick-error v1.2.3
+    Checking itertools v0.13.0
+    Checking bit-vec v0.8.0
+    Checking same-file v1.0.6
+    Checking clap_builder v4.6.0
+    Checking walkdir v2.5.0
+    Checking bit-set v0.8.0
+    Checking rand_xorshift v0.4.0
+    Checking page_size v0.6.0
+    Checking futures-channel v0.3.32
+    Checking unarray v0.1.4
+    Checking percent-encoding v2.3.2
+    Checking anes v0.1.6
+   Compiling wasm-bindgen-shared v0.2.123
+    Checking tracing v0.1.44
+   Compiling rustversion v1.0.22
+    Checking cranelift-bitset v0.131.2
+    Checking wasmtime-internal-jit-icache-coherence v44.0.2
+    Checking unicode-ident v1.0.24
+    Checking cranelift-entity v0.131.2
+    Checking wasm-bindgen-test-shared v0.2.123
+    Checking rayon v1.12.0
+    Checking nu-ansi-term v0.50.3
+    Checking gimli v0.33.0
+    Checking cranelift-bforest v0.131.2
+    Checking plotters v0.3.7
+   Compiling wasm-bindgen v0.2.123
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling alloca v0.4.0
+   Compiling cranelift-codegen v0.131.2
+    Checking tempfile v3.27.0
+    Checking rusty-fork v0.3.1
+    Checking criterion-plot v0.8.2
+    Checking clap v4.6.1
+    Checking regex-automata v0.4.14
+    Checking regex v1.12.3
+   Compiling wasm-bindgen-macro-support v0.2.123
+   Compiling futures-macro v0.3.32
+   Compiling serde_derive v1.0.228
+   Compiling zerocopy-derive v0.8.50
+   Compiling tokio-macros v2.7.0
+   Compiling thiserror-impl v2.0.18
+   Compiling wasm-bindgen-test-macro v0.3.73
+   Compiling async-trait v0.1.89
+    Checking tokio v1.52.3
+    Checking futures-util v0.3.32
+    Checking thiserror v2.0.18
+    Checking zerocopy v0.8.50
+    Checking opentelemetry v0.32.0
+   Compiling zstd-safe v7.2.4
+    Checking zstd v0.13.3
+   Compiling beamr v0.16.0 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/native-trap-exit/crates/beamr)
+   Compiling beamr-wasm v0.7.0 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/native-trap-exit/crates/beamr-wasm)
+    Checking serde v1.0.228
+   Compiling wasm-bindgen-macro v0.2.123
+    Checking tinytemplate v1.2.1
+    Checking futures-executor v0.3.32
+    Checking js-sys v0.3.100
+    Checking ppv-lite86 v0.2.21
+    Checking half v2.7.1
+    Checking rand_chacha v0.9.0
+    Checking ciborium-ll v0.2.2
+    Checking rand v0.9.4
+    Checking ciborium v0.2.2
+    Checking criterion v0.8.2
+    Checking proptest v1.11.0
+    Checking opentelemetry_sdk v0.32.1
+    Checking wasm-bindgen-futures v0.4.73
+    Checking serde-wasm-bindgen v0.6.5
+    Checking wasm-bindgen-test v0.3.73
+    Checking cranelift-module v0.131.2
+    Checking cranelift-native v0.131.2
+    Checking cranelift-frontend v0.131.2
+    Checking cranelift-jit v0.131.2
+    Checking beamr-cli v0.4.0 (/Users/annabel/Developer/ablative/stack/beamr/.worktrees/native-trap-exit/crates/beamr-cli)
+error: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/beamr/tests/native_supervision.rs:690:6
+    |
+690 |   ) -> (
+    |  ______^
+691 | |     u64,
+692 | |     Arc<Mutex<Option<bool>>>,
+693 | |     Arc<Mutex<Option<u64>>>,
+694 | |     ExitLog,
+695 | | ) {
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#type_complexity
+    = note: `-D clippy::type-complexity` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`
+
+error: could not compile `beamr` (test "native_supervision") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

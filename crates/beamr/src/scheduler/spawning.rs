@@ -223,6 +223,57 @@ impl Scheduler {
             .map_err(|_| ExecError::Badarg)
     }
 
+    /// Spawn a native process with trap-exit set before it is made runnable.
+    ///
+    /// This is the no-window form of `spawn_native` + host-side
+    /// [`set_trap_exit`](Self::set_trap_exit). The spawn-then-set pair has a
+    /// race the caller cannot resolve: `set_trap_exit` returns
+    /// [`LinkError::NoCaller`](crate::native::links::LinkError) whenever the process
+    /// slot is not `Present`, and a freshly-spawned native mid-first-slice is
+    /// `Executing` (its body has been taken out of the slot). `NoCaller` thus
+    /// conflates "transiently executing" with "truly gone", so the caller
+    /// cannot tell a retry-worthy window from a dead process — and polling to
+    /// find out is forbidden. This entry point closes that window by setting
+    /// `trap_exit` on the process BEFORE it is published as runnable, exactly
+    /// like bytecode [`spawn_trap_exit`](Self::spawn_trap_exit): the flag is
+    /// observably live from the process's first slice onward.
+    pub fn spawn_native_trap_exit(
+        &self,
+        factory: crate::native::native_process::NativeHandlerFactory,
+    ) -> Result<u64, ExecError> {
+        let facility = supervision_integration::SchedulerSpawnFacility {
+            shared: Arc::clone(&self.shared),
+            namespace_id: NamespaceId::DEFAULT,
+        };
+        facility
+            .spawn_native_trap_exit(0, factory, None)
+            .map_err(|_| ExecError::Badarg)
+    }
+
+    /// Spawn a native process linked to `parent_pid`, with trap-exit set before
+    /// it is made runnable.
+    ///
+    /// The linked sibling of [`spawn_native_trap_exit`](Self::spawn_native_trap_exit):
+    /// the child is linked to `parent_pid` atomically at spawn AND traps exits
+    /// from birth, so a linked partner that exits before the child's first slice
+    /// is delivered as an `{'EXIT', ...}` message rather than killing the child.
+    pub fn spawn_native_link_trap_exit(
+        &self,
+        parent_pid: u64,
+        factory: crate::native::native_process::NativeHandlerFactory,
+    ) -> Result<u64, ExecError> {
+        let parent_namespace = self
+            .process_namespace(parent_pid)
+            .unwrap_or(NamespaceId::DEFAULT);
+        let facility = supervision_integration::SchedulerSpawnFacility {
+            shared: Arc::clone(&self.shared),
+            namespace_id: parent_namespace,
+        };
+        facility
+            .spawn_native_trap_exit(parent_pid, factory, Some(parent_pid))
+            .map_err(|_| ExecError::Badarg)
+    }
+
     /// Spawn a native process linked to `parent_pid`.
     pub fn spawn_native_link(
         &self,

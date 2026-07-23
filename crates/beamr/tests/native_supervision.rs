@@ -633,6 +633,155 @@ fn trap_exit_native_receives_normal_exit_message() {
 // Closing the remaining native-specific gap cleanly needs a scheduler hook that
 // parks a native process in `Executing` deterministically — tracked separately.
 
+// ── spawn_native_trap_exit: trap_exit is live from the process's first slice ─
+
+/// A native process spawned with trap_exit set AT BIRTH (via
+/// `spawn_native_trap_exit`). It NEVER calls `ctx.set_trap_exit` itself, so any
+/// trapping it exhibits came from the spawn flag, not from the handler. On its
+/// first slice it records the trap_exit value it observes (the no-window pin)
+/// and, when given a child spec, spawns a child LINKED to itself. Thereafter it
+/// records every `{'EXIT', source, reason}` it drains — proving the flag was
+/// live before any linked exit could reach it.
+struct BornTrapper {
+    spec: Option<ChildSpec>,
+    started: bool,
+    observed_trap_exit: Arc<Mutex<Option<bool>>>,
+    child_pid: Arc<Mutex<Option<u64>>>,
+    exits: ExitLog,
+}
+
+impl NativeHandler for BornTrapper {
+    fn handle(&mut self, ctx: &mut NativeContext<'_>) -> NativeOutcome {
+        if !self.started {
+            *self.observed_trap_exit.lock().expect("observed lock") = Some(ctx.trap_exit());
+            if let Some(spec) = &self.spec {
+                let me = ctx.self_pid();
+                let pid = ctx
+                    .spawn_native(child_factory(spec), Some(me))
+                    .expect("born-trapper spawns linked child");
+                *self.child_pid.lock().expect("child_pid lock") = Some(pid);
+            }
+            self.started = true;
+            return NativeOutcome::Wait;
+        }
+        while let Some(message) = ctx.recv() {
+            let Some(tuple) = Tuple::new(message) else {
+                continue;
+            };
+            if tuple.arity() == 3 && tuple.get(0) == Some(Term::atom(Atom::EXIT)) {
+                let source = tuple.get(1).and_then(Term::as_pid);
+                let reason = tuple.get(2).and_then(Term::as_atom);
+                self.exits
+                    .lock()
+                    .expect("exits lock")
+                    .push((source, reason));
+            }
+        }
+        NativeOutcome::Wait
+    }
+}
+
+/// Observation handles for a spawned [`BornTrapper`].
+struct BornTrapperHandles {
+    pid: u64,
+    /// The trap_exit value the handler observed on its FIRST slice.
+    observed_trap_exit: Arc<Mutex<Option<bool>>>,
+    /// The linked child's pid, once spawned.
+    child_pid: Arc<Mutex<Option<u64>>>,
+    /// Every `{'EXIT', source, reason}` the trapper drained.
+    exits: ExitLog,
+}
+
+/// Spawn a [`BornTrapper`] via `spawn_native_trap_exit` and return its
+/// observation handles.
+fn spawn_born_trapper(scheduler: &Arc<Scheduler>, spec: Option<ChildSpec>) -> BornTrapperHandles {
+    let observed = Arc::new(Mutex::new(None));
+    let child_pid = Arc::new(Mutex::new(None));
+    let exits: ExitLog = Arc::new(Mutex::new(Vec::new()));
+    let (obs_h, child_h, exits_h) = (
+        Arc::clone(&observed),
+        Arc::clone(&child_pid),
+        Arc::clone(&exits),
+    );
+    let pid = scheduler
+        .spawn_native_trap_exit(Box::new(move || {
+            Box::new(BornTrapper {
+                spec: spec.clone(),
+                started: false,
+                observed_trap_exit: Arc::clone(&obs_h),
+                child_pid: Arc::clone(&child_h),
+                exits: Arc::clone(&exits_h),
+            })
+        }))
+        .expect("spawn born-trapper");
+    BornTrapperHandles {
+        pid,
+        observed_trap_exit: observed,
+        child_pid,
+        exits,
+    }
+}
+
+/// No-window pin: a native spawned with `spawn_native_trap_exit` observes
+/// `trap_exit == true` on its FIRST slice. The handler never sets the flag, so
+/// the only way it can be true is the spawn having set it BEFORE the process was
+/// made runnable — the guarantee the spawn-then-set path cannot offer.
+#[test]
+fn spawn_native_trap_exit_traps_from_first_slice() {
+    let (_atoms, scheduler, _crash, _stop) = setup();
+    let handles = spawn_born_trapper(&scheduler, None);
+    let seen = poll_until(Duration::from_secs(5), || {
+        *handles.observed_trap_exit.lock().unwrap()
+    });
+    assert!(
+        seen,
+        "trap_exit must be observably true on the native process's FIRST slice"
+    );
+    assert_eq!(scheduler.is_native(handles.pid), Some(true));
+    scheduler.shutdown();
+}
+
+/// E2e: a born-trapping native, linked to a child, RECEIVES the child's abnormal
+/// exit as `{'EXIT', child, error}` and stays alive — proving the flag was live
+/// from birth (the handler never enabled it).
+#[test]
+fn spawn_native_trap_exit_receives_linked_child_exit_without_dying() {
+    let (_atoms, scheduler, crash, stop) = setup();
+    let handles = spawn_born_trapper(&scheduler, Some(worker_spec(None, crash, stop)));
+    let supervisor = handles.pid;
+
+    let seen = poll_until(Duration::from_secs(5), || {
+        *handles.observed_trap_exit.lock().unwrap()
+    });
+    assert!(
+        seen,
+        "the parent is born trapping, before its first slice runs"
+    );
+    let child = poll_until(Duration::from_secs(5), || {
+        *handles.child_pid.lock().unwrap()
+    });
+
+    // Crash the linked child abnormally; the link propagates an exit signal.
+    assert!(scheduler.enqueue_atom_message(child, crash));
+
+    // The trapping parent must RECEIVE {'EXIT', child, error}, not die.
+    let recorded = poll_until(Duration::from_secs(5), || {
+        handles.exits.lock().unwrap().first().copied()
+    });
+    assert_eq!(recorded, (Some(child), Some(Atom::ERROR)));
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(
+        still_alive(&scheduler, supervisor),
+        "a trapped exit must not kill the born-trapping parent"
+    );
+    assert_eq!(
+        scheduler.is_native(supervisor),
+        Some(true),
+        "the born-trapping parent is still a live native process"
+    );
+    scheduler.shutdown();
+}
+
 // ── R5: factory builds fresh, independent handlers ──────────────────────────
 
 #[test]
