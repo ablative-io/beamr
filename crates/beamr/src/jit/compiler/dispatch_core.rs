@@ -1,5 +1,6 @@
 //! Core instruction lowering: basic ops, guards, messages, exceptions, return.
 
+use crate::jit::coverage::is_no_fail_label;
 use crate::jit::ir_arithmetic::{
     ArithmeticLowering, ArithmeticOp, ParsedBif, lower_arithmetic_bif, lower_comparison,
 };
@@ -7,7 +8,7 @@ use crate::jit::ir_common::{
     JIT_DEOPT_SENTINEL, RegisterAccess, branch_to_fail_if, is_y_operand, label_operand,
     read_operand_term, write_operand_term,
 };
-use crate::jit::ir_control::{BlockMap, is_no_fail_label};
+use crate::jit::ir_control::BlockMap;
 use crate::jit::ir_exceptions::{
     ExceptionLoweringState, JIT_STATUS_DEOPT, JIT_STATUS_NORMAL, return_status, return_status_raw,
 };

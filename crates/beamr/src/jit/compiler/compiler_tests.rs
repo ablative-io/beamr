@@ -1,8 +1,8 @@
 use super::{JitCompiler, JitError, JitSettings, ModuleCompileMetadata};
 use crate::atom::Atom;
 use crate::jit::RootLocation;
+use crate::jit::coverage::{Coverage, coverage};
 use crate::jit::ir_common::{JIT_DEOPT_SENTINEL, X_REGISTER_COUNT};
-use crate::jit::ir_control::{Coverage, coverage};
 use crate::jit::ir_exceptions::{
     JIT_STATUS_DEOPT, JIT_STATUS_EXCEPTION, JIT_STATUS_NORMAL, JIT_STATUS_YIELD, JitReturn,
 };
@@ -3500,7 +3500,7 @@ fn two_sequential_receives_with_a_consume_between_are_rejected() {
     );
 }
 
-// -- JIT-002 R4: the coverage source of truth. One classification (ir_control::
+// -- JIT-002 R4: the coverage source of truth. One classification (jit::coverage::
 // -- coverage), exhaustive with no wildcard arm, consumed by the pre-pass and
 // -- dispatch catch-alls (debug-assert agreement) and by this walk.
 

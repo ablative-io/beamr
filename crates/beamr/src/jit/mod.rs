@@ -5,6 +5,7 @@ pub(crate) mod aot_format;
 pub mod cache;
 pub mod compile_job;
 pub mod compiler;
+pub(crate) mod coverage;
 pub(crate) mod ir_allocation;
 pub(crate) mod ir_arithmetic;
 pub(crate) mod ir_binary;
@@ -38,7 +39,7 @@ pub use compile_job::{
     submit_jit_compilation, try_submit_jit_compilation,
 };
 pub use compiler::{JitCompiler, JitError, JitSettings};
-pub use ir_control::{Coverage, coverage};
+pub use coverage::{Coverage, coverage};
 pub use profiler::{
     CompileOutcomeCounters, DEFAULT_JIT_THRESHOLD, JitProfiler, MfaKey, RecordResult,
 };

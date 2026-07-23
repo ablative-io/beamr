@@ -1,6 +1,7 @@
 //! Data-structure, float, binary, and map instruction lowering for the dispatch loop.
 
 use crate::atom::Atom;
+use crate::jit::coverage::{Coverage, coverage};
 use crate::jit::ir_allocation::{
     LoweringContext, lower_get_hd, lower_get_list, lower_get_tl, lower_get_tuple_element,
     lower_put_list, lower_put_tuple2, tuple_root_operands,
@@ -9,7 +10,7 @@ use crate::jit::ir_binary::{
     BinaryLoweringContext, binary_allocation_roots, fail_operand, lower_binary_op,
 };
 use crate::jit::ir_common::{RegisterAccess, label_operand};
-use crate::jit::ir_control::{BlockMap, Coverage, coverage, opcode_name};
+use crate::jit::ir_control::{BlockMap, opcode_name};
 use crate::jit::ir_exceptions::JIT_STATUS_EXCEPTION;
 use crate::jit::ir_float::{
     FloatBinaryOp, FloatLoweringContext, FloatRegisterMap, float_boxing_roots, translate_fconv,
