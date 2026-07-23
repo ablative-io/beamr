@@ -50,6 +50,7 @@ jobs:
             "tests::fairness_yield_reports_runnable_remaining"
             "tests::arbiter_installation_rejects_missing_host_primitive"
             "tests::await_exit_waits_for_armed_receive_timer"
+            "tests::early_host_fire_re_arms_the_remainder_and_still_delivers"
             "tests::unified_deadline_keeps_one_host_callback_for_mixed_timer_burst"
             "tests::earlier_deadline_cancels_and_rearms_the_unified_callback"
             "tests::cancelling_earliest_deadline_moves_or_clears_the_unified_callback"
@@ -113,9 +114,9 @@ jobs:
             fi
           done
           if ! grep -Fq \
-            "test result: ok. 65 passed; 0 failed; 0 ignored; 0 filtered out" \
+            "test result: ok. 66 passed; 0 failed; 0 ignored; 0 filtered out" \
             "$output_file"; then
-            echo "missing exact sixty-five-test success summary" >&2
+            echo "missing exact sixty-six-test success summary" >&2
             assertion_status=1
           fi
 

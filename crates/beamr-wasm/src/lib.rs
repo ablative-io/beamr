@@ -2430,6 +2430,73 @@ mod tests {
         assert_eq!(counters.cancellations, 0);
     }
 
+    /// The host is allowed to fire a one-shot EARLY relative to the wasm
+    /// `Instant` clock (Node's libuv keeps a cached ms-granularity loop clock,
+    /// so `setTimeout(25)` can run while `performance.now()` shows less than
+    /// 25ms elapsed — observed sub-ms early in sampling). An admitted early
+    /// fire finds an empty due set, and the requested drain's completion seam
+    /// re-arms one one-shot for the SAME stamped deadline: `requests` counts a
+    /// second arm without the active-callback cardinality ever exceeding one,
+    /// and delivery still happens exactly once, late-but-delivered.
+    #[wasm_bindgen_test]
+    async fn early_host_fire_re_arms_the_remainder_and_still_delivers() {
+        let mut vm = WasmVm::new().expect("VM constructs");
+        let (module, function, definition) =
+            receive_after_module(&vm.atom_table, "wport3_early_fire", 25_000);
+        vm.module_registry.insert(definition);
+        let pid = spawn_bytecode(&mut vm, module, function, Vec::new());
+        host_macrotask().await;
+        let armed = vm.unified_deadline_snapshot();
+        assert_eq!(armed.requests, 1);
+        assert_eq!(armed.queued_now, 1);
+        let deadline = armed.armed_deadline.expect("receive deadline armed");
+        let completion = vm.await_exit(pid);
+
+        // The host one-shot fires 1ms before the stamped deadline.
+        vm.fire_unified_deadline_at(deadline - Duration::from_millis(1));
+        host_macrotask().await;
+
+        // The early fire was admitted (arm consumed, one execution), delivered
+        // nothing, and the drain's completion seam re-armed the surviving
+        // deadline: a second request, zero cancellations, still exactly one
+        // active arm, and the SAME stamped instant.
+        let rearmed = vm.unified_deadline_snapshot();
+        assert_eq!(rearmed.executions, 1);
+        assert_eq!(rearmed.requests, 2);
+        assert_eq!(rearmed.next_arms, 2);
+        assert_eq!(rearmed.cancellations, 0);
+        assert_eq!(rearmed.queued_now, 1);
+        assert_eq!(rearmed.armed_deadline, Some(deadline));
+
+        // The timer must NOT have delivered early: the process is still
+        // waiting, so a 0ms marker wins the race against its exit.
+        let marker = JsValue::from_str("still-waiting");
+        let race = Promise::race(&Array::of2(
+            completion.as_ref(),
+            timeout_value(0, marker.clone()).as_ref(),
+        ));
+        let first = JsFuture::from(race).await.expect("race resolves");
+        assert_eq!(first.as_string(), marker.as_string());
+
+        // The re-armed one-shot fires at (past) the deadline and delivers.
+        vm.fire_unified_deadline_at(deadline + Duration::from_millis(1));
+        let settled = parse_json(
+            JsFuture::from(completion)
+                .await
+                .expect("re-armed receive timer fires and target exits"),
+        );
+        assert_eq!(settled["state"], "exited");
+        assert_eq!(settled["pid"], pid);
+        assert_eq!(settled["result"], "timed_out");
+        let counters = vm.unified_deadline_snapshot();
+        assert_eq!(counters.requests, 2);
+        assert_eq!(counters.executions, 2);
+        assert_eq!(counters.next_arms, 2);
+        assert_eq!(counters.cancellations, 0);
+        assert_eq!(counters.queued_now, 0);
+        assert_eq!(counters.armed_deadline, None);
+    }
+
     #[wasm_bindgen_test]
     async fn unified_deadline_keeps_one_host_callback_for_mixed_timer_burst() {
         let mut vm = WasmVm::new().expect("VM constructs");
