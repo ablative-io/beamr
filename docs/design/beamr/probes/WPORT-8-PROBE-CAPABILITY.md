@@ -67,6 +67,30 @@ F-0d shim pattern): zero recurring callbacks while awaiting the completion;
 the settle produces exactly one arbiter turn. EARLY-UNDER-CACHED-CLOCK
 applies: no wall asserts absolute arm counts across the real fire.
 
+## Sitting-scope truing note (2026-07-24 — amends the endorsed protocol; confirmation: awaiting Artemis Peach)
+
+Folded on the sitting-kit branch before the runsheet ships (Waffles'
+condition), so the artifact promises exactly what the sitting evidence
+delivers:
+
+1. **Counter observations are Node-wall territory.** The bridge counters
+   (`dead_pid_completions`) and the arbiter turn counters are
+   `cfg(test)`-gated — they do not exist on the real bundle, so no sitting
+   evidence can cite them. They are covered by the landed suite by exact
+   name: `dying_caller_auto_aborts_in_flight_and_late_completion_is_counted`
+   and `late_abort_after_completion_is_a_harmless_noop` (the dead-pid
+   counter), `fetch_success_from_true_idle_delivers_the_codec_map_in_one_turn`
+   (the one-turn law). Leg 2's "counted dead-pid completion in the bridge
+   counters" and any counter reading of leg 3's one-turn sentence are
+   therefore NOT sitting observations.
+2. **Leg 2 cancellation is the host-abort arm.** The sitting drives the
+   host abort (the protocol's "or"); the observations are the typed
+   `{error, {cancelled, _}}` exit and the request's disappearance from the
+   network log. The death-sweep arm stays proven by the Node walls above.
+3. **Leg 3's mechanism is the timer-shim record.** The observation is the
+   F-0d shim log — zero recurring host callbacks across the in-flight
+   window — not a turn-counter check.
+
 ## Expected observations
 
 Recorded per the probes pattern (environment, browser + version, OS,
