@@ -1,4 +1,4 @@
     Checking beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr)
-   Compiling beamr-wasm v0.7.0 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr-wasm)
+    Checking beamr-wasm v0.7.0 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr-wasm)
     Checking beamr-cli v0.4.0 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr-cli)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.23s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 21.51s

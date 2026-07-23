@@ -1,7 +1,7 @@
 wasm-bindgen-test-runner 0.2.125
    Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr)
    Compiling beamr-wasm v0.7.0 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr-wasm)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.68s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.40s
      Running unittests src/lib.rs (target/wasm32-unknown-unknown/debug/deps/beamr_wasm-196f1788ce8ff67f.wasm)
 running 80 tests
 test failure::tests::terminal_error_returns_null_then_repeatable_json_after_failure ... ok
@@ -85,7 +85,7 @@ test tests::arbiter_installation_rejects_missing_host_primitive ... ok
 test tests::arbiter_drives_an_actor_call_to_completion ... ok
 test tests::apply_and_export_fun_dispatch_registered_bifs_without_undef ... ok
 
-test result: ok. 80 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.55s
+test result: ok. 80 passed; 0 failed; 0 ignored; 0 filtered out; finished in 1.32s
 
      Running tests/generated_bootstrap.rs (target/wasm32-unknown-unknown/debug/deps/generated_bootstrap-ed889d9b6b7c68b3.wasm)
 no tests to run!
