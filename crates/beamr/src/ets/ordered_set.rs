@@ -8,13 +8,22 @@ use std::{
 
 use crate::{
     atom::AtomTable,
-    ets::{EtsError, EtsTable, EtsTableMetadata},
+    ets::{
+        EtsError, EtsTable, EtsTableMetadata,
+        copy::{OwnedTerm, copy_term_to_ets},
+        owned_key::OwnedTermKey,
+    },
     term::{Term, boxed::Tuple, compare},
 };
 
 use super::TermKey;
 
+type OrderedRows = BTreeMap<OwnedTermKey, Arc<OwnedTerm>>;
+
 /// B-tree backed ETS `ordered_set` table.
+///
+/// Rows are deep-copied into ETS-owned storage on insert; nothing in the map
+/// points into any process heap.
 pub struct EtsOrderedSet {
     metadata: EtsTableMetadata,
     atom_table: Arc<AtomTable>,
@@ -22,8 +31,8 @@ pub struct EtsOrderedSet {
 }
 
 enum OrderedSetRows {
-    Mutex(Mutex<BTreeMap<TermKey, Term>>),
-    RwLock(RwLock<BTreeMap<TermKey, Term>>),
+    Mutex(Mutex<OrderedRows>),
+    RwLock(RwLock<OrderedRows>),
 }
 
 impl EtsOrderedSet {
@@ -46,37 +55,39 @@ impl EtsOrderedSet {
         }
     }
 
-    /// Returns the smallest key in the table.
+    /// Returns the row holding the smallest key in the table.
     #[must_use]
-    pub fn first(&self) -> Option<Term> {
-        self.with_rows(|rows| rows.keys().next().map(|key| key.term()))
+    pub fn first(&self) -> Option<Arc<OwnedTerm>> {
+        self.with_rows(|rows| rows.values().next().map(Arc::clone))
     }
 
-    /// Returns the largest key in the table.
+    /// Returns the row holding the largest key in the table.
     #[must_use]
-    pub fn last(&self) -> Option<Term> {
-        self.with_rows(|rows| rows.keys().next_back().map(|key| key.term()))
+    pub fn last(&self) -> Option<Arc<OwnedTerm>> {
+        self.with_rows(|rows| rows.values().next_back().map(Arc::clone))
     }
 
-    /// Returns the key immediately after `key`, even when `key` is absent.
+    /// Returns the row whose key is immediately after `key`, even when `key`
+    /// is absent.
     #[must_use]
-    pub fn next(&self, key: Term) -> Option<Term> {
+    pub fn next(&self, key: Term) -> Option<Arc<OwnedTerm>> {
         let key = self.key(key);
         self.with_rows(|rows| {
-            rows.range((Excluded(key), Unbounded))
+            rows.range::<TermKey, _>((Excluded(&key), Unbounded))
                 .next()
-                .map(|(key, _tuple)| key.term())
+                .map(|(_key, row)| Arc::clone(row))
         })
     }
 
-    /// Returns the key immediately before `key`, even when `key` is absent.
+    /// Returns the row whose key is immediately before `key`, even when `key`
+    /// is absent.
     #[must_use]
-    pub fn prev(&self, key: Term) -> Option<Term> {
+    pub fn prev(&self, key: Term) -> Option<Arc<OwnedTerm>> {
         let key = self.key(key);
         self.with_rows(|rows| {
-            rows.range((Unbounded, Excluded(key)))
+            rows.range::<TermKey, _>((Unbounded, Excluded(&key)))
                 .next_back()
-                .map(|(key, _tuple)| key.term())
+                .map(|(_key, row)| Arc::clone(row))
         })
     }
 
@@ -84,18 +95,17 @@ impl EtsOrderedSet {
         TermKey::with_atom_table(term, Arc::clone(&self.atom_table))
     }
 
-    fn tuple_key(&self, tuple: Term) -> Result<TermKey, EtsError> {
+    fn tuple_key(&self, tuple: Term) -> Result<Term, EtsError> {
         let tuple = Tuple::new(tuple).ok_or(EtsError::Badarg)?;
         let index = self
             .metadata
             .keypos
             .checked_sub(1)
             .ok_or(EtsError::Badarg)?;
-        let key = tuple.get(index).ok_or(EtsError::Badarg)?;
-        Ok(self.key(key))
+        tuple.get(index).ok_or(EtsError::Badarg)
     }
 
-    fn with_rows<R>(&self, read: impl FnOnce(&BTreeMap<TermKey, Term>) -> R) -> R {
+    fn with_rows<R>(&self, read: impl FnOnce(&OrderedRows) -> R) -> R {
         match &self.rows {
             OrderedSetRows::Mutex(rows) => match rows.lock() {
                 Ok(rows) => read(&rows),
@@ -108,7 +118,7 @@ impl EtsOrderedSet {
         }
     }
 
-    fn with_rows_mut<R>(&self, write: impl FnOnce(&mut BTreeMap<TermKey, Term>) -> R) -> R {
+    fn with_rows_mut<R>(&self, write: impl FnOnce(&mut OrderedRows) -> R) -> R {
         match &self.rows {
             OrderedSetRows::Mutex(rows) => match rows.lock() {
                 Ok(mut rows) => write(&mut rows),
@@ -129,13 +139,20 @@ impl EtsTable for EtsOrderedSet {
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {
         let key = self.tuple_key(tuple)?;
-        self.with_rows_mut(|rows| rows.insert(key, tuple));
+        let row = Arc::new(copy_term_to_ets(tuple)?);
+        let key = OwnedTermKey::copy_of(key, Arc::clone(&self.atom_table))?;
+        self.with_rows_mut(|rows| {
+            // Remove first so the freshly copied key replaces a retained old
+            // key: BTreeMap keeps the original key on plain overwrite.
+            rows.remove::<OwnedTermKey>(&key);
+            rows.insert(key, row);
+        });
         Ok(())
     }
 
-    fn lookup(&self, key: Term) -> Vec<Term> {
+    fn lookup(&self, key: Term) -> Vec<Arc<OwnedTerm>> {
         let key = self.key(key);
-        self.with_rows(|rows| rows.get(&key).copied().into_iter().collect())
+        self.with_rows(|rows| rows.get(&key).map(Arc::clone).into_iter().collect())
     }
 
     fn delete_key(&self, key: Term) -> bool {
@@ -147,10 +164,11 @@ impl EtsTable for EtsOrderedSet {
         let Ok(key) = self.tuple_key(tuple) else {
             return false;
         };
+        let key = self.key(key);
         self.with_rows_mut(|rows| {
             if rows
                 .get(&key)
-                .is_some_and(|value| compare::exact_eq(*value, tuple))
+                .is_some_and(|value| compare::exact_eq(value.root(), tuple))
             {
                 rows.remove(&key);
                 true
@@ -160,8 +178,8 @@ impl EtsTable for EtsOrderedSet {
         })
     }
 
-    fn tab2list(&self) -> Vec<Term> {
-        self.with_rows(|rows| rows.values().copied().collect())
+    fn tab2list(&self) -> Vec<Arc<OwnedTerm>> {
+        self.with_rows(|rows| rows.values().map(Arc::clone).collect())
     }
 }
 
@@ -175,8 +193,8 @@ mod tests {
 
     use crate::{
         atom::AtomTable,
-        ets::{EtsTable, EtsTableMetadata, EtsTableType, Protection},
-        term::{Term, boxed::write_tuple},
+        ets::{EtsTable, EtsTableMetadata, EtsTableType, OwnedTerm, Protection},
+        term::{Term, boxed::write_tuple, compare},
     };
 
     use super::EtsOrderedSet;
@@ -199,6 +217,17 @@ mod tests {
         match write_tuple(&mut heap[..], &[key, value]) {
             Some(term) => term,
             None => unreachable!("test heap has room for a 2-tuple"),
+        }
+    }
+
+    fn row_key(row: &Arc<OwnedTerm>) -> Term {
+        crate::ets::tuple_key(row.root(), 1).expect("stored row has a key")
+    }
+
+    fn assert_rows_match(rows: &[Arc<OwnedTerm>], expected: &[Term]) {
+        assert_eq!(rows.len(), expected.len());
+        for (row, expected) in rows.iter().zip(expected) {
+            assert!(compare::exact_eq(row.root(), *expected));
         }
     }
 
@@ -229,7 +258,7 @@ mod tests {
         assert_eq!(table.insert(tuple_a), Ok(()));
         assert_eq!(table.insert(tuple_b), Ok(()));
 
-        assert_eq!(table.tab2list(), vec![tuple_a, tuple_b, tuple_c]);
+        assert_rows_match(&table.tab2list(), &[tuple_a, tuple_b, tuple_c]);
     }
 
     #[test]
@@ -251,7 +280,7 @@ mod tests {
 
         assert_eq!(table.insert(first), Ok(()));
         assert_eq!(table.insert(replacement), Ok(()));
-        assert_eq!(table.lookup(Term::small_int(1)), vec![replacement]);
+        assert_rows_match(&table.lookup(Term::small_int(1)), &[replacement]);
         assert!(table.delete_key(Term::small_int(1)));
         assert!(table.lookup(Term::small_int(1)).is_empty());
         assert!(!table.delete_key(Term::small_int(1)));
@@ -314,14 +343,20 @@ mod tests {
             Ok(())
         );
 
-        assert_eq!(table.first(), Some(one));
-        assert_eq!(table.next(one), Some(two));
-        assert_eq!(table.next(Term::small_int(0)), Some(one));
-        assert_eq!(table.next(three), None);
-        assert_eq!(table.last(), Some(three));
-        assert_eq!(table.prev(three), Some(two));
-        assert_eq!(table.prev(Term::small_int(4)), Some(three));
-        assert_eq!(table.prev(one), None);
+        assert_eq!(table.first().as_ref().map(row_key), Some(one));
+        assert_eq!(table.next(one).as_ref().map(row_key), Some(two));
+        assert_eq!(
+            table.next(Term::small_int(0)).as_ref().map(row_key),
+            Some(one)
+        );
+        assert!(table.next(three).is_none());
+        assert_eq!(table.last().as_ref().map(row_key), Some(three));
+        assert_eq!(table.prev(three).as_ref().map(row_key), Some(two));
+        assert_eq!(
+            table.prev(Term::small_int(4)).as_ref().map(row_key),
+            Some(three)
+        );
+        assert!(table.prev(one).is_none());
     }
 
     #[test]
@@ -341,6 +376,7 @@ mod tests {
             Term::atom(atom_table.intern("value")),
         );
         assert_eq!(table.insert(row), Ok(()));
+        let row_snapshot = crate::ets::copy_term_to_ets(row).expect("snapshot copies");
 
         let (first_reader_started_tx, first_reader_started_rx) = mpsc::channel();
         let (release_first_reader_tx, release_first_reader_rx) = mpsc::channel();
@@ -348,7 +384,10 @@ mod tests {
             let table = Arc::clone(&table);
             thread::spawn(move || {
                 table.with_rows(|rows| {
-                    assert_eq!(rows.get(&table.key(Term::small_int(1))).copied(), Some(row));
+                    let stored = rows
+                        .get(&table.key(Term::small_int(1)))
+                        .expect("stored row exists");
+                    assert!(compare::exact_eq(stored.root(), row_snapshot.root()));
                     first_reader_started_tx
                         .send(())
                         .expect("test coordinator receives first reader signal");
@@ -371,12 +410,10 @@ mod tests {
                     .expect("test coordinator receives concurrent reader result");
             })
         };
-        assert_eq!(
-            concurrent_reader_rx
-                .recv_timeout(Duration::from_secs(1))
-                .expect("second reader is not blocked by first reader"),
-            vec![row]
-        );
+        let concurrent_rows = concurrent_reader_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("second reader is not blocked by first reader");
+        assert_eq!(concurrent_rows.len(), 1);
 
         release_first_reader_tx
             .send(())
@@ -411,15 +448,15 @@ mod tests {
         assert_eq!(table.insert(row_one), Ok(()));
         assert_eq!(table.insert(row_two), Ok(()));
 
-        assert_eq!(table.first(), Some(one));
-        assert_eq!(table.next(one), Some(two));
-        assert_eq!(table.next(two), Some(three));
-        assert_eq!(table.next(three), None);
-        assert_eq!(table.last(), Some(three));
-        assert_eq!(table.prev(three), Some(two));
-        assert_eq!(table.prev(two), Some(one));
-        assert_eq!(table.prev(one), None);
-        assert_eq!(table.tab2list(), vec![row_one, row_two, row_three]);
+        assert_eq!(table.first().as_ref().map(row_key), Some(one));
+        assert_eq!(table.next(one).as_ref().map(row_key), Some(two));
+        assert_eq!(table.next(two).as_ref().map(row_key), Some(three));
+        assert!(table.next(three).is_none());
+        assert_eq!(table.last().as_ref().map(row_key), Some(three));
+        assert_eq!(table.prev(three).as_ref().map(row_key), Some(two));
+        assert_eq!(table.prev(two).as_ref().map(row_key), Some(one));
+        assert!(table.prev(one).is_none());
+        assert_rows_match(&table.tab2list(), &[row_one, row_two, row_three]);
     }
 
     #[test]
@@ -449,8 +486,14 @@ mod tests {
             Ok(())
         );
 
-        assert_eq!(table.first(), Some(Term::small_int(1)));
-        assert_eq!(table.next(Term::small_int(1)), Some(Term::small_int(2)));
-        assert_eq!(table.last(), Some(Term::small_int(2)));
+        assert_eq!(
+            table.first().as_ref().map(row_key),
+            Some(Term::small_int(1))
+        );
+        assert_eq!(
+            table.next(Term::small_int(1)).as_ref().map(row_key),
+            Some(Term::small_int(2))
+        );
+        assert_eq!(table.last().as_ref().map(row_key), Some(Term::small_int(2)));
     }
 }

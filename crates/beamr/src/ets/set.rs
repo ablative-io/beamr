@@ -1,14 +1,21 @@
 //! Hash-based ETS `set` table implementation.
 
-use dashmap::DashMap;
+use std::sync::Arc;
 
+use dashmap::{DashMap, mapref::entry::Entry};
+
+use crate::ets::copy::{OwnedTerm, copy_term_to_ets};
+use crate::ets::owned_key::OwnedEtsKey;
 use crate::ets::{EtsError, EtsTable, EtsTableMetadata};
 use crate::term::{Term, boxed::Tuple, compare, hash::EtsKey};
 
 /// ETS `set` table backed by a concurrent hash map.
+///
+/// Rows are deep-copied into ETS-owned storage on insert; nothing in the map
+/// points into any process heap.
 pub struct EtsSet {
     metadata: EtsTableMetadata,
-    entries: DashMap<EtsKey, Term>,
+    entries: DashMap<OwnedEtsKey, Arc<OwnedTerm>>,
 }
 
 impl EtsSet {
@@ -38,14 +45,25 @@ impl EtsTable for EtsSet {
 
     fn insert(&self, tuple: Term) -> Result<(), EtsError> {
         let key = self.tuple_key(tuple)?;
-        self.entries.insert(EtsKey::new(key), tuple);
+        let row = Arc::new(copy_term_to_ets(tuple)?);
+        let key = OwnedEtsKey::copy_of(key)?;
+        // `replace_entry` swaps in the freshly copied key alongside the row so
+        // a retained old key can never outlive its backing row copy.
+        match self.entries.entry(key) {
+            Entry::Occupied(entry) => {
+                let _replaced = entry.replace_entry(row);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(row);
+            }
+        }
         Ok(())
     }
 
-    fn lookup(&self, key: Term) -> Vec<Term> {
+    fn lookup(&self, key: Term) -> Vec<Arc<OwnedTerm>> {
         self.entries
             .get(&EtsKey::new(key))
-            .map_or_else(Vec::new, |entry| vec![*entry.value()])
+            .map_or_else(Vec::new, |entry| vec![Arc::clone(entry.value())])
     }
 
     fn delete_key(&self, key: Term) -> bool {
@@ -58,13 +76,16 @@ impl EtsTable for EtsSet {
         };
         self.entries
             .remove_if(&EtsKey::new(key), |_key, value| {
-                compare::exact_eq(*value, tuple)
+                compare::exact_eq(value.root(), tuple)
             })
             .is_some()
     }
 
-    fn tab2list(&self) -> Vec<Term> {
-        self.entries.iter().map(|entry| *entry.value()).collect()
+    fn tab2list(&self) -> Vec<Arc<OwnedTerm>> {
+        self.entries
+            .iter()
+            .map(|entry| Arc::clone(entry.value()))
+            .collect()
     }
 }
 
@@ -74,7 +95,6 @@ mod tests {
     use crate::atom::Atom;
     use crate::ets::{EtsTableId, EtsTableType, Protection};
     use crate::term::boxed;
-    use std::sync::Arc;
     use std::thread;
 
     fn metadata(keypos: usize) -> EtsTableMetadata {
@@ -87,6 +107,11 @@ mod tests {
         );
         metadata.keypos = keypos;
         metadata
+    }
+
+    fn assert_single_row(rows: &[Arc<OwnedTerm>], expected: Term) {
+        assert_eq!(rows.len(), 1);
+        assert!(compare::exact_eq(rows[0].root(), expected));
     }
 
     #[test]
@@ -104,10 +129,31 @@ mod tests {
         .expect("second tuple fits");
 
         table.insert(first).expect("first insert succeeds");
-        assert_eq!(table.lookup(Term::atom(Atom::OK)), vec![first]);
+        assert_single_row(&table.lookup(Term::atom(Atom::OK)), first);
 
         table.insert(second).expect("second insert succeeds");
-        assert_eq!(table.lookup(Term::atom(Atom::OK)), vec![second]);
+        assert_single_row(&table.lookup(Term::atom(Atom::OK)), second);
+    }
+
+    #[test]
+    fn stored_rows_do_not_point_into_the_source_heap() {
+        let table = EtsSet::new(metadata(1));
+        let mut source_heap = [0_u64; 3];
+        let tuple = boxed::write_tuple(
+            &mut source_heap,
+            &[Term::atom(Atom::OK), Term::small_int(7)],
+        )
+        .expect("tuple fits");
+        table.insert(tuple).expect("insert succeeds");
+
+        // Clobber the source heap: the stored copy must be unaffected.
+        source_heap.fill(0);
+
+        let rows = table.lookup(Term::atom(Atom::OK));
+        assert_eq!(rows.len(), 1);
+        let stored = Tuple::new(rows[0].root()).expect("stored row is a tuple");
+        assert_eq!(stored.get(0), Some(Term::atom(Atom::OK)));
+        assert_eq!(stored.get(1), Some(Term::small_int(7)));
     }
 
     #[test]
@@ -138,16 +184,22 @@ mod tests {
         table.insert(first).expect("first insert succeeds");
         table.insert(second).expect("second insert succeeds");
 
-        let mut listed = table.tab2list();
-        listed.sort();
-        let mut expected = vec![first, second];
-        expected.sort();
-        assert_eq!(listed, expected);
+        let listed = table.tab2list();
+        assert_eq!(listed.len(), 2);
+        for expected in [first, second] {
+            assert_eq!(
+                listed
+                    .iter()
+                    .filter(|row| compare::exact_eq(row.root(), expected))
+                    .count(),
+                1
+            );
+        }
 
         assert!(table.delete_key(Term::atom(Atom::OK)));
         assert!(!table.delete_key(Term::atom(Atom::OK)));
-        assert_eq!(table.lookup(Term::atom(Atom::OK)), Vec::<Term>::new());
-        assert_eq!(table.lookup(Term::atom(Atom::ERROR)), vec![second]);
+        assert!(table.lookup(Term::atom(Atom::OK)).is_empty());
+        assert_single_row(&table.lookup(Term::atom(Atom::ERROR)), second);
     }
 
     #[test]
@@ -158,8 +210,8 @@ mod tests {
             .expect("tuple fits");
         table.insert(tuple).expect("insert succeeds");
 
-        assert_eq!(table.lookup(Term::small_int(99)), vec![tuple]);
-        assert_eq!(table.lookup(Term::atom(Atom::OK)), Vec::<Term>::new());
+        assert_single_row(&table.lookup(Term::small_int(99)), tuple);
+        assert!(table.lookup(Term::atom(Atom::OK)).is_empty());
     }
 
     #[test]
@@ -171,14 +223,14 @@ mod tests {
             .map(|key| {
                 let table = Arc::clone(&table);
                 thread::spawn(move || {
-                    let heap = Box::leak(Box::new([0_u64; 3]));
+                    let mut heap = [0_u64; 3];
                     let tuple = boxed::write_tuple(
                         &mut heap[..],
                         &[Term::small_int(key), Term::small_int(key * 10)],
                     )
                     .expect("tuple fits");
                     table.insert(tuple).expect("insert succeeds");
-                    (key, tuple)
+                    key
                 })
             })
             .collect::<Vec<_>>();
@@ -188,8 +240,11 @@ mod tests {
             .map(|handle| handle.join().expect("writer thread completes"))
             .collect::<Vec<_>>();
 
-        for (key, tuple) in inserted {
-            assert_eq!(table.lookup(Term::small_int(key)), vec![tuple]);
+        for key in inserted {
+            let rows = table.lookup(Term::small_int(key));
+            assert_eq!(rows.len(), 1);
+            let row = Tuple::new(rows[0].root()).expect("stored row is a tuple");
+            assert_eq!(row.get(1), Some(Term::small_int(key * 10)));
         }
     }
 }

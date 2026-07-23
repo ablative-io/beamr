@@ -75,6 +75,12 @@ fn copy_young_term(
     crate::process::heap::Heap::write_words(dst, &copied_words);
     let copied = term_from_ptr_like(term, dst.cast_const());
     if term.is_boxed() {
+        // A boxed object carries a real header, so the promoted copy must remain
+        // visible to the release walk (it may be a ProcBin/FdResource). Headerless
+        // cons cells stay `NotRefcounted` and are never misread. See `AllocKind`.
+        process
+            .heap_mut()
+            .mark_last_old_allocation_maybe_refcounted();
         retain_refcounted_resource_arc(dst.cast_const());
     }
     forwarding.insert(src.addr(), copied);

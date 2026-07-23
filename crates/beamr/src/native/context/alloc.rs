@@ -138,14 +138,67 @@ impl ProcessContext<'_> {
     pub fn alloc_binary(&mut self, bytes: &[u8]) -> Result<Term, Term> {
         let words = alloc_binary_word_count(bytes.len());
         let heap = self.alloc_words(words)?;
-        alloc_binary(heap, bytes).ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))
+        let term =
+            alloc_binary(heap, bytes).ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
+        // Large binaries land as a refcounted ProcBin; mark the allocation so the
+        // GC release walk drops its Arc. (Small inline binaries are marked too;
+        // the walk reads their Binary tag and skips them.) See `AllocKind`.
+        self.mark_last_allocation_maybe_refcounted();
+        Ok(term)
     }
 
     /// Allocate an FdResource on the calling process heap.
     #[cfg(feature = "threads")]
     pub fn alloc_fd_resource(&mut self, fd_inner: Arc<FdInner>) -> Result<Term, Term> {
         let heap = self.alloc_words(FD_RESOURCE_WORDS)?;
-        write_fd_resource(heap, fd_inner).ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))
+        let term = write_fd_resource(heap, fd_inner)
+            .ok_or_else(|| Term::atom(crate::atom::Atom::BADARG))?;
+        self.mark_last_allocation_maybe_refcounted();
+        Ok(term)
+    }
+
+    /// Mark the most recent process-heap allocation as possibly holding a
+    /// refcounted resource. No-op for detached contexts, whose owned-block
+    /// allocations are not part of the young region the release walk scans.
+    fn mark_last_allocation_maybe_refcounted(&mut self) {
+        if let Some(process) = self.process.as_deref_mut() {
+            process
+                .heap_mut()
+                .mark_last_young_allocation_maybe_refcounted();
+        }
+    }
+
+    /// Deep-copy an ETS-owned term onto the calling process heap.
+    ///
+    /// Reserves the exact word budget first, so the copy itself cannot
+    /// collect. ETS-owned source memory is unaffected by process GC, so no
+    /// rooting is needed.
+    pub fn copy_owned_term(&mut self, owned: &crate::ets::OwnedTerm) -> Result<Term, Term> {
+        self.ensure_heap_space(owned.total_words())?;
+        self.copy_owned_term_prereserved(owned)
+    }
+
+    /// Deep-copy an ETS-owned term using pre-reserved heap space (no GC
+    /// trigger). Caller must have called `ensure_heap_space` for the total
+    /// budget (`OwnedTerm::total_words`).
+    ///
+    /// The copy materialises binaries inline (never as refcounted ProcBins),
+    /// so no allocation marking is needed. Detached contexts adopt a fresh
+    /// owned copy into their allocation list instead.
+    pub fn copy_owned_term_prereserved(
+        &mut self,
+        owned: &crate::ets::OwnedTerm,
+    ) -> Result<Term, Term> {
+        if let Some(process) = self.process.as_deref_mut() {
+            return owned
+                .copy_to_heap(process.heap_mut())
+                .map_err(|_| Term::atom(crate::atom::Atom::BADARG));
+        }
+        let copied = crate::ets::copy_term_to_ets(owned.root())
+            .map_err(|_| Term::atom(crate::atom::Atom::BADARG))?;
+        let (root, allocations) = copied.into_raw_parts();
+        self.detached_allocations.extend(allocations);
+        Ok(root)
     }
 
     /// Allocate a big integer on the calling process heap.

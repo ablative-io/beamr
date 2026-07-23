@@ -663,11 +663,21 @@ pub(in crate::scheduler) fn build_tcp_active_message_for_process(
         return None;
     }
     let socket = {
-        let heap = process.heap_mut().alloc_slice(FD_RESOURCE_WORDS).ok()?;
+        // The message owns a strong FdInner reference; mark the allocation so
+        // the GC release walk drops it. See `process::heap::AllocKind`.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(FD_RESOURCE_WORDS)
+            .ok()?;
         write_fd_resource(heap, std::sync::Arc::clone(fd))?
     };
     let binary = {
-        let heap = process.heap_mut().alloc_slice(binary_words).ok()?;
+        // A large payload lands as a refcounted ProcBin; mark the allocation
+        // so the GC release walk drops its Arc.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(binary_words)
+            .ok()?;
         alloc_binary(heap, data)?
     };
     let tcp = Term::atom(atom_table.intern("tcp"));
@@ -690,7 +700,12 @@ fn build_tcp_closed_message_for_process(
         return None;
     }
     let socket = {
-        let heap = process.heap_mut().alloc_slice(FD_RESOURCE_WORDS).ok()?;
+        // The message owns a strong FdInner reference; mark the allocation so
+        // the GC release walk drops it. See `process::heap::AllocKind`.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(FD_RESOURCE_WORDS)
+            .ok()?;
         write_fd_resource(heap, std::sync::Arc::clone(fd))?
     };
     let tcp_closed = Term::atom(atom_table.intern("tcp_closed"));
@@ -718,7 +733,12 @@ pub(in crate::scheduler) fn build_udp_active_message_for_process(
         return None;
     }
     let socket = {
-        let heap = process.heap_mut().alloc_slice(FD_RESOURCE_WORDS).ok()?;
+        // The message owns a strong FdInner reference; mark the allocation so
+        // the GC release walk drops it. See `process::heap::AllocKind`.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(FD_RESOURCE_WORDS)
+            .ok()?;
         write_fd_resource(heap, std::sync::Arc::clone(fd))?
     };
     let ip = {
@@ -733,7 +753,12 @@ pub(in crate::scheduler) fn build_udp_active_message_for_process(
         write_tuple(heap, &terms)?
     };
     let binary = {
-        let heap = process.heap_mut().alloc_slice(binary_words).ok()?;
+        // A large datagram lands as a refcounted ProcBin; mark the allocation
+        // so the GC release walk drops its Arc.
+        let heap = process
+            .heap_mut()
+            .alloc_slice_maybe_refcounted(binary_words)
+            .ok()?;
         alloc_binary(heap, datagram)?
     };
     let udp = Term::atom(atom_table.intern("udp"));
@@ -838,4 +863,94 @@ fn park_thread(shared: &SharedState) {
     }
     #[cfg(feature = "telemetry")]
     shared.record_scheduler_idle(idle_started.elapsed());
+}
+
+#[cfg(test)]
+mod socket_message_gc_tests {
+    use super::*;
+    use crate::term::boxed::{ProcBin, Tuple};
+    use std::net::{Ipv4Addr, SocketAddrV4};
+
+    #[test]
+    fn tcp_active_message_arcs_are_released_by_receiver_minor_gc() {
+        let atoms = AtomTable::with_common_atoms();
+        let fd = Arc::new(FdInner::new(-1, 7));
+        let mut process = Process::new(7, 64);
+        let data = vec![0xEE; 4096];
+
+        let message = build_tcp_active_message_for_process(&atoms, &mut process, &fd, &data)
+            .expect("tcp active message builds");
+        let tuple = Tuple::new(message).expect("tcp active message is a tuple");
+        let payload = tuple.get(2).expect("payload element");
+        let observer = ProcBin::new(payload)
+            .expect("a large payload lands as a refc binary")
+            .shared_binary();
+        assert_eq!(Arc::strong_count(&fd), 2);
+        assert_eq!(observer.ref_count(), 2);
+
+        crate::gc::collect_minor(&mut process).expect("minor GC succeeds");
+
+        assert_eq!(
+            Arc::strong_count(&fd),
+            1,
+            "receiver GC must release the socket FdResource Arc"
+        );
+        assert_eq!(
+            observer.ref_count(),
+            1,
+            "receiver GC must release the payload's shared-bytes Arc"
+        );
+    }
+
+    #[test]
+    fn tcp_closed_message_fd_arc_is_released_by_receiver_minor_gc() {
+        let atoms = AtomTable::with_common_atoms();
+        let fd = Arc::new(FdInner::new(-1, 7));
+        let mut process = Process::new(7, 64);
+
+        let _message = build_tcp_active_message_for_process(&atoms, &mut process, &fd, &[])
+            .expect("empty data builds a tcp_closed message");
+        assert_eq!(Arc::strong_count(&fd), 2);
+
+        crate::gc::collect_minor(&mut process).expect("minor GC succeeds");
+
+        assert_eq!(
+            Arc::strong_count(&fd),
+            1,
+            "receiver GC must release the socket FdResource Arc"
+        );
+    }
+
+    #[test]
+    fn udp_active_message_arcs_are_released_by_receiver_minor_gc() {
+        let atoms = AtomTable::with_common_atoms();
+        let fd = Arc::new(FdInner::new(-1, 7));
+        let mut process = Process::new(7, 64);
+        let datagram = vec![0xDF; 4096];
+        let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4000));
+
+        let message =
+            build_udp_active_message_for_process(&atoms, &mut process, &fd, &datagram, addr)
+                .expect("udp active message builds");
+        let tuple = Tuple::new(message).expect("udp active message is a tuple");
+        let payload = tuple.get(4).expect("payload element");
+        let observer = ProcBin::new(payload)
+            .expect("a large datagram lands as a refc binary")
+            .shared_binary();
+        assert_eq!(Arc::strong_count(&fd), 2);
+        assert_eq!(observer.ref_count(), 2);
+
+        crate::gc::collect_minor(&mut process).expect("minor GC succeeds");
+
+        assert_eq!(
+            Arc::strong_count(&fd),
+            1,
+            "receiver GC must release the socket FdResource Arc"
+        );
+        assert_eq!(
+            observer.ref_count(),
+            1,
+            "receiver GC must release the datagram's shared-bytes Arc"
+        );
+    }
 }

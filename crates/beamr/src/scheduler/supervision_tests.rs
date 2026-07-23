@@ -183,6 +183,9 @@ fn allocate_fd_resource_for_process(shared: &SharedState, pid: u64, inner: Arc<F
     // SAFETY: heap allocation returned the fixed FdResource word count.
     let words = unsafe { std::slice::from_raw_parts_mut(ptr, FD_RESOURCE_WORDS) };
     let term = write_fd_resource(words, inner).expect("fd resource writer fits");
+    process
+        .heap_mut()
+        .mark_last_young_allocation_maybe_refcounted();
     process.set_x_reg(0, term);
     fd
 }
@@ -423,6 +426,9 @@ fn process_terminate_closes_owned_fd_resources_before_heap_reset() {
     let words = unsafe { std::slice::from_raw_parts_mut(ptr, FD_RESOURCE_WORDS) };
     let term =
         write_fd_resource(words, Arc::new(FdInner::new(fd, 42))).expect("fd resource writer fits");
+    process
+        .heap_mut()
+        .mark_last_young_allocation_maybe_refcounted();
     process.set_x_reg(0, term);
 
     process.terminate(ExitReason::Normal);

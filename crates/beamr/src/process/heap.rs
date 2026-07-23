@@ -60,11 +60,41 @@ impl fmt::Display for HeapFull {
 
 impl std::error::Error for HeapFull {}
 
+/// Whether an allocation may hold a reference-counted off-heap resource.
+///
+/// Only `ProcBin` and `FdResource` own an `Arc` that the GC must release, and
+/// only they are ever inspected by the refcounted-resource release walk. Every
+/// other allocation — crucially including headerless cons cells, whose head
+/// word can alias a boxed header tag (e.g. the atom `false` encodes to the same
+/// word as `BoxedTag::ProcBin`) — defaults to [`AllocKind::NotRefcounted`] and
+/// is skipped by the walk. This makes the walk's classification a recorded fact
+/// rather than an inference over ambiguous word[0] contents: a cons cell can
+/// never be mistaken for a live `ProcBin` and freed via `Arc::from_raw`.
+///
+/// The direction is fail-safe: a refcounted allocation that is mistakenly left
+/// `NotRefcounted` leaks its `Arc` (caught by the no-leak tests), whereas the
+/// reverse — a non-refcounted allocation treated as refcounted — is the
+/// use-after-free this type exists to prevent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AllocKind {
+    NotRefcounted,
+    MaybeRefcounted,
+}
+
+/// Bookkeeping for one bump allocation: its offset, word count, and whether the
+/// GC release walk must inspect it for a refcounted resource.
+#[derive(Clone, Copy, Debug)]
+struct Allocation {
+    offset: usize,
+    words: usize,
+    kind: AllocKind,
+}
+
 /// One fixed-capacity bump region inside a process heap.
 #[derive(Clone, Debug)]
 pub(crate) struct HeapRegion {
     words: Vec<u64>,
-    allocations: Vec<(usize, usize)>,
+    allocations: Vec<Allocation>,
     used: usize,
     high_water_mark: usize,
 }
@@ -80,6 +110,10 @@ impl HeapRegion {
     }
 
     fn alloc(&mut self, words: usize) -> Result<*mut u64, HeapFull> {
+        self.alloc_with_kind(words, AllocKind::NotRefcounted)
+    }
+
+    fn alloc_with_kind(&mut self, words: usize, kind: AllocKind) -> Result<*mut u64, HeapFull> {
         let Some(end) = self.used.checked_add(words) else {
             return Err(HeapFull::new(words, self.available()));
         };
@@ -92,11 +126,23 @@ impl HeapRegion {
         let ptr = self.words.as_mut_ptr().wrapping_add(start);
         self.used = end;
         self.high_water_mark = self.high_water_mark.max(self.used);
-        self.allocations.push((start, words));
+        self.allocations.push(Allocation {
+            offset: start,
+            words,
+            kind,
+        });
         Ok(ptr)
     }
 
     fn alloc_slice(&mut self, words: usize) -> Result<&mut [u64], HeapFull> {
+        self.alloc_slice_with_kind(words, AllocKind::NotRefcounted)
+    }
+
+    fn alloc_slice_with_kind(
+        &mut self,
+        words: usize,
+        kind: AllocKind,
+    ) -> Result<&mut [u64], HeapFull> {
         let Some(end) = self.used.checked_add(words) else {
             return Err(HeapFull::new(words, self.available()));
         };
@@ -108,8 +154,22 @@ impl HeapRegion {
         let start = self.used;
         self.used = end;
         self.high_water_mark = self.high_water_mark.max(self.used);
-        self.allocations.push((start, words));
+        self.allocations.push(Allocation {
+            offset: start,
+            words,
+            kind,
+        });
         Ok(&mut self.words[start..end])
+    }
+
+    /// Mark the most recent allocation as possibly holding a refcounted
+    /// resource, so the GC release walk inspects it. Used where a boxed
+    /// `ProcBin`/`FdResource` is written into a slice obtained from a plain
+    /// `alloc`/`alloc_slice`.
+    fn mark_last_allocation_maybe_refcounted(&mut self) {
+        if let Some(last) = self.allocations.last_mut() {
+            last.kind = AllocKind::MaybeRefcounted;
+        }
     }
 
     pub(crate) const fn used(&self) -> usize {
@@ -145,12 +205,39 @@ impl HeapRegion {
         &self,
         mut visit: impl FnMut(*const u64, BoxedTag, usize),
     ) {
-        for (offset, allocation_words) in &self.allocations {
-            let ptr = self.words.as_ptr().wrapping_add(*offset);
-            let header = self.words[*offset];
+        for allocation in &self.allocations {
+            // Only refcounted allocations carry a real boxed header whose
+            // word[0] may be read as a tag. Skipping the rest is what makes a
+            // headerless cons cell (whose head word can alias a boxed tag)
+            // unable to be misread as a live ProcBin and freed. See [`AllocKind`].
+            if allocation.kind != AllocKind::MaybeRefcounted {
+                continue;
+            }
+            let ptr = self.words.as_ptr().wrapping_add(allocation.offset);
+            let header = self.words[allocation.offset];
             if let Some(tag) = BoxedHeader::tag(header) {
                 let object_words = 1 + BoxedHeader::size(header);
-                if object_words <= *allocation_words {
+                if object_words <= allocation.words {
+                    visit(ptr, tag, object_words);
+                }
+            }
+        }
+    }
+
+    /// Visit every allocation whose first word parses as a boxed header,
+    /// regardless of [`AllocKind`]. A headerless cons cell whose head word
+    /// aliases a boxed tag is misreported here, so this walk is for
+    /// display/inspection only — it must never drive resource release.
+    fn visit_allocated_boxed_objects_unfiltered(
+        &self,
+        mut visit: impl FnMut(*const u64, BoxedTag, usize),
+    ) {
+        for allocation in &self.allocations {
+            let ptr = self.words.as_ptr().wrapping_add(allocation.offset);
+            let header = self.words[allocation.offset];
+            if let Some(tag) = BoxedHeader::tag(header) {
+                let object_words = 1 + BoxedHeader::size(header);
+                if object_words <= allocation.words {
                     visit(ptr, tag, object_words);
                 }
             }
@@ -199,9 +286,35 @@ impl Heap {
         self.young.alloc(words)
     }
 
+    /// Allocate `words` from the young generation for a boxed object that may
+    /// own a refcounted off-heap resource (`ProcBin`/`FdResource`), so the GC
+    /// release walk inspects it. See [`AllocKind`].
+    pub fn alloc_maybe_refcounted(&mut self, words: usize) -> Result<*mut u64, HeapFull> {
+        self.young
+            .alloc_with_kind(words, AllocKind::MaybeRefcounted)
+    }
+
     /// Allocate `words` contiguous machine words from the young generation.
     pub fn alloc_slice(&mut self, words: usize) -> Result<&mut [u64], HeapFull> {
         self.young.alloc_slice(words)
+    }
+
+    /// Slice counterpart of [`Heap::alloc_maybe_refcounted`].
+    pub fn alloc_slice_maybe_refcounted(&mut self, words: usize) -> Result<&mut [u64], HeapFull> {
+        self.young
+            .alloc_slice_with_kind(words, AllocKind::MaybeRefcounted)
+    }
+
+    /// Mark the most recent young allocation as possibly refcounted. Used where
+    /// a `ProcBin`/`FdResource` is written into a slice from a plain `alloc`.
+    pub fn mark_last_young_allocation_maybe_refcounted(&mut self) {
+        self.young.mark_last_allocation_maybe_refcounted();
+    }
+
+    /// Mark the most recent old-generation allocation as possibly refcounted.
+    /// Used by the copying collector when it promotes a boxed object.
+    pub(crate) fn mark_last_old_allocation_maybe_refcounted(&mut self) {
+        self.old.mark_last_allocation_maybe_refcounted();
     }
 
     /// Allocate `words` contiguous machine words from the old generation.
@@ -215,6 +328,16 @@ impl Heap {
         words: usize,
     ) -> Result<*mut u64, HeapFull> {
         region.alloc(words)
+    }
+
+    /// Refcounted counterpart of [`Heap::alloc_in_region`]: the copied object may
+    /// be a `ProcBin`/`FdResource`, so the compacted region must expose it to the
+    /// release walk. See [`AllocKind`].
+    pub(crate) fn alloc_in_region_maybe_refcounted(
+        region: &mut HeapRegion,
+        words: usize,
+    ) -> Result<*mut u64, HeapFull> {
+        region.alloc_with_kind(words, AllocKind::MaybeRefcounted)
     }
 
     /// Build a fresh old-space region for major compaction.
@@ -331,6 +454,19 @@ impl Heap {
         self.old.visit_allocated_boxed_objects(visit);
     }
 
+    /// Header-sniffing census of both regions for debugger display. Unlike
+    /// [`Heap::visit_boxed_objects`], this ignores [`AllocKind`], so a cons
+    /// cell whose head aliases a boxed tag can be misreported — never use this
+    /// walk for resource release.
+    pub(crate) fn visit_boxed_objects_for_inspection(
+        &self,
+        mut visit: impl FnMut(*const u64, BoxedTag, usize),
+    ) {
+        self.young
+            .visit_allocated_boxed_objects_unfiltered(&mut visit);
+        self.old.visit_allocated_boxed_objects_unfiltered(visit);
+    }
+
     pub(crate) fn rebase_snapshot_terms(&mut self, original: &Heap) {
         let mappings = original.rebase_mappings(self);
         self.rebase_embedded_terms(&mappings);
@@ -443,10 +579,10 @@ fn rebase_region_embedded_terms(
     region: &mut HeapRegion,
     mappings: &[(*const u64, *const u64, usize)],
 ) {
-    for (offset, allocation_words) in region.allocations.clone() {
+    for allocation in region.allocations.clone() {
         let Some(block) = region
             .words
-            .get_mut(offset..offset.saturating_add(allocation_words))
+            .get_mut(allocation.offset..allocation.offset.saturating_add(allocation.words))
         else {
             continue;
         };

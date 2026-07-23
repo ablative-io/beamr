@@ -483,7 +483,10 @@ fn copy_proc_bin(proc_bin: &ProcBin, heap: &mut Heap) -> Result<Term, SendError>
         return shared_binary::alloc_binary(words, shared.as_bytes())
             .ok_or(SendError::InvalidBoxedTerm);
     }
-    let words = alloc_words(heap, shared_binary::alloc_binary_word_count(shared.len()))?;
+    // The receiver's copy owns a fresh strong reference; mark the allocation
+    // so the GC release walk drops it. See `process::heap::AllocKind`.
+    let words =
+        alloc_words_maybe_refcounted(heap, shared_binary::alloc_binary_word_count(shared.len()))?;
     shared_binary::write_proc_bin(words, &shared).ok_or(SendError::InvalidBoxedTerm)
 }
 
@@ -491,7 +494,10 @@ fn copy_proc_bin(proc_bin: &ProcBin, heap: &mut Heap) -> Result<Term, SendError>
 /// receiver never retains the parent binary's full storage.
 fn copy_sub_binary(sub_binary: &SubBinary, heap: &mut Heap) -> Result<Term, SendError> {
     let bytes = sub_binary.as_bytes();
-    let words = alloc_words(heap, shared_binary::alloc_binary_word_count(bytes.len()))?;
+    // A copy above the refc threshold lands as a ProcBin; mark the allocation
+    // so the GC release walk drops its Arc. See `process::heap::AllocKind`.
+    let words =
+        alloc_words_maybe_refcounted(heap, shared_binary::alloc_binary_word_count(bytes.len()))?;
     shared_binary::alloc_binary(words, bytes).ok_or(SendError::InvalidBoxedTerm)
 }
 
@@ -499,6 +505,17 @@ fn alloc_words(heap: &mut Heap, word_count: usize) -> Result<&mut [u64], SendErr
     let ptr = heap.alloc(word_count)?;
     // SAFETY: `Heap::alloc` reserves `word_count` contiguous words in the heap;
     // the returned slice is used immediately to initialize the allocation.
+    Ok(unsafe { std::slice::from_raw_parts_mut(ptr, word_count) })
+}
+
+fn alloc_words_maybe_refcounted(
+    heap: &mut Heap,
+    word_count: usize,
+) -> Result<&mut [u64], SendError> {
+    let ptr = heap.alloc_maybe_refcounted(word_count)?;
+    // SAFETY: `Heap::alloc_maybe_refcounted` reserves `word_count` contiguous
+    // words in the heap; the returned slice is used immediately to initialize
+    // the allocation.
     Ok(unsafe { std::slice::from_raw_parts_mut(ptr, word_count) })
 }
 
@@ -674,5 +691,57 @@ mod tests {
     fn allocate_cons(heap: &mut Heap, head: Term, tail: Term) -> Term {
         let words = alloc_words(heap, 2).expect("test allocation should fit");
         boxed::write_cons(words, head, tail).expect("cons should fit")
+    }
+
+    #[test]
+    fn message_delivered_proc_bin_is_released_by_receiver_minor_gc() {
+        use crate::process::Process;
+        use crate::term::shared_binary::{SharedBinary, write_proc_bin};
+
+        let shared = SharedBinary::new(vec![0xAB; 4096]);
+        let mut source_heap = [0_u64; 3];
+        let message = write_proc_bin(&mut source_heap, &shared).expect("proc bin fits");
+        assert_eq!(shared.ref_count(), 2);
+
+        let mut process = Process::new(1, 32);
+        let _delivered = copy_term(message, process.heap_mut()).expect("delivery copy succeeds");
+        assert_eq!(shared.ref_count(), 3);
+
+        crate::gc::collect_minor(&mut process).expect("minor GC succeeds");
+
+        assert_eq!(
+            shared.ref_count(),
+            2,
+            "receiver GC must release the delivered ProcBin's shared-bytes Arc"
+        );
+    }
+
+    #[test]
+    fn message_delivered_large_sub_binary_copy_is_released_by_receiver_minor_gc() {
+        use crate::process::Process;
+        use crate::term::boxed::ProcBin;
+        use crate::term::shared_binary::{SharedBinary, write_proc_bin};
+        use crate::term::sub_binary::{SUB_BINARY_WORDS, write_sub_binary};
+
+        let shared = SharedBinary::new(vec![0xCD; 4096]);
+        let mut parent_heap = [0_u64; 3];
+        let parent = write_proc_bin(&mut parent_heap, &shared).expect("proc bin fits");
+        let mut sub_heap = [0_u64; SUB_BINARY_WORDS];
+        let message = write_sub_binary(&mut sub_heap, parent, 0, 1024).expect("sub binary fits");
+
+        let mut process = Process::new(1, 32);
+        let delivered = copy_term(message, process.heap_mut()).expect("delivery copy succeeds");
+        let observer = ProcBin::new(delivered)
+            .expect("a large sub-binary copies as a refc binary")
+            .shared_binary();
+        assert_eq!(observer.ref_count(), 2);
+
+        crate::gc::collect_minor(&mut process).expect("minor GC succeeds");
+
+        assert_eq!(
+            observer.ref_count(),
+            1,
+            "receiver GC must release the copied sub-binary's shared-bytes Arc"
+        );
     }
 }

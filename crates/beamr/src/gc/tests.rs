@@ -11,7 +11,7 @@ use crate::{
     loader::{Instruction, Literal},
     module::{Module, ModuleOrigin},
     term::{
-        boxed::{Closure, Cons, ProcBin, Tuple, write_closure, write_cons, write_tuple},
+        boxed::{BoxedTag, Closure, Cons, ProcBin, Tuple, write_closure, write_cons, write_tuple},
         shared_binary::{SharedBinary, write_proc_bin},
         sub_binary::{SUB_BINARY_WORDS, write_sub_binary},
     },
@@ -79,6 +79,9 @@ pub(crate) fn alloc_proc_bin(process: &mut Process, shared: &SharedBinary) -> Te
     // SAFETY: GC allocation returned three writable words.
     let words = unsafe { std::slice::from_raw_parts_mut(ptr, 3) };
     let term = write_proc_bin(words, shared).expect("proc bin writer should fit allocated words");
+    process
+        .heap_mut()
+        .mark_last_young_allocation_maybe_refcounted();
     process.increase_virtual_binary_heap(shared.len());
     term
 }
@@ -87,7 +90,12 @@ pub(crate) fn alloc_fd_resource(process: &mut Process, inner: Arc<FdInner>) -> T
     let ptr = alloc(process, FD_RESOURCE_WORDS).expect("fd resource allocation via GC should fit");
     // SAFETY: GC allocation returned the fixed FdResource word count.
     let words = unsafe { std::slice::from_raw_parts_mut(ptr, FD_RESOURCE_WORDS) };
-    write_fd_resource(words, inner).expect("fd resource writer should fit allocated words")
+    let term =
+        write_fd_resource(words, inner).expect("fd resource writer should fit allocated words");
+    process
+        .heap_mut()
+        .mark_last_young_allocation_maybe_refcounted();
+    term
 }
 
 pub(crate) fn snapshot(term: Term) -> Snapshot {
@@ -564,6 +572,31 @@ fn unreachable_young_terms_are_reclaimed() {
     assert_eq!(
         snapshot(process.x_reg(0)),
         Snapshot::Tuple(vec![Snapshot::Int(1)])
+    );
+}
+
+#[test]
+fn boolean_list_cons_is_not_walked_as_a_refcounted_binary() {
+    // C1 regression. `visit_young_boxed_objects` reconstructs an allocation's
+    // type from its first word, but cons cells are headerless: word[0] is the
+    // list head. The atom `false` encodes to the raw word 0x19, which is exactly
+    // `BoxedTag::ProcBin`, so a `[false | _]` cons is reported as a live ProcBin
+    // and then handed to `release_proc_bin_arc`, which reads out-of-bounds word
+    // two and `Arc::from_raw`s it -- arbitrary-memory free on the next minor GC.
+    // Booleans lists are pervasive, so this is reachable from ordinary code.
+    let mut process = Process::new(1, 64);
+    let cons = alloc_cons(&mut process, Term::atom(Atom::FALSE), Term::NIL);
+    process.set_x_reg(0, cons);
+
+    let mut reported = Vec::new();
+    process
+        .heap()
+        .visit_young_boxed_objects(|_ptr, tag, _words| reported.push(tag));
+
+    assert!(
+        !reported.contains(&BoxedTag::ProcBin),
+        "a headerless [false | _] cons was misclassified as a refcounted ProcBin \
+         by the GC release walk (reported tags: {reported:?})"
     );
 }
 

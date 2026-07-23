@@ -8,7 +8,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use crate::atom::{Atom, AtomTable};
 use crate::ets::{
     AccessOp, CompiledMatchSpec, EtsError, EtsHeir, EtsRegistry, EtsTable, EtsTableId,
-    EtsTableMetadata, EtsTableType, MatchArena, Protection, TermKey, copy_term_to_ets,
+    EtsTableMetadata, EtsTableType, MatchArena, OwnedTerm, Protection, TermKey, copy_term_to_ets,
     copy_term_to_heap,
 };
 use crate::native::stdlib_stubs::maps_bifs::ContinuationStep;
@@ -283,9 +283,8 @@ pub fn bif_lookup(args: &[Term], context: &mut ProcessContext) -> Result<Term, T
         .check_access(caller, AccessOp::Read)
         .map_err(|_| badarg())?;
 
-    let tuples = table.lookup(*key);
-    context.ensure_heap_space(list_heap_words(tuples.len()))?;
-    context.alloc_list(&tuples)
+    let rows = table.lookup(*key);
+    copy_rows_list(&rows, context)
 }
 
 /// ets:tab2list/1 — return a snapshot list of all tuples in the table.
@@ -295,9 +294,8 @@ pub fn bif_tab2list(args: &[Term], context: &mut ProcessContext) -> Result<Term,
     };
     let table = resolve_readable_table(*tab, context)?;
 
-    let tuples = table.tab2list();
-    context.ensure_heap_space(list_heap_words(tuples.len()))?;
-    context.alloc_list(&tuples)
+    let rows = table.tab2list();
+    copy_rows_list(&rows, context)
 }
 
 /// ets:foldl/3 — fold a function over a table snapshot from left to right.
@@ -307,10 +305,13 @@ pub fn bif_foldl(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     };
     ensure_fun_arity(*fun, 2)?;
     let table = resolve_readable_table(*tab, context)?;
-    let entries = table.tab2list();
-    if entries.is_empty() {
+    let rows = table.tab2list();
+    if rows.is_empty() {
         return Ok(*acc);
     }
+    // The copies land on the caller heap and stay alive as GC roots through
+    // the pending-continuation state.
+    let entries = copy_rows_to_process(&rows, context)?;
 
     context.set_continuation_trampoline(
         *fun,
@@ -440,8 +441,8 @@ pub fn bif_match_delete(args: &[Term], context: &mut ProcessContext) -> Result<T
         .map_err(|_| badarg())?;
 
     for object in table.tab2list() {
-        if ets_pattern_match(*pattern, object, context)?.is_some() {
-            let _deleted = table.delete_object(object);
+        if ets_pattern_match(*pattern, object.root(), context)?.is_some() {
+            let _deleted = table.delete_object(object.root());
         }
     }
     Ok(Term::atom(Atom::TRUE))
@@ -454,7 +455,10 @@ pub fn bif_first(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     };
     let table = resolve_readable_table(*tab, context)?;
     let keys = table_snapshot_keys(&table, context)?;
-    Ok(keys.first().copied().unwrap_or(end_of_table_atom(context)?))
+    match keys.first() {
+        Some(entry) => copy_ets_subterm_to_process(entry.key, context),
+        None => end_of_table_atom(context),
+    }
 }
 
 /// ets:next/2 — return the next key in a table snapshot or '$end_of_table'.
@@ -474,7 +478,10 @@ pub fn bif_last(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
     };
     let table = resolve_readable_table(*tab, context)?;
     let keys = table_snapshot_keys(&table, context)?;
-    Ok(keys.last().copied().unwrap_or(end_of_table_atom(context)?))
+    match keys.last() {
+        Some(entry) => copy_ets_subterm_to_process(entry.key, context),
+        None => end_of_table_atom(context),
+    }
 }
 
 /// ets:prev/2 — return the previous key in a table snapshot or '$end_of_table'.
@@ -755,12 +762,12 @@ fn collect_match_results(
     context.with_rooted(&[pattern], |context, roots| {
         for object in table.tab2list() {
             let pattern = context.rooted(roots, 0)?;
-            let Some(bindings) = ets_pattern_match(pattern, object, context)? else {
+            let Some(bindings) = ets_pattern_match(pattern, object.root(), context)? else {
                 continue;
             };
             let result = match mode {
                 MatchResultMode::Bindings => alloc_bindings_list(&bindings, context)?,
-                MatchResultMode::Object => object,
+                MatchResultMode::Object => context.copy_owned_term(&object)?,
             };
             context.rooted_push(roots, result)?;
         }
@@ -802,7 +809,7 @@ fn collect_match_paged_results(
         let mut next_position = None;
         for (position, object) in snapshot.into_iter().enumerate().skip(start_position) {
             let pattern = context.rooted(roots, 0)?;
-            let Some(bindings) = ets_pattern_match(pattern, object, context)? else {
+            let Some(bindings) = ets_pattern_match(pattern, object.root(), context)? else {
                 continue;
             };
             if context.rooted_len(roots) - 1 == limit {
@@ -843,7 +850,7 @@ fn collect_select_results(
                 break;
             }
             if let Some(arena_result) = compiled
-                .run(object, atom_table.as_ref(), &mut arena)
+                .run(object.root(), atom_table.as_ref(), &mut arena)
                 .map_err(|_| badarg())?
             {
                 let result = copy_term_to_process(arena_result, context)?;
@@ -942,7 +949,21 @@ fn alloc_bindings_list(
     bindings: &BTreeMap<usize, Term>,
     context: &mut ProcessContext,
 ) -> Result<Term, Term> {
-    let values = bindings.values().copied().collect::<Vec<_>>();
+    // Bound values point into ETS-owned rows; deep-copy them onto the caller
+    // heap. One up-front reserve keeps the per-value copies GC-free so the
+    // plain Vec of copies stays valid.
+    let owned = bindings
+        .values()
+        .map(|value| copy_term_to_ets(*value))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ets_error_to_badarg)?;
+    let words: usize =
+        owned.iter().map(OwnedTerm::total_words).sum::<usize>() + list_heap_words(owned.len());
+    context.ensure_heap_space(words)?;
+    let values = owned
+        .iter()
+        .map(|value| context.copy_owned_term_prereserved(value))
+        .collect::<Result<Vec<_>, _>>()?;
     context.alloc_list(&values)
 }
 
@@ -1090,17 +1111,26 @@ enum CursorDirection {
     Prev,
 }
 
+/// A snapshot key plus the owned row it points into, kept alive together.
+struct SnapshotKey {
+    /// Keeps the ETS-owned row backing `key` alive for the snapshot's lifetime.
+    _row: Arc<OwnedTerm>,
+    key: Term,
+}
+
 fn table_snapshot_keys(
     table: &Arc<dyn EtsTable>,
     context: &ProcessContext,
-) -> Result<Vec<Term>, Term> {
+) -> Result<Vec<SnapshotKey>, Term> {
     let mut keys = table
         .tab2list()
         .into_iter()
-        .map(|tuple| {
-            crate::ets::tuple_key(tuple, table.metadata().keypos).map_err(ets_error_to_badarg)
+        .map(|row| {
+            let key = crate::ets::tuple_key(row.root(), table.metadata().keypos)
+                .map_err(ets_error_to_badarg)?;
+            Ok(SnapshotKey { _row: row, key })
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, Term>>()?;
 
     if table.metadata().table_type == EtsTableType::OrderedSet {
         return Ok(keys);
@@ -1108,49 +1138,62 @@ fn table_snapshot_keys(
 
     let atom_table = context.atom_table_arc().ok_or_else(badarg)?;
     keys.sort_by(|left, right| {
-        TermKey::with_atom_table(*left, Arc::clone(&atom_table))
-            .cmp(&TermKey::with_atom_table(*right, Arc::clone(&atom_table)))
+        TermKey::with_atom_table(left.key, Arc::clone(&atom_table)).cmp(&TermKey::with_atom_table(
+            right.key,
+            Arc::clone(&atom_table),
+        ))
     });
     keys.dedup_by(|left, right| {
-        TermKey::with_atom_table(*left, Arc::clone(&atom_table))
-            == TermKey::with_atom_table(*right, Arc::clone(&atom_table))
+        TermKey::with_atom_table(left.key, Arc::clone(&atom_table))
+            == TermKey::with_atom_table(right.key, Arc::clone(&atom_table))
     });
     Ok(keys)
 }
 
+/// Deep-copy an ETS-owned subterm (a key or other row fragment) onto the
+/// caller heap.
+fn copy_ets_subterm_to_process(term: Term, context: &mut ProcessContext) -> Result<Term, Term> {
+    let owned = copy_term_to_ets(term).map_err(ets_error_to_badarg)?;
+    context.copy_owned_term(&owned)
+}
+
 fn cursor_neighbor(
     table: &Arc<dyn EtsTable>,
-    keys: Vec<Term>,
+    keys: Vec<SnapshotKey>,
     key: Term,
     direction: CursorDirection,
-    context: &ProcessContext,
+    context: &mut ProcessContext,
 ) -> Result<Term, Term> {
     if keys.is_empty() {
         return end_of_table_atom(context);
     }
 
     let atom_table = context.atom_table_arc().ok_or_else(badarg)?;
-    if table.metadata().table_type == EtsTableType::OrderedSet {
+    let neighbor = if table.metadata().table_type == EtsTableType::OrderedSet {
         let cursor = TermKey::with_atom_table(key, Arc::clone(&atom_table));
         let position = keys.binary_search_by(|probe| {
-            TermKey::with_atom_table(*probe, Arc::clone(&atom_table)).cmp(&cursor)
+            TermKey::with_atom_table(probe.key, Arc::clone(&atom_table)).cmp(&cursor)
         });
-        let neighbor = match (direction, position) {
-            (CursorDirection::Next, Ok(index)) => keys.get(index + 1).copied(),
-            (CursorDirection::Next, Err(index)) => keys.get(index).copied(),
+        match (direction, position) {
+            (CursorDirection::Next, Ok(index)) => keys.get(index + 1),
+            (CursorDirection::Next, Err(index)) => keys.get(index),
             (CursorDirection::Prev, Ok(0) | Err(0)) => None,
-            (CursorDirection::Prev, Ok(index) | Err(index)) => keys.get(index - 1).copied(),
-        };
-        return Ok(neighbor.unwrap_or(end_of_table_atom(context)?));
-    }
-
-    let position = keys.iter().position(|candidate| *candidate == key);
-    let neighbor = match (direction, position) {
-        (CursorDirection::Next, Some(index)) => keys.get(index + 1).copied(),
-        (CursorDirection::Prev, Some(index)) if index > 0 => keys.get(index - 1).copied(),
-        _ => None,
+            (CursorDirection::Prev, Ok(index) | Err(index)) => keys.get(index - 1),
+        }
+    } else {
+        let position = keys
+            .iter()
+            .position(|candidate| compare::exact_eq(candidate.key, key));
+        match (direction, position) {
+            (CursorDirection::Next, Some(index)) => keys.get(index + 1),
+            (CursorDirection::Prev, Some(index)) if index > 0 => keys.get(index - 1),
+            _ => None,
+        }
     };
-    Ok(neighbor.unwrap_or(end_of_table_atom(context)?))
+    match neighbor {
+        Some(entry) => copy_ets_subterm_to_process(entry.key, context),
+        None => end_of_table_atom(context),
+    }
 }
 
 fn end_of_table_atom(context: &ProcessContext) -> Result<Term, Term> {
@@ -1204,7 +1247,11 @@ fn protection_atom(protection: Protection, atom_table: &AtomTable) -> Atom {
 fn approximate_memory_words(table: &Arc<dyn EtsTable>) -> usize {
     const METADATA_WORDS: usize = 8;
     let entries = table.tab2list();
-    METADATA_WORDS + entries.len() * 3
+    METADATA_WORDS
+        + entries
+            .iter()
+            .map(|row| OwnedTerm::total_words(row))
+            .sum::<usize>()
 }
 
 fn small_int_from_u64(value: u64) -> Result<Term, Term> {
@@ -1223,6 +1270,31 @@ fn bool_term(value: bool) -> Term {
 
 const fn list_heap_words(element_count: usize) -> usize {
     element_count * 2
+}
+
+/// Deep-copy ETS-owned rows onto the caller heap. One up-front reserve keeps
+/// the per-row copies GC-free so the returned Vec of roots stays valid.
+fn copy_rows_to_process(
+    rows: &[Arc<OwnedTerm>],
+    context: &mut ProcessContext,
+) -> Result<Vec<Term>, Term> {
+    let words: usize = rows.iter().map(|row| row.total_words()).sum();
+    context.ensure_heap_space(words)?;
+    rows.iter()
+        .map(|row| context.copy_owned_term_prereserved(row))
+        .collect()
+}
+
+/// Deep-copy ETS-owned rows onto the caller heap and return them as a list.
+fn copy_rows_list(rows: &[Arc<OwnedTerm>], context: &mut ProcessContext) -> Result<Term, Term> {
+    let words: usize =
+        rows.iter().map(|row| row.total_words()).sum::<usize>() + list_heap_words(rows.len());
+    context.ensure_heap_space(words)?;
+    let copied = rows
+        .iter()
+        .map(|row| context.copy_owned_term_prereserved(row))
+        .collect::<Result<Vec<_>, _>>()?;
+    context.alloc_list(&copied)
 }
 
 const fn info_proplist_heap_words(item_count: usize) -> usize {
@@ -1610,6 +1682,64 @@ mod tests {
             let result = bif_lookup(&[tab, Term::atom(Atom::OK)], &mut context).expect("lookup");
             assert_eq!(list_terms(result), vec![tuple]);
         }
+    }
+
+    #[test]
+    fn ets_entries_survive_the_inserting_process_gc() {
+        // C2 regression. `ets:insert` stores the caller's tuple term directly in
+        // the table (no deep copy), but the process heap is a moving copying
+        // collector: once the inserting process runs a minor GC the young words
+        // that backed the tuple are reclaimed and zeroed, leaving the table
+        // holding a dangling pointer. A later lookup then dereferences freed
+        // memory. ETS rows must be deep-copied into table-owned storage on insert
+        // and copied back on lookup so they are independent of the caller heap.
+        fn decode_row(term: Term) -> Option<(i64, i64)> {
+            let outer = Tuple::new(term)?;
+            let inner = Tuple::new(outer.get(1)?)?;
+            Some((inner.get(0)?.as_small_int()?, inner.get(1)?.as_small_int()?))
+        }
+
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let registry = Arc::new(EtsRegistry::new());
+        let public = atom_table.intern("public");
+        let set = atom_table.intern("set");
+        let mut process = Process::new(1, 512);
+
+        // Insert `{ok, {7, 8}}` — the inner `{7, 8}` is a boxed tuple living in
+        // the caller's young heap, so the stored row holds a heap pointer.
+        let tab = {
+            let mut context = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+            let tab = new_table(
+                &mut context,
+                &atom_table,
+                atom_table.intern("t"),
+                &[set, public],
+            );
+            let inner = tuple(&mut context, &[Term::small_int(7), Term::small_int(8)]);
+            let row = tuple(&mut context, &[Term::atom(Atom::OK), inner]);
+            assert_eq!(decode_row(row), Some((7, 8)));
+            assert_eq!(
+                bif_insert(&[tab, row], &mut context),
+                Ok(Term::atom(Atom::TRUE))
+            );
+            tab
+        };
+
+        // `row`/`inner` are unreachable roots, so a minor GC reclaims and zeroes
+        // the young words they occupied. `tab` is an immediate table id and
+        // survives. On the buggy code the table's stored pointer now dangles.
+        crate::gc::collect_minor(&mut process).expect("minor GC succeeds");
+
+        let mut context = context(&mut process, Arc::clone(&atom_table), registry);
+        let result = bif_lookup(&[tab, Term::atom(Atom::OK)], &mut context).expect("lookup");
+        let rows = list_terms(result);
+        assert_eq!(rows.len(), 1, "exactly one row expected");
+        assert_eq!(
+            decode_row(rows[0]),
+            Some((7, 8)),
+            "ETS row did not survive the inserting process's GC — it was stored \
+             as a raw pointer into the caller heap instead of being deep-copied"
+        );
     }
 
     #[test]

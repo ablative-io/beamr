@@ -84,7 +84,14 @@ fn copy_any_term(
         return Ok(term);
     };
     let copied_words = process.heap().copy_words_from_ptr(src, words);
-    let dst = Heap::alloc_in_region(fresh, words)?;
+    // Boxed objects carry a real header and may own a refcounted resource, so the
+    // compacted copy must stay visible to the release walk. Headerless cons cells
+    // stay `NotRefcounted` and can never be misread. See `AllocKind`.
+    let dst = if term.is_boxed() {
+        Heap::alloc_in_region_maybe_refcounted(fresh, words)?
+    } else {
+        Heap::alloc_in_region(fresh, words)?
+    };
     Heap::write_words(dst, &copied_words);
     let copied = term_from_ptr_like(term, dst.cast_const());
     if term.is_boxed() {

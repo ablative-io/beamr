@@ -1,32 +1,23 @@
 {
   "schema": "gate-report/v1",
   "repo": "beamr",
-  "commit_sha": "dcce5a7eab966be9438f3d2bbdef43a648a55f06",
-  "tree_sha": "7bf8121eb8a3105ddca57f13801364b8c0c7cab0",
-  "branch": "main",
+  "commit_sha": "e9565d662428237c71afc0674a7e416f01c1b736",
+  "tree_sha": "8787b06b0f03e38c1f4da6db1fe247c2a4b08134",
+  "branch": "fix/memory-safety-c1-c2-0.16.2",
   "dirty": false,
   "untracked_count": 2,
   "toolchain": {
-    "rustc": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
-    "cargo": "cargo 1.92.0 (344c4567c 2025-10-21)"
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
   },
-  "host": "Toms-MacBook-Pro.local",
-  "started_at": "2026-07-23T05:22:43Z",
-  "finished_at": "2026-07-23T05:25:33Z",
-  "duration_s": 170.099,
+  "host": "Mac.modem",
+  "started_at": "2026-07-23T10:38:22Z",
+  "finished_at": "2026-07-23T10:38:42Z",
+  "duration_s": 19.877,
   "concurrent_cargo_at_start": [
-    "807 /Users/tom/Developer/ablative/deploy/aion/cargo-gates-worker --address 127.0.0.1:50061 --ready-file /tmp/cargo-gates-wor",
-    "820 /Users/tom/.cargo/bin/aion server --config /Users/tom/Developer/ablative/deploy/aion/config.toml",
-    "40739 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-tom/cargotom-2.3.13/cargotom --storage /Users/tom/Libra",
-    "40740 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-appraiser/cargo-appraiser-v1.1.5/cargo-appraiser --rend",
-    "76675 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-appraiser/cargo-appraiser-v1.1.5/cargo-appraiser --rend",
-    "76676 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-tom/cargotom-2.3.13/cargotom --storage /Users/tom/Libra",
-    "92175 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-tom/cargotom-2.3.13/cargotom --storage /Users/tom/Libra",
-    "92176 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-tom/cargotom-2.3.13/cargotom --storage /Users/tom/Libra",
-    "92177 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-tom/cargotom-2.3.13/cargotom --storage /Users/tom/Libra",
-    "92178 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-appraiser/cargo-appraiser-v1.1.5/cargo-appraiser --rend",
-    "92179 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-appraiser/cargo-appraiser-v1.1.5/cargo-appraiser --rend",
-    "92180 /Users/tom/Library/Application Support/Zed/extensions/work/cargo-appraiser/cargo-appraiser-v1.1.5/cargo-appraiser --rend"
+    "77795 /bin/zsh -c source /Users/deanwhiting/.claude/shell-snapshots/snapshot-zsh-1784798361869-3jxy1a.sh 2>/dev/null || true &",
+    "77798 /Users/deanwhiting/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo doc --workspace --no-deps",
+    "77799 /bin/zsh -c source /Users/deanwhiting/.claude/shell-snapshots/snapshot-zsh-1784798361869-3jxy1a.sh 2>/dev/null || true &"
   ],
   "legs": [
     {
@@ -34,7 +25,7 @@
       "cmd": "cargo fmt --all --check",
       "kind": "check",
       "exit": 0,
-      "duration_s": 1.255,
+      "duration_s": 0.585,
       "log": "gate-logs/fmt.log",
       "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "tests": null,
@@ -45,9 +36,9 @@
       "cmd": "cargo clippy --workspace --all-targets -- -D warnings",
       "kind": "check",
       "exit": 0,
-      "duration_s": 33.849,
+      "duration_s": 0.193,
       "log": "gate-logs/clippy.log",
-      "log_sha256": "3e0cd75fef2a514f3a97ce514828001d9f35dbe8382954616026afb028640fb5",
+      "log_sha256": "a41051563a4cb5fc1b1bcdd9aa0ba28ca80f7736d629d90cc138218756e8e3a9",
       "tests": null,
       "failures": []
     },
@@ -56,9 +47,9 @@
       "cmd": "cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked",
       "kind": "check",
       "exit": 0,
-      "duration_s": 16.045,
+      "duration_s": 0.125,
       "log": "gate-logs/wasm32-check.log",
-      "log_sha256": "a0ff939658c52ad016e9e41b8a72305c5418f9a9d1c41da074d17c72f30a5557",
+      "log_sha256": "c92508a29848820f033cd2ea015c85dde0953c88b07cc967ce34b7c08f610549",
       "tests": null,
       "failures": []
     },
@@ -67,12 +58,12 @@
       "cmd": "cargo test --workspace",
       "kind": "cargo-test",
       "exit": 0,
-      "duration_s": 118.946,
+      "duration_s": 18.971,
       "log": "gate-logs/tests.log",
-      "log_sha256": "39101a8c77e4970a56c30486908626def6cd64abf92c43619bcec50050bf0fff",
+      "log_sha256": "a8b03817dc150e1eae1bab3994a51c868333d9626b33b6ad46194320ac84bc23",
       "tests": {
         "suites": 69,
-        "passed": 1988,
+        "passed": 1998,
         "failed": 0
       },
       "failures": []
