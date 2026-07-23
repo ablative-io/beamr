@@ -817,3 +817,175 @@ async fn run_kv(vm: &mut WasmVm, module: &str, args: &str) -> serde_json::Value 
     host_macrotask().await;
     await_exit_json(vm, pid).await["result"].clone()
 }
+
+// ---------------------------------------------------------------------------
+// R6 walls: process-death auto-abort (A1 seam), counted dead-pid completion,
+// late-abort harmlessness.
+// ---------------------------------------------------------------------------
+
+/// R6 + A1: a native caller dying with a fetch in flight fires the abort
+/// hook at the arbiter's exit-observation sweep (the ExitWaiter settling
+/// point), and the completion later arriving for the drained entry is a
+/// COUNTED no-op: dead_pid_completions increments by exactly one and NO
+/// arbiter turn is requested for it.
+#[wasm_bindgen_test]
+async fn dying_caller_auto_aborts_in_flight_and_late_completion_is_counted() {
+    struct DieOnWake {
+        mfa: NativeKey,
+        request: Option<beamr::ets::OwnedTerm>,
+        issued: bool,
+    }
+    impl NativeHandler for DieOnWake {
+        fn handle(&mut self, ctx: &mut NativeContext<'_>) -> NativeOutcome {
+            if !self.issued {
+                self.issued = true;
+                let Some(request) = self
+                    .request
+                    .take()
+                    .and_then(|owned| ctx.alloc_owned_term(&owned))
+                else {
+                    return NativeOutcome::Stop(ExitReason::Error);
+                };
+                return match ctx.start_async(self.mfa, &[request]) {
+                    Ok(()) => NativeOutcome::Wait,
+                    Err(_) => NativeOutcome::Stop(ExitReason::Error),
+                };
+            }
+            // Any wake (the test casts a message) kills the caller with the
+            // request still in flight.
+            while ctx.recv().is_some() {}
+            NativeOutcome::Stop(ExitReason::Normal)
+        }
+    }
+
+    let mut vm = WasmVm::new().expect("VM constructs");
+    let resolvers = Rc::new(RefCell::new(Vec::new()));
+    let abort_calls = Rc::new(Cell::new(0));
+    vm.register_fetch_capability(deferred_fetch_capability(&resolvers, &abort_calls));
+    let request_mfa: NativeKey = (
+        vm.atom_table.intern("wasm_fetch"),
+        vm.atom_table.intern("request"),
+        1,
+    );
+    let request_owned = {
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(StdArc::clone(&vm.atom_table)));
+        let key = context.alloc_binary(b"url").expect("url key allocates");
+        let value = context
+            .alloc_binary(b"https://example.test/doomed")
+            .expect("url value allocates");
+        let map = context
+            .alloc_map(&[key], &[value])
+            .expect("request map allocates");
+        context.take_detached_result(map).expect("owned request")
+    };
+    let request_slot = StdArc::new(Mutex::new(Some(request_owned)));
+    let pid = {
+        let request_slot = StdArc::clone(&request_slot);
+        spawn_native_root_edge(
+            &mut vm,
+            Box::new(move || {
+                Box::new(DieOnWake {
+                    mfa: request_mfa,
+                    request: request_slot.lock().expect("request slot").take(),
+                    issued: false,
+                })
+            }),
+        )
+    };
+    host_macrotask().await;
+    assert_eq!(resolvers.borrow().len(), 1, "the request is in flight");
+    assert_eq!(abort_calls.get(), 0, "no abort while the caller lives");
+
+    // Kill the caller: the cast wakes it, it stops Normal, and the exit
+    // sweep fires the abort hook for its in-flight request.
+    vm.cast(pid, JsValue::from_f64(1.0)).expect("cast delivers");
+    host_macrotask().await;
+    assert_eq!(
+        abort_calls.get(),
+        1,
+        "the death sweep fired the abort hook exactly once"
+    );
+    assert_eq!(vm.capability_counters().dead_pid_completions, 0);
+
+    // The host settles AFTER the death: the completion finds the entry
+    // drained — counted, undelivered, and no arbiter turn requested.
+    let before = vm.arbiter_counters();
+    resolvers.borrow()[0]
+        .1
+        .call1(
+            &JsValue::UNDEFINED,
+            js_sys::Error::new("too late for anyone").as_ref(),
+        )
+        .expect("host rejects post-mortem");
+    host_macrotask().await;
+    assert_eq!(vm.capability_counters().dead_pid_completions, 1);
+    let after = vm.arbiter_counters();
+    assert_eq!(
+        after.arbiter.requests, before.arbiter.requests,
+        "a dead-pid completion requests no turn"
+    );
+}
+
+/// R6: an abort arriving AFTER successful completion is harmless — the
+/// promise-settles-once platform law makes a second completion structurally
+/// impossible; the result stands, counters do not move, and the abort hook
+/// firing late disturbs nothing.
+#[wasm_bindgen_test]
+async fn late_abort_after_completion_is_a_harmless_noop() {
+    let mut vm = WasmVm::new().expect("VM constructs");
+    capability_call_module(&vm, "wport8_late_abort", "wasm_fetch", "request", 1);
+    let resolvers = Rc::new(RefCell::new(Vec::new()));
+    let abort_calls = Rc::new(Cell::new(0));
+    vm.register_fetch_capability(deferred_fetch_capability(&resolvers, &abort_calls));
+
+    let pid = vm
+        .spawn(
+            "wport8_late_abort",
+            "call",
+            r#"[{"url":"https://example.test/settled"}]"#,
+        )
+        .expect("caller spawns");
+    host_macrotask().await;
+    let response = Object::new();
+    Reflect::set(
+        response.as_ref(),
+        &JsValue::from_str("status"),
+        &JsValue::from_f64(204.0),
+    )
+    .expect("status sets");
+    resolvers.borrow()[0]
+        .0
+        .call1(&JsValue::UNDEFINED, response.as_ref())
+        .expect("host resolves");
+    host_macrotask().await;
+    let settled = await_exit_json(&mut vm, pid).await;
+    assert_eq!(
+        settled["result"],
+        json!(["ok", {"body": "", "headers": {}, "status": 204}])
+    );
+    let counters_before = vm.capability_counters();
+    let arbiter_before = vm.arbiter_counters();
+
+    // The host aborts and rejects AFTER settlement: the promise is already
+    // resolved, so the rejection is a platform no-op; nothing moves.
+    resolvers.borrow()[0]
+        .1
+        .call1(
+            &JsValue::UNDEFINED,
+            js_sys::Error::new("late abort").as_ref(),
+        )
+        .expect("post-settle rejection is callable");
+    host_macrotask().await;
+    assert_eq!(vm.capability_counters(), counters_before);
+    let arbiter_after = vm.arbiter_counters();
+    assert_eq!(
+        arbiter_after.arbiter.requests,
+        arbiter_before.arbiter.requests
+    );
+    assert_eq!(
+        abort_calls.get(),
+        0,
+        "the bridge fired no abort for a live completion"
+    );
+}
