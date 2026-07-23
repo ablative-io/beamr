@@ -1,0 +1,4 @@
+bundle: /Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-wasm/pkg/beamr.bundle.mjs
+node: v26.5.0
+call: createPreloadedVm()  (no argument)
+FAILED: ERR_UNSUPPORTED_ESM_URL_SCHEME: Only URLs with a scheme in: file, data, and node are supported by the default ESM loader. Received protocol 'blob:'

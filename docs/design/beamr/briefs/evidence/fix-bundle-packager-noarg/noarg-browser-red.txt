@@ -1,0 +1,4 @@
+bundle: /Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-wasm/pkg/beamr.bundle.mjs
+chrome: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+call: createPreloadedVm()  (no argument)
+FAILED: ReferenceError: decodeEmbeddedBase64 is not defined
