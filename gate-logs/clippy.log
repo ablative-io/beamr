@@ -1,1 +1,4 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr-wt-triage/crates/beamr)
+   Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr-wt-triage/crates/beamr-wasm)
+    Checking beamr-cli v0.4.0 (/Users/deanwhiting/Developer/stack/beamr-wt-triage/crates/beamr-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.46s
