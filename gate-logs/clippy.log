@@ -1,4 +1,4 @@
-   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr)
-   Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-wasm)
-    Checking beamr-cli v0.4.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-cli)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.85s
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr)
+   Compiling beamr-wasm v0.7.0 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr-wasm)
+    Checking beamr-cli v0.4.0 (/Users/annabel/Developer/ablative/stack/beamr/crates/beamr-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 28.00s
