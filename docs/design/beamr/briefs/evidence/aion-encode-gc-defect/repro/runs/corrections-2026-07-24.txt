@@ -1,0 +1,58 @@
+# Forward-only corrections — 2026-07-24, mid-tear (Artemis Peach findings 1-4;
+# finding 5 self-caught during the correction). Prior committed files are not
+# rewritten; this record and the trued README supersede their stale claims.
+
+FINDING 1 (run count): the first commit's README claimed "7/7 runs (4 release,
+plus debug)". Neither number was right, and the deeper defect the correction
+surfaced is FINDING 5 below. True inventory of all red runs, by fixture bytes:
+
+  Pre-commit fixture variant A (no alt_list section — bytes NEVER committed):
+    1 debug + 3 release + 1 timed release = 5 runs, all exit 139 (SIGSEGV).
+    The original runs/red-runs.txt describes THESE runs. The original
+    runs/red-segv-backtrace.txt was captured from variant A's debug run.
+  Pre-commit fixture variant B (alt_list added; compile of the same code the
+  first commit shipped, before comment truing): 3 release runs, all 139.
+  COMMITTED (trued) bytes, sha256(encode_gc_repro.beam) =
+  4fd36e2de339dc4287afaf0233fa7375080d84648cd09850f56ed450bbb3f720:
+    1 debug + 3 release + 1 timed release + 5 debug = 10 runs, ALL exit 139.
+    Timed release: real 0.00 s. This is the citation set.
+
+FINDING 2 (fixture header claimed "RED = abnormal exit, badarg"): trued in the
+.erl to the SEGV record.
+
+FINDING 3 (alt_list comment asserted the badarg-at-the-encode outcome): trued
+in the .erl — the committed runs prove the fatal face wins this shape; the
+section stays for payload-faithful bool/binary adjacency.
+
+FINDING 4 (main-body.rs exit-code comment said "badarg expected" on exit 2):
+trued — the red dies by signal before any exit path.
+
+FINDING 5 (backtrace provenance, self-caught): the originally committed
+runs/red-segv-backtrace.txt — the capture whose frames show the fault INSIDE
+bif_json_encode_binary — came from fixture variant A, whose bytes were never
+committed. It remains committed as a true record of a real run, with its
+provenance now stated here. The capture at the COMMITTED bytes is
+runs/red-segv-backtrace-trued-bytes.txt: IDENTICAL fault
+(KERN_INVALID_ADDRESS at 0x21, atom-false raw 0x19 live in a register as the
+dereferenced Arc data pointer) and IDENTICAL walk frames (Vec::len ←
+release_proc_bin_arc ← release_refcounted_resources_in_young ←
+visit_allocated_boxed_objects ← minor collect), with the triggering
+collection entered from the fixture's bytecode binary construction
+(bs_init_or_create → allocate_binary → ensure_space) rather than from inside
+the encode BIF. All 5 classified debug crashes at the committed bytes trigger
+at binary construction, deterministically. Reading of record: trigger site is
+one more layout-dependent face of the same die — variant A's dice landed the
+collection inside bif_json_encode_binary (the production entry point), the
+committed bytes land it at the report-string construction feeding that
+encode; the misread walk and the fault signature are byte-identical in both.
+
+RECOMPILE NOTE (per the tear instruction): the .erl comment truings were
+recompiled (erlc, same toolchain as the environment record) and the committed
+.beam is the recompiled artifact at the sha256 above. Red re-proven at the
+recompiled bytes: 10/10 exit 139 as inventoried. Green re-proven at the
+recompiled bytes: 25,000 iterations, exit Normal, real 101.59 s, maximum
+resident set size 542,146,560 bytes (~517 MiB; the earlier green measured
+934 MB — peak RSS varies run to run; both bounded, neither growing).
+
+Sparse-negative runs (encode_gc_repro_badarg.beam): unchanged — that fixture
+was not edited and its committed runs stand.

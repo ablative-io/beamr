@@ -20,39 +20,52 @@ GC release-walk defect (REVIEW-23-07, fixed in beamr **0.16.2**), proven
 versions in committed lockfiles, not checked-out source.
 
 - **RED** — `red/` (beamr `=0.16.0`, checksum `2e6413f8…`): deterministic
-  crash, 7/7 runs (4 release, plus debug), in under 10 ms, at the first
-  minor collections. See `runs/red-runs.txt`.
+  crash at the committed fixture bytes, **10/10 runs** (6 debug, 3
+  release, 1 timed release at real 0.00 s), at the first minor
+  collections. Full run inventory, including the five pre-commit-variant
+  runs the first commit miscounted as "7/7": `runs/corrections-2026-07-24.txt`.
 - **GREEN** — `green/` (beamr `=0.16.2`, checksum `c4860a45…`): the same
   harness body and fixture complete all 25,000 iterations, exit
-  `Normal`, in ~103 s, **maximum resident set 934 MB** against ~1.9 GB of
-  cumulative fresh-ProcBin churn — bounded, flat memory. The green leg
-  covers **both** production symptoms: no crash AND no unbounded
-  residency. See `runs/green-run.txt`.
+  `Normal`, in ~102 s, **maximum resident set 542 MB** at the committed
+  bytes (934 MB on the pre-truing compile — peak RSS varies run to run;
+  both bounded, neither growing) against ~1.9 GB of cumulative
+  fresh-ProcBin churn. The green leg covers **both** production
+  symptoms: no crash AND no unbounded residency. See
+  `runs/green-run.txt` and the corrections record.
 
 ## The backtrace ties expression to mechanism at the locked artifact
 
-`runs/red-segv-backtrace.txt` (macOS crash report, debug-build run, same
-lock): the fault is `EXC_BAD_ACCESS / KERN_INVALID_ADDRESS at 0x21` with
-**`x2 = 0x19`** — the atom `false` raw encoding — live as the pointer being
-dereferenced (`0x21` = `0x19` + the 8-byte offset of `Vec::len`'s field).
-The frames, innermost out:
+Two captures, both debug-build at the 0.16.0 lock, IDENTICAL fault and
+walk: `EXC_BAD_ACCESS / KERN_INVALID_ADDRESS at 0x21` with the atom
+`false` raw encoding **`0x19`** live in a register as the pointer being
+dereferenced (`0x21` = `0x19` + the 8-byte offset of `Vec::len`'s field),
+frames innermost-out:
 
 ```
 Vec::len
 release_proc_bin_arc                      ← the misread release
 release_refcounted_resources_in_young
 HeapRegion::visit_allocated_boxed_objects ← the word[0]-inference visitor
-minor::collect ← ensure_space ← alloc_binary
-bif_json_encode_binary                    ← the production entry point
+minor::collect ← ensure_space ← …
 ```
 
-The crash fires **inside `json:encode_binary`** — the exact BIF that
-badarg'd on the crash host — when its result allocation triggers a minor
-GC whose release walk misreads a `[false | _]` cons at an allocation start
-as a ProcBin and dereferences the atom's raw value as an `Arc` data
-pointer. This retires the objection that production's badarg might have
-been a different 0.16.0 bug: expression and mechanism are recorded fact at
-the locked artifact.
+- `runs/red-segv-backtrace-trued-bytes.txt` — **at the committed fixture
+  bytes** (sha256 in the file): the triggering collection enters from the
+  fixture's bytecode binary construction (`bs_init_or_create` →
+  `allocate_binary`) — building the very report strings the encode
+  consumes; 5/5 classified crashes at these bytes trigger there,
+  deterministically.
+- `runs/red-segv-backtrace.txt` — from a pre-commit fixture variant
+  (provenance disclosed in the corrections record): the same walk faults
+  with `…ensure_space ← alloc_binary ← bif_json_encode_binary` — the
+  collection triggered **inside `json:encode_binary`**, the exact BIF
+  that badarg'd on the crash host.
+
+Together: the misread walk and fault signature are byte-identical across
+fixture layouts; only the collection's entry point moves with layout —
+one more face of the layout-luck reading below. The walk-naming frames
+retire the objection that production's badarg might have been a
+different 0.16.0 bug: mechanism is recorded fact at the locked artifact.
 
 ## Expression difference, stated plainly (ruling of record: Artemis, 2026-07-23)
 
@@ -113,6 +126,17 @@ pinning, that is its own investigation with its own justification.
 (cd red   && cargo build --release && ./target/release/encode-gc-repro-red   ../fixture/encode_gc_repro.beam)
 (cd green && cargo build --release && ./target/release/encode-gc-repro-green ../fixture/encode_gc_repro.beam)
 ```
+
+## Forward-only corrections (2026-07-24, mid-tear)
+
+Four findings by the domain owner mid-tear plus one self-caught
+provenance finding were corrected in forward-only commits — run counts
+trued, fixture and harness comments trued to the SEGV record, the
+committed backtrace re-captured at the committed bytes, red re-proven
+10/10 and green re-proven at the recompiled fixture. The complete
+correction record, including the full run inventory by fixture bytes:
+`runs/corrections-2026-07-24.txt`. Prior committed run files are not
+rewritten; where their claims were stale, that record supersedes them.
 
 ## Environment (recorded at run time, 2026-07-24 AEST)
 

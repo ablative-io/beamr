@@ -1,0 +1,67 @@
+# SEGV backtrace — red leg (beamr =0.16.0 registry-locked), debug build,
+# at the COMMITTED (trued, recompiled) fixture bytes,
+# sha256(encode_gc_repro.beam) = 4fd36e2de339dc4287afaf0233fa7375080d84648cd09850f56ed450bbb3f720
+# Source: macOS crash report encode-gc-repro-red 2026-07-24 07:48:46.00 +1000
+# Extracted from encode-gc-repro-red-2026-07-24-074846.ips (full .ips retained on the runner box)
+
+exception: {
+  "codes": "0x0000000000000001, 0x0000000000000021",
+  "rawCodes": [
+    1,
+    33
+  ],
+  "type": "EXC_BAD_ACCESS",
+  "signal": "SIGSEGV",
+  "subtype": "KERN_INVALID_ADDRESS at 0x0000000000000021"
+}
+
+faulting thread frames (top 24):
+   0  beamr::process::heap::HeapRegion::visit_allocated_boxed_objects::h2175220c1f23106d  (encode-gc-repro-red)
+   1  beamr::gc::minor::collect::h4f686f9928f24f21  (encode-gc-repro-red)
+   2  beamr::gc::ensure_space::h83b8588a4c00d6fa  (encode-gc-repro-red)
+   3  beamr::interpreter::opcodes::binary::construction::segments::allocate_binary::hcca600a19ef5fc8f  (encode-gc-repro-red)
+   4  beamr::interpreter::opcodes::binary::construction::bs_init_or_create::h633b1c9f4c1af94c  (encode-gc-repro-red)
+   5  beamr::interpreter::run_loop::h0c93c7fc3eecf0fd  (encode-gc-repro-red)
+   6  beamr::scheduler::execution::core::execute_slice_with_budget::h281fdc2542528967  (encode-gc-repro-red)
+   7  beamr::scheduler::execution::core::run_process::ha8404065463df4b2  (encode-gc-repro-red)
+   8  beamr::scheduler::execution::scheduler_loop::hf124c99c24b91557  (encode-gc-repro-red)
+   9  std::sys::backtrace::__rust_begin_short_backtrace::h78db2760500206f4  (encode-gc-repro-red)
+  10  core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::hda4d5aad583d6cf2  (encode-gc-repro-red)
+  11  _RNvNvMs0_NtNtNtCsg55jX0GwzBC_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (encode-gc-repro-red)
+  12  _pthread_start  (libsystem_pthread.dylib)
+  13  thread_start  (libsystem_pthread.dylib)
+
+register state (arm64 x0-x28):
+  x0  = 0x00000000000000cc
+  x1  = 0x0000000173999d38
+  x2  = 0x0000000000000008
+  x3  = 0xfffff0007fc00000
+  x4  = 0xfffff0007fc00000
+  x5  = 0x0000000000000000
+  x6  = 0x0000000bfd0dc250
+  x7  = 0xfffff0003ffff800
+  x8  = 0x0000000000000011
+  x9  = 0x0000000000000001
+  x10 = 0x0000000000000019
+  x11 = 0x00000000fffffffb
+  x12 = 0x0000000000000080
+  x13 = 0x000000010182b100
+  x14 = 0xaeaca4a3ce488ead
+  x15 = 0x000000010182b100
+  x16 = 0xfd86cf38b4478a50
+  x17 = 0x000000001500a066
+  x18 = 0x0000000000000000
+  x19 = 0x0000000173999e78
+  x20 = 0x00000000000000e9
+  x21 = 0x0000000bfcc80480
+  x22 = 0x000000000000eb26
+  x23 = 0x000000010182ab90
+  x24 = 0x0000000173999df0
+  x25 = 0xffffffffffffffff
+  x26 = 0x0000000bfcc80430
+  x27 = 0x000000010182b1f0
+  x28 = 0x0000000000004f00
+  lr  = 0x0000000100b15f88
+  sp  = 0x0000000173999d50
+  pc  = 0x0000000100b15f50
+  fp  = 0x0000000173999db0

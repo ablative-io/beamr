@@ -10,8 +10,10 @@
 // processes and calls no engine NIFs.
 //
 // Exit codes: 0 = fixture completed (green), 2 = fixture process exited
-// abnormally (red: the reason prints, badarg expected), 3 = harness
-// setup failure (not evidence).
+// abnormally with the VM intact (reason prints), 3 = harness setup
+// failure (not evidence). The committed red never reaches any of these:
+// at 0.16.0 the process dies by SIGSEGV (shell reports 139) inside the
+// encode's collection, before completion output — see the run record.
 
 use std::sync::Arc;
 

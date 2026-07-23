@@ -17,10 +17,13 @@
 %% so promoted false-headed conses are present for old-generation walks
 %% as well as young.
 %%
-%% The fixture never catches: a badarg crashes the process and the
-%% harness reports the exit reason. RED (0.16.0-locked) = abnormal exit,
-%% badarg, partway through the loop. GREEN (0.16.2-locked) = normal exit
-%% returning {completed, N}.
+%% The fixture never catches; any failure surfaces raw. RED
+%% (0.16.0-locked), as the committed runs prove: the process DIES BY
+%% SIGSEGV inside the encode's own collection — the fatal expression of
+%% the misread walk (see runs/red-segv-backtrace*.txt), not production's
+%% badarg face; the run record carries the ruled reading of that
+%% difference. GREEN (0.16.2-locked) = normal exit returning
+%% {completed, N, AccLen}.
 -module(encode_gc_repro).
 -export([main/0, main/1]).
 
@@ -44,12 +47,15 @@ loop(I, N, Acc) ->
     loop(I + 1, N, NextAcc).
 
 %% Alternating [Flag, Bin, Flag, Bin, ...] with runtime-computed false
-%% flags: in right-to-left list construction each false-headed cons is
-%% allocated immediately after a binary-headed cons, so the misread
-%% walk's zero-write lands on a binary term slot — the production
-%% expression (badarg at the encode) rather than an arbitrary-address
-%% free. The encode below is POSITIONAL and unguarded, like the real
-%% dev_report_to_json path: it trusts the shape it built.
+%% flags, AIMED at steering a misread's zero-write onto a binary term
+%% slot (the gentle, badarg-at-the-encode face). The committed runs
+%% prove the aim does NOT decide the outcome in this bool-dense shape:
+%% the fatal small-raw-neighbour face fires first and the process dies
+%% by SIGSEGV regardless (see the run record; the layout question is
+%% banked there, non-gating). The section stays because it adds
+%% bool/binary adjacency faithful to the crash payload. The encode
+%% below is POSITIONAL and unguarded, like the real dev_report_to_json
+%% path: it trusts the shape it built.
 alt_list(_I, 0) -> [];
 alt_list(I, K) ->
     [K rem 1 =:= 1, tag(I + K, <<"claim text riding beside booleans">>)
