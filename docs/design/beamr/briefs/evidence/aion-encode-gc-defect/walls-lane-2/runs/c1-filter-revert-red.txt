@@ -15,7 +15,10 @@ test gc::tests::major_release_walk_accounts_compacted_source_proc_bins_exactly .
 Caused by:
   process didn't exit successfully: `/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/target/debug/deps/beamr-a54e90cef130d868 release_walk --test-threads=1` (signal: 11, SIGSEGV: invalid memory reference)
 
-# exit status: 0
+# exit status: 0 — the CAPTURE PIPELINE's exit (the tail(1) stage), not the
+# test run's. The aggregate run above died by signal 11 (SIGSEGV) as its
+# output records; cargo reports exit 101 for a killed test binary when run
+# without the capture pipe. Trued forward-only at the domain owner's finding.
 
 # Per-wall face record (each wall run alone under the reverted filter):
 
