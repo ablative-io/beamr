@@ -1613,6 +1613,56 @@ mod tests {
     }
 
     #[test]
+    fn ets_entries_survive_the_inserting_process_gc() {
+        // C2 regression. `ets:insert` stores the caller's tuple term directly in
+        // the table (no deep copy), but the process heap is a moving copying
+        // collector: once the inserting process runs a minor GC the young words
+        // that backed the tuple are reclaimed and zeroed, leaving the table
+        // holding a dangling pointer. A later lookup then dereferences freed
+        // memory. ETS rows must be deep-copied into table-owned storage on insert
+        // and copied back on lookup so they are independent of the caller heap.
+        fn decode_row(term: Term) -> Option<(i64, i64)> {
+            let outer = Tuple::new(term)?;
+            let inner = Tuple::new(outer.get(1)?)?;
+            Some((inner.get(0)?.as_small_int()?, inner.get(1)?.as_small_int()?))
+        }
+
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let registry = Arc::new(EtsRegistry::new());
+        let public = atom_table.intern("public");
+        let set = atom_table.intern("set");
+        let mut process = Process::new(1, 512);
+
+        // Insert `{ok, {7, 8}}` — the inner `{7, 8}` is a boxed tuple living in
+        // the caller's young heap, so the stored row holds a heap pointer.
+        let tab = {
+            let mut context = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+            let tab = new_table(&mut context, &atom_table, atom_table.intern("t"), &[set, public]);
+            let inner = tuple(&mut context, &[Term::small_int(7), Term::small_int(8)]);
+            let row = tuple(&mut context, &[Term::atom(Atom::OK), inner]);
+            assert_eq!(decode_row(row), Some((7, 8)));
+            assert_eq!(bif_insert(&[tab, row], &mut context), Ok(Term::atom(Atom::TRUE)));
+            tab
+        };
+
+        // `row`/`inner` are unreachable roots, so a minor GC reclaims and zeroes
+        // the young words they occupied. `tab` is an immediate table id and
+        // survives. On the buggy code the table's stored pointer now dangles.
+        crate::gc::collect_minor(&mut process).expect("minor GC succeeds");
+
+        let mut context = context(&mut process, Arc::clone(&atom_table), registry);
+        let result = bif_lookup(&[tab, Term::atom(Atom::OK)], &mut context).expect("lookup");
+        let rows = list_terms(result);
+        assert_eq!(rows.len(), 1, "exactly one row expected");
+        assert_eq!(
+            decode_row(rows[0]),
+            Some((7, 8)),
+            "ETS row did not survive the inserting process's GC — it was stored \
+             as a raw pointer into the caller heap instead of being deep-copied"
+        );
+    }
+
+    #[test]
     fn insert_accepts_proper_list_of_tuples() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
         let registry = Arc::new(EtsRegistry::new());
