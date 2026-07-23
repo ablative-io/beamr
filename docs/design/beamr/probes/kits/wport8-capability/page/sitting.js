@@ -230,9 +230,11 @@ async function leg2Reject() {
   const tracker = makeTracker();
   const { vm } = await createPreloadedVm();
   vm.register_fetch_capability(fetchCapability([], tracker));
-  // A closed loopback port gives a deterministic connection failure with
-  // the browser's real failure detail, without external-network dependence
+  // Port 9 fails deterministically without external-network dependence
   // (a truly unroutable IP can hang for minutes — wrong for a sitting).
+  // Mechanism as observed at the 2026-07-23 official run: Chrome blocks
+  // it via its unsafe-port list (net::ERR_UNSAFE_PORT) BEFORE any
+  // connection attempt; the typed arm is the same either way.
   const target = "http://127.0.0.1:9/";
   const pid = vm.spawn(HANDLER_MODULE, "leg2_reject", JSON.stringify([target]));
   const exit = await settledExit(vm, pid, tracker, "leg2_reject");

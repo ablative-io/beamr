@@ -1,6 +1,14 @@
 # WPORT-8 ground pack — async capability adapters (fetch + KV storage)
 
-**Status:** v1 — evidence assembled, tear questions open
+**Status:** v1 — evidence assembled, tear questions open.
+**SUPERSEDED BY THE LANDED BRIEF (pointer folded 2026-07-24 at close):**
+the eight §6 tear questions were DECIDED by the domain owner's 2026-07-23
+dispositions D1-D8 and ratified as decided text in `WPORT-8.json` (same
+directory, landed at main `50d6a16`, amendments A1-A4); the build TORN
+PASS and landed at main `1f957f0`; the D5 official sitting is RUN with
+observations attached to `../probes/WPORT-8-PROBE-CAPABILITY.md`. Cite
+the brief and the probe doc for current state — this pack is frozen
+grounding evidence at its pin.
 **Author:** Osiris Yogo (beamr seat), 2026-07-23
 **Evidence pin:** `fb3efcf` (current main; carries 0.16.2)
 **Pin discipline:** every §3 citation was gathered at `fb3efcf` by a

@@ -68,8 +68,9 @@ Confirm in DevTools → Network while/after the run (this is the only
 observation the page cannot capture itself):
 
 1. **Leg 1**: exactly one request to `/probe/ok`, status 200. No repeats.
-2. **Leg 2a**: one request to `http://127.0.0.1:9/` failing at the
-   connection layer (browser shows a failed/refused request).
+2. **Leg 2a**: one request to `http://127.0.0.1:9/` failing before any
+   response (Chrome shows `net::ERR_UNSAFE_PORT` — the unsafe-port list
+   blocks it before a connection attempt; observed at the official run).
 3. **Leg 2b**: one request to `/probe/slow?ms=30000` shown **(canceled)**
    ~400 ms in — the host abort fired mid-flight; the request disappears
    from the wire without a response.
@@ -89,9 +90,10 @@ Record what you saw in the sitting observations section of the probe doc
   `kv_keys_under_prefix`, lexicographic). Includes the IndexedDB contents
   read back after settle.
 - `wport8-leg2-rejected.json` — `{error, {rejected, Detail}}` with the
-  browser's real failure text, from the refused-connection target
-  (documented in-file: a closed loopback port fails deterministically;
-  truly unroutable IPs can hang for minutes — wrong for a sitting).
+  browser's real failure text, from the port-9 target (mechanism as
+  observed: Chrome's unsafe-port list blocks it pre-connection —
+  `net::ERR_UNSAFE_PORT`; truly unroutable IPs can hang for minutes —
+  wrong for a sitting).
 - `wport8-leg2-cancelled-host-abort.json` — `{error, {cancelled, Detail}}`
   after the page's AbortController fired at 400 ms (the truing note's
   host-abort arm).
