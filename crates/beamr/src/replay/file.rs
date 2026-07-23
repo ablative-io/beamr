@@ -2,7 +2,6 @@
 use std::fmt;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use crate::atom::AtomTable;
 use crate::native::ExceptionClass;
@@ -192,7 +191,7 @@ fn decode_payload(payload: &[u8], flags: u8) -> Result<ReplayLog, ReplayLogFileE
             "trailing replay payload bytes",
         ));
     }
-    Ok(ReplayLog::from_parts(events, Arc::from(heaps), cli_result))
+    Ok(ReplayLog::from_parts(events, heaps, cli_result))
 }
 
 fn encode_event(

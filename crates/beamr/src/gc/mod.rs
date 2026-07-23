@@ -15,7 +15,10 @@ const WORD_BYTES: usize = std::mem::size_of::<u64>();
 
 #[cfg(feature = "threads")]
 use crate::io::resource::{release_fd_inner_arc, retain_fd_inner_arc};
-use crate::process::{Process, heap::HeapFull};
+use crate::process::{
+    Process,
+    heap::{Heap, HeapFull},
+};
 use crate::term::{
     Term,
     boxed::{BoxedHeader, BoxedTag},
@@ -295,6 +298,24 @@ pub(crate) fn release_refcounted_resources_in_young(
             _ => {}
         });
     process.decrease_virtual_binary_heap(unreachable_bytes);
+}
+
+/// Release every marked refcounted resource on a bare heap that has no
+/// owning process — the replay loader's decoded scratch heaps, which never
+/// run a GC, call this from their drop so decoded ProcBin Arcs are released
+/// exactly once at the end of the log's life. Routes through the same
+/// filtered visitor as every other release walk: only allocations marked
+/// `MaybeRefcounted` are visited, and dispatch acts solely on the reported
+/// tag.
+pub(crate) fn release_all_refcounted_resources_in_heap(heap: &Heap) {
+    heap.visit_boxed_objects(|ptr, tag, _words| match tag {
+        BoxedTag::ProcBin => {
+            release_proc_bin_arc(ptr);
+        }
+        #[cfg(feature = "threads")]
+        BoxedTag::FdResource => release_fd_inner_arc(ptr),
+        _ => {}
+    });
 }
 
 pub(crate) fn release_all_refcounted_resources(process: &mut Process) {

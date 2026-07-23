@@ -15,8 +15,25 @@ use crate::timer::{ExpiredTimer, TimerRef};
 #[derive(Clone, Debug, Default)]
 pub struct ReplayLog {
     events: Arc<[ReplayEvent]>,
-    decoded_heaps: Arc<[Heap]>,
+    decoded_heaps: Arc<DecodedHeaps>,
     cli_result: Option<CliReplayResult>,
+}
+
+/// The file loader's decoded scratch heaps, released as a unit.
+///
+/// These heaps back boxed terms inside the loaded events and never run a
+/// GC, so the drop here is the ONLY release their refcounted allocations
+/// (large decoded binaries land as leaked-Arc ProcBins) ever get. Held
+/// behind an `Arc` so log clones share one release, on the last drop.
+#[derive(Debug, Default)]
+pub(crate) struct DecodedHeaps(Vec<Heap>);
+
+impl Drop for DecodedHeaps {
+    fn drop(&mut self) {
+        for heap in &self.0 {
+            crate::gc::release_all_refcounted_resources_in_heap(heap);
+        }
+    }
 }
 
 impl PartialEq for ReplayLog {
@@ -60,7 +77,7 @@ impl ReplayLog {
     pub fn new(events: Vec<ReplayEvent>) -> Self {
         Self {
             events: Arc::from(events),
-            decoded_heaps: Arc::from(Vec::new()),
+            decoded_heaps: Arc::default(),
             cli_result: None,
         }
     }
@@ -70,7 +87,7 @@ impl ReplayLog {
     pub fn with_cli_result(events: Vec<ReplayEvent>, output: String, exit_code: u8) -> Self {
         Self {
             events: Arc::from(events),
-            decoded_heaps: Arc::from(Vec::new()),
+            decoded_heaps: Arc::default(),
             cli_result: Some(CliReplayResult::new(output, exit_code)),
         }
     }
@@ -80,12 +97,12 @@ impl ReplayLog {
     #[cfg(all(feature = "net", feature = "fs"))]
     pub(crate) fn from_parts(
         events: Vec<ReplayEvent>,
-        decoded_heaps: Arc<[Heap]>,
+        decoded_heaps: Vec<Heap>,
         cli_result: Option<CliReplayResult>,
     ) -> Self {
         Self {
             events: Arc::from(events),
-            decoded_heaps,
+            decoded_heaps: Arc::new(DecodedHeaps(decoded_heaps)),
             cli_result,
         }
     }
@@ -105,7 +122,7 @@ impl ReplayLog {
     /// Return the number of decoded heaps retained for boxed terms.
     #[must_use]
     pub fn decoded_heap_count(&self) -> usize {
-        self.decoded_heaps.len()
+        self.decoded_heaps.0.len()
     }
 
     /// Return the number of recorded events.

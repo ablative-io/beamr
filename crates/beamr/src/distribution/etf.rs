@@ -735,7 +735,14 @@ fn alloc_binary_term(heap: &mut Heap, bytes: &[u8]) -> Result<Term, DecodeError>
     let slice = heap
         .alloc_slice(words)
         .map_err(|_| DecodeError::HeapAllocationFailed)?;
-    alloc_binary(slice, bytes).ok_or(DecodeError::HeapAllocationFailed)
+    let term = alloc_binary(slice, bytes).ok_or(DecodeError::HeapAllocationFailed)?;
+    // Large binaries land as a refcounted ProcBin; mark the allocation so a
+    // release walk over this heap drops its Arc. (Small inline binaries are
+    // marked too; the walk reads their Binary tag and skips them.) The replay
+    // loader's scratch heaps depend on this mark: they never GC, so the
+    // drop-time release walk is the only release those Arcs ever get.
+    heap.mark_last_young_allocation_maybe_refcounted();
+    Ok(term)
 }
 
 fn alloc_bigint_term(heap: &mut Heap, negative: bool, limbs: &[u64]) -> Result<Term, DecodeError> {
