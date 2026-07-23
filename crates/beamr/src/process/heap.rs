@@ -223,6 +223,26 @@ impl HeapRegion {
             }
         }
     }
+
+    /// Visit every allocation whose first word parses as a boxed header,
+    /// regardless of [`AllocKind`]. A headerless cons cell whose head word
+    /// aliases a boxed tag is misreported here, so this walk is for
+    /// display/inspection only — it must never drive resource release.
+    fn visit_allocated_boxed_objects_unfiltered(
+        &self,
+        mut visit: impl FnMut(*const u64, BoxedTag, usize),
+    ) {
+        for allocation in &self.allocations {
+            let ptr = self.words.as_ptr().wrapping_add(allocation.offset);
+            let header = self.words[allocation.offset];
+            if let Some(tag) = BoxedHeader::tag(header) {
+                let object_words = 1 + BoxedHeader::size(header);
+                if object_words <= allocation.words {
+                    visit(ptr, tag, object_words);
+                }
+            }
+        }
+    }
 }
 
 /// Generational bump allocator for one process heap.
@@ -432,6 +452,19 @@ impl Heap {
     pub(crate) fn visit_boxed_objects(&self, mut visit: impl FnMut(*const u64, BoxedTag, usize)) {
         self.young.visit_allocated_boxed_objects(&mut visit);
         self.old.visit_allocated_boxed_objects(visit);
+    }
+
+    /// Header-sniffing census of both regions for debugger display. Unlike
+    /// [`Heap::visit_boxed_objects`], this ignores [`AllocKind`], so a cons
+    /// cell whose head aliases a boxed tag can be misreported — never use this
+    /// walk for resource release.
+    pub(crate) fn visit_boxed_objects_for_inspection(
+        &self,
+        mut visit: impl FnMut(*const u64, BoxedTag, usize),
+    ) {
+        self.young
+            .visit_allocated_boxed_objects_unfiltered(&mut visit);
+        self.old.visit_allocated_boxed_objects_unfiltered(visit);
     }
 
     pub(crate) fn rebase_snapshot_terms(&mut self, original: &Heap) {

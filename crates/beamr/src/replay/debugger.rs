@@ -347,7 +347,7 @@ impl ReplayDebugger {
     pub fn inspect_heap(&self) -> HeapInspection {
         let heap = self.process.heap();
         let mut boxed_objects_by_tag = BTreeMap::new();
-        heap.visit_boxed_objects(|_ptr, tag, _words| {
+        heap.visit_boxed_objects_for_inspection(|_ptr, tag, _words| {
             *boxed_objects_by_tag.entry(format!("{tag:?}")).or_insert(0) += 1;
         });
         HeapInspection {
