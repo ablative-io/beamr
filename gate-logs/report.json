@@ -1,0 +1,69 @@
+{
+  "schema": "gate-report/v1",
+  "repo": "beamr",
+  "commit_sha": "069c93213e8a7e1eb424763112a2dac8487b00c8",
+  "tree_sha": "21ef64028abe67a13dd1c8addd0eaf9ea9adfb9e",
+  "branch": "main",
+  "dirty": false,
+  "untracked_count": 1,
+  "toolchain": {
+    "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+    "cargo": "cargo 1.94.1 (29ea6fb6a 2026-03-24)"
+  },
+  "host": "Annabels-MacBook-Pro.local",
+  "started_at": "2026-07-23T00:12:53Z",
+  "finished_at": "2026-07-23T00:15:35Z",
+  "duration_s": 162.301,
+  "concurrent_cargo_at_start": [],
+  "legs": [
+    {
+      "name": "fmt",
+      "cmd": "cargo fmt --all --check",
+      "kind": "check",
+      "exit": 0,
+      "duration_s": 1.583,
+      "log": "gate-logs/fmt.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tests": null,
+      "failures": []
+    },
+    {
+      "name": "clippy",
+      "cmd": "cargo clippy --workspace --all-targets -- -D warnings",
+      "kind": "check",
+      "exit": 0,
+      "duration_s": 33.651,
+      "log": "gate-logs/clippy.log",
+      "log_sha256": "3a1d00ce4256143b694d377fa2943405a408ab26aa6b473a74d16a1343e82de0",
+      "tests": null,
+      "failures": []
+    },
+    {
+      "name": "wasm32-check",
+      "cmd": "cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked",
+      "kind": "check",
+      "exit": 0,
+      "duration_s": 0.204,
+      "log": "gate-logs/wasm32-check.log",
+      "log_sha256": "2b34696728dc82b03cbf6311d7e3a6a41658bbde097834c3010a78bc82842c1a",
+      "tests": null,
+      "failures": []
+    },
+    {
+      "name": "tests",
+      "cmd": "cargo test --workspace",
+      "kind": "cargo-test",
+      "exit": 0,
+      "duration_s": 126.86,
+      "log": "gate-logs/tests.log",
+      "log_sha256": "3112f63013b862fa8ea682ad0eeb645966914e8cefdca2ebb26a2d9439a7386b",
+      "tests": {
+        "suites": 69,
+        "passed": 1986,
+        "failed": 0
+      },
+      "failures": []
+    }
+  ],
+  "verdict": "green"
+}
