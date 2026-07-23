@@ -374,3 +374,29 @@ pub(super) fn set_badarg(process: &mut Process) {
         stacktrace: Term::NIL,
     }));
 }
+
+#[cfg(test)]
+mod gc_release_tests {
+    use super::*;
+    use crate::term::boxed::ProcBin;
+
+    #[test]
+    fn large_extracted_binary_is_released_by_minor_gc() {
+        let mut process = Process::new(1, 32);
+        let bytes = vec![0x6B; 4096];
+
+        let term = allocate_binary(&mut process, &bytes).expect("binary allocates");
+        let observer = ProcBin::new(term)
+            .expect("a large extracted binary lands as a refc binary")
+            .shared_binary();
+        assert_eq!(observer.ref_count(), 2);
+
+        crate::gc::collect_minor(&mut process).expect("minor GC succeeds");
+
+        assert_eq!(
+            observer.ref_count(),
+            1,
+            "GC must release the extracted binary's shared-bytes Arc"
+        );
+    }
+}

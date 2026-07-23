@@ -284,3 +284,29 @@ fn heap_alloc_binary(process: &mut Process, bytes: &[u8]) -> Option<Term> {
     let heap = process.heap_mut().alloc_slice(word_count).ok()?;
     crate::term::shared_binary::alloc_binary(heap, bytes)
 }
+
+#[cfg(test)]
+mod gc_release_tests {
+    use super::*;
+    use crate::term::boxed::ProcBin;
+
+    #[test]
+    fn large_io_result_binary_is_released_by_minor_gc() {
+        let mut process = Process::new(1, 32);
+        let bytes = vec![0x5A; 4096];
+
+        let term = heap_alloc_binary(&mut process, &bytes).expect("binary allocates");
+        let observer = ProcBin::new(term)
+            .expect("a large io binary lands as a refc binary")
+            .shared_binary();
+        assert_eq!(observer.ref_count(), 2);
+
+        crate::gc::collect_minor(&mut process).expect("minor GC succeeds");
+
+        assert_eq!(
+            observer.ref_count(),
+            1,
+            "GC must release the io binary's shared-bytes Arc"
+        );
+    }
+}
