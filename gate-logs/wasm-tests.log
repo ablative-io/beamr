@@ -1,7 +1,60 @@
 wasm-bindgen-test-runner 0.2.123
-   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr)
-   Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/wport8-build/crates/beamr-wasm)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.22s
+   Compiling cfg-if v1.0.4
+   Compiling unicode-ident v1.0.24
+   Compiling once_cell v1.21.4
+   Compiling serde_core v1.0.228
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-core v0.3.32
+   Compiling futures-task v0.3.32
+   Compiling slab v0.4.12
+   Compiling rand_core v0.10.1
+   Compiling serde_json v1.0.150
+   Compiling crossbeam-utils v0.8.21
+   Compiling zmij v1.0.21
+   Compiling simd-adler32 v0.3.9
+   Compiling smallvec v1.15.1
+   Compiling autocfg v1.5.1
+   Compiling itoa v1.0.18
+   Compiling memchr v2.8.1
+   Compiling wasm-bindgen-shared v0.2.123
+   Compiling adler2 v2.0.1
+   Compiling futures-util v0.3.32
+   Compiling libm v0.2.16
+   Compiling scopeguard v1.2.0
+   Compiling chacha20 v0.10.0
+   Compiling crc32fast v1.5.0
+   Compiling parking_lot_core v0.9.12
+   Compiling miniz_oxide v0.8.9
+   Compiling wasm-bindgen v0.2.123
+   Compiling lock_api v0.4.14
+   Compiling camino v1.2.2
+   Compiling hashbrown v0.14.5
+   Compiling ecow v0.2.6
+   Compiling crossbeam-queue v0.3.12
+   Compiling unicode-segmentation v1.13.3
+   Compiling base64 v0.22.1
+   Compiling md5 v0.8.0
+   Compiling async-trait v0.1.89
+   Compiling wasm-bindgen-test-macro v0.3.73
+   Compiling num-traits v0.2.19
+   Compiling flate2 v1.1.9
+   Compiling gleam-types v0.4.3 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/asbytes-sweep/crates/gleam-types)
+   Compiling oorandom v11.1.5
+   Compiling wasm-bindgen-test-shared v0.2.123
+   Compiling cast v0.3.0
+   Compiling dashmap v6.2.1
+   Compiling nu-ansi-term v0.50.3
+   Compiling getrandom v0.4.2
+   Compiling rand v0.10.1
+   Compiling js-sys v0.3.100
+   Compiling serde v1.0.228
+   Compiling web-time v1.1.0
+   Compiling wasm-bindgen-futures v0.4.73
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling wasm-bindgen-test v0.3.73
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/asbytes-sweep/crates/beamr)
+   Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/asbytes-sweep/crates/beamr-wasm)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.80s
      Running unittests src/lib.rs (target/wasm32-unknown-unknown/debug/deps/beamr_wasm-f073d3a3eeda5945.wasm)
 running 80 tests
 test connection_events::tests::subscription_synthetics_are_subscriber_local_and_unsubscribe_stops_delivery ... ok
@@ -85,7 +138,7 @@ test failure::tests::failure_leg_slug_set_is_closed_and_exact ... ok
 test failure::tests::failure_callback_fires_exactly_once_at_first_failure ... ok
 test failure::tests::deadline_late_fire_wake_failure_reaches_both_surfaces ... ok
 
-test result: ok. 80 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.40s
+test result: ok. 80 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.38s
 
      Running tests/generated_bootstrap.rs (target/wasm32-unknown-unknown/debug/deps/generated_bootstrap-99f5bef8fc00ff28.wasm)
 no tests to run!
