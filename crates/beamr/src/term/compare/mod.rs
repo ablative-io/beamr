@@ -8,7 +8,7 @@ use super::pid_ref::PidRef;
 use super::reference_ref::ReferenceRef;
 use super::{
     Term,
-    bigint_math::BigIntValue,
+    bigint_math::{BigIntValue, cmp_abs},
     binary_ref::BinaryRef,
     boxed::{BigInt, Closure, Cons, Float, Map, Tuple},
 };
@@ -28,28 +28,35 @@ pub(crate) fn exact_cmp(left: Term, right: Term) -> Ordering {
 
 /// Compares two terms using Erlang `==` semantics.
 ///
-/// Integer/float pairs compare after converting the integer to `f64`; all
-/// non-numeric pairs use exact equality.
+/// Numeric pairs compare by value across small integers, bignums and floats.
+/// Mixed integer/float pairs compare after converting the integer operand to
+/// `f64`, which matches the conversion [`compare_numbers`] uses so `==` and the
+/// ordering operators agree. All non-numeric pairs use exact equality.
 #[must_use]
 pub fn numeric_eq(left: Term, right: Term) -> bool {
     match (number_value(left), number_value(right)) {
+        (Some(NumberValue::SmallInt(left)), Some(NumberValue::SmallInt(right))) => left == right,
         (Some(NumberValue::SmallInt(left)), Some(NumberValue::Float(right))) => {
             left as f64 == right
+        }
+        (Some(NumberValue::SmallInt(left)), Some(NumberValue::BigInt(right))) => {
+            BigIntValue::from_i64(left) == right
         }
         (Some(NumberValue::Float(left)), Some(NumberValue::SmallInt(right))) => {
             left == right as f64
         }
-        (Some(NumberValue::SmallInt(left)), Some(NumberValue::SmallInt(right))) => left == right,
         (Some(NumberValue::Float(left)), Some(NumberValue::Float(right))) => left == right,
-        (Some(NumberValue::SmallInt(left_value)), None) => BigIntValue::from_term(right)
-            .is_some_and(|right_value| BigIntValue::from_i64(left_value) == right_value),
-        (None, Some(NumberValue::SmallInt(right_value))) => BigIntValue::from_term(left)
-            .is_some_and(|left_value| left_value == BigIntValue::from_i64(right_value)),
-        (None, None) => match (BigIntValue::from_term(left), BigIntValue::from_term(right)) {
-            (Some(left_value), Some(right_value)) => left_value == right_value,
-            _ => exact_eq(left, right),
-        },
-        _ => exact_eq(left, right),
+        (Some(NumberValue::Float(left)), Some(NumberValue::BigInt(right))) => {
+            left == bigint_value_to_f64(&right)
+        }
+        (Some(NumberValue::BigInt(left)), Some(NumberValue::SmallInt(right))) => {
+            left == BigIntValue::from_i64(right)
+        }
+        (Some(NumberValue::BigInt(left)), Some(NumberValue::Float(right))) => {
+            bigint_value_to_f64(&left) == right
+        }
+        (Some(NumberValue::BigInt(left)), Some(NumberValue::BigInt(right))) => left == right,
+        (None, _) | (_, None) => exact_eq(left, right),
     }
 }
 
@@ -101,10 +108,11 @@ enum TermRank {
     OtherBoxed,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 enum NumberValue {
     SmallInt(i64),
     Float(f64),
+    BigInt(BigIntValue),
 }
 
 fn rank(term: Term) -> TermRank {
@@ -136,8 +144,10 @@ fn rank(term: Term) -> TermRank {
 fn number_value(term: Term) -> Option<NumberValue> {
     if let Some(value) = term.as_small_int() {
         Some(NumberValue::SmallInt(value))
+    } else if let Some(float) = Float::new(term) {
+        Some(NumberValue::Float(float.value()))
     } else {
-        Float::new(term).map(|float| NumberValue::Float(float.value()))
+        BigInt::new(term).map(|bigint| NumberValue::BigInt(BigIntValue::from_bigint(bigint)))
     }
 }
 
@@ -275,19 +285,28 @@ fn compare_numbers(left: Term, right: Term) -> Ordering {
         (Some(NumberValue::SmallInt(left)), Some(NumberValue::Float(right))) => {
             compare_f64(left as f64, right)
         }
+        (Some(NumberValue::SmallInt(left)), Some(NumberValue::BigInt(right))) => {
+            compare_small_int_to_bigint_value(left, &right)
+        }
         (Some(NumberValue::Float(left)), Some(NumberValue::SmallInt(right))) => {
             compare_f64(left, right as f64)
         }
         (Some(NumberValue::Float(left)), Some(NumberValue::Float(right))) => {
             compare_f64(left, right)
         }
-        (Some(NumberValue::SmallInt(left)), None) => compare_small_int_to_bigint(left, right),
-        (None, Some(NumberValue::SmallInt(right))) => {
-            compare_small_int_to_bigint(right, left).reverse()
+        (Some(NumberValue::Float(left)), Some(NumberValue::BigInt(right))) => {
+            compare_f64(left, bigint_value_to_f64(&right))
         }
-        (Some(NumberValue::Float(left)), None) => compare_f64(left, bigint_to_f64(right)),
-        (None, Some(NumberValue::Float(right))) => compare_f64(bigint_to_f64(left), right),
-        (None, None) => compare_bigints(left, right),
+        (Some(NumberValue::BigInt(left)), Some(NumberValue::SmallInt(right))) => {
+            compare_small_int_to_bigint_value(right, &left).reverse()
+        }
+        (Some(NumberValue::BigInt(left)), Some(NumberValue::Float(right))) => {
+            compare_f64(bigint_value_to_f64(&left), right)
+        }
+        (Some(NumberValue::BigInt(left)), Some(NumberValue::BigInt(right))) => {
+            compare_bigint_values_owned(&left, &right)
+        }
+        (None, _) | (_, None) => compare_bigints(left, right),
     }
 }
 
@@ -340,21 +359,6 @@ fn compare_bigint_values(left: BigInt, right: BigInt) -> Ordering {
     }
 }
 
-fn compare_small_int_to_bigint(left: i64, right: Term) -> Ordering {
-    let Some(right) = BigInt::new(right) else {
-        return Ordering::Less;
-    };
-    let right_limbs = normalized_limbs(right);
-    let right_negative = right.is_negative() && !right_limbs.is_empty();
-
-    match (left.is_negative(), right_negative) {
-        (true, false) => Ordering::Less,
-        (false, true) => Ordering::Greater,
-        (false, false) => compare_small_magnitude(left.unsigned_abs(), right_limbs),
-        (true, true) => compare_small_magnitude(left.unsigned_abs(), right_limbs).reverse(),
-    }
-}
-
 fn compare_small_magnitude(left: u64, right_limbs: &[u64]) -> Ordering {
     match right_limbs.len().cmp(&1) {
         Ordering::Less => left.cmp(&0),
@@ -379,20 +383,41 @@ fn normalized_limbs(bigint: BigInt) -> &'static [u64] {
     &limbs[..significant_len]
 }
 
-fn bigint_to_f64(term: Term) -> f64 {
-    let Some(bigint) = BigInt::new(term) else {
-        return f64::NAN;
-    };
-
-    let mut value = 0.0_f64;
-    for limb in normalized_limbs(bigint).iter().rev() {
-        value = value.mul_add(18_446_744_073_709_551_616.0, *limb as f64);
+fn bigint_value_to_f64(value: &BigIntValue) -> f64 {
+    let mut result = 0.0_f64;
+    for limb in value.limbs().iter().rev() {
+        result = result.mul_add(18_446_744_073_709_551_616.0, *limb as f64);
     }
 
-    if bigint.is_negative() && value != 0.0 {
-        -value
+    if value.is_negative() && result != 0.0 {
+        -result
     } else {
-        value
+        result
+    }
+}
+
+/// Compares a small integer against an owned bigint value by sign and magnitude.
+fn compare_small_int_to_bigint_value(small: i64, big: &BigIntValue) -> Ordering {
+    let big_negative = big.is_negative();
+
+    match (small.is_negative(), big_negative) {
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (false, false) => compare_small_magnitude(small.unsigned_abs(), big.limbs()),
+        (true, true) => compare_small_magnitude(small.unsigned_abs(), big.limbs()).reverse(),
+    }
+}
+
+/// Compares two owned bigint values by sign and magnitude.
+fn compare_bigint_values_owned(left: &BigIntValue, right: &BigIntValue) -> Ordering {
+    let left_negative = left.is_negative();
+    let right_negative = right.is_negative();
+
+    match (left_negative, right_negative) {
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (false, false) => cmp_abs(left.limbs(), right.limbs()),
+        (true, true) => cmp_abs(left.limbs(), right.limbs()).reverse(),
     }
 }
 
