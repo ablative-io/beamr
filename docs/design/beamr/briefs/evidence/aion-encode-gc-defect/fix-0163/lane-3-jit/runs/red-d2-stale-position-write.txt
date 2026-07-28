@@ -1,0 +1,23 @@
+# AION-ENCODE-GC-DEFECT 0.16.3 backport lane 3 — D2 red: stale position write-back observed at the bytes
+# tree: f7d0372 (trued walls) + the site-12/sibling own-then-allocate fix applied, position
+# write-back still POST-allocation (the intermediate state this record exists to pin)
+# command: cargo test -p beamr --lib
+# exit status (cargo test itself): 101
+# WHAT THIS SHOWS: the inline wall is green (site 12 fixed), but the ProcBin wall reds with a
+# SINGLE-BYTE corruption: left[16] = 176 where 16 was expected, neighbors intact. Decoded:
+# 176 = 0x10 + 0xA0 — set_position_bits(0 + 160) is a read-modify-write through the
+# PRE-collection match-context pointer; after the collection that address is inside the
+# freshly allocated result binary, so the helper adds 160 to the result's own data word.
+# D2 is therefore a WILD HEAP WRITE into reallocated memory, not merely a lost position
+# update. Fixed in-lane by advancing the position BEFORE the allocation (write through the
+# still-valid pointer); the argument-staleness root shape (D3) remains routed to RF-006.
+# captured: 2026-07-28 at the build seat (Osiris Yogo)
+
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection ... ok
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection ... FAILED
+---- jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection stdout ----
+thread 'jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection' (1868168) panicked at crates/beamr/src/jit/runtime_binary_match.rs:492:9:
+  left: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 176, 17, 18, 19]
+ right: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection
+test result: FAILED. 1738 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.20s

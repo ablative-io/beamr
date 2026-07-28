@@ -1,0 +1,9 @@
+# AION-ENCODE-GC-DEFECT 0.16.3 backport lane 3 — green run: site 12 + sibling + D2 consumer fixed
+# tree: f7d0372 (trued walls) + this commit's fix (own-then-allocate + pre-alloc position advance)
+# command: cargo test -p beamr --lib   (FULL beamr lib suite)
+# exit status (cargo test itself): 0
+# captured: 2026-07-28 at the build seat (Osiris Yogo), post-rustfmt
+
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection ... ok
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection ... ok
+test result: ok. 1739 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.12s
