@@ -1,0 +1,14 @@
+diff --git a/crates/beamr/src/native/gate3_bifs/additional.rs b/crates/beamr/src/native/gate3_bifs/additional.rs
+index 554bc38..3b49e7c 100644
+--- a/crates/beamr/src/native/gate3_bifs/additional.rs
++++ b/crates/beamr/src/native/gate3_bifs/additional.rs
+@@ -119,8 +119,7 @@ pub fn bif_binary_part(args: &[Term], context: &mut ProcessContext) -> Result<Te
+     if end > bytes.len() {
+         return Err(badarg());
+     }
+-    let bytes = bytes[offset..end].to_vec();
+-    context.alloc_binary(&bytes)
++    context.alloc_binary(&bytes[offset..end])
+ }
+ 
+ /// erlang:bit_size/1 — returns the bit length of a binary.

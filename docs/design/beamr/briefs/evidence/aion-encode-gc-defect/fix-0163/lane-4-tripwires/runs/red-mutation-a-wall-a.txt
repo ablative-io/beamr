@@ -1,0 +1,27 @@
+# FRESH MUTATION-A RED (fwdport lane): mailbox swallow-HeapFull mutation applied to clean c510376 tree
+# mutation applied transiently for this run ONLY — never committed
+# toolchain: rustc 1.97.1 (8bab26f4f 2026-07-14)
+# cmd: cargo test -p beamr --lib message_copy_is_bump_only
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fwdport-0163-main/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.13s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test mailbox::tests::message_copy_is_bump_only_heap_full_is_send_error_not_collection ... FAILED
+
+failures:
+
+---- mailbox::tests::message_copy_is_bump_only_heap_full_is_send_error_not_collection stdout ----
+
+thread 'mailbox::tests::message_copy_is_bump_only_heap_full_is_send_error_not_collection' (2601322) panicked at crates/beamr/src/mailbox/mod.rs:718:14:
+a message that does not fit must surface as SendError: ()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    mailbox::tests::message_copy_is_bump_only_heap_full_is_send_error_not_collection
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1749 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p beamr --lib`
+exit=101 (expected NONZERO: wall A kills mutation A)

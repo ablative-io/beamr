@@ -1,0 +1,29 @@
+# FRESH MUTATION-B RED (fwdport lane): gate3 unowned-slice mutation applied to clean c510376 tree
+# mutation applied transiently for this run ONLY — never committed
+# toolchain: rustc 1.97.1 (8bab26f4f 2026-07-14)
+# cmd: cargo test -p beamr --lib gate3_binary_part_owned_copy
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fwdport-0163-main/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.30s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test native::stdlib_stubs::gc_rooting_tests::gate3_binary_part_owned_copy_survives_forced_collection ... FAILED
+
+failures:
+
+---- native::stdlib_stubs::gc_rooting_tests::gate3_binary_part_owned_copy_survives_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::gate3_binary_part_owned_copy_survives_forced_collection' (2603351) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:399:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    native::stdlib_stubs::gc_rooting_tests::gate3_binary_part_owned_copy_survives_forced_collection
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1749 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p beamr --lib`
+exit=101 (expected NONZERO: wall B kills mutation B)
