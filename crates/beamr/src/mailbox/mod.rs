@@ -683,6 +683,53 @@ mod tests {
         assert_eq!(mailbox.message_count(), 0);
     }
 
+    #[test]
+    fn message_copy_is_bump_only_heap_full_is_send_error_not_collection() {
+        use crate::term::binary_ref::BinaryRef;
+        use crate::term::shared_binary;
+
+        // NAMED LOAD-BEARING FACT (asbytes-sweep AUDIT.md, banked tripwire):
+        // message copy allocates via bare `Heap::alloc` — bump-only. HeapFull
+        // propagates as SendError; the copy path CANNOT collect, and bump
+        // allocation never moves existing data. The mailbox as_bytes
+        // borrow-across-alloc SAFE verdicts (copy_binary / copy_proc_bin /
+        // copy_sub_binary) rest on this fact. If message copy is ever
+        // rerouted through a collecting allocator, those sites become
+        // crossings of the audited silent-corruption class — this wall must
+        // break FIRST. A reroute needs `&mut Process` instead of
+        // `&mut Heap`, so it cannot even compile without touching this test.
+        let mut sender_heap = Heap::new(16);
+        let payload: Vec<u8> = (1..=24).collect();
+        let message = {
+            let words = alloc_words(
+                &mut sender_heap,
+                shared_binary::alloc_binary_word_count(payload.len()),
+            )
+            .expect("sender allocation fits");
+            shared_binary::alloc_binary(words, &payload).expect("sender binary")
+        };
+        let mut receiver_heap = Heap::new(4);
+        let existing = allocate_cons(&mut receiver_heap, Term::small_int(7), Term::NIL);
+        let mailbox = Mailbox::new();
+
+        let error = mailbox
+            .sender()
+            .send(message, &mut receiver_heap)
+            .expect_err("a message that does not fit must surface as SendError");
+
+        assert!(matches!(error, SendError::HeapFull(_)));
+        assert_eq!(mailbox.message_count(), 0);
+        // Nothing collected, nothing moved: no old-generation residue, the
+        // receiver's pre-existing cell intact, the sender's bytes exact.
+        assert_eq!(receiver_heap.old_used(), 0);
+        let cons = Cons::new(existing).expect("receiver data intact");
+        assert_eq!(cons.head().as_small_int(), Some(7));
+        assert_eq!(
+            BinaryRef::new(message).expect("sender binary").as_bytes(),
+            payload.as_slice()
+        );
+    }
+
     fn allocate_tuple(heap: &mut Heap, elements: &[Term]) -> Term {
         let words = alloc_words(heap, 1 + elements.len()).expect("test allocation should fit");
         boxed::write_tuple(words, elements).expect("tuple should fit")

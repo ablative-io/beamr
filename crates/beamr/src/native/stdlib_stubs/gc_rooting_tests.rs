@@ -370,6 +370,35 @@ fn string_slice_survives_forced_collection() {
     assert_eq!(result_bytes(result), b"23\xE2\x80\x94a");
 }
 
+#[test]
+fn gate3_binary_part_owned_copy_survives_forced_collection() {
+    // CONSUMER-LOAD-BEARING tripwire (asbytes-sweep AUDIT.md SAFE verdict at
+    // gate3_bifs/additional.rs; the endorsed AION-DROPSTART-HARDENING lane
+    // rerouted aion onto this variant): gate3's erlang:binary_part/3 owns its
+    // slice BEFORE the allocating call, so it stays green under exactly the
+    // geometry that reds the unfixed sites. The wall exists so a refactor
+    // that removes the owned copy breaks a test instead of a production
+    // system.
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let raw: Vec<u8> = (1..=40).collect();
+    let input = inline_input(&mut process, &raw);
+    force_collect_geometry(&mut process, 20);
+    let mut ctx = live_context(&mut process, 1, &atoms);
+    let result = super::super::gate3_bifs::bif_binary_part(
+        &[input, Term::small_int(10), Term::small_int(20)],
+        &mut ctx,
+    )
+    .expect("gate3 binary_part");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    let expected: Vec<u8> = (11..=30).collect();
+    assert_eq!(result_bytes(result), expected);
+}
+
 /// ETF payload for `[<<"aaaa">>, <<"bbbb">>]` — 25 bytes, inline (≤ 64 B),
 /// so the source lives on the young heap and moves under collection. Two
 /// binary elements make the multi-slice partial-corruption shape: the first
