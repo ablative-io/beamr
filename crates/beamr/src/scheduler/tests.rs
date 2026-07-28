@@ -3,7 +3,7 @@ use std::sync::{
     Arc, Condvar, Mutex,
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll, Waker};
 
 #[cfg(feature = "telemetry")]
 use opentelemetry::Key;
@@ -110,15 +110,8 @@ fn replay_driver_exposes_recorded_schedule_order_without_run_queue_pop() {
     scheduler.shutdown();
 }
 
-struct NoopWake;
-
-impl Wake for NoopWake {
-    fn wake(self: Arc<Self>) {}
-}
-
 fn block_on_ready(future: ResolveFuture<'_>) -> Result<std::net::SocketAddr, ResolveError> {
-    let waker = Waker::from(Arc::new(NoopWake));
-    let mut context = Context::from_waker(&waker);
+    let mut context = Context::from_waker(Waker::noop());
     let mut future = future;
     match future.as_mut().poll(&mut context) {
         Poll::Ready(result) => result,
