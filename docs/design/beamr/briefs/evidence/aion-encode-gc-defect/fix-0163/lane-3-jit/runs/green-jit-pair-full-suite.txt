@@ -1,0 +1,19 @@
+# FRESH GREEN RUN ON MAIN-LINE TREE (fwdport lane) — lane-3 fix staged over 0653809
+# toolchain: rustc 1.97.1 (8bab26f4f 2026-07-14)
+# cmd: cargo test -p beamr --lib
+running 1748 tests
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection ... ok
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::binary_part_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::binary_to_term_2_used_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::binary_to_term_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::list_append_binary_arm_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_find_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_pad_early_return_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_slice_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_split_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_trim_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::uri_dissect_query_error_detail_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::uri_parse_components_survive_forced_collection ... ok
+test result: ok. 1748 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.06s
+exit=0 (expected 0: jit pair green over fix, full lib suite)

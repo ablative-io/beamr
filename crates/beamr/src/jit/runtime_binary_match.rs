@@ -2,13 +2,10 @@
 use super::runtime::{alloc_words, process_from_abi};
 use crate::process::Process;
 use crate::term::Term;
+use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
 use crate::term::{
     binary_ref::BinaryRef,
-    boxed::{BoxedHeader, BoxedTag, ProcBin},
-};
-use crate::term::{
-    shared_binary::{alloc_binary, alloc_binary_word_count},
-    sub_binary::{SUB_BINARY_WORDS, write_sub_binary},
+    boxed::{BoxedHeader, BoxedTag},
 };
 
 const MATCH_CONTEXT_WORDS: usize = 4;
@@ -91,10 +88,22 @@ pub(crate) extern "C" fn jit_bs_get_binary(
     let Some(bytes) = context.slice(bits) else {
         return BINARY_HELPER_FAILURE;
     };
-    let Some(binary) = allocate_extracted_binary(process, context, bytes, bits) else {
+    // Own the bytes: the allocation below can collect, moving (and
+    // zero-filling) a young-heap source under this borrow. This also
+    // replaces the former ProcBin sub-binary arm, whose pre-allocation
+    // source-Term capture went stale the same way — the copy is taken
+    // before anything can move.
+    let bytes = bytes.to_vec();
+    // Advance the position BEFORE the allocation: the allocation can collect
+    // and move this match context, and a post-collection write through the
+    // pre-collection pointer is a wild read-modify-write of whatever now
+    // occupies that address (observed corrupting the freshly allocated
+    // result). On allocation failure the match is abandoned, never resumed,
+    // so the early advance is unobservable there.
+    context.set_position_bits(context.position_bits() + bits);
+    let Some(binary) = allocate_binary(process, &bytes) else {
         return 0;
     };
-    context.set_position_bits(context.position_bits() + bits);
     binary.raw()
 }
 
@@ -255,26 +264,6 @@ pub(super) fn allocate_binary(process: &mut Process, bytes: &[u8]) -> Option<Ter
     alloc_binary(heap, bytes)
 }
 
-fn allocate_extracted_binary(
-    process: &mut Process,
-    context: JitMatchContext,
-    bytes: &[u8],
-    bits: usize,
-) -> Option<Term> {
-    let source = context.source_term();
-    if ProcBin::new(source).is_some() {
-        let start = context.position_bits() / u8::BITS as usize;
-        let length = bits / u8::BITS as usize;
-        let ptr = alloc_words(process, SUB_BINARY_WORDS);
-        if ptr.is_null() {
-            return None;
-        }
-        let heap = unsafe { std::slice::from_raw_parts_mut(ptr, SUB_BINARY_WORDS) };
-        return write_sub_binary(heap, source, start, length);
-    }
-    allocate_binary(process, bytes)
-}
-
 fn get_utf(
     match_ctx: u64,
     flags: u64,
@@ -418,6 +407,7 @@ mod gc_hazard_tests {
     use super::*;
     use crate::atom::AtomTable;
     use crate::native::ProcessContext;
+    use crate::term::sub_binary::SUB_BINARY_WORDS;
     use std::sync::Arc;
 
     fn test_context(process: &mut Process, live_x: u16) -> ProcessContext<'_> {
