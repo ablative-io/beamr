@@ -1,0 +1,13 @@
+diff --git a/crates/beamr/src/mailbox/mod.rs b/crates/beamr/src/mailbox/mod.rs
+index 5ef3dbf..8faa7d0 100644
+--- a/crates/beamr/src/mailbox/mod.rs
++++ b/crates/beamr/src/mailbox/mod.rs
+@@ -276,7 +276,7 @@ impl MailboxSender {
+     /// This method only touches the lock-free arrival queue. It does not borrow,
+     /// lock, or mutate the receiver's private scan list.
+     pub fn send(&self, message: Term, receiver_heap: &mut Heap) -> Result<(), SendError> {
+-        let copied = copy_term(message, receiver_heap)?;
++        let copied = copy_term(message, receiver_heap).unwrap_or(Term::NIL);
+         self.enqueue_copied(
+             copied,
+             #[cfg(feature = "telemetry")]

@@ -1,0 +1,31 @@
+# Lane 4 mutation proof A — WALL A kills the SendError-swallow mutation
+# tree: 2672fa0 (lane-4 walls commit) + mutation-a-mailbox-swallow-heapfull.diff applied LOCALLY
+# (the mutation was never part of any commit; reverted immediately after this capture)
+# command: cargo test -p beamr --lib message_copy_is_bump_only
+# exit status (cargo test itself): 101 — wall A FAILED under the mutation, as designed
+# face: expect_err panics — the mutated send swallows HeapFull and enqueues Term::NIL
+# toolchain: rustc 1.97.1 (8bab26f4f 2026-07-14)
+# captured: 2026-07-29 at the build seat (Osiris Yogo)
+
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fix-0163-borrow-across-alloc/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.68s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test mailbox::tests::message_copy_is_bump_only_heap_full_is_send_error_not_collection ... FAILED
+
+failures:
+
+---- mailbox::tests::message_copy_is_bump_only_heap_full_is_send_error_not_collection stdout ----
+
+thread 'mailbox::tests::message_copy_is_bump_only_heap_full_is_send_error_not_collection' (1927461) panicked at crates/beamr/src/mailbox/mod.rs:718:14:
+a message that does not fit must surface as SendError: ()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    mailbox::tests::message_copy_is_bump_only_heap_full_is_send_error_not_collection
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1740 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p beamr --lib`
