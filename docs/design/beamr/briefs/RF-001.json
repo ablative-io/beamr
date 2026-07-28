@@ -1,0 +1,93 @@
+{
+  "id": "RF-001",
+  "cluster": "review-23-07-fix",
+  "title": "ETS match-spec bindings vector is sized by the raw $N index — dense slot allocation plus a hard variable cap",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": [],
+  "stories": [],
+  "purpose": "Ground: finding M9 of the 2026-07-23 whole-repository review (`docs/REVIEW-23-07.md:88`, reviewed at beamr `fd71c5e`). THIS IS THE TOP OF THE ENTIRE DISPATCH QUEUE — the most urgent unfixed finding in the review's ranked set; RF-002 and RF-003 follow it. The defect: an ETS match specification's per-clause bindings vector is allocated with a length taken from the LARGEST RAW `$N` VARIABLE INDEX that appears anywhere in the clause, so a match spec's memory cost is controlled by an integer the caller writes into an atom name rather than by the size of the spec. `ets:select(T, [{{'$100000000'}, [], ['$100000000']}])` allocates ~1.6 GB per clause evaluation; `'$4294967295'` allocates ~68 GB (`Option<Term>` is 16 bytes on the pinned target, so 4_294_967_296 slots = 68.7 GB). The allocator is infallible (`vec![None; n]`), so the outcome is either a multi-gigabyte commit or `handle_alloc_error` aborting the whole VM. Any process that can call `ets:select/2` — i.e. any process at all — can do this with a ~20-byte term, and the allocation is repeated PER OBJECT scanned, not once per call.\n\nRE-PIN AT a0359a2 (the review's line numbers were checked against current main; NO DRIFT on the cited site):\n- CITED SITE `ets/match_spec.rs:207` → STILL `crates/beamr/src/ets/match_spec.rs:207`, verbatim `let mut bindings = vec![None; clause.max_variable.saturating_add(1)];`, inside `CompiledMatchSpec::eval_with_allocator` (fn at `:200`), which is the live `ets:select` path.\n- MATERIAL FINDING — A SECOND, UNCITED INSTANCE OF THE SAME LINE: `crates/beamr/src/ets/match_spec.rs:181`, byte-identical expression inside `CompiledMatchSpec::eval` (the arena-free convenience evaluator, fn at `:177`). The review named one site; there are two. Both must be fixed or the fix is half-landed.\n- `max_variable: usize` field declared `:34`; initialised `:261`; raised by `.max(index)` at `:466` (`parse_pattern`), `:550` (`parse_guard_expr`), `:565` (`parse_body_expr`); stored `:287`.\n- `parse_variable_name` at `:651-658`: `name.strip_prefix('$')` then `digits.parse::<usize>()`, accepted when `index > 0`. Nothing bounds the parsed value. (An index that overflows `usize` fails the parse and is silently reclassified as a literal atom — same as ERTS's `db_is_variable` overflow behaviour, so that edge is already benign.)\n- ENTRY POINT: `crates/beamr/src/native/ets_bifs.rs:840`, `CompiledMatchSpec::compile(spec, atom_table.as_ref()).map_err(|_| badarg())?` inside `collect_select_results` (fn at `:832`); the per-object scan loop that re-enters `run`/`eval_with_allocator` for every stored object is `:846-857`.\n- SCOPE BOUND, VERIFIED: the `ets:match/2` variable path is NOT affected. `ets_pattern_match` (`crates/beamr/src/native/ets_bifs.rs:1016`) and `match_pattern_term` (`:1030`) bind into a `BTreeMap<usize, Term>` — sparse, keyed by raw index, no index-sized allocation. That path must not be touched by this brief.\n- IN-HOUSE PRECEDENT for hard limits as documented constants: `crates/beamr/src/loader/decode/budget.rs:4-16` (`MAX_ETF_DEPTH`, `MAX_TABLE_ENTRIES`, `MAX_ATOMS_PER_MODULE`, `DEFAULT_DECODE_NODE_BUDGET`, `DEFAULT_DECODE_BYTE_BUDGET`) — plain `const`s with doc comments, no runtime knob. This brief follows that shape.\n- REFUSAL VOCABULARY already exists and needs no new type plumbing: `MatchSpecError` (`ets/match_spec.rs:96-104`, `pub` re-exported at `ets/mod.rs:25`) is mapped wholesale to `badarg()` at the single external call site (`ets_bifs.rs:840`), which is exactly OTP's behaviour for a malformed match spec.",
+  "task": "DESIGN STANCE (decided): the DoS is removed STRUCTURALLY, not by choosing a smaller number. A cap alone is not sufficient — even a 100_000-variable cap leaves a 1.6 MB zeroed allocation per object scanned, which is a throughput attack rather than an abort. The real defect is that the bindings vector is indexed by the caller's raw `$N` instead of by a compiler-assigned slot. Fix the indexing (R2); keep a hard cap as belt-and-braces (R3).\n\nD1 RED FIRST, AND BOUNDED. The red must demonstrate the defect at the current bytes WITHOUT ever allocating gigabytes. Mechanism: a `#[cfg(test)]`-visible accessor on `CompiledMatchSpec` that reports the per-clause bindings WIDTH (the value that would be passed to `vec![None; …]`) without evaluating anything. At current bytes, compiling `[{{'$4294967295'}, [], ['$4294967295']}]` reports width 4_294_967_296 and the assertion `width <= MAX_MATCH_SPEC_VARIABLES` fails — a real bytes-red with zero bytes allocated. `eval`/`run`/`eval_with_arena`/`eval_with_allocator` MUST NOT be called with a large-index spec at any point in this brief, red or green.\n\nD2 DENSE SLOT ALLOCATION (the fix). Parsing assigns each DISTINCT raw `$N` a compact slot id; `Pattern::Variable`, `GuardExpr::Variable` and `BodyExpr::Variable` carry the SLOT, not the raw index. `MatchClause` stores the raw indices in ascending order (a `Vec<usize>`, deduped and sorted — it doubles as the slot→raw map needed by `$$`), replacing the `max_variable: usize` field. Both `vec![None; …]` sites (`:181` and `:207`) size by `variable_slots.len()`. After this, a clause's binding cost is bounded by the SIZE OF THE SPEC TERM the caller sent, which the caller already paid for — the amplification is gone.\n\nD3 `$$` ORDERING IS LOAD-BEARING AND MUST NOT MOVE. `BodyExpr::ReturnBindings` currently does `bindings.iter().skip(1).copied().flatten()` (`ets/match_spec.rs:389`): slot 0 is dead today because `parse_variable_name` rejects `$0`, and `flatten()` drops unbound holes, so the observable result is \"every bound variable, in ascending `$N` order\". Under dense slots, slot 0 is a REAL variable, so `.skip(1)` must be REMOVED — and ascending-raw-index slot assignment is what keeps the observable order identical. The existing test `return_bindings_special_body_returns_variables_by_index` (`ets/match_spec.rs:816`, head `{'$2','$1'}`, expects `[one, two]`) is the pin: it must pass UNMODIFIED. Likewise `repeated_variable_requires_exact_equality` (`:836`) pins that the same raw `$N` in two positions maps to ONE slot.\n\nD4 HARD CAP, belt-and-braces: `MAX_MATCH_SPEC_VARIABLES: usize = 4096`, a plain documented `const` in `ets/match_spec.rs` in the `budget.rs` house style, enforced at parse time on the count of DISTINCT variables, surfacing as a new `MatchSpecError` variant → `badarg` at the BIF boundary. HONESTY NOTE FOR THE DOC COMMENT AND THE HANDOFF: OTP publishes no hard `$N` ceiling — ERTS's `db_is_variable` only rejects on integer overflow and its match-spec compiler grows its variable heap on demand — so 4096 is a beamr-chosen defence-in-depth ceiling, not a mirrored OTP number. The doc comment must SAY that rather than imply an OTP provenance the builder cannot cite. The rationale to record: real match specs use single-digit variable counts; 4096 is three orders of magnitude of headroom while keeping the worst-case bindings vector at 64 KB.\n\nD5 EXHAUSTIVENESS: `MatchSpecError` is a small public `Copy` enum matched at exactly one external site (`ets_bifs.rs:840`, `map_err(|_| badarg())` — a closure, not a match), so the new variant is additive with no downstream sweep. Confirm with `cargo check --workspace --all-targets` rather than assuming; if any exhaustive match on `MatchSpecError` surfaces, extend it explicitly — no `_ =>` arm may be introduced to absorb it.\n\nOQ-A (carved, drafter's call at build, state the choice in the handoff): whether `variable_slots` is a `Vec<usize>` scanned linearly during parse (O(v²) parse for v distinct variables, trivially fine at v ≤ 4096) or a `BTreeMap<usize, usize>` built during parse and lowered to a `Vec` at clause construction. Both satisfy every acceptance; the `Vec` is fewer moving parts and is the recommendation.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "RED — the bindings width is the raw $N index, proven without allocating",
+      "spec": "Per D1: add a `#[cfg(test)]` accessor reporting each compiled clause's bindings width, and assert against it for large-index and sparse-index specs. The assertions fail at a0359a2 bytes. No evaluation of a large-index spec anywhere.",
+      "acceptance": [
+        "BOUNDED-RED CONSTRAINT (load-bearing, must hold at every commit in this lane): the red asserts on the compiled WIDTH only — `eval`, `run`, `eval_with_arena` and `eval_with_allocator` are never called with a spec whose largest `$N` exceeds `MAX_MATCH_SPEC_VARIABLES`. The red must never actually allocate the pathological vector; peak test RSS stays in the ordinary unit-test range.",
+        "Leg A: `[{{'$4294967295'}, [], ['$4294967295']}]` compiles; reported width is 4_294_967_296 at current bytes → assertion `width <= MAX_MATCH_SPEC_VARIABLES` RED. Leg B: `[{{'$1','$7'}, [], ['$$']}]` reports width 8 at current bytes → assertion `width == 2` (distinct-variable count) RED.",
+        "Leg C: a spec with `MAX_MATCH_SPEC_VARIABLES + 1` distinct variables compiles successfully at current bytes → assertion `is_err()` RED. Building this spec interns ~4097 short atoms and allocates ~4097 patterns — bounded by construction, no interaction with any atom-table ceiling.",
+        "The accessor is `#[cfg(test)]`-gated and `pub(crate)` at most — it is NOT new public API, and it performs no allocation proportional to the reported width."
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/ets/match_spec.rs"
+        ]
+      }
+    },
+    {
+      "id": "R2",
+      "title": "Dense slot allocation — bindings sized by distinct-variable count at BOTH evaluator sites",
+      "spec": "Per D2/D3: parse assigns compact slots to distinct raw `$N`; `Pattern`/`GuardExpr`/`BodyExpr` `Variable` arms carry slots; `max_variable` is replaced by an ascending `variable_slots` map; `ets/match_spec.rs:181` and `:207` size by `variable_slots.len()`; `ReturnBindings` drops `.skip(1)`.",
+      "acceptance": [
+        "BOTH `vec![None; clause.max_variable.saturating_add(1)]` occurrences are gone (grep `max_variable` returns nothing in the tree); bindings length equals the clause's distinct-variable count at both `eval` and `eval_with_allocator`.",
+        "R1 legs A and B go GREEN: width for `'$4294967295'` is 1; width for `{'$1','$7'}` is 2.",
+        "OBSERVABLE SEMANTICS BYTE-PRESERVED: every pre-existing test in `ets/match_spec.rs` passes UNMODIFIED — in particular `return_bindings_special_body_returns_variables_by_index` (`$$` ascending-`$N` order) and `repeated_variable_requires_exact_equality` (one slot per distinct raw index). Any edit to an existing assertion in that module is a STOP.",
+        "`match_pattern`'s `bindings.get_mut(slot)` out-of-range arm is retained as a defensive non-panicking fallback with a comment stating it is unreachable by construction — no `unwrap`, no indexing panic, and no `#[allow(dead_code)]` introduced to justify it.",
+        "The `ets:match/2` path (`native/ets_bifs.rs:1016`, `:1030`, `BTreeMap`-keyed) is byte-unchanged."
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/ets/match_spec.rs"
+        ]
+      }
+    },
+    {
+      "id": "R3",
+      "title": "MAX_MATCH_SPEC_VARIABLES cap and its refusal, surfacing as badarg",
+      "spec": "Per D4/D5: the documented constant, the parse-time distinct-count check, a new `MatchSpecError` variant, and the additive-only sweep confirmation.",
+      "acceptance": [
+        "`MAX_MATCH_SPEC_VARIABLES: usize = 4096` is a plain `const` with a doc comment that states the beamr-chosen provenance explicitly (OTP publishes no equivalent ceiling; ERTS bounds `$N` only by integer overflow) and records the 64 KB worst-case rationale — no runtime knob, no config surface, no environment variable.",
+        "A spec whose clause declares more than `MAX_MATCH_SPEC_VARIABLES` distinct variables is refused at COMPILE time with the new `MatchSpecError` variant; R1 leg C goes GREEN.",
+        "The refusal reaches the caller as `badarg` through the existing `ets_bifs.rs:840` mapping — `ets:select/2` with an over-cap spec raises `badarg`, matching OTP's malformed-match-spec behaviour. No new error type crosses the ETS BIF boundary.",
+        "`cargo check --workspace --all-targets` is clean with the new variant; if any exhaustive `match` on `MatchSpecError` exists it gains an explicit arm — zero `_ =>` catch-alls introduced anywhere in the lane."
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/ets/match_spec.rs"
+        ]
+      }
+    },
+    {
+      "id": "R4",
+      "title": "Permanent walls — width invariant, end-to-end select refusal, and the prohibition grep",
+      "spec": "The R1 legs become permanent walls, joined by an end-to-end `ets:select` leg through the real BIF and a grep wall that pins the sizing expression out of the tree.",
+      "acceptance": [
+        "WIDTH INVARIANT WALL: a table-driven test over sparse, repeated, huge, guard-only and body-only variable placements asserts `width == distinct_variable_count` for every case — the invariant, not just the three red cases. Includes a clause where the largest `$N` appears only in a guard and one where it appears only in the body (the `:550` and `:565` raise sites).",
+        "END-TO-END WALL through `native/ets_bifs.rs`: `ets:select/2` with a `'$4294967295'` spec against a populated table returns the correct result (the variable binds and is returned) rather than aborting — proving the fix is on the live path and not only in the parser. Bounded by construction: post-fix the bindings vector is one slot wide.",
+        "END-TO-END REFUSAL WALL: `ets:select/2` with an over-cap spec raises `badarg` at the BIF boundary.",
+        "PROHIBITION GREP (added to the lane's gate evidence): the tree contains no `vec![None; …]` whose length derives from a parsed `$N` index; `max_variable` appears nowhere.",
+        "FAIL-FIRST RECORDED: revert the R2 commit → the width-invariant wall and the end-to-end wall go red at the width/abort assert → restore. Recorded in the handoff with the exact failing assertion text."
+      ],
+      "files": {
+        "modify": [
+          "crates/beamr/src/ets/match_spec.rs",
+          "crates/beamr/src/native/ets_bifs.rs"
+        ]
+      }
+    }
+  ],
+  "boundaries": [
+    "BOUNDED RED IS ABSOLUTE: no test, probe, or scratch binary in this lane may allocate a bindings vector sized by a raw `$N` index. The defect is demonstrated by asserting the refusal/width path, never by observing an actual gigabyte allocation or an abort. A red leg that OOMs the box is a STOP, not evidence.",
+    "SCOPE: the `ets:match/2` variable path (`native/ets_bifs.rs:1016` `ets_pattern_match`, `:1030` `match_pattern_term`, `BTreeMap<usize, Term>`-keyed) is ALREADY SAFE against this defect and must be left byte-unchanged. Widening the lane to unify the two variable-binding paths is a STOP.",
+    "ADJACENT, NOT REOPENED: review finding C2 (ETS `insert` stores un-copied process-heap terms, `ets/set.rs:41` / `native/ets_bifs.rs:244`) is a separate critical brief. This lane touches match-spec variable binding only and must not alter what ETS stores or copies.",
+    "OBSERVABLE MATCH-SPEC SEMANTICS DO NOT CHANGE: `$$`, `$_`, `_`, repeated-variable exact equality, guard evaluation and body construction produce byte-identical results for every spec that is accepted today and still accepted after the cap. Every pre-existing test in `ets/match_spec.rs` must pass with its assertions unmodified.",
+    "The cap is a documented `const`, not a knob: NO new config knob, environment variable, `system_info` key, embedder setting, or per-table option. The `#[cfg(test)]` width accessor is not public API.",
+    "ZERO new `#[allow]` of any kind; no `unwrap`/`expect`/`panic!`/indexing-panic outside `cfg(test)`; no `_ =>` catch-all arms introduced to dodge an exhaustive match (`MatchSpecError`, `Pattern`, `GuardExpr`, `BodyExpr`, `AtomClass` are all exhaustively matched today and must stay that way).",
+    "`crates/beamr/src/loader/encode/**` is untouchable.",
+    "NO-POLLING: no timed retry, backoff, or spin is admissible as any part of the fix or of any wall.",
+    "Default cargo target directories only — no `CARGO_TARGET_DIR` override, no scratch target trees.",
+    "MERGE-ORDER NOTE (not a hard dependency): this lane touches no file that RF-002 or RF-003 touches. The three review-fix lanes are independently landable in any order."
+  ],
+  "verification": "PIN-SHIFT RE-VERIFY FIRST, BEFORE ANY EDIT: re-confirm at the actual build base (not at a0359a2) that `crates/beamr/src/ets/match_spec.rs:181` and `:207` both still read `let mut bindings = vec![None; clause.max_variable.saturating_add(1)];`, that `max_variable` is still raised at `:466`, `:550`, `:565`, that `parse_variable_name` at `:651` is still unbounded, and that `native/ets_bifs.rs:840` still maps `MatchSpecError` to `badarg`. Record any drift in the handoff before starting; if a site moved materially, re-scope rather than pattern-match on the old line numbers.\n\nGATE BAR — the full release battery from `gates.json` at the FINAL head, all five legs green in one sitting: (1) `cargo fmt --all --check`; (2) `cargo clippy --workspace --all-targets -- -D warnings` for BOTH closures, fresh (Compiling lines visible, no cached-clean claim); (3) `cargo test --workspace`; (4) `cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked`; (5) the wasm-tests leg (`wasm-bindgen-test-runner` + `cargo test --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked`). Plus the lane's prohibition greps from R4.\n\nFAIL-FIRST DEMONSTRATION at the final head: revert the R2 (dense-slot) commit → the R4 width-invariant wall and the end-to-end `select` wall go red at the width assertion → restore. Then revert the R3 (cap) commit → the R4 refusal wall goes red → restore. Both transcripts recorded in the handoff with exact assertion text; neither revert may be allowed to run an unbounded allocation.\n\nHANDOFF must carry: the landed `MAX_MATCH_SPEC_VARIABLES` value and its doc-comment provenance sentence, the OQ-A choice (Vec vs BTreeMap slot map), the `cargo check` sweep result for the new `MatchSpecError` variant, and the confirmed re-pinned file:lines as built."
+}
