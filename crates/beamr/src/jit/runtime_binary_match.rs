@@ -405,3 +405,99 @@ mod gc_release_tests {
         );
     }
 }
+
+// --- as_bytes borrow-across-alloc walls (0.16.3 fix lane 3, site 12 + sibling) ---
+// AUDIT.md AMENDMENT 1: `jit_bs_get_binary` borrows the source bytes via
+// `context.slice`, then allocates (collecting) before the copy — inline
+// sources are moved and zero-filled under the live borrow. The ProcBin arm
+// additionally captures the source Term before its allocation and writes the
+// stale capture into the new sub-binary after. These walls force that
+// geometry and assert the extraction's bytes; red at the unfixed base.
+#[cfg(test)]
+mod gc_hazard_tests {
+    use super::*;
+    use crate::atom::AtomTable;
+    use crate::native::ProcessContext;
+    use std::sync::Arc;
+
+    fn test_context(process: &mut Process, live_x: u16) -> ProcessContext<'_> {
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::new(AtomTable::with_common_atoms())));
+        context.attach_process(process, usize::from(live_x));
+        context
+    }
+
+    /// Fills the nursery with live cons cells until fewer than `needed` words
+    /// remain, so the next allocation of that size must collect. Never
+    /// collects itself (it stops while `needed` still fits).
+    fn fill_until(process: &mut Process, needed: usize) {
+        let mut ctx = test_context(process, 2);
+        while ctx.process_heap().expect("heap").available() >= needed {
+            ctx.alloc_cons(Term::small_int(1), Term::NIL)
+                .expect("filler");
+        }
+    }
+
+    fn extracted_bytes(term: Term) -> Vec<u8> {
+        BinaryRef::new(term)
+            .expect("extraction result must stay a readable binary")
+            .as_bytes()
+            .to_vec()
+    }
+
+    fn start_match_rooted(process: &mut Process, source: Term) -> Term {
+        process.set_x_reg(0, source);
+        let match_raw = jit_bs_start_match(process, source.raw());
+        assert_ne!(match_raw, 0, "start_match allocation must succeed");
+        assert_ne!(match_raw, BINARY_HELPER_FAILURE);
+        let match_term = Term::from_raw(match_raw);
+        process.set_x_reg(1, match_term);
+        match_term
+    }
+
+    #[test]
+    fn bs_get_binary_inline_source_survives_forced_collection() {
+        let mut process = Process::new(1, 256);
+        let raw: Vec<u8> = (1..=40).collect();
+        let source = {
+            let mut ctx = test_context(&mut process, 0);
+            ctx.alloc_binary(&raw).expect("inline source")
+        };
+        let match_term = start_match_rooted(&mut process, source);
+        fill_until(&mut process, alloc_binary_word_count(20));
+        let out_raw = jit_bs_get_binary(&mut process, match_term.raw(), 160);
+        assert_ne!(out_raw, 0, "extraction allocation must succeed");
+        assert_ne!(out_raw, BINARY_HELPER_FAILURE);
+        assert!(
+            process.heap().old_used() > 0,
+            "geometry must have collected"
+        );
+        let expected: Vec<u8> = (1..=20).collect();
+        assert_eq!(extracted_bytes(Term::from_raw(out_raw)), expected);
+    }
+
+    #[test]
+    fn bs_get_binary_procbin_source_box_referent_survives_forced_collection() {
+        let mut process = Process::new(1, 256);
+        // 100 bytes — above the inline threshold, so the source is a ProcBin:
+        // off-heap bytes, but the BOX on the young heap moves under collection.
+        let raw: Vec<u8> = (0..100).map(|byte| byte as u8).collect();
+        let source = {
+            let mut ctx = test_context(&mut process, 0);
+            ctx.alloc_binary(&raw).expect("procbin source")
+        };
+        let match_term = start_match_rooted(&mut process, source);
+        fill_until(&mut process, SUB_BINARY_WORDS);
+        let out_raw = jit_bs_get_binary(&mut process, match_term.raw(), 160);
+        assert_ne!(out_raw, 0, "extraction allocation must succeed");
+        assert_ne!(out_raw, BINARY_HELPER_FAILURE);
+        assert!(
+            process.heap().old_used() > 0,
+            "geometry must have collected"
+        );
+        // The box referent: the extraction must still reach live parent bytes
+        // after the collection moved the ProcBin box — a stale pre-alloc Term
+        // capture leaves the result referencing the zeroed old young region.
+        assert_eq!(extracted_bytes(Term::from_raw(out_raw)), raw[..20].to_vec());
+    }
+}

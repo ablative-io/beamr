@@ -1,0 +1,44 @@
+# AION-ENCODE-GC-DEFECT 0.16.3 backport lane 3 — red run: jit site 12 + sibling at unfixed base
+# worktree: .worktrees/fix-0163-borrow-across-alloc, branch fix/0163-borrow-across-alloc
+# tree: 9a19961 (lane-2 head) + this commit's two jit walls (walls-only working set)
+# command: cargo test -p beamr --lib bs_get_binary_
+# exit status (cargo test itself): 101 — the test binary reporting the two red walls below
+# RED FACES, per consumer:
+#   inline arm  = SILENT ZEROS: twenty zero bytes where [1..=20] was extracted —
+#                 site 12's FIRST DYNAMIC PROBE (amendment verification was static)
+#   ProcBin arm = UNREADABLE REFERENT: BinaryRef::new(result) is None — the stale
+#                 pre-alloc Term capture leaves the sub-binary parent pointing into
+#                 the zeroed old young region
+# captured: 2026-07-28 at the build seat (Osiris Yogo), post-rustfmt
+
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fix-0163-borrow-across-alloc/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.56s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 2 tests
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection ... FAILED
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection ... FAILED
+
+failures:
+
+---- jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection stdout ----
+
+thread 'jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection' (1841756) panicked at crates/beamr/src/jit/runtime_binary_match.rs:476:9:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+
+---- jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection stdout ----
+
+thread 'jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection' (1841757) panicked at crates/beamr/src/jit/runtime_binary_match.rs:443:14:
+extraction result must stay a readable binary
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection
+    jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1737 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p beamr --lib`
