@@ -1,0 +1,35 @@
+# FRESH RED RUN ON MAIN-LINE TREE (fwdport lane) — trued ProcBin fill bound staged, fix absent
+# toolchain: rustc 1.97.1 (8bab26f4f 2026-07-14)
+# cmd: cargo test -p beamr --lib gc_hazard
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fwdport-0163-main/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.14s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 2 tests
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection ... FAILED
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection ... FAILED
+
+failures:
+
+---- jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection stdout ----
+
+thread 'jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection' (2575885) panicked at crates/beamr/src/jit/runtime_binary_match.rs:476:9:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+
+---- jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection stdout ----
+
+thread 'jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection' (2575886) panicked at crates/beamr/src/jit/runtime_binary_match.rs:443:14:
+extraction result must stay a readable binary
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection
+    jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1746 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p beamr --lib`
+exit=101 (expected NONZERO: jit pair red at trued geometry)

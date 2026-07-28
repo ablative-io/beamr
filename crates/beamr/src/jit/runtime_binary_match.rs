@@ -487,7 +487,14 @@ mod gc_hazard_tests {
             ctx.alloc_binary(&raw).expect("procbin source")
         };
         let match_term = start_match_rooted(&mut process, source);
-        fill_until(&mut process, SUB_BINARY_WORDS);
+        // Force collection under EITHER extraction representation: the
+        // sub-binary allocation (SUB_BINARY_WORDS) and a copied 20-byte
+        // binary (alloc_binary_word_count) — whichever is smaller bounds
+        // the fill, so the extraction's allocation must collect regardless.
+        fill_until(
+            &mut process,
+            SUB_BINARY_WORDS.min(alloc_binary_word_count(20)),
+        );
         let out_raw = jit_bs_get_binary(&mut process, match_term.raw(), 160);
         assert_ne!(out_raw, 0, "extraction allocation must succeed");
         assert_ne!(out_raw, BINARY_HELPER_FAILURE);
