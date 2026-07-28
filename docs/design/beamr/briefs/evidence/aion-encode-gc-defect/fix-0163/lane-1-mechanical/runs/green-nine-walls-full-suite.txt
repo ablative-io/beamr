@@ -1,0 +1,44 @@
+# FRESH GREEN RUN ON MAIN-LINE TREE (fwdport lane) — lane-1 fixes staged over c483ce4
+# toolchain: rustc 1.97.1 (8bab26f4f 2026-07-14)
+# cmd: cargo test -p beamr
+running 1 test
+test minimal_profile_runs_only_the_requested_workers_and_nothing_else ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/timer_resident_cost.rs (target/debug/deps/timer_resident_cost-cb26bd9ccb0ef050)
+
+running 1 test
+test a_thousand_pending_timers_add_no_thread_no_wake_and_no_park_shortening ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+
+     Running tests/with_services.rs (target/debug/deps/with_services-9f7e1ac7fe90bd55)
+
+running 7 tests
+test crossed_shared_ring_handles_are_refused_as_a_kind_mismatch ... ok
+test shared_io_ring_injection_is_refused_naming_commit_6 ... ok
+test minimal_disables_every_ancillary_service ... ok
+test replay_disables_the_distribution_bundle_even_with_some_config ... ok
+test explicit_service_choice_wins_over_the_legacy_config_knob ... ok
+test shared_dirty_pool_is_used_by_two_schedulers_and_stopped_by_neither ... ok
+test full_runtime_turns_distribution_on_and_keeps_other_services_from_config ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests beamr
+
+running 1 test
+test crates/beamr/src/scheduler/mod.rs - scheduler::Scheduler::with_services (line 1107) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test crates/beamr/src/process/mod.rs - process::Process (line 136) - compile fail ... ok
+test crates/beamr/src/process/mod.rs - process::Process (line 145) - compile fail ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+all doctests ran in 0.68s; merged doctests compilation took 0.24s
+exit=0 (cargo test -p beamr, expected 0: nine walls green over fixes)

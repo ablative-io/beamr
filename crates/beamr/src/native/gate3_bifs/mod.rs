@@ -821,7 +821,9 @@ pub fn bif_list_append(args: &[Term], context: &mut ProcessContext) -> Result<Te
 
     if list_b.is_nil() {
         if let Some(binary) = BinaryRef::new(*list_a) {
-            return context.alloc_binary(binary.as_bytes());
+            // Own the bytes: alloc_binary may collect and move an inline source.
+            let bytes = binary.as_bytes().to_vec();
+            return context.alloc_binary(&bytes);
         }
         if Cons::new(*list_a).is_none() {
             return Ok(*list_a);

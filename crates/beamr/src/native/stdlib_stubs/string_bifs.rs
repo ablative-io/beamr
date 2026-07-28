@@ -61,14 +61,19 @@ pub fn bif_trim(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
         "both" => text.trim(),
         _ => return Err(badarg()),
     };
-    context.alloc_binary(trimmed.as_bytes())
+    // Own the bytes: alloc_binary may collect and move an inline source.
+    let trimmed = trimmed.as_bytes().to_vec();
+    context.alloc_binary(&trimmed)
 }
 
 pub fn bif_split(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [input, pattern, option] = args else {
         return Err(badarg());
     };
-    let input = binary_bytes(*input)?;
+    // Own the input up front: the per-part allocation loop below may collect,
+    // so every part must borrow this owned buffer, never the process heap.
+    let input = binary_bytes(*input)?.to_vec();
+    let input = input.as_slice();
     let pattern = binary_bytes(*pattern)?;
     if pattern.is_empty() {
         return Err(badarg());
@@ -95,7 +100,9 @@ pub fn bif_find(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
     let input = binary_bytes(*input)?;
     let pattern = binary_bytes(*pattern)?;
     if let Some(index) = find_bytes(input, pattern) {
-        context.alloc_binary(&input[index..])
+        // Own the bytes: alloc_binary may collect and move an inline source.
+        let tail = input[index..].to_vec();
+        context.alloc_binary(&tail)
     } else {
         atom_term("nomatch", context)
     }
@@ -149,7 +156,9 @@ pub fn bif_pad(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term
     let current_len = text.graphemes(true).count();
     let input = text.as_bytes();
     if current_len >= target_len {
-        return context.alloc_binary(input);
+        // Own the bytes: alloc_binary may collect and move an inline source.
+        let owned = input.to_vec();
+        return context.alloc_binary(&owned);
     }
 
     let needed = target_len - current_len;
@@ -205,7 +214,9 @@ pub fn bif_slice(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
         return context.alloc_binary(&[]);
     };
     let end = indices.nth(length - 1).map_or(text.len(), |(end, _)| end);
-    context.alloc_binary(&text.as_bytes()[start..end])
+    // Own the bytes: alloc_binary may collect and move an inline source.
+    let sliced = text.as_bytes()[start..end].to_vec();
+    context.alloc_binary(&sliced)
 }
 
 pub fn bif_equal(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {

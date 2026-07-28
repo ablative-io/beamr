@@ -17,7 +17,8 @@ pub fn bif_uri_string_parse(args: &[Term], context: &mut ProcessContext) -> Resu
     let [input] = args else {
         return Err(badarg());
     };
-    let text = binary_text(*input)?;
+    let owned = binary_text(*input)?;
+    let text = owned.as_str();
 
     let (rest, fragment) = match text.split_once('#') {
         Some((rest, fragment)) => (rest, Some(fragment)),
@@ -254,13 +255,21 @@ fn hex_value(byte: u8) -> Option<u8> {
 fn error_tuple(context: &mut ProcessContext, reason: &str, detail: &str) -> Result<Term, Term> {
     let error = Term::atom(Atom::ERROR);
     let reason = atom(context, reason)?;
-    let detail = context.alloc_binary(detail.as_bytes())?;
+    // Own the bytes: alloc_binary may collect, and a caller's detail must
+    // never be read from a moved heap source afterwards.
+    let detail_bytes = detail.as_bytes().to_vec();
+    let detail = context.alloc_binary(&detail_bytes)?;
     context.alloc_tuple(&[error, reason, detail])
 }
 
-fn binary_text(term: Term) -> Result<&'static str, Term> {
+/// Owns the input text up front: every component slice the callers derive
+/// borrows this owned copy, never the process heap — the sequential
+/// `alloc_binary` calls below may collect and move an inline source.
+fn binary_text(term: Term) -> Result<String, Term> {
     let binary = BinaryRef::new(term).ok_or_else(badarg)?;
-    std::str::from_utf8(binary.as_bytes()).map_err(|_| badarg())
+    std::str::from_utf8(binary.as_bytes())
+        .map(str::to_owned)
+        .map_err(|_| badarg())
 }
 
 fn atom(context: &mut ProcessContext, name: &str) -> Result<Term, Term> {
