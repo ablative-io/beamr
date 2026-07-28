@@ -1,0 +1,10 @@
+# AION-ENCODE-GC-DEFECT 0.16.3 backport lane 4 — green run: both tripwire walls at their own commit
+# tree: c7609b6 (lane-3 head) + this commit's two tripwire walls
+# command: cargo test -p beamr --lib   (FULL beamr lib suite)
+# exit status (cargo test itself): 0
+# captured: 2026-07-29 at the build seat (Osiris Yogo), post-rustfmt
+# Tripwire walls are GREEN BY DESIGN: they pin already-true load-bearing facts.
+
+test mailbox::tests::message_copy_is_bump_only_heap_full_is_send_error_not_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::gate3_binary_part_owned_copy_survives_forced_collection ... ok
+test result: ok. 1741 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.08s
