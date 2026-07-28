@@ -15,8 +15,8 @@ Do not publish crates, push tags, or create a GitHub release without explicit ap
 
 ## Release constraints
 
-- [ ] Audit non-test production source for `eprintln!`, `dbg!`, `todo!(`, `unimplemented!(`, and unacceptable `panic!(`.
+- [x] Audit non-test production source for `eprintln!`, `dbg!`, `todo!(`, `unimplemented!(`, and unacceptable `panic!(`. Two pre-existing `eprintln!` sites found (`interpreter/mod.rs:298`, `capability/audit.rs:55`), byte-identical to 0.16.2 and out of scope for this backport — disclosed in the battery evidence commit.
 - [x] **Memory-safety line — RULED EXCEPTION (project lead, 2026-07-28).** This release ships with known remaining JIT-helper staleness sites, disclosed plainly in `CHANGELOG.md` under "Known remaining JIT sites": `jit_bs_start_match`'s stale source-Term write (D1), the helper-argument staleness class (D3), and the accumulated-results class (F3) — all requiring ABI-level GC rooting owned by RF-006 on the 0.17.0 line, not backportable in a patch. Tom's decision, relayed on the record by coordination 2026-07-28, is the authority for this checked box; there is no silent memory-safety checkbox. All *backportable* known GC-safety defects on this line are fixed in this release (thirteen consumers, red-first, torn PASS per lane).
-- [ ] Create local tag `v0.16.3` only after all validation gates pass.
+- [x] Create local tag `v0.16.3` only after all validation gates pass (validation gates VERIFIED at the battery evidence commit; tag is local-only pending project-lead approval).
 - [ ] Do not push `v0.16.3` until project-lead approval is recorded.
 - [ ] Do not run `cargo publish` without project-lead approval.
