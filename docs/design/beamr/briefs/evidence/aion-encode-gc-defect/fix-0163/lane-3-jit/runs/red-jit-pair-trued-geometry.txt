@@ -1,0 +1,43 @@
+# AION-ENCODE-GC-DEFECT 0.16.3 backport lane 3 — red re-proof after wall-geometry truing
+# tree: 91d772d (lane-3 red walls commit) + this commit's geometry truing ONLY (no fix present)
+# WHY THIS COMMIT EXISTS (forward-only): the ProcBin wall's fill bound was SUB_BINARY_WORDS,
+# which forces collection under the base's sub-binary allocation but NOT necessarily under a
+# copied-binary representation whose allocation is smaller; the bound is now the MIN of both
+# so the wall discriminates regardless of extraction representation. Both walls re-proven RED
+# at the walls-only tree below, same faces as 91d772d (inline = twenty zeros; ProcBin =
+# unreadable referent, BinaryRef None).
+# command: cargo test -p beamr --lib bs_get_binary_
+# exit status (cargo test itself): 101 — the test binary reporting the two red walls
+# captured: 2026-07-28 at the build seat (Osiris Yogo), post-rustfmt
+
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fix-0163-borrow-across-alloc/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.96s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 2 tests
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection ... FAILED
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection ... FAILED
+
+failures:
+
+---- jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection stdout ----
+
+thread 'jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection' (1863706) panicked at crates/beamr/src/jit/runtime_binary_match.rs:443:14:
+extraction result must stay a readable binary
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection stdout ----
+
+thread 'jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection' (1863705) panicked at crates/beamr/src/jit/runtime_binary_match.rs:476:9:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+
+
+failures:
+    jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection
+    jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1737 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p beamr --lib`
