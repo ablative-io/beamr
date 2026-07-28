@@ -1,1 +1,4 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+   Compiling beamr v0.16.3 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fix-0163-borrow-across-alloc/crates/beamr)
+   Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fix-0163-borrow-across-alloc/crates/beamr-wasm)
+    Checking beamr-cli v0.4.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fix-0163-borrow-across-alloc/crates/beamr-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.96s
