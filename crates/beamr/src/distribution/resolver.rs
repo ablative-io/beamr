@@ -72,18 +72,10 @@ impl NodeResolver for StaticResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use std::task::{Context, Poll, Wake, Waker};
-
-    struct NoopWake;
-
-    impl Wake for NoopWake {
-        fn wake(self: Arc<Self>) {}
-    }
+    use std::task::{Context, Poll, Waker};
 
     fn block_on_ready(future: ResolveFuture<'_>) -> Result<SocketAddr, ResolveError> {
-        let waker = Waker::from(Arc::new(NoopWake));
-        let mut context = Context::from_waker(&waker);
+        let mut context = Context::from_waker(Waker::noop());
         let mut future = future;
         match future.as_mut().poll(&mut context) {
             Poll::Ready(result) => result,
