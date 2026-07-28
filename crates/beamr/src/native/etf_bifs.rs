@@ -89,8 +89,13 @@ pub fn bif_binary_to_term(args: &[Term], context: &mut ProcessContext) -> Result
         return Err(badarg());
     };
     let atom_table = context.atom_table_arc().ok_or_else(badarg)?;
-    let bytes = BinaryRef::new(*binary).ok_or_else(badarg)?.as_bytes();
-    decode_term(bytes, context, atom_table.as_ref()).map_err(|_| badarg())
+    // Own the bytes UP FRONT: the decode recursion allocates throughout, and
+    // a collection would move and zero-fill an inline source under a borrow.
+    let bytes = BinaryRef::new(*binary)
+        .ok_or_else(badarg)?
+        .as_bytes()
+        .to_vec();
+    decode_term(&bytes, context, atom_table.as_ref()).map_err(|_| badarg())
 }
 
 pub fn bif_binary_to_term_2(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -99,8 +104,13 @@ pub fn bif_binary_to_term_2(args: &[Term], context: &mut ProcessContext) -> Resu
     };
     let atom_table = context.atom_table_arc().ok_or_else(badarg)?;
     let options = parse_decode_options(*options_term, atom_table.as_ref())?;
-    let bytes = BinaryRef::new(*binary).ok_or_else(badarg)?.as_bytes();
-    let decoded = decode_term_with_options(bytes, context, atom_table.as_ref(), options)
+    // Own the bytes UP FRONT: the decode recursion allocates throughout, and
+    // a collection would move and zero-fill an inline source under a borrow.
+    let bytes = BinaryRef::new(*binary)
+        .ok_or_else(badarg)?
+        .as_bytes()
+        .to_vec();
+    let decoded = decode_term_with_options(&bytes, context, atom_table.as_ref(), options)
         .map_err(|_| badarg())?;
     if options.return_used {
         let used = i64::try_from(decoded.used).map_err(|_| badarg())?;
