@@ -2,6 +2,88 @@
 
 ## Unreleased
 
+## 0.16.3 — 2026-07-29
+
+Memory-safety patch: silent borrow-across-alloc corruption fixes,
+backported onto the 0.16.2 release point (`67f89c4`; no 0.16.x git tags
+exist — releases on this line are pinned by commit). Every fix landed
+red-first per consumer against the real hazard geometry. Scope of
+record: the as_bytes audit
+(`docs/design/beamr/briefs/evidence/aion-encode-gc-defect/asbytes-sweep/AUDIT.md`
+on the main line) through AMENDMENT 1 (main `7e56073`: site 12 +
+per-consumer verdict unit) and AMENDMENT 2 (main `92a9d2e`: the
+`uri_string` error-detail parse-path consumer is SAFE — it is the one
+originally listed consumer NOT fixed here, because it never crosses).
+Red/green evidence for this branch: `…/aion-encode-gc-defect/fix-0163/`.
+
+### Fixed
+
+- **Nine mechanical `as_bytes` borrow-across-alloc crossings**:
+  `erlang:'++'/2` (the `Binary ++ []` arm), `binary:part/3`,
+  `uri_string:parse/1` (multi-slice), the `uri_string` error-detail
+  binary (`dissect_query` error path), `string:trim/2`,
+  `string:split/3`, `string:find/2`, `string:pad/4` (early-return arm),
+  and `string:slice/3`. An inline (≤ 64-byte) input binary whose bytes
+  were read inside a collecting allocation was silently replaced with
+  zeros whenever that allocation triggered a GC — the young region is
+  zero-filled on reset; no error, no crash. Fix: own the bytes before
+  the allocating call.
+- **`erlang:binary_to_term/1,2`**: the source-binary borrow was held
+  across the entire ETF decode recursion, which allocates throughout;
+  a collection mid-decode zeroed the source under the decoder. Fix: the
+  bytes are copied at BIF entry, before the recursion.
+- **`jit_bs_get_binary` — three consumers** (`jit` feature): the
+  extracted-slice borrow crossed the collecting allocation (inline
+  sources returned zeros); the ProcBin arm wrote a pre-allocation
+  source-Term capture into the new sub-binary after a possible
+  collection (stale parent referent — result unreadable); and the
+  position write-back went through the pre-collection match-context
+  pointer — a wild read-modify-write into reallocated memory, observed
+  corrupting the freshly allocated result. Fix: the helper owns its
+  bytes, allocates uniformly (the ProcBin sub-binary arm is removed),
+  and advances the position before the allocation.
+
+### Changed
+
+- JIT `bs_get_binary` extraction over refcounted (> 64-byte) sources now
+  copies the extracted range instead of building an O(1) shared
+  sub-binary; extraction loops over large sources go O(len) per step.
+  Restoring the sharing requires real GC rooting of helper-held terms —
+  0.17.0 / RF-006 material.
+
+### Added
+
+- Thirteen hazard walls pinning every fixed consumer under forced
+  collection geometry (red-first, committed red before each fix), plus
+  two mutation-proven tripwire walls: the mailbox bump-only fact
+  (message copy cannot collect; `HeapFull` surfaces as `SendError`; a
+  collecting reroute cannot compile at the current signature) and the
+  gate3 `binary_part` owned-copy fact.
+
+### Known remaining JIT sites (disclosed; ships by project-lead ruling)
+
+The sound fix requires GC rooting of JIT helper arguments and locals —
+an ABI-level change owned by RF-006 on the 0.17.0 line, not
+backportable in a patch. All are reachable only under the optional
+`jit` feature (on by default) via compiled `bs_*` instructions.
+
+- `jit/runtime_binary_match.rs`, `jit_bs_start_match`: the source
+  binary Term is captured before the match-context allocation and
+  written into the new box after it — if that allocation collects, the
+  stored source Term is stale (the same class as the fixed
+  `bs_get_binary` sibling).
+- Helper-argument staleness class (`jit/runtime*.rs`): raw Term
+  arguments and match-context pointers held in Rust locals are not GC
+  roots (`ensure_space` forwards x-registers only); any helper whose
+  allocation collects may afterwards use a stale value. The consumers
+  fixed above no longer cross; the rest of the surface is audited under
+  RF-006.
+- Accumulated-results class (RF-006 finding F3): native loops that
+  accumulate result Terms in Rust vectors root only the allocator's
+  call arguments, so a second mid-loop collection can leave earlier
+  accumulated Terms stale. Not the audited `as_bytes` class; tracked
+  with the same rooting work.
+
 ## 0.16.2 — 2026-07-23
 
 Memory-safety patch: the two critical findings from the 2026-07-23 external
