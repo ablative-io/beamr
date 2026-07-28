@@ -161,3 +161,280 @@ fn native_continuation_terms_are_gc_roots() {
         let _ = Float::new(*term).expect("continuation element forwarded");
     }
 }
+
+// --- as_bytes borrow-across-alloc walls (fix lane, AION-ENCODE-GC-DEFECT) ---
+// Each wall generalizes the audited probe: an inline (≤64 B) input binary is
+// rooted in X0, the nursery is filled until the BIF's result allocation must
+// collect, and the output is asserted byte-exact. Red at the audited main
+// (silently zeroed output — the young reset zero-fills moved sources);
+// green once the BIF owns its bytes before the allocating call.
+
+use crate::term::binary_ref::BinaryRef;
+use crate::term::shared_binary::alloc_binary_word_count;
+
+fn inline_input(process: &mut Process, bytes: &[u8]) -> Term {
+    let term = {
+        let mut ctx = context(process);
+        ctx.alloc_binary(bytes).expect("input binary")
+    };
+    process.set_x_reg(0, term);
+    term
+}
+
+fn force_collect_geometry(process: &mut Process, result_len: usize) {
+    let needed = alloc_binary_word_count(result_len);
+    let mut ctx = context(process);
+    while ctx.process_heap().expect("heap").available() >= needed {
+        ctx.alloc_cons(Term::small_int(1), Term::NIL)
+            .expect("filler");
+    }
+}
+
+fn shared_atoms() -> std::sync::Arc<AtomTable> {
+    std::sync::Arc::new(AtomTable::with_common_atoms())
+}
+
+// One atom table must be shared across every context in a wall: the BIF
+// interns atoms (map keys, direction atoms) in its context's table, and the
+// assertions must compare against the same interned indices.
+fn live_context<'p>(
+    process: &'p mut Process,
+    live_x: u16,
+    atoms: &std::sync::Arc<AtomTable>,
+) -> ProcessContext<'p> {
+    let mut context = ProcessContext::new();
+    context.set_atom_table(Some(std::sync::Arc::clone(atoms)));
+    context.attach_process(process, usize::from(live_x));
+    context
+}
+
+fn result_bytes(term: Term) -> Vec<u8> {
+    BinaryRef::new(term)
+        .expect("binary result")
+        .as_bytes()
+        .to_vec()
+}
+
+#[test]
+fn list_append_binary_arm_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let input = inline_input(&mut process, b"append-me \xE2\x80\x94 exact");
+    force_collect_geometry(&mut process, 19);
+    let mut ctx = live_context(&mut process, 1, &atoms);
+    let result =
+        super::super::gate3_bifs::bif_list_append(&[input, Term::NIL], &mut ctx).expect("++");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    assert_eq!(result_bytes(result), b"append-me \xE2\x80\x94 exact");
+}
+
+#[test]
+fn binary_part_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let raw: Vec<u8> = (1..=40).collect();
+    let input = inline_input(&mut process, &raw);
+    force_collect_geometry(&mut process, 20);
+    let mut ctx = live_context(&mut process, 1, &atoms);
+    let result = super::misc_bifs::bif_binary_part(
+        &[input, Term::small_int(10), Term::small_int(20)],
+        &mut ctx,
+    )
+    .expect("binary_part");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    let expected: Vec<u8> = (11..=30).collect();
+    assert_eq!(result_bytes(result), expected);
+}
+
+#[test]
+fn string_trim_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let input = inline_input(&mut process, b"  \xE2\x80\x94 trim exact \xE2\x80\x94  ");
+    let direction = Term::atom(atoms.intern("both"));
+    force_collect_geometry(&mut process, 18);
+    let mut ctx = live_context(&mut process, 1, &atoms);
+    let result = super::string_bifs::bif_trim(&[input, direction], &mut ctx).expect("trim");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    assert_eq!(
+        result_bytes(result),
+        b"\xE2\x80\x94 trim exact \xE2\x80\x94"
+    );
+}
+
+#[test]
+fn string_split_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let input = inline_input(&mut process, b"aa\xE2\x80\x94bb\xE2\x80\x94cc");
+    let pattern = {
+        let mut ctx = live_context(&mut process, 1, &atoms);
+        let p = ctx.alloc_binary(b"\xE2\x80\x94").expect("pattern");
+        ctx.detach_process();
+        p
+    };
+    process.set_x_reg(1, pattern);
+    let all = Term::atom(atoms.intern("all"));
+    force_collect_geometry(&mut process, 2);
+    let mut ctx = live_context(&mut process, 2, &atoms);
+    let result = super::string_bifs::bif_split(&[input, pattern, all], &mut ctx).expect("split");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    let mut parts = Vec::new();
+    let mut current = result;
+    while let Some(cons) = crate::term::boxed::Cons::new(current) {
+        parts.push(result_bytes(cons.head()));
+        current = cons.tail();
+    }
+    assert_eq!(parts, vec![b"aa".to_vec(), b"bb".to_vec(), b"cc".to_vec()]);
+}
+
+#[test]
+fn string_find_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let input = inline_input(&mut process, b"abc\xE2\x80\x94def");
+    let pattern = {
+        let mut ctx = live_context(&mut process, 1, &atoms);
+        let p = ctx.alloc_binary(b"\xE2\x80\x94").expect("pattern");
+        ctx.detach_process();
+        p
+    };
+    process.set_x_reg(1, pattern);
+    force_collect_geometry(&mut process, 6);
+    let mut ctx = live_context(&mut process, 2, &atoms);
+    let result = super::string_bifs::bif_find(&[input, pattern], &mut ctx).expect("find");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    assert_eq!(result_bytes(result), b"\xE2\x80\x94def");
+}
+
+#[test]
+fn string_pad_early_return_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let input = inline_input(&mut process, b"already long enough \xE2\x80\x94");
+    let (length, direction, pad) = {
+        let mut ctx = live_context(&mut process, 1, &atoms);
+        let direction = Term::atom(atoms.intern("trailing"));
+        let pad = ctx.alloc_binary(b" ").expect("pad");
+        ctx.detach_process();
+        (Term::small_int(3), direction, pad)
+    };
+    process.set_x_reg(1, pad);
+    force_collect_geometry(&mut process, 23);
+    let mut ctx = live_context(&mut process, 2, &atoms);
+    let result =
+        super::string_bifs::bif_pad(&[input, length, direction, pad], &mut ctx).expect("pad");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    assert_eq!(result_bytes(result), b"already long enough \xE2\x80\x94");
+}
+
+#[test]
+fn string_slice_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let input = inline_input(&mut process, b"0123\xE2\x80\x94abcdef");
+    force_collect_geometry(&mut process, 5);
+    let mut ctx = live_context(&mut process, 1, &atoms);
+    let result =
+        super::string_bifs::bif_slice(&[input, Term::small_int(2), Term::small_int(4)], &mut ctx)
+            .expect("slice");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    assert_eq!(result_bytes(result), b"23\xE2\x80\x94a");
+}
+
+// `uri_string:parse` map keys are ATOMS interned in the BIF context's table;
+// look values up by atom term, which only works with the shared table above.
+fn map_atom_value_bytes(map_term: Term, atoms: &AtomTable, name: &str) -> Option<Vec<u8>> {
+    let key = Term::atom(atoms.intern(name));
+    let map = crate::term::boxed::Map::new(map_term)?;
+    map.get(key).map(result_bytes)
+}
+
+#[test]
+fn uri_parse_components_survive_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let input = inline_input(&mut process, b"http://hh/pp?q=1#frag");
+    force_collect_geometry(&mut process, 6);
+    let mut ctx = live_context(&mut process, 1, &atoms);
+    let result = super::uri_bifs::bif_uri_string_parse(&[input], &mut ctx).expect("uri parse");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    assert_eq!(
+        map_atom_value_bytes(result, &atoms, "scheme").as_deref(),
+        Some(&b"http"[..])
+    );
+    assert_eq!(
+        map_atom_value_bytes(result, &atoms, "host").as_deref(),
+        Some(&b"hh"[..])
+    );
+    assert_eq!(
+        map_atom_value_bytes(result, &atoms, "path").as_deref(),
+        Some(&b"/pp"[..])
+    );
+    assert_eq!(
+        map_atom_value_bytes(result, &atoms, "query").as_deref(),
+        Some(&b"q=1"[..])
+    );
+    assert_eq!(
+        map_atom_value_bytes(result, &atoms, "fragment").as_deref(),
+        Some(&b"frag"[..])
+    );
+}
+
+#[test]
+fn uri_dissect_query_error_detail_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let input = inline_input(&mut process, b"ok=1&bad=%ZZ\xE2\x80\x94tail");
+    force_collect_geometry(&mut process, 13);
+    let mut ctx = live_context(&mut process, 1, &atoms);
+    // OTP contract (uri_string:dissect_query/1 spec): the failure face is the
+    // RETURN VALUE `{error, Atom :: atom(), Term :: term()}` — QueryList |
+    // {error, ...} — not a raised exception.
+    let result = super::uri_bifs::bif_uri_string_dissect_query(&[input], &mut ctx)
+        .expect("dissect_query returns the error tuple as a value");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    let tuple = crate::term::boxed::Tuple::new(result).expect("error tuple");
+    assert_eq!(
+        tuple.get(1),
+        Some(Term::atom(atoms.intern("invalid_query")))
+    );
+    let detail = tuple.get(2).expect("detail element");
+    assert_eq!(result_bytes(detail), b"bad=%ZZ\xE2\x80\x94tail");
+}

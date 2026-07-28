@@ -1,0 +1,263 @@
+# FRESH RED RUN ON MAIN-LINE TREE (fwdport lane) — walls present, fixes absent
+# tree: 5e5bb5e2d64b57acc0c208784730d47cced35674 + staged cherry-pick of af8440b (uncommitted at run time)
+# toolchain: rustc 1.97.1 (8bab26f4f 2026-07-14)
+# cmd: cargo test -p beamr gc_rooting
+   Compiling libc v0.2.186
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling cfg-if v1.0.4
+   Compiling find-msvc-tools v0.1.9
+   Compiling shlex v2.0.1
+   Compiling cranelift-srcgen v0.131.2
+   Compiling libm v0.2.16
+   Compiling foldhash v0.2.0
+   Compiling wasmtime-internal-core v44.0.2
+   Compiling crossbeam-utils v0.8.21
+   Compiling zerocopy v0.8.50
+   Compiling log v0.4.32
+   Compiling cranelift-isle v0.131.2
+   Compiling smallvec v1.15.1
+   Compiling hashbrown v0.16.1
+   Compiling pkg-config v0.3.33
+   Compiling cranelift-assembler-x64-meta v0.131.2
+   Compiling fnv v1.0.7
+   Compiling heck v0.5.0
+   Compiling hashbrown v0.17.1
+   Compiling cranelift-codegen-shared v0.131.2
+   Compiling equivalent v1.0.2
+   Compiling getrandom v0.3.4
+   Compiling allocator-api2 v0.2.21
+   Compiling target-lexicon v0.13.5
+   Compiling arbitrary v1.4.2
+   Compiling bumpalo v3.20.3
+   Compiling getrandom v0.4.2
+   Compiling indexmap v2.14.0
+   Compiling serde_core v1.0.228
+   Compiling rustc-hash v2.1.2
+   Compiling cranelift-codegen-meta v0.131.2
+   Compiling pin-project-lite v0.2.17
+   Compiling rand_core v0.10.1
+   Compiling regalloc2 v0.15.1
+   Compiling gimli v0.33.0
+   Compiling cranelift-control v0.131.2
+   Compiling cranelift-assembler-x64 v0.131.2
+   Compiling zstd-safe v7.2.4
+   Compiling autocfg v1.5.1
+   Compiling rustix v1.1.4
+   Compiling num-traits v0.2.19
+   Compiling serde v1.0.228
+   Compiling bitflags v2.13.0
+   Compiling anyhow v1.0.102
+   Compiling once_cell v1.21.4
+   Compiling futures-core v0.3.32
+   Compiling zmij v1.0.21
+   Compiling syn v2.0.117
+   Compiling cranelift-codegen v0.131.2
+   Compiling cranelift-bitset v0.131.2
+   Compiling cranelift-entity v0.131.2
+   Compiling crossbeam-epoch v0.9.18
+   Compiling cranelift-bforest v0.131.2
+   Compiling crossbeam-deque v0.8.6
+   Compiling thiserror v2.0.18
+   Compiling jobserver v0.1.34
+   Compiling cc v1.2.63
+   Compiling errno v0.3.14
+   Compiling camino v1.2.2
+   Compiling serde_json v1.0.150
+   Compiling futures-sink v0.3.32
+   Compiling parking_lot_core v0.9.12
+   Compiling either v1.16.0
+   Compiling regex-syntax v0.8.10
+   Compiling crc32fast v1.5.0
+   Compiling zerocopy-derive v0.8.50
+   Compiling serde_derive v1.0.228
+   Compiling rand_core v0.9.5
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling rayon-core v1.13.0
+   Compiling alloca v0.4.0
+   Compiling tokio-macros v2.7.0
+   Compiling futures-macro v0.3.32
+   Compiling thiserror-impl v2.0.18
+   Compiling mach2 v0.4.3
+   Compiling mio v1.2.1
+   Compiling socket2 v0.6.4
+   Compiling adler2 v2.0.1
+   Compiling slab v0.4.12
+   Compiling anstyle v1.0.14
+   Compiling scopeguard v1.2.0
+   Compiling tracing-core v0.1.36
+   Compiling fastrand v2.4.1
+   Compiling bytes v1.11.1
+   Compiling plotters-backend v0.3.7
+   Compiling clap_lex v1.1.0
+   Compiling simd-adler32 v0.3.9
+   Compiling futures-task v0.3.32
+   Compiling bitflags v1.3.2
+   Compiling memchr v2.8.1
+   Compiling itoa v1.0.18
+   Compiling ciborium-io v0.2.2
+   Compiling futures-util v0.3.32
+   Compiling region v3.0.2
+   Compiling miniz_oxide v0.8.9
+   Compiling clap_builder v4.6.0
+   Compiling tokio v1.52.3
+   Compiling plotters-svg v0.3.7
+   Compiling tracing v0.1.44
+   Compiling tempfile v3.27.0
+   Compiling lock_api v0.4.14
+   Compiling regex-automata v0.4.14
+   Compiling itertools v0.13.0
+   Compiling wasmtime-internal-jit-icache-coherence v44.0.2
+   Compiling wait-timeout v0.2.1
+   Compiling chacha20 v0.10.0
+   Compiling hashbrown v0.14.5
+   Compiling bit-vec v0.8.0
+   Compiling ecow v0.2.6
+   Compiling cast v0.3.0
+   Compiling quick-error v1.2.3
+   Compiling same-file v1.0.6
+   Compiling rusty-fork v0.3.1
+   Compiling walkdir v2.5.0
+   Compiling criterion-plot v0.8.2
+   Compiling bit-set v0.8.0
+   Compiling flate2 v1.1.9
+   Compiling dashmap v6.2.1
+   Compiling rand v0.10.1
+   Compiling regex v1.12.3
+   Compiling rayon v1.12.0
+   Compiling plotters v0.3.7
+   Compiling clap v4.6.1
+   Compiling rand_xorshift v0.4.0
+   Compiling page_size v0.6.0
+   Compiling num_cpus v1.17.0
+   Compiling crossbeam-queue v0.3.12
+   Compiling crossbeam-channel v0.5.15
+   Compiling futures-channel v0.3.32
+   Compiling oorandom v11.1.5
+   Compiling percent-encoding v2.3.2
+   Compiling web-time v1.1.0
+   Compiling anes v0.1.6
+   Compiling md5 v0.8.0
+   Compiling unarray v0.1.4
+   Compiling unicode-segmentation v1.13.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium-ll v0.2.2
+   Compiling rand v0.9.4
+   Compiling gleam-types v0.4.3 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fwdport-0163-main/crates/gleam-types)
+   Compiling proptest v1.11.0
+   Compiling ciborium v0.2.2
+   Compiling tinytemplate v1.2.1
+   Compiling futures-executor v0.3.32
+   Compiling criterion v0.8.2
+   Compiling opentelemetry v0.32.0
+   Compiling opentelemetry_sdk v0.32.1
+   Compiling zstd v0.13.3
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fwdport-0163-main/crates/beamr)
+   Compiling cranelift-module v0.131.2
+   Compiling cranelift-native v0.131.2
+   Compiling cranelift-frontend v0.131.2
+   Compiling cranelift-jit v0.131.2
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 30.82s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 14 tests
+test native::stdlib_stubs::gc_rooting_tests::alloc_tuple_roots_boxed_arguments_across_gc ... ok
+test native::stdlib_stubs::gc_rooting_tests::rooted_push_accumulation_survives_gc ... ok
+test native::stdlib_stubs::gc_rooting_tests::native_continuation_terms_are_gc_roots ... ok
+test native::stdlib_stubs::gc_rooting_tests::list_from_vec_preserves_boxed_floats_under_gc_pressure ... ok
+test native::stdlib_stubs::gc_rooting_tests::list_from_vec_handles_more_elements_than_x_registers ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_slice_survives_forced_collection ... FAILED
+test native::stdlib_stubs::gc_rooting_tests::uri_dissect_query_error_detail_survives_forced_collection ... FAILED
+test native::stdlib_stubs::gc_rooting_tests::string_pad_early_return_survives_forced_collection ... FAILED
+test native::stdlib_stubs::gc_rooting_tests::string_trim_survives_forced_collection ... FAILED
+test native::stdlib_stubs::gc_rooting_tests::uri_parse_components_survive_forced_collection ... FAILED
+test native::stdlib_stubs::gc_rooting_tests::binary_part_survives_forced_collection ... FAILED
+test native::stdlib_stubs::gc_rooting_tests::string_find_survives_forced_collection ... FAILED
+test native::stdlib_stubs::gc_rooting_tests::list_append_binary_arm_survives_forced_collection ... FAILED
+test native::stdlib_stubs::gc_rooting_tests::string_split_survives_forced_collection ... FAILED
+
+failures:
+
+---- native::stdlib_stubs::gc_rooting_tests::string_slice_survives_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::string_slice_survives_forced_collection' (2492525) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:370:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0]
+ right: [50, 51, 226, 128, 148, 97]
+
+---- native::stdlib_stubs::gc_rooting_tests::uri_dissect_query_error_detail_survives_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::uri_dissect_query_error_detail_survives_forced_collection' (2492528) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:439:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [98, 97, 100, 61, 37, 90, 90, 226, 128, 148, 116, 97, 105, 108]
+
+---- native::stdlib_stubs::gc_rooting_tests::string_pad_early_return_survives_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::string_pad_early_return_survives_forced_collection' (2492524) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:352:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [97, 108, 114, 101, 97, 100, 121, 32, 108, 111, 110, 103, 32, 101, 110, 111, 117, 103, 104, 32, 226, 128, 148]
+
+---- native::stdlib_stubs::gc_rooting_tests::string_trim_survives_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::string_trim_survives_forced_collection' (2492527) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:271:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [226, 128, 148, 32, 116, 114, 105, 109, 32, 101, 120, 97, 99, 116, 32, 226, 128, 148]
+
+---- native::stdlib_stubs::gc_rooting_tests::uri_parse_components_survive_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::uri_parse_components_survive_forced_collection' (2492529) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:394:5:
+assertion `left == right` failed
+  left: Some([0, 0, 0, 0])
+ right: Some([104, 116, 116, 112])
+
+---- native::stdlib_stubs::gc_rooting_tests::binary_part_survives_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::binary_part_survives_forced_collection' (2492517) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:254:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+
+---- native::stdlib_stubs::gc_rooting_tests::string_find_survives_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::string_find_survives_forced_collection' (2492523) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:327:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0]
+ right: [226, 128, 148, 100, 101, 102]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- native::stdlib_stubs::gc_rooting_tests::list_append_binary_arm_survives_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::list_append_binary_arm_survives_forced_collection' (2492518) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:232:5:
+assertion `left == right` failed
+  left: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [97, 112, 112, 101, 110, 100, 45, 109, 101, 32, 226, 128, 148, 32, 101, 120, 97, 99, 116]
+
+---- native::stdlib_stubs::gc_rooting_tests::string_split_survives_forced_collection stdout ----
+
+thread 'native::stdlib_stubs::gc_rooting_tests::string_split_survives_forced_collection' (2492526) panicked at crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs:304:5:
+assertion `left == right` failed
+  left: [[0, 0], [0, 0], [0, 0]]
+ right: [[97, 97], [98, 98], [99, 99]]
+
+
+failures:
+    native::stdlib_stubs::gc_rooting_tests::binary_part_survives_forced_collection
+    native::stdlib_stubs::gc_rooting_tests::list_append_binary_arm_survives_forced_collection
+    native::stdlib_stubs::gc_rooting_tests::string_find_survives_forced_collection
+    native::stdlib_stubs::gc_rooting_tests::string_pad_early_return_survives_forced_collection
+    native::stdlib_stubs::gc_rooting_tests::string_slice_survives_forced_collection
+    native::stdlib_stubs::gc_rooting_tests::string_split_survives_forced_collection
+    native::stdlib_stubs::gc_rooting_tests::string_trim_survives_forced_collection
+    native::stdlib_stubs::gc_rooting_tests::uri_dissect_query_error_detail_survives_forced_collection
+    native::stdlib_stubs::gc_rooting_tests::uri_parse_components_survive_forced_collection
+
+test result: FAILED. 5 passed; 9 failed; 0 ignored; 0 measured; 1730 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p beamr --lib`
+exit=101 (cargo test pipeline, expected NONZERO: nine walls red by design)
