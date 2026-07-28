@@ -1,4 +1,61 @@
-wasm-bindgen-test-runner 0.2.125
+wasm-bindgen-test-runner 0.2.123
+   Compiling cfg-if v1.0.4
+   Compiling unicode-ident v1.0.24
+   Compiling once_cell v1.21.4
+   Compiling futures-core v0.3.32
+   Compiling pin-project-lite v0.2.17
+   Compiling slab v0.4.12
+   Compiling serde_core v1.0.228
+   Compiling futures-task v0.3.32
+   Compiling rand_core v0.10.1
+   Compiling serde_json v1.0.150
+   Compiling crossbeam-utils v0.8.21
+   Compiling zmij v1.0.21
+   Compiling itoa v1.0.18
+   Compiling smallvec v1.15.1
+   Compiling scopeguard v1.2.0
+   Compiling autocfg v1.5.1
+   Compiling wasm-bindgen-shared v0.2.123
+   Compiling adler2 v2.0.1
+   Compiling memchr v2.8.1
+   Compiling libm v0.2.16
+   Compiling simd-adler32 v0.3.9
+   Compiling futures-util v0.3.32
+   Compiling chacha20 v0.10.0
+   Compiling lock_api v0.4.14
+   Compiling parking_lot_core v0.9.12
+   Compiling crc32fast v1.5.0
+   Compiling wasm-bindgen v0.2.123
+   Compiling miniz_oxide v0.8.9
+   Compiling camino v1.2.2
+   Compiling hashbrown v0.14.5
+   Compiling ecow v0.2.6
+   Compiling crossbeam-queue v0.3.12
+   Compiling md5 v0.8.0
+   Compiling base64 v0.22.1
+   Compiling unicode-segmentation v1.13.3
+   Compiling wasm-bindgen-test-macro v0.3.73
+   Compiling gleam-types v0.4.3 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fwdport-0163-main/crates/gleam-types)
+   Compiling async-trait v0.1.89
+   Compiling wasm-bindgen-test-shared v0.2.123
+   Compiling num-traits v0.2.19
+   Compiling oorandom v11.1.5
+   Compiling flate2 v1.1.9
+   Compiling nu-ansi-term v0.50.3
+   Compiling cast v0.3.0
+   Compiling dashmap v6.2.1
+   Compiling getrandom v0.4.2
+   Compiling rand v0.10.1
+   Compiling js-sys v0.3.100
+   Compiling serde v1.0.228
+   Compiling wasm-bindgen-futures v0.4.73
+   Compiling web-time v1.1.0
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling wasm-bindgen-test v0.3.73
+   Compiling beamr v0.16.2 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fwdport-0163-main/crates/beamr)
+   Compiling beamr-wasm v0.7.0 (/Users/deanwhiting/Developer/stack/beamr/.worktrees/fwdport-0163-main/crates/beamr-wasm)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.53s
+     Running unittests src/lib.rs (target/wasm32-unknown-unknown/debug/deps/beamr_wasm-643197f1c9acea00.wasm)
 running 80 tests
 test tests::unified_deadline_keeps_one_host_callback_for_mixed_timer_burst ... ok
 test tests::trapped_exit_wakes_linked_supervisor_without_external_pump ... ok
@@ -83,15 +140,13 @@ test convert::tests::converts_complex_nested_js_object_to_term ... ok
 
 test result: ok. 80 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.39s
 
+     Running tests/generated_bootstrap.rs (target/wasm32-unknown-unknown/debug/deps/generated_bootstrap-e10ae1ceb4ccc547.wasm)
 no tests to run!
+     Running tests/profile_seal.rs (target/wasm32-unknown-unknown/debug/deps/profile_seal-5fdc016c8392920f.wasm)
 no tests to run!
+   Doc-tests beamr_wasm
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
-     Running unittests src/lib.rs (target/wasm32-unknown-unknown/debug/deps/beamr_wasm-643197f1c9acea00.wasm)
-     Running tests/generated_bootstrap.rs (target/wasm32-unknown-unknown/debug/deps/generated_bootstrap-e10ae1ceb4ccc547.wasm)
-     Running tests/profile_seal.rs (target/wasm32-unknown-unknown/debug/deps/profile_seal-5fdc016c8392920f.wasm)
-   Doc-tests beamr_wasm

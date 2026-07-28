@@ -1,30 +1,31 @@
 {
   "schema": "gate-report/v1",
   "repo": "beamr",
-  "commit_sha": "23f14df22d50b6abdd0c7028bf413a074aba866f",
-  "tree_sha": "71e0709a5f81dfcaee4908d8715e957920126186",
-  "branch": "main",
+  "commit_sha": "edeba6df9070e3acf08b2eb35a8bab730293d17a",
+  "tree_sha": "0a9dd485d985baa822ee1bb6163e411393adfe4f",
+  "branch": "fwdport/0163-borrow-across-alloc",
   "dirty": false,
-  "untracked_count": 1,
+  "untracked_count": 0,
   "toolchain": {
     "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
-    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
-    "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)",
-    "pin": "rust-toolchain.toml @ 1.97.1 (this commit)"
+    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)"
   },
-  "host": "Annabels-MacBook-Pro.local",
-  "slot": "via Waffles (board seat) \u2014 Anubis unresolvable on the bridge at claim time",
-  "started_at": "2026-07-28T14:16:20Z",
-  "finished_at": "2026-07-28T14:16:42Z",
-  "duration_s": 21.647,
-  "concurrent_cargo_at_start": [],
+  "host": "Mac.modem",
+  "started_at": "2026-07-28T15:24:42Z",
+  "finished_at": "2026-07-28T15:26:57Z",
+  "duration_s": 135.457,
+  "concurrent_cargo_at_start": [
+    "50568 /bin/zsh -c source /Users/deanwhiting/.claude/shell-snapshots/snapshot-zsh-1785223602582-zxylab.sh 2>/dev/null || true &",
+    "50571 /Users/deanwhiting/.rustup/toolchains/nightly-2026-03-06-aarch64-apple-darwin/bin/cargo test -p meridian-storage-pg",
+    "50572 /bin/zsh -c source /Users/deanwhiting/.claude/shell-snapshots/snapshot-zsh-1785223602582-zxylab.sh 2>/dev/null || true &"
+  ],
   "legs": [
     {
       "name": "fmt",
       "cmd": "cargo fmt --all --check",
       "kind": "check",
       "exit": 0,
-      "duration_s": 0.634,
+      "duration_s": 0.646,
       "log": "gate-logs/fmt.log",
       "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "tests": null,
@@ -35,9 +36,9 @@
       "cmd": "cargo clippy --workspace --all-targets -- -D warnings",
       "kind": "check",
       "exit": 0,
-      "duration_s": 0.242,
+      "duration_s": 18.994,
       "log": "gate-logs/clippy.log",
-      "log_sha256": "4f27ac380b22e1d975eee20ce727fa8cbc09061177f6253af0777fd4de7b7506",
+      "log_sha256": "056baf7c1d66e7d01965f9b242b98bd17935dbf94cb5d303a35717d69684f7d6",
       "tests": null,
       "failures": []
     },
@@ -46,9 +47,9 @@
       "cmd": "cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked",
       "kind": "check",
       "exit": 0,
-      "duration_s": 0.123,
+      "duration_s": 13.791,
       "log": "gate-logs/wasm32-check.log",
-      "log_sha256": "a5f4c585ee974ca44916ac30a98bbc189e067a7e0a6bc6d2e8d6bc525be724af",
+      "log_sha256": "6069c9ea9399eedfa94a3971a4f1a3f4bb68100fa37033b3f0dedd292ee7f136",
       "tests": null,
       "failures": []
     },
@@ -57,13 +58,13 @@
       "cmd": "wasm-bindgen-test-runner --version && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked",
       "kind": "cargo-test",
       "exit": 0,
-      "duration_s": 2.124,
+      "duration_s": 10.369,
       "log": "gate-logs/wasm-tests.log",
-      "log_sha256": "704b72737a5a68a43890d94d0fbf78b1968d4f3c8ca4d3ad96cf7adad9b532de",
+      "log_sha256": "1eb28896607c96191637e0af748bbcc93b5f25111a401b9fd289e0b0375e2fef",
       "tests": {
+        "suites": 2,
         "passed": 80,
-        "failed": 0,
-        "suites": 2
+        "failed": 0
       },
       "failures": []
     },
@@ -72,15 +73,16 @@
       "cmd": "cargo test --workspace",
       "kind": "cargo-test",
       "exit": 0,
-      "duration_s": 18.524,
+      "duration_s": 91.654,
       "log": "gate-logs/tests.log",
-      "log_sha256": "e42dbd1b6a6b66b23f8ed16d2f4a7db83d4fe4f0926781d4c895f3a90875fb4e",
+      "log_sha256": "058fc92752bc18fafb9ee7aaadb2a63c611b116ad89cccdec717118e6bb13658",
       "tests": {
-        "passed": 2007,
-        "failed": 0,
-        "suites": 69
+        "suites": 69,
+        "passed": 2022,
+        "failed": 0
       },
       "failures": []
     }
-  ]
+  ],
+  "verdict": "green"
 }
