@@ -1,19 +1,22 @@
 {
   "schema": "gate-report/v1",
   "repo": "beamr",
-  "commit_sha": "ef4fb9010bfb7c4672540d85c374859c7cb2bffb",
-  "tree_sha": "4eca03eb9dc427dd49c6e03aa22b835c410b1490",
-  "branch": "lane/asbytes-sweep",
+  "commit_sha": "23f14df22d50b6abdd0c7028bf413a074aba866f",
+  "tree_sha": "71e0709a5f81dfcaee4908d8715e957920126186",
+  "branch": "main",
   "dirty": false,
-  "untracked_count": 0,
+  "untracked_count": 1,
   "toolchain": {
-    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
-    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+    "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)",
+    "pin": "rust-toolchain.toml @ 1.97.1 (this commit)"
   },
-  "host": "Mac.modem",
-  "started_at": "2026-07-24T00:09:43Z",
-  "finished_at": "2026-07-24T00:11:46Z",
-  "duration_s": 122.751,
+  "host": "Annabels-MacBook-Pro.local",
+  "slot": "via Waffles (board seat) \u2014 Anubis unresolvable on the bridge at claim time",
+  "started_at": "2026-07-28T14:16:20Z",
+  "finished_at": "2026-07-28T14:16:42Z",
+  "duration_s": 21.647,
   "concurrent_cargo_at_start": [],
   "legs": [
     {
@@ -21,7 +24,7 @@
       "cmd": "cargo fmt --all --check",
       "kind": "check",
       "exit": 0,
-      "duration_s": 0.671,
+      "duration_s": 0.634,
       "log": "gate-logs/fmt.log",
       "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "tests": null,
@@ -32,9 +35,9 @@
       "cmd": "cargo clippy --workspace --all-targets -- -D warnings",
       "kind": "check",
       "exit": 0,
-      "duration_s": 15.903,
+      "duration_s": 0.242,
       "log": "gate-logs/clippy.log",
-      "log_sha256": "fd19c06aa675441fd419c9f426f3cb017b054f2ed03c66613baa143cc7e45b43",
+      "log_sha256": "4f27ac380b22e1d975eee20ce727fa8cbc09061177f6253af0777fd4de7b7506",
       "tests": null,
       "failures": []
     },
@@ -43,9 +46,9 @@
       "cmd": "cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked",
       "kind": "check",
       "exit": 0,
-      "duration_s": 11.642,
+      "duration_s": 0.123,
       "log": "gate-logs/wasm32-check.log",
-      "log_sha256": "c2969015261411795ccf77e9febe256fcc2a93dd8499be79e9190836ed79e59b",
+      "log_sha256": "a5f4c585ee974ca44916ac30a98bbc189e067a7e0a6bc6d2e8d6bc525be724af",
       "tests": null,
       "failures": []
     },
@@ -54,13 +57,13 @@
       "cmd": "wasm-bindgen-test-runner --version && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked",
       "kind": "cargo-test",
       "exit": 0,
-      "duration_s": 9.605,
+      "duration_s": 2.124,
       "log": "gate-logs/wasm-tests.log",
-      "log_sha256": "4946187e40d9da30ad983a2a906205f396cf9c6ccbb5cad83a8871ec0423baab",
+      "log_sha256": "704b72737a5a68a43890d94d0fbf78b1968d4f3c8ca4d3ad96cf7adad9b532de",
       "tests": {
-        "suites": 2,
         "passed": 80,
-        "failed": 0
+        "failed": 0,
+        "suites": 2
       },
       "failures": []
     },
@@ -69,16 +72,15 @@
       "cmd": "cargo test --workspace",
       "kind": "cargo-test",
       "exit": 0,
-      "duration_s": 84.926,
+      "duration_s": 18.524,
       "log": "gate-logs/tests.log",
-      "log_sha256": "3d47ea9620a8f97cc2a4079908914513261d7e37cc8108aaf4165805cf47d6a7",
+      "log_sha256": "e42dbd1b6a6b66b23f8ed16d2f4a7db83d4fe4f0926781d4c895f3a90875fb4e",
       "tests": {
-        "suites": 69,
         "passed": 2007,
-        "failed": 0
+        "failed": 0,
+        "suites": 69
       },
       "failures": []
     }
-  ],
-  "verdict": "green"
+  ]
 }
