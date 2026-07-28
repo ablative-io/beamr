@@ -59,10 +59,13 @@ young region. The output is silently built from zeros: no error, no crash.
   process heap; the detail alloc cannot read moved young bytes, and the
   subsequent `alloc_tuple` roots its arguments (proven by the existing
   `alloc_tuple_roots_boxed_arguments_across_gc` test). Verdict: SAFE, no
-  red owed. **Finding against the audit's row 6 wording** (forward-only,
-  reported at discovery): AUDIT.md says detail "is input-derived in its
-  callers (parse + dissect_query error paths)" — at the bytes the parse
-  path's detail is static; only dissect_query's is input-derived.
+  red owed. Reported at discovery; verified at the domain owner's hands
+  and recorded as **AUDIT.md AMENDMENT 2** (beamr main `92a9d2e`,
+  forward-only): row 6's "input-derived in its callers (parse +
+  dissect_query error paths)" overstated — only dissect_query's detail is
+  input-derived. Site 6's fix scope is unchanged (owning inside
+  `error_tuple` covers every caller); the red drives through a
+  dissect_query error path; the parse-path consumer stays untouched.
 - `bif_pad`'s general path builds an owned `out` Vec before allocating —
   SAFE per the audit; only the early-return arm crosses (row 8).
 

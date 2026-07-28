@@ -129,7 +129,9 @@ pub fn bif_binary_part(args: &[Term], context: &mut ProcessContext) -> Result<Te
     if end > bytes.len() {
         return Err(badarg());
     }
-    context.alloc_binary(&bytes[offset..end])
+    // Own the bytes: alloc_binary may collect and move an inline source.
+    let part = bytes[offset..end].to_vec();
+    context.alloc_binary(&part)
 }
 
 /// rand:uniform/0 — returns a random float in [0.0, 1.0).

@@ -1,0 +1,18 @@
+# AION-ENCODE-GC-DEFECT 0.16.3 backport lane 1 — green run: nine walls flipped by the own-the-bytes fixes
+# worktree: .worktrees/fix-0163-borrow-across-alloc, branch fix/0163-borrow-across-alloc
+# tree: af8440b (red walls commit) + this commit's nine-site fixes
+# command: cargo test -p beamr --lib   (FULL beamr lib suite, not just the wall filter)
+# exit status (cargo test itself): 0
+# captured: 2026-07-28 at the build seat (Osiris Yogo), post-rustfmt
+# The nine walls that FAILED at af8440b now pass; suite total below shows zero regressions.
+
+test native::stdlib_stubs::gc_rooting_tests::binary_part_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::list_append_binary_arm_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_find_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_pad_early_return_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_slice_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_trim_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::string_split_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::uri_dissect_query_error_detail_survives_forced_collection ... ok
+test native::stdlib_stubs::gc_rooting_tests::uri_parse_components_survive_forced_collection ... ok
+test result: ok. 1735 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.08s
