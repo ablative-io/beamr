@@ -180,3 +180,43 @@ session payloads are the likely hot candidates.
 - The lane-1 during-collection wall (json encode) remains the proof that
   the SAFE pattern holds under forced geometry; the probe is the proof
   the UNSAFE pattern fails under the same geometry.
+
+## AMENDMENT 1 (2026-07-28, Artemis Peach — forward-only correction, nothing above rewritten)
+
+**A twelfth REAL crossing exists; a SAFE verdict above is corrected.** The
+"read-only consumption" group lists `jit/runtime_binary_match.rs:175` as
+SAFE. That verdict is correct for `jit_bs_get_integer` and the `get_utf*`
+decoders, and WRONG for `jit_bs_get_binary` — surfaced by the RF-006
+re-pin (review-fix brief authoring), chain re-verified at the bytes at the
+beamr seat 2026-07-28:
+
+- `jit_bs_get_binary` (`runtime_binary_match.rs:91`) takes
+  `bytes = context.slice(bits)` — a borrow of the source binary's bytes —
+  then calls `allocate_extracted_binary` (`:94`).
+- Non-ProcBin arm (`:275`) → `allocate_binary` (`:243`) → `alloc_words`
+  (`:245`) → `gc::ensure_space` (`jit/runtime.rs:343`) — a COLLECTING
+  call — then `alloc_binary(heap, bytes)` (`:255`) copies from the stale
+  borrow. For an inline source (≤ 64 B, this arm exactly), this is the
+  audit's class: moved young region zero-filled, output built from zeros.
+- Additionally the ProcBin arm captures `source = context.source_term()`
+  (`:264`) BEFORE `alloc_words` (`:268`) and writes it after (`:273`) — a
+  stale-*Term* write (the ProcBin box moves even though its bytes are
+  off-heap). Different shape (Term capture, not slice borrow); real.
+
+**Root cause of the miss:** the audit's verdict unit was the SITE, but a
+site can have multiple consumers with different allocation fates. The
+sibling `jit/runtime_binary_build.rs:90` was re-checked and stays SAFE
+(writes into a pre-existing builder buffer, no allocation in the span).
+
+**Reachability differs from the eleven:** the eleven are registered-BIF
+surface, callable from any embedding that loads those registration sets.
+Site 12 is JIT-runtime-helper surface — reachable only under the optional
+`jit` feature via the demand path compiling a slice containing
+`bs_get_binary`. Whether it belongs in the 0.16.3 backport scope or in
+RF-006 (the review-fix GC-class lane, which now carries it) is a vehicle
+question escalated 2026-07-28; aion-side `jit` enablement is Vesper's
+knowledge.
+
+Dynamic probe under forced geometry: not yet run for this site; the chain
+verification is static-at-the-bytes, the same standard as the 57 SAFE
+verdicts above. The owning fix lane must carry the probe red-first.
