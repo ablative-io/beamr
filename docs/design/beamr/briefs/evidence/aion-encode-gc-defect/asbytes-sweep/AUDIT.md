@@ -220,3 +220,32 @@ knowledge.
 Dynamic probe under forced geometry: not yet run for this site; the chain
 verification is static-at-the-bytes, the same standard as the 57 SAFE
 verdicts above. The owning fix lane must carry the probe red-first.
+
+## AMENDMENT 2 (2026-07-28, Artemis Peach — forward-only correction, nothing above rewritten)
+
+**Row 6's crossing description overstates by one consumer.** The row reads
+"`detail` is input-derived in its callers (parse + `dissect_query` error
+paths)". Per-consumer, verified at the bytes at the beamr seat 2026-07-28
+(surfaced by the 0.16.3 builder's per-consumer sweep of the mechanical
+lane, independently re-verified here before this text was written):
+
+- `bif_uri_string_dissect_query` error paths (`uri_bifs.rs:113`, `:119`)
+  pass `part` — a subslice of `binary_text(*input)`, whose `&'static str`
+  return launders the borrow of the source binary's bytes. Inside
+  `error_tuple` (`:254`), `atom(context, reason)` and
+  `alloc_binary(detail.as_bytes())` sit inside that borrow's span. REAL —
+  the row's verdict stands for this consumer.
+- `bif_uri_string_parse` invalid-port paths (`uri_bifs.rs:51`, `:54`) pass
+  the literal `":"` with reason `"invalid_uri"` — both `&'static` rodata,
+  not process-heap-derived; a collection cannot move or zero the source of
+  the `alloc_binary` copy. The subsequent `alloc_tuple(&[error, reason,
+  detail])` takes already-allocated Terms and roots them for the duration
+  of the allocation (`native/context/alloc.rs` module contract; `with_rooted`
+  in `alloc_tuple`). **SAFE — this consumer needs no fix and no red.**
+
+**Root cause is AMENDMENT 1's, in the other direction:** the site-level
+verdict unit overstated here where it understated at site 12. The fix
+scope for site 6 is unchanged (`error_tuple`'s own-the-bytes fix covers
+every caller); what changes is the red's driver — it must force the
+geometry via a `dissect_query` error path, and the parse-path consumer is
+recorded SAFE with this justification rather than walled.
