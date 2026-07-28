@@ -370,6 +370,89 @@ fn string_slice_survives_forced_collection() {
     assert_eq!(result_bytes(result), b"23\xE2\x80\x94a");
 }
 
+/// ETF payload for `[<<"aaaa">>, <<"bbbb">>]` — 25 bytes, inline (≤ 64 B),
+/// so the source lives on the young heap and moves under collection. Two
+/// binary elements make the multi-slice partial-corruption shape: the first
+/// element's allocation collecting invalidates every later read of the
+/// source.
+fn etf_two_binaries_payload() -> Vec<u8> {
+    use crate::etf::tags;
+    let mut payload = vec![tags::VERSION, tags::LIST_EXT, 0, 0, 0, 2];
+    payload.extend_from_slice(&[tags::BINARY_EXT, 0, 0, 0, 4]);
+    payload.extend_from_slice(b"aaaa");
+    payload.extend_from_slice(&[tags::BINARY_EXT, 0, 0, 0, 4]);
+    payload.extend_from_slice(b"bbbb");
+    payload.push(tags::NIL_EXT);
+    payload
+}
+
+fn cons_list_bytes(list: Term) -> Vec<Vec<u8>> {
+    let mut parts = Vec::new();
+    let mut current = list;
+    while let Some(cons) = crate::term::boxed::Cons::new(current) {
+        parts.push(result_bytes(cons.head()));
+        current = cons.tail();
+    }
+    parts
+}
+
+#[test]
+fn binary_to_term_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let payload = etf_two_binaries_payload();
+    let input = inline_input(&mut process, &payload);
+    force_collect_geometry(&mut process, 1);
+    let mut ctx = live_context(&mut process, 1, &atoms);
+    let result =
+        super::super::etf_bifs::bif_binary_to_term(&[input], &mut ctx).expect("binary_to_term");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    assert_eq!(
+        cons_list_bytes(result),
+        vec![b"aaaa".to_vec(), b"bbbb".to_vec()]
+    );
+}
+
+#[test]
+fn binary_to_term_2_used_survives_forced_collection() {
+    let mut process = Process::new(1, 256);
+    let atoms = shared_atoms();
+    let payload = etf_two_binaries_payload();
+    let input = inline_input(&mut process, &payload);
+    let options = {
+        let mut ctx = live_context(&mut process, 1, &atoms);
+        let used = Term::atom(atoms.intern("used"));
+        let opts = ctx.alloc_cons(used, Term::NIL).expect("options list");
+        ctx.detach_process();
+        opts
+    };
+    process.set_x_reg(1, options);
+    force_collect_geometry(&mut process, 1);
+    let mut ctx = live_context(&mut process, 2, &atoms);
+    let result = super::super::etf_bifs::bif_binary_to_term_2(&[input, options], &mut ctx)
+        .expect("binary_to_term/2");
+    drop(ctx);
+    assert!(
+        process.heap().old_used() > 0,
+        "geometry must have collected"
+    );
+    let tuple = Tuple::new(result).expect("{term, used} tuple");
+    let used = tuple.get(1).expect("used element");
+    assert_eq!(
+        used.as_small_int(),
+        Some(i64::try_from(payload.len()).expect("payload length"))
+    );
+    let decoded = tuple.get(0).expect("decoded term");
+    assert_eq!(
+        cons_list_bytes(decoded),
+        vec![b"aaaa".to_vec(), b"bbbb".to_vec()]
+    );
+}
+
 // `uri_string:parse` map keys are ATOMS interned in the BIF context's table;
 // look values up by atom term, which only works with the shared table above.
 fn map_atom_value_bytes(map_term: Term, atoms: &AtomTable, name: &str) -> Option<Vec<u8>> {
