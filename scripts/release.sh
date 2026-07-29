@@ -52,25 +52,74 @@ crate_version() {  # read `version = "x.y.z"` from a crate's Cargo.toml
   grep -m1 '^version' "$REPO/crates/$1/Cargo.toml" | sed -E 's/.*"([^"]+)".*/\1/'
 }
 
-is_published() {   # 0 if <crate>@<version> already exists on crates.io
+# crates.io answers 403 to a request that sends no User-Agent — for EVERY
+# crate, published or not. A two-state "is it published?" therefore CANNOT be
+# written safely: an unreachable or unhappy registry is indistinguishable from
+# a crate that is simply not there, and both call sites below act on that
+# answer. So this reports THREE states and the callers must handle all three.
+# "Could not tell" is not "no".
+UA="beamr-release-script (+https://github.com/ablative-io/beamr)"
+
+publish_state() {  # echoes: published | absent | unknown-<http-code>
   local name="$1" ver="$2" code
-  code="$(curl -s -o /dev/null -w '%{http_code}' "https://crates.io/api/v1/crates/$name/$ver")"
-  [[ "$code" == "200" ]]
+  code="$(curl -s -A "$UA" -o /dev/null -w '%{http_code}' "https://crates.io/api/v1/crates/$name/$ver")"
+  case "$code" in
+    200) echo published ;;
+    404) echo absent ;;
+    *)   echo "unknown-$code" ;;
+  esac
 }
 
 wait_for_index() { # block until <crate>@<version> is queryable on crates.io
-  local name="$1" ver="$2"
+  local name="$1" ver="$2" state
   printf '    waiting for crates.io index to show %s %s' "$name" "$ver"
-  until is_published "$name" "$ver"; do printf '.'; sleep 5; done
-  printf ' live.\n'
+  while true; do
+    state="$(publish_state "$name" "$ver")"
+    case "$state" in
+      published) printf ' live.\n'; return 0 ;;
+      absent)    printf '.'; sleep 5 ;;
+      *)
+        # Never spin here. This loop runs AFTER a successful upload, so a
+        # registry we cannot read must stop the run loudly rather than print
+        # dots forever while looking like progress.
+        printf '\n'
+        echo "release.sh: crates.io said '$state' while waiting for $name $ver." >&2
+        echo "release.sh: THE PUBLISH ITSELF MAY HAVE SUCCEEDED — check crates.io" >&2
+        echo "release.sh: by hand before re-running. Do not assume it failed." >&2
+        exit 1
+        ;;
+    esac
+  done
 }
 
 echo "==> beamr workspace release  (repo: $REPO)${DRY_RUN:+  [DRY-RUN]}"
+
+# State the whole intent before the first upload. A publish is the estate's
+# only unrecoverable act and the registry has no claim discipline of its own:
+# the operator holding the credential must be able to see, and announce, the
+# full set this run will touch BEFORE any of it happens.
+echo "==> intends to publish, in order:"
+for crate in "${CRATES[@]}"; do
+  echo "      $crate $(crate_version "$crate")"
+done
+
 for crate in "${CRATES[@]}"; do
   ver="$(crate_version "$crate")"
-  if [[ -z "$DRY_RUN" ]] && is_published "$crate" "$ver"; then
-    echo "==> $crate $ver — already on crates.io, skipping."
-    continue
+  if [[ -z "$DRY_RUN" ]]; then
+    state="$(publish_state "$crate" "$ver")"
+    case "$state" in
+      published)
+        echo "==> $crate $ver — already on crates.io, skipping."
+        continue
+        ;;
+      absent) ;;
+      *)
+        echo "release.sh: crates.io said '$state' for $crate $ver." >&2
+        echo "release.sh: refusing to publish — cannot tell published from" >&2
+        echo "release.sh: unpublished, and this step cannot be undone." >&2
+        exit 1
+        ;;
+    esac
   fi
   echo "==> $crate $ver — publishing${DRY_RUN:+ (dry-run)}"
   ( cd "$REPO" && cargo publish -p "$crate" $DRY_RUN )
