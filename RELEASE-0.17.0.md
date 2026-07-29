@@ -281,6 +281,13 @@ you end up more confident and equally blind. The four beamr readings above used
 the metadata endpoint and reddened at `404`, so they are unaffected and need no
 re-run.
 
+**And do not read that as "just follow redirects".** With `-L` the download
+endpoint answers `403` for a version that is genuinely absent — the *same* code
+it returns for a refused request. The hardening step moves you out of the third
+failure mode and into the first without announcing it. **Metadata endpoint, and
+that is a rule.** *(Ruled by Cally Ray, 2026-07-29; full reasoning and the
+general shape in `haematite/gate-logs/SHELL-HAZARDS.md` §2D and §5.1.)*
+
 *(Method from Athena Zooper Dooper's frame wave; beamr's controls are beamr's
 — a control is only a control in the venue it was chosen for.)*
 
