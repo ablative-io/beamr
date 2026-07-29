@@ -1,0 +1,30 @@
+=== battery start (UTC) ===
+Wed 29 Jul 2026 16:23:14 UTC
+=== tree ===
+b83e86e98fb2eca184c487a520f30e474136ad5b
+dirty-entries: 1
+=== toolchain ===
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+binary: rustc
+commit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452
+commit-date: 2026-07-14
+host: aarch64-apple-darwin
+release: 1.97.1
+LLVM version: 22.1.6
+cargo 1.97.1 (c980f4866 2026-06-30)
+wasm-bindgen-test-runner 0.2.125
+=== load before leg1-fmt ===
+ 2:23  up 3 days, 10:20, 2 users, load averages: 2.67 4.33 4.30
+=== load before leg2-clippy ===
+ 2:23  up 3 days, 10:20, 2 users, load averages: 2.67 4.33 4.30
+=== load before leg3-wasm32-check ===
+ 2:23  up 3 days, 10:20, 2 users, load averages: 3.70 4.48 4.35
+=== load before leg4-wasm-tests ===
+ 2:23  up 3 days, 10:20, 2 users, load averages: 4.25 4.58 4.39
+=== load before leg5-tests ===
+ 2:23  up 3 days, 10:20, 2 users, load averages: 4.36 4.59 4.40
+=== load after leg5 ===
+ 2:25  up 3 days, 10:22, 2 users, load averages: 4.82 4.99 4.58
+=== battery end (UTC) ===
+Wed 29 Jul 2026 16:25:10 UTC
+BATTERY COMPLETE: all five legs invoked; per-leg exits in exits.txt

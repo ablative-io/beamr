@@ -1,0 +1,55 @@
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-hygiene-3aecb622/crates/beamr-cli/src/main.rs:430:
+             let bytes = match std::fs::read(&file_path) {
+                 Ok(bytes) => bytes,
+                 Err(error) => {
+[31m-                    eprintln!(
+(B[m[31m-                        "beamr: warning: skipped {}: {error}",
+(B[m[31m-                        file_path.display()
+(B[m[31m-                    );
+(B[m[32m+                    eprintln!("beamr: warning: skipped {}: {error}", file_path.display());
+(B[m                     skipped += 1;
+                     continue;
+                 }
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-hygiene-3aecb622/crates/beamr-cli/src/main.rs:445:
+                 bif_registry,
+                 ModuleOrigin::Filesystem(file_path.clone()),
+             ) {
+[31m-                eprintln!(
+(B[m[31m-                    "beamr: warning: skipped {}: {error}",
+(B[m[31m-                    file_path.display()
+(B[m[31m-                );
+(B[m[32m+                eprintln!("beamr: warning: skipped {}: {error}", file_path.display());
+(B[m                 skipped += 1;
+             }
+         }
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-hygiene-3aecb622/crates/beamr-cli/src/tests.rs:143:
+ #[test]
+ fn parses_imports_command_carrying_dir_flags() {
+     assert_eq!(
+[31m-        parse_args(["imports", "hello.beam", "--dir", "/tmp/a", "--dir", "/tmp/b"])
+(B[m[31m-            .expect("imports with --dir parses"),
+(B[m[32m+        parse_args([
+(B[m[32m+            "imports",
+(B[m[32m+            "hello.beam",
+(B[m[32m+            "--dir",
+(B[m[32m+            "/tmp/a",
+(B[m[32m+            "--dir",
+(B[m[32m+            "/tmp/b"
+(B[m[32m+        ])
+(B[m[32m+        .expect("imports with --dir parses"),
+(B[m         Command::Imports {
+             path: "hello.beam".into(),
+             dirs: vec!["/tmp/a".into(), "/tmp/b".into()],
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-hygiene-3aecb622/crates/beamr-cli/src/tests.rs:440:
+         .duration_since(UNIX_EPOCH)
+         .expect("system clock should be after Unix epoch")
+         .as_nanos();
+[31m-    std::env::temp_dir().join(format!(
+(B[m[31m-        "beamr-cli-{label}-{}-{nanos}",
+(B[m[31m-        std::process::id()
+(B[m[31m-    ))
+(B[m[32m+    std::env::temp_dir().join(format!("beamr-cli-{label}-{}-{nanos}", std::process::id()))
+(B[m }
+ 
+ fn write_temp_beam(contents: &str) -> std::path::PathBuf {
+exit=1

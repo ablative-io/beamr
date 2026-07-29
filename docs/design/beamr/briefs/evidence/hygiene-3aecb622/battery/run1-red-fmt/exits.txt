@@ -1,0 +1,5 @@
+leg1-fmt exit=1
+leg2-clippy exit=0
+leg3-wasm32-check exit=0
+leg4-wasm-tests exit=0
+leg5-tests exit=0
