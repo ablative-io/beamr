@@ -214,6 +214,51 @@ impl Scheduler {
         self.shared.exit_tombstones.subscribe()
     }
 
+    /// Arm a notification-only, one-shot watch for a single process's exit.
+    ///
+    /// Contract (EXIT-001), stated the way the connection-event hub states
+    /// its invariants:
+    ///
+    /// * **Notification-only.** A watch delivers `(pid, reason)` by value and
+    ///   never consumes, inspects, or perturbs the retained outcome —
+    ///   [`Scheduler::take_exit_outcome`] stays exactly-once for whoever owns
+    ///   the draining subscription, no matter how many watches fire first.
+    /// * **The exclusive subscription is unaffected.** The single
+    ///   [`Scheduler::subscribe_exit_events`] slot, its event ordering, and
+    ///   its `Lagged` overflow behaviour are identical with zero or thousands
+    ///   of live watches.
+    /// * **Registration answers are typed.** [`super::ExitWatchState::Live`]
+    ///   arms a watch on a process that was present in the process table;
+    ///   [`super::ExitWatchState::AlreadyExited`] reports a finalized pid
+    ///   immediately, served from the durable outcome record (never the
+    ///   bounded legacy tombstone), so it stays correct after both
+    ///   legacy-tombstone eviction and outcome consumption;
+    ///   [`super::ExitWatchState::NoRecord`] means no live process and no
+    ///   durable record — the pid never ran under this scheduler — and arms
+    ///   nothing, so no caller can block forever on an answer that cannot
+    ///   arrive.
+    /// * **Duplicate signals are absorbed by design.** Registration precedes
+    ///   the already-dead check; when a concurrent exit fires while
+    ///   registration is in flight, the retained-record answer and the fire
+    ///   land in the same one-shot slot and the second is a no-op.
+    /// * **A watch fires only after the exit is fully observable.** Fires are
+    ///   appended after outcome installation and after the existing event
+    ///   publication, so a watcher woken by a fire can immediately
+    ///   [`Scheduler::take_exit_outcome`] (or [`Scheduler::peek_exit_reason`])
+    ///   and find the state installed.
+    /// * **Dropping a watch deregisters it.** Abandoned watches (a deadline
+    ///   that expired, a command that errored early) do not accumulate.
+    pub fn watch_exit(&self, pid: u64) -> super::ExitWatchState {
+        // EXIT-001 commit A skeleton: registration only — the typed
+        // already-dead / no-record composition lands with the implementation.
+        match self.shared.exit_tombstones.watch(pid) {
+            super::exit_events::StoreWatch::Armed(watch) => super::ExitWatchState::Live(watch),
+            super::exit_events::StoreWatch::AlreadyExited(reason) => {
+                super::ExitWatchState::AlreadyExited(reason)
+            }
+        }
+    }
+
     /// Retrieve the execution error that caused a process to exit, if any.
     ///
     /// This diagnostic is consumed independently of [`Scheduler::take_exit_outcome`]:

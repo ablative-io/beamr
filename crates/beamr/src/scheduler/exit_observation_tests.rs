@@ -300,3 +300,192 @@ fn outcome_and_error_exception_diagnostics_consume_independently() {
 
     scheduler.shutdown();
 }
+
+// ===== EXIT-001 walls (scheduler level) =====
+
+/// CHARACTERIZATION (EXIT-001 R1) — green at base and green forever.
+///
+/// This test is a deliberate guard, not an obstacle: `subscribe_exit_events`
+/// is single-use BY DESIGN because aion's singleton-drainer contract depends
+/// on exactly one outcome-claiming subscription per scheduler lifetime. If a
+/// change makes the second call return `Some`, that change has silently
+/// deleted the guard against two drainers racing exactly-once
+/// `take_exit_outcome` — treat the red as a STOP and escalate; do not
+/// "fix" this test.
+#[test]
+fn characterization_second_exit_event_subscription_still_returns_none() {
+    let scheduler = test_scheduler(1);
+    let _first = scheduler
+        .subscribe_exit_events()
+        .expect("first subscription succeeds");
+    assert!(
+        scheduler.subscribe_exit_events().is_none(),
+        "the exclusive outcome-claiming subscription must stay single-use"
+    );
+    scheduler.shutdown();
+}
+
+/// W1 — ALREADY-DEAD AT REGISTRATION: a finalized pid answers immediately
+/// with its reason, from registration itself, never by blocking.
+#[test]
+fn w1_watch_exit_on_finalized_pid_reports_immediately_with_reason() {
+    let scheduler = test_scheduler(1);
+    let pid = 9_300_001;
+    publish_synthetic_exit(&scheduler, pid, Term::small_int(7));
+    assert!(
+        scheduler.peek_exit_reason(pid).is_some(),
+        "precondition: pid must really be finalized before the watch registers"
+    );
+
+    match scheduler.watch_exit(pid) {
+        ExitWatchState::AlreadyExited(reason) => assert_eq!(reason, ExitReason::Normal),
+        ExitWatchState::Live(watch) => {
+            let outcome = watch.recv_timeout(Duration::from_secs(1));
+            panic!(
+                "blocked past the deadline: watch_exit on an already-finalized pid \
+                 returned Live (recv gave {outcome:?}) instead of an immediate \
+                 AlreadyExited(Normal)"
+            );
+        }
+        ExitWatchState::NoRecord => {
+            panic!("a finalized pid must never be reported as NoRecord")
+        }
+    }
+    scheduler.shutdown();
+}
+
+/// R3/D4 — the unknown-pid answer is typed: no live process and no durable
+/// record must be `NoRecord`, never a `Live` watch that can block forever.
+#[test]
+fn watch_exit_on_unknown_pid_reports_no_record_not_live() {
+    let scheduler = test_scheduler(1);
+    let pid = 9_310_001; // never spawned, never finalized
+
+    match scheduler.watch_exit(pid) {
+        ExitWatchState::NoRecord => {}
+        ExitWatchState::Live(watch) => {
+            let outcome = watch.recv_timeout(Duration::from_secs(1));
+            panic!(
+                "an unknown pid must answer the typed NoRecord, not arm a watch that \
+                 can never fire (recv gave {outcome:?})"
+            );
+        }
+        ExitWatchState::AlreadyExited(reason) => {
+            panic!("an unknown pid reported AlreadyExited({reason:?}) with no record")
+        }
+    }
+    scheduler.shutdown();
+}
+
+/// REVIEW POINT 2(a) at the public seam — a watch registered AFTER the
+/// drainer consumed the outcome still answers with the correct reason.
+#[test]
+fn watch_exit_after_outcome_consumed_reports_reason() {
+    let scheduler = test_scheduler(1);
+    let pid = 9_320_001;
+    publish_synthetic_exit(&scheduler, pid, Term::small_int(42));
+    assert!(
+        scheduler.take_exit_outcome(pid).is_some(),
+        "precondition: the drainer consumed the outcome"
+    );
+
+    match scheduler.watch_exit(pid) {
+        ExitWatchState::AlreadyExited(reason) => assert_eq!(reason, ExitReason::Normal),
+        ExitWatchState::Live(watch) => {
+            let outcome = watch.recv_timeout(Duration::from_secs(1));
+            panic!(
+                "blocked past the deadline: a consumed-outcome pid returned Live \
+                 (recv gave {outcome:?}) — the token's retained reason must answer"
+            );
+        }
+        ExitWatchState::NoRecord => {
+            panic!("a finalized pid must never be reported as NoRecord after take")
+        }
+    }
+    scheduler.shutdown();
+}
+
+/// W1 (live path) + REVIEW POINT 1 — a watch armed on a genuinely live
+/// process fires on its real exit, and the woken watcher can immediately
+/// take the outcome: exactly the wake-then-take sequence aion's
+/// `process_event` performs before it would raise
+/// `ProcessExitOutcomeMissingAfterEvent`.
+#[test]
+fn watch_on_live_process_fires_on_real_exit_and_outcome_is_takeable_at_wake() {
+    let scheduler = test_scheduler(1);
+    let pid = scheduler
+        .spawn_native(Box::new(|| Box::new(WaitForTermination)))
+        .expect("native process spawns");
+
+    let watch = match scheduler.watch_exit(pid) {
+        ExitWatchState::Live(watch) => watch,
+        other => panic!("a live process must arm a Live watch, got {other:?}"),
+    };
+    scheduler.terminate_process(pid, ExitReason::Kill);
+
+    assert_eq!(
+        watch.recv_timeout(EVENT_TIMEOUT),
+        Ok((pid, ExitReason::Kill)),
+        "the watch must fire on the real exit"
+    );
+    assert!(
+        scheduler.take_exit_outcome(pid).is_some(),
+        "a watcher woken by a fire must find the outcome already installed"
+    );
+    scheduler.shutdown();
+}
+
+/// WALL 1 — race semantics ruled FINAL (Waffles 2026-07-29 16:16Z, Hermes
+/// assented, lane entry 99f4e608): REPLY WINS, WITH MANDATORY POST-EXIT
+/// DRAIN. Riders (Hermes, binding): the test asserts the reply's VALUE, not
+/// mere arrival; the pinned interleaving is enqueue STRICTLY BEFORE kill.
+///
+/// This wall converts shipped-by-accident loop ordering into an asserted
+/// invariant: a value enqueued before death is observable — with its value —
+/// by the time the exit notification wakes the waiter, because outcome
+/// installation precedes exit publication (insert, release the writer lock,
+/// THEN publish).
+#[test]
+fn wall1_reply_enqueued_strictly_before_kill_is_observable_with_value_at_watch_wake() {
+    let scheduler = test_scheduler(1);
+    let pid = scheduler
+        .spawn_native(Box::new(|| Box::new(WaitForTermination)))
+        .expect("native process spawns");
+
+    // The waiter exists before either racer.
+    let watch = match scheduler.watch_exit(pid) {
+        ExitWatchState::Live(watch) => watch,
+        other => panic!("precondition: live process arms a watch, got {other:?}"),
+    };
+
+    // 1. The reply is enqueued STRICTLY BEFORE the kill (rider 2).
+    scheduler
+        .shared
+        .exit_results
+        .insert(pid, OwnedTerm::immediate(Term::small_int(1234)));
+
+    // 2. The kill: the terminal transition captures the enqueued reply as the
+    //    retained outcome, installs it, and only then publishes.
+    scheduler.terminate_process(pid, ExitReason::Kill);
+
+    // 3. The waiter wakes on the exit notification…
+    assert_eq!(
+        watch.recv_timeout(EVENT_TIMEOUT),
+        Ok((pid, ExitReason::Kill)),
+        "the waiter must wake on the exit notification"
+    );
+
+    // 4. …drains the reply path FIRST, and the reply is there WITH ITS VALUE
+    //    (rider 1): success, not died-without-reply.
+    let (reason, value) = scheduler.take_exit_outcome(pid).expect(
+        "outcome must be installed before the exit publishes — the invariant \
+         Hermes's conclusion logic rests on",
+    );
+    assert_eq!(reason, ExitReason::Kill);
+    assert_eq!(
+        value.root().as_small_int(),
+        Some(1234),
+        "the reply's VALUE must be observable, not a synthesized default"
+    );
+    scheduler.shutdown();
+}

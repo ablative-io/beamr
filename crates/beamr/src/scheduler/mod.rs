@@ -123,7 +123,10 @@ mod exit_tombstones;
 #[cfg(feature = "threads")]
 mod inventory;
 #[cfg(feature = "threads")]
-pub use exit_events::{EXIT_EVENT_CAPACITY, ExitEvent, ExitEventRecvError, ExitEventSubscription};
+pub use exit_events::{
+    EXIT_EVENT_CAPACITY, ExitEvent, ExitEventRecvError, ExitEventSubscription, ExitWatch,
+    ExitWatchState,
+};
 #[cfg(feature = "readiness")]
 mod readiness;
 #[cfg(feature = "threads")]
