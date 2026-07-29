@@ -101,30 +101,40 @@ claim-convention ruling, 16:49Z — runs resume under preflight):
 | `m-check-then-register` (= R3 order revert) | brief predicts W2 red at lost-wake | authored, run pending. **Prediction, stated before running:** NO wall reds — the loss window check-then-register opens is PRE-INSTALL, and the only deterministic park the existing test hook offers is post-send (post-install), where the check simply hits the installed record. If confirmed: W2's citable lost-wake red is the commit-A skeleton (both halves reverted; face recorded in `26a49c1`'s body and reproducible via `m-skeleton-both-reverted`), and the pre-install window's unreachability is a documented limit of the existing gate — candidate for a pre-install rendezvous in a future lane, the tear to judge. |
 | `m-skeleton-both-reverted` | W2 (lost-wake, observed 0) — the demonstrated killer | authored, run pending; commit `26a49c1` is the natural exhibit of the same red |
 
-## Battery (pending, last step) — CLAIM CONVENTION v2
+## Battery (pending, last step) — canon-instantiated runner
 
-beamr gates.json five legs VERBATIM from the brief's `.verification`
-(identical to the hygiene battery's legs), run at the final head via the
-fresh v2-conformant runner **`battery/run-battery-v2.zsh`** (runner-v2
-remediation dispatch, Artemis 17:00Z sha `17ba6688…`, re-brief 17:03Z sha
-`57f990a5…`; the landed hygiene runner is pre-v2 evidence and is never
-edited in place). Runner shape: claim FIRST at
-`/tmp/ablative-gate-battery.claim` (atomic create; seat/member/pid/
-started/phase/tree; phase draining→running), THEN drain-wait under the
-held claim — 30 s samples, 60-minute ceiling, every sample recorded in
-`battery/drain-record.txt`, refusal only on timeout (loud, run-stopping);
-rule-5 stale handling at the floor exactly; trap-release on every exit
-path. The quiet CENSUS (zero foreign cargo/rustc), not the claim, is the
-evidence's quiet-floor proof (anchor rule 6). Built against the frozen
-six-entry pin set (anchor `4b8b38e1` + Amendments 1 `e903b4ad` /
-2 `c6d998bc` + addendum `aa92a18c` + withdrawal `91ba17f9` +
-ratification `c3ee8385`), restated verbatim in the runner header and in
-the emitted `battery-header.txt`. Behavioral conformance proof: claim-path
-grep hit line 46 (functional assignment); acquisition line 90 strictly
-before drain-wait line 114; trap/release lines 60–67 covering every exit
-path. Evidence lands beside this file with the hygiene-battery shape:
-per-leg logs, exits, load lines, toolchain stamp, tallies, completion
-marker — machine and operator named.
+Governing runner: **`battery/run-battery-v3-canon.sh`**, launched with
+BASH from the worktree root. Preamble (phases 0–2: acquire with noclobber
+→ drain-wait under the held claim, 30 s samples / 60-min ceiling, exits
+4/5 loud) copied BYTE-VERBATIM from the claim-integrated canonical gate
+script, stack-root entry `622dedbf-ff42-4405-a6a5-9ffcfb00676c`, both
+hash framings verified at this seat before copying (with-LF
+`7773e852…`/10163 B; stripped `5b75314a…`/10162 B). Disclosed deltas:
+the in-script instantiation block (the canon's own required
+SEAT_NAME/MEMBER_ID/EVIDENCE_DIR + per-box absolute worktree; pattern
+ratified estate-wide, entry `edb63b89`) and the census extension
+(+`wasm-bindgen-test-runner`). Phase 3 = beamr's five legs VERBATIM from
+the brief's `.verification` (no nextest — canon A4/A6 N/A, stated;
+A7 adapted to the TRUE line: doc tests COVERED via leg 5). Phase 4 =
+canonical marker with all five leg exits + machine/operator + load
+riders. The quiet CENSUS, not the claim, is the quiet-floor proof
+(anchor rule 6). Canon defects inherited AS WRITTEN per estate stance
+(Seth's flags 1–3, entry `c527324b` — canon-owner's to amend, never
+patched per-seat). Behavioral conformance proof against this file:
+claim-path grep hit **line 21** (functional assignment); acquisition
+`acquire()` line 52 / loop line 62, strictly before drain-wait line 84;
+trap line 44 with `release_claim()` lines 38–43 (EXIT INT TERM).
+
+**Supersession note:** `battery/run-battery-v2.zsh` (committed `42c6231`)
+was built honestly against the earlier six-entry pin and is superseded by
+re-brief 2 (canon integration, sha `57f990a5…`) before any battery ran —
+it stays in history as the six-pin artifact and never launches; the zsh
+vessel is additionally retired by Seth's flag 5 (zsh's lowercase
+`pipestatus` + `set -u` would kill a canon run mid-claim).
+
+Battery evidence lands beside this file: per-leg logs + stderr logs,
+exits, drain samples, censuses at start/end, load lines, toolchain stamp,
+tallies, completion marker — machine and operator named.
 
 ## The no-edit list (R3 acceptance, stated for the handoff)
 
