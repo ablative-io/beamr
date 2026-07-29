@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+Main's manifest deliberately holds `0.16.2` while this tree carries
+0.16.3's forward-ported fixes plus the unreleased breaking changes below:
+stamping `0.16.3` here would claim a registry equivalence that does not
+hold, and the version number moves once, to `0.17.0` (ruling of record in
+`edeba6d`'s commit body).
+
 ### Removed (breaking — 0.17.0 window)
 
 - **`Scheduler::spawn_link_dirty`.** A behavioral `spawn_link` alias since
