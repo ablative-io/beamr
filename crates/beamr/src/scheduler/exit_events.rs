@@ -241,11 +241,20 @@ impl ExitWatchRegistry {
     }
 
     /// Deliver the exit notification to every watch on `pid` and clear the
-    /// entry. Non-blocking sends into one-slot channels; no user code runs.
+    /// entry. Non-blocking sends into one-slot channels; no user code runs;
+    /// nothing allocates on the steady no-watchers path (the map miss is the
+    /// whole cost). Cost grows only with the watches on THIS pid.
     pub(super) fn fire(&self, pid: u64, reason: ExitReason) {
-        // EXIT-001 commit A skeleton: non-functional on purpose so the walls
-        // are red at this commit. Commit B implements delivery.
-        let _ = (pid, reason);
+        let Some((_pid, watchers)) = self.watches.remove(&pid) else {
+            return;
+        };
+        for (_watch_id, sender) in watchers {
+            // A full slot (the register-then-check answer already landed) or
+            // a dropped receiver (the watcher gave up) are both benign: the
+            // one-shot slot absorbs duplicates by design, and send-and-drop
+            // keeps the fire path non-blocking.
+            let _ = sender.try_send((pid, reason));
+        }
     }
 
     fn deregister(&self, pid: u64, watch_id: u64) {
@@ -403,6 +412,22 @@ impl ExitEventPublicationObserver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R4 — the exclusivity MECHANISM is pinned, not just the behaviour: the
+    /// single-subscription guarantee rests on `OnceLock`'s set-once semantics.
+    /// A "small refactor" to `Mutex<Option<Sender>>` could quietly permit
+    /// re-subscription while every behavioural test still passes at first —
+    /// this source check (the house prohibition-grep shape) catches it.
+    #[test]
+    fn exclusivity_mechanism_is_still_the_oncelock() {
+        let source = include_str!("exit_events.rs");
+        assert!(
+            source.contains("sender: OnceLock<Sender<ExitEvent>>"),
+            "the exclusive subscription must keep its OnceLock mechanism; \
+             changing it re-opens aion's singleton-drainer contract and is a \
+             STOP, not a refactor"
+        );
+    }
 
     #[test]
     fn overflow_is_typed_and_queue_stays_bounded() {

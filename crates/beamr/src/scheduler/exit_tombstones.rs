@@ -162,10 +162,14 @@ impl BoundedTombstones {
     /// one-shot slot absorbs (the reported answer wins; the armed slot is
     /// deregistered and a racing fire into it is a no-op).
     pub(super) fn watch(&self, pid: u64) -> StoreWatch {
-        // EXIT-001 commit A skeleton: registration only. The check half of
-        // register-then-check lands with the implementation commit, leaving
-        // the already-dead and exactly-once walls red at this commit.
-        StoreWatch::Armed(self.watches.register(pid))
+        let watch = self.watches.register(pid);
+        if let Some(reason) = self.finalized_reason(&pid) {
+            // The just-armed slot deregisters when `watch` drops here; a fire
+            // that already removed the pid's entry makes that a no-op, and a
+            // fire's send into the slot is absorbed — the record answer wins.
+            return StoreWatch::AlreadyExited(reason);
+        }
+        StoreWatch::Armed(watch)
     }
 
     /// Number of pids with at least one live watch. Test/diagnostic helper.
@@ -268,6 +272,12 @@ impl BoundedTombstones {
 
         if publish_event {
             self.events.publish(ExitEvent::Exited { pid, reason });
+            // EXIT-001 D6 / OQ-A(outside): watch fires are APPENDED after the
+            // existing publication, outside the writer mutex, carrying the
+            // authoritative additive reason by value. Nothing is inserted
+            // between outcome installation and the existing publish, and
+            // nothing is reordered — the ordering two other repos build on.
+            self.watches.fire(pid, reason);
         }
         evicted
     }

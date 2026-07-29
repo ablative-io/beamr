@@ -249,12 +249,23 @@ impl Scheduler {
     /// * **Dropping a watch deregisters it.** Abandoned watches (a deadline
     ///   that expired, a command that errored early) do not accumulate.
     pub fn watch_exit(&self, pid: u64) -> super::ExitWatchState {
-        // EXIT-001 commit A skeleton: registration only — the typed
-        // already-dead / no-record composition lands with the implementation.
         match self.shared.exit_tombstones.watch(pid) {
-            super::exit_events::StoreWatch::Armed(watch) => super::ExitWatchState::Live(watch),
             super::exit_events::StoreWatch::AlreadyExited(reason) => {
                 super::ExitWatchState::AlreadyExited(reason)
+            }
+            super::exit_events::StoreWatch::Armed(watch) => {
+                if self.shared.process_table.get(pid).is_some() {
+                    return super::ExitWatchState::Live(watch);
+                }
+                // Not in the table: the pid either never ran or died between
+                // the record check and this liveness check. Finalization
+                // installs the durable record BEFORE removing the pid from
+                // the process table, so re-checking the record closes that
+                // window — a second miss proves the pid never ran here.
+                match self.shared.exit_tombstones.finalized_reason(&pid) {
+                    Some(reason) => super::ExitWatchState::AlreadyExited(reason),
+                    None => super::ExitWatchState::NoRecord,
+                }
             }
         }
     }
