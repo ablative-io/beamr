@@ -181,19 +181,31 @@ gates" load-bearing rather than ceremonial.
     with zero listed causes, or an evidence file asserting a cleanliness it
     never measured. Same family as `grep -q`, the 403, and the narrow marker.
 
-  **REQUIRED BEFORE THIS LEG IS RELIED ON FOR A RELEASE: drive it to RED once
-  and prove BOTH halves — (a) the leg fails, and (b) the extract POPULATES
-  findings with the actual lint, file and line.** (a) alone certifies nothing
-  about the part that is new. A deliberate warning in an uncommitted scratch
-  file, one run, revert. **A wall certifies nothing unless it can fail, and this
-  wall has two outputs with only one of them walled.** Report that demonstration
-  as a result separate from the battery verdict, so a later reader can see the
-  leg was proven *able to fail* rather than merely observed passing.
+  **✅ DONE — THE LEG IS NOW PROVEN, AND THE EVIDENCE IS IN-TREE.** Driven to RED
+  by Diana Plum at `929f4fc`, landed at `442b90c`, evidence under
+  `docs/design/beamr/briefs/evidence/r2gates-929f4fc/battery/`:
+  - **(a) the leg fails** — `red-demo-clippy-leg.txt`, exit **101**. This also
+    settles the `--keep-going` assumption for free: cargo still exits non-zero
+    when a crate fails, so `exit-code-of-cmd` holds.
+  - **(b) the extract POPULATES** — `red-demo-findings.jsonl` names the real
+    lint, file and line, rather than the confident empty nothing was guarding
+    against.
+  - **Legs verbatim, verified not asserted** — the sidecar `clippy-leg-cmd.txt`
+    and `clippy-extract.jq` are byte-identical to `gates.json`'s clippy leg, and
+    that comparison was itself mutation-controlled (a one-character change *is*
+    detected), because a byte-identity check that cannot fail proves nothing.
+  - **Clean-tree baseline** — `clean-baseline-*`, exit 0 with findings empty
+    through the same pipeline. **So an empty clippy findings list now attests
+    cleanliness instead of a possibly-dead filter.** That is the whole difference
+    this demonstration bought.
 
-  Also unproven and worth confirming in the same run rather than reasoning
-  about: the leg carries `--keep-going`, and `exit-code-of-cmd` assumes cargo
-  still exits non-zero when any crate fails. The red demonstration confirms that
-  for free.
+  **⚠ AND THE MOST INSTRUCTIVE ARTIFACT IN THAT DIRECTORY IS A FAILURE.** Attempt
+  1 of the harness wrote its scratch file to a nonexistent directory, silently
+  ran the **clean** tree, and reported exit 0 / findings 0 — **the dead-producer
+  class, enacted by the very instrument built to test for it.** It was caught
+  only because the artifact had to *name* the scratch lint and could not. It is
+  kept, disclosed, as `clean-baseline-*`. **A reader re-running this
+  demonstration must assert the scratch file exists before driving the leg.**
 - One thing CI uniquely covered that no battery does:
   `cargo check -p beamr --no-default-features --features cooperative,json`.
   Run it explicitly.
