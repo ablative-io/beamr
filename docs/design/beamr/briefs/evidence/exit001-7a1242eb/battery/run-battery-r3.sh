@@ -178,6 +178,8 @@ census > "$EVIDENCE_DIR/census-at-start.txt"   # the census, not the claim, is t
   echo "(a) the flip guard DETECTS AFTER canon's internal mv rather than refusing before it — true pre-flip refusal awaits r4"
   echo "(b) this box launches runners INDEPENDENTLY — no coordinator serialization backs the premise (Dean's-box detect-and-void venue ruling does NOT transfer)"
   echo "(c) the quiet-floor claim therefore rests on the detectors firing (perpetrator detects at flip, victim at release, BOTH branches of the victim's check built), not on collision prevention"
+  echo "=== wrapped-ness, verifiable never assumed (Hermes via Seth; this box has no entry control) ==="
+  echo "the A5 deltas bind only runs through THIS wrapper; an unwrapped direct canon launch would produce a green indistinguishable EXCEPT by the bundle. This wrapper emits records an unwrapped run cannot: this three-delta disclosure header citing a621f353, the claim double-record pair (claim-body-at-acquire/-at-release), the flip-time ownership check line in claim.log, and the release-time own/foreign/ABSENT determination line. A bundle missing those did not go through the wrapper — read it, never infer it"
   echo "protocol delta (dispatch bef7f4f2 addition 1): claim body recorded verbatim TWICE — claim-body-at-acquire.txt and claim-body-at-release.txt — for the return's match/no-match line"
   echo "exit vocabulary: 4 = acquisition timeout; 5 = drain timeout; 6 = A5 flip refusal (claim replaced mid-run)"
   echo "legs: beamr's FIVE, VERBATIM from EXIT-001 brief .verification @ 8f2b7c3 (= gates.json; ruling entry 85d5781b). beamr has NO nextest leg: canon amendments A4/A6 are N/A here, stated rather than silently dropped"

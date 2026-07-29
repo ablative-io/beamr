@@ -11,3 +11,19 @@ docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery/run-battery-r3.sh: li
 docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery/run-battery-r3.sh: line 84: /tmp/ablative-gate-battery.claim: cannot overwrite existing file
 2026-07-29T18:15:23Z claim held by: seat=Phoebus Anzac member_id=f68332b0-9590-44bf-9a15-76b5b315e71d pid=99979 started_at=2026-07-29T18:15:07Z phase=draining — waiting (sample 5)
 2026-07-29T18:15:41Z [operator note, Diana Plum] run-2 attempt ABORTED BY OWNER during acquisition wait (no claim held, no legs run): A5 third delta (4081cb3d) landed mid-wait — absent-claim-at-release voiding branch required before the battery; runner amended, relaunched
+docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery/run-battery-r3.sh: line 92: /tmp/ablative-gate-battery.claim: cannot overwrite existing file
+2026-07-29T18:17:15Z claim held by: seat=Phoebus Anzac member_id=f68332b0-9590-44bf-9a15-76b5b315e71d pid=99979 started_at=2026-07-29T18:15:07Z phase=running — waiting (sample 0)
+2026-07-29T18:17:45Z claim acquired, phase=draining
+seat=Diana Plum
+member_id=b337ce2b-336a-4856-a9d8-54c90496c9fa
+pid=5557
+started_at=2026-07-29T18:17:15Z
+phase=draining
+2026-07-29T18:17:45Z floor quiet at census; phase=running (A5 flip ownership check passed: pid + member id confirmed ours)
+2026-07-29T18:17:46Z leg1-fmt exit=0 [Annabel's box / Diana Plum]
+2026-07-29T18:17:46Z leg2-clippy exit=0 [Annabel's box / Diana Plum]
+2026-07-29T18:17:46Z leg3-wasm32-check exit=0 [Annabel's box / Diana Plum]
+2026-07-29T18:17:48Z leg4-wasm-tests exit=0 [Annabel's box / Diana Plum]
+2026-07-29T18:18:49Z leg5-tests exit=0 [Annabel's box / Diana Plum]
+2026-07-29T18:18:49Z battery complete; exits fmt=0 clippy=0 wasm32-check=0 wasm-tests=0 tests=0
+2026-07-29T18:18:49Z claim released (own claim, pid 5557)

@@ -223,11 +223,40 @@ victim branches built), not on collision prevention. Pin set is now
 FIFTEEN (adds `a621f353`, `77b2c212` null-diff rider, `4081cb3d`).
 Amended-file conformance lines: claim-path grep hit **line 36**;
 `acquire()` line 91 / loop line 101, strictly before drain-wait
-line 130; trap line 83 (EXIT INT TERM HUP) with the three-branch
+line 132; trap line 83 (EXIT INT TERM HUP) with the three-branch
 `release_claim()` lines 61–82; A5 flip guard follows the drain-wait.
 Run-2 first attempt: aborted by owner during its acquisition wait (no
 claim held, no legs run — parked behind Mercury Toast then Phoebus)
 when this delta landed; noted in `battery/claim.log`.
+
+**Run 2 — GREEN, the battery of record** (head `5c0795b`, launched bash
+from the worktree root): ALL FIVE LEGS EXIT 0 — fmt 0, clippy 0,
+wasm32-check 0, wasm-tests 0 (80 passed / 0 failed), tests 0
+(**2041 passed / 0 failed across 70 binaries**, `cargo test --workspace`
+— doc tests covered via this leg, stated in
+`battery/doc-tests-coverage.txt`). Claim story: acquired 18:17:15Z,
+census-at-start EMPTY (the quiet-floor proof of record, boundaries only
+per the stated limit), A5 flip ownership check PASSED, own-claim release
+18:18:49Z; claim double-record MATCH (bodies identical except the ruled
+phase flip draining→running). Dirty entries at start = 6, all the
+battery's own in-flight evidence files, zero source modifications.
+Wrapped-ness is verifiable from this bundle, never assumed: the
+three-delta disclosure header citing `a621f353`, the
+claim-body-at-acquire/-at-release pair, the flip-check line and the
+release-determination line in `battery/claim.log` are records an
+unwrapped canon launch cannot produce.
+
+**Superseded-runner quarantine (claim-runner inventory order, Artemis
+18:17Z sha `a9b5ae82…`):** a label is not a control — the superseded
+runners were launchable at their committed paths, so both are MOVED off
+the launch path to `battery/superseded-quarantine/` with
+`.quarantined.txt` suffixes (history preserves the originals at their
+commits): `run-battery-v2.zsh` (guarded release but unguarded flip,
+kill -0 liveness) and `run-battery-v3-canon.sh` (r2-canon guts:
+UNGUARDED trap release — Seth's theft-on-timeout class — plus unguarded
+flip and kill -0). Four canon extract copies in the seat scratchpad were
+quarantined the same way. The box-wide inventory record is the
+deliverable posted on the lane.
 
 **Run 1 QUALIFIED per A5's audit note (not retroactively void):** run 1
 completed before `a621f353` and its claim was never re-read at flip
