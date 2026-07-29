@@ -143,8 +143,15 @@ fn parses_imports_command() {
 #[test]
 fn parses_imports_command_carrying_dir_flags() {
     assert_eq!(
-        parse_args(["imports", "hello.beam", "--dir", "/tmp/a", "--dir", "/tmp/b"])
-            .expect("imports with --dir parses"),
+        parse_args([
+            "imports",
+            "hello.beam",
+            "--dir",
+            "/tmp/a",
+            "--dir",
+            "/tmp/b"
+        ])
+        .expect("imports with --dir parses"),
         Command::Imports {
             path: "hello.beam".into(),
             dirs: vec!["/tmp/a".into(), "/tmp/b".into()],
@@ -440,10 +447,7 @@ fn temp_fixture_dir(label: &str) -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system clock should be after Unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!(
-        "beamr-cli-{label}-{}-{nanos}",
-        std::process::id()
-    ))
+    std::env::temp_dir().join(format!("beamr-cli-{label}-{}-{nanos}", std::process::id()))
 }
 
 fn write_temp_beam(contents: &str) -> std::path::PathBuf {

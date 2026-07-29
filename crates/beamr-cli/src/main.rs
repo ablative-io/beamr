@@ -430,10 +430,7 @@ fn load_beam_dir(
             let bytes = match std::fs::read(&file_path) {
                 Ok(bytes) => bytes,
                 Err(error) => {
-                    eprintln!(
-                        "beamr: warning: skipped {}: {error}",
-                        file_path.display()
-                    );
+                    eprintln!("beamr: warning: skipped {}: {error}", file_path.display());
                     skipped += 1;
                     continue;
                 }
@@ -445,10 +442,7 @@ fn load_beam_dir(
                 bif_registry,
                 ModuleOrigin::Filesystem(file_path.clone()),
             ) {
-                eprintln!(
-                    "beamr: warning: skipped {}: {error}",
-                    file_path.display()
-                );
+                eprintln!("beamr: warning: skipped {}: {error}", file_path.display());
                 skipped += 1;
             }
         }
