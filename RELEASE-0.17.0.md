@@ -285,6 +285,49 @@ At staging time all three target slots were free (`404`): `beamr/0.17.0`,
   All four survive; `spawn_link_dirty` is correctly absent. **"The removed
   symbol is not called" is a weaker claim than "the symbols they call survive" —
   the first is satisfied by a consumer that calls nothing at all.**
+**⚠⚠ THE CONSUMER PINS FAIL THE OPPOSITE WAY FROM THE INTERNAL ONES, AND THIS IS
+THE MOST DANGEROUS FACT IN THIS DOCUMENT.**
+
+§3's correction — a stale pin makes the workspace *refuse to check* — is true of
+**`beamr-cli` and `beamr-wasm`, because those pins carry `path`**, so cargo
+validates the local crate's version against the requirement and fails loudly.
+
+**Every consumer pin is a bare registry dependency with NO `path` key:**
+
+```
+liminal    Cargo.toml:32                    beamr = { version = "0.16.1", … }
+haematite  crates/haematite/Cargo.toml:46   beamr = "0.16.0"
+haematite  crates/haematite/Cargo.toml:114  beamr = { version = "0.16.0", … }
+aion       Cargo.toml:89                    beamr = { version = "0.16.2", … }
+```
+
+**With no `path` there is nothing local to contradict the requirement, so a
+stale pin does not fail at all — it SILENTLY KEEPS RESOLVING TO THE OLD
+PUBLISHED CRATE.** The consumer builds green, tests green, ships, and runs
+beamr 0.16.x forever. Nothing anywhere reports a problem.
+
+**This has already caused a production incident, recorded in this repo at
+`crates/beamr/src/scheduler/tests.rs:4224-4231`:** on 2026-07-06/07 a starvation
+bug was observed in production. It was not a defect on main. `aion`'s `[patch]`
+pointed beamr at the fixed local checkout for aion's own dep, while
+**`liminal-server`'s `beamr = "0.11.0"` requirement silently resolved to
+crates.io beamr 0.11.0, whose `RunQueue` is LIFO.** The connection scheduler is
+constructed inside liminal-server, **so production ran the unfixed copy** — with
+the fix sitting in the tree, and every build green.
+
+**⇒ The internal pins cannot hurt you: they stop the build. The consumer pins
+can, precisely because they do not.** The rollout step in this section is not
+bookkeeping; **it is the only thing standing between a published 0.17.0 and
+three consumers that quietly never receive it.**
+
+**⇒ And note what this does to the ordering rule above: the battery certifies
+resolution health for the beamr WORKSPACE only. It never looks at a consumer
+tree, so it cannot detect a stale consumer pin in either direction.** After the
+rollout, verify per consumer that the resolved version actually moved — read the
+consumer's `Cargo.lock` for the `beamr` entry rather than trusting that a green
+build means it took the new version. A green build is exactly what the 2026-07
+incident produced.
+
 - **Consumer pins that must be edited (all caret, none matches 0.17.0):**
   `haematite/Cargo.toml:46` `beamr = "0.16.0"` and `:114` the native-only
   dev-dep `{ version = "0.16.0", features = ["cooperative"] }`; `aion`'s
