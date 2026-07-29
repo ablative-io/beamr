@@ -1,0 +1,62 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/main.rs (target/debug/deps/beamr-ce810e44884901ce)
+
+running 29 tests
+test tests::error_display_formats_io_load_and_exec_errors ... ok
+test tests::parses_compile_command_with_verbose ... ok
+test tests::parses_dir_flag_with_beam_file ... ok
+test tests::parses_help_flags ... ok
+test tests::parses_beam_file_only_as_run_without_entry ... ok
+test tests::parses_beam_file_and_entry_as_run_with_entry ... ok
+test tests::parses_entry_flag_and_runtime_args ... ok
+test tests::parses_imports_command ... ok
+test tests::compile_refuses_dir_flag_instead_of_silently_dropping_it ... ok
+test tests::parses_imports_command_carrying_dir_flags ... ok
+test tests::parses_multiple_dir_flags ... ok
+test tests::parses_record_command_with_log_and_runtime_args ... ok
+test tests::parses_replay_command ... ok
+test tests::parses_version_flags ... ok
+test tests::rejects_dir_without_value ... ok
+test tests::rejects_invalid_run_entry ... ok
+test tests::rejects_log_flag_outside_record_command ... ok
+test tests::rejects_non_beam_path ... ok
+test tests::rejects_record_log_without_value ... ok
+test tests::rejects_unknown_flag ... ok
+test tests::rejects_unknown_flag_after_imports_as_flag ... ok
+test tests::validates_entry_format ... ok
+test tests::replay_refuses_dir_flag ... FAILED
+test tests::replay_of_a_log_with_no_drivable_events_fails_loudly ... FAILED
+test tests::imports_report_for_fixture_is_informational_and_omits_gate1_bifs ... ok
+test tests::malformed_beam_bytes_return_load_error_without_panicking ... ok
+test tests::imports_with_dir_satisfying_deferred_import_prints_empty_report ... ok
+test tests::replay_of_a_log_recorded_against_different_behaviour_fails ... FAILED
+test tests::record_then_replay_fixture_preserves_stdout_and_exit_code ... ok
+
+failures:
+
+---- tests::replay_refuses_dir_flag stdout ----
+
+thread 'tests::replay_refuses_dir_flag' (10825571) panicked at crates/beamr-cli/src/tests.rs:407:10:
+--dir must be refused for replay: Replay { log: "run.rlog" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::replay_of_a_log_with_no_drivable_events_fails_loudly stdout ----
+
+thread 'tests::replay_of_a_log_with_no_drivable_events_fails_loudly' (10825570) panicked at crates/beamr-cli/src/tests.rs:385:24:
+replay must not succeed with nothing to drive; got WithExitCode { stdout: "STORED TRANSCRIPT THAT MUST NEVER BE PRINTED AS THE ANSWER\n", exit_code: 0 }
+
+---- tests::replay_of_a_log_recorded_against_different_behaviour_fails stdout ----
+
+thread 'tests::replay_of_a_log_recorded_against_different_behaviour_fails' (10825569) panicked at crates/beamr-cli/src/tests.rs:353:24:
+replay must not succeed on a run it cannot reproduce; it reprinted the recorded transcript instead: WithExitCode { stdout: "OUTPUT FROM BUILD A THAT THIS BUILD DOES NOT PRODUCE\n", exit_code: 0 }
+
+
+failures:
+    tests::replay_of_a_log_recorded_against_different_behaviour_fails
+    tests::replay_of_a_log_with_no_drivable_events_fails_loudly
+    tests::replay_refuses_dir_flag
+
+test result: FAILED. 26 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p beamr-cli --bin beamr`
+LEG_EXIT=101
