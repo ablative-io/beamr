@@ -562,7 +562,11 @@ mod tests {
         let subscription = store.subscribe().expect("first subscriber");
         let watches: Vec<_> = (0..8).map(|_| armed(store.watch(5))).collect();
 
-        store.insert_outcome(5, ExitReason::Kill, OwnedTerm::immediate(Term::small_int(9)));
+        store.insert_outcome(
+            5,
+            ExitReason::Kill,
+            OwnedTerm::immediate(Term::small_int(9)),
+        );
 
         for (index, watch) in watches.iter().enumerate() {
             assert_eq!(
@@ -579,9 +583,9 @@ mod tests {
             }),
             "the exclusive subscriber still receives the event"
         );
-        let (reason, value) = store
-            .take_outcome(&5)
-            .expect("watches are notification-only: the outcome must still be takeable after every fire");
+        let (reason, value) = store.take_outcome(&5).expect(
+            "watches are notification-only: the outcome must still be takeable after every fire",
+        );
         assert_eq!(reason, ExitReason::Kill);
         assert_eq!(value.root().as_small_int(), Some(9));
         assert!(store.take_outcome(&5).is_none(), "take stays exactly-once");
@@ -595,7 +599,11 @@ mod tests {
 
         // Abandonment face: watches on a pid that never exits.
         let abandoned: Vec<_> = (0..5).map(|_| armed(store.watch(77))).collect();
-        assert_eq!(store.watched_pid_count(), 1, "precondition: pid 77 is watched");
+        assert_eq!(
+            store.watched_pid_count(),
+            1,
+            "precondition: pid 77 is watched"
+        );
         drop(abandoned);
         assert_eq!(
             store.watched_pid_count(),
@@ -606,7 +614,10 @@ mod tests {
         // Fire face: the pid's entry clears even while a handle is live.
         let fired = armed(store.watch(6));
         insert(&store, 6, ExitReason::Normal);
-        assert_eq!(fired.recv_timeout(EVENT_TIMEOUT), Ok((6, ExitReason::Normal)));
+        assert_eq!(
+            fired.recv_timeout(EVENT_TIMEOUT),
+            Ok((6, ExitReason::Normal))
+        );
         assert_eq!(
             store.watched_pid_count(),
             0,
@@ -620,8 +631,14 @@ mod tests {
         let never_exits = armed(store.watch(11));
         let fired_b = armed(store.watch(10));
         insert(&store, 10, ExitReason::Kill);
-        assert_eq!(fired_a.recv_timeout(EVENT_TIMEOUT), Ok((10, ExitReason::Kill)));
-        assert_eq!(fired_b.recv_timeout(EVENT_TIMEOUT), Ok((10, ExitReason::Kill)));
+        assert_eq!(
+            fired_a.recv_timeout(EVENT_TIMEOUT),
+            Ok((10, ExitReason::Kill))
+        );
+        assert_eq!(
+            fired_b.recv_timeout(EVENT_TIMEOUT),
+            Ok((10, ExitReason::Kill))
+        );
         drop((fired_a, never_exits, fired_b));
         assert_eq!(
             store.watched_pid_count(),
@@ -652,8 +669,14 @@ mod tests {
                 "subscriber sequence must be unchanged and in order"
             );
         }
-        assert_eq!(watch_one.recv_timeout(EVENT_TIMEOUT), Ok((1, ExitReason::Normal)));
-        assert_eq!(watch_two.recv_timeout(EVENT_TIMEOUT), Ok((2, ExitReason::Normal)));
+        assert_eq!(
+            watch_one.recv_timeout(EVENT_TIMEOUT),
+            Ok((1, ExitReason::Normal))
+        );
+        assert_eq!(
+            watch_two.recv_timeout(EVENT_TIMEOUT),
+            Ok((2, ExitReason::Normal))
+        );
 
         // Lagged unchanged: overflow the bounded event queue with a watch
         // armed on a pid inside the overflow batch. The watch must still fire
@@ -687,7 +710,11 @@ mod tests {
         insert(&store, 1, ExitReason::Kill);
         insert(&store, 2, ExitReason::Normal);
         insert(&store, 3, ExitReason::Normal);
-        assert_eq!(store.get(&1), None, "precondition: legacy tombstone evicted");
+        assert_eq!(
+            store.get(&1),
+            None,
+            "precondition: legacy tombstone evicted"
+        );
         assert_eq!(
             store.finalized_reason(&1),
             Some(ExitReason::Kill),
@@ -718,7 +745,10 @@ mod tests {
     fn watch_after_outcome_consumed_reports_reason_from_token() {
         let store = BoundedTombstones::with_capacity(4);
         insert(&store, 9, ExitReason::Kill);
-        assert!(store.take_outcome(&9).is_some(), "precondition: outcome consumed");
+        assert!(
+            store.take_outcome(&9).is_some(),
+            "precondition: outcome consumed"
+        );
         assert!(store.take_outcome(&9).is_none());
 
         match store.watch(9) {

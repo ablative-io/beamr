@@ -511,9 +511,7 @@ fn wall1b_ordering_tripwire_outcome_installed_before_exit_publication() {
     // The post-send gate only engages on a successful event send, so the
     // exclusive subscription must exist before the kill or the publisher
     // returns from publish() without ever reaching the rendezvous.
-    let subscription = scheduler
-        .subscribe_exit_events()
-        .expect("first subscriber");
+    let subscription = scheduler.subscribe_exit_events().expect("first subscriber");
     let pid = scheduler
         .spawn_native(Box::new(|| Box::new(WaitForTermination)))
         .expect("native process spawns");
@@ -547,7 +545,10 @@ fn wall1b_ordering_tripwire_outcome_installed_before_exit_publication() {
 
         observer.release_publication(EVENT_TIMEOUT);
         killer.join().expect("terminal caller completes");
-        scheduler.shared.exit_tombstones.clear_event_publication_gate();
+        scheduler
+            .shared
+            .exit_tombstones
+            .clear_event_publication_gate();
 
         let wake = watch.recv_timeout(EVENT_TIMEOUT);
         (at_park_outcome, at_park_fire, wake)

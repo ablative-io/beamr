@@ -179,10 +179,7 @@ impl ExitWatch {
     }
 
     /// Wait up to `timeout` for the watched process's exit notification.
-    pub fn recv_timeout(
-        &self,
-        timeout: Duration,
-    ) -> Result<(u64, ExitReason), ExitEventRecvError> {
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<(u64, ExitReason), ExitEventRecvError> {
         self.receiver
             .recv_timeout(timeout)
             .map_err(|error| match error {
@@ -198,13 +195,16 @@ impl Drop for ExitWatch {
     }
 }
 
+/// One armed watch slot: the watch id plus its one-shot `(pid, reason)` sender.
+type WatchSlot = (u64, Sender<(u64, ExitReason)>);
+
 /// pid-keyed registry of one-shot notification slots (EXIT-001 R2).
 ///
 /// Registration and deregistration touch only the sharded map — never the
 /// tombstone writer mutex — and the fire path's cost grows only with the
 /// number of watches on the exiting pid, not with watches in the system.
 pub(super) struct ExitWatchRegistry {
-    watches: DashMap<u64, Vec<(u64, Sender<(u64, ExitReason)>)>>,
+    watches: DashMap<u64, Vec<WatchSlot>>,
     next_watch_id: AtomicU64,
 }
 
@@ -231,7 +231,10 @@ impl ExitWatchRegistry {
     pub(super) fn register(self: &Arc<Self>, pid: u64) -> ExitWatch {
         let watch_id = self.next_watch_id.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = crossbeam_channel::bounded(1);
-        self.watches.entry(pid).or_default().push((watch_id, sender));
+        self.watches
+            .entry(pid)
+            .or_default()
+            .push((watch_id, sender));
         ExitWatch {
             pid,
             watch_id,
