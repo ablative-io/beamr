@@ -273,10 +273,16 @@ fn malformed_beam_bytes_return_load_error_without_panicking() {
     let _ = std::fs::remove_file(path);
 }
 
+/// `record` runs the module live and writes a loadable log carrying the run's
+/// transcript. Replaying that log must NOT hand the transcript back as the
+/// answer: this test previously asserted `replayed == recorded`, which passed
+/// only because `replay` reprinted the recorded stdout without replaying
+/// anything. The recorded transcript is the thing compared against, never the
+/// thing printed.
 #[test]
-fn record_then_replay_fixture_preserves_stdout_and_exit_code() {
+fn record_writes_a_loadable_log_and_replay_refuses_to_reprint_it() {
     let fixture = fixture_path("hello.beam");
-    let log = temp_replay_log_path("success");
+    let log_path = temp_replay_log_path("success");
 
     let recorded = run_cli([
         "record".to_owned(),
@@ -284,22 +290,42 @@ fn record_then_replay_fixture_preserves_stdout_and_exit_code() {
         "--entry".to_owned(),
         "hello:main/0".to_owned(),
         "--log".to_owned(),
-        log.to_string_lossy().into_owned(),
+        log_path.to_string_lossy().into_owned(),
     ])
     .expect("record fixture run");
 
-    let replayed = run_cli(["replay".to_owned(), log.to_string_lossy().into_owned()])
-        .expect("replay fixture run");
-    let _ = std::fs::remove_file(log);
+    let CliSuccess::WithExitCode {
+        stdout: recorded_stdout,
+        exit_code: 0,
+    } = recorded
+    else {
+        panic!("record should report the live run's stdout and exit code: {recorded:?}");
+    };
+    assert!(
+        !recorded_stdout.is_empty(),
+        "the live run should produce output"
+    );
 
-    assert_eq!(replayed, recorded);
-    assert!(matches!(
-        replayed,
-        CliSuccess::WithExitCode {
-            ref stdout,
-            exit_code: 0
-        } if !stdout.is_empty()
-    ));
+    let loaded = ReplayLog::load(&log_path).expect("recorded log should load");
+    let transcript = loaded
+        .cli_result()
+        .expect("record should store the CLI transcript");
+    assert_eq!(transcript.output(), recorded_stdout);
+    assert_eq!(transcript.exit_code(), 0);
+    drop(loaded);
+
+    let outcome = run_cli(["replay".to_owned(), log_path.to_string_lossy().into_owned()]);
+    let _ = std::fs::remove_file(&log_path);
+
+    let error = match outcome {
+        Ok(success) => panic!("replay must not reprint the recorded transcript: {success:?}"),
+        Err(error) => error,
+    };
+    assert_ne!(error.exit_code(), 0);
+    assert!(
+        !error.to_string().contains(recorded_stdout.trim()),
+        "the refusal must not smuggle the recorded transcript back out: {error}"
+    );
 }
 
 /// LOAD-BEARING WALL (task 3aecb622).

@@ -1179,7 +1179,11 @@ impl Scheduler {
     /// `construct` mint shared with [`Scheduler::new_replay_with_registry`]), so
     /// a replayed module importing `erlang:*` refuses at its first guard-BIF
     /// execution exactly as under [`Scheduler::new`] — see that constructor for
-    /// the full explanation and the registry-carrying alternatives.
+    /// the full explanation.
+    ///
+    /// Embedders replaying real BEAM bytecode want
+    /// [`Scheduler::replay_with_services_and_code_server`], which carries an
+    /// atom table and a populated BIF registry into replay mode.
     pub fn new_replay(config: SchedulerConfig, log: ReplayLog) -> Result<Self, String> {
         Self::new_replay_with_registry(config, Arc::new(ModuleRegistry::new()), log)
     }
@@ -1191,9 +1195,14 @@ impl Scheduler {
     /// **Defaults the native BIF registry to an EMPTY one** (the private
     /// `construct` mint) — the same footgun as [`Scheduler::new`]: `erlang:*`
     /// imports resolve non-native and refuse process-fatal at the first
-    /// guard-BIF execution. Embedders replaying real BEAM bytecode need a
-    /// registry-carrying construction path with at least
-    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs); see
+    /// guard-BIF execution. The "registry" this constructor names is the MODULE
+    /// registry; it carries no natives.
+    ///
+    /// Embedders replaying real BEAM bytecode need a registry-carrying
+    /// construction path with at least
+    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs). That
+    /// path is [`Scheduler::replay_with_services_and_code_server`] — the replay
+    /// counterpart of [`Scheduler::with_services_and_code_server`]. See
     /// [`Scheduler::new`] for the full explanation.
     pub fn new_replay_with_registry(
         config: SchedulerConfig,
@@ -1201,6 +1210,45 @@ impl Scheduler {
         log: ReplayLog,
     ) -> Result<Self, String> {
         Self::construct(config, module_registry, ReplayMode::Replay(log))
+    }
+
+    /// [`Scheduler::with_services_and_code_server`] in deterministic replay
+    /// mode over `log`.
+    ///
+    /// The replay counterpart of the live full-composition constructor: it
+    /// takes the same services, module registry, atom table and BIF registry,
+    /// so a replayed module resolves atoms and dispatches natives against the
+    /// same load-time state the modules were loaded against. This is the
+    /// registry-carrying replay path [`Scheduler::new_replay`] and
+    /// [`Scheduler::new_replay_with_registry`] direct embedders to; unlike
+    /// them it does NOT default the BIF registry to an empty one, so
+    /// `erlang:*` imports do not refuse at the first guard-BIF.
+    ///
+    /// As with every replay-mode scheduler the worker count is forced to 1 and
+    /// the ancillary services that would introduce nondeterminism (generic and
+    /// distribution rings, owned file and standard I/O) are disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns the composition error when `services` does not validate.
+    pub fn replay_with_services_and_code_server(
+        config: SchedulerConfig,
+        services: SchedulerServices,
+        module_registry: Arc<ModuleRegistry>,
+        atom_table: Arc<AtomTable>,
+        bif_registry: Arc<BifRegistryImpl>,
+        log: ReplayLog,
+    ) -> Result<Self, String> {
+        services.validate().map_err(|error| error.to_string())?;
+        Self::construct_with_services(
+            config,
+            services,
+            module_registry,
+            atom_table,
+            bif_registry,
+            Arc::new(AllCapabilitiesPolicy),
+            ReplayMode::Replay(log),
+        )
     }
 
     pub fn with_code_server(
