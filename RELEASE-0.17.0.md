@@ -189,6 +189,35 @@ At staging time all three target slots were free (`404`): `beamr/0.17.0`,
   version, so `cargo update` alone will not cross the minor; the pin must be
   edited. The script prints this list on success.
 
+**Consumer exposure to the breaking removal — measured, not assumed:**
+
+- **liminal: zero.** `spawn_link_dirty` has 0 hits repo-wide; the loose
+  `spawn_link` form has 4, all English prose inside `LIM-002*/LIM-004` design
+  JSON, 0 across all 561 `.rs` files. Its entire beamr import surface is 40
+  `use` lines and none touch the dirty-scheduler surface. Measured by Hermes
+  Crumpet with both controls in the exact argument form of the real query.
+  **Leg G (liminal's `beamr = "0.16.1"` pin at its `Cargo.toml:32`) is a
+  manifest edit plus a battery, not a migration.**
+- **No feature is renamed or removed by this release.** `crates/beamr/Cargo.toml`
+  is **byte-identical** between `67f89c4` (0.16.2) and main:
+  ```sh
+  git diff --quiet 67f89c4 main -- crates/beamr/Cargo.toml && echo "manifest unchanged"
+  # control: the same instrument on a file known to differ
+  git diff --quiet 67f89c4 main -- scripts/release.sh || echo "control OK: change detected"
+  ```
+  So `readiness`, `cooperative`, `json` and `threads` all survive unchanged.
+  **Note the control is not `version` — main's version line deliberately still
+  reads 0.16.2 (§3), so using it as the known-different item silently produces
+  a failed control.** That is the trap in §1 again, in a third argument form.
+- **`aion` and `haematite` exposure is NOT measured here.** Their owners should
+  run the same two-control check before the pin bump. Absence of a finding in
+  this document is absence of a measurement, not a clean result.
+
+**One thing the release unblocks:** `watch_exit` is additive surface arriving
+*in* 0.17.0, and liminal's F7 retirement (deleting `LIVENESS_POLL`/`poll_reply`,
+16 live hits) composes on it. That work is gated on 0.17.0 being **published**,
+not merely landed.
+
 ## 8. Do not advertise record/replay in the release notes
 
 `ReplayRecorder` is never constructed anywhere in the tree; the recorder emits
