@@ -1,0 +1,23 @@
+=== A5-2: dialect-tolerant read ===
+  equals form -> wrapper='424242' canon_sed='424242'
+  colon  form -> wrapper='515151' canon_sed=''
+=== A5-3: unparseable/empty pid must read HELD, never rule-5 clear ===
+  pid='' -> HELD (no clear)
+  pid='not-a-pid' -> HELD (no clear)
+  pid='12x4' -> HELD (no clear)
+  pid='424242' -> proceeds to liveness check
+=== A5-4: phase flip ownership refusal (foreign claim present) ===
+  write_claim exit=6  (6 = refused)
+  flip_determination=REFUSED_NOT_OURS
+  VOID marker: run=VOID_AS_EVIDENCE
+=== A5-5: release-time ABSENT after acquisition must VOID (canon exits clean here) ===
+  release_determination=ABSENT_VOID
+  VOID marker: detector=release-time-absent
+=== control: absent claim BEFORE acquisition must NOT void ===
+  release_determination=NOT_ACQUIRED
+  VOID marker: ABSENT (correct — no false void)
+=== real claim path untouched ===
+  /tmp/ablative-gate-battery.claim does not exist — untouched
+tee: /var/folders/l3/wm5c747x35j86lpr38zm350m0000gn/T/seth-guard-proof.5hoCRaSMTu/evidence/claim.log: No such file or directory
+2026-07-29T18:20:04Z exit before acquisition — nothing of ours to release
+/var/folders/l3/wm5c747x35j86lpr38zm350m0000gn/T/seth-guard-proof.5hoCRaSMTu/guards.sh: line 209: /var/folders/l3/wm5c747x35j86lpr38zm350m0000gn/T/seth-guard-proof.5hoCRaSMTu/evidence/release-determination.txt: No such file or directory
