@@ -1,0 +1,5 @@
+seat=Diana Plum
+member_id=b337ce2b-336a-4856-a9d8-54c90496c9fb
+pid=58612
+started_at=2026-07-29T22:34:46Z
+phase=running

@@ -1,0 +1,4 @@
+    Checking beamr-cli v0.4.0 (/Users/annabel/Developer/ablative/stack/beamr/.wt-gates-929f4fc/crates/beamr-cli)
+error: could not compile `beamr-cli` (bin "scratch_red_negative_control") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `beamr-cli` (bin "scratch_red_negative_control" test) due to 1 previous error

@@ -1,0 +1,14 @@
+# CI-only coverage check (RELEASE-0.17.0.md section 5: 'One thing CI uniquely covered that no battery does')
+# machine: Annabel's box; operator: Diana Plum (…c9fb); tree 929f4fc; start 22:36:48Z
+   Compiling serde_core v1.0.228
+    Checking smallvec v1.15.1
+   Compiling serde_json v1.0.150
+    Checking gleam-types v0.4.3 (/Users/annabel/Developer/ablative/stack/beamr/.wt-gates-929f4fc/crates/gleam-types)
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+    Checking parking_lot_core v0.9.12
+    Checking dashmap v6.2.1
+   Compiling zstd-safe v7.2.4
+   Compiling zstd v0.13.3
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-gates-929f4fc/crates/beamr)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.27s
+# exit=0 end 22:36:51Z
