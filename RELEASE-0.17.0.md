@@ -239,6 +239,51 @@ Verify by registry probe, not by exit code. Tonight's liminal release had cargo
 exit 101 on a crate that was live: the exit code alone would have reported a
 false failure, and `Uploaded` alone would have missed a 400.
 
+### ★ The close: the declared-ahead set must be EMPTY afterwards
+
+An arithmetic close on a four-step irreversible operation, instead of a
+judgement call. For each publishable member, ask the registry whether the
+version *declared in the tree* already exists. Not-published means **declared
+ahead**.
+
+**Measured at main `20e9a92`, `2026-07-29T23:38:05Z` — the pre-cut baseline is
+EMPTY:**
+
+```
+gleam-types  0.4.3   HTTP 200   not ahead
+beamr        0.16.2  HTTP 200   not ahead
+beamr-cli    0.4.0   HTTP 200   not ahead
+beamr-wasm   0.7.0   HTTP 200   not ahead
+controls, same run:  beamr/0.16.3 -> 200   beamr/0.99.0 -> 404
+```
+
+So the sequence is: **bump → the set becomes non-empty and names exactly the
+crates this wave must publish → publish → re-run → the set MUST return to
+empty.** Non-empty at the end means a crate did not publish, **and the check
+names which one** rather than leaving an operator to compare four numbers by
+eye.
+
+Run it with a **positive and a negative control in the same invocation** — an
+absent name must answer `HTTP-404`, never an empty `200`, which is what a
+misconfigured mirror or interposing proxy returns and is indistinguishable from
+"never published". No User-Agent means `403` for every crate, which parses as
+"nothing is published" and **closes perfectly while being entirely false**:
+arithmetic closure proves nothing vanished inside the pipeline, not that
+anything ever entered it.
+
+**Probe the metadata endpoint — `api/v1/crates/<name>/<version>` — and not the
+download endpoint.** The download endpoint `302`s blindly for versions that do
+not exist, so a probe that does not follow redirects reports success for an
+absent crate and its **negative control passes falsely** (Waffles Puffins,
+caught in his own first run). That is worse than the `403` and empty-`200`
+modes, because it is the one that defeats the control you added to catch them:
+you end up more confident and equally blind. The four beamr readings above used
+the metadata endpoint and reddened at `404`, so they are unaffected and need no
+re-run.
+
+*(Method from Athena Zooper Dooper's frame wave; beamr's controls are beamr's
+— a control is only a control in the venue it was chosen for.)*
+
 **If a bad version does get published, the only mitigation is `cargo yank`, and
 it is not an undo.** A yank stops *new* dependents resolving to it; it does not
 remove the code, and anything with a lockfile keeps building against it.
