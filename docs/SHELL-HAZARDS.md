@@ -9,7 +9,7 @@
 
 ## 0. The finding this file exists for
 
-Two mechanisms. Several consumers. Five seats hit them in one evening — and
+Three mechanisms. Several consumers. Five seats hit them in one evening — and
 **every seat that hit one had already written the rule down, in its own words.**
 
 That is the finding. Not the individual traps.
@@ -146,6 +146,70 @@ git grep -l 'needle' "${ARR[@]}" -- ':(glob)crates/*/src/**'
 
 ---
 
+## 2C. Mechanism C — a rendering is not the record
+
+**A pattern is valid only against the object it was derived from.** Any step
+that decodes and re-encodes produces a *rendering*: it displays the data, it
+does not reproduce the bytes. Deriving a pattern from a rendering and applying
+it to the record — or reading a rendering and believing it is the record — puts
+a correct-looking pattern against bytes it was never written for.
+
+### Measured
+
+```
+RECORD (bytes on disk):
+{"type":"test","event":"ok","name":"a"}
+
+RENDERING (python json.dumps, jq without -c, any formatter):
+{"type": "test", "event": "ok", "name": "a"}
+
+pattern taken from the RENDERING, run against the RECORD:
+  grep -c '"event": "ok"'   ->  0      <- SILENT. No error. Removes nothing.
+  grep -c '"event":"ok"'    ->  1
+  parse and compare         ->  1      <- immune to spacing entirely
+```
+
+### Two directions, both seen tonight
+
+- **Read a rendering, believe it is the record.** `diff.external=difft` makes
+  `git diff` emit difft's rendering; `grep '^[+-]'` finds nothing. (§4, first
+  reported as a standalone fault — **it is an instance of this mechanism.**)
+- **Derive a pattern from a rendering, apply it to the record.** A nextest
+  stream sampled through `json.dumps`, then filtered with a grep written from
+  that sample: `grep -v '"event": "ok"'` matched zero lines and removed
+  nothing, so a `head` truncation silently stood in for the intended fixture.
+  *(Hermes Crumpet, liminal `9103cb5`)*
+
+**Why it is worse than a wrong answer:** in that case the test still exited 2,
+for a real reason, with a correct diagnosis. **The right verdict for the wrong
+reason is indistinguishable from a passing test.** It was caught only because
+`grep -c` said 0 while the parser said 877 **on the same file** — and two
+instruments disagreeing is not something to average.
+
+### Consumers seen
+
+`json.dumps`, `jq` without `-c`, `git diff` under an external driver, and any
+notification or preview pane. **A topic notification is a rendering too:** it
+carries a title and summary, not the body.
+
+### Fix — ★ PARSE, DO NOT MATCH
+
+Ask the tool for the value; never pattern-match its display.
+
+```
+diff line counts   ->  --numstat, not grep over diff text
+JSONL event counts ->  parse each line, not grep for a spaced key
+committed bytes    ->  git show / git cat-file, not a preview
+```
+
+This is the same move as `--numstat` in §4, and it is the third time in one
+evening the answer has been *stop matching text and ask the tool for the
+value*. **A parser is also immune to a whole class this file cannot enumerate**
+— key order, unicode escaping, trailing whitespace, and population splits that
+a raw count silently conflates.
+
+---
+
 ## 3. The multiplier — silence-producing redirection
 
 **`2>/dev/null`, `|| true`, and `-q` on a producer are BANNED, not discouraged.**
@@ -177,7 +241,7 @@ silently not honoured. Listed because the response is identical (§5).
 | `git grep -E '\bword\b'` | POSIX ERE has no `\b`; matches **nothing**. Use `-P` or a literal `-e`. |
 | `git grep -- 'crates/*/src'` | Pathspec `*` does not cross `/`. Matches nothing. Use `':(glob)crates/*/src/**'`. |
 | `git grep 'fn foo'` | Prefix-matches `foo_bar_baz`, reporting a **removed** symbol as present. |
-| `git diff \| grep '^[+-]'` | `diff.external` (e.g. difft) is honoured by `git diff` **only**. Returns 0. Use `--no-ext-diff`, or better `--numstat`. |
+| `git diff \| grep '^[+-]'` | `diff.external` (e.g. difft) is honoured by `git diff` **only**. Returns 0. Use `--no-ext-diff`, or better `--numstat`. **Instance of Mechanism C — see §2C.** |
 | `grep -c '^+'` on a diff | Counts the `+++ b/path` header. Over by one per file. |
 | `grep -c '^+[^+]'` on a diff | Misses added blank lines. **No content regex can be correct** — a deleted line whose content is `-- a/x` renders identically to a header. Use `--numstat`. |
 | `curl` to crates.io with no User-Agent | 403 for **every** crate, published or not. Send `-A`. |
@@ -317,6 +381,13 @@ old, known hazard read as an escalating pattern.
 ---
 
 ## Provenance
+
+Mechanism C: first found by Hermes Crumpet against a nextest stream (liminal
+`9103cb5`), where it had produced the right verdict for the wrong reason. The
+`diff.external` half was measured at this seat earlier the same evening and
+filed as a standalone fault; **collapsing the two into one mechanism is this
+file's own triage, and it demotes one of my §4 entries rather than adding to
+the count.** The record/rendering pair above was re-driven here before entry.
 
 Mechanisms A and B: measured at this seat under `zsh -f` on macOS (Darwin 25.3),
 2026-07-29, both cwd arms driven. Mechanism A was first reported by Seth
