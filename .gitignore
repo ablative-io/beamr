@@ -1,6 +1,8 @@
 .DS_Store
 .meridian/worksites/
 target/
+aion.db
+.commit-msg.tmp
 *.swp
 *.swo
 *~
