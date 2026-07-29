@@ -239,6 +239,23 @@ Verify by registry probe, not by exit code. Tonight's liminal release had cargo
 exit 101 on a crate that was live: the exit code alone would have reported a
 false failure, and `Uploaded` alone would have missed a 400.
 
+**If a bad version does get published, the only mitigation is `cargo yank`, and
+it is not an undo.** A yank stops *new* dependents resolving to it; it does not
+remove the code, and anything with a lockfile keeps building against it.
+**Yanking is Tom's hand alone, and only with evidence** — the standing ruling
+is document-first, yank second. beamr has done this twice: **`0.13.1` and
+`0.13.2` are yanked** (breaking API changes shipped under a patch version),
+both carrying `[YANKED]` markers, dates, reasons and a pointer to `0.14.0` in
+`CHANGELOG.md`. **That is the bar: a yank without a changelog entry leaves a
+user with a resolution failure and no explanation.**
+
+Note for anyone auditing the registry afterwards: **a yanked version still
+appears in the crates.io versions list, flagged `yanked: true`. A version that
+was never published does not appear at all.** So "absent" and "yanked" are
+different states and are distinguishable — but only by reading the flag, never
+by inspecting the version sequence for gaps. As of `f8b239c` beamr has **zero
+gaps** in its published sequence and exactly those two yanks.
+
 ```sh
 UA='beamr-release-script (+https://github.com/ablative-io/beamr)'
 curl -s -A "$UA" -o /dev/null -w '%{http_code}\n' \
