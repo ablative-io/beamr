@@ -104,11 +104,34 @@ crates/beamr-cli/Cargo.toml:16   beamr = { version = "0.16.0", path = "../beamr"
 crates/beamr-wasm/Cargo.toml:18  beamr = { version = "0.16.0", path = "../beamr", … }
 ```
 
-`"0.16.0"` means `^0.16.0`, which **does not match 0.17.0**. Locally the `path`
-key wins so everything builds and tests green; the published crates would carry
-a version requirement no longer satisfiable. **Both pins must be edited to
-`"0.17.0"` in the same commit as the bump.** A green local battery cannot detect
-this — only `cargo publish` resolution can, which is what the dry-run is for.
+`"0.16.0"` means `^0.16.0`, which **does not match 0.17.0**. **Both pins must be
+edited to `"0.17.0"` in the same commit as the bump.**
+
+**CORRECTED 2026-07-29, forward-only — an earlier revision of this section said
+the `path` key masks this locally so "a green battery cannot detect it, only
+`cargo publish` resolution can." THAT WAS WRONG, and the repo disproves it.**
+Cargo validates a path dependency's actual version against the stated version
+requirement, so a stale pin does not build green — **it makes the workspace
+refuse to check at all.** This has already happened here once:
+
+```
+1b07d03 fix(release): carry the 0.14.0 bump into beamr-cli/beamr-wasm
+        dependency requirements — the prior commit left the workspace uncheckable
+```
+
+**So the correct expectation for the executor is the opposite of what I first
+wrote: if the battery explodes immediately after your version-bump commit with
+a dependency-resolution error naming `beamr`, this is why, and the fix is the
+two pin edits — not a broken toolchain and not a real defect in the tree.**
+
+The trap is that it is easy to *forget*, not that it is invisible. Every minor
+bump in this repo's history carried a manual pin edit — 0.9.0 through 0.16.0,
+eight consecutive releases — and the one time it was missed it cost a follow-up
+commit. Verify with:
+
+```sh
+git log -L16,16:crates/beamr-cli/Cargo.toml   # every bump, and the one miss
+```
 
 Also confirm `beamr -> gleam-types` still declares its `version = "0.4.3"`
 fallback (`crates/beamr/Cargo.toml:27`).
@@ -148,12 +171,29 @@ gates" load-bearing rather than ceremonial.
     "$(git log -1 --format=%H -- gates.json)" \
     && echo "evidence predates the gate change — clippy leg never run in this form"
   ```
-  The risk is bounded but not zero: that leg's `verdict` is
-  `exit-code-of-cmd`, so a malformed `extract` cannot turn a red into a green —
-  it can only produce a failed leg or garbage in `report.json`. **Bounded is not
-  verified.** The first battery run after `c6043d2` is exercising a gate nobody
-  has driven; treat its clippy result as under test alongside the tree, and read
-  `report.json`'s clippy entries rather than only the leg's exit status.
+  **THE LEG HAS TWO OUTPUTS AND ONLY ONE OF THEM IS WALLED** (Athena Zooper
+  Dooper's sharpening of my own weaker bound, which covered the verdict only):
+  - `verdict: exit-code-of-cmd` guards the leg's **PASS/FAIL**. A malformed
+    `extract` cannot turn a red leg green. That much is bounded.
+  - **Nothing guards the `extract` jq filter itself.** A silent no-match yields
+    an **empty findings list, and an empty findings list reads as "no clippy
+    problems."** So the failure mode is not a false green leg — it is a red leg
+    with zero listed causes, or an evidence file asserting a cleanliness it
+    never measured. Same family as `grep -q`, the 403, and the narrow marker.
+
+  **REQUIRED BEFORE THIS LEG IS RELIED ON FOR A RELEASE: drive it to RED once
+  and prove BOTH halves — (a) the leg fails, and (b) the extract POPULATES
+  findings with the actual lint, file and line.** (a) alone certifies nothing
+  about the part that is new. A deliberate warning in an uncommitted scratch
+  file, one run, revert. **A wall certifies nothing unless it can fail, and this
+  wall has two outputs with only one of them walled.** Report that demonstration
+  as a result separate from the battery verdict, so a later reader can see the
+  leg was proven *able to fail* rather than merely observed passing.
+
+  Also unproven and worth confirming in the same run rather than reasoning
+  about: the leg carries `--keep-going`, and `exit-code-of-cmd` assumes cargo
+  still exits non-zero when any crate fails. The red demonstration confirms that
+  for free.
 - One thing CI uniquely covered that no battery does:
   `cargo check -p beamr --no-default-features --features cooperative,json`.
   Run it explicitly.
