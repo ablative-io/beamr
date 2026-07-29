@@ -1,0 +1,69 @@
+# EXIT-001 mutation run — task 7a1242eb-742b-48be-ba7e-d961f2c49f04
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:03:09Z
+# tree: dc735f2 + m-fire-skips-sends.diff APPLIED (working tree only, never committed)
+# preflight: /tmp/ablative-gate-battery.claim ABSENT at launch (claim convention v2, entry 4b8b38e1)
+# command: cargo test -p beamr --lib -- w3_many publication_order w5_exclusive watch_on_live_process wall1_ w2_watch_registered (reps: 1)
+
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.75s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 6 tests
+test scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed ... FAILED
+test scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches ... FAILED
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... FAILED
+test scheduler::exit_observation_tests::wall1_reply_enqueued_strictly_before_kill_is_observable_with_value_at_watch_wake ... FAILED
+test scheduler::exit_observation_tests::watch_on_live_process_fires_on_real_exit_and_outcome_is_takeable_at_wake ... FAILED
+
+failures:
+
+---- scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed stdout ----
+
+thread 'scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed' (7989137) panicked at crates/beamr/src/scheduler/exit_tombstones.rs:563:13:
+assertion `left == right` failed: watch 0 of 8 must be notified
+  left: Err(Disconnected)
+ right: Ok((5, Kill))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches stdout ----
+
+thread 'scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches' (7989138) panicked at crates/beamr/src/scheduler/exit_tombstones.rs:650:9:
+assertion `left == right` failed
+  left: Err(Disconnected)
+ right: Ok((1, Normal))
+
+---- scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire stdout ----
+
+thread 'scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire' (7989135) panicked at crates/beamr/src/scheduler/exit_tombstones.rs:768:13:
+assertion `left == right` failed: the watch fires once publication completes
+  left: Err(Disconnected)
+ right: Ok((1, Kill))
+
+---- scheduler::exit_observation_tests::wall1_reply_enqueued_strictly_before_kill_is_observable_with_value_at_watch_wake stdout ----
+
+thread 'scheduler::exit_observation_tests::wall1_reply_enqueued_strictly_before_kill_is_observable_with_value_at_watch_wake' (7989133) panicked at crates/beamr/src/scheduler/exit_observation_tests.rs:472:5:
+assertion `left == right` failed: the waiter must wake on the exit notification
+  left: Err(Disconnected)
+ right: Ok((1, Kill))
+
+---- scheduler::exit_observation_tests::watch_on_live_process_fires_on_real_exit_and_outcome_is_takeable_at_wake stdout ----
+
+thread 'scheduler::exit_observation_tests::watch_on_live_process_fires_on_real_exit_and_outcome_is_takeable_at_wake' (7989134) panicked at crates/beamr/src/scheduler/exit_observation_tests.rs:426:5:
+assertion `left == right` failed: the watch must fire on the real exit
+  left: Err(Disconnected)
+ right: Ok((1, Kill))
+
+
+failures:
+    scheduler::exit_observation_tests::wall1_reply_enqueued_strictly_before_kill_is_observable_with_value_at_watch_wake
+    scheduler::exit_observation_tests::watch_on_live_process_fires_on_real_exit_and_outcome_is_takeable_at_wake
+    scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire
+    scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed
+    scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches
+
+test result: FAILED. 1 passed; 5 failed; 0 ignored; 0 measured; 1758 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p beamr --lib`
+## rep 1 exit=101

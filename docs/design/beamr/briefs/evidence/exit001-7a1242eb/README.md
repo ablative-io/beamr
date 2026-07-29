@@ -91,22 +91,38 @@ claim-convention ruling, 16:49Z — runs resume under preflight):
 | mutation | kills (designed) | status |
 |---|---|---|
 | `m-live-on-table-miss` | unknown-pid wall (Live face) | **RUN: red, exit 101** (`runs/red-m-live-on-table-miss-unknownpid.txt`). **Observation of record:** it does NOT kill W1 — the store-level record check answers first. W1 has two-layer defense; the non-kill is filed (`runs/obs-m-live-on-table-miss-does-not-kill-w1.txt`), not discarded. |
-| `m-sever-durable-source` | W1 (NoRecord face) + eviction wall + consumed-token walls | authored, run pending |
-| `m-token-requires-untaken` | consumed-token walls (store + scheduler) | authored, run pending |
-| `m-fire-skips-sends` (= R2 fire-path revert) | W3, publication-order, W5, live-process, Wall 1 | authored, run pending. **Prediction, stated before running:** W2 stays GREEN under this revert — at the post-send park the record is installed, so register-then-check answers exactly-one from the record with no fire at all. If confirmed, this diverges from the brief's "W2/W3 red" prediction and is reported as an observation. |
-| `m-w3-first-watch-only` | W3 (starvation face) | authored, run pending |
-| `m-w4-drop-no-deregister` | W4 (abandonment face) | authored, run pending |
-| `m-w5-fire-replaces-publish` | W5 (subscriber-missed face) | authored, run pending |
-| `m-wall1-publish-before-install` | Wall 1 (value face) — the brief-specified mutation | authored, run pending |
+| `m-sever-durable-source` | W1 (NoRecord face) + eviction wall + consumed-token walls | **RUN: red, exit 101** — all four designed targets failed (W1, eviction, both consumed walls), 2 unrelated filter-matches passed (`runs/red-m-sever-durable-source.txt`) |
+| `m-token-requires-untaken` | consumed-token walls (store + scheduler) | **RUN: red, exit 101** — exactly the two consumed walls, nothing else (`runs/red-m-token-requires-untaken.txt`) |
+| `m-fire-skips-sends` (= R2 fire-path revert) | W3, publication-order, W5, live-process, Wall 1 | **RUN: red, exit 101** — all five designed targets failed AND W2 passed in the same run (`runs/red-m-fire-skips-sends.txt`). **Prediction (a), stated before running, CONFIRMED:** W2 stays GREEN under this revert — the record answers exactly-one at the post-send park with no fire at all; held across 10×10 isolated reps (`runs/obs-m-fire-skips-sends-w2-green-10x.txt`). This diverges from the brief's "W2/W3 red" forecast and is reported as an observation per OBS-007 — the runs govern. |
+| `m-w3-first-watch-only` | W3 (starvation face) | **RUN: red, exit 101** — exactly W3 (`runs/red-m-w3-first-watch-only.txt`) |
+| `m-w4-drop-no-deregister` | W4 (abandonment face) | **RUN: red, exit 101** — exactly W4 (`runs/red-m-w4-drop-no-deregister.txt`) |
+| `m-w5-fire-replaces-publish` | W5 (subscriber-missed face) | **RUN: red, exit 101** — exactly W5 (`runs/red-m-w5-fire-replaces-publish.txt`) |
+| `m-wall1-publish-before-install` | Wall 1 (value face) — the brief-specified mutation, MANDATORY of record | run pending — first attempt held at preflight (live battery claim, Phoebus Anzac 17:06Z; convention honored, nothing launched) |
 | `m-check-then-register` (= R3 order revert) | brief predicts W2 red at lost-wake | authored, run pending. **Prediction, stated before running:** NO wall reds — the loss window check-then-register opens is PRE-INSTALL, and the only deterministic park the existing test hook offers is post-send (post-install), where the check simply hits the installed record. If confirmed: W2's citable lost-wake red is the commit-A skeleton (both halves reverted; face recorded in `26a49c1`'s body and reproducible via `m-skeleton-both-reverted`), and the pre-install window's unreachability is a documented limit of the existing gate — candidate for a pre-install rendezvous in a future lane, the tear to judge. |
 | `m-skeleton-both-reverted` | W2 (lost-wake, observed 0) — the demonstrated killer | authored, run pending; commit `26a49c1` is the natural exhibit of the same red |
 
-## Battery (pending, last step)
+## Battery (pending, last step) — CLAIM CONVENTION v2
 
 beamr gates.json five legs VERBATIM from the brief's `.verification`
-(identical to the hygiene battery's legs), run at the final head under the
-claim convention: take `/tmp/ablative-gate-battery.claim`, quiet census
-first. Evidence will land beside this file with the hygiene-battery shape:
+(identical to the hygiene battery's legs), run at the final head via the
+fresh v2-conformant runner **`battery/run-battery-v2.zsh`** (runner-v2
+remediation dispatch, Artemis 17:00Z sha `17ba6688…`, re-brief 17:03Z sha
+`57f990a5…`; the landed hygiene runner is pre-v2 evidence and is never
+edited in place). Runner shape: claim FIRST at
+`/tmp/ablative-gate-battery.claim` (atomic create; seat/member/pid/
+started/phase/tree; phase draining→running), THEN drain-wait under the
+held claim — 30 s samples, 60-minute ceiling, every sample recorded in
+`battery/drain-record.txt`, refusal only on timeout (loud, run-stopping);
+rule-5 stale handling at the floor exactly; trap-release on every exit
+path. The quiet CENSUS (zero foreign cargo/rustc), not the claim, is the
+evidence's quiet-floor proof (anchor rule 6). Built against the frozen
+six-entry pin set (anchor `4b8b38e1` + Amendments 1 `e903b4ad` /
+2 `c6d998bc` + addendum `aa92a18c` + withdrawal `91ba17f9` +
+ratification `c3ee8385`), restated verbatim in the runner header and in
+the emitted `battery-header.txt`. Behavioral conformance proof: claim-path
+grep hit line 46 (functional assignment); acquisition line 90 strictly
+before drain-wait line 114; trap/release lines 60–67 covering every exit
+path. Evidence lands beside this file with the hygiene-battery shape:
 per-leg logs, exits, load lines, toolchain stamp, tallies, completion
 marker — machine and operator named.
 

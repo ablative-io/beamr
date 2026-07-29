@@ -1,0 +1,37 @@
+# EXIT-001 mutation run — task 7a1242eb-742b-48be-ba7e-d961f2c49f04
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:01:53Z
+# tree: dc735f2 + m-token-requires-untaken.diff APPLIED (working tree only, never committed)
+# preflight: /tmp/ablative-gate-battery.claim ABSENT at launch (claim convention v2, entry 4b8b38e1)
+# command: cargo test -p beamr --lib -- consumed_reports_reason (reps: 1)
+
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.15s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 2 tests
+test scheduler::exit_observation_tests::watch_exit_after_outcome_consumed_reports_reason ... FAILED
+test scheduler::exit_tombstones::tests::watch_after_outcome_consumed_reports_reason_from_token ... FAILED
+
+failures:
+
+---- scheduler::exit_observation_tests::watch_exit_after_outcome_consumed_reports_reason stdout ----
+
+thread 'scheduler::exit_observation_tests::watch_exit_after_outcome_consumed_reports_reason' (7985306) panicked at crates/beamr/src/scheduler/exit_observation_tests.rs:402:13:
+a finalized pid must never be reported as NoRecord after take
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- scheduler::exit_tombstones::tests::watch_after_outcome_consumed_reports_reason_from_token stdout ----
+
+thread 'scheduler::exit_tombstones::tests::watch_after_outcome_consumed_reports_reason_from_token' (7985307) panicked at crates/beamr/src/scheduler/exit_tombstones.rs:725:17:
+blocked past the deadline: a consumed-outcome pid armed a watch (recv gave Err(Timeout)) instead of AlreadyExited — the token's retained reason must serve the answer after take
+
+
+failures:
+    scheduler::exit_observation_tests::watch_exit_after_outcome_consumed_reports_reason
+    scheduler::exit_tombstones::tests::watch_after_outcome_consumed_reports_reason_from_token
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1762 filtered out; finished in 1.01s
+
+error: test failed, to rerun pass `-p beamr --lib`
+## rep 1 exit=101

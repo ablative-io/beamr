@@ -1,0 +1,52 @@
+# EXIT-001 mutation run — task 7a1242eb-742b-48be-ba7e-d961f2c49f04
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:05:59Z
+# tree: dc735f2 + m-w5-fire-replaces-publish.diff APPLIED (working tree only, never committed)
+# preflight: /tmp/ablative-gate-battery.claim ABSENT at launch (claim convention v2, entry 4b8b38e1)
+# command: cargo test -p beamr --lib -- w5_exclusive (reps: 1)
+
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+warning: unused import: `ExitEvent`
+  --> crates/beamr/src/scheduler/exit_tombstones.rs:41:5
+   |
+41 |     ExitEvent, ExitEventPublisher, ExitEventSubscription, ExitWatchRegistry, StoreWatch,
+   |     ^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `publish` is never used
+   --> crates/beamr/src/scheduler/exit_events.rs:322:19
+    |
+298 | impl ExitEventPublisher {
+    | ----------------------- method in this implementation
+...
+322 |     pub(super) fn publish(&self, event: ExitEvent) {
+    |                   ^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `beamr` (lib) generated 2 warnings (run `cargo fix --lib -p beamr` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.58s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches ... FAILED
+
+failures:
+
+---- scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches stdout ----
+
+thread 'scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches' (8010627) panicked at crates/beamr/src/scheduler/exit_tombstones.rs:640:13:
+assertion `left == right` failed: subscriber sequence must be unchanged and in order
+  left: Err(Timeout)
+ right: Ok(Exited { pid: 1, reason: Normal })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 10.01s
+
+error: test failed, to rerun pass `-p beamr --lib`
+## rep 1 exit=101

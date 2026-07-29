@@ -1,0 +1,98 @@
+# EXIT-001 mutation run — task 7a1242eb-742b-48be-ba7e-d961f2c49f04
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:03:32Z
+# tree: dc735f2 + m-fire-skips-sends.diff APPLIED (working tree only, never committed)
+# preflight: /tmp/ablative-gate-battery.claim ABSENT at launch (claim convention v2, entry 4b8b38e1)
+# command: cargo test -p beamr --lib -- w2_watch_registered (reps: 10)
+
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.50s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.01s
+
+## rep 1 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+## rep 2 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+## rep 3 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+## rep 4 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+## rep 5 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+## rep 6 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+## rep 7 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+## rep 8 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+## rep 9 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+## rep 10 exit=0
