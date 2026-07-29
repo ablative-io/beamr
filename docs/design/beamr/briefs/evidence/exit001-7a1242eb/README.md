@@ -246,6 +246,25 @@ claim-body-at-acquire/-at-release pair, the flip-check line and the
 release-determination line in `battery/claim.log` are records an
 unwrapped canon launch cannot produce.
 
+**Attribution defect, disclosed and corrected forward (Artemis's
+verification, 18:30Z):** the runner's `MEMBER_ID` constant carried
+`…c9fa` — Artemis Peach's member id, one character from this seat's
+`…c9fb` — so run 2's claim body, `claim.log`, machine/operator block,
+and `COMPLETE.marker` attribute the battery to the wrong member. BLAST
+RADIUS: attribution only. The tree attestation is independent of the
+field (a claim-body string never reaches rustc; five legs exited 0
+against tree `e921f5b7…` regardless), and the exclusion mechanism was
+self-consistent (the flip guard compares the claim against the runner's
+own constant — both sides used the same value; release is pid-guarded).
+The battery of record was therefore NOT re-run; a re-run would burn a
+contended slot and return zero new information about the tree. The wrong
+values in the landed run-2 artifacts are the incident record and stay;
+the runner is corrected forward in this commit. Class note (Artemis, to
+the anchor): estate member ids are ADJACENT — one character, last
+position — and nothing in the convention validates that an asserted
+identity belongs to the asserting seat; "copied never typed" failed
+silently here.
+
 **Superseded-runner quarantine (claim-runner inventory order, Artemis
 18:17Z sha `a9b5ae82…`):** a label is not a control — the superseded
 runners were launchable at their committed paths, so both are MOVED off

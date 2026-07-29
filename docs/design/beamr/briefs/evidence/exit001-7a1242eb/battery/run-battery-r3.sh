@@ -18,7 +18,7 @@ set -u
 # re-brief 3. Supersession chain: 42c6231 (six-pin v2.zsh) -> 421778f
 # (622dedbf-derived) -> this file (r3). Predecessors never launch.
 SEAT_NAME="Diana Plum"
-MEMBER_ID="b337ce2b-336a-4856-a9d8-54c90496c9fa"
+MEMBER_ID="b337ce2b-336a-4856-a9d8-54c90496c9fb"
 WT=/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb
 EVIDENCE_DIR="$WT/docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery"
 cd "$WT" || exit 2
