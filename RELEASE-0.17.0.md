@@ -264,9 +264,51 @@ At staging time all three target slots were free (`404`): `beamr/0.17.0`,
   **Note the control is not `version` — main's version line deliberately still
   reads 0.16.2 (§3), so using it as the known-different item silently produces
   a failed control.** That is the trap in §1 again, in a third argument form.
-- **`aion` and `haematite` exposure is NOT measured here.** Their owners should
-  run the same two-control check before the pin bump. Absence of a finding in
-  this document is absence of a measurement, not a clean result.
+- **`haematite`: zero.** At `db21b2c` — 324 Rust files, positive control
+  (`beamr`) 55 files, negative control 0, **`spawn_link_dirty` 0 in `.rs` and 0
+  anywhere in the repo**, loose `spawn_link` 0.
+- **`aion`: zero.** At `1d53c193` — 1172 Rust files, positive control 109,
+  negative control 0, **`spawn_link_dirty` 0 in `.rs`**. It has exactly one hit
+  repo-wide and it is prose: `CHANGELOG.md:26`, *"The last `spawn_link_dirty`
+  call is…"*. The 8 loose `spawn_link` hits are real calls to **different,
+  surviving** APIs — `spawn_link/3`, `spawn_link_closure`,
+  `spawn_linked_test_process`, `bif_spawn_link_4`.
+- **Stronger than absence, and the check actually worth running: the APIs
+  consumers DO call still exist.** Verified at `929f4fc`, with the removed
+  symbol as the negative control through the identical command form:
+  ```sh
+  for sym in spawn_link spawn_link_closure spawn_linked_test_process bif_spawn_link_4; do
+    git grep -c -e "fn $sym" -- ':(glob)crates/*/src/**'
+  done
+  git grep -c -e 'fn spawn_link_dirty' -- ':(glob)crates/*/src/**'   # must be empty
+  ```
+  All four survive; `spawn_link_dirty` is correctly absent. **"The removed
+  symbol is not called" is a weaker claim than "the symbols they call survive" —
+  the first is satisfied by a consumer that calls nothing at all.**
+- **Consumer pins that must be edited (all caret, none matches 0.17.0):**
+  `haematite/Cargo.toml:46` `beamr = "0.16.0"` and `:114` the native-only
+  dev-dep `{ version = "0.16.0", features = ["cooperative"] }`; `aion`'s
+  workspace pin `Cargo.toml:89` `{ version = "0.16.2", features = ["json",
+  "encode"] }`. *(`aion`'s `.meridian/workflows/stacked-dev/worker/…` scaffold
+  pins `0.6.1`; that is a template, not a live edge — do not "fix" it as part of
+  this rollout without asking its owner.)*
+
+**⚠ ORDERING — THE BATTERY AND THE VERSION BUMP (Athena Zooper Dooper, and it
+follows from the §3 correction).** If a stale pin makes the workspace *refuse to
+check* rather than build green, then **resolution health is a property of the
+tree at the moment of the run**, and the battery certifies it only for the tree
+it ran on. **A version bump landing AFTER the battery silently invalidates the
+resolution half of its evidence while leaving the report green and quotable.**
+
+**⇒ Either the battery runs on the tree that will be published, or it re-runs
+after the bump. Do not let the bump land between the battery and the publish.**
+
+Note the polarity, because "I had this backwards" should not be misread as worse
+news: **the corrected mechanism is the SAFER one.** A stale pin cannot reach the
+registry through a green battery — the workspace refuses at the first compiling
+leg, loudly. Under the original (wrong) belief the bump was invisible to the
+battery and ordering did not matter; under the corrected mechanism the battery
+is a genuine detector, which is exactly why it must be pointed at the right tree.
 
 **One thing the release unblocks:** `watch_exit` is additive surface arriving
 *in* 0.17.0, and liminal's F7 retirement (deleting `LIVENESS_POLL`/`poll_reply`,
