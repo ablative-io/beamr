@@ -51,6 +51,18 @@ where
         )));
     }
 
+    // compile never consumed --dir; accepting it silently misleads the user
+    // into thinking extra directories participate in compilation.
+    if !dirs.is_empty()
+        && filtered_args
+            .first()
+            .is_some_and(|command| command == "compile")
+    {
+        return Err(CliError::Usage(format!(
+            "--dir is not supported with compile\n{USAGE}"
+        )));
+    }
+
     for (index, arg) in filtered_args.iter().enumerate() {
         if arg.starts_with('-') {
             match arg.as_str() {
@@ -112,6 +124,7 @@ where
             validate_beam_path(file)?;
             Ok(Command::Imports {
                 path: PathBuf::from(file),
+                dirs,
             })
         }
         [command, log_file] if command == "replay" => Ok(Command::Replay {

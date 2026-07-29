@@ -135,6 +135,19 @@ fn parses_imports_command() {
         parse_args(["imports", "hello.beam"]).expect("imports parses"),
         Command::Imports {
             path: "hello.beam".into(),
+            dirs: Vec::new(),
+        }
+    );
+}
+
+#[test]
+fn parses_imports_command_carrying_dir_flags() {
+    assert_eq!(
+        parse_args(["imports", "hello.beam", "--dir", "/tmp/a", "--dir", "/tmp/b"])
+            .expect("imports with --dir parses"),
+        Command::Imports {
+            path: "hello.beam".into(),
+            dirs: vec!["/tmp/a".into(), "/tmp/b".into()],
         }
     );
 }

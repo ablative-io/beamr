@@ -22,7 +22,7 @@ use beamr::replay::ReplayLog;
 use beamr::scheduler::{Scheduler, SchedulerConfig, SchedulerServices};
 use beamr::term::{Term, format::format_term};
 
-const USAGE: &str = "Usage:\n  beamr <file.beam> [--entry module:function/arity] [--dir <path>]... [-- <arg>...]\n  beamr <file.beam> [module:function/arity] [--dir <path>]... [-- <arg>...]\n  beamr record <file.beam> --entry module:function/arity --log <output> [--dir <path>]... [-- <arg>...]\n  beamr replay <log-file>\n  beamr imports <file.beam>\n  beamr compile <dir> [--verbose]\n  beamr --help|-h\n  beamr --version|-V";
+const USAGE: &str = "Usage:\n  beamr <file.beam> [--entry module:function/arity] [--dir <path>]... [-- <arg>...]\n  beamr <file.beam> [module:function/arity] [--dir <path>]... [-- <arg>...]\n  beamr record <file.beam> --entry module:function/arity --log <output> [--dir <path>]... [-- <arg>...]\n  beamr replay <log-file>\n  beamr imports <file.beam> [--dir <path>]...\n  beamr compile <dir> [--verbose]\n  beamr --help|-h\n  beamr --version|-V";
 
 fn main() -> ExitCode {
     let outcome = run_cli(env::args().skip(1));
@@ -63,6 +63,7 @@ enum Command {
     },
     Imports {
         path: PathBuf,
+        dirs: Vec<PathBuf>,
     },
     Compile {
         dir: PathBuf,
@@ -96,7 +97,7 @@ where
             "beamr {}\n",
             env!("CARGO_PKG_VERSION")
         ))),
-        Command::Imports { path } => run_imports(&path),
+        Command::Imports { path, dirs } => run_imports(&path, &dirs),
         Command::Compile { dir, verbose } => run_compile(&dir, verbose),
         Command::Replay { log } => run_replay(&log),
         Command::Record {
@@ -115,10 +116,10 @@ where
     }
 }
 
-fn run_imports(path: &Path) -> Result<CliSuccess, CliError> {
+fn run_imports(path: &Path, dirs: &[PathBuf]) -> Result<CliSuccess, CliError> {
     let LoadContext {
         atom_table, report, ..
-    } = load_context(path, &[])?;
+    } = load_context(path, dirs)?;
     Ok(CliSuccess::Stdout(format_import_report(
         &report,
         &atom_table,
