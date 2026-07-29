@@ -108,6 +108,16 @@ fn receiver_contests_publication_without_misses_under_coordinated_multi_worker_c
         let observer = scope.spawn(move || {
             let mut observed = HashSet::with_capacity(PROCESS_COUNT);
             for _ in 0..ROUND_COUNT {
+                // WEDGE-002 (ruled): this per-round phase handle MUST stay
+                // owned inside the observer closure. Its drop-on-unwind is
+                // what releases gate-parked publishers when an assert below
+                // panics — the designed disconnect contract (see
+                // `wait_at_publication_gate`: "Disconnection means the
+                // observer failed and is unwinding…"). Hoisting the handle
+                // out of this closure to reuse across rounds silently
+                // recreates the store-wall wedge fixed at 8f3bf57: a panic
+                // here could no longer drop it, and this test's failure
+                // path would become an infinite hang instead of a red.
                 let publication_phase = publication_phase_rx
                     .recv_timeout(EVENT_TIMEOUT)
                     .expect("each round installs a publication gate");

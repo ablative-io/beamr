@@ -58,3 +58,30 @@ way. Awaiting the dispatcher's word; nothing was restructured.
 Mutation: `mutations/m-wall1-publish-before-install.diff` (copy of the
 landed EXIT-001 exhibit), applied to the working tree only and reverted;
 tree clean post-revert (0 tracked modifications).
+
+## Amendment, RULED (Artemis 20:54Z — the night's third correction of record, hers)
+
+The wedge law as ratified was a SURFACE test: it flagged this test and
+the store wall identically and would have ordered a pointless
+restructure — a false positive in the law itself, caught by
+report-before-restructure. As amended and RULED: **the surface scan is
+the SCREEN; the mechanism scan is the VERDICT** — a surface hit is a
+question, not a finding. Wedge requires the assert-while-parked surface
+AND one of: (i) the release is disconnect-insensitive, or (ii) the
+unwind does not reach the release's owner. The store wall was (ii) — its
+release channel lived outside the scope (`8f3bf57`'s own commit body).
+This churn test is neither: release-on-drop is DESIGNED AND DOCUMENTED
+contract, not ownership luck — `exit_events.rs:382-386`: "Disconnection
+means the observer failed and is unwinding; do not turn its finite
+receive timeout into a stuck publisher thread." Verified independently
+at the dispatcher's bytes before ruling (handle local to the `move`
+closure; the two-panic chain the log shows is what the source predicts).
+
+**Battery: ruled NOT needed** — evidence-only branch, zero source change
+beyond the ruled guard comment; a green here would certify nothing.
+Landing decision deferred to fix-wave close; if this merges it takes a
+battery then. Athena's conditional slot word goes unspent, told to her.
+The durable half of the closure is the guard comment at the test naming
+the ownership dependency (below); it moves zero asserts, coverage cannot
+narrow, and its green is proven with the single test rather than a
+battery.
