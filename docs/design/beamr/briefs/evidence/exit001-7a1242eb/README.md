@@ -121,8 +121,27 @@ assert) while that round's publishers are parked, release following the
 asserts — a failed round would wedge identically. It predates EXIT-001
 and is not one of this lane's walls; flagged here and in the return for
 its own lane's ruling. |
-| `m-check-then-register` (= R3 order revert) | brief predicts W2 red at lost-wake | authored, run pending. **Prediction, stated before running:** NO wall reds — the loss window check-then-register opens is PRE-INSTALL, and the only deterministic park the existing test hook offers is post-send (post-install), where the check simply hits the installed record. If confirmed: W2's citable lost-wake red is the commit-A skeleton (both halves reverted; face recorded in `26a49c1`'s body and reproducible via `m-skeleton-both-reverted`), and the pre-install window's unreachability is a documented limit of the existing gate — candidate for a pre-install rendezvous in a future lane, the tear to judge. |
-| `m-skeleton-both-reverted` | W2 (lost-wake, observed 0) — the demonstrated killer | authored, run pending; commit `26a49c1` is the natural exhibit of the same red |
+| `m-check-then-register` (= R3 order revert) | brief predicts W2 red at lost-wake | **RUN: prediction (b) CONFIRMED — NO wall reds.** Full watch suite 14/14 green under the revert (`runs/obs-m-check-then-register-full.txt`); W2 green 10/10 isolated (`runs/obs-m-check-then-register-w2-10x.txt`). The loss window check-then-register opens is PRE-INSTALL, and the only deterministic park the existing gate offers is post-send (post-install), where the check hits the installed record. This diverges from the brief's "W2 red at lost-wake" forecast and is recorded OBS-007 style — the runs govern. W2's citable lost-wake red is the commit-A skeleton (face in `26a49c1`'s body) and `m-skeleton-both-reverted` below; the pre-install window's unreachability is a **documented limit** of the existing gate — candidate for a pre-install rendezvous in a future lane, the tear to judge. |
+| `m-skeleton-both-reverted` | W2 (lost-wake, observed 0) — the demonstrated killer | **RUN: red, exit 101** at the verbatim face: "must observe exactly one notification (0 = lost wake…); observed 0" (`runs/red-m-skeleton-both-reverted-w2.txt`); commit `26a49c1` is the natural exhibit of the same red |
+
+## Face-assignment table (wedge ruling demand 3: every face names its deterministic killer)
+
+| face | wall | deterministic killer | red evidence |
+|---|---|---|---|
+| unknown-pid honesty (Live-on-miss) | `watch_exit_on_unknown_pid…` | `m-live-on-table-miss` | `runs/red-m-live-on-table-miss-unknownpid.txt` (exit 101) |
+| NoRecord truthfulness / durable source | W1 + eviction + consumed walls | `m-sever-durable-source` | `runs/red-m-sever-durable-source.txt` (4 walls red, exit 101) |
+| exactly-once token honesty | consumed-token walls (store + scheduler) | `m-token-requires-untaken` | `runs/red-m-token-requires-untaken.txt` (exit 101) |
+| notification delivery (fire path) | W3, W5, publication-order, live-process, Wall 1 | `m-fire-skips-sends` | `runs/red-m-fire-skips-sends.txt` (5 walls red, exit 101; W2 green = record answers, prediction (a)) |
+| W3 starvation | W3 | `m-w3-first-watch-only` | `runs/red-m-w3-first-watch-only.txt` (exit 101) |
+| W4 abandonment leak | W4 | `m-w4-drop-no-deregister` | `runs/red-m-w4-drop-no-deregister.txt` (exit 101) |
+| W5 subscriber displacement | W5 | `m-w5-fire-replaces-publish` | `runs/red-m-w5-fire-replaces-publish.txt` (exit 101) |
+| value-at-wake (Hermes rider 1+2) | Wall 1 | `m-fire-skips-sends` (fire loss) — Wall 1 CANNOT fail at the ordering face: synchronous finalization leaves no window (narrow-filter green is the exhibit, a filter artifact not a survival) | `runs/red-m-fire-skips-sends.txt`; `runs/green-m-wall1-narrow-filter-observation.txt` |
+| **ordering (outcomes-before-exits)** | publication-order wall + **Wall-1b** | `m-wall1-publish-before-install` — **CLEAN red after the wedge-law fix; killed-by-wedge before it** (the wall's own failure path deadlocked; ruled a wall defect, fixed shape (a)) | post-fix clean red: `runs/red-m-wall1-fixed-walls-clean-red.txt` (both walls, exit 101, bounded wall-clock); pre-fix wedge: `runs/wedge-m-wall1-publish-before-install-discovery.txt` |
+| W2 lost-wake (observed 0) | W2 | `m-skeleton-both-reverted` (commit-A skeleton = natural exhibit) | `runs/red-m-skeleton-both-reverted-w2.txt` (exit 101) |
+| R3 order (register-then-check) | — | `m-check-then-register` kills NOTHING: documented limit (pre-install window unreachable by the post-send gate); the skeleton red is the citable lost-wake exhibit | `runs/obs-m-check-then-register-full.txt`, `…-w2-10x.txt` (all green) |
+
+Post-fix 10× isolated greens for the wedge-law walls + Wall-1b:
+`runs/green-postfix-walls-10x.txt` (30/30).
 
 ## Battery (pending, last step) — r3-derived runner
 
