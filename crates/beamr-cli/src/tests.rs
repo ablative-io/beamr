@@ -1,6 +1,7 @@
 use super::args::{parse_args, parse_entry};
 use super::{CliError, CliSuccess, Command, EntryPoint, run_cli};
 use beamr::error::{ExecError, LoadError};
+use beamr::replay::ReplayLog;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
@@ -299,6 +300,118 @@ fn record_then_replay_fixture_preserves_stdout_and_exit_code() {
             exit_code: 0
         } if !stdout.is_empty()
     ));
+}
+
+/// LOAD-BEARING WALL (task 3aecb622).
+///
+/// **A log recorded against build A, replayed after the behaviour changes,
+/// MUST FAIL.**
+///
+/// `beamr replay` is a reproduction, not a transcript player. The recorded
+/// `cli_result` is the claim to be CHECKED against the replayed run — never
+/// the answer to be printed. Here a genuine recording is taken and only its
+/// recorded transcript is rewritten, standing in for "the build changed
+/// underneath the log": the events still describe run A, the transcript no
+/// longer matches what this build produces. Replay must refuse loudly.
+///
+/// Before the fix this passes GREEN by printing the rewritten transcript and
+/// exiting 0 — a log recorded against a working build still reports success
+/// after the build is broken. That is the defect this task removes.
+#[test]
+fn replay_of_a_log_recorded_against_different_behaviour_fails() {
+    let fixture = fixture_path("hello.beam");
+    let log_path = temp_replay_log_path("build-a-drift");
+
+    let _recorded = run_cli([
+        "record".to_owned(),
+        fixture.to_string_lossy().into_owned(),
+        "--entry".to_owned(),
+        "hello:main/0".to_owned(),
+        "--log".to_owned(),
+        log_path.to_string_lossy().into_owned(),
+    ])
+    .expect("record fixture run");
+
+    // Rewrite ONLY the transcript, preserving the recorded events. `loaded`
+    // must outlive the `save` below: cloned events' boxed terms point into the
+    // loaded log's decoded heaps, which are released when it drops.
+    let loaded = ReplayLog::load(&log_path).expect("recorded log should load");
+    let tampered = ReplayLog::with_cli_result(
+        loaded.events().to_vec(),
+        "OUTPUT FROM BUILD A THAT THIS BUILD DOES NOT PRODUCE\n".to_owned(),
+        0,
+    );
+    tampered
+        .save(&log_path)
+        .expect("rewritten replay log should be writable");
+    drop(loaded);
+
+    let outcome = run_cli(["replay".to_owned(), log_path.to_string_lossy().into_owned()]);
+    let _ = std::fs::remove_file(&log_path);
+
+    let error = match outcome {
+        Ok(success) => panic!(
+            "replay must not succeed on a run it cannot reproduce; \
+             it reprinted the recorded transcript instead: {success:?}"
+        ),
+        Err(error) => error,
+    };
+    assert_ne!(
+        error.exit_code(),
+        0,
+        "a replay divergence must exit non-zero, got 0 from {error}"
+    );
+    assert!(
+        !error.to_string().contains("OUTPUT FROM BUILD A"),
+        "replay must never emit the recorded transcript as its answer: {error}"
+    );
+}
+
+/// R4 wall: a log carrying a transcript but no drivable events cannot be
+/// reproduced, so replay must fail loudly and name the divergence rather than
+/// falling back to printing the stored stdout.
+#[test]
+fn replay_of_a_log_with_no_drivable_events_fails_loudly() {
+    let log_path = temp_replay_log_path("no-events");
+    let transcript = "STORED TRANSCRIPT THAT MUST NEVER BE PRINTED AS THE ANSWER\n";
+    ReplayLog::with_cli_result(Vec::new(), transcript.to_owned(), 0)
+        .save(&log_path)
+        .expect("replay log fixture should be writable");
+
+    let outcome = run_cli(["replay".to_owned(), log_path.to_string_lossy().into_owned()]);
+    let _ = std::fs::remove_file(&log_path);
+
+    let error = match outcome {
+        Ok(success) => panic!("replay must not succeed with nothing to drive; got {success:?}"),
+        Err(error) => error,
+    };
+    assert_ne!(error.exit_code(), 0, "divergence must exit non-zero");
+    let message = error.to_string();
+    assert!(
+        !message.contains("STORED TRANSCRIPT"),
+        "replay must never degrade into a transcript reprint: {message}"
+    );
+    assert!(
+        message.contains("replay"),
+        "the failure must name the divergence: {message}"
+    );
+}
+
+/// R5 wall: a replay reconstructs a recorded run, so its module context comes
+/// from the RECORDING and never from a flag supplied at replay time. Accepting
+/// `--dir` would be a supported way to replay against different code than was
+/// recorded. Refuse it, mirroring the `compile` guard.
+#[test]
+fn replay_refuses_dir_flag() {
+    let error = parse_args(["replay", "run.rlog", "--dir", "/tmp/beams"])
+        .expect_err("--dir must be refused for replay");
+
+    assert!(
+        error
+            .to_string()
+            .contains("--dir is not supported with replay"),
+        "the refusal must name the flag and the command: {error}"
+    );
 }
 
 #[test]
