@@ -10,8 +10,15 @@
 # re-run after a partial/failed release.
 #
 # Usage:
-#   scripts/release.sh            # publish anything whose version isn't live yet
-#   scripts/release.sh --dry-run  # package + verify every crate, upload nothing
+#   scripts/release.sh            # DRY RUN: package + verify every crate, upload nothing
+#   scripts/release.sh --dry-run  # same thing, said explicitly
+#   scripts/release.sh --publish  # REAL, IRREVERSIBLE publish to crates.io
+#
+# The default is the safe one ON PURPOSE. A `cargo publish` cannot be undone —
+# there is no unpublish — and this script publishes up to four crates per
+# invocation. An irreversible action should require you to say so, not require
+# you to remember to add a flag to avoid it. Getting the bare command wrong
+# should cost a dry run, never a registry write.
 #
 # Requires: a crates.io token configured (cargo login) and curl.
 #
@@ -21,8 +28,21 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-DRY_RUN=""
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN="--dry-run"
+
+# Default to --dry-run; only an explicit --publish arms the real thing. Unknown
+# arguments are refused rather than ignored, because an argument that is
+# silently dropped is how a caller ends up believing they asked for something
+# they did not.
+DRY_RUN="--dry-run"
+case "${1:-}" in
+  ""|--dry-run) DRY_RUN="--dry-run" ;;
+  --publish)    DRY_RUN="" ;;
+  *)
+    echo "release.sh: unknown argument '$1'" >&2
+    echo "usage: release.sh [--dry-run|--publish]   (default: --dry-run)" >&2
+    exit 2
+    ;;
+esac
 
 # Publish order = dependency order. gleam-types has no intra-workspace deps;
 # beamr depends on gleam-types; beamr-cli and beamr-wasm depend on beamr.
