@@ -349,6 +349,57 @@ fn rejects_dir_without_value() {
     assert!(matches!(error, CliError::MissingDirValue(_)));
 }
 
+// WALL (finding 5, fix-wave 3aecb622): `beamr imports` must honor --dir.
+// deferred_caller.beam's only deferred import is counter:version/0; with the
+// counter module supplied via --dir the report must be empty. Against code
+// that drops --dir on the imports path, the report still lists the import
+// and this test is red.
+#[test]
+fn imports_with_dir_satisfying_deferred_import_prints_empty_report() {
+    let dir = temp_fixture_dir("imports-dir-wall");
+    std::fs::create_dir_all(&dir).expect("create temp fixture dir");
+    std::fs::copy(
+        fixture_path("hot_code/counter_v1.beam"),
+        dir.join("counter_v1.beam"),
+    )
+    .expect("copy counter fixture into --dir directory");
+    let caller = fixture_path("hot_code/deferred_caller.beam");
+
+    let result = run_cli([
+        "imports".to_owned(),
+        caller.to_string_lossy().into_owned(),
+        "--dir".to_owned(),
+        dir.to_string_lossy().into_owned(),
+    ])
+    .expect("imports with --dir should succeed");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let CliSuccess::Stdout(output) = result else {
+        panic!("imports should return stdout-only success");
+    };
+    assert!(
+        output.is_empty(),
+        "imports must print an empty report when --dir satisfies every \
+         deferred import; unresolved imports still reported:\n{output}"
+    );
+}
+
+// WALL (finding 5, fix-wave 3aecb622): compile never consumed --dir; the
+// defect is the silent accept. It must be refused with a usage error, not
+// implemented. Against code that silently drops the flag, parse_args
+// returns Ok and this test is red.
+#[test]
+fn compile_refuses_dir_flag_instead_of_silently_dropping_it() {
+    let error = parse_args(["compile", "/tmp/beams", "--dir", "/tmp/extra"])
+        .expect_err("compile must refuse --dir rather than silently dropping it");
+
+    assert!(matches!(error, CliError::Usage(_)));
+    assert!(
+        error.to_string().contains("--dir"),
+        "usage error must name the refused flag; got: {error}"
+    );
+}
+
 fn fixture_path(name: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../beamr/tests/fixtures")
@@ -366,6 +417,20 @@ fn temp_replay_log_path(label: &str) -> std::path::PathBuf {
         std::process::id()
     ));
     path
+}
+
+/// Unique-per-invocation fixture directory (pid + nanos), per the RAIL 6
+/// audit's requirement that this crate's tests stay parallel-safe: no shared
+/// fixture directories, no runtime mutation of a path another test can see.
+fn temp_fixture_dir(label: &str) -> std::path::PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after Unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "beamr-cli-{label}-{}-{nanos}",
+        std::process::id()
+    ))
 }
 
 fn write_temp_beam(contents: &str) -> std::path::PathBuf {
