@@ -70,6 +70,14 @@ release_claim() {
     log "claim released (own claim, pid $$)"
   elif [ -f "$CLAIM" ]; then
     log "exit without release: claim on file is NOT ours (holder $(sed -n 's/^pid=//p' "$CLAIM" 2>>"$CLAIMLOG")) — leaving it in place"
+  elif [ "${CLAIM_WAS_ACQUIRED:-0}" = "1" ]; then
+    # A5 third delta (ruling 4081cb3d): AT RELEASE, AN ABSENT CLAIM IS VOIDING
+    # EXACTLY LIKE A FOREIGN ONE. We wrote it, held it, and trapped its release
+    # on every exit path — there is no innocent reason it is missing. The
+    # thief-finishes-first ordering leaves exactly this state, and a quiet
+    # no-op here would publish a green whose quiet-floor premise was violated.
+    printf 'ABSENT AT RELEASE (was acquired this run)\n' > "$EVIDENCE_DIR/claim-absent-at-release.txt"
+    log "A5 ABSENT-CLAIM DETECTOR (4081cb3d): our claim is MISSING at release — someone took it; quiet-floor premise VOID; RUN VOID AS EVIDENCE; operator posts this to the lane"
   fi
 }
 trap release_claim EXIT INT TERM HUP   # flag 3: HUP included — a hangup must not orphan the claim
@@ -115,6 +123,8 @@ until acquire; do
   fi
   sleep 30
 done
+CLAIM_WAS_ACQUIRED=1   # A5 third delta: arms the absent-at-release detector — only a run that
+                       # actually held the claim can have it stolen-then-removed.
 log "claim acquired, phase=draining"
 # Claim double-record, part 1 (dispatch bef7f4f2 addition 1): body verbatim at acquire.
 cat "$CLAIM" 2>>"$CLAIMLOG" | tee "$EVIDENCE_DIR/claim-body-at-acquire.txt" >> "$CLAIMLOG"
@@ -163,6 +173,11 @@ census > "$EVIDENCE_DIR/census-at-start.txt"   # the census, not the claim, is t
   echo "A5 delta (i): dialect-tolerant claim READS — holder pid parsed from both key=value and key: value forms (acquisition loop + flip check)"
   echo "A5 delta (ii): unparseable/empty pid is NEVER grounds for a rule-5 clear — reads HELD, never stale (cannot-determine assumes the answer that prevents harm)"
   echo "A5 delta (iii): NO PHASE FLIP WITHOUT OWNERSHIP CHECK — claim re-read at draining->running, own member id + pid confirmed; foreign body => flip REFUSED loudly, exit 6, run VOID AS EVIDENCE (detector, not error)"
+  echo "A5 delta (iv) (ruling 4081cb3d): AT RELEASE, AN ABSENT CLAIM IS VOIDING EXACTLY LIKE A FOREIGN ONE — a run that acquired the claim and finds nothing at release was robbed by the thief-finishes-first ordering; detector fires loudly, run VOID AS EVIDENCE"
+  echo "=== detector limits, stated as ruled (4081cb3d — venue: Annabel's box, NOT Dean's serial topology) ==="
+  echo "(a) the flip guard DETECTS AFTER canon's internal mv rather than refusing before it — true pre-flip refusal awaits r4"
+  echo "(b) this box launches runners INDEPENDENTLY — no coordinator serialization backs the premise (Dean's-box detect-and-void venue ruling does NOT transfer)"
+  echo "(c) the quiet-floor claim therefore rests on the detectors firing (perpetrator detects at flip, victim at release, BOTH branches of the victim's check built), not on collision prevention"
   echo "protocol delta (dispatch bef7f4f2 addition 1): claim body recorded verbatim TWICE — claim-body-at-acquire.txt and claim-body-at-release.txt — for the return's match/no-match line"
   echo "exit vocabulary: 4 = acquisition timeout; 5 = drain timeout; 6 = A5 flip refusal (claim replaced mid-run)"
   echo "legs: beamr's FIVE, VERBATIM from EXIT-001 brief .verification @ 8f2b7c3 (= gates.json; ruling entry 85d5781b). beamr has NO nextest leg: canon amendments A4/A6 are N/A here, stated rather than silently dropped"
@@ -182,6 +197,8 @@ census > "$EVIDENCE_DIR/census-at-start.txt"   # the census, not the claim, is t
   echo "11. e269d2c9-0dfa-409e-ada5-b10303118225 — CANON r3, the build source"
   echo "12. 3e5a93ca-234d-4ea2-bb9b-35701f6b86c7 — Amendment 4 (holder-spared kills; slot restitution)"
   echo "13. a621f353-78c4-4453-93fa-309c38bdee98 — Amendment A5 (claim body is pinned bytes; write path guarded)"
+  echo "14. 77b2c212 — null-diff rider (a null diff from canon is no longer a conformance claim; disclosed deltas are the correct shape)"
+  echo "15. 4081cb3d — absent-claim voiding at release + venue ruling (per-box topology decides)"
   echo "=== quiet-floor proof: census-at-start.txt (the census, not the claim — anchor rule 6) ==="
 } > "$EVIDENCE_DIR/battery-header.txt" 2>&1
 

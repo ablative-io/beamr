@@ -207,11 +207,27 @@ re-read at draining→running, own member id + pid confirmed, foreign body
 ⇒ flip REFUSED loudly (exit 6), run VOID as evidence (detector, not
 error). Plus the claim double-record protocol (body verbatim at acquire
 and immediately before release; match/no-match reported in the return).
-Pin set is now THIRTEEN (adds `a621f353`). Amended-file conformance
-lines: claim-path grep hit **line 36**; `acquire()` line 83 / loop
-line 93, strictly before drain-wait line 122; trap line 75
-(EXIT INT TERM HUP) with ownership-guarded `release_claim()` lines 61–74
-and the A5 flip guard at lines 137–147.
+**A5 third delta (ruling `4081cb3d`, sha `0ace70c7…`): at release, an
+ABSENT claim is voiding exactly like a foreign one** — the
+thief-finishes-first ordering leaves nothing on file, and a quiet no-op
+there would publish a green whose quiet-floor premise was violated. The
+release path now has all three branches (own / foreign / absent, the
+absent branch armed only for a run that actually acquired). Detector
+limits, stated as ruled for THIS box's topology: (a) the flip guard
+detects AFTER canon's internal `mv` rather than refusing before it —
+true pre-flip refusal awaits r4; (b) this box launches runners
+independently — no coordinator serialization backs the premise (Dean's
+serial-venue ruling does not transfer); (c) the quiet-floor claim rests
+on the detectors firing (perpetrator at flip, victim at release, both
+victim branches built), not on collision prevention. Pin set is now
+FIFTEEN (adds `a621f353`, `77b2c212` null-diff rider, `4081cb3d`).
+Amended-file conformance lines: claim-path grep hit **line 36**;
+`acquire()` line 91 / loop line 101, strictly before drain-wait
+line 130; trap line 83 (EXIT INT TERM HUP) with the three-branch
+`release_claim()` lines 61–82; A5 flip guard follows the drain-wait.
+Run-2 first attempt: aborted by owner during its acquisition wait (no
+claim held, no legs run — parked behind Mercury Toast then Phoebus)
+when this delta landed; noted in `battery/claim.log`.
 
 **Run 1 QUALIFIED per A5's audit note (not retroactively void):** run 1
 completed before `a621f353` and its claim was never re-read at flip

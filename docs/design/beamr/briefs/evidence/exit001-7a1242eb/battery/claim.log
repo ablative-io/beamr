@@ -1,0 +1,13 @@
+docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery/run-battery-r3.sh: line 84: /tmp/ablative-gate-battery.claim: cannot overwrite existing file
+2026-07-29T18:12:53Z claim held by: seat=Mercury Toast member_id=5b70322e-e7a9-451c-91ca-a3dfa7b05bda pid=94139 started_at=2026-07-29T18:12:47Z phase=running — waiting (sample 0)
+docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery/run-battery-r3.sh: line 84: /tmp/ablative-gate-battery.claim: cannot overwrite existing file
+2026-07-29T18:13:23Z claim held by: seat=Mercury Toast member_id=5b70322e-e7a9-451c-91ca-a3dfa7b05bda pid=94139 started_at=2026-07-29T18:12:47Z phase=running — waiting (sample 1)
+docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery/run-battery-r3.sh: line 84: /tmp/ablative-gate-battery.claim: cannot overwrite existing file
+2026-07-29T18:13:53Z claim held by: seat=Mercury Toast member_id=5b70322e-e7a9-451c-91ca-a3dfa7b05bda pid=94139 started_at=2026-07-29T18:12:47Z phase=running — waiting (sample 2)
+docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery/run-battery-r3.sh: line 84: /tmp/ablative-gate-battery.claim: cannot overwrite existing file
+2026-07-29T18:14:23Z claim held by: seat=Mercury Toast member_id=5b70322e-e7a9-451c-91ca-a3dfa7b05bda pid=94139 started_at=2026-07-29T18:12:47Z phase=running — waiting (sample 3)
+docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery/run-battery-r3.sh: line 84: /tmp/ablative-gate-battery.claim: cannot overwrite existing file
+2026-07-29T18:14:53Z claim held by: seat=Mercury Toast member_id=5b70322e-e7a9-451c-91ca-a3dfa7b05bda pid=94139 started_at=2026-07-29T18:12:47Z phase=running — waiting (sample 4)
+docs/design/beamr/briefs/evidence/exit001-7a1242eb/battery/run-battery-r3.sh: line 84: /tmp/ablative-gate-battery.claim: cannot overwrite existing file
+2026-07-29T18:15:23Z claim held by: seat=Phoebus Anzac member_id=f68332b0-9590-44bf-9a15-76b5b315e71d pid=99979 started_at=2026-07-29T18:15:07Z phase=draining — waiting (sample 5)
+2026-07-29T18:15:41Z [operator note, Diana Plum] run-2 attempt ABORTED BY OWNER during acquisition wait (no claim held, no legs run): A5 third delta (4081cb3d) landed mid-wait — absent-claim-at-release voiding branch required before the battery; runner amended, relaunched
