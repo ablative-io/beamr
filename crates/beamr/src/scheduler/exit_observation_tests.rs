@@ -489,3 +489,97 @@ fn wall1_reply_enqueued_strictly_before_kill_is_observable_with_value_at_watch_w
     );
     scheduler.shutdown();
 }
+
+/// WALL 1b — ordering tripwire (ruled addition, Artemis 2026-07-29 17:19Z,
+/// discharging the STRICT reading of Hermes's Wall-1 rider; committed Wall 1
+/// above is untouched). Wall 1 certifies the value-at-wake face and is
+/// deterministically green under a publish-before-install mutation:
+/// `terminate_process` finalizes synchronously on the calling thread, so the
+/// watcher cannot observe any intermediate state — no window exists at that
+/// seam. This tripwire pins the ORDERING face instead: the killer runs on its
+/// own thread, the test-only post-send publication gate parks it inside the
+/// exit publication, and AT THE PARK the outcome — with its pre-kill enqueued
+/// value — must already be takeable while the watch has not yet fired. Under
+/// publish-before-install the park precedes the install and the at-park take
+/// finds nothing: red. Structure note: nothing panics while the gate is
+/// armed — observations are collected, the publisher is released and joined,
+/// THEN the asserts run — so a red can never wedge the suite the way an
+/// in-scope panic against a parked publisher does.
+#[test]
+fn wall1b_ordering_tripwire_outcome_installed_before_exit_publication() {
+    let scheduler = test_scheduler(1);
+    // The post-send gate only engages on a successful event send, so the
+    // exclusive subscription must exist before the kill or the publisher
+    // returns from publish() without ever reaching the rendezvous.
+    let subscription = scheduler
+        .subscribe_exit_events()
+        .expect("first subscriber");
+    let pid = scheduler
+        .spawn_native(Box::new(|| Box::new(WaitForTermination)))
+        .expect("native process spawns");
+
+    let watch = match scheduler.watch_exit(pid) {
+        ExitWatchState::Live(watch) => watch,
+        other => panic!("precondition: live process arms a watch, got {other:?}"),
+    };
+
+    // The reply is enqueued STRICTLY BEFORE the kill, value face riding along.
+    scheduler
+        .shared
+        .exit_results
+        .insert(pid, OwnedTerm::immediate(Term::small_int(4321)));
+
+    let observer = scheduler
+        .shared
+        .exit_tombstones
+        .install_event_publication_gate();
+    let (at_park_outcome, at_park_fire, wake) = std::thread::scope(|scope| {
+        let killer = scope.spawn(|| scheduler.terminate_process(pid, ExitReason::Kill));
+
+        // The killer parks inside the exit publication (post-send gate)…
+        observer.wait_for_publication(EVENT_TIMEOUT);
+
+        // …observations at the park, no asserts yet (see structure note).
+        // `take_exit_outcome` reads the outcomes DashMap only; the parked
+        // publisher holds `order`, so this cannot block.
+        let at_park_outcome = scheduler.take_exit_outcome(pid);
+        let at_park_fire = watch.recv_timeout(Duration::ZERO);
+
+        observer.release_publication(EVENT_TIMEOUT);
+        killer.join().expect("terminal caller completes");
+        scheduler.shared.exit_tombstones.clear_event_publication_gate();
+
+        let wake = watch.recv_timeout(EVENT_TIMEOUT);
+        (at_park_outcome, at_park_fire, wake)
+    });
+
+    let (reason, value) = at_park_outcome.expect(
+        "outcome must be takeable at the publication park — the \
+         outcomes-before-exits pin Hermes's conclusion logic rests on",
+    );
+    assert_eq!(reason, ExitReason::Kill);
+    assert_eq!(
+        value.root().as_small_int(),
+        Some(4321),
+        "the pre-kill enqueued VALUE must be observable at the park"
+    );
+    assert_eq!(
+        at_park_fire,
+        Err(ExitEventRecvError::Timeout),
+        "the watch must not fire before the exit publication returns"
+    );
+    assert_eq!(
+        wake,
+        Ok((pid, ExitReason::Kill)),
+        "the waiter wakes once publication and the appended fire complete"
+    );
+    assert_eq!(
+        subscription.recv_timeout(EVENT_TIMEOUT),
+        Ok(ExitEvent::Exited {
+            pid,
+            reason: ExitReason::Kill,
+        }),
+        "the existing subscription observes the same exit"
+    );
+    scheduler.shutdown();
+}

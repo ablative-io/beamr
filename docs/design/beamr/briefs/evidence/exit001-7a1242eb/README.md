@@ -97,7 +97,30 @@ claim-convention ruling, 16:49Z — runs resume under preflight):
 | `m-w3-first-watch-only` | W3 (starvation face) | **RUN: red, exit 101** — exactly W3 (`runs/red-m-w3-first-watch-only.txt`) |
 | `m-w4-drop-no-deregister` | W4 (abandonment face) | **RUN: red, exit 101** — exactly W4 (`runs/red-m-w4-drop-no-deregister.txt`) |
 | `m-w5-fire-replaces-publish` | W5 (subscriber-missed face) | **RUN: red, exit 101** — exactly W5 (`runs/red-m-w5-fire-replaces-publish.txt`) |
-| `m-wall1-publish-before-install` | Wall 1 (value face) — the brief-specified mutation, MANDATORY of record | run pending — first attempt held at preflight (live battery claim, Phoebus Anzac 17:06Z; convention honored, nothing launched) |
+| `m-wall1-publish-before-install` | ordering face (outcomes-before-exits) — the brief-specified mutation, MANDATORY of record. **Face assignment ruled** (Artemis 17:19Z, BUILD BOTH, sha `e177394a…`): Wall 1 owns the VALUE-AT-WAKE face; the ordering face is owned by the publication-order wall and Wall-1b. | **THREE RUNS.** (1) Narrow filter (wall1_ only): GREEN — a FILTER ARTIFACT, not a survival; re-titled `runs/green-m-wall1-narrow-filter-observation.txt`. Wall 1's green under this mutation is DETERMINISTIC, not a race: `terminate_process` finalizes synchronously on the calling thread, so the watcher cannot run until the install has completed regardless of internal ordering — Wall 1 cannot fail at the ordering face, and saying so is the finding. (2) Wide filter: five walls GREEN (wall1/W2/W3/W5/live-process — this mutation reorders fires, it does not skip them; the red-W3/W5/live part of the stated prediction was WRONG, runs govern) and `publication_order` **WEDGED** — its at-park assert panicked inside `thread::scope` while the gate-parked publisher waited on a release channel held outside the scope: a deadlock, killed by owner after ~20 min, recorded RED-and-loud (discovery record: `runs/wedge-m-wall1-publish-before-install-discovery.txt`; the hang also held Phoebus's restitution drain busy ~19 min — owned, disclosed). **RULED a defect in the WALL, not a mutation artifact** (Artemis 17:51Z, sha `c82043f0…`): the deadlock was the wall's own failure path — wedge is not red. Law pinned: no assert that can panic may run while a parked thread's release depends on a later line; release unconditional → join → assert on captured values. (3) The wall is FIXED shape (a) (capture-at-park, assert-after; every at-park capture verified non-blocking at the bytes) and its clean red under this same mutation is captured post-fix — see the face table. Wall-1b provides the scheduler-seam red — see below. |
+| `m-wall1-publish-before-install` × **Wall-1b** | ordering face, clean red (strict reading of Hermes's rider) | Wall-1b (`wall1b_ordering_tripwire_outcome_installed_before_exit_publication`) collects at-park observations with NOTHING panicking while the gate is armed, releases, joins, then asserts — a red cannot wedge (shape (a) of the wedge ruling, by construction). Red-first run under this mutation pending (compile-gated). |
+
+### Wedge-law audit (scope-fenced: EXIT-001 walls that arm a gate and assert while a thread is parked)
+
+Ruled 17:51Z (sha `c82043f0…`). Class members and dispositions:
+`w2_watch_registered_during_inflight_publication_observes_exactly_one` —
+one in-park panic site (record-answer assert): **FIXED shape (a)** (the
+at-park registration is captured; all judging moves after release + join).
+`publication_order_outcome_tombstone_event_then_watch_fire` — three
+in-park panic sites: **FIXED shape (a)**; clean red under the mutation
+proven post-fix. `wall1b_ordering_tripwire…` — conformant by
+construction. Shape (a) chosen everywhere because every at-park capture
+is non-blocking at the bytes (`finalized_reason`/`get`/`take_outcome`
+read DashMaps; watch receives use zero timeouts; the parked publisher
+holds only `order`) — no helper thread or timeout needed in any failure
+path. **Same class, OUTSIDE the fence, reported not fixed:** the
+pre-existing characterization test
+`receiver_contests_publication_without_misses_under_coordinated_multi_worker_churn`
+asserts in its observer thread (outcome-missing panic, duplicate-pid
+assert) while that round's publishers are parked, release following the
+asserts — a failed round would wedge identically. It predates EXIT-001
+and is not one of this lane's walls; flagged here and in the return for
+its own lane's ruling. |
 | `m-check-then-register` (= R3 order revert) | brief predicts W2 red at lost-wake | authored, run pending. **Prediction, stated before running:** NO wall reds — the loss window check-then-register opens is PRE-INSTALL, and the only deterministic park the existing test hook offers is post-send (post-install), where the check simply hits the installed record. If confirmed: W2's citable lost-wake red is the commit-A skeleton (both halves reverted; face recorded in `26a49c1`'s body and reproducible via `m-skeleton-both-reverted`), and the pre-install window's unreachability is a documented limit of the existing gate — candidate for a pre-install rendezvous in a future lane, the tear to judge. |
 | `m-skeleton-both-reverted` | W2 (lost-wake, observed 0) — the demonstrated killer | authored, run pending; commit `26a49c1` is the natural exhibit of the same red |
 

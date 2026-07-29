@@ -515,8 +515,17 @@ mod tests {
             observer.wait_for_publication(EVENT_TIMEOUT);
             // Parked post-send: the outcome is installed and the event is
             // sent, but publish() has not returned and no watch has fired.
+            // Capture only — no assert may panic while the parked publisher's
+            // release depends on a later line (wedge law, ruled 17:51Z): the
+            // registration happens at the park; its answer is judged after
+            // release + join, where a red terminates instead of wedging.
+            let at_park_registration = store.watch(1);
+            observer.release_publication(EVENT_TIMEOUT);
+            publisher.join().expect("terminal caller completes");
+            store.clear_event_publication_gate();
+
             let mut notifications = 0_usize;
-            let armed_watch = match store.watch(1) {
+            let armed_watch = match at_park_registration {
                 StoreWatch::AlreadyExited(reason) => {
                     assert_eq!(reason, ExitReason::Kill, "record answer carries the reason");
                     notifications += 1;
@@ -524,10 +533,6 @@ mod tests {
                 }
                 StoreWatch::Armed(watch) => Some(watch),
             };
-            observer.release_publication(EVENT_TIMEOUT);
-            publisher.join().expect("terminal caller completes");
-            store.clear_event_publication_gate();
-
             if let Some(watch) = armed_watch {
                 if let Ok((pid, reason)) = watch.recv_timeout(EVENT_TIMEOUT) {
                     assert_eq!((pid, reason), (1, ExitReason::Kill));
@@ -746,25 +751,36 @@ mod tests {
                 insert(&store, 1, ExitReason::Kill);
             });
             observer.wait_for_publication(EVENT_TIMEOUT);
-            assert_eq!(
-                store.finalized_reason(&1),
-                Some(ExitReason::Kill),
-                "outcome must be installed before the event publication returns"
-            );
-            assert_eq!(
-                store.get(&1),
-                Some(ExitReason::Kill),
-                "legacy tombstone must be installed before the event publication returns"
-            );
-            assert_eq!(
-                watch.recv_timeout(Duration::ZERO),
-                Err(super::super::ExitEventRecvError::Timeout),
-                "watch fires must come strictly AFTER the existing event publication"
-            );
+            // At the park: CAPTURE ONLY (wedge law, ruled 17:51Z). The prior
+            // form asserted here, and a failed assert panicked inside this
+            // scope while the parked publisher's release channel lived outside
+            // it — the failure path was an infinite hang, discovered under the
+            // publish-before-install mutation (wedge run in the EXIT-001
+            // evidence). Every capture below is non-blocking at the bytes:
+            // finalized_reason/get read DashMaps, the watch receive uses a
+            // zero timeout, and the parked publisher holds only `order`.
+            let at_park_finalized = store.finalized_reason(&1);
+            let at_park_legacy = store.get(&1);
+            let at_park_watch_fire = watch.recv_timeout(Duration::ZERO);
             observer.release_publication(EVENT_TIMEOUT);
             publisher.join().expect("terminal caller completes");
             store.clear_event_publication_gate();
 
+            assert_eq!(
+                at_park_finalized,
+                Some(ExitReason::Kill),
+                "outcome must be installed before the event publication returns"
+            );
+            assert_eq!(
+                at_park_legacy,
+                Some(ExitReason::Kill),
+                "legacy tombstone must be installed before the event publication returns"
+            );
+            assert_eq!(
+                at_park_watch_fire,
+                Err(super::super::ExitEventRecvError::Timeout),
+                "watch fires must come strictly AFTER the existing event publication"
+            );
             assert_eq!(
                 watch.recv_timeout(EVENT_TIMEOUT),
                 Ok((1, ExitReason::Kill)),

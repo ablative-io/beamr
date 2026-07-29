@@ -1,0 +1,38 @@
+# EXIT-001 mutation run — task 7a1242eb-742b-48be-ba7e-d961f2c49f04
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:20:21Z
+# tree: a979cac + m-wall1-publish-before-install.diff APPLIED (working tree only, never committed)
+# preflight: /tmp/ablative-gate-battery.claim ABSENT at launch (claim convention v2, entry 4b8b38e1)
+# command: cargo test -p beamr --lib -- wall1_ publication_order w2_watch_registered w3_many w5_exclusive watch_on_live_process (reps: 1)
+
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.02s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 6 tests
+test scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed ... ok
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+test scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches ... ok
+test scheduler::exit_observation_tests::watch_on_live_process_fires_on_real_exit_and_outcome_is_takeable_at_wake ... ok
+test scheduler::exit_observation_tests::wall1_reply_enqueued_strictly_before_kill_is_observable_with_value_at_watch_wake ... ok
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire has been running for over 60 seconds
+
+## RUN KILLED BY OWNER at 2026-07-29T17:48:22Z — RED AND LOUD (Amendment 4 marker lesson)
+## machine: Annabel's box; operator: Diana Plum (…c9fb); kill of MY OWN run only, no floor-clearing of others
+## observed before kill: wall1_/w2_/w3_/w5_/live-process all GREEN under the mutation;
+## publication_order_outcome_tombstone_event_then_watch_fire WEDGED >20 minutes (libtest "running over 60 seconds").
+## analysis (to verify at the bytes in Wall-1b work): under the mutation the publisher parks at the post-send
+## gate BEFORE installing the outcome; the at-park assert fails and panics INSIDE std::thread::scope, but scope
+## cannot propagate the panic until the parked publisher joins, and the publisher's release channel lives in the
+## observer OUTSIDE the scope — a wedge, not a clean red. VERDICT AT THIS FACE: the mutation is KILLED (the wall
+## cannot pass — it wedges the suite), but the kill shape is a hang; the clean deterministic red at the ordering
+## face is Wall-1b's job (at-park take via helper thread + recv_timeout, so a blocked/absent outcome reds instead
+## of wedging). Side effect owned: this hung cargo test held Phoebus's restitution drain busy ~19 min — killed on
+## discovery during the liveness query; his census should read quiet from 17:48:22Z.
+## exit=KILLED-BY-OWNER (SIGTERM, harness exit 143); mutation diff reverted below; tree verified clean.
+overall=KILLED
+## RULED (Artemis 17:51Z, sha c82043f0…): the wedge is a DEFECT IN THE WALL, not a mutation artifact —
+## mechanism confirmed: panic-in-scope + release-held-outside = no propagation, no join. Law pinned:
+## no assert that can panic may run while a parked thread's release depends on a later line; release
+## unconditional -> join -> assert on captured values. Wall fixed shape (a); this file is the discovery
+## record of the pre-fix failure path. Clean red under the same mutation captured separately post-fix.
