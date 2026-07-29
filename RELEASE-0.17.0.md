@@ -136,9 +136,24 @@ gates" load-bearing rather than ceremonial.
 
 - Run the full 5-leg battery at the release commit and land its evidence commit
   bound to the tree hash.
-- **No battery has been run at `9294be0`.** This runbook stages the release; it
-  does not certify the tree. Certification is the executor's, at the commit
-  actually being cut.
+- **No battery has been run at `9294be0` or later.** This runbook stages the
+  release; it does not certify the tree. Certification is the executor's, at the
+  commit actually being cut.
+- **⚠ THE CLIPPY LEG ITSELF IS UNEXERCISED.** `gates.json`'s clippy leg was
+  rewritten to harness R2 at `c6043d2`, and the newest evidence under
+  `gate-logs/` is `74c7d3c`, which **predates it**:
+  ```sh
+  git merge-base --is-ancestor \
+    "$(git log -1 --format=%H -- gate-logs/)" \
+    "$(git log -1 --format=%H -- gates.json)" \
+    && echo "evidence predates the gate change — clippy leg never run in this form"
+  ```
+  The risk is bounded but not zero: that leg's `verdict` is
+  `exit-code-of-cmd`, so a malformed `extract` cannot turn a red into a green —
+  it can only produce a failed leg or garbage in `report.json`. **Bounded is not
+  verified.** The first battery run after `c6043d2` is exercising a gate nobody
+  has driven; treat its clippy result as under test alongside the tree, and read
+  `report.json`'s clippy entries rather than only the leg's exit status.
 - One thing CI uniquely covered that no battery does:
   `cargo check -p beamr --no-default-features --features cooperative,json`.
   Run it explicitly.
