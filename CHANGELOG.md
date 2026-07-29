@@ -1,5 +1,33 @@
 # Changelog
 
+## Advisory — memory-safety fixes on the 0.16.x line
+
+**If you are on `0.16.0` or `0.16.1`, upgrade to `0.16.3`.** Those two
+releases carry three classes of silent memory-safety defect, all fixed on
+this line. None of them produce an error or a crash — the failure mode in
+every case is corrupted or freed data read as valid, so a suite that
+passes proves nothing about exposure.
+
+- **Fixed in `0.16.2`** — two classes: the GC refcount-release walk
+  inferred a type from `word[0]` and could call `Arc::from_raw` on a
+  heap-cons payload; and ETS stored borrowed caller-heap terms that
+  outlived the heap they pointed into.
+- **Fixed in `0.16.3`** — the `as_bytes` borrow-across-alloc class
+  (nine BIF crossings, `binary_to_term`, and `jit_bs_get_binary`),
+  detailed below.
+
+**Pinning.** `0.16.3` is available as the `v0.16.3` git tag and as a
+published version. `0.16.2` has no tag and is pinned by commit
+`67f89c4`. Anything cut from a base that does not contain `67f89c4`
+carries the two 0.16.2 classes regardless of its version number — check
+with `git merge-base --is-ancestor 67f89c4 <base>`.
+
+**`0.16.3` is not a clean bill of health.** It ships with a disclosed set
+of remaining JIT sites (stale source `Term`s, unrooted helper arguments,
+accumulated results) that are reachable under the `jit` feature, which is
+**on by default**. See "Known remaining JIT sites" in the 0.16.3 entry
+below. The fix for that class is tracked for `0.17.0`.
+
 ## Unreleased
 
 Main's manifest deliberately holds `0.16.2` while this tree carries
@@ -24,8 +52,8 @@ hold, and the version number moves once, to `0.17.0` (ruling of record in
 ## 0.16.3 — 2026-07-29
 
 Memory-safety patch: silent borrow-across-alloc corruption fixes,
-backported onto the 0.16.2 release point (`67f89c4`; no 0.16.x git tags
-exist — releases on this line are pinned by commit). Every fix landed
+backported onto the 0.16.2 release point (`67f89c4`; 0.16.2 has no git
+tag and is pinned by commit — 0.16.3 is tagged `v0.16.3`). Every fix landed
 red-first per consumer against the real hazard geometry. Scope of
 record: the as_bytes audit
 (`docs/design/beamr/briefs/evidence/aion-encode-gc-defect/asbytes-sweep/AUDIT.md`
