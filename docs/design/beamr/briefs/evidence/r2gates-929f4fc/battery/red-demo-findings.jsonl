@@ -1,0 +1,2 @@
+{"type":"clippy","level":"error","file":"crates/beamr-cli/src/bin/scratch_red_negative_control.rs","line":2,"lint":"unused_variables","message":"unused variable: `unused_scratch_red_negative_control`"}
+{"type":"clippy","level":"error","file":"crates/beamr-cli/src/bin/scratch_red_negative_control.rs","line":2,"lint":"unused_variables","message":"unused variable: `unused_scratch_red_negative_control`"}

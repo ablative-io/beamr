@@ -1,0 +1,68 @@
+=== battery start (UTC) ===
+Wed 29 Jul 2026 22:34:46 UTC
+=== machine/operator ===
+Annabel's box / Diana Plum (b337ce2b-336a-4856-a9d8-54c90496c9fb)
+=== tree ===
+929f4fcbe4e708588533b865ee966cf0ac12e39c
+dirty-entries: 1
+=== toolchain ===
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+binary: rustc
+commit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452
+commit-date: 2026-07-14
+host: aarch64-apple-darwin
+release: 1.97.1
+LLVM version: 22.1.6
+cargo 1.97.1 (c980f4866 2026-06-30)
+wasm-bindgen-test-runner 0.2.125
+=== provenance ===
+preamble: BYTE-VERBATIM from CANON r3, stack-root entry e269d2c9-0dfa-409e-ada5-b10303118225 @ sha256 ff831516f8ff74de1f54023ff4af54d80cade6a285b6ff42f5a37dbfda6290e4 (with-LF, 11532B) / 99e140b60aedcaf166526e975349acc3a56302c00d51fb24ae3a9c4e04bcab3a (stripped, 11531B), both verified at this seat; supersession chain 622dedbf -> 0b229d0f (r2) -> e269d2c9 (r3, current). KNOWN LABEL DISCREPANCY, copied not fixed: r3's own line 2 self-describes as 'revision 2' (Seth, anchor entry c59ba3b1) — label-only, content unambiguous, correction is the anchor owner's
+disclosed deltas from verbatim: (1) instantiation block = the canon's required SEAT_NAME/MEMBER_ID/EVIDENCE_DIR + per-box absolute worktree, set in-script (pattern ratified, entry edb63b89); (2) census extension: +wasm-bindgen-test-runner (beamr's foreign-runner class — extension, not fork)
+=== A5 deltas (Amendment A5, entry a621f353 — interim guards in force before r4; r3 bytes stay frozen as identity) ===
+A5 write dialect: this runner WRITES canon's key=value dialect exactly (inherited byte-verbatim from r3's write_claim/acquire) — stated per A5 item 1, not left inferred
+A5 delta (i): dialect-tolerant claim READS — holder pid parsed from both key=value and key: value forms (acquisition loop + flip check)
+A5 delta (ii): unparseable/empty pid is NEVER grounds for a rule-5 clear — reads HELD, never stale (cannot-determine assumes the answer that prevents harm)
+A5 delta (iii): NO PHASE FLIP WITHOUT OWNERSHIP CHECK — claim re-read at draining->running, own member id + pid confirmed; foreign body => flip REFUSED loudly, exit 6, run VOID AS EVIDENCE (detector, not error)
+A5 delta (iv) (ruling 4081cb3d): AT RELEASE, AN ABSENT CLAIM IS VOIDING EXACTLY LIKE A FOREIGN ONE — a run that acquired the claim and finds nothing at release was robbed by the thief-finishes-first ordering; detector fires loudly, run VOID AS EVIDENCE
+=== detector limits, stated as ruled (4081cb3d — venue: Annabel's box, NOT Dean's serial topology) ===
+(a) the flip guard DETECTS AFTER canon's internal mv rather than refusing before it — true pre-flip refusal awaits r4
+(b) this box launches runners INDEPENDENTLY — no coordinator serialization backs the premise (Dean's-box detect-and-void venue ruling does NOT transfer)
+(c) the quiet-floor claim therefore rests on the detectors firing (perpetrator detects at flip, victim at release, BOTH branches of the victim's check built), not on collision prevention
+=== wrapped-ness, verifiable never assumed (Hermes via Seth; this box has no entry control) ===
+the A5 deltas bind only runs through THIS wrapper; an unwrapped direct canon launch would produce a green indistinguishable EXCEPT by the bundle. This wrapper emits records an unwrapped run cannot: this three-delta disclosure header citing a621f353, the claim double-record pair (claim-body-at-acquire/-at-release), the flip-time ownership check line in claim.log, and the release-time own/foreign/ABSENT determination line. A bundle missing those did not go through the wrapper — read it, never infer it
+protocol delta (dispatch bef7f4f2 addition 1): claim body recorded verbatim TWICE — claim-body-at-acquire.txt and claim-body-at-release.txt — for the return's match/no-match line
+exit vocabulary: 4 = acquisition timeout; 5 = drain timeout; 6 = A5 flip refusal (claim replaced mid-run)
+legs: beamr's FIVE, VERBATIM from EXIT-001 brief .verification @ 8f2b7c3 (= gates.json; ruling entry 85d5781b). beamr has NO nextest leg: canon amendments A4/A6 are N/A here, stated rather than silently dropped
+=== launch environment (load-bearing, stated loud — canon LAUNCH CONTRACT) ===
+launched with bash from the worktree root /Users/annabel/Developer/ablative/stack/beamr/.wt-gates-929f4fc (canon self-guards: bash refusal + Cargo.toml root check); SEAT_NAME/MEMBER_ID/EVIDENCE_DIR set in-script by the instantiation block (values above); NO database URL or other env is needed for beamr's legs — that absence is stated here rather than silent
+=== convention pin set (twelve entries, re-brief 3, restated verbatim) ===
+1. 4b8b38e1-c99c-49ca-a9cb-692fa073e3c1 — anchor
+2. e903b4ad-209e-4478-a656-6c8d83357ae9 — Amendment 1
+3. c6d998bc-f9c0-497c-9b85-725ff1e9f195 — Amendment 2
+4. aa92a18c-59cd-49c0-b606-10ab7037c301 — Addendum (behavioral standard)
+5. 91ba17f9-e1aa-43c0-b9d6-beaed18538c7 — Seth's record (variant withdrawn)
+6. c3ee8385-cbd1-463c-8b86-43da2a684547 — ratification (rule-5 floor uniform)
+7. bdce0b78-ebcb-44b3-bbc0-07780b476f6f — superseding pointer (canon-at-source)
+8. edb63b89-51d6-43ea-9d9a-914f94d36fe5 — instantiation pattern ratified
+9. c527324b-9057-49dd-b6c7-d112a3157811 — Seth's five flags
+10. 4a7bce95-2ba7-4e5e-a5a7-5aae25045225 — Amendment 3 (rule-4 mechanism + r3)
+11. e269d2c9-0dfa-409e-ada5-b10303118225 — CANON r3, the build source
+12. 3e5a93ca-234d-4ea2-bb9b-35701f6b86c7 — Amendment 4 (holder-spared kills; slot restitution)
+13. a621f353-78c4-4453-93fa-309c38bdee98 — Amendment A5 (claim body is pinned bytes; write path guarded)
+14. 77b2c212 — null-diff rider (a null diff from canon is no longer a conformance claim; disclosed deltas are the correct shape)
+15. 4081cb3d — absent-claim voiding at release + venue ruling (per-box topology decides)
+=== quiet-floor proof: census-at-start.txt (the census, not the claim — anchor rule 6) ===
+=== load before leg1-fmt ===
+ 8:34  up 3 days, 16:31, 2 users, load averages: 1.40 2.25 2.42
+=== load before leg2-clippy ===
+ 8:34  up 3 days, 16:31, 2 users, load averages: 1.68 2.29 2.43
+=== load before leg3-wasm32-check ===
+ 8:34  up 3 days, 16:31, 2 users, load averages: 1.68 2.29 2.43
+=== load before leg4-wasm-tests ===
+ 8:34  up 3 days, 16:32, 2 users, load averages: 1.58 2.25 2.41
+=== load before leg5-tests ===
+ 8:35  up 3 days, 16:32, 2 users, load averages: 1.49 2.21 2.40
+=== load after leg5 ===
+ 8:36  up 3 days, 16:33, 2 users, load averages: 2.98 2.66 2.56
+=== battery end (UTC) ===
+Wed 29 Jul 2026 22:36:25 UTC

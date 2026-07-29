@@ -1,0 +1,14 @@
+2026-07-29T22:34:46Z claim acquired, phase=draining
+seat=Diana Plum
+member_id=b337ce2b-336a-4856-a9d8-54c90496c9fb
+pid=58612
+started_at=2026-07-29T22:34:46Z
+phase=draining
+2026-07-29T22:34:46Z floor quiet at census; phase=running (A5 flip ownership check passed: pid + member id confirmed ours)
+2026-07-29T22:34:47Z leg1-fmt exit=0 [Annabel's box / Diana Plum]
+2026-07-29T22:34:47Z leg2-clippy exit=0 [Annabel's box / Diana Plum]
+2026-07-29T22:34:58Z leg3-wasm32-check exit=0 [Annabel's box / Diana Plum]
+2026-07-29T22:35:08Z leg4-wasm-tests exit=0 [Annabel's box / Diana Plum]
+2026-07-29T22:36:25Z leg5-tests exit=0 [Annabel's box / Diana Plum]
+2026-07-29T22:36:25Z battery complete; exits fmt=0 clippy=0 wasm32-check=0 wasm-tests=0 tests=0
+2026-07-29T22:36:25Z claim released (own claim, pid 58612)

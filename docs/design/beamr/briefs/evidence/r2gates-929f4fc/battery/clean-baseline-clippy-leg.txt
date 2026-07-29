@@ -1,0 +1,35 @@
+# R2 clippy-leg NEGATIVE CONTROL — separate result from the battery verdict
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-336a-4856-a9d8-54c90496c9fb)
+# tree: 929f4fc + ONE uncommitted scratch bin (deliberate unused_variables warning), removed after
+# purpose (RELEASE-0.17.0.md section 5): prove BOTH halves — (a) the leg FAILS, (b) the extract POPULATES
+# findings with the actual lint, file and line; plus confirm --keep-going still exits non-zero.
+# load before:
+ 8:32  up 3 days, 16:29, 2 users, load averages: 2.14 2.68 2.57
+# start: 2026-07-29T22:32:38Z
+# scratch file written: crates/beamr-cli/src/bin/scratch_red_negative_control.rs (uncommitted)
+# cmd (verbatim from gates.json blob): cargo clippy --workspace --all-targets --message-format=json --keep-going -- -D warnings
+# HALF (a): leg exit=0 (non-zero REQUIRED; also confirms --keep-going preserves failure exit)
+# HALF (b): findings count = 0
+# findings lines mentioning the scratch lint:
+# end: 2026-07-29T22:32:59Z
+# load after:
+ 8:32  up 3 days, 16:30, 2 users, load averages: 2.21 2.66 2.57
+# scratch file removed; tracked-modified after: 0
+
+# DISCLOSURE (appended after the fact): this run was MEANT to be the red
+# demonstration, but the harness's scratch-file write failed silently
+# (crates/beamr-cli/src/bin/ did not exist) and the leg ran against the
+# CLEAN tree — the dead-producer class from this very dispatch chain,
+# enacted by the harness within minutes of being warned about it. The
+# artifacts are kept as the CLEAN-TREE BASELINE (exit 0, findings 0 —
+# the correct clean answer) and the red attempt was re-run with a
+# harness that asserts its scratch file exists before driving the leg.
+
+# DISCLOSURE (appended after the fact): this run was MEANT to be the red
+# demonstration, but the harness's scratch-file write failed silently
+# (crates/beamr-cli/src/bin/ did not exist) and the leg ran against the
+# CLEAN tree — the dead-producer class from this very dispatch chain,
+# enacted by the harness within minutes of being warned about it. The
+# artifacts are kept as the CLEAN-TREE BASELINE (exit 0, findings 0 —
+# the correct clean answer) and the red attempt was re-run with a
+# harness that ASSERTS its scratch file exists before driving the leg.

@@ -1,0 +1,21 @@
+# R2 clippy-leg NEGATIVE CONTROL (attempt 2) — separate result from the battery verdict
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-336a-4856-a9d8-54c90496c9fb)
+# tree: 929f4fc + ONE uncommitted scratch bin (deliberate unused_variables warning), removed after
+# purpose (RELEASE-0.17.0.md section 5): prove BOTH halves — (a) the leg FAILS, (b) the extract POPULATES
+# findings with the actual lint, file and line; plus confirm --keep-going still exits non-zero.
+# attempt 1 disclosure: harness wrote scratch to a nonexistent dir, leg ran CLEAN (exit 0, findings 0) —
+# kept as clean-baseline-*; this attempt asserts the scratch EXISTS before driving the leg.
+# load before:
+ 8:34  up 3 days, 16:31, 2 users, load averages: 1.43 2.34 2.46
+# start: 2026-07-29T22:34:14Z
+# scratch ASSERTED PRESENT: 63 bytes at crates/beamr-cli/src/bin/scratch_red_negative_control.rs (uncommitted)
+# cmd (verbatim from gates.json blob): cargo clippy --workspace --all-targets --message-format=json --keep-going -- -D warnings
+# HALF (a): leg exit=101 (non-zero REQUIRED; also confirms --keep-going preserves failure exit)
+# HALF (b): findings count = 2 (non-empty REQUIRED)
+# findings lines mentioning the scratch lint (lint+file+line REQUIRED):
+{"type":"clippy","level":"error","file":"crates/beamr-cli/src/bin/scratch_red_negative_control.rs","line":2,"lint":"unused_variables","message":"unused variable: `unused_scratch_red_negative_control`"}
+{"type":"clippy","level":"error","file":"crates/beamr-cli/src/bin/scratch_red_negative_control.rs","line":2,"lint":"unused_variables","message":"unused variable: `unused_scratch_red_negative_control`"}
+# end: 2026-07-29T22:34:14Z
+# load after:
+ 8:34  up 3 days, 16:31, 2 users, load averages: 1.43 2.34 2.46
+# scratch removed; tracked-modified after: 0
