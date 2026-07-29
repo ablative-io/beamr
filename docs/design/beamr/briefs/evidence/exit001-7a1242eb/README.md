@@ -101,36 +101,41 @@ claim-convention ruling, 16:49Z — runs resume under preflight):
 | `m-check-then-register` (= R3 order revert) | brief predicts W2 red at lost-wake | authored, run pending. **Prediction, stated before running:** NO wall reds — the loss window check-then-register opens is PRE-INSTALL, and the only deterministic park the existing test hook offers is post-send (post-install), where the check simply hits the installed record. If confirmed: W2's citable lost-wake red is the commit-A skeleton (both halves reverted; face recorded in `26a49c1`'s body and reproducible via `m-skeleton-both-reverted`), and the pre-install window's unreachability is a documented limit of the existing gate — candidate for a pre-install rendezvous in a future lane, the tear to judge. |
 | `m-skeleton-both-reverted` | W2 (lost-wake, observed 0) — the demonstrated killer | authored, run pending; commit `26a49c1` is the natural exhibit of the same red |
 
-## Battery (pending, last step) — canon-instantiated runner
+## Battery (pending, last step) — r3-derived runner
 
-Governing runner: **`battery/run-battery-v3-canon.sh`**, launched with
-BASH from the worktree root. Preamble (phases 0–2: acquire with noclobber
-→ drain-wait under the held claim, 30 s samples / 60-min ceiling, exits
-4/5 loud) copied BYTE-VERBATIM from the claim-integrated canonical gate
-script, stack-root entry `622dedbf-ff42-4405-a6a5-9ffcfb00676c`, both
-hash framings verified at this seat before copying (with-LF
-`7773e852…`/10163 B; stripped `5b75314a…`/10162 B). Disclosed deltas:
-the in-script instantiation block (the canon's own required
-SEAT_NAME/MEMBER_ID/EVIDENCE_DIR + per-box absolute worktree; pattern
-ratified estate-wide, entry `edb63b89`) and the census extension
+Governing runner: **`battery/run-battery-r3.sh`**, launched with BASH
+from the worktree root. Preamble (phases 0–2) copied BYTE-VERBATIM from
+**CANON r3**, stack-root entry `e269d2c9-0dfa-409e-ada5-b10303118225`,
+both hash framings verified at this seat before copying (with-LF
+`ff831516…`/11532 B; stripped `99e140b6…`/11531 B; extracted
+programmatically, never retyped). r3 folds Seth's five flags at source:
+`claim_is_mine` ownership guard, `pid_alive` via ps -p, trap covers HUP,
+launch contract in-canon, bash self-guard. Known label discrepancy copied
+not fixed: r3's line 2 self-describes "revision 2" (Seth, entry
+`c59ba3b1`) — label-only. Disclosed deltas: the in-script instantiation
+block (pattern ratified, entry `edb63b89`) and the census extension
 (+`wasm-bindgen-test-runner`). Phase 3 = beamr's five legs VERBATIM from
-the brief's `.verification` (no nextest — canon A4/A6 N/A, stated;
-A7 adapted to the TRUE line: doc tests COVERED via leg 5). Phase 4 =
+the brief's `.verification` (no nextest — canon A4/A6 N/A, stated; A7
+adapted to the TRUE line: doc tests COVERED via leg 5). Phase 4 =
 canonical marker with all five leg exits + machine/operator + load
 riders. The quiet CENSUS, not the claim, is the quiet-floor proof
-(anchor rule 6). Canon defects inherited AS WRITTEN per estate stance
-(Seth's flags 1–3, entry `c527324b` — canon-owner's to amend, never
-patched per-seat). Behavioral conformance proof against this file:
-claim-path grep hit **line 21** (functional assignment); acquisition
-`acquire()` line 52 / loop line 62, strictly before drain-wait line 84;
-trap line 44 with `release_claim()` lines 38–43 (EXIT INT TERM).
+(anchor rule 6). Behavioral conformance proof against this file:
+claim-path grep hit **line 36** (functional assignment); acquisition
+`acquire()` line 77 / loop line 87, strictly before drain-wait line 109;
+trap line 69 (EXIT INT TERM **HUP**) with ownership-guarded
+`release_claim()` lines 61–68 (`claim_is_mine` line 53, `pid_alive`
+line 57). Ordering rider (Amendment 4): this battery queues behind
+Phoebus's slot-restitution re-run on r3; the runner's own acquisition
+loop handles the wait.
 
-**Supersession note:** `battery/run-battery-v2.zsh` (committed `42c6231`)
-was built honestly against the earlier six-entry pin and is superseded by
-re-brief 2 (canon integration, sha `57f990a5…`) before any battery ran —
-it stays in history as the six-pin artifact and never launches; the zsh
-vessel is additionally retired by Seth's flag 5 (zsh's lowercase
-`pipestatus` + `set -u` would kill a canon run mid-claim).
+**Supersession chain (all predecessors stay in history, none launch):**
+`battery/run-battery-v2.zsh` @ `42c6231` — built honestly against the
+six-entry pin; superseded by re-brief 2 before any battery ran; zsh
+vessel additionally retired by Seth's flag 5. →
+`battery/run-battery-v3-canon.sh` @ `421778f` — derived from `622dedbf`;
+superseded by Amendment 3 (canon r3 replaces both its predecessors as
+build source) before any battery ran. → `battery/run-battery-r3.sh`
+(current).
 
 Battery evidence lands beside this file: per-leg logs + stderr logs,
 exits, drain samples, censuses at start/end, load lines, toolchain stamp,
