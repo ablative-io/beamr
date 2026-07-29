@@ -1,0 +1,9 @@
+2026-07-29T18:01:27Z claim acquired, phase=draining
+2026-07-29T18:01:27Z floor quiet at census; phase=running
+2026-07-29T18:01:28Z leg1-fmt exit=1 [Annabel's box / Diana Plum]
+2026-07-29T18:01:35Z leg2-clippy exit=101 [Annabel's box / Diana Plum]
+2026-07-29T18:01:46Z leg3-wasm32-check exit=0 [Annabel's box / Diana Plum]
+2026-07-29T18:01:56Z leg4-wasm-tests exit=0 [Annabel's box / Diana Plum]
+2026-07-29T18:03:12Z leg5-tests exit=0 [Annabel's box / Diana Plum]
+2026-07-29T18:03:12Z battery complete; exits fmt=1 clippy=101 wasm32-check=0 wasm-tests=0 tests=0
+2026-07-29T18:03:12Z claim released (own claim, pid 3545)

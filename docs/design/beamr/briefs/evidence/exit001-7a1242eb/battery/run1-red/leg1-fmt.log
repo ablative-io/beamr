@@ -1,0 +1,159 @@
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_events.rs:179:
+     }
+ 
+     /// Wait up to `timeout` for the watched process's exit notification.
+[31m-    pub fn recv_timeout(
+(B[m[31m-        &self,
+(B[m[31m-        timeout: Duration,
+(B[m[31m-    ) -> Result<(u64, ExitReason), ExitEventRecvError> {
+(B[m[32m+    pub fn recv_timeout(&self, timeout: Duration) -> Result<(u64, ExitReason), ExitEventRecvError> {
+(B[m         self.receiver
+             .recv_timeout(timeout)
+             .map_err(|error| match error {
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_events.rs:231:
+     pub(super) fn register(self: &Arc<Self>, pid: u64) -> ExitWatch {
+         let watch_id = self.next_watch_id.fetch_add(1, Ordering::Relaxed);
+         let (sender, receiver) = crossbeam_channel::bounded(1);
+[31m-        self.watches.entry(pid).or_default().push((watch_id, sender));
+(B[m[32m+        self.watches
+(B[m[32m+            .entry(pid)
+(B[m[32m+            .or_default()
+(B[m[32m+            .push((watch_id, sender));
+(B[m         ExitWatch {
+             pid,
+             watch_id,
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_observation_tests.rs:511:
+     // The post-send gate only engages on a successful event send, so the
+     // exclusive subscription must exist before the kill or the publisher
+     // returns from publish() without ever reaching the rendezvous.
+[31m-    let subscription = scheduler
+(B[m[31m-        .subscribe_exit_events()
+(B[m[31m-        .expect("first subscriber");
+(B[m[32m+    let subscription = scheduler.subscribe_exit_events().expect("first subscriber");
+(B[m     let pid = scheduler
+         .spawn_native(Box::new(|| Box::new(WaitForTermination)))
+         .expect("native process spawns");
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_observation_tests.rs:547:
+ 
+         observer.release_publication(EVENT_TIMEOUT);
+         killer.join().expect("terminal caller completes");
+[31m-        scheduler.shared.exit_tombstones.clear_event_publication_gate();
+(B[m[32m+        scheduler
+(B[m[32m+            .shared
+(B[m[32m+            .exit_tombstones
+(B[m[32m+            .clear_event_publication_gate();
+(B[m 
+         let wake = watch.recv_timeout(EVENT_TIMEOUT);
+         (at_park_outcome, at_park_fire, wake)
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_tombstones.rs:562:
+         let subscription = store.subscribe().expect("first subscriber");
+         let watches: Vec<_> = (0..8).map(|_| armed(store.watch(5))).collect();
+ 
+[31m-        store.insert_outcome(5, ExitReason::Kill, OwnedTerm::immediate(Term::small_int(9)));
+(B[m[32m+        store.insert_outcome(
+(B[m[32m+            5,
+(B[m[32m+            ExitReason::Kill,
+(B[m[32m+            OwnedTerm::immediate(Term::small_int(9)),
+(B[m[32m+        );
+(B[m 
+         for (index, watch) in watches.iter().enumerate() {
+             assert_eq!(
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_tombstones.rs:579:
+             }),
+             "the exclusive subscriber still receives the event"
+         );
+[31m-        let (reason, value) = store
+(B[m[31m-            .take_outcome(&5)
+(B[m[31m-            .expect("watches are notification-only: the outcome must still be takeable after every fire");
+(B[m[32m+        let (reason, value) = store.take_outcome(&5).expect(
+(B[m[32m+            "watches are notification-only: the outcome must still be takeable after every fire",
+(B[m[32m+        );
+(B[m         assert_eq!(reason, ExitReason::Kill);
+         assert_eq!(value.root().as_small_int(), Some(9));
+         assert!(store.take_outcome(&5).is_none(), "take stays exactly-once");
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_tombstones.rs:595:
+ 
+         // Abandonment face: watches on a pid that never exits.
+         let abandoned: Vec<_> = (0..5).map(|_| armed(store.watch(77))).collect();
+[31m-        assert_eq!(store.watched_pid_count(), 1, "precondition: pid 77 is watched");
+(B[m[32m+        assert_eq!(
+(B[m[32m+            store.watched_pid_count(),
+(B[m[32m+            1,
+(B[m[32m+            "precondition: pid 77 is watched"
+(B[m[32m+        );
+(B[m         drop(abandoned);
+         assert_eq!(
+             store.watched_pid_count(),
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_tombstones.rs:606:
+         // Fire face: the pid's entry clears even while a handle is live.
+         let fired = armed(store.watch(6));
+         insert(&store, 6, ExitReason::Normal);
+[31m-        assert_eq!(fired.recv_timeout(EVENT_TIMEOUT), Ok((6, ExitReason::Normal)));
+(B[m         assert_eq!(
+[32m+            fired.recv_timeout(EVENT_TIMEOUT),
+(B[m[32m+            Ok((6, ExitReason::Normal))
+(B[m[32m+        );
+(B[m[32m+        assert_eq!(
+(B[m             store.watched_pid_count(),
+             0,
+             "a fired pid's registry entry must be cleared even while its handle is alive"
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_tombstones.rs:620:
+         let never_exits = armed(store.watch(11));
+         let fired_b = armed(store.watch(10));
+         insert(&store, 10, ExitReason::Kill);
+[31m-        assert_eq!(fired_a.recv_timeout(EVENT_TIMEOUT), Ok((10, ExitReason::Kill)));
+(B[m[31m-        assert_eq!(fired_b.recv_timeout(EVENT_TIMEOUT), Ok((10, ExitReason::Kill)));
+(B[m[32m+        assert_eq!(
+(B[m[32m+            fired_a.recv_timeout(EVENT_TIMEOUT),
+(B[m[32m+            Ok((10, ExitReason::Kill))
+(B[m[32m+        );
+(B[m[32m+        assert_eq!(
+(B[m[32m+            fired_b.recv_timeout(EVENT_TIMEOUT),
+(B[m[32m+            Ok((10, ExitReason::Kill))
+(B[m[32m+        );
+(B[m         drop((fired_a, never_exits, fired_b));
+         assert_eq!(
+             store.watched_pid_count(),
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_tombstones.rs:652:
+                 "subscriber sequence must be unchanged and in order"
+             );
+         }
+[31m-        assert_eq!(watch_one.recv_timeout(EVENT_TIMEOUT), Ok((1, ExitReason::Normal)));
+(B[m[31m-        assert_eq!(watch_two.recv_timeout(EVENT_TIMEOUT), Ok((2, ExitReason::Normal)));
+(B[m[32m+        assert_eq!(
+(B[m[32m+            watch_one.recv_timeout(EVENT_TIMEOUT),
+(B[m[32m+            Ok((1, ExitReason::Normal))
+(B[m[32m+        );
+(B[m[32m+        assert_eq!(
+(B[m[32m+            watch_two.recv_timeout(EVENT_TIMEOUT),
+(B[m[32m+            Ok((2, ExitReason::Normal))
+(B[m[32m+        );
+(B[m 
+         // Lagged unchanged: overflow the bounded event queue with a watch
+         // armed on a pid inside the overflow batch. The watch must still fire
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_tombstones.rs:687:
+         insert(&store, 1, ExitReason::Kill);
+         insert(&store, 2, ExitReason::Normal);
+         insert(&store, 3, ExitReason::Normal);
+[31m-        assert_eq!(store.get(&1), None, "precondition: legacy tombstone evicted");
+(B[m         assert_eq!(
+[32m+            store.get(&1),
+(B[m[32m+            None,
+(B[m[32m+            "precondition: legacy tombstone evicted"
+(B[m[32m+        );
+(B[m[32m+        assert_eq!(
+(B[m             store.finalized_reason(&1),
+             Some(ExitReason::Kill),
+             "precondition: durable record survives eviction"
+Diff in /Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr/src/scheduler/exit_tombstones.rs:718:
+     fn watch_after_outcome_consumed_reports_reason_from_token() {
+         let store = BoundedTombstones::with_capacity(4);
+         insert(&store, 9, ExitReason::Kill);
+[31m-        assert!(store.take_outcome(&9).is_some(), "precondition: outcome consumed");
+(B[m[32m+        assert!(
+(B[m[32m+            store.take_outcome(&9).is_some(),
+(B[m[32m+            "precondition: outcome consumed"
+(B[m[32m+        );
+(B[m         assert!(store.take_outcome(&9).is_none());
+ 
+         match store.watch(9) {

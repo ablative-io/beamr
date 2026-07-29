@@ -170,6 +170,57 @@ line 57). Ordering rider (Amendment 4): this battery queues behind
 Phoebus's slot-restitution re-run on r3; the runner's own acquisition
 loop handles the wait.
 
+**Run 1 — RED, preserved at `battery/run1-red/`** (launched 18:01:27Z at
+head `0974d78`, bash from the worktree root): leg1-fmt exit 1 (real
+formatting debt across this lane's impl/test commits — the battery is the
+lane's first fmt pass) and leg2-clippy exit 101 (`type_complexity` on the
+watch registry's `DashMap<u64, Vec<(u64, Sender<(u64, ExitReason)>)>>`
+field — fixed by factoring the `WatchSlot` type alias, ZERO `#[allow]`);
+legs 3/4/5 GREEN including the full `cargo test --workspace`. Claim story
+of run 1: drain sample quiet, `census-at-start.txt` EMPTY (quiet floor),
+claim released as OWN claim — the own-claim-only release, ruled a
+DETECTOR (dialect incident ruling, sha `bef7f4f2…`), PASSED: the claim
+was not replaced mid-run, the run is not void; Minerva's battery took the
+claim 16 seconds after release (clean cooperative handoff). Run 2 runs at
+the fix head with the operator-side claim double-record (body captured
+verbatim at acquire and immediately before release, match/no-match in the
+return).
+
+**Evidence limit, stated as ruled (Apollo's reading of canon, carried by
+the dialect ruling): THE CENSUS BRACKETS THE RUN — start and end — AND
+NOTHING SAMPLES THE FLOOR DURING IT.** A concurrent battery beginning and
+ending inside the window is invisible to both parties and leaves no trace
+in this evidence. The censuses here prove QUIET AT THE BOUNDARIES, which
+is a weaker claim than QUIET THROUGHOUT, and this evidence claims only
+the former. (Canon gap, raised to the anchor owner — not fixed here.)
+
+**Dialect ruling (D4, sha `bef7f4f2…`) and Amendment A5 (entry
+`a621f353`, sha `d66e72bf…` — supersedes the D4 do-not-patch line):**
+this runner always WROTE the authoritative `key=value` dialect (canon
+byte-verbatim). Per A5, three interim guards are now IN the runner as
+declared deltas (r3's bytes stay frozen as identity — the
+(entry-id, sha256) pair): (i) dialect-tolerant claim reads (`key=value`
+and `key: value` both parse, acquisition + flip); (ii) an
+unparseable/empty pid is never grounds for a rule-5 clear — reads HELD,
+never stale; (iii) no phase flip without an ownership check — claim
+re-read at draining→running, own member id + pid confirmed, foreign body
+⇒ flip REFUSED loudly (exit 6), run VOID as evidence (detector, not
+error). Plus the claim double-record protocol (body verbatim at acquire
+and immediately before release; match/no-match reported in the return).
+Pin set is now THIRTEEN (adds `a621f353`). Amended-file conformance
+lines: claim-path grep hit **line 36**; `acquire()` line 83 / loop
+line 93, strictly before drain-wait line 122; trap line 75
+(EXIT INT TERM HUP) with ownership-guarded `release_claim()` lines 61–74
+and the A5 flip guard at lines 137–147.
+
+**Run 1 QUALIFIED per A5's audit note (not retroactively void):** run 1
+completed before `a621f353` and its claim was never re-read at flip
+time — it attests a quiet floor at the boundaries that was NOT verified
+at the flip. Stated here as the run's own limit. (Its own-claim release
+did pass, so the claim was intact at exit.) The lane's mutation runs
+never took the claim (ordinary compiles, preflight-only) — the audit
+point does not apply to them.
+
 **Supersession chain (all predecessors stay in history, none launch):**
 `battery/run-battery-v2.zsh` @ `42c6231` — built honestly against the
 six-entry pin; superseded by re-brief 2 before any battery ran; zsh

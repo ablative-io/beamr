@@ -59,6 +59,12 @@ pid_alive() {  # flag 2: ps -p, not kill -0 — EPERM on a live foreign-user pro
 }
 
 release_claim() {
+  # Claim double-record, part 2 (dispatch bef7f4f2 addition 1): body verbatim
+  # immediately before release, both branches — the pair with
+  # claim-body-at-acquire.txt gives the return its match/no-match line.
+  if [ -f "$CLAIM" ]; then
+    cat "$CLAIM" > "$EVIDENCE_DIR/claim-body-at-release.txt" 2>>"$CLAIMLOG"
+  fi
   if claim_is_mine; then
     rm -f "$CLAIM"
     log "claim released (own claim, pid $$)"
@@ -87,8 +93,13 @@ n=0
 until acquire; do
   if [ -f "$CLAIM" ]; then
     holder="$(cat "$CLAIM" 2>>"$CLAIMLOG")" || holder="(claim vanished mid-read)"
-    hpid="$(printf '%s\n' "$holder" | sed -n 's/^pid=//p')"
-    if [ -n "$hpid" ] && ! pid_alive "$hpid"; then   # flag 2 applied at the call site: ps -p, never kill -0
+    # A5 delta (a621f353): dialect-tolerant read — key=value AND key: value both parse.
+    hpid="$(printf '%s\n' "$holder" | sed -n -e 's/^pid=[[:space:]]*//p' -e 's/^pid:[[:space:]]*//p' | head -n 1)"
+    if [ -z "$hpid" ]; then
+      # A5 delta (a621f353): an unparseable or empty pid is NEVER grounds for a
+      # rule-5 clear — cannot-determine reads HELD, never stale.
+      log "A5 guard: claim pid unparseable/empty — reads HELD, never stale; waiting (sample $n)"
+    elif ! pid_alive "$hpid"; then   # flag 2 applied at the call site: ps -p, never kill -0
       # Rule 5 floor: record verbatim, clear, proceed — loudly, never silently.
       printf '%s\n' "$holder" | tee "$EVIDENCE_DIR/stale-claim-record.txt" >> "$CLAIMLOG"
       log "STALE CLAIM (holder pid $hpid dead) recorded above — OPERATOR MUST post its verbatim contents to the launcher's lane with this run's evidence; clearing and proceeding"
@@ -105,6 +116,8 @@ until acquire; do
   sleep 30
 done
 log "claim acquired, phase=draining"
+# Claim double-record, part 1 (dispatch bef7f4f2 addition 1): body verbatim at acquire.
+cat "$CLAIM" 2>>"$CLAIMLOG" | tee "$EVIDENCE_DIR/claim-body-at-acquire.txt" >> "$CLAIMLOG"
 
 # ---- PHASE 2: drain-wait under the held claim (30s samples, all recorded; ceiling 60 min; timeout = LOUD exit 5) ----
 n=0
@@ -119,8 +132,21 @@ while :; do
   fi
   sleep 30
 done
+# A5 delta (a621f353): NO PHASE FLIP WITHOUT AN OWNERSHIP CHECK — re-read the
+# claim and confirm own member id AND pid before draining->running. A foreign
+# body means the claim was REPLACED MID-RUN: the flip is REFUSED loudly, the
+# quiet-floor premise is void, and the run is VOID AS EVIDENCE (detector, not
+# error); the operator posts the recorded body to the lane. Exit 6.
+FLIP_BODY="$(cat "$CLAIM" 2>>"$CLAIMLOG")" || FLIP_BODY=""
+flip_pid="$(printf '%s\n' "$FLIP_BODY" | sed -n -e 's/^pid=[[:space:]]*//p' -e 's/^pid:[[:space:]]*//p' | head -n 1)"
+flip_member="$(printf '%s\n' "$FLIP_BODY" | sed -n -e 's/^member_id=[[:space:]]*//p' -e 's/^member[-_]id:[[:space:]]*//p' | head -n 1)"
+if [ "$flip_pid" != "$$" ] || [ "$flip_member" != "$MEMBER_ID" ]; then
+  printf '%s\n' "$FLIP_BODY" | tee "$EVIDENCE_DIR/replaced-claim-at-flip.txt" >> "$CLAIMLOG"
+  log "A5 FLIP REFUSED (a621f353): claim on file is not ours at draining->running — REPLACED MID-RUN; quiet-floor premise VOID; RUN VOID AS EVIDENCE; operator posts the body above to the lane"
+  exit 6
+fi
 write_claim running
-log "floor quiet at census; phase=running"
+log "floor quiet at census; phase=running (A5 flip ownership check passed: pid + member id confirmed ours)"
 census > "$EVIDENCE_DIR/census-at-start.txt"   # the census, not the claim, is the quiet-floor proof
 
 # ---- battery header: provenance, pin set, toolchain (self-describing evidence) ----
@@ -132,6 +158,13 @@ census > "$EVIDENCE_DIR/census-at-start.txt"   # the census, not the claim, is t
   echo "=== provenance ==="
   echo "preamble: BYTE-VERBATIM from CANON r3, stack-root entry e269d2c9-0dfa-409e-ada5-b10303118225 @ sha256 ff831516f8ff74de1f54023ff4af54d80cade6a285b6ff42f5a37dbfda6290e4 (with-LF, 11532B) / 99e140b60aedcaf166526e975349acc3a56302c00d51fb24ae3a9c4e04bcab3a (stripped, 11531B), both verified at this seat; supersession chain 622dedbf -> 0b229d0f (r2) -> e269d2c9 (r3, current). KNOWN LABEL DISCREPANCY, copied not fixed: r3's own line 2 self-describes as 'revision 2' (Seth, anchor entry c59ba3b1) — label-only, content unambiguous, correction is the anchor owner's"
   echo "disclosed deltas from verbatim: (1) instantiation block = the canon's required SEAT_NAME/MEMBER_ID/EVIDENCE_DIR + per-box absolute worktree, set in-script (pattern ratified, entry edb63b89); (2) census extension: +wasm-bindgen-test-runner (beamr's foreign-runner class — extension, not fork)"
+  echo "=== A5 deltas (Amendment A5, entry a621f353 — interim guards in force before r4; r3 bytes stay frozen as identity) ==="
+  echo "A5 write dialect: this runner WRITES canon's key=value dialect exactly (inherited byte-verbatim from r3's write_claim/acquire) — stated per A5 item 1, not left inferred"
+  echo "A5 delta (i): dialect-tolerant claim READS — holder pid parsed from both key=value and key: value forms (acquisition loop + flip check)"
+  echo "A5 delta (ii): unparseable/empty pid is NEVER grounds for a rule-5 clear — reads HELD, never stale (cannot-determine assumes the answer that prevents harm)"
+  echo "A5 delta (iii): NO PHASE FLIP WITHOUT OWNERSHIP CHECK — claim re-read at draining->running, own member id + pid confirmed; foreign body => flip REFUSED loudly, exit 6, run VOID AS EVIDENCE (detector, not error)"
+  echo "protocol delta (dispatch bef7f4f2 addition 1): claim body recorded verbatim TWICE — claim-body-at-acquire.txt and claim-body-at-release.txt — for the return's match/no-match line"
+  echo "exit vocabulary: 4 = acquisition timeout; 5 = drain timeout; 6 = A5 flip refusal (claim replaced mid-run)"
   echo "legs: beamr's FIVE, VERBATIM from EXIT-001 brief .verification @ 8f2b7c3 (= gates.json; ruling entry 85d5781b). beamr has NO nextest leg: canon amendments A4/A6 are N/A here, stated rather than silently dropped"
   echo "=== launch environment (load-bearing, stated loud — canon LAUNCH CONTRACT) ==="
   echo "launched with bash from the worktree root $WT (canon self-guards: bash refusal + Cargo.toml root check); SEAT_NAME/MEMBER_ID/EVIDENCE_DIR set in-script by the instantiation block (values above); NO database URL or other env is needed for beamr's legs — that absence is stated here rather than silent"
@@ -148,6 +181,7 @@ census > "$EVIDENCE_DIR/census-at-start.txt"   # the census, not the claim, is t
   echo "10. 4a7bce95-2ba7-4e5e-a5a7-5aae25045225 — Amendment 3 (rule-4 mechanism + r3)"
   echo "11. e269d2c9-0dfa-409e-ada5-b10303118225 — CANON r3, the build source"
   echo "12. 3e5a93ca-234d-4ea2-bb9b-35701f6b86c7 — Amendment 4 (holder-spared kills; slot restitution)"
+  echo "13. a621f353-78c4-4453-93fa-309c38bdee98 — Amendment A5 (claim body is pinned bytes; write path guarded)"
   echo "=== quiet-floor proof: census-at-start.txt (the census, not the claim — anchor rule 6) ==="
 } > "$EVIDENCE_DIR/battery-header.txt" 2>&1
 
