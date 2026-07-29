@@ -146,7 +146,7 @@ crates/
       etf/            External Term Format (ETF) encode/decode
       ets/            ETS in-memory tables (set, ordered_set, bag, match specs)
       io/             I/O backend with an io_uring ring on Linux
-      replay/         Deterministic record/replay + step debugger
+      replay/         Replay driver + step debugger (recorder unwired — see Features)
       telemetry/      OpenTelemetry-style spans, metrics, lifecycle events
       capability/     Capability-based security layer (sandbox + audit)
     tests/            Integration tests (OTP loading, GC, supervision, e2e)
@@ -173,7 +173,10 @@ The Meridian integration layer (`beamr-meridian`) lives in the [yggdrasil](https
 - **ETF**: External Term Format encode/decode for term serialization and distribution
 - **ETS**: In-memory tables (`set`, `ordered_set`, `bag`) with match-spec query support
 - **io_uring I/O**: I/O backend with an io_uring ring on Linux (with a portable fallback)
-- **Record/replay**: Deterministic execution recording, replay, and a step debugger
+- **Record/replay** (*incomplete — see below*): replay-side machinery and a
+  step debugger. The recording half is not wired: `ReplayRecorder` has no
+  callers, so no log is produced from a live run and **no record→replay
+  round trip exists**.
 - **Telemetry**: OpenTelemetry-style spans, metrics, and process lifecycle events
 - **Capability security**: Capability-based sandbox and audit layer enforced through native BIF dispatch
 - **Zero unresolved imports**: All `gleam_otp` `.beam` modules load cleanly
