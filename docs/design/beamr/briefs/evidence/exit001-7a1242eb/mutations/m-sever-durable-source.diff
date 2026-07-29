@@ -1,0 +1,14 @@
+diff --git a/crates/beamr/src/scheduler/exit_tombstones.rs b/crates/beamr/src/scheduler/exit_tombstones.rs
+index 7523ab1..4034aec 100644
+--- a/crates/beamr/src/scheduler/exit_tombstones.rs
++++ b/crates/beamr/src/scheduler/exit_tombstones.rs
+@@ -149,7 +149,8 @@ impl BoundedTombstones {
+     /// already-dead source EXIT-001 D4 requires. `None` means no terminal
+     /// transition has been recorded for `pid`.
+     pub(super) fn finalized_reason(&self, pid: &u64) -> Option<ExitReason> {
+-        self.outcomes.get(pid).map(|finalized| finalized.reason)
++        let _ = pid;
++        None
+     }
+ 
+     /// Register-then-check: arm a one-shot watch for `pid`, then consult the

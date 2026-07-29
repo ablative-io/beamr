@@ -1,0 +1,20 @@
+diff --git a/crates/beamr/src/scheduler/exit_tombstones.rs b/crates/beamr/src/scheduler/exit_tombstones.rs
+index 7523ab1..af5c0b6 100644
+--- a/crates/beamr/src/scheduler/exit_tombstones.rs
++++ b/crates/beamr/src/scheduler/exit_tombstones.rs
+@@ -162,14 +162,10 @@ impl BoundedTombstones {
+     /// one-shot slot absorbs (the reported answer wins; the armed slot is
+     /// deregistered and a racing fire into it is a no-op).
+     pub(super) fn watch(&self, pid: u64) -> StoreWatch {
+-        let watch = self.watches.register(pid);
+         if let Some(reason) = self.finalized_reason(&pid) {
+-            // The just-armed slot deregisters when `watch` drops here; a fire
+-            // that already removed the pid's entry makes that a no-op, and a
+-            // fire's send into the slot is absorbed — the record answer wins.
+             return StoreWatch::AlreadyExited(reason);
+         }
+-        StoreWatch::Armed(watch)
++        StoreWatch::Armed(self.watches.register(pid))
+     }
+ 
+     /// Number of pids with at least one live watch. Test/diagnostic helper.

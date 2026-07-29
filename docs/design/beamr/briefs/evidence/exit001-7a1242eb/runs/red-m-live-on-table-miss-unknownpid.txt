@@ -1,0 +1,11 @@
+an unknown pid must answer the typed NoRecord, not arm a watch that can never fire (recv gave Err(Timeout))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    scheduler::exit_observation_tests::watch_exit_on_unknown_pid_reports_no_record_not_live
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 1.01s
+
+error: test failed, to rerun pass `-p beamr --lib`
+exit=101

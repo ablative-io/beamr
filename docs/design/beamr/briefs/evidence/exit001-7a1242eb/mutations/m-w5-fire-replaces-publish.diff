@@ -1,0 +1,12 @@
+diff --git a/crates/beamr/src/scheduler/exit_tombstones.rs b/crates/beamr/src/scheduler/exit_tombstones.rs
+index 7523ab1..1a897b6 100644
+--- a/crates/beamr/src/scheduler/exit_tombstones.rs
++++ b/crates/beamr/src/scheduler/exit_tombstones.rs
+@@ -271,7 +271,6 @@ impl BoundedTombstones {
+         drop(order);
+ 
+         if publish_event {
+-            self.events.publish(ExitEvent::Exited { pid, reason });
+             // EXIT-001 D6 / OQ-A(outside): watch fires are APPENDED after the
+             // existing publication, outside the writer mutex, carrying the
+             // authoritative additive reason by value. Nothing is inserted
