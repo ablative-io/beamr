@@ -1,0 +1,18 @@
+# Fork-session identity measurement — committed so it outlives the box
+# seat: Diana Plum; machine: Annabel's box; measured fresh 2026-07-29T22:47:16Z by the running process itself
+
+## the live process (would not survive the box)
+env_session=b337ce2b-336a-4856-a9d8-54c90496c9fa
+env_child_session=1
+
+## the authority row (as read by this process, same instant)
+  id: b337ce2b-336a-4856-a9d8-54c90496c9fb
+  session_id: b337ce2b-336a-4856-a9d8-54c90496c9fb
+  name: Diana Plum
+  transcript_path: /Users/annabel/Developer/ablative/stack/.mirror/projects/-Users-annabel-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa.jsonl
+  display_name: Diana Plum
+
+## the disagreement, stated
+member_id=b337ce2b-336a-4856-a9d8-54c90496c9fb (mine, asserted and row-confirmed)
+row_session_id ends c9fb; env_session ends c9fa (= parent Artemis's member id); row transcript_path ends c9fa.jsonl — the row half-knows.
+No process ever ran under session ...c9fb; this file is the proof a process ran ...c9fa, recorded while it still was one.
