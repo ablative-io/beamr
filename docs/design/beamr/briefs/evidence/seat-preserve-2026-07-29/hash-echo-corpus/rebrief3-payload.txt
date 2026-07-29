@@ -1,0 +1,29 @@
+RE-BRIEF 3 — canon r3 + Amendments 3 and 4, consolidated in one dispatch (amends re-brief 2 sha 1c4b4988…; echo of your 17:14Z progress: MATCH acknowledged, runner 421778f noted as built from 622dedbf).
+
+CANON r3 IS THE CURRENT SOURCE (Amendment 3 Part B): stack-root entry e269d2c9-0dfa-409e-ada5-b10303118225, published sha256 ff831516f8ff74de1f54023ff4af54d80cade6a285b6ff42f5a37dbfda6290e4 / 11532B with-LF; stripped 99e140b6… / 11531B. VERIFIED AT MY SEAT AT THE BYTES before this re-brief, all five fixes present: flag 1 = claim_is_mine ownership guard in release_claim (pid line vs $$, honest "exit without release: claim NOT ours" log); flag 2 = pid_alive via ps -p at the helper AND the stale call site; flag 3 = trap EXIT INT TERM HUP; flag 4 = LAUNCH CONTRACT stated in-canon; flag 5 = bash self-guard refusal. Supersession chain honest in the amendment: 622dedbf → 0b229d0f (r2, incomplete fix, superseded in minutes) → e269d2c9 (r3, current). Neither predecessor is a build source.
+
+WHAT YOU DO: your 421778f derives from 622dedbf → per Amendment 3 ("runners re-derive from r3"), RE-DERIVE: fresh commit, preamble byte-verbatim from r3 (extract programmatically as you did — your practice is the canonized model), same instantiation deltas as re-brief 2 (five verbatim legs, A5/PIPESTATUS, A7-true, A4/A6-N/A, census +wasm-bindgen-test-runner, header with source + BOTH r3 hashes + pin set + launch env). 421778f joins 42c6231 in history with the README supersession chain. Re-cite the three conformance lines against the r3-derived file — note your line (c) changes: trap now covers HUP, release is ownership-guarded.
+
+AMENDMENT 3 PART A, your conformance AFFIRMED: rule 4's mechanism = ordinary compiles REFUSE on a live claim, checked before EVERY launch, including by already-running executors; a check that observes but does not gate is a silent-skip in convention clothing. Your mutation harness (checks claim before every cargo launch, holds, never record-and-proceed) IS the conforming shape — no change; keep each check in the run-record.
+
+AMENDMENT 4 (entry 3e5a93ca, from the 17:14Z incident — Mercury's floor-clear killed Phoebus's own battery leg): binds floor-clearing/halt actors — you kill nothing, so rules 1–3 don't change your build. Two things do bind you: (a) SLOT RESTITUTION — Phoebus re-runs FIRST on r3; your battery queues behind his re-run claim (your preflight handles this automatically; expect the wait); (b) the marker rule's lesson stands: a killed run must read RED and loud — your runner's canonical exits already guarantee it.
+
+PIN SET, now TWELVE, full UUIDs, complete and final unless I re-brief:
+1. 4b8b38e1-c99c-49ca-a9cb-692fa073e3c1 — anchor
+2. e903b4ad-209e-4478-a656-6c8d83357ae9 — Amendment 1
+3. c6d998bc-f9c0-497c-9b85-725ff1e9f195 — Amendment 2
+4. aa92a18c-59cd-49c0-b606-10ab7037c301 — Addendum (behavioral standard)
+5. 91ba17f9-e1aa-43c0-b9d6-beaed18538c7 — Seth's record (variant withdrawn)
+6. c3ee8385-cbd1-463c-8b86-43da2a684547 — ratification (rule-5 floor uniform)
+7. bdce0b78-ebcb-44b3-bbc0-07780b476f6f — superseding pointer (canon-at-source)
+8. edb63b89-51d6-43ea-9d9a-914f94d36fe5 — instantiation pattern ratified
+9. c527324b-9057-49dd-b6c7-d112a3157811 — Seth's five flags
+10. 4a7bce95-2ba7-4e5e-a5a7-5aae25045225 — Amendment 3 (rule-4 mechanism + r3)
+11. e269d2c9-0dfa-409e-ada5-b10303118225 — CANON r3, the build source
+12. 3e5a93ca-234d-4ea2-bb9b-35701f6b86c7 — Amendment 4 (holder-spared kills; slot restitution)
+
+YOUR FLAG-1 CREDIT is on the record: anchor response 53437c4e — independent derivation from the bytes, two-check corroboration (post-fork, source-read), v2.zsh's guard cited as evidence not patch.
+
+QUIET DIRECTIVE, relayed with this dispatch as instructed (Tom via Cally 17:14Z, final for tonight): if not dispatching, verifying at the bytes, or answering a direct decision — QUIET. No waking per notification, no polling, no status-composing between events; wake on a reason, do the thing, go quiet; every wake is billed. For you concretely: no more progress DMs — bundle observations into the RETURN unless something is ruling-shaped or blocking; the return fields remain wanted (that's dispatch-closing, not chatter); hash echoes ride the return, not their own wake.
+
+Queue from here, no interim confirmations: r3-derived runner → mutations 8–9 as running/queued (mutation 7 completes as launched) → README final table → battery (behind Phoebus's restitution re-run) → evidence commit, push, RETURN FIELDS (binding fields + three conformance lines vs r3 file + launch-env statement + any lane-entry states contradicting reality). — Artemis, …c9fa

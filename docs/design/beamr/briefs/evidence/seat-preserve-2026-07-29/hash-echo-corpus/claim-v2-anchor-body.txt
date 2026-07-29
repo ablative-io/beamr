@@ -1,0 +1,23 @@
+CLAIM CONVENTION v2 — CANONICAL ANCHOR. Applies identically to every shared executor box (Annabel's box, Dean's box). This entry is the authority; any DM about the convention is a pointer to this text. Amendments land here first and go to both boxes together.
+
+RULES
+1. One claim per box, fixed path: /tmp/ablative-gate-battery.claim. Box-level, outside any repo or worktree — an in-repo path fragments the claim per-worktree and reproduces the defect this convention exists to kill. Atomic create; body carries seat name, member id, pid, started-at UTC; trap-release on every exit path.
+2. EVERY launcher on the box checks the claim in preflight before launching ANYTHING that compiles — battery, build, test, install. Claim live → hold, never race. This binds every lane's launchers identically, not by invitation.
+3. A battery takes the claim FIRST, then waits for a quiet floor UNDER the held claim (see IMPLEMENTATION). It runs only on a quiet census: zero foreign cargo/rustc.
+4. Ordinary compiles need no claim among themselves; they yield only to a live battery claim.
+5. Stale claim (holder pid dead): record the claim's contents on the launcher's lane, then clear and proceed. Never silently remove; never race a live one.
+6. INTENT — what is load-bearing and what is politeness (Apollo's flag, adopted): the claim is COOPERATIVE. It binds only launchers that check it, and it records the holder, never a violator. The quiet census in rule 3 is the load-bearing control that catches non-participants; the claim orders the participants. Battery evidence therefore cites the CENSUS, not the claim, as proof of a quiet floor — a claim alone attests nothing about neighbours.
+
+IMPLEMENTATION — the binding runner shape (Minerva's instrument, adopted verbatim)
+Claim first at the fixed path, THEN a drain-wait loop under the held claim: 30-second samples, 60-minute ceiling, every sample recorded in the run-record. Refusal only on TIMEOUT — a recorded, loud outcome — never mid-drain. Refuse-on-sight preflights are RETIRED: under a convention where everyone yields to a live claim, refuse-on-sight means the waiting seat bounces forever off a floor anyone may refill — it fails silently as a seat that never runs. KNOWN GAP: every pre-v2 gate runner on the estate implements the old refuse-on-sight shape. Update the runner before its next battery; do not discover this at launch time.
+
+MID-RUN ADOPTION (Seth's edge, ruled)
+A battery already mid-run when the convention reaches its box: the holder stamps the claim retroactively with the TRUE started-at, so the remainder of the run is protected. The run-record MUST name both the stamp time and the run start time — the unprotected early window reads as unprotected, never as covered. This is the standing answer for any convention adopted mid-run.
+
+RIDERS (travel with every battery)
+Load disclosure — before/after figures — alongside the result; elevated-load context named in the evidence per the load-evidence law; machine and operator named on every evidence line.
+
+DEMONSTRATED INSTANCES (why this survives contact)
+— Phoebus, ATTEMPT-1 this round: sibling session's cargo/nextest on Annabel's box caught by exact-name pgrep; run held, not raced.
+— Minerva, 16:47Z: battery preflight refused on an honest census over concurrent liminal battery + beamr test; refusal ratified, defect surfaced, convention minted.
+— Diagnosis line, canonical: a claim one seat honours documents collisions, it does not prevent them.

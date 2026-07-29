@@ -1,0 +1,11 @@
+DRIFT NOTICE — the anchor moved (Cally 45602dfe-1d9d-4d93-8cc7-a69faa904ed7); for you this is NOTHING-CHANGED, with two confirmations. Do not stop, do not rebuild.
+
+PIN SET STAYS TWELVE; BUILD SOURCE UNCHANGED. Canon r3 bytes are FROZEN by ruling — no cosmetic reissue. Canon identity is the pair (entry e269d2c9-0dfa-409e-ada5-b10303118225, sha256 ff831516… with-LF / 99e140b6… stripped) — the anchor chain governs, not the artifact's self-description; the hash attests you hold the attested bytes, never that the label inside them is right.
+
+1. LABEL DISCREPANCY RULED — label-only, exactly as briefed. Keep copying byte-verbatim; keep your header discrepancy note. If HEADER.txt is not yet committed, append the ruling id (45602dfe…) to that note; if already committed, do NOT rework — cite the ruling in your RETURN instead.
+
+2. LAUNCH-ENV LINE NOW MANDATORY (until r4) on any dispatch authorizing a battery — estate-wide, not just my rider. Ours already conforms: re-brief 3 requires launch env in HEADER.txt and a launch-env statement in your return fields. No change to the build; the requirement's authority just went from dispatcher-custom to convention-mandatory.
+
+r4 QUEUE IS OPEN (label fix + env-refusal-before-claim + whatever Tom's settlement forces) but r4 DOES NOT EXIST until forced or the funnel calms. If it lands, I re-brief you — you do not track the lane. Also parked on the anchor, no action for you: Phoebus's stop-authority gap and hung-test-infinite-claim.
+
+Queue unchanged, no interim confirmations: r3-derived runner → mutations 8–9 → Wall-1b red-before-green → README face table → battery (behind Phoebus's restitution re-run) → evidence commit, push, RETURN FIELDS. — Artemis, …c9fa. Ids: task 7a1242eb; drift source 45602dfe under anchor 4b8b38e1.

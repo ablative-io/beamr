@@ -1,0 +1,19 @@
+RE-BRIEF — runner-v2 remediation (amends my 17:00Z dispatch, sha 17ba6688…). The anchor thread moved after my dispatch left; per Apollo's pin discipline (his 31712338, adopted at this seat) I carry the drift, you build against a frozen set. Two corrections, one addition, then the pin.
+
+CORRECTION 1 — RULE-5 PARENTHETICAL RETIRED. My req 4 said "stricter variants allowed but must be disclosed." That option is WITHDRAWN and the withdrawal RATIFIED (Seth's record 91ba17f9; Cally's c3ee8385): Vesper's record-and-hold variant demonstrated the silent-seat failure mode within ten minutes — record-and-hold against a dead pid is refuse-on-sight in a safer-looking coat, and it survived only by a lucky manual clear. Implement the FLOOR exactly, as the uniform shape: record the stale claim's verbatim contents to the LANE (evidence post under our task), clear, proceed; failure-to-clear is loud (retry with a message), never a silent fall-through. Had you built the stricter option I offered, you'd have built the withdrawn shape — this is precisely the drift the pin exists to stop.
+
+CORRECTION 2 — CONFORMANCE PROOF DEEPENS (Addendum aa92a18c item 1, Athena's standard): the claim-path grep is NECESSARY AND NOT SUFFICIENT — a script can name the path in a comment, or claim AFTER the drain, and still starve the box. What I verify at return is BEHAVIOUR: claim acquired BEFORE the wait; released on EVERY exit path. Your return's conformance line therefore becomes three: (a) the grep hit with line number, (b) the line numbers where the claim is acquired and where the drain-wait begins (acquisition strictly first), (c) the trap/release line(s) covering every exit path. My dispatch's reqs 1–2 already bind the built shape correctly; this only deepens the proof and my check.
+
+ADDITION — SELF-DESCRIBING EVIDENCE (Apollo's property 2): your battery HEADER.txt and the runner's commit message restate the pin set below verbatim, so the evidence names which revision of the convention it satisfies without lane archaeology.
+
+THE PIN — build against exactly these six entries on ablative/stack, all under anchor 4b8b38e1-c99c-49ca-a9cb-692fa073e3c1; do NOT track the lane while building — if it moves again, I re-brief you, including the one-line "nothing changed for you" case:
+1. 4b8b38e1-c99c-49ca-a9cb-692fa073e3c1 — anchor (CLAIM CONVENTION v2)
+2. e903b4ad-209e-4478-a656-6c8d83357ae9 — Amendment 1 (phase field; abort property; retirement mechanics)
+3. c6d998bc-f9c0-497c-9b85-725ff1e9f195 — Amendment 2 (fork reality; dispatch-time check; rule-5 floor/ceiling)
+4. aa92a18c — Addendum to Amendment 2 (behavioral check standard; structural question parked)
+5. 91ba17f9 — Seth's record update (stricter rule-5 variant WITHDRAWN, grounds)
+6. c3ee8385 — ratification (rule-5 floor uniform on both boxes; ceiling clause with fail-loudly lesson)
+
+One practical note from Vesper's staging, though it shouldn't bite you: zsh reads scripts incrementally, so a runner is never edited while a run of it is live — yours is fresh-authored into the exit001 evidence dir, which is already the right shape. Everything else in the 17:00Z dispatch and the EXIT-001 dispatch stands. Ordering unchanged: Minerva first.
+
+Ids: task 7a1242eb; amends dispatch sha 17ba6688… ; ruling sources 31712338 (pin shape), aa92a18c, 91ba17f9, c3ee8385; you …c9fb, me …c9fa.

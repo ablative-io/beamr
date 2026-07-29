@@ -1,0 +1,18 @@
+RE-BRIEF 2 — runner-v2 remediation, canon integration (amends 17:00Z dispatch sha 17ba6688… and re-brief sha 57f990a5…; I carry the drift, this is it moving again). The canonical gate script now carries the claim preamble AT SOURCE per Waffles' 17:03Z ruling: stack-root entry 622dedbf-ff42-4405-a6a5-9ffcfb00676c, published sha256 7773e852… 10163B (with-LF framing; stripped = 5b75314a… 10162B — I verified BOTH at my seat before this re-brief; Cally's published figures remain with-LF, note it and move on).
+
+WHAT CHANGES — YOUR RUNNER'S BASE. Supersedes "author fresh from the anchor spec" and "reference shape = Minerva's instrument" (the canon absorbed Mercury's instrument; his exits 4/5 are now canonical):
+1. PREAMBLE INHERITED AT SOURCE, BYTE-VERBATIM from 622dedbf: phases 0–2 (load+census; acquire with noclobber, hold-never-race, 30s samples, 60-min ceiling, exit 4; drain-wait under held claim, every sample recorded, exit 5), the census/write_claim/acquire/release_claim functions, trap on EXIT INT TERM, phase flip draining→running with started_at preserved, census-at-start as the quiet-floor proof, and the rule-5 stale-claim floor exactly as scripted (record verbatim to evidence + OPERATOR posts contents to the lane, clear, proceed, loudly). Copy, don't re-derive — the whole point of the source integration is that beamr stops being an independent derivation.
+2. PHASE 3 REPLACED: beamr's FIVE LEGS VERBATIM from the EXIT-001 brief (beamr has NO nextest — our legs are ruled, gates.json is the source, Harness R2 says leg commands come verbatim from the dispatching brief). Per-leg: stderr to committed logs (A5), exit captured via PIPESTATUS, nothing masked, no || true. A4/A6 are nextest-specific — N/A for beamr, say so in the header rather than silently dropping them.
+3. A7 ADAPTED, NOT COPIED: the canon prints "doc tests NOT covered." For beamr that line would be FALSE — leg 5 is cargo test --workspace, which runs doc tests. Print the accurate loud line instead: doc tests COVERED via leg 5. Loud and true beats loud and copied.
+4. PHASE 4 marker: canonical shape, per-leg exits for all five legs, plus our standing riders (machine+operator, load before/after).
+5. CENSUS EXTENSION, DISCLOSED: append wasm-bindgen-test-runner to the canonical census list (beamr's own foreign-runner class; a wider census only quiets the floor further and fails loudly the same way). Name it in the HEADER as a beamr-specific disclosed extension — extension, not fork.
+6. HEADER.txt declares: preamble copied byte-verbatim from 622dedbf @ 7773e852 (with-LF)/5b75314a (stripped), legs from EXIT-001 brief verbatim, census extension, and the full pin set below — so any future canon change is DIFFABLE against your runner instead of archaeological.
+
+PIN SET EXTENDED to eight (build against exactly these; do not track the lane; I re-brief on any further motion, including the nothing-changed case):
+1–6 as re-briefed (4b8b38e1, e903b4ad, c6d998bc, aa92a18c, 91ba17f9, c3ee8385)
+7. bdce0b78 — superseding pointer (canon carries preamble at source; per-repo dispatches cover only actual forks)
+8. 622dedbf — the claim-integrated canonical script (your preamble source)
+
+UNCHANGED: the three-line behavioral conformance proof in your return (grep+lineno; acquire-before-drain linenos; trap/release linenos) — the canon preamble satisfies all three by construction, cite ITS line numbers as instantiated in your file. Battery still gated on my behavioral check. Ordering still Minerva-first. EXIT-001 brief still 8f2b7c3. Everything not named here stands.
+
+Ids: task 7a1242eb; ruling source Cally bdce0b78 + Waffles 17:03Z (12adc003); canon 622dedbf; you …c9fb, me …c9fa.

@@ -1,0 +1,221 @@
+CANONICAL GATE BATTERY — CLAIM-INTEGRATED AMENDED FORM. This artifact supersedes the script text of operating brief 77c02142 and is the sole canonical source from its posting. Verbatim runners inherit the claim control by construction; per-repo remediation dispatches now cover only actual forks.
+
+PROVENANCE
+— Gate semantics: Tom's script, 16:15Z direct (message f150bf7e), UNCHANGED except by the standing amendments below. His three flagged conflicts (2>/dev/null, || true, --all-targets on all legs) remain flagged; the amended form stands until his one settlement word, which now bundles the preamble ratification (Waffles' ruling, banked verbatim below).
+— Claim preamble: convention v2 anchor 4b8b38e1 + Amendments 1–2 + addendum; reference implementation Mercury Toast's leg-gate-v2.sh (exit codes 4/5 adopted from it as canonical).
+— Authority: Waffles' ruling 17:03:06Z (message 12adc003), verbatim: "the claim preamble amends the canonical gate script AT SOURCE, effective now, under MY authority. Ratification bundles with Tom's pending script settlement — no new ping to his desk tonight. The split that makes it mine: the preamble is coordination machinery (who may compile when on a shared box) — that authority is the claim convention, already ruled estate-wide. Tom's authority over the script is its GATE SEMANTICS (his three flagged conflicts: 2>/dev/null, || true, --all-targets). The preamble touches none of those; it wraps the script, it doesn't change what the gates test. Precedent exact: the two safety amendments already run operationally under 'amended form stands until his word.'"
+
+STANDING AMENDMENTS APPLIED (in force until Tom's settlement word)
+A4 — nextest leg drops --all-targets (check/clippy legs keep it as Tom wrote them).
+A5 — no stderr suppression anywhere: every leg's raw stderr goes to a committed log. The nextest human Summary line lives in that stderr and is load-bearing.
+A6 — verdicts require COUNT-MATCH between the nextest Summary line and the JSON-derived counts; jq-derived verdicts alone are non-citable.
+A7 — doc tests are not covered by this battery; the script prints the explicit not-covered line into evidence so the silence is loud.
+Marker — a completion marker with pid, timestamps, per-leg captured exit codes, and load figures travels with all evidence.
+No || true — every leg's exit code is captured via PIPESTATUS and recorded; nothing masks a failure to run.
+Riders — census (not claim) cited as quiet-floor proof; load disclosed before/after; machine + operator named in the evidence the operator posts.
+
+THE SCRIPT
+
+```sh
+#!/bin/bash
+# Canonical gate battery — claim-integrated amended form, revision 2 (Seth's flags 1-5 folded).
+# Requires: SEAT_NAME, MEMBER_ID, EVIDENCE_DIR (committed gate-logs dir). Refuses to run without them.
+# LAUNCH CONTRACT (flag 4): the launch line is load-bearing — launch with bash, from the repo root,
+# with every env var the dispatching brief names (e.g. a test-database URL). The script enforces
+# what it can below; the dispatcher's brief MUST name the rest and the operator's evidence MUST echo it.
+set -u
+
+if [ -z "${BASH_VERSION:-}" ]; then   # flag 5: refuse BEFORE the claim, not die mid-claim under zsh
+  echo "REFUSING: this script requires bash (PIPESTATUS); launch with bash or exec it directly" >&2
+  exit 2
+fi
+if [ ! -f Cargo.toml ]; then          # flag 4 (partial enforcement): canon Phase 3 is cargo-shaped
+  echo "REFUSING: not at a cargo repo root (no Cargo.toml in \$PWD)" >&2
+  exit 2
+fi
+
+CLAIM=/tmp/ablative-gate-battery.claim
+: "${SEAT_NAME:?SEAT_NAME must be set (operator seat name)}"
+: "${MEMBER_ID:?MEMBER_ID must be set (full member UUID, copied never typed)}"
+: "${EVIDENCE_DIR:?EVIDENCE_DIR must be set (committed evidence dir for this run)}"
+mkdir -p "$EVIDENCE_DIR"
+CLAIMLOG="$EVIDENCE_DIR/claim.log"
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$CLAIMLOG"; }
+
+census() {  # exact-name census of compile actors; output = "name pid" lines, empty = quiet
+  local p
+  for p in cargo rustc cargo-nextest cargo-clippy clippy-driver rustdoc; do
+    pgrep -x "$p" 2>>"$CLAIMLOG" | sed "s/^/$p /"
+  done
+}
+
+claim_is_mine() {  # flag 1: ownership check — the claim is ours only if its pid line is our pid
+  [ -f "$CLAIM" ] && [ "$(sed -n 's/^pid=//p' "$CLAIM" 2>>"$CLAIMLOG")" = "$$" ]
+}
+
+pid_alive() {  # flag 2: ps -p, not kill -0 — EPERM on a live foreign-user process must read as ALIVE
+  ps -p "$1" > /dev/null 2>>"$CLAIMLOG"
+}
+
+release_claim() {
+  if claim_is_mine; then
+    rm -f "$CLAIM"
+    log "claim released (own claim, pid $$)"
+  elif [ -f "$CLAIM" ]; then
+    log "exit without release: claim on file is NOT ours (holder $(sed -n 's/^pid=//p' "$CLAIM" 2>>"$CLAIMLOG")) — leaving it in place"
+  fi
+}
+trap release_claim EXIT INT TERM HUP   # flag 3: HUP included — a hangup must not orphan the claim
+
+write_claim() {  # $1 = phase; started_at preserved across the phase flip
+  printf 'seat=%s\nmember_id=%s\npid=%s\nstarted_at=%s\nphase=%s\n' \
+    "$SEAT_NAME" "$MEMBER_ID" "$$" "$STARTED_AT" "$1" > "$CLAIM.tmp.$$" \
+    && mv "$CLAIM.tmp.$$" "$CLAIM"
+}
+
+acquire() {  # atomic create via noclobber; failure output recorded, never discarded
+  ( set -o noclobber; printf 'seat=%s\nmember_id=%s\npid=%s\nstarted_at=%s\nphase=draining\n' \
+      "$SEAT_NAME" "$MEMBER_ID" "$$" "$STARTED_AT" > "$CLAIM" ) 2>>"$CLAIMLOG"
+}
+
+# ---- PHASE 0: load + census before anything ----
+uptime | tee "$EVIDENCE_DIR/load-before.txt"
+
+# ---- PHASE 1: acquire the claim (hold, never race; ceiling 60 min; timeout = LOUD exit 4) ----
+n=0
+until acquire; do
+  if [ -f "$CLAIM" ]; then
+    holder="$(cat "$CLAIM" 2>>"$CLAIMLOG")" || holder="(claim vanished mid-read)"
+    hpid="$(printf '%s\n' "$holder" | sed -n 's/^pid=//p')"
+    if [ -n "$hpid" ] && ! pid_alive "$hpid"; then   # flag 2 applied at the call site: ps -p, never kill -0
+      # Rule 5 floor: record verbatim, clear, proceed — loudly, never silently.
+      printf '%s\n' "$holder" | tee "$EVIDENCE_DIR/stale-claim-record.txt" >> "$CLAIMLOG"
+      log "STALE CLAIM (holder pid $hpid dead) recorded above — OPERATOR MUST post its verbatim contents to the launcher's lane with this run's evidence; clearing and proceeding"
+      rm -f "$CLAIM"
+      continue
+    fi
+    log "claim held by: ${holder//$'\n'/ } — waiting (sample $n)"
+  fi
+  n=$((n+1))
+  if [ "$n" -ge 120 ]; then
+    log "ACQUISITION TIMEOUT after 60 minutes — refusing loudly"
+    exit 4
+  fi
+  sleep 30
+done
+log "claim acquired, phase=draining"
+
+# ---- PHASE 2: drain-wait under the held claim (30s samples, all recorded; ceiling 60 min; timeout = LOUD exit 5) ----
+n=0
+while :; do
+  BUSY="$(census)"
+  { printf -- '--- drain sample %s ---\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; printf '%s\n' "${BUSY:-quiet}"; uptime; } >> "$EVIDENCE_DIR/drain-samples.log"
+  [ -z "$BUSY" ] && break
+  n=$((n+1))
+  if [ "$n" -ge 120 ]; then
+    log "DRAIN TIMEOUT after 60 minutes — floor never quieted; refusing loudly, releasing claim"
+    exit 5
+  fi
+  sleep 30
+done
+write_claim running
+log "floor quiet at census; phase=running"
+census > "$EVIDENCE_DIR/census-at-start.txt"   # the census, not the claim, is the quiet-floor proof
+
+# ---- PHASE 3: gate legs (Tom's semantics; stderr kept; exits captured; nothing masked) ----
+cargo check \
+  --workspace \
+  --all-targets \
+  --message-format=json \
+  --keep-going \
+  2>>"$EVIDENCE_DIR/check.stderr.log" |
+  tee "$EVIDENCE_DIR/check.json.log" |
+  jq -c '
+    select(.reason == "compiler-message")
+    | select(.message.level == "error" or .message.level == "warning")
+    | {
+        type: "clippy",
+        level: .message.level,
+        file: ([.message.spans[]? | select(.is_primary)][0].file_name // .message.spans[0]?.file_name // "unknown"),
+        line: ([.message.spans[]? | select(.is_primary)][0].line_start // .message.spans[0]?.line_start // null),
+        column: ([.message.spans[]? | select(.is_primary)][0].column_start // .message.spans[0]?.column_start // null),
+        lint: (.message.code.code // "compile-error"),
+        message: .message.message
+      }
+  ' > "$EVIDENCE_DIR/check.extract.jsonl"
+CHECK_EXIT="${PIPESTATUS[0]}"
+
+cargo clippy \
+  --workspace \
+  --all-targets \
+  --message-format=json \
+  --keep-going \
+  -- \
+  -D warnings \
+  2>>"$EVIDENCE_DIR/clippy.stderr.log" |
+  tee "$EVIDENCE_DIR/clippy.json.log" |
+  jq -c '
+    select(.reason == "compiler-message")
+    | select(.message.level == "error" or .message.level == "warning")
+    | {
+        type: "clippy",
+        level: .message.level,
+        file: ([.message.spans[]? | select(.is_primary)][0].file_name // .message.spans[0]?.file_name // "unknown"),
+        line: ([.message.spans[]? | select(.is_primary)][0].line_start // .message.spans[0]?.line_start // null),
+        column: ([.message.spans[]? | select(.is_primary)][0].column_start // .message.spans[0]?.column_start // null),
+        lint: (.message.code.code // "compile-error"),
+        message: .message.message
+      }
+  ' > "$EVIDENCE_DIR/clippy.extract.jsonl"
+CLIPPY_EXIT="${PIPESTATUS[0]}"
+
+NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1 \
+  cargo nextest run \
+    --workspace \
+    --cargo-quiet \
+    --message-format libtest-json-plus \
+    --no-fail-fast \
+    2>>"$EVIDENCE_DIR/nextest.stderr.log" |
+  tee "$EVIDENCE_DIR/nextest.json.log" |
+  jq -c '
+    select(.type == "test" and .event == "failed")
+    | {
+        type: "nextest",
+        test: .name,
+        stdout: (.stdout // ""),
+        message: "test failed"
+      }
+  ' > "$EVIDENCE_DIR/nextest.extract.jsonl"
+NEXTEST_EXIT="${PIPESTATUS[0]}"
+
+# A6: the Summary line is load-bearing; extract it beside the JSON so the count-match is checkable at the bytes
+grep -E 'Summary \[' "$EVIDENCE_DIR/nextest.stderr.log" | tee "$EVIDENCE_DIR/summary-line.txt"
+
+# A7: convert the silent gap to a loud statement
+echo "DOC TESTS: NOT COVERED by this battery (no doc-test leg in the canonical script)" | tee "$EVIDENCE_DIR/not-covered.txt"
+
+# ---- PHASE 4: closing evidence + marker ----
+census > "$EVIDENCE_DIR/census-at-end.txt"
+uptime | tee "$EVIDENCE_DIR/load-after.txt"
+FINISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+{
+  echo "battery=COMPLETE"
+  echo "seat=$SEAT_NAME"
+  echo "member_id=$MEMBER_ID"
+  echo "pid=$$"
+  echo "started_at=$STARTED_AT"
+  echo "finished_at=$FINISHED_AT"
+  echo "check_exit=$CHECK_EXIT"
+  echo "clippy_exit=$CLIPPY_EXIT"
+  echo "nextest_exit=$NEXTEST_EXIT"
+} | tee "$EVIDENCE_DIR/COMPLETE.marker"
+log "battery complete; exits check=$CHECK_EXIT clippy=$CLIPPY_EXIT nextest=$NEXTEST_EXIT"
+exit 0
+```
+
+READING THE RESULT
+Exit 0 = the battery COMPLETED and its evidence is whole; the VERDICT is the owner's, read from the extracts, the Summary-line count-match (A6), the stderr logs, and the captured per-leg exits — green is the executor's, the owner verifies at the bytes. Exit 4 = claim acquisition timed out (60 min); exit 5 = floor never quieted under the held claim (60 min); both are refusals, loud and recorded, never proceed-past. Exit 2/other = setup refusal (missing SEAT_NAME/MEMBER_ID/EVIDENCE_DIR).
+
+CONFLICT LEDGER FOR TOM'S ONE SETTLEMENT WORD (bundled, no ping tonight): (1) 2>/dev/null on legs — amended form keeps stderr in committed logs; (2) || true on legs — amended form captures exits instead; (3) --all-targets on the nextest leg — amended form drops it there only; (4) NEW: this claim preamble — ratification rides in the same word per Waffles' ruling above.

@@ -1,0 +1,23 @@
+{
+  "title": "WPORT-4 ground scout: six wake sources + socket v0.2 seam, verified at beamr main 2cfd6cf",
+  "questions": [
+    {
+      "id": "Q1",
+      "question": "For each of the six frozen wake sources named by WPORT-4 (host send_message, cast, async-NIF/Promise completion, receive-timer fire, native completion envelopes, trapped linked-process exits): at beamr main 2cfd6cf, does that source route through the WPORT-2 turn arbiter (i.e. end up requesting exactly one host turn when it makes an idle VM runnable), or does it still change Rust scheduler state without scheduling a JS turn? Cite file:line at 2cfd6cf for the wake path of EACH source, and state per source: ALREADY-ARBITERED (by which landed brief) or STILL-GAPPED (what exactly is missing)."
+    },
+    {
+      "id": "Q2",
+      "question": "WPORT-3 landed a HostDeadlineService (crates/beamr-wasm/src/lib.rs at a17be58) whose admitted fires deliver due expiries and request one arbiter turn. Does that fully close the receive-timer-fire wake source from Q1's list, including bytecode timer (send_after/start_timer) expiries injected via WasmScheduler::native_services? Are there any timer-fire paths that bypass the deadline service?"
+    },
+    {
+      "id": "Q3",
+      "question": "Map the pieces WPORT-4 must share vocabulary with: (a) the native connection_events.rs hub — exact event enum/vocabulary, subscribe API, and the snapshot-at-subscribe mechanism (added ~2026-07 as an Apollo request), file:line; (b) where Apollo Biscuit's 'socket v0.2 — browser event-delivery seam' spec text lives (search docs/ in this repo, and if referenced, note pointers to sibling repos ../frame or ../haematite without leaving disk); quote the spec's requirements verbatim if found."
+    },
+    {
+      "id": "Q4",
+      "question": "Inventory the existing wasm test surface WPORT-4 will extend: the 18 test names asserted by .github/workflows/cooperative-wasm.yml, which of them already pin per-source wake/coalescing behavior (idle VM wakes without external pump; burst coalesces to one turn), and what JS-side test seams exist today for injecting each of the six sources from a test (e.g. fire_unified_deadline_at). File:line for each seam."
+    }
+  ],
+  "scope": "codebase",
+  "context": "Repo: /Users/annabel/Developer/ablative/stack/beamr at main 2cfd6cf. Governing paper: docs/design/beamr/WASM-PORT-ARC.md section 'WPORT-4 — Event-source integration' — its boundary evidence is pinned at d9de35e, which is FIVE lands stale; WPORT-1/2/3 have landed since (WPORT-2 = edge-triggered run-to-idle arbiter, WPORT-3 = unified HostDeadlineService at a17be58), so some of the six sources are probably already arbitered — the whole point of this scout is to re-verify every claim at 2cfd6cf, never trust the d9de35e cites. Key files: crates/beamr-wasm/src/lib.rs, crates/beamr/src/scheduler/wasm.rs, crates/beamr/src/scheduler/wasm_native.rs, crates/beamr/src/distribution/connection_events.rs (or wherever connection_events lives — locate it), docs/design/beamr/briefs/WPORT-2.json and WPORT-3.json for what those briefs pinned. Report format: per-question findings with file:line citations at 2cfd6cf and confidence; this feeds a brief-authoring outline, so STILL-GAPPED items are the product."
+  }

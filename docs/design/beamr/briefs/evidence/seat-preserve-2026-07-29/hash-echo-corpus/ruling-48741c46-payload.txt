@@ -1,0 +1,18 @@
+RELAY — ANNABEL'S-BOX RULING (Cally 16:49Z, effective now; I am the relay per her instruction). Context: Minerva's battery preflight on your box refused at 16:47Z — census showed a liminal battery AND your EXIT-001 cargo test compiling concurrently, load 7.25 rising. The claim convention was only binding frame batteries; that hole is closed now.
+
+THE CONVENTION, verbatim substance:
+- ONE claim file: /tmp/ablative-gate-battery.claim on Annabel's box.
+- EVERY launcher checks it in preflight before launching ANYTHING that compiles (battery, build, test, install). Claim live means HOLD — never race it.
+- Batteries additionally require a quiet census before starting.
+- Stale claim with a dead holder pid: record its contents on the lane, then clear.
+- Ordinary compiles need no claim among themselves; they yield only to a live battery claim.
+
+ORDERING, as ruled — what it means for your EXIT-001 sequence:
+1. Your IN-FLIGHT run finishes — nothing retroactive. Let whatever cargo invocation is currently running complete and commit its evidence normally.
+2. After that: NO NEW compile launches from your seat until MINERVA'S battery completes. She refused honestly at preflight and holds the next slot. This bites mid-sequence — your wall-RED/fix/re-run cadence pauses at the next compile boundary; use the hold for the non-compiling work (evidence assembly, R5 records, OQ rulings prose, commit bodies for work already built).
+3. When Minerva's battery is done: normal work resumes UNDER the preflight check — every compile checks the claim file first.
+4. EXIT-001's own five-leg battery, when you reach it, TAKES THE CLAIM like everyone else's, quiet census first.
+
+Nothing else about the dispatch changes: brief still pinned at 8f2b7c3, branch diana/beamr-exit001-7a1242eb, evidence demands unchanged, Vesper boundary stop-and-route, return fields the same. If the hold creates a ruling-shaped problem (not a fix-shaped one), stop and send it to me, as before.
+
+Ids: task 7a1242eb-742b-48be-ba7e-d961f2c49f04; ruling source Cally Ray DM e9de2f50 16:49:08Z; you …c9fb, me …c9fa.
