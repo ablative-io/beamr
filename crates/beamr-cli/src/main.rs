@@ -194,15 +194,45 @@ fn run_compile(dir: &Path, verbose: bool) -> Result<CliSuccess, CliError> {
     Ok(CliSuccess::Stdout(output))
 }
 
+/// Replay a recorded run.
+///
+/// `beamr replay` is a REPRODUCTION, not a transcript player. The recorded
+/// `cli_result` is the claim to be CHECKED against a replayed run — never the
+/// answer to be printed. When the run cannot be reproduced this fails
+/// non-zero naming the divergence, and it must NEVER fall back to printing the
+/// recorded stdout: a replay that silently degrades into a transcript reprint
+/// reports GREEN for a build that no longer produces that output, which is the
+/// defect this command previously had.
+///
+/// # Reproduction is currently refused for every log
+///
+/// Reconstructing the run means re-executing the recorded bytecode with the
+/// replay driver supplying the nondeterministic decisions. The v2 log format
+/// cannot support that: it stores the event vector and the optional CLI
+/// transcript and NOTHING that identifies the code — no module identity, no
+/// module bytes, no entry point, no runtime arguments (`replay::file`, format
+/// version 2). A replay scheduler built from such a log has an empty module
+/// registry, so every process exits at its first module lookup.
+///
+/// Taking the module context from a flag at replay time is not an escape: it
+/// would be a supported way to replay against different code than was
+/// recorded, which is why `replay` refuses `--dir`. Until the format records
+/// the code identity it recorded against, the only honest answer is a loud
+/// refusal.
 fn run_replay(log_path: &Path) -> Result<CliSuccess, CliError> {
     let log = ReplayLog::load(log_path).map_err(CliError::ReplayLog)?;
-    let Some(result) = log.cli_result() else {
+    if log.cli_result().is_none() {
         return Err(CliError::ReplayLogMissingTranscript);
-    };
-    Ok(CliSuccess::WithExitCode {
-        stdout: result.output().to_owned(),
-        exit_code: result.exit_code(),
-    })
+    }
+    Err(CliError::ReplayCannotReproduce(format!(
+        "cannot reproduce the recorded run: this log carries {} recorded event(s) \
+         and a transcript, but the v{} log format records no module identity, entry \
+         point, or runtime arguments, so the recorded code cannot be reloaded and \
+         re-executed. Refusing rather than reprinting the recorded transcript, which \
+         would report the original run's result for code that may no longer produce it",
+        log.len(),
+        ReplayLog::format_version(),
+    )))
 }
 
 fn run_record(

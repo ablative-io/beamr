@@ -51,15 +51,23 @@ where
         )));
     }
 
+    // Two commands refuse --dir, for two different reasons; the refusal names
+    // the command so the user knows which rule they hit.
+    //
     // compile never consumed --dir; accepting it silently misleads the user
     // into thinking extra directories participate in compilation.
+    //
+    // replay reconstructs a RECORDED run, so its module context must come from
+    // the recording and never from a flag supplied at replay time. Accepting
+    // --dir would be a supported way to replay against different code than was
+    // recorded — the same class of lie as reprinting the recorded transcript
+    // instead of reproducing the run.
     if !dirs.is_empty()
-        && filtered_args
-            .first()
-            .is_some_and(|command| command == "compile")
+        && let Some(command) = filtered_args.first()
+        && matches!(command.as_str(), "compile" | "replay")
     {
         return Err(CliError::Usage(format!(
-            "--dir is not supported with compile\n{USAGE}"
+            "--dir is not supported with {command}\n{USAGE}"
         )));
     }
 
