@@ -1,0 +1,277 @@
+# EXIT-001 post-fix 10x isolated greens — task 7a1242eb
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:59:26Z; tree: 8f3bf57, clean
+=== filter: wall1b_ — 10x isolated ===
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.36s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.01s
+
+## wall1b_ rep 1 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## wall1b_ rep 2 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## wall1b_ rep 3 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## wall1b_ rep 4 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## wall1b_ rep 5 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## wall1b_ rep 6 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## wall1b_ rep 7 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## wall1b_ rep 8 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## wall1b_ rep 9 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## wall1b_ rep 10 exit=0
+=== filter: publication_order — 10x isolated ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 1 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 2 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 3 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 4 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 5 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 6 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 7 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 8 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 9 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## publication_order rep 10 exit=0
+=== filter: w2_watch_registered — 10x isolated ===
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 1 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 2 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 3 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 4 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 5 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 6 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 7 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 8 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 9 exit=0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1764 filtered out; finished in 0.00s
+
+## w2_watch_registered rep 10 exit=0

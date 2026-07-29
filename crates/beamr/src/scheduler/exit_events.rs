@@ -1,13 +1,15 @@
-//! Bounded, single-subscriber process-exit event delivery.
+//! Bounded, single-subscriber process-exit event delivery, plus the
+//! notification-only per-pid one-shot exit watches (EXIT-001).
 
 use std::sync::Arc;
 #[cfg(test)]
 use std::sync::Mutex;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, TrySendError};
+use dashmap::DashMap;
 
 use crate::process::ExitReason;
 
@@ -102,6 +104,176 @@ impl ExitEventSubscription {
             let _ = self.receiver.try_recv();
         }
         true
+    }
+}
+
+/// The registration-time answer from `Scheduler::watch_exit`.
+///
+/// Typed rather than watch-always (OQ-B): registration itself distinguishes
+/// the three states a caller must never confuse, so an embedder can skip
+/// arming a deadline against a pid that is already dead and can never block
+/// forever on a pid that has no record.
+#[derive(Debug)]
+pub enum ExitWatchState {
+    /// The process had no terminal record at registration and was present in
+    /// the process table: the watch is armed and will fire exactly once when
+    /// the process exits.
+    Live(ExitWatch),
+    /// The process already finalized. The authoritative additive reason is
+    /// returned immediately from the durable outcome record (which survives
+    /// both legacy-tombstone eviction and outcome consumption); no watch is
+    /// armed and nothing further will fire.
+    AlreadyExited(ExitReason),
+    /// No live process and no durable record: the pid never ran under this
+    /// scheduler (or predates the additive ledger). No watch is armed —
+    /// nothing can ever fire for it — so the caller is never left blocking
+    /// on an answer that cannot arrive.
+    NoRecord,
+}
+
+/// A one-shot, notification-only handle for a single process's exit.
+///
+/// Contract, in the naming style of the connection-event hub:
+///
+/// * **Notification-only.** A watch carries `(pid, reason)` by value and
+///   never consumes, inspects, or perturbs the retained outcome:
+///   `Scheduler::take_exit_outcome` stays exactly-once for whoever owns the
+///   draining subscription.
+/// * **The exclusive subscription is unaffected.** `subscribe_exit_events`
+///   keeps its one-per-scheduler-lifetime slot whether zero or thousands of
+///   watches exist.
+/// * **One-shot with duplicate absorption.** Registration happens before the
+///   already-dead check (register-then-check); if a concurrent fire and the
+///   retained-record answer both arrive, they land in the same single slot
+///   and the second is a no-op by design.
+/// * **Deregistration on drop.** Dropping an unfired watch removes its
+///   registration; abandoned watches cannot accumulate.
+pub struct ExitWatch {
+    pid: u64,
+    watch_id: u64,
+    receiver: Receiver<(u64, ExitReason)>,
+    registry: Arc<ExitWatchRegistry>,
+}
+
+impl std::fmt::Debug for ExitWatch {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ExitWatch")
+            .field("pid", &self.pid)
+            .finish_non_exhaustive()
+    }
+}
+
+impl ExitWatch {
+    /// The pid this watch is armed for.
+    #[must_use]
+    pub fn pid(&self) -> u64 {
+        self.pid
+    }
+
+    /// Block until the watched process's exit notification arrives.
+    pub fn recv(&self) -> Result<(u64, ExitReason), ExitEventRecvError> {
+        self.receiver
+            .recv()
+            .map_err(|_| ExitEventRecvError::Disconnected)
+    }
+
+    /// Wait up to `timeout` for the watched process's exit notification.
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<(u64, ExitReason), ExitEventRecvError> {
+        self.receiver
+            .recv_timeout(timeout)
+            .map_err(|error| match error {
+                RecvTimeoutError::Timeout => ExitEventRecvError::Timeout,
+                RecvTimeoutError::Disconnected => ExitEventRecvError::Disconnected,
+            })
+    }
+}
+
+impl Drop for ExitWatch {
+    fn drop(&mut self) {
+        self.registry.deregister(self.pid, self.watch_id);
+    }
+}
+
+/// One armed watch slot: the watch id plus its one-shot `(pid, reason)` sender.
+type WatchSlot = (u64, Sender<(u64, ExitReason)>);
+
+/// pid-keyed registry of one-shot notification slots (EXIT-001 R2).
+///
+/// Registration and deregistration touch only the sharded map — never the
+/// tombstone writer mutex — and the fire path's cost grows only with the
+/// number of watches on the exiting pid, not with watches in the system.
+pub(super) struct ExitWatchRegistry {
+    watches: DashMap<u64, Vec<WatchSlot>>,
+    next_watch_id: AtomicU64,
+}
+
+/// Store-level registration answer: the typed `NoRecord`/liveness split is
+/// composed at the `Scheduler` layer, which owns the process table.
+pub(super) enum StoreWatch {
+    /// No durable record existed at the check: the slot stays armed.
+    Armed(ExitWatch),
+    /// The durable record already existed: reported immediately, the
+    /// just-registered slot deregistered (duplicate fires are absorbed).
+    AlreadyExited(ExitReason),
+}
+
+impl ExitWatchRegistry {
+    pub(super) fn new() -> Self {
+        Self {
+            watches: DashMap::new(),
+            next_watch_id: AtomicU64::new(0),
+        }
+    }
+
+    /// Arm a one-shot slot for `pid`. Registration only — the caller composes
+    /// register-then-check on top (see `BoundedTombstones::watch`).
+    pub(super) fn register(self: &Arc<Self>, pid: u64) -> ExitWatch {
+        let watch_id = self.next_watch_id.fetch_add(1, Ordering::Relaxed);
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+        self.watches
+            .entry(pid)
+            .or_default()
+            .push((watch_id, sender));
+        ExitWatch {
+            pid,
+            watch_id,
+            receiver,
+            registry: Arc::clone(self),
+        }
+    }
+
+    /// Deliver the exit notification to every watch on `pid` and clear the
+    /// entry. Non-blocking sends into one-slot channels; no user code runs;
+    /// nothing allocates on the steady no-watchers path (the map miss is the
+    /// whole cost). Cost grows only with the watches on THIS pid.
+    pub(super) fn fire(&self, pid: u64, reason: ExitReason) {
+        let Some((_pid, watchers)) = self.watches.remove(&pid) else {
+            return;
+        };
+        for (_watch_id, sender) in watchers {
+            // A full slot (the register-then-check answer already landed) or
+            // a dropped receiver (the watcher gave up) are both benign: the
+            // one-shot slot absorbs duplicates by design, and send-and-drop
+            // keeps the fire path non-blocking.
+            let _ = sender.try_send((pid, reason));
+        }
+    }
+
+    fn deregister(&self, pid: u64, watch_id: u64) {
+        if let dashmap::mapref::entry::Entry::Occupied(mut entry) = self.watches.entry(pid) {
+            entry.get_mut().retain(|(id, _)| *id != watch_id);
+            if entry.get().is_empty() {
+                entry.remove();
+            }
+        }
+    }
+
+    /// Number of pids with at least one live watch. Test/diagnostic helper in
+    /// the style of `BoundedTombstones::len`.
+    #[cfg(test)]
+    pub(super) fn watched_pid_count(&self) -> usize {
+        self.watches.len()
     }
 }
 
@@ -218,9 +390,22 @@ impl ExitEventPublisher {
 #[cfg(test)]
 impl ExitEventPublicationObserver {
     pub(super) fn acknowledge_observed(&self, timeout: Duration) {
+        self.wait_for_publication(timeout);
+        self.release_publication(timeout);
+    }
+
+    /// Observe that a publisher reached the post-send gate WITHOUT releasing
+    /// it, so a test can interleave work (e.g. registering a watch) with an
+    /// in-flight publication deterministically. Pair with
+    /// [`Self::release_publication`].
+    pub(super) fn wait_for_publication(&self, timeout: Duration) {
         self.published
             .recv_timeout(timeout)
             .expect("event publisher must reach the post-send gate");
+    }
+
+    /// Release a publisher previously observed at the post-send gate.
+    pub(super) fn release_publication(&self, timeout: Duration) {
         self.observed
             .send_timeout((), timeout)
             .expect("event publisher must remain at the post-send gate");
@@ -230,6 +415,22 @@ impl ExitEventPublicationObserver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R4 — the exclusivity MECHANISM is pinned, not just the behaviour: the
+    /// single-subscription guarantee rests on `OnceLock`'s set-once semantics.
+    /// A "small refactor" to `Mutex<Option<Sender>>` could quietly permit
+    /// re-subscription while every behavioural test still passes at first —
+    /// this source check (the house prohibition-grep shape) catches it.
+    #[test]
+    fn exclusivity_mechanism_is_still_the_oncelock() {
+        let source = include_str!("exit_events.rs");
+        assert!(
+            source.contains("sender: OnceLock<Sender<ExitEvent>>"),
+            "the exclusive subscription must keep its OnceLock mechanism; \
+             changing it re-opens aion's singleton-drainer contract and is a \
+             STOP, not a refactor"
+        );
+    }
 
     #[test]
     fn overflow_is_typed_and_queue_stays_bounded() {

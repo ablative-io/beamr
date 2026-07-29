@@ -37,12 +37,14 @@
 //! result and diagnostic satellites remain bounded with the legacy tombstone,
 //! preserving their existing semantics.
 
-use super::exit_events::{ExitEvent, ExitEventPublisher, ExitEventSubscription};
+use super::exit_events::{
+    ExitEvent, ExitEventPublisher, ExitEventSubscription, ExitWatchRegistry, StoreWatch,
+};
 use crate::ets::copy::OwnedTerm;
 use crate::process::ExitReason;
 use dashmap::DashMap;
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Maximum number of live exit tombstones retained at once.
 ///
@@ -89,6 +91,9 @@ pub(super) struct BoundedTombstones {
     order: Mutex<VecDeque<u64>>,
     capacity: usize,
     events: ExitEventPublisher,
+    /// Notification-only one-shot exit watches (EXIT-001). Lives beside the
+    /// durable `outcomes` record it reads; registration never takes `order`.
+    watches: Arc<ExitWatchRegistry>,
 }
 
 impl BoundedTombstones {
@@ -107,6 +112,7 @@ impl BoundedTombstones {
             order: Mutex::new(VecDeque::new()),
             capacity: capacity.max(1),
             events: ExitEventPublisher::new(),
+            watches: Arc::new(ExitWatchRegistry::new()),
         }
     }
 
@@ -134,6 +140,42 @@ impl BoundedTombstones {
     /// Create the scheduler's sole exit-event subscription.
     pub(super) fn subscribe(&self) -> Option<ExitEventSubscription> {
         self.events.subscribe()
+    }
+
+    /// Non-consuming read of the authoritative additive exit reason.
+    ///
+    /// Served from the durable `FinalizedOutcome` token, which survives both
+    /// legacy-tombstone eviction and outcome consumption — the unlosable
+    /// already-dead source EXIT-001 D4 requires. `None` means no terminal
+    /// transition has been recorded for `pid`.
+    pub(super) fn finalized_reason(&self, pid: &u64) -> Option<ExitReason> {
+        self.outcomes.get(pid).map(|finalized| finalized.reason)
+    }
+
+    /// Register-then-check: arm a one-shot watch for `pid`, then consult the
+    /// durable record (EXIT-001 D3).
+    ///
+    /// Registration precedes the check because publication happens outside
+    /// the writer mutex: check-then-register can miss an exit that installed
+    /// its record but has not yet published, while register-then-check at
+    /// worst observes both the record and a concurrent fire — which the
+    /// one-shot slot absorbs (the reported answer wins; the armed slot is
+    /// deregistered and a racing fire into it is a no-op).
+    pub(super) fn watch(&self, pid: u64) -> StoreWatch {
+        let watch = self.watches.register(pid);
+        if let Some(reason) = self.finalized_reason(&pid) {
+            // The just-armed slot deregisters when `watch` drops here; a fire
+            // that already removed the pid's entry makes that a no-op, and a
+            // fire's send into the slot is absorbed — the record answer wins.
+            return StoreWatch::AlreadyExited(reason);
+        }
+        StoreWatch::Armed(watch)
+    }
+
+    /// Number of pids with at least one live watch. Test/diagnostic helper.
+    #[cfg(test)]
+    pub(super) fn watched_pid_count(&self) -> usize {
+        self.watches.watched_pid_count()
     }
 
     #[cfg(test)]
@@ -230,6 +272,12 @@ impl BoundedTombstones {
 
         if publish_event {
             self.events.publish(ExitEvent::Exited { pid, reason });
+            // EXIT-001 D6 / OQ-A(outside): watch fires are APPENDED after the
+            // existing publication, outside the writer mutex, carrying the
+            // authoritative additive reason by value. Nothing is inserted
+            // between outcome installation and the existing publish, and
+            // nothing is reordered — the ordering two other repos build on.
+            self.watches.fire(pid, reason);
         }
         evicted
     }
@@ -434,6 +482,347 @@ mod tests {
             subscription.recv_timeout(Duration::ZERO),
             Err(super::super::ExitEventRecvError::Timeout),
             "duplicate finalization cannot emit another event"
+        );
+    }
+
+    // ===== EXIT-001 walls (store level) =====
+
+    fn armed(watch: StoreWatch) -> super::super::ExitWatch {
+        match watch {
+            StoreWatch::Armed(watch) => watch,
+            StoreWatch::AlreadyExited(reason) => {
+                panic!("expected an armed watch, got AlreadyExited({reason:?})")
+            }
+        }
+    }
+
+    /// W2 — REGISTRATION/PUBLICATION RACE (EXIT-001 D3). A watch registered
+    /// while a terminal transition is parked at the existing post-send
+    /// rendezvous observes EXACTLY one notification: not zero (the lost-wake
+    /// face of a check that missed the installed record) and not two (the
+    /// duplicate face of a snapshot scheme that reports the record AND leaves
+    /// a slot armed for the in-flight fire).
+    #[test]
+    fn w2_watch_registered_during_inflight_publication_observes_exactly_one() {
+        let store = BoundedTombstones::with_capacity(8);
+        let subscription = store.subscribe().expect("first subscriber");
+        let observer = store.install_event_publication_gate();
+
+        std::thread::scope(|scope| {
+            let publisher = scope.spawn(|| {
+                insert(&store, 1, ExitReason::Kill);
+            });
+            observer.wait_for_publication(EVENT_TIMEOUT);
+            // Parked post-send: the outcome is installed and the event is
+            // sent, but publish() has not returned and no watch has fired.
+            // Capture only — no assert may panic while the parked publisher's
+            // release depends on a later line (wedge law, ruled 17:51Z): the
+            // registration happens at the park; its answer is judged after
+            // release + join, where a red terminates instead of wedging.
+            let at_park_registration = store.watch(1);
+            observer.release_publication(EVENT_TIMEOUT);
+            publisher.join().expect("terminal caller completes");
+            store.clear_event_publication_gate();
+
+            let mut notifications = 0_usize;
+            let armed_watch = match at_park_registration {
+                StoreWatch::AlreadyExited(reason) => {
+                    assert_eq!(reason, ExitReason::Kill, "record answer carries the reason");
+                    notifications += 1;
+                    None
+                }
+                StoreWatch::Armed(watch) => Some(watch),
+            };
+            if let Some(watch) = armed_watch {
+                if let Ok((pid, reason)) = watch.recv_timeout(EVENT_TIMEOUT) {
+                    assert_eq!((pid, reason), (1, ExitReason::Kill));
+                    notifications += 1;
+                }
+                // Any duplicate delivery would have to already be queued: the
+                // fire path completed before the join above. A zero-timeout
+                // second receive is therefore deterministic, not a sleep.
+                if watch.recv_timeout(Duration::ZERO).is_ok() {
+                    notifications += 1;
+                }
+            }
+            assert_eq!(
+                notifications, 1,
+                "a registration racing an in-flight publication must observe exactly one \
+                 notification (0 = lost wake, 2+ = duplicate); observed {notifications}"
+            );
+        });
+        let _ = subscription.recv_timeout(Duration::ZERO);
+    }
+
+    /// W3 — MANY WATCHERS, ONE PID: every watch fires, none starves, and the
+    /// drainer's exactly-once `take_outcome` is untouched AFTER all fires.
+    #[test]
+    fn w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed() {
+        let store = BoundedTombstones::with_capacity(8);
+        let subscription = store.subscribe().expect("first subscriber");
+        let watches: Vec<_> = (0..8).map(|_| armed(store.watch(5))).collect();
+
+        store.insert_outcome(
+            5,
+            ExitReason::Kill,
+            OwnedTerm::immediate(Term::small_int(9)),
+        );
+
+        for (index, watch) in watches.iter().enumerate() {
+            assert_eq!(
+                watch.recv_timeout(EVENT_TIMEOUT),
+                Ok((5, ExitReason::Kill)),
+                "watch {index} of 8 must be notified"
+            );
+        }
+        assert_eq!(
+            subscription.recv_timeout(EVENT_TIMEOUT),
+            Ok(ExitEvent::Exited {
+                pid: 5,
+                reason: ExitReason::Kill,
+            }),
+            "the exclusive subscriber still receives the event"
+        );
+        let (reason, value) = store.take_outcome(&5).expect(
+            "watches are notification-only: the outcome must still be takeable after every fire",
+        );
+        assert_eq!(reason, ExitReason::Kill);
+        assert_eq!(value.root().as_small_int(), Some(9));
+        assert!(store.take_outcome(&5).is_none(), "take stays exactly-once");
+    }
+
+    /// W4 — NO LEAK ON ABANDONMENT: the registry clears on BOTH paths (drop
+    /// and fire), including under a mixed workload.
+    #[test]
+    fn w4_registry_holds_no_entries_after_abandonment_or_fire() {
+        let store = BoundedTombstones::with_capacity(8);
+
+        // Abandonment face: watches on a pid that never exits.
+        let abandoned: Vec<_> = (0..5).map(|_| armed(store.watch(77))).collect();
+        assert_eq!(
+            store.watched_pid_count(),
+            1,
+            "precondition: pid 77 is watched"
+        );
+        drop(abandoned);
+        assert_eq!(
+            store.watched_pid_count(),
+            0,
+            "dropped watches must deregister themselves"
+        );
+
+        // Fire face: the pid's entry clears even while a handle is live.
+        let fired = armed(store.watch(6));
+        insert(&store, 6, ExitReason::Normal);
+        assert_eq!(
+            fired.recv_timeout(EVENT_TIMEOUT),
+            Ok((6, ExitReason::Normal))
+        );
+        assert_eq!(
+            store.watched_pid_count(),
+            0,
+            "a fired pid's registry entry must be cleared even while its handle is alive"
+        );
+        drop(fired);
+        assert_eq!(store.watched_pid_count(), 0);
+
+        // Mixed workload (R2 acceptance): fired + abandoned + never-exiting.
+        let fired_a = armed(store.watch(10));
+        let never_exits = armed(store.watch(11));
+        let fired_b = armed(store.watch(10));
+        insert(&store, 10, ExitReason::Kill);
+        assert_eq!(
+            fired_a.recv_timeout(EVENT_TIMEOUT),
+            Ok((10, ExitReason::Kill))
+        );
+        assert_eq!(
+            fired_b.recv_timeout(EVENT_TIMEOUT),
+            Ok((10, ExitReason::Kill))
+        );
+        drop((fired_a, never_exits, fired_b));
+        assert_eq!(
+            store.watched_pid_count(),
+            0,
+            "mixed fired/abandoned/never-exiting workload must leave the registry empty"
+        );
+    }
+
+    /// W5 — EXCLUSIVE SUBSCRIBER UNDISTURBED: event sequence and `Lagged`
+    /// behaviour are identical with watches live on the same pids.
+    #[test]
+    fn w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches() {
+        let store = BoundedTombstones::with_capacity(8);
+        let subscription = store.subscribe().expect("first subscriber");
+        let watch_one = armed(store.watch(1));
+        let watch_two = armed(store.watch(2));
+
+        for pid in 1..=3 {
+            insert(&store, pid, ExitReason::Normal);
+        }
+        for pid in 1..=3 {
+            assert_eq!(
+                subscription.recv_timeout(EVENT_TIMEOUT),
+                Ok(ExitEvent::Exited {
+                    pid,
+                    reason: ExitReason::Normal,
+                }),
+                "subscriber sequence must be unchanged and in order"
+            );
+        }
+        assert_eq!(
+            watch_one.recv_timeout(EVENT_TIMEOUT),
+            Ok((1, ExitReason::Normal))
+        );
+        assert_eq!(
+            watch_two.recv_timeout(EVENT_TIMEOUT),
+            Ok((2, ExitReason::Normal))
+        );
+
+        // Lagged unchanged: overflow the bounded event queue with a watch
+        // armed on a pid inside the overflow batch. The watch must still fire
+        // even though the subscriber lags.
+        let lag_pid = 5_000;
+        let lag_watch = armed(store.watch(lag_pid));
+        let overflow = super::super::EXIT_EVENT_CAPACITY as u64 + 8;
+        for pid in 100..(100 + overflow) {
+            insert(&store, pid, ExitReason::Normal);
+        }
+        insert(&store, lag_pid, ExitReason::Kill);
+        assert_eq!(
+            subscription.recv_timeout(EVENT_TIMEOUT),
+            Ok(ExitEvent::Lagged),
+            "overflow must still surface as the typed Lagged marker"
+        );
+        assert_eq!(
+            lag_watch.recv_timeout(EVENT_TIMEOUT),
+            Ok((lag_pid, ExitReason::Kill)),
+            "a watch must fire even when the exclusive subscriber lags"
+        );
+    }
+
+    /// R3 acceptance — the already-dead source survives legacy eviction: a
+    /// finalized pid whose bounded tombstone was FIFO-evicted still answers
+    /// `AlreadyExited` with the authoritative reason, because the answer is
+    /// served from the durable outcome record.
+    #[test]
+    fn watch_after_legacy_eviction_answers_from_durable_record() {
+        let store = BoundedTombstones::with_capacity(2);
+        insert(&store, 1, ExitReason::Kill);
+        insert(&store, 2, ExitReason::Normal);
+        insert(&store, 3, ExitReason::Normal);
+        assert_eq!(
+            store.get(&1),
+            None,
+            "precondition: legacy tombstone evicted"
+        );
+        assert_eq!(
+            store.finalized_reason(&1),
+            Some(ExitReason::Kill),
+            "precondition: durable record survives eviction"
+        );
+
+        match store.watch(1) {
+            StoreWatch::AlreadyExited(reason) => assert_eq!(
+                reason,
+                ExitReason::Kill,
+                "the durable record's reason is authoritative"
+            ),
+            StoreWatch::Armed(watch) => {
+                let outcome = watch.recv_timeout(Duration::from_secs(1));
+                panic!(
+                    "blocked past the deadline: an evicted-but-finalized pid armed a watch \
+                     (recv gave {outcome:?}) instead of answering AlreadyExited(Kill) — the \
+                     already-dead source must be the durable record, not the bounded tombstone"
+                );
+            }
+        }
+    }
+
+    /// REVIEW POINT 2(a) — a watch registered AFTER the drainer consumed the
+    /// outcome still reports the correct reason: the `FinalizedOutcome` token
+    /// retains `reason` for the scheduler lifetime once its term is taken.
+    #[test]
+    fn watch_after_outcome_consumed_reports_reason_from_token() {
+        let store = BoundedTombstones::with_capacity(4);
+        insert(&store, 9, ExitReason::Kill);
+        assert!(
+            store.take_outcome(&9).is_some(),
+            "precondition: outcome consumed"
+        );
+        assert!(store.take_outcome(&9).is_none());
+
+        match store.watch(9) {
+            StoreWatch::AlreadyExited(reason) => assert_eq!(reason, ExitReason::Kill),
+            StoreWatch::Armed(watch) => {
+                let outcome = watch.recv_timeout(Duration::from_secs(1));
+                panic!(
+                    "blocked past the deadline: a consumed-outcome pid armed a watch \
+                     (recv gave {outcome:?}) instead of AlreadyExited — the token's \
+                     retained reason must serve the answer after take"
+                );
+            }
+        }
+    }
+
+    /// R2 acceptance — the documented publication order (retained outcome →
+    /// legacy tombstone → event → watch fires) asserted by a test, using the
+    /// existing post-send rendezvous: while publication is parked, the
+    /// outcome and tombstone are installed and the watch has NOT yet fired;
+    /// after release, it fires.
+    #[test]
+    fn publication_order_outcome_tombstone_event_then_watch_fire() {
+        let store = BoundedTombstones::with_capacity(8);
+        let subscription = store.subscribe().expect("first subscriber");
+        let watch = armed(store.watch(1));
+        let observer = store.install_event_publication_gate();
+
+        std::thread::scope(|scope| {
+            let publisher = scope.spawn(|| {
+                insert(&store, 1, ExitReason::Kill);
+            });
+            observer.wait_for_publication(EVENT_TIMEOUT);
+            // At the park: CAPTURE ONLY (wedge law, ruled 17:51Z). The prior
+            // form asserted here, and a failed assert panicked inside this
+            // scope while the parked publisher's release channel lived outside
+            // it — the failure path was an infinite hang, discovered under the
+            // publish-before-install mutation (wedge run in the EXIT-001
+            // evidence). Every capture below is non-blocking at the bytes:
+            // finalized_reason/get read DashMaps, the watch receive uses a
+            // zero timeout, and the parked publisher holds only `order`.
+            let at_park_finalized = store.finalized_reason(&1);
+            let at_park_legacy = store.get(&1);
+            let at_park_watch_fire = watch.recv_timeout(Duration::ZERO);
+            observer.release_publication(EVENT_TIMEOUT);
+            publisher.join().expect("terminal caller completes");
+            store.clear_event_publication_gate();
+
+            assert_eq!(
+                at_park_finalized,
+                Some(ExitReason::Kill),
+                "outcome must be installed before the event publication returns"
+            );
+            assert_eq!(
+                at_park_legacy,
+                Some(ExitReason::Kill),
+                "legacy tombstone must be installed before the event publication returns"
+            );
+            assert_eq!(
+                at_park_watch_fire,
+                Err(super::super::ExitEventRecvError::Timeout),
+                "watch fires must come strictly AFTER the existing event publication"
+            );
+            assert_eq!(
+                watch.recv_timeout(EVENT_TIMEOUT),
+                Ok((1, ExitReason::Kill)),
+                "the watch fires once publication completes"
+            );
+        });
+        assert_eq!(
+            subscription.recv_timeout(EVENT_TIMEOUT),
+            Ok(ExitEvent::Exited {
+                pid: 1,
+                reason: ExitReason::Kill,
+            })
         );
     }
 

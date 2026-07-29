@@ -1,0 +1,40 @@
+diff --git a/crates/beamr/src/scheduler/exit_events.rs b/crates/beamr/src/scheduler/exit_events.rs
+index 3e76e26..1d140f9 100644
+--- a/crates/beamr/src/scheduler/exit_events.rs
++++ b/crates/beamr/src/scheduler/exit_events.rs
+@@ -248,13 +248,8 @@ impl ExitWatchRegistry {
+         let Some((_pid, watchers)) = self.watches.remove(&pid) else {
+             return;
+         };
+-        for (_watch_id, sender) in watchers {
+-            // A full slot (the register-then-check answer already landed) or
+-            // a dropped receiver (the watcher gave up) are both benign: the
+-            // one-shot slot absorbs duplicates by design, and send-and-drop
+-            // keeps the fire path non-blocking.
+-            let _ = sender.try_send((pid, reason));
+-        }
++        drop(watchers);
++        let _ = (pid, reason);
+     }
+ 
+     fn deregister(&self, pid: u64, watch_id: u64) {
+diff --git a/crates/beamr/src/scheduler/exit_tombstones.rs b/crates/beamr/src/scheduler/exit_tombstones.rs
+index 7523ab1..b1d0114 100644
+--- a/crates/beamr/src/scheduler/exit_tombstones.rs
++++ b/crates/beamr/src/scheduler/exit_tombstones.rs
+@@ -162,14 +162,7 @@ impl BoundedTombstones {
+     /// one-shot slot absorbs (the reported answer wins; the armed slot is
+     /// deregistered and a racing fire into it is a no-op).
+     pub(super) fn watch(&self, pid: u64) -> StoreWatch {
+-        let watch = self.watches.register(pid);
+-        if let Some(reason) = self.finalized_reason(&pid) {
+-            // The just-armed slot deregisters when `watch` drops here; a fire
+-            // that already removed the pid's entry makes that a no-op, and a
+-            // fire's send into the slot is absorbed — the record answer wins.
+-            return StoreWatch::AlreadyExited(reason);
+-        }
+-        StoreWatch::Armed(watch)
++        StoreWatch::Armed(self.watches.register(pid))
+     }
+ 
+     /// Number of pids with at least one live watch. Test/diagnostic helper.

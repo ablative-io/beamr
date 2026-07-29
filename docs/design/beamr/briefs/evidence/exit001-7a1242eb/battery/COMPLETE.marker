@@ -1,0 +1,12 @@
+battery=COMPLETE
+machine=Annabel's box
+seat=Diana Plum
+member_id=b337ce2b-336a-4856-a9d8-54c90496c9fa
+pid=5557
+started_at=2026-07-29T18:17:15Z
+finished_at=2026-07-29T18:18:49Z
+fmt_exit=0
+clippy_exit=0
+wasm32_check_exit=0
+wasm_tests_exit=0
+tests_exit=0

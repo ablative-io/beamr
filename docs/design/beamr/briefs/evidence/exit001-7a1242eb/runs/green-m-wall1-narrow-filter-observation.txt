@@ -1,0 +1,17 @@
+# EXIT-001 mutation run — task 7a1242eb-742b-48be-ba7e-d961f2c49f04
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:13:47Z
+# tree: 421778f + m-wall1-publish-before-install.diff APPLIED (working tree only, never committed)
+# preflight: /tmp/ablative-gate-battery.claim ABSENT at launch (claim convention v2, entry 4b8b38e1)
+# command: cargo test -p beamr --lib -- wall1_ (reps: 1)
+
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.91s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_observation_tests::wall1_reply_enqueued_strictly_before_kill_is_observable_with_value_at_watch_wake ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.01s
+
+## rep 1 exit=0

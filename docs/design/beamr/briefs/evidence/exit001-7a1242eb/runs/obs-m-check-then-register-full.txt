@@ -1,0 +1,30 @@
+# EXIT-001 mutation run — task 7a1242eb-742b-48be-ba7e-d961f2c49f04
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:59:34Z
+# tree: 8f3bf57 + m-check-then-register.diff APPLIED (working tree only, never committed)
+# preflight: /tmp/ablative-gate-battery.claim ABSENT at launch (claim convention v2, entry 4b8b38e1)
+# command: cargo test -p beamr --lib -- wall1 publication_order w2_watch_registered w3_many w4_registry w5_exclusive watch_ characterization (reps: 1)
+
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.24s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 14 tests
+test scheduler::exit_tombstones::tests::watch_after_outcome_consumed_reports_reason_from_token ... ok
+test scheduler::exit_tombstones::tests::watch_after_legacy_eviction_answers_from_durable_record ... ok
+test scheduler::exit_tombstones::tests::w4_registry_holds_no_entries_after_abandonment_or_fire ... ok
+test scheduler::exit_tombstones::tests::w2_watch_registered_during_inflight_publication_observes_exactly_one ... ok
+test scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed ... ok
+test scheduler::exit_tombstones::tests::w5_exclusive_subscription_sequence_and_lag_unchanged_by_watches ... ok
+test scheduler::exit_observation_tests::w1_watch_exit_on_finalized_pid_reports_immediately_with_reason ... ok
+test scheduler::exit_observation_tests::watch_exit_after_outcome_consumed_reports_reason ... ok
+test scheduler::exit_observation_tests::watch_exit_on_unknown_pid_reports_no_record_not_live ... ok
+test scheduler::exit_observation_tests::wall1_reply_enqueued_strictly_before_kill_is_observable_with_value_at_watch_wake ... ok
+test scheduler::exit_observation_tests::watch_on_live_process_fires_on_real_exit_and_outcome_is_takeable_at_wake ... ok
+test scheduler::exit_observation_tests::characterization_second_exit_event_subscription_still_returns_none ... ok
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... ok
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 1751 filtered out; finished in 0.02s
+
+## rep 1 exit=0

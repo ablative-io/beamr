@@ -1,0 +1,16 @@
+diff --git a/crates/beamr/src/scheduler/execution.rs b/crates/beamr/src/scheduler/execution.rs
+index 2714044..d6be89d 100644
+--- a/crates/beamr/src/scheduler/execution.rs
++++ b/crates/beamr/src/scheduler/execution.rs
+@@ -262,10 +262,7 @@ impl Scheduler {
+                 // installs the durable record BEFORE removing the pid from
+                 // the process table, so re-checking the record closes that
+                 // window — a second miss proves the pid never ran here.
+-                match self.shared.exit_tombstones.finalized_reason(&pid) {
+-                    Some(reason) => super::ExitWatchState::AlreadyExited(reason),
+-                    None => super::ExitWatchState::NoRecord,
+-                }
++                super::ExitWatchState::Live(watch)
+             }
+         }
+     }

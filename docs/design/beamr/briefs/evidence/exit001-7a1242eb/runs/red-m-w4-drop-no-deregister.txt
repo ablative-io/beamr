@@ -1,0 +1,54 @@
+# EXIT-001 mutation run — task 7a1242eb-742b-48be-ba7e-d961f2c49f04
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:05:14Z
+# tree: dc735f2 + m-w4-drop-no-deregister.diff APPLIED (working tree only, never committed)
+# preflight: /tmp/ablative-gate-battery.claim ABSENT at launch (claim convention v2, entry 4b8b38e1)
+# command: cargo test -p beamr --lib -- w4_registry (reps: 1)
+
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+warning: field `registry` is never read
+   --> crates/beamr/src/scheduler/exit_events.rs:155:5
+    |
+151 | pub struct ExitWatch {
+    |            --------- field in this struct
+...
+155 |     registry: Arc<ExitWatchRegistry>,
+    |     ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `deregister` is never used
+   --> crates/beamr/src/scheduler/exit_events.rs:260:8
+    |
+221 | impl ExitWatchRegistry {
+    | ---------------------- method in this implementation
+...
+260 |     fn deregister(&self, pid: u64, watch_id: u64) {
+    |        ^^^^^^^^^^
+
+warning: `beamr` (lib) generated 2 warnings
+warning: `beamr` (lib test) generated 2 warnings (2 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.36s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w4_registry_holds_no_entries_after_abandonment_or_fire ... FAILED
+
+failures:
+
+---- scheduler::exit_tombstones::tests::w4_registry_holds_no_entries_after_abandonment_or_fire stdout ----
+
+thread 'scheduler::exit_tombstones::tests::w4_registry_holds_no_entries_after_abandonment_or_fire' (8002810) panicked at crates/beamr/src/scheduler/exit_tombstones.rs:595:9:
+assertion `left == right` failed: dropped watches must deregister themselves
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    scheduler::exit_tombstones::tests::w4_registry_holds_no_entries_after_abandonment_or_fire
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p beamr --lib`
+## rep 1 exit=101

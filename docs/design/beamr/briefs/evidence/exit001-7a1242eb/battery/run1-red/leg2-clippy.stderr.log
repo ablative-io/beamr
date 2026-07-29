@@ -1,0 +1,106 @@
+    Checking fnv v1.0.7
+    Checking serde_core v1.0.228
+    Checking futures-core v0.3.32
+   Compiling serde_json v1.0.150
+   Compiling syn v2.0.117
+    Checking zmij v1.0.21
+    Checking itoa v1.0.18
+    Checking futures-sink v0.3.32
+    Checking memchr v2.8.1
+    Checking slab v0.4.12
+    Checking futures-task v0.3.32
+    Checking gleam-types v0.4.3 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/gleam-types)
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+   Compiling num-traits v0.2.19
+    Checking base64 v0.22.1
+    Checking cast v0.3.0
+    Checking oorandom v11.1.5
+    Checking getrandom v0.3.4
+    Checking gimli v0.33.0
+    Checking either v1.16.0
+    Checking regex-syntax v0.8.10
+   Compiling alloca v0.4.0
+    Checking plotters-backend v0.3.7
+    Checking anstyle v1.0.14
+    Checking fastrand v2.4.1
+    Checking tracing-core v0.1.36
+    Checking rand_core v0.9.5
+    Checking ciborium-io v0.2.2
+    Checking clap_lex v1.1.0
+    Checking rayon-core v1.13.0
+    Checking itertools v0.13.0
+    Checking wait-timeout v0.2.1
+    Checking plotters-svg v0.3.7
+    Checking tempfile v3.27.0
+    Checking bit-vec v0.8.0
+    Checking same-file v1.0.6
+    Checking quick-error v1.2.3
+    Checking rand_xorshift v0.4.0
+    Checking clap_builder v4.6.0
+    Checking futures-channel v0.3.32
+    Checking walkdir v2.5.0
+    Checking page_size v0.6.0
+    Checking tracing v0.1.44
+    Checking percent-encoding v2.3.2
+    Checking anes v0.1.6
+    Checking bit-set v0.8.0
+    Checking rusty-fork v0.3.1
+    Checking unarray v0.1.4
+    Checking rayon v1.12.0
+   Compiling wasm-bindgen-shared v0.2.123
+   Compiling rustversion v1.0.22
+   Compiling bumpalo v3.20.3
+    Checking unicode-ident v1.0.24
+   Compiling beamr-wasm v0.7.0 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr-wasm)
+    Checking wasm-bindgen-test-shared v0.2.123
+    Checking nu-ansi-term v0.50.3
+    Checking criterion-plot v0.8.2
+    Checking regex-automata v0.4.14
+    Checking clap v4.6.1
+    Checking plotters v0.3.7
+    Checking regex v1.12.3
+    Checking cranelift-codegen v0.131.2
+   Compiling futures-macro v0.3.32
+   Compiling zerocopy-derive v0.8.50
+   Compiling tokio-macros v2.7.0
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.18
+   Compiling async-trait v0.1.89
+   Compiling wasm-bindgen-test-macro v0.3.73
+    Checking tokio v1.52.3
+    Checking futures-util v0.3.32
+    Checking thiserror v2.0.18
+    Checking zerocopy v0.8.50
+   Compiling wasm-bindgen-macro-support v0.2.123
+    Checking serde v1.0.228
+   Compiling wasm-bindgen v0.2.123
+   Compiling wasm-bindgen-macro v0.2.123
+    Checking futures-executor v0.3.32
+    Checking opentelemetry v0.32.0
+    Checking cranelift-module v0.131.2
+    Checking cranelift-native v0.131.2
+    Checking cranelift-frontend v0.131.2
+    Checking cranelift-jit v0.131.2
+    Checking tinytemplate v1.2.1
+    Checking ppv-lite86 v0.2.21
+    Checking half v2.7.1
+    Checking rand_chacha v0.9.0
+    Checking ciborium-ll v0.2.2
+    Checking rand v0.9.4
+    Checking ciborium v0.2.2
+    Checking criterion v0.8.2
+    Checking proptest v1.11.0
+    Checking opentelemetry_sdk v0.32.1
+    Checking js-sys v0.3.100
+error: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/beamr/src/scheduler/exit_events.rs:207:14
+    |
+207 |     watches: DashMap<u64, Vec<(u64, Sender<(u64, ExitReason)>)>>,
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#type_complexity
+    = note: `-D clippy::type-complexity` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`
+
+error: could not compile `beamr` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

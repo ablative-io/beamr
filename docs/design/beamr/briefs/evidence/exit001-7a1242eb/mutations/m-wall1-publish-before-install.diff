@@ -1,0 +1,25 @@
+diff --git a/crates/beamr/src/scheduler/exit_tombstones.rs b/crates/beamr/src/scheduler/exit_tombstones.rs
+index 7523ab1..540c52c 100644
+--- a/crates/beamr/src/scheduler/exit_tombstones.rs
++++ b/crates/beamr/src/scheduler/exit_tombstones.rs
+@@ -239,9 +239,8 @@ impl BoundedTombstones {
+             if self.outcomes.contains_key(&pid) {
+                 false
+             } else {
+-                // Keep this order: a reader can never observe the legacy
+-                // tombstone before the exactly-once outcome, and the event
+-                // follows both.
++                self.events.publish(ExitEvent::Exited { pid, reason });
++                self.watches.fire(pid, reason);
+                 self.outcomes.insert(
+                     pid,
+                     FinalizedOutcome {
+@@ -249,7 +248,7 @@ impl BoundedTombstones {
+                         outcome: Some(outcome),
+                     },
+                 );
+-                true
++                false
+             }
+         } else {
+             false

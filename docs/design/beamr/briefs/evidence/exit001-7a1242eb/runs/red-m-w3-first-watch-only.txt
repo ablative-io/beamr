@@ -1,0 +1,32 @@
+# EXIT-001 mutation run — task 7a1242eb-742b-48be-ba7e-d961f2c49f04
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:04:51Z
+# tree: dc735f2 + m-w3-first-watch-only.diff APPLIED (working tree only, never committed)
+# preflight: /tmp/ablative-gate-battery.claim ABSENT at launch (claim convention v2, entry 4b8b38e1)
+# command: cargo test -p beamr --lib -- w3_many (reps: 1)
+
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.81s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed ... FAILED
+
+failures:
+
+---- scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed stdout ----
+
+thread 'scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed' (8000636) panicked at crates/beamr/src/scheduler/exit_tombstones.rs:563:13:
+assertion `left == right` failed: watch 1 of 8 must be notified
+  left: Err(Disconnected)
+ right: Ok((5, Kill))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    scheduler::exit_tombstones::tests::w3_many_watchers_one_pid_all_notified_and_drainer_undisturbed
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p beamr --lib`
+## rep 1 exit=101

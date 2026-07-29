@@ -1,0 +1,5 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/wasm32-unknown-unknown/debug/deps/beamr_wasm-643197f1c9acea00.wasm)
+     Running tests/generated_bootstrap.rs (target/wasm32-unknown-unknown/debug/deps/generated_bootstrap-e10ae1ceb4ccc547.wasm)
+     Running tests/profile_seal.rs (target/wasm32-unknown-unknown/debug/deps/profile_seal-5fdc016c8392920f.wasm)
+   Doc-tests beamr_wasm

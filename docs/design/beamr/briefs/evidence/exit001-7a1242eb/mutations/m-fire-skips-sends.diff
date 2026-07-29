@@ -1,0 +1,20 @@
+diff --git a/crates/beamr/src/scheduler/exit_events.rs b/crates/beamr/src/scheduler/exit_events.rs
+index 3e76e26..1d140f9 100644
+--- a/crates/beamr/src/scheduler/exit_events.rs
++++ b/crates/beamr/src/scheduler/exit_events.rs
+@@ -248,13 +248,8 @@ impl ExitWatchRegistry {
+         let Some((_pid, watchers)) = self.watches.remove(&pid) else {
+             return;
+         };
+-        for (_watch_id, sender) in watchers {
+-            // A full slot (the register-then-check answer already landed) or
+-            // a dropped receiver (the watcher gave up) are both benign: the
+-            // one-shot slot absorbs duplicates by design, and send-and-drop
+-            // keeps the fire path non-blocking.
+-            let _ = sender.try_send((pid, reason));
+-        }
++        drop(watchers);
++        let _ = (pid, reason);
+     }
+ 
+     fn deregister(&self, pid: u64, watch_id: u64) {

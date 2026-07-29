@@ -1,0 +1,42 @@
+# EXIT-001 post-wedge-fix red proof — task 7a1242eb
+# machine: Annabel's box; operator: Diana Plum (b337ce2b-…-c9fb)
+# date: 2026-07-29T17:58:20Z
+# tree: a979cac + uncommitted wedge-law wall fixes + wall1b + m-wall1-publish-before-install.diff APPLIED (working tree only)
+# preflight: claim ABSENT at launch
+# purpose: the wedge ruling's evidence demand (1) — the FIXED publication_order wall and wall1b
+#          must red CLEANLY (terminate, exit 101, bounded wall-clock) under the same mutation
+#          whose kill previously manifested as a wedge (see wedge-…-discovery.txt).
+# start: 17:58:20Z
+   Compiling beamr v0.16.2 (/Users/annabel/Developer/ablative/stack/beamr/.wt-exit001-7a1242eb/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.33s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 2 tests
+test scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire ... FAILED
+test scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication ... FAILED
+
+failures:
+
+---- scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire stdout ----
+
+thread 'scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire' (8413932) panicked at crates/beamr/src/scheduler/exit_tombstones.rs:768:13:
+assertion `left == right` failed: outcome must be installed before the event publication returns
+  left: None
+ right: Some(Kill)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication stdout ----
+
+thread 'scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication' (8413931) panicked at crates/beamr/src/scheduler/exit_observation_tests.rs:556:43:
+outcome must be takeable at the publication park — the outcomes-before-exits pin Hermes's conclusion logic rests on
+
+
+failures:
+    scheduler::exit_observation_tests::wall1b_ordering_tripwire_outcome_installed_before_exit_publication
+    scheduler::exit_tombstones::tests::publication_order_outcome_tombstone_event_then_watch_fire
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1763 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p beamr --lib`
+# end: 17:58:25Z — bounded wall-clock, run TERMINATED on its own
+## exit=101

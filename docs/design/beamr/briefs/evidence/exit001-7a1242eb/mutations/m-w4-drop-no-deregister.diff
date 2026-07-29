@@ -1,0 +1,13 @@
+diff --git a/crates/beamr/src/scheduler/exit_events.rs b/crates/beamr/src/scheduler/exit_events.rs
+index 3e76e26..86a47c9 100644
+--- a/crates/beamr/src/scheduler/exit_events.rs
++++ b/crates/beamr/src/scheduler/exit_events.rs
+@@ -194,7 +194,7 @@ impl ExitWatch {
+ 
+ impl Drop for ExitWatch {
+     fn drop(&mut self) {
+-        self.registry.deregister(self.pid, self.watch_id);
++        let _ = (self.pid, self.watch_id);
+     }
+ }
+ 

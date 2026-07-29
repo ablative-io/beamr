@@ -30,6 +30,22 @@ below. The fix for that class is tracked for `0.17.0`.
 
 ## Unreleased
 
+### Added
+
+- **`Scheduler::watch_exit` — notification-only, per-pid, one-shot exit
+  watches** (`ExitWatch`, `ExitWatchState`). The scheduler-to-waiter exit
+  notification liminal's «CHANNEL-REPLY-EVENT-RACE» (W4 F7) was blocked
+  on: unlimited concurrent watches deliver `(pid, reason)` by value
+  without touching the exclusive outcome-claiming
+  `subscribe_exit_events` slot or `take_exit_outcome`'s exactly-once
+  semantics. Registration answers are typed
+  (`Live` / `AlreadyExited` / `NoRecord`); already-dead answers are
+  served from the durable outcome record, so they survive both
+  legacy-tombstone eviction and outcome consumption; dropping a watch
+  deregisters it. Fires are appended strictly after outcome
+  installation and the existing event publication, preserving the
+  ordering aion's drainer errors on.
+
 Main's manifest deliberately holds `0.16.2` while this tree carries
 0.16.3's forward-ported fixes plus the unreleased breaking changes below:
 stamping `0.16.3` here would claim a registry equivalence that does not
