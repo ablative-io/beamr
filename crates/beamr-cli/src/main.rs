@@ -405,8 +405,10 @@ fn load_context(path: &Path, dirs: &[PathBuf]) -> Result<LoadContext, CliError> 
 }
 
 /// Loads every `.beam` file in `dir` into the module registry.
-/// Files that fail to load are silently skipped (they may be
-/// modules with unsupported features that are not needed).
+/// Files that fail to read or decode are skipped — they may be modules
+/// with unsupported features that are not needed — but every skip is
+/// reported on stderr (never stdout: replay/record transcripts must stay
+/// byte-identical) with the file and reason, plus an aggregate count.
 fn load_beam_dir(
     dir: &Path,
     atom_table: &AtomTable,
@@ -417,6 +419,7 @@ fn load_beam_dir(
         path: dir.to_path_buf(),
         source,
     })?;
+    let mut skipped = 0usize;
     for entry in entries {
         let entry = entry.map_err(|source| CliError::Io {
             path: dir.to_path_buf(),
@@ -426,17 +429,35 @@ fn load_beam_dir(
         if file_path.extension().is_some_and(|ext| ext == "beam") {
             let bytes = match std::fs::read(&file_path) {
                 Ok(bytes) => bytes,
-                Err(_) => continue,
+                Err(error) => {
+                    eprintln!(
+                        "beamr: warning: skipped {}: {error}",
+                        file_path.display()
+                    );
+                    skipped += 1;
+                    continue;
+                }
             };
-            // Best-effort: skip files that fail to decode.
-            let _ = load_module_with_origin(
+            if let Err(error) = load_module_with_origin(
                 &bytes,
                 atom_table,
                 module_registry,
                 bif_registry,
-                ModuleOrigin::Filesystem(file_path),
-            );
+                ModuleOrigin::Filesystem(file_path.clone()),
+            ) {
+                eprintln!(
+                    "beamr: warning: skipped {}: {error}",
+                    file_path.display()
+                );
+                skipped += 1;
+            }
         }
+    }
+    if skipped > 0 {
+        eprintln!(
+            "beamr: warning: skipped {skipped} .beam file(s) in {}",
+            dir.display()
+        );
     }
     Ok(())
 }
