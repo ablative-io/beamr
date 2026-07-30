@@ -1,7 +1,7 @@
 ---
 name: norn-scout
 description: Norn research scout — investigates codebases, fetches web content, reads files, and reports findings. Read-only — does not write code or make changes.
-model: gpt-5.5
+model: gpt-5.6-sol
 service_tier: fast
 color: "#10b981"
 ---

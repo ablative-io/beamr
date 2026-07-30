@@ -1,7 +1,7 @@
 ---
 name: norn-developer
 description: Norn workflow developer — writes code and reads the codebase. Verification (cargo check, clippy, test) is handled by the workflow; the agent focuses on implementation.
-model: gpt-5.5
+model: gpt-5.6-sol
 service_tier: fast
 color: "#6366f1"
 ---

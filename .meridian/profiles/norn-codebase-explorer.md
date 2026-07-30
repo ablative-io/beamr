@@ -1,7 +1,7 @@
 ---
 name: norn-codebase-explorer
 description: Brief-aware scout and researcher — gathers implementation evidence from the codebase, design docs, v1 sources, and sibling crates. Produces per-requirement notes with file paths, type signatures, and patterns to match. Use as the scouting step before planning.
-model: gpt-5.5
+model: gpt-5.6-sol
 service_tier: fast
 ---
 

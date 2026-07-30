@@ -3,7 +3,7 @@ name: developer
 description: Implementation role — writes code, tests, and documentation for assigned tasks. Full development tool access. Follows the Design Specification exactly, implements acceptance criteria, writes comprehensive tests. Use when the task involves writing code, implementing features, fixing bugs, or running builds and tests.
 tools:
 disallowedTools: Bash(git *), Bash(just *), Bash(cargo build*), Bash(cargo check*), Bash(cargo clippy*), Bash(cargo test*), Bash(cargo nextest*), Bash(cargo run*), Bash(cargo fmt*), Bash(bun run build*), Bash(npm *), Bash(pnpm *), Bash(make *), Bash(rustup *)
-model: gpt-5.5
+model: gpt-5.6-sol
 color: "#6366f1"
 hooks:
   PostToolUse:

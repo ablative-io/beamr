@@ -1,7 +1,7 @@
 ---
 name: norn-reviewer
 description: Code review and harden role — reads code thoroughly, searches the codebase, verifies correctness and spec conformance. Fixes issues directly when found — naming drift, missing error handling, convention violations. Use when the task involves reviewing implementations, verifying test coverage, checking spec conformance, or hardening code quality.
-model: gpt-5.5
+model: gpt-5.6-sol
 service_tier: fast
 ---
 
