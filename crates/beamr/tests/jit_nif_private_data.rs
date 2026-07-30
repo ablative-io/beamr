@@ -337,6 +337,28 @@ fn bytecode_only_chain_sees_the_installed_native_services() {
 /// only `nif_private_data` would go green the day someone restores that field
 /// and leaves `replay_driver` empty -- and `replay_driver` is the one whose
 /// loss produces no failure at all, just a live path taken during replay.
+///
+/// WHAT THIS ASSERTION DOES NOT OBSERVE, and do not read it as more than it is:
+/// `replay_driver` IS NOT COVERED BY THIS TEST. This harness never installs
+/// one -- the scheduler derives it from the replay mode (the `match replay_mode`
+/// binding at the head of `Scheduler::construct_with_services`), and
+/// `SchedulerConfig` exposes no field for it, so it cannot be installed from a
+/// test at all -- so `F_REPLAY_DRIVER` is zero on BOTH sides and a
+/// set equality cannot see a bit that is absent from both. Reading a green here
+/// as "the replay driver survives the JIT boundary" is wrong. That property
+/// holds by CONSTRUCTION, because the fix threads the whole `NativeServices`
+/// bundle and there is no per-facility path for it to be dropped from -- but
+/// construction is not observation, and this test is observation.
+///
+/// The probe notes 11 of the bundle's 33 `pub` fields. Unobserved: `timers`,
+/// `io_sink`, `bif_registry`, `jit_cache`, `pg_facility`, `readiness_facility`,
+/// `suspension_registrar`, the capability sink and violation handler, and the
+/// `net`-gated facilities, among others.
+///
+/// The reason this is a recorded limitation and not a hole: the expectation is
+/// DERIVED FROM THE BYTECODE BASELINE rather than hardcoded, so any harness
+/// that does install a replay driver -- or any facility added to the probe --
+/// gets it covered with no edit to this assertion.
 #[test]
 fn chain_below_a_jit_frame_sees_the_same_native_services() {
     let baseline = run_case(false);
