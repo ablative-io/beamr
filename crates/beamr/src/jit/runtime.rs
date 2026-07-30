@@ -2,7 +2,7 @@
 
 use crate::atom::Atom;
 use crate::gc;
-use crate::interpreter::{ExecutionResult, run_with_registry};
+use crate::interpreter::{ExecutionResult, run_with_native_services};
 use crate::module::ResolvedImportTarget;
 use crate::process::{CodePosition, ExitReason, JitStatus, Process};
 use crate::term::Term;
@@ -89,7 +89,7 @@ pub(crate) extern "C" fn jit_call_interpreted(
     let Some(context) = process.jit_runtime_context() else {
         return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
     };
-    if context.module.is_null() || context.registry.is_null() {
+    if context.module.is_null() || context.registry.is_null() || context.services.is_null() {
         return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
     }
     let Ok(module_index) = u32::try_from(module) else {
@@ -118,12 +118,14 @@ pub(crate) extern "C" fn jit_call_interpreted(
         process.set_x_reg(u16::from(register), Term::from_raw(raw));
     }
 
-    // SAFETY: The interpreter installs pointers to the current borrowed module
-    // and registry for exactly the duration of the native JIT call. Helpers run
-    // synchronously before that context is cleared.
+    // SAFETY: The interpreter installs pointers to borrowed dispatch state for
+    // exactly the duration of the native JIT call. Helpers run synchronously
+    // before that context is cleared.
     let current_module = unsafe { &*context.module };
     // SAFETY: See `current_module`; the registry pointer has the same lifetime.
     let registry = unsafe { &*context.registry };
+    // SAFETY: See `current_module`; the services pointer has the same lifetime.
+    let services = unsafe { &*context.services };
     if current_module.name != module_atom {
         return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
     }
@@ -162,7 +164,7 @@ pub(crate) extern "C" fn jit_call_interpreted(
         return JitReturn::yield_(JIT_YIELD_SENTINEL as u64);
     }
 
-    let result = run_with_registry(process, current_module, registry);
+    let result = run_with_native_services(process, current_module, registry, services);
     if let Some(module) = saved_module {
         process.set_current_module(module);
     }

@@ -273,6 +273,8 @@ pub struct JitRuntimeContext {
     pub registry: *const crate::module::ModuleRegistry,
     /// Optional native-code cache used by helper-backed dynamic dispatch.
     pub jit_cache: *const crate::jit::JitCache,
+    /// Native services used by mixed-mode fallback calls.
+    pub services: *const crate::interpreter::NativeServices,
 }
 
 #[cfg(feature = "jit")]
@@ -283,11 +285,13 @@ impl JitRuntimeContext {
         module: *const Module,
         registry: *const crate::module::ModuleRegistry,
         jit_cache: *const crate::jit::JitCache,
+        services: *const crate::interpreter::NativeServices,
     ) -> Self {
         Self {
             module,
             registry,
             jit_cache,
+            services,
         }
     }
 }

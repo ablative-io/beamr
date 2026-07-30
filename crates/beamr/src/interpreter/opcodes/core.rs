@@ -38,6 +38,9 @@ pub struct JitDispatchContext<'a> {
     pub jit_cache: Option<&'a JitCache>,
     #[cfg(feature = "jit")]
     pub jit_profiling: Option<&'a JitProfilingServices>,
+    /// Native services to install while executing compiled code.
+    #[cfg(feature = "jit")]
+    pub services: Option<&'a NativeServices>,
     pub registry: Option<&'a ModuleRegistry>,
 }
 
@@ -661,6 +664,9 @@ fn dispatch_local_jit(
     let Some(cache) = jit_ctx.jit_cache else {
         return Ok(None);
     };
+    let Some(services) = jit_ctx.services else {
+        return Ok(None);
+    };
     let Some((function, function_arity)) = module.function_at_ip(target_ip) else {
         return Ok(None);
     };
@@ -682,7 +688,14 @@ fn dispatch_local_jit(
         module: module.name,
         instruction_pointer: target_ip,
     }));
-    invoke_jit(process, module, native, jit_ctx.registry, jit_ctx.jit_cache)
+    invoke_jit(
+        process,
+        module,
+        native,
+        jit_ctx.registry,
+        jit_ctx.jit_cache,
+        services,
+    )
 }
 
 /// JIT entry for an external call. With `jit` the compiled body may run; without
@@ -735,6 +748,9 @@ fn dispatch_external_jit(
     let Some(cache) = ctx.jit_cache else {
         return Ok(None);
     };
+    let Some(services) = ctx.services else {
+        return Ok(None);
+    };
     // Same canonical-entry rule as the local edge, plus ownership: the
     // external identity is the cache key, and export validation only checks
     // that the label EXISTS — a loader-legal export can alias another
@@ -763,7 +779,14 @@ fn dispatch_external_jit(
         module: target_module.name,
         instruction_pointer: target_ip,
     }));
-    invoke_jit(process, target_module, native, ctx.registry, ctx.jit_cache)
+    invoke_jit(
+        process,
+        target_module,
+        native,
+        ctx.registry,
+        ctx.jit_cache,
+        services,
+    )
 }
 
 /// Heat accounting on the bytecode fall-through: a cache MISS records one
@@ -827,6 +850,7 @@ fn invoke_jit(
     native: crate::jit::NativeCode,
     registry: Option<&ModuleRegistry>,
     jit_cache: Option<&JitCache>,
+    services: &NativeServices,
 ) -> Result<Option<InstructionOutcome>, ExecError> {
     let Some(registry) = registry else {
         return Ok(None);
@@ -836,6 +860,7 @@ fn invoke_jit(
         module as *const Module,
         registry as *const ModuleRegistry,
         jit_cache.map_or(std::ptr::null(), |cache| cache as *const JitCache),
+        services as *const NativeServices,
     )));
     process.set_jit_status(None);
     let outcome = call_native(process, native);

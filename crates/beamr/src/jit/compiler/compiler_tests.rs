@@ -1,5 +1,6 @@
 use super::{JitCompiler, JitError, JitSettings, ModuleCompileMetadata};
 use crate::atom::Atom;
+use crate::interpreter::NativeServices;
 use crate::jit::RootLocation;
 use crate::jit::coverage::{Coverage, coverage};
 use crate::jit::ir_common::{JIT_DEOPT_SENTINEL, X_REGISTER_COUNT};
@@ -636,10 +637,13 @@ fn compiled_call_ext_last_tail_calls_a_cross_module_function() {
         .unwrap();
     let mut process = Process::new(0, 233);
     process.set_current_module(caller.clone());
+    // This compiler unit deliberately uses an empty native-services bundle.
+    let empty_services = NativeServices::default();
     process.set_jit_runtime_context(Some(JitRuntimeContext::new(
         caller.as_ref() as *const Module,
         &registry as *const ModuleRegistry,
         std::ptr::null(),
+        &empty_services as *const NativeServices,
     )));
     process.set_x_reg(0, Term::small_int(17));
     let returned = call_native_with_process_x_regs(&native, &mut process);
@@ -700,10 +704,13 @@ fn compiled_apply_last_tail_calls_a_closure() {
         &[Term::small_int(99)],
     );
     process.set_current_module(module.clone());
+    // This compiler unit deliberately uses an empty native-services bundle.
+    let empty_services = NativeServices::default();
     process.set_jit_runtime_context(Some(JitRuntimeContext::new(
         module.as_ref() as *const Module,
         &registry as *const ModuleRegistry,
         std::ptr::null(),
+        &empty_services as *const NativeServices,
     )));
     process.set_x_reg(0, Term::small_int(5));
     process.set_x_reg(1, closure);
@@ -2201,10 +2208,13 @@ fn compiled_call_fun_copies_free_vars_after_explicit_args_and_returns_value() {
         &[Term::small_int(99)],
     );
     process.set_current_module(module.clone());
+    // This compiler unit deliberately uses an empty native-services bundle.
+    let empty_services = NativeServices::default();
     process.set_jit_runtime_context(Some(JitRuntimeContext::new(
         module.as_ref() as *const Module,
         &registry as *const ModuleRegistry,
         std::ptr::null(),
+        &empty_services as *const NativeServices,
     )));
     let mut registers = vec![Term::small_int(5).raw(), closure.raw()];
 
@@ -2268,10 +2278,13 @@ fn compiled_call_fun2_dispatches_the_admitted_lowering() {
         &[Term::small_int(99)],
     );
     process.set_current_module(module.clone());
+    // This compiler unit deliberately uses an empty native-services bundle.
+    let empty_services = NativeServices::default();
     process.set_jit_runtime_context(Some(JitRuntimeContext::new(
         module.as_ref() as *const Module,
         &registry as *const ModuleRegistry,
         std::ptr::null(),
+        &empty_services as *const NativeServices,
     )));
     let mut registers = vec![Term::small_int(5).raw(), closure.raw()];
 
@@ -2320,10 +2333,13 @@ fn compiled_apply_wrong_arity_raises_badarity() {
         &[],
     );
     process.set_current_module(module.clone());
+    // This compiler unit deliberately uses an empty native-services bundle.
+    let empty_services = NativeServices::default();
     process.set_jit_runtime_context(Some(JitRuntimeContext::new(
         module.as_ref() as *const Module,
         &registry as *const ModuleRegistry,
         std::ptr::null(),
+        &empty_services as *const NativeServices,
     )));
     let mut registers = vec![Term::small_int(5).raw(), closure.raw()];
 
@@ -2753,10 +2769,13 @@ fn compiled_external_call_falls_back_to_interpreter_and_returns_value() {
         .compile(&caller.code, caller_atom, function_atom, 1)
         .unwrap();
     let mut process = Process::new(0, 233);
+    // This compiler unit deliberately uses an empty native-services bundle.
+    let empty_services = NativeServices::default();
     process.set_jit_runtime_context(Some(JitRuntimeContext::new(
         caller.as_ref() as *const Module,
         &registry as *const ModuleRegistry,
         std::ptr::null(),
+        &empty_services as *const NativeServices,
     )));
     let mut registers = vec![Term::small_int(17).raw()];
 
@@ -2835,10 +2854,13 @@ fn compiled_try_catches_interpreted_exception_and_exposes_payload() {
         .unwrap();
     let mut process = Process::new(0, 233);
     process.set_current_module(caller.clone());
+    // This compiler unit deliberately uses an empty native-services bundle.
+    let empty_services = NativeServices::default();
     process.set_jit_runtime_context(Some(JitRuntimeContext::new(
         caller.as_ref() as *const Module,
         &registry as *const ModuleRegistry,
         std::ptr::null(),
+        &empty_services as *const NativeServices,
     )));
     let mut registers = vec![0; X_REGISTER_COUNT as usize + 3];
 
@@ -2891,10 +2913,13 @@ fn compiled_external_exception_without_try_propagates_status_and_frame() {
         .unwrap();
     let mut process = Process::new(0, 233);
     process.set_current_module(caller.clone());
+    // This compiler unit deliberately uses an empty native-services bundle.
+    let empty_services = NativeServices::default();
     process.set_jit_runtime_context(Some(JitRuntimeContext::new(
         caller.as_ref() as *const Module,
         &registry as *const ModuleRegistry,
         std::ptr::null(),
+        &empty_services as *const NativeServices,
     )));
     let mut registers = vec![
         Term::atom(Atom::ERROR).raw(),

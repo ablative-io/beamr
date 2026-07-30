@@ -2,7 +2,7 @@
 
 use crate::atom::Atom;
 use crate::interpreter::opcodes::closures::resolve_closure_target;
-use crate::interpreter::{ExecutionResult, run_with_registry};
+use crate::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
 use crate::jit::NativeCode;
 use crate::process::{CodePosition, Exception, ExitReason, JitRuntimeContext, JitStatus, Process};
 use crate::term::Term;
@@ -42,7 +42,7 @@ pub(crate) extern "C" fn jit_call_closure(
     if args.is_null() && arity != 0 {
         return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
     }
-    let Some((current_module, registry)) = runtime_module_registry(context) else {
+    let Some((current_module, registry, services)) = runtime_dispatch_context(context) else {
         return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
     };
 
@@ -108,7 +108,7 @@ pub(crate) extern "C" fn jit_call_closure(
             module: resolved.module.name,
             instruction_pointer,
         }));
-        return call_native_closure(process, resolved.module.as_ref(), registry, native);
+        return call_native_closure(process, resolved.module.as_ref(), registry, context, native);
     }
 
     call_interpreted_closure(
@@ -116,16 +116,18 @@ pub(crate) extern "C" fn jit_call_closure(
         current_module,
         registry,
         resolved.module.as_ref(),
+        services,
         instruction_pointer,
     )
 }
-fn runtime_module_registry(
+fn runtime_dispatch_context(
     context: JitRuntimeContext,
 ) -> Option<(
     &'static crate::module::Module,
     &'static crate::module::ModuleRegistry,
+    &'static NativeServices,
 )> {
-    if context.module.is_null() || context.registry.is_null() {
+    if context.module.is_null() || context.registry.is_null() || context.services.is_null() {
         return None;
     }
     // SAFETY: The interpreter installs pointers to borrowed dispatch state for
@@ -134,7 +136,9 @@ fn runtime_module_registry(
     let module = unsafe { &*context.module };
     // SAFETY: See `module`; the registry pointer has the same lifetime.
     let registry = unsafe { &*context.registry };
-    Some((module, registry))
+    // SAFETY: See `module`; the services pointer has the same lifetime.
+    let services = unsafe { &*context.services };
+    Some((module, registry, services))
 }
 
 fn runtime_cache(context: JitRuntimeContext) -> Option<&'static crate::jit::JitCache> {
@@ -150,13 +154,15 @@ fn call_native_closure(
     process: &mut Process,
     module: &crate::module::Module,
     registry: &crate::module::ModuleRegistry,
+    context: JitRuntimeContext,
     native: NativeCode,
 ) -> JitReturn {
     let previous_context = process.jit_runtime_context();
     process.set_jit_runtime_context(Some(JitRuntimeContext::new(
         module as *const crate::module::Module,
         registry as *const crate::module::ModuleRegistry,
-        previous_context.map_or(std::ptr::null(), |context| context.jit_cache),
+        context.jit_cache,
+        context.services,
     )));
     process.set_jit_status(None);
     let register_file = process.x_regs_mut().as_mut_ptr().cast::<u64>();
@@ -179,6 +185,7 @@ fn call_interpreted_closure(
     current_module: &crate::module::Module,
     registry: &crate::module::ModuleRegistry,
     target_module: &crate::module::Module,
+    services: &NativeServices,
     instruction_pointer: usize,
 ) -> JitReturn {
     let saved_module = process.current_module().cloned();
@@ -194,7 +201,7 @@ fn call_interpreted_closure(
         return JitReturn::yield_(JIT_YIELD_SENTINEL as u64);
     }
 
-    let result = run_with_registry(process, current_module, registry);
+    let result = run_with_native_services(process, current_module, registry, services);
     if let Some(module) = saved_module {
         process.set_current_module(module);
     }

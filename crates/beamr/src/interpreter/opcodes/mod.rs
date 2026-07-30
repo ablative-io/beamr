@@ -214,6 +214,8 @@ fn dispatch_common(
                 jit_cache: ctx.jit_cache,
                 #[cfg(feature = "jit")]
                 jit_profiling: ctx.jit_profiling,
+                #[cfg(feature = "jit")]
+                services: ctx.services,
                 registry: ctx.registry,
             },
         ),
@@ -229,6 +231,8 @@ fn dispatch_common(
                 jit_cache: ctx.jit_cache,
                 #[cfg(feature = "jit")]
                 jit_profiling: ctx.jit_profiling,
+                #[cfg(feature = "jit")]
+                services: ctx.services,
                 registry: ctx.registry,
             },
         ),
