@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rebuild the beamr-wasm browser bundle and stage all probe artifacts.
-# Zero new deps; uses the pinned wasm-bindgen 0.2.123 and OTP 29 erlc on PATH.
+# Zero new deps; asserts pinned wasm-bindgen 0.2.123 and OTP 29 erlc before use.
 set -euo pipefail
 
 HARNESS="$(cd "$(dirname "$0")" && pwd)"
@@ -16,14 +16,38 @@ git -C "$WT" diff --stat
 echo "== cargo build (wasm32-unknown-unknown, release, -p beamr-wasm) =="
 ( cd "$WT" && CARGO_TARGET_DIR="$TARGET" cargo build --release --target wasm32-unknown-unknown -p beamr-wasm --locked )
 
-echo "== wasm-bindgen (pinned 0.2.123 — verify below) =="
+echo "== wasm-bindgen (pinned 0.2.123 — asserted below) =="
 export PATH="$WBG:$PATH"
-wasm-bindgen --version
-wasm-bindgen "$TARGET/wasm32-unknown-unknown/release/beamr_wasm.wasm" \
+WBG_PATH="$(command -v wasm-bindgen)"
+WBG_VERSION_OUTPUT="$("$WBG_PATH" --version)"
+WBG_VERSION="${WBG_VERSION_OUTPUT#wasm-bindgen }"
+printf 'wasm-bindgen version: %s\n' "$WBG_VERSION"
+printf 'wasm-bindgen resolved path: %s\n' "$WBG_PATH"
+if [[ "$WBG_VERSION" != "0.2.123" ]]; then
+  printf 'wasm-bindgen pin mismatch: wanted 0.2.123, got %s, resolved path %s\n' \
+    "$WBG_VERSION" "$WBG_PATH" >&2
+  exit 1
+fi
+"$WBG_PATH" "$TARGET/wasm32-unknown-unknown/release/beamr_wasm.wasm" \
   --target web --no-typescript --out-dir "$HARNESS/web/pkg"
 
-echo "== compile workloads (OTP 29 erlc) =="
-( cd "$HARNESS/workloads" && for m in panic_probe throttle_probe strand_probe io_probe; do erlc "$m.erl"; done )
+echo "== compile workloads (OTP 29 erlc — asserted before use) =="
+ERLC_PATH="$(command -v erlc)"
+ERLC_ERL="${ERLC_PATH%/*}/erl"
+if [[ ! -x "$ERLC_ERL" ]]; then
+  printf 'cannot determine OTP version for erlc at %s: sibling erl is not executable at %s\n' \
+    "$ERLC_PATH" "$ERLC_ERL" >&2
+  exit 1
+fi
+ERLC_OTP="$("$ERLC_ERL" -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().')"
+printf 'erlc OTP major version: %s\n' "$ERLC_OTP"
+printf 'erlc resolved path: %s\n' "$ERLC_PATH"
+if [[ "$ERLC_OTP" != "29" ]]; then
+  printf 'erlc OTP pin mismatch: wanted 29, got %s, resolved path %s\n' \
+    "$ERLC_OTP" "$ERLC_PATH" >&2
+  exit 1
+fi
+( cd "$HARNESS/workloads" && for m in panic_probe throttle_probe strand_probe io_probe; do "$ERLC_PATH" "$m.erl"; done )
 
 echo "== stage artifacts into web/artifacts =="
 cp "$HARNESS"/workloads/*.beam "$HARNESS/web/artifacts/"

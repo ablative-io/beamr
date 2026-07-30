@@ -3,6 +3,8 @@
 # The five leg commands are VERBATIM from the dispatch text (= beamr
 # gates.json); this harness only sequences them and captures evidence:
 # per-leg load line, full log, raw exit code, completion marker.
+printf '%s\n' 'REFUSAL: run-battery.sh is a CLOSED RECORD of fix-wave 3aecb622 leg 1. Re-running it would overwrite real evidence from an unidentified tree. Running it requires deliberately deleting this refusal.' >&2
+exit 1
 set -u
 # Absolute worktree root: a relative cd walked one level short on the first
 # invocation and every leg redirection failed before any cargo ran (dead
