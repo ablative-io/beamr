@@ -136,6 +136,57 @@ git log -L16,16:crates/beamr-cli/Cargo.toml   # every bump, and the one miss
 Also confirm `beamr -> gleam-types` still declares its `version = "0.4.3"`
 fallback (`crates/beamr/Cargo.toml:27`).
 
+### 3a. The leftover-pin sweep is an EXPECTED-HIT LIST, never a clean zero
+
+**Added 2026-08-01 on Waffles' word.** Having edited the two caret pins above,
+the natural next move is to sweep the tree for leftover `0.16` and expect
+nothing back. **That expectation is wrong, and acting on it destroys two
+artefacts.** Two evidence repro crates pin beamr by *exact* version:
+
+```
+docs/design/beamr/briefs/evidence/aion-encode-gc-defect/repro/red/Cargo.toml:13
+    beamr = { version = "=0.16.0", features = ["json", "encode"] }
+docs/design/beamr/briefs/evidence/aion-encode-gc-defect/repro/green/Cargo.toml:12
+    beamr = { version = "=0.16.2", features = ["json", "encode"] }
+```
+
+**The exact pin is the entire point of a repro** — the pair exists to show a
+defect present at 0.16.0 and absent at 0.16.2, so bumping either one deletes the
+evidence while leaving a file that still looks like evidence. They sit outside
+`[workspace] members`, so **cargo-native tooling cannot reach them and they are
+not a hazard to the bump itself. The hazard is this verification step.**
+
+**⚠ NOTE THE SYNTAX — `"=0.16.0"`, WITH THE EQUALS INSIDE THE QUOTES.** It is
+spelled here because the first independent check of this very rider returned a
+**false zero**: the reviewer's pattern assumed `= "0.16` and an exact pin does
+not match it. The claim survived only because she established the files existed
+before believing her own zero. **A count of a spelling is not a count of a
+construct**, and this paragraph is that receipt.
+
+**⇒ DO NOT ANSWER THAT BY WRITING A CLEVERER PATTERN.** A tighter regex is the
+same failure one level up — another spelling assumption, wrong in a new way.
+**Run the loosest sweep that cannot miss, and check its output against a list:**
+
+```sh
+grep -rn --include=Cargo.toml '0\.16' . | grep -v '/target/'
+```
+
+| hit | what it is | action at the bump |
+|---|---|---|
+| `crates/beamr/Cargo.toml:3` | beamr's own version line | **→ `0.17.0`** |
+| `crates/beamr-cli/Cargo.toml:16` | caret pin `^0.16.0` | **→ `0.17.0`** (§3) |
+| `crates/beamr-wasm/Cargo.toml:18` | caret pin `^0.16.0` | **→ `0.17.0`** (§3) |
+| `…/repro/red/Cargo.toml:13` | exact pin `=0.16.0` | **LEAVE** |
+| `…/repro/green/Cargo.toml:12` | exact pin `=0.16.2` | **LEAVE** |
+| `…/repro/red/Cargo.toml:1` | comment naming the pinned version | **LEAVE** |
+| `…/repro/green/Cargo.toml:1` | comment naming the pinned version | **LEAVE** |
+
+**Driven before landing, both sides: 7 hits before the bump, 4 after.** The
+before/after pair is the control — a sweep that returns 7 after the bump means
+the edits did not land, and one that returns fewer than 4 means someone has
+edited the repro crates. **A bare "did it come back empty" check can distinguish
+neither case, which is why the target is a list and not a zero.**
+
 ## 4. Take a claim before the first upload
 
 Ruled 2026-07-29 after three parties published to crates.io concurrently
