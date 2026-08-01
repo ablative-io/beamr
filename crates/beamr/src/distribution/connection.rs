@@ -2961,4 +2961,95 @@ mod tests {
 
         accept.shutdown();
     }
+
+    /// A blocking-socket pair: `(server, client, server_addr)`. The client end
+    /// is the caller's handle on "the peer" and must be held for as long as the
+    /// link is meant to look live.
+    fn blocking_socket_pair() -> (std::net::TcpStream, std::net::TcpStream, SocketAddr) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind pair listener");
+        let addr = listener.local_addr().expect("inspect pair listener");
+        let client = std::net::TcpStream::connect(addr).expect("connect pair client");
+        let (server, _) = listener.accept().expect("accept pair server");
+        (server, client, addr)
+    }
+
+    /// Build the 8-byte data-frame header for `(control_len, payload_len)`.
+    fn frame_header(control_len: u32, payload_len: u32) -> [u8; 8] {
+        let mut header = [0_u8; 8];
+        header[..4].copy_from_slice(&control_len.to_be_bytes());
+        header[4..].copy_from_slice(&payload_len.to_be_bytes());
+        header
+    }
+
+    /// The LIVE framing path — not just the decoder — must refuse an over-cap
+    /// length header. Pre-cap the read loop allocated the peer-named byte count
+    /// and then parked in `read_exact` waiting for a body the peer need never
+    /// send, so the link stayed UP holding the buffer. The refusal is immediate,
+    /// so the bounded window below fails fast rather than hanging.
+    #[tokio::test]
+    async fn over_cap_frame_header_retires_the_live_link() {
+        use std::io::Write as _;
+
+        let manager = manager_with_resolver(Arc::new(StaticResolver::new(HashMap::new())));
+        let node = manager.inner.atom_table.intern("remote@127.0.0.1");
+        let (server, mut peer, addr) = blocking_socket_pair();
+        let connection = manager
+            .register_test_connection(node, addr, server)
+            .expect("register test connection");
+
+        // One byte over the cap, and a body this test never sends.
+        let header = frame_header(64 * 1024 * 1024, 1);
+        peer.write_all(&header).expect("write over-cap header");
+        peer.flush().expect("flush over-cap header");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !connection.is_down() {
+            assert!(
+                Instant::now() < deadline,
+                "an over-cap frame length must retire the link, not park the read \
+                 loop holding a peer-named allocation"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // Held to the very end: the link must go down on the cap, never on an
+        // EOF this test handed it.
+        drop(peer);
+    }
+
+    /// The refusal is TYPED and carries both counts — the offending total and
+    /// the cap in force — so an operator reading the failure learns the size
+    /// that was rejected and the bound that rejected it, not merely that a read
+    /// failed.
+    #[test]
+    fn over_cap_frame_header_is_a_typed_refusal_carrying_both_counts() {
+        let cap = u32::try_from(MAX_DIST_FRAME_BYTES).expect("the cap fits a u32 header field");
+
+        assert_eq!(
+            frame_buffer_for_header(frame_header(cap, 1)),
+            Err(FrameError::FrameTooLarge {
+                frame_bytes: MAX_DIST_FRAME_BYTES + 1,
+                max_frame_bytes: MAX_DIST_FRAME_BYTES,
+            }),
+            "one byte over the cap is refused, naming both counts"
+        );
+    }
+
+    /// The boundary is `>`, not `>=`: a frame of exactly the cap is legal and is
+    /// sized exactly, with the control/payload split preserved.
+    #[test]
+    fn frame_header_at_exactly_the_cap_is_accepted_and_sized_exactly() {
+        let cap = u32::try_from(MAX_DIST_FRAME_BYTES).expect("the cap fits a u32 header field");
+        let header = frame_header(1, cap - 1);
+
+        let (control_len, frame) =
+            frame_buffer_for_header(header).expect("a frame of exactly the cap is accepted");
+
+        assert_eq!(control_len, 1, "the control/payload split is preserved");
+        assert_eq!(
+            frame.len(),
+            MAX_DIST_FRAME_BYTES,
+            "the buffer is sized to the declared total, exactly"
+        );
+    }
 }
