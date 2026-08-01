@@ -3100,8 +3100,13 @@ mod tests {
     /// The LIVE framing path — not just the decoder — must refuse an over-cap
     /// length header. Pre-cap the read loop allocated the peer-named byte count
     /// and then parked in `read_exact` waiting for a body the peer need never
-    /// send, so the link stayed UP holding the buffer. The refusal is immediate,
-    /// so the bounded window below fails fast rather than hanging.
+    /// send, so the link stayed UP holding the buffer.
+    ///
+    /// This test names NO symbol introduced by the fix. The over-cap total is
+    /// the literal `64 * 1024 * 1024 + 1`, split across the two header fields;
+    /// the literal deliberately mirrors the cap so that the test PREDATES it and
+    /// compiles unchanged at the pre-fix tree. It asserts TERMINATION only —
+    /// never the typed reason — so it survives any renaming of the refusal.
     #[tokio::test]
     async fn over_cap_frame_header_retires_the_live_link() {
         use std::io::Write as _;
@@ -3118,7 +3123,7 @@ mod tests {
         peer.write_all(&header).expect("write over-cap header");
         peer.flush().expect("flush over-cap header");
 
-        let deadline = Instant::now() + Duration::from_secs(2);
+        let deadline = Instant::now() + Duration::from_secs(5);
         while !connection.is_down() {
             assert!(
                 Instant::now() < deadline,

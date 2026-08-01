@@ -1,0 +1,69 @@
+diff --git a/crates/beamr/src/distribution/connection.rs b/crates/beamr/src/distribution/connection.rs
+index dbb142e..f78da54 100644
+--- a/crates/beamr/src/distribution/connection.rs
++++ b/crates/beamr/src/distribution/connection.rs
+@@ -2961,4 +2961,64 @@ mod tests {
+ 
+         accept.shutdown();
+     }
++
++    /// A blocking-socket pair: `(server, client, server_addr)`. The client end
++    /// is the caller's handle on "the peer" and must be held for as long as the
++    /// link is meant to look live.
++    fn blocking_socket_pair() -> (std::net::TcpStream, std::net::TcpStream, SocketAddr) {
++        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind pair listener");
++        let addr = listener.local_addr().expect("inspect pair listener");
++        let client = std::net::TcpStream::connect(addr).expect("connect pair client");
++        let (server, _) = listener.accept().expect("accept pair server");
++        (server, client, addr)
++    }
++
++    /// Build the 8-byte data-frame header for `(control_len, payload_len)`.
++    fn frame_header(control_len: u32, payload_len: u32) -> [u8; 8] {
++        let mut header = [0_u8; 8];
++        header[..4].copy_from_slice(&control_len.to_be_bytes());
++        header[4..].copy_from_slice(&payload_len.to_be_bytes());
++        header
++    }
++
++    /// The LIVE framing path — not just the decoder — must refuse an over-cap
++    /// length header. Pre-cap the read loop allocated the peer-named byte count
++    /// and then parked in `read_exact` waiting for a body the peer need never
++    /// send, so the link stayed UP holding the buffer.
++    ///
++    /// This test names NO symbol introduced by the fix. The over-cap total is
++    /// the literal `64 * 1024 * 1024 + 1`, split across the two header fields;
++    /// the literal deliberately mirrors the cap so that the test PREDATES it and
++    /// compiles unchanged at the pre-fix tree. It asserts TERMINATION only —
++    /// never the typed reason — so it survives any renaming of the refusal.
++    #[tokio::test]
++    async fn over_cap_frame_header_retires_the_live_link() {
++        use std::io::Write as _;
++
++        let manager = manager_with_resolver(Arc::new(StaticResolver::new(HashMap::new())));
++        let node = manager.inner.atom_table.intern("remote@127.0.0.1");
++        let (server, mut peer, addr) = blocking_socket_pair();
++        let connection = manager
++            .register_test_connection(node, addr, server)
++            .expect("register test connection");
++
++        // One byte over the cap, and a body this test never sends.
++        let header = frame_header(64 * 1024 * 1024, 1);
++        peer.write_all(&header).expect("write over-cap header");
++        peer.flush().expect("flush over-cap header");
++
++        let deadline = Instant::now() + Duration::from_secs(5);
++        while !connection.is_down() {
++            assert!(
++                Instant::now() < deadline,
++                "an over-cap frame length must retire the link, not park the read \
++                 loop holding a peer-named allocation"
++            );
++            tokio::time::sleep(Duration::from_millis(10)).await;
++        }
++
++        // Held to the very end: the link must go down on the cap, never on an
++        // EOF this test handed it.
++        drop(peer);
++    }
+ }

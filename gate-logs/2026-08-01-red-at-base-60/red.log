@@ -1,0 +1,179 @@
+   Compiling libc v0.2.186
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling cfg-if v1.0.4
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling cranelift-srcgen v0.131.2
+   Compiling foldhash v0.2.0
+   Compiling libm v0.2.16
+   Compiling wasmtime-internal-core v44.0.2
+   Compiling hashbrown v0.16.1
+   Compiling cranelift-assembler-x64-meta v0.131.2
+   Compiling zerocopy v0.8.50
+   Compiling crossbeam-utils v0.8.21
+   Compiling log v0.4.32
+   Compiling cranelift-isle v0.131.2
+   Compiling smallvec v1.15.1
+   Compiling pkg-config v0.3.33
+   Compiling hashbrown v0.17.1
+   Compiling cranelift-codegen-shared v0.131.2
+   Compiling heck v0.5.0
+   Compiling fnv v1.0.7
+   Compiling cranelift-codegen-meta v0.131.2
+   Compiling equivalent v1.0.2
+   Compiling getrandom v0.3.4
+   Compiling target-lexicon v0.13.5
+   Compiling cranelift-assembler-x64 v0.131.2
+   Compiling allocator-api2 v0.2.21
+   Compiling bumpalo v3.20.3
+   Compiling jobserver v0.1.34
+   Compiling cc v1.2.63
+   Compiling indexmap v2.14.0
+   Compiling syn v2.0.117
+   Compiling cranelift-bitset v0.131.2
+   Compiling cranelift-entity v0.131.2
+   Compiling rustc-hash v2.1.2
+   Compiling arbitrary v1.4.2
+   Compiling getrandom v0.4.2
+   Compiling pin-project-lite v0.2.17
+   Compiling rand_core v0.10.1
+   Compiling serde_core v1.0.228
+   Compiling cranelift-bforest v0.131.2
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling regalloc2 v0.15.1
+   Compiling cranelift-control v0.131.2
+   Compiling gimli v0.33.0
+   Compiling autocfg v1.5.1
+   Compiling rustix v1.1.4
+   Compiling zstd-safe v7.2.4
+   Compiling num-traits v0.2.19
+   Compiling crossbeam-epoch v0.9.18
+   Compiling rand_core v0.9.5
+   Compiling cranelift-codegen v0.131.2
+   Compiling zerocopy-derive v0.8.50
+   Compiling errno v0.3.14
+   Compiling futures-core v0.3.32
+   Compiling once_cell v1.21.4
+   Compiling bitflags v2.13.0
+   Compiling anyhow v1.0.102
+   Compiling zmij v1.0.21
+   Compiling serde v1.0.228
+   Compiling crossbeam-deque v0.8.6
+   Compiling serde_derive v1.0.228
+   Compiling rayon-core v1.13.0
+   Compiling either v1.16.0
+   Compiling thiserror v2.0.18
+   Compiling crc32fast v1.5.0
+   Compiling serde_json v1.0.150
+   Compiling regex-syntax v0.8.10
+   Compiling parking_lot_core v0.9.12
+   Compiling camino v1.2.2
+   Compiling futures-sink v0.3.32
+   Compiling tokio-macros v2.7.0
+   Compiling thiserror-impl v2.0.18
+   Compiling futures-macro v0.3.32
+   Compiling alloca v0.4.0
+   Compiling mach2 v0.4.3
+   Compiling mio v1.2.1
+   Compiling socket2 v0.6.4
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling rand_chacha v0.9.0
+   Compiling anstyle v1.0.14
+   Compiling ciborium-io v0.2.2
+   Compiling tracing-core v0.1.36
+   Compiling plotters-backend v0.3.7
+   Compiling scopeguard v1.2.0
+   Compiling fastrand v2.4.1
+   Compiling slab v0.4.12
+   Compiling futures-task v0.3.32
+   Compiling bytes v1.11.1
+   Compiling itoa v1.0.18
+   Compiling bitflags v1.3.2
+   Compiling memchr v2.8.1
+   Compiling simd-adler32 v0.3.9
+   Compiling clap_lex v1.1.0
+   Compiling adler2 v2.0.1
+   Compiling clap_builder v4.6.0
+   Compiling region v3.0.2
+   Compiling miniz_oxide v0.8.9
+   Compiling tracing v0.1.44
+   Compiling tokio v1.52.3
+   Compiling tempfile v3.27.0
+   Compiling futures-util v0.3.32
+   Compiling plotters-svg v0.3.7
+   Compiling lock_api v0.4.14
+   Compiling ciborium-ll v0.2.2
+   Compiling rand v0.9.4
+   Compiling regex-automata v0.4.14
+   Compiling itertools v0.13.0
+   Compiling chacha20 v0.10.0
+   Compiling wasmtime-internal-jit-icache-coherence v44.0.2
+   Compiling wait-timeout v0.2.1
+   Compiling quick-error v1.2.3
+   Compiling hashbrown v0.14.5
+   Compiling cast v0.3.0
+   Compiling ecow v0.2.6
+   Compiling same-file v1.0.6
+   Compiling bit-vec v0.8.0
+   Compiling walkdir v2.5.0
+   Compiling bit-set v0.8.0
+   Compiling dashmap v6.2.1
+   Compiling gleam-types v0.4.3 (/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/base-9aaeb12/crates/gleam-types)
+   Compiling criterion-plot v0.8.2
+   Compiling regex v1.12.3
+   Compiling rusty-fork v0.3.1
+   Compiling rand v0.10.1
+   Compiling clap v4.6.1
+   Compiling opentelemetry v0.32.0
+   Compiling flate2 v1.1.9
+   Compiling tinytemplate v1.2.1
+   Compiling ciborium v0.2.2
+   Compiling rayon v1.12.0
+   Compiling futures-executor v0.3.32
+   Compiling plotters v0.3.7
+   Compiling futures-channel v0.3.32
+   Compiling rand_xorshift v0.4.0
+   Compiling crossbeam-channel v0.5.15
+   Compiling crossbeam-queue v0.3.12
+   Compiling page_size v0.6.0
+   Compiling num_cpus v1.17.0
+   Compiling md5 v0.8.0
+   Compiling anes v0.1.6
+   Compiling unarray v0.1.4
+   Compiling oorandom v11.1.5
+   Compiling percent-encoding v2.3.2
+   Compiling web-time v1.1.0
+   Compiling unicode-segmentation v1.13.3
+   Compiling proptest v1.11.0
+   Compiling opentelemetry_sdk v0.32.1
+   Compiling criterion v0.8.2
+   Compiling zstd v0.13.3
+   Compiling beamr v0.16.2 (/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/base-9aaeb12/crates/beamr)
+   Compiling cranelift-module v0.131.2
+   Compiling cranelift-native v0.131.2
+   Compiling cranelift-frontend v0.131.2
+   Compiling cranelift-jit v0.131.2
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 50.93s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test distribution::connection::tests::over_cap_frame_header_retires_the_live_link ... FAILED
+
+failures:
+
+---- distribution::connection::tests::over_cap_frame_header_retires_the_live_link stdout ----
+
+thread 'distribution::connection::tests::over_cap_frame_header_retires_the_live_link' (40344546) panicked at crates/beamr/src/distribution/connection.rs:3012:13:
+an over-cap frame length must retire the link, not park the read loop holding a peer-named allocation
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    distribution::connection::tests::over_cap_frame_header_retires_the_live_link
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1769 filtered out; finished in 5.01s
+
+error: test failed, to rerun pass `-p beamr --lib`

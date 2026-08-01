@@ -1,0 +1,18 @@
+At 9aaeb12 an over-cap 8-byte frame header parks the distribution read loop in
+`read_exact` holding a peer-named allocation and the link never goes down, so
+`over_cap_frame_header_retires_the_live_link` — which asserts only that the
+connection terminates within 5s — fails its own timeout assertion at
+connection.rs:3012 with rc=101 in 5.01s (`red.log`, `red.exit`).
+
+It compiles at base because it names no symbol the fix introduces: the over-cap
+total is the literal `64 * 1024 * 1024 + 1` split across the two header fields,
+it asserts termination and never the typed reason, and the patch carries
+base-compatible copies of the `blocking_socket_pair` and `frame_header` helpers
+and NOTHING ELSE — in particular it omits the two typed-refusal fixtures, whose
+references to `frame_buffer_for_header` and `FrameError` do not exist at base
+and whose compile error previously masked this behavioural outcome.
+
+This discharges Cally Ray's conditional red-shape ruling (msg 42f5d029): the
+defect is security-adjacent, so the evidence bar is the security bar — a
+measured artifact of record rather than a compile-failure red, which would fire
+whether or not the defect existed.
