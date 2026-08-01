@@ -116,9 +116,21 @@ bif_supported() ->
       <<"self_is_pid">> => SelfIsPid,
       <<"keys">> => maps:keys(Map)}.
 
-%% Unsupported-BIF entry: statistics/1 refuses badarg (no system_info
-%% facility — the deliberate WPORT-5 refusal); the catch shape IS the
-%% typed refusal value observable from bytecode.
+%% Unsupported-BIF entry: statistics/1 refuses badarg — the deliberate
+%% WPORT-5 refusal; the catch shape IS the typed refusal value observable
+%% from bytecode.
+%%
+%% The reason is NOT "there is no system_info facility". Since task #59 a
+%% single seam in crates/beamr/src/native/system_info_bifs.rs raises the
+%% badarg: the facility lookup and statistics_summary must BOTH yield a
+%% measurement, and an ABSENT facility and a PRESENT one answering none
+%% are the same answer — this runtime does not measure this. The wasm
+%% profile this workload runs on (all three driver legs — packaged Node
+%% single-file, browser page, dedicated Worker — are beamr-wasm) installs
+%% no facility and takes the absent branch; native always injects a
+%% facility and takes the declines-to-measure branch. Both land on the
+%% same badarg, which is why the assertion below pins the badarg and not
+%% a reason behind it.
 bif_unsupported() ->
     Caught = (catch erlang:statistics(runtime)),
     Refused = case Caught of

@@ -50,8 +50,23 @@
 //! There is NO local non-exhaustive extension: a browser-only variant IS the
 //! second model the spec forbids. A fate string outside this table is a LOUD
 //! typed error — a genuinely unmappable browser fate is a STOP routed to the
-//! native vocabulary owner (the native enum is `#[non_exhaustive]`; any new
-//! variant lands THERE, keeping one model).
+//! native vocabulary owner, and any new variant lands THERE, keeping one
+//! model.
+//!
+//! What holds that wall is NOT an attribute. `ConnectionDownReason` in
+//! `beamr::distribution::connection_events` is `pub` and is NOT
+//! `#[non_exhaustive]` — it carries a bare `derive`. Do not "restore" the
+//! attribute by analogy with its neighbours: `NodeUp`, `NodeDown` and
+//! `ConnectionEvent` in that same module ARE `#[non_exhaustive]`, which is
+//! precisely what makes the misreading easy to arrive at twice. Its absence
+//! on `ConnectionDownReason` is the STRONGER wall, not a weaker one: because
+//! the enum is exhaustive to every downstream crate, adding a native variant
+//! is a semver-visible breaking change that cannot ship quietly, and must
+//! land with this mirror updated in the same release. That coupling is
+//! enforced in the release-boundary ledger (lane #65) — an attribute would
+//! do the opposite, letting a new native variant ship past an un-updated
+//! mirror as a compatible change. Changing the attribute is #65's decision
+//! to make, not this module's.
 //!
 //! # Subscription surface (tear Ruling 1)
 //!
@@ -502,8 +517,8 @@ fn parse_reason(node: &str, reason: &str) -> Result<DownReason, JsValue> {
             &format!(
                 "down reason {reason:?} for {node} is outside the ruled mapping onto the seven \
                  native ConnectionDownReason variants; a new browser fate must be routed to the \
-                 native vocabulary owner (the native enum is #[non_exhaustive]), never invented \
-                 locally"
+                 native vocabulary owner — ConnectionDownReason is exhaustive, so a new native \
+                 variant is a semver-visible change, never a local invention"
             ),
         )
     })
