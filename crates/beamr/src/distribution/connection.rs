@@ -51,6 +51,115 @@ const DEFAULT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 /// no healthy idle link is ever spuriously downed.
 const DEFAULT_HEARTBEAT_DEADLINE: Duration = Duration::from_secs(45);
 
+/// Maximum byte length of ONE inbound distribution data frame — the
+/// `control_len + payload_len` total declared by the 8-byte frame header. A
+/// frame claiming more is refused with a typed error BEFORE anything is
+/// allocated, so the header's two peer-controlled `u32`s cannot name an
+/// arbitrary allocation.
+///
+/// # Derivation
+///
+/// 64 MiB = the 4 GiB spike allowance out of beamr's 13 GiB memory bound,
+/// divided by the 64-peer design target. The five steps, in order:
+///
+/// 1. The cap bounds ONE frame allocation.
+/// 2. Worst-case inbound receive residency is therefore `N x 64 MiB`, where `N`
+///    is the count of concurrent peers each holding a frame buffer.
+/// 3. The 13 GiB budget holds IF AND ONLY IF `N <= 64`.
+/// 4. `N` is today UNBOUNDED. [`ConnectionManager::accept_loop`]
+///    (`distribution/connection.rs:1666`) carries no semaphore, no max-peers
+///    setting, and no limit of any kind: every stream the listener accepts
+///    becomes a link.
+/// 5. The accept-bound is a separate named remedy OWNED BY LANE #64 — the DIST
+///    queue count-to-bytes conversion lane, which gains the accept site as
+///    in-scope. The bound lands there in residency BYTES, with the 64-peer
+///    figure DERIVED rather than hardcoded. **Until #64 lands, `<= 64` is this
+///    budget's DESIGN TARGET, not a property of the system.**
+///
+/// # Interacting constants, cited by value
+///
+/// `DIST_SEND_QUEUE_CAP = 1024` and `DIST_CONTROL_QUEUE_CAP = 256`
+/// (`distribution/sender.rs`) — quoted by value because changing either
+/// invalidates the arithmetic above. Two standing caveats travel with them:
+/// 1024's own justification assumes control-only traffic, yet nothing at the
+/// type level prevents a `DistOutbound::ToNode` from carrying a user payload,
+/// and `send_remote` today bypasses both queues via a direct blocking write.
+/// The send lane fans out over `Arc<[u8]>`, so a broadcast retains ONE buffer:
+/// do not double-count the send lane against this budget.
+///
+/// # The rail this restores
+///
+/// [`frame_buffer_for_header`] allocates through `try_reserve_exact` — the
+/// fallible-allocation rail that, after the framing move, survived only in
+/// `distribution/etf.rs`. Read that file's precedent precisely:
+/// **`etf.rs`'s `LengthTooLarge` is a fallible-ALLOC rail, NOT a size cap.** It
+/// reports an allocation that the allocator refused; it does not refuse a
+/// declared size. The two guards are complementary, and this path now carries
+/// both — the cap first, the fallible allocation behind it.
+///
+/// # Not caught here (narrow-rail law)
+///
+/// - Unbounded remote atom interning driven by these same frames. `safe =
+///   false` is deliberate per `DIST-CONTROL-WIRE-SPEC`.
+/// - `ConnectionEventHub.queue` is unbounded, but its elements are small
+///   fixed-size events: a count hole, not a byte hole.
+pub(crate) const MAX_DIST_FRAME_BYTES: usize = 64 * 1024 * 1024;
+
+/// Why the framing read path refused an inbound data frame.
+///
+/// Every variant is terminal for the link: a refusal happens before the frame
+/// body is consumed, so the read loop has no frame boundary left to
+/// resynchronise on and marks the connection down.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum FrameError {
+    /// `control_len + payload_len` overflowed `usize`. Reachable only where
+    /// `usize` is narrower than 64 bits (wasm32); kept unconditionally because
+    /// both header fields are entirely peer-controlled.
+    LengthOverflow,
+    /// The declared frame length exceeds [`MAX_DIST_FRAME_BYTES`].
+    FrameTooLarge {
+        /// Total bytes the header declared (`control_len + payload_len`).
+        frame_bytes: usize,
+        /// The cap in force, i.e. [`MAX_DIST_FRAME_BYTES`].
+        max_frame_bytes: usize,
+    },
+    /// The frame is within the cap, but the allocator could not supply it.
+    AllocationFailed {
+        /// Total bytes the header declared.
+        frame_bytes: usize,
+    },
+}
+
+/// Decode an 8-byte data-frame header into `(control_len, frame_buffer)`.
+///
+/// Every refusal here precedes the allocation of any peer-named byte count, in
+/// order: overflow, then the [`MAX_DIST_FRAME_BYTES`] cap, then a fallible
+/// allocation. The returned buffer is exactly `control_len + payload_len` bytes
+/// and is the caller's read target.
+fn frame_buffer_for_header(header: [u8; 8]) -> Result<(usize, Vec<u8>), FrameError> {
+    let control_len = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
+    let payload_len = u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as usize;
+    let Some(total_len) = control_len.checked_add(payload_len) else {
+        return Err(FrameError::LengthOverflow);
+    };
+    if total_len > MAX_DIST_FRAME_BYTES {
+        return Err(FrameError::FrameTooLarge {
+            frame_bytes: total_len,
+            max_frame_bytes: MAX_DIST_FRAME_BYTES,
+        });
+    }
+    // Fallible allocation behind the cap: an in-cap frame the allocator still
+    // cannot supply must surface as a refusal, never as an abort.
+    let mut frame = Vec::new();
+    frame
+        .try_reserve_exact(total_len)
+        .map_err(|_| FrameError::AllocationFailed {
+            frame_bytes: total_len,
+        })?;
+    frame.resize(total_len, 0_u8);
+    Ok((control_len, frame))
+}
+
 /// Error returned while creating an outbound distribution TCP connection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConnectError {
@@ -1464,17 +1573,24 @@ impl ConnectionManager {
                         // Any inbound bytes (data frame OR keepalive) refresh the
                         // net-tick liveness clock for this link.
                         connection.note_inbound_activity();
-                        let control_len =
-                            u32::from_be_bytes([header[0], header[1], header[2], header[3]])
-                                as usize;
-                        let payload_len =
-                            u32::from_be_bytes([header[4], header[5], header[6], header[7]])
-                                as usize;
-                        let Some(total_len) = control_len.checked_add(payload_len) else {
-                            connection.mark_down(ConnectionDownReason::ReadError);
-                            break;
+                        // The header's two lengths are peer-controlled: size,
+                        // cap and allocate in one place, before a single byte
+                        // of the declared total is committed.
+                        let (control_len, mut frame) = match frame_buffer_for_header(header) {
+                            Ok(sized) => sized,
+                            // Every framing refusal is terminal — no frame
+                            // boundary was established, so the loop has nothing
+                            // to resynchronise on. Listed variant by variant so
+                            // a future one cannot be silently swallowed here.
+                            Err(
+                                FrameError::LengthOverflow
+                                | FrameError::FrameTooLarge { .. }
+                                | FrameError::AllocationFailed { .. },
+                            ) => {
+                                connection.mark_down(ConnectionDownReason::ReadError);
+                                break;
+                            }
                         };
-                        let mut frame = vec![0_u8; total_len];
                         if read_half.read_exact(&mut frame).await.is_err() {
                             connection.mark_down(ConnectionDownReason::ReadError);
                             break;
