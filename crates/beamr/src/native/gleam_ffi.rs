@@ -201,16 +201,29 @@ pub fn bif_sleep(args: &[Term], _context: &mut ProcessContext) -> Result<Term, T
     Ok(GLEAM_NIL)
 }
 
-/// `gleam_erlang_ffi:sleep_forever/0` -- block the calling thread forever.
+/// `gleam_erlang_ffi:sleep_forever/0` -- park the process forever.
 ///
-/// Loops with `Duration::MAX`. Never returns under normal conditions.
-pub fn bif_sleep_forever(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+/// BEAM's `receive after infinity`: the process suspends, consumes no
+/// scheduler thread of either kind, and remains subject to exit signals
+/// (`exit_signal` terminates a `Waiting` process through its slot, without
+/// needing to wake it).
+///
+/// Uses the result-gated flavor (`request_await_suspend`) with no timeout, so
+/// the park is total: no timer can expire it, and plain message arrivals do
+/// NOT wake it -- `suspension_blocks_wake` gates them out because the mirror
+/// is registered `wake_on_message: false`. No completion is ever published
+/// for the returned call id, so nothing resumes the process; the per-pid
+/// suspension state is purged by `purge_suspension_state` when it exits.
+///
+/// The returned value is never observed: `call_native_entry` takes the
+/// suspend request and parks at this call instruction instead of applying a
+/// result, mirroring the `io_bifs` await protocol.
+pub fn bif_sleep_forever(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     if !args.is_empty() {
         return Err(badarg());
     }
-    loop {
-        std::thread::sleep(Duration::MAX);
-    }
+    let _call_id = context.request_await_suspend(None);
+    Ok(GLEAM_NIL)
 }
 
 /// `gleam_erlang_ffi:flush_messages/0` -- stub for mailbox flush.

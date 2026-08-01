@@ -184,7 +184,7 @@ fn sleep_badarg_wrong_arity() {
 }
 
 // ---------------------------------------------------------------------------
-// R2: sleep_forever/0 — can't test infinite sleep, just test arity validation
+// R2: sleep_forever/0 — parks the process instead of blocking the thread
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -194,6 +194,30 @@ fn sleep_forever_badarg_wrong_arity() {
         bif_sleep_forever(&[Term::small_int(1)], &mut ctx),
         Err(badarg())
     );
+}
+
+#[test]
+fn sleep_forever_requests_a_gated_suspension_with_no_timeout() {
+    let mut ctx = ProcessContext::new();
+    // Returns rather than blocking: the old body looped on
+    // `std::thread::sleep(Duration::MAX)` and this call would never come back.
+    assert_eq!(bif_sleep_forever(&[], &mut ctx), Ok(Term::atom(Atom::NIL)));
+    let suspend = ctx.take_suspend().expect("sleep_forever must suspend");
+    // No timeout: nothing can expire the park.
+    assert_eq!(suspend.timeout_ms, None);
+    // Result-gated: plain message arrivals must not wake the process, and no
+    // completion is ever published for this call id.
+    assert!(!suspend.wake_on_message);
+}
+
+#[test]
+fn sleep_forever_badarg_does_not_leave_a_suspend_request() {
+    let mut ctx = ProcessContext::new();
+    assert_eq!(
+        bif_sleep_forever(&[Term::small_int(1)], &mut ctx),
+        Err(badarg())
+    );
+    assert!(ctx.take_suspend().is_none());
 }
 
 // ---------------------------------------------------------------------------
