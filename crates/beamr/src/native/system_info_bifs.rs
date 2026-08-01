@@ -348,6 +348,30 @@ mod tests {
         }
     }
 
+    /// A facility that answers the metrics it measures but does NOT measure
+    /// statistics — the shape the native scheduler presents (no cumulative
+    /// reduction counter, no VM start-time accumulator). It states that by
+    /// leaving `statistics_summary` unimplemented, taking the trait default.
+    struct NonMeasuringSystemInfoFacility;
+
+    impl SystemInfoFacility for NonMeasuringSystemInfoFacility {
+        fn scheduler_count(&self) -> usize {
+            4
+        }
+
+        fn process_count(&self) -> usize {
+            12
+        }
+
+        fn atom_count(&self) -> usize {
+            44
+        }
+
+        fn atom_limit(&self) -> usize {
+            u32::MAX as usize
+        }
+    }
+
     fn context<'process>(
         process: &'process mut Process,
         atom_table: Arc<AtomTable>,
@@ -466,6 +490,26 @@ mod tests {
         assert_eq!(reductions.arity(), 2);
         assert_eq!(reductions.get(0).and_then(Term::as_small_int), Some(1_000));
         assert_eq!(reductions.get(1).and_then(Term::as_small_int), Some(0));
+    }
+
+    /// Task #59 (OQ3 ruled): a PRESENT facility that does not measure
+    /// statistics must be refused, not served zeros. The facility-absent
+    /// badarg alone guards a door that is always open on native, where the
+    /// facility is always injected.
+    #[test]
+    fn statistics_refuses_when_the_facility_does_not_measure() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let reductions = atom_table.intern("reductions");
+        let mut process = Process::new(1, 128);
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(atom_table));
+        context.set_system_info_facility(Some(Arc::new(NonMeasuringSystemInfoFacility)));
+        context.attach_process(&mut process, 0);
+
+        assert_eq!(
+            bif_statistics_1(&[Term::atom(reductions)], &mut context),
+            Err(badarg())
+        );
     }
 
     #[test]
