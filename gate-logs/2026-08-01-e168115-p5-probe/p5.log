@@ -1,0 +1,38 @@
+# P5 ETS big-binary probe — beamr lane #62
+# tree: e16811597c3c1bde75f0e94c204d0497be8a7e05
+# DEFAULT_HEAP_SIZE=233 words
+# DEFAULT_MAX_HEAP_WORDS=131072 words
+# table: ets:new(p5_probe_table, []) => set, protected, keypos 1
+# row: {1, Bin} — key is an immediate small int
+
+## SIZE TABLE
+label	bytes	ets_owned_words	lookup_reserve_words	over_max_capacity	insert	lookup
+64KiB	65536	8197	8199	false	OK	OK
+512KiB	524288	65541	65543	false	OK	OK
+1MiB	1048576	131077	131079	true	OK	ERR Term=Term(73) Atom=Atom(9) name="badarg"
+4MiB	4194304	524293	524295	true	OK	ERR Term=Term(73) Atom=Atom(9) name="badarg"
+
+## EXACT ERROR TERMS (verbatim, as the caller receives them)
+64KiB insert -> OK
+64KiB lookup -> OK
+64KiB direct ensure_heap_space(8199) -> OK
+512KiB insert -> OK
+512KiB lookup -> OK
+512KiB direct ensure_heap_space(65543) -> OK
+1MiB insert -> OK
+1MiB lookup -> ERR Term=Term(73) Atom=Atom(9) name="badarg"
+1MiB direct ensure_heap_space(131079) -> ERR Term=Term(73) Atom=Atom(9) name="badarg"
+4MiB insert -> OK
+4MiB lookup -> ERR Term=Term(73) Atom=Atom(9) name="badarg"
+4MiB direct ensure_heap_space(524295) -> ERR Term=Term(73) Atom=Atom(9) name="badarg"
+
+## CROSSOVER (bisection on bytes, fresh default-heap process per trial)
+bisection_bracket_low_ok_bytes=524288
+bisection_bracket_high_bytes=1048576
+bracket_low_lookup_succeeds=true
+bracket_high_lookup_succeeds=false
+largest_size_with_successful_lookup_bytes=971088
+smallest_size_with_failing_lookup_bytes=971089
+largest_ok_as_mib_fraction=0.926102
+at_largest_ok: ets_owned_words=121391 lookup_reserve_words=121393 insert=OK lookup=OK
+at_smallest_fail: ets_owned_words=121392 lookup_reserve_words=121394 insert=OK lookup=ERR Term=Term(73) Atom=Atom(9) name="badarg"

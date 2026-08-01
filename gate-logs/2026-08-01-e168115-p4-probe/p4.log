@@ -1,0 +1,71 @@
+# P4 vheap/GC-pacing probe — beamr lane #62
+# tree: e16811597c3c1bde75f0e94c204d0497be8a7e05
+# WORD_BYTES=8 PROC_BIN_WORDS=3
+# REFC threshold is 64 bytes; every workload size below exceeds it.
+# sizes=[65, 512, 4096, 65536] allocs_per_process=256
+# processes_per_config=4 retain_every=4
+# heap_configs=[("default-233", 233), ("large-32768", 32768)]
+
+## ARM A-as-is (wire_increment=false)
+arm	config	pid	total_used_w	total_cap_w	young_used_w	old_used_w	young_cap_w	old_cap_w	vheap_bytes
+A-as-is	default-233	1	219	466	75	144	233	233	0
+A-as-is	default-233	2	219	466	75	144	233	233	0
+A-as-is	default-233	3	219	466	75	144	233	233	0
+A-as-is	default-233	4	219	466	75	144	233	233	0
+A-as-is	large-32768	5	768	65536	768	0	32768	32768	0
+A-as-is	large-32768	6	768	65536	768	0	32768	32768	0
+A-as-is	large-32768	7	768	65536	768	0	32768	32768	0
+A-as-is	large-32768	8	768	65536	768	0	32768	32768	0
+
+arm	config	allocations	gc_derived	by_vheap_pressure_only	by_no_nursery_room	gc_observed
+A-as-is	default-233	1024	12	0	12	12
+A-as-is	large-32768	1024	0	0	0	0
+
+arm=A-as-is
+allocations=2048
+alloc_failures=0
+gc_collections_derived=12
+gc_collections_forced_by_vheap_pressure_only=0
+gc_collections_forced_by_no_nursery_room=12
+gc_collections_observed_corroboration=12
+end_state_residency_words=3948
+end_state_capacity_words=264008
+erlang_memory_binary_derived_bytes=0
+
+## ARM B-trigger-live (wire_increment=true)
+arm	config	pid	total_used_w	total_cap_w	young_used_w	old_used_w	young_cap_w	old_cap_w	vheap_bytes
+B-trigger-live	default-233	1	195	466	3	192	233	233	69696
+B-trigger-live	default-233	2	195	466	3	192	233	233	69696
+B-trigger-live	default-233	3	195	466	3	192	233	233	69696
+B-trigger-live	default-233	4	195	466	3	192	233	233	69696
+B-trigger-live	large-32768	5	264	65536	96	168	32768	32768	565312
+B-trigger-live	large-32768	6	264	65536	96	168	32768	32768	565312
+B-trigger-live	large-32768	7	264	65536	96	168	32768	32768	565312
+B-trigger-live	large-32768	8	264	65536	96	168	32768	32768	565312
+
+arm	config	allocations	gc_derived	by_vheap_pressure_only	by_no_nursery_room	gc_observed
+B-trigger-live	default-233	1024	716	716	0	716
+B-trigger-live	large-32768	1024	28	28	0	28
+
+arm=B-trigger-live
+allocations=2048
+alloc_failures=0
+gc_collections_derived=744
+gc_collections_forced_by_vheap_pressure_only=744
+gc_collections_forced_by_no_nursery_room=0
+gc_collections_observed_corroboration=744
+end_state_residency_words=1836
+end_state_capacity_words=264008
+erlang_memory_binary_derived_bytes=2540032
+
+## A/B TABLE
+metric	A-as-is	B-trigger-live
+allocations	2048	2048
+alloc_failures	0	0
+gc_collections_derived	12	744
+gc_collections_forced_by_vheap_pressure_only	0	744
+gc_collections_forced_by_no_nursery_room	12	0
+gc_collections_observed_corroboration	12	744
+end_state_residency_words	3948	1836
+end_state_capacity_words	264008	264008
+erlang_memory_binary_derived_bytes	0	2540032

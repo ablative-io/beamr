@@ -1,0 +1,161 @@
+P4 — vheap / GC-pacing probe                            beamr lane #62
+======================================================================
+TREE      e16811597c3c1bde75f0e94c204d0497be8a7e05  (see TREE)
+DATE      2026-08-01
+BRIEF     BRIEF-62-p4-p5-probes.md
+          sha256 d15ac15dd90b86497ec475a740f160557e4982bf939b95c3a7fca75a6b6253ce
+PROGRAM   probes/lane-62/src/p4.rs  (committed in-tree, this branch)
+RUN       command.txt ; output p4.log ; rc p4.exit (0) ; build rc build.exit (0)
+DISK      disk-boundary.log
+
+
+WHAT WAS MEASURED
+-----------------
+One deterministic binary-heavy workload, run twice. The single variable is
+whether `Process::increase_virtual_binary_heap` (`process/mod.rs:396`) is
+called when a ProcBin is placed on a process heap.
+
+  arm A  "as-is"         no increment — what production does at e168115
+  arm B  "trigger-live"  increment by the ProcBin's off-heap byte count
+
+Workload: 2048 ProcBin allocations per arm. 8 processes; two heap
+configurations (233-word default nursery x4 processes, 32768-word nursery x4)
+so the result is not an artefact of the small default heap. 256 allocations per
+process, byte sizes cycling [65, 512, 4096, 65536] — all strictly above
+`REFC_BINARY_THRESHOLD` (64, `term/shared_binary.rs:18`), so every one is a
+refcounted ProcBin. One in four is retained as a live root in an x register
+(rolling 16-slot window); the rest are dropped. No wall clock, no RNG: every
+number is a count or a word/byte total.
+
+ARM B IS SEAM-NEUTRAL. No production file was modified — `p4-production.patch`
+is 0 bytes, the literal `git --no-pager diff --no-ext-diff` output. The
+increment is made from the probe program through the already-public increment
+API. See SEAM-AMBIGUITY.md for why, and for the candidate seam list.
+
+
+HOW GC INVOCATIONS WERE COUNTED (no new production instrumentation)
+-------------------------------------------------------------------
+Derived exactly from pre-call process state, per `gc/mod.rs:135-176`:
+
+  alloc(p,w):      if !pressure(p) { if available() >= w -> return }   no GC
+                   ensure_space(p, w, 256)
+  ensure_space:    if available() >= w && !pressure(p) { return }      no GC
+                   collect_minor_with_live(...)                        GC
+
+Over the four cases of (pressure, available() >= w) a collection runs iff
+`pressure || available() < w`. The probe computes that from public accessors
+only, before each call, and lets the real `gc::alloc` do the work.
+
+A second, independent signal corroborates it: young-generation residency not
+advancing by exactly the allocation, or a region capacity changing. The two
+agree EXACTLY in both arms (12 and 12; 744 and 744).
+
+
+A/B TABLE
+---------
+metric                                        arm A      arm B      delta
+allocations                                    2048       2048          0
+alloc_failures                                    0          0          0
+gc_collections_derived                           12        744       +732  (62.0x)
+  ...forced by vheap pressure alone               0        744       +744
+  ...forced by no nursery room                   12          0        -12
+gc_collections_observed (corroboration)          12        744       +732
+end_state_residency_words                      3948       1836      -2112  (-53.5%)
+end_state_capacity_words                     264008     264008          0
+erlang:memory(binary), derived bytes              0    2540032   +2540032
+
+Per heap configuration:
+
+config          arm A collections   arm B collections   arm B / allocations
+default-233           12 / 1024          716 / 1024              69.9%
+large-32768            0 / 1024           28 / 1024               2.7%
+
+virtual_binary_heap() end state, per process:
+  arm A  0 bytes on all 8 processes
+  arm B  69,696 bytes (default-233) / 565,312 bytes (large-32768)
+
+
+WHAT THE NUMBERS SAY
+--------------------
+1. At e168115 the vheap trigger contributes NOTHING. Arm A forced zero
+   collections through `virtual_binary_pressure_exceeds_heap`; all 12 of its
+   collections were ordinary "nursery is full" events. On the 32768-word heap
+   arm A collected ZERO times in 1024 allocations. The predicate degenerates to
+   `heap_used >= heap_capacity`, exactly as the brief pins it.
+
+2. Turning the increment on multiplies GC invocations by 62x on this workload,
+   and every one of the additional collections is attributable to the pressure
+   predicate alone (`by_no_nursery_room` falls to 0 in arm B, because the extra
+   collections keep the nursery from ever filling).
+
+3. The trigger LATCHES. Once retained-or-promoted ProcBin bytes exceed the
+   heap's byte capacity the predicate is permanently true, so every subsequent
+   allocation collects. Mechanism, visible in the end state: minor collections
+   promote live ProcBins into old space, where a minor walk
+   (`gc/mod.rs:282-301`, young region only) can no longer reclaim them. On the
+   default-233 processes the end-state `virtual_binary_heap` is 69,696 bytes
+   against a total heap capacity of 466 words = 3,728 bytes — 18.7x over the
+   latch point, from 4,160 bytes of promoted 65-byte binaries plus one live
+   65,536-byte young one. 69.9% of allocations collected as a result.
+
+4. The effect is NOT an artefact of the small default nursery. On the
+   32768-word heap the count still moves from 0 to 28.
+
+5. The increment does do what a pacing counter is supposed to do: end-state
+   heap residency falls 53.5% (3948 -> 1836 words). The cost of that is item 2.
+
+6. Wiring the increment turns `erlang:memory(binary)` from a constant 0 into a
+   real number (2,540,032 bytes here).
+
+DO-NOT-ASSERT (ruled). `gc/tests.rs:604-612` names "the production ~25 GB
+residency face". Those walls pass because the test helper `gc/tests.rs:78-87`
+performs the increment production omits — confirmed at the bytes. Whether the
+production residency face is that link is NOT established, and nothing above
+claims it either way. Items 1 and 3 are offered as inputs to that question, not
+as an answer to it.
+
+
+POPULATION COVERAGE OF THE ARM-A ZERO BASELINE
+----------------------------------------------
+The brief asks whether arm A's zero covers both `erlang:memory(binary)`
+populations. Confirmed in context at e168115: it covers BOTH, by construction.
+
+`SharedState::process_heap_and_binary_words` (`scheduler/mod.rs:852-875`) sums
+over every non-exited process slot, taking one of two values:
+
+  ProcessSlot::Present(scheduled)  -> `scheduled.0.virtual_binary_heap()`   :864
+  ProcessSlot::Executing(metadata) -> `metadata.binary_heap_size`           :868
+
+The ONLY production writer of `metadata.binary_heap_size` is
+`scheduler/execution/core.rs:321`, and it writes `process.virtual_binary_heap()`.
+The other four assignment sites are test files (`teardown_admission_tests.rs:33`,
+`readiness_tests.rs:42`, `scheduler/tests.rs:2015`, `supervision_tests.rs:145`).
+There is no other feeder of the snapshot path.
+
+So the two "sources" are ONE counter at two freshness levels. Nothing in
+production increments that counter (`increase_virtual_binary_heap` has exactly
+one workspace caller, the test helper at `gc/tests.rs:86`), and the field is
+initialised to 0 (`process/mod.rs:270`) and otherwise only `saturating_sub`'d.
+Arm A's measured 0 is therefore the value for both populations, not a
+sampling of one of them.
+
+CORRECTION to the premise as handed down: the snapshot is taken at
+schedule-IN, not at deschedule. `scheduler/execution/core.rs:311-334` sits in
+`take_runnable_process`, which removes the process from its slot to run it and
+installs `ProcessSlot::Executing(metadata)`. `store_runnable_process` (`:344`)
+does not write the field at all — on deschedule the slot returns to
+`Present`, whose read is live. The staleness window is therefore the whole
+execution slice, opening when the process starts running. This does not change
+the coverage conclusion; it changes which value is stale and for how long.
+
+
+FILES
+-----
+TREE                   rev-parse of the probe tree
+command.txt            build + run commands
+build.exit             cargo build rc, captured direct
+p4.log                 probe stdout+stderr
+p4.exit                probe rc, captured direct
+p4-production.patch    0 bytes — see SEAM-AMBIGUITY.md
+SEAM-AMBIGUITY.md      the ruled STOP-AND-REPORT, with candidate seams
+disk-boundary.log      df -k /System/Volumes/Data around each cargo invocation

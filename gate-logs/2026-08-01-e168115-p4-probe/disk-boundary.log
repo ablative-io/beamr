@@ -1,0 +1,5 @@
+2026-08-01T06:41:54Z  before: cargo build -p beamr-lane62-probe (bins p4,p5)  avail_KiB=44288644  bar_KiB=41943040  over_bar=YES
+2026-08-01T06:42:34Z  after: cargo build -p beamr-lane62-probe rc=0  avail_KiB=44044564  bar_KiB=41943040  over_bar=YES
+2026-08-01T06:44:46Z  before: cargo build -p beamr-lane62-probe (p4 per-config revision)  avail_KiB=44269728  bar_KiB=41943040  over_bar=YES
+2026-08-01T06:48:16Z  before: cargo fmt --check + cargo clippy (probe crate hygiene)  avail_KiB=43002156  bar_KiB=41943040  over_bar=YES
+2026-08-01T06:49:37Z  final: all probe runs complete  avail_KiB=42716276  bar_KiB=41943040  over_bar=YES

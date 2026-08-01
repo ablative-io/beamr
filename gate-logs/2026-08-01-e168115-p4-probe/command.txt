@@ -1,0 +1,14 @@
+# p4 probe — commands, from the worktree root.
+# Tree: e16811597c3c1bde75f0e94c204d0497be8a7e05
+# CARGO_INCREMENTAL is left UNSET (incremental stays ON).
+# CARGO_TARGET_DIR is redirected out of the repo so no target/ lands in-tree.
+# Every rc below is captured DIRECT (echo $? immediately), never through a pipeline.
+
+export CARGO_TARGET_DIR=<scratchpad>/probe-target
+cd probes/lane-62
+
+cargo fmt --check                                  # rc -> fmt.exit
+cargo clippy --bins --all-targets -- -D warnings   # rc -> clippy.exit
+cargo build --bins                                 # rc -> build.exit
+
+<scratchpad>/probe-target/debug/p4                 # stdout+stderr -> p4.log ; rc -> p4.exit

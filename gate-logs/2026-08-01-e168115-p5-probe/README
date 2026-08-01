@@ -1,0 +1,132 @@
+P5 — ETS big-binary functional ceiling                  beamr lane #62
+======================================================================
+TREE      e16811597c3c1bde75f0e94c204d0497be8a7e05  (see TREE)
+DATE      2026-08-01
+BRIEF     BRIEF-62-p4-p5-probes.md
+          sha256 d15ac15dd90b86497ec475a740f160557e4982bf939b95c3a7fca75a6b6253ce
+PROGRAM   probes/lane-62/src/p5.rs  (committed in-tree, this branch)
+RUN       command.txt ; output p5.log ; rc p5.exit (0) ; build rc build.exit (0)
+DISK      disk-boundary.log
+
+
+WHAT WAS MEASURED
+-----------------
+`ets:insert/2` then `ets:lookup/2` of a row `{1, Bin}` at 64 KiB / 512 KiB /
+1 MiB / 4 MiB, on a process created with the default heap
+(`DEFAULT_HEAP_SIZE` = 233 words, so `max_capacity` = `DEFAULT_MAX_HEAP_WORDS`
+= 131,072 words). Table is `ets:new(p5_probe_table, [])` — set, protected,
+keypos 1. Fresh atom table, ETS registry and process per trial. No scheduler
+is involved; the BIFs are driven directly through `ProcessContext`. No wall
+clock, no RNG.
+
+Then a bisection on byte size, to replace the arithmetic estimate with an
+observed boundary.
+
+
+SIZE TABLE
+----------
+label    bytes      ets_owned_words  lookup_reserve_words  insert  lookup
+64KiB      65536              8197                  8199      OK      OK
+512KiB    524288             65541                 65543      OK      OK
+1MiB     1048576            131077                131079      OK      badarg
+4MiB     4194304            524293                524295      OK      badarg
+
+`ets_owned_words` is measured, not computed: the probe runs the same
+`copy_term_to_ets` that `ets:insert` runs and reads `OwnedTerm::total_words()`.
+`lookup_reserve_words` adds `list_heap_words(1)` = 2 for the one-element result
+list, matching `copy_rows_list` (`native/ets_bifs.rs:1288-1298`).
+
+
+CROSSOVER (bisection on bytes)
+------------------------------
+bracket             512 KiB lookup OK ; 1 MiB lookup FAILS
+largest OK          971,088 bytes   (948.33 KiB ; 0.926102 MiB) reserve 121,393 words
+smallest FAIL       971,089 bytes                               reserve 121,394 words
+
+
+EXACT ERROR TERM (verbatim, as the caller receives it)
+------------------------------------------------------
+    Term=Term(73) Atom=Atom(9) name="badarg"
+
+Identical at 1 MiB and 4 MiB. `Atom(9)` is `Atom::BADARG` (`atom/table.rs:23`,
+interned as "badarg" at `atom/table.rs:111`).
+
+Independent confirmation of the mechanism, with ETS removed entirely: calling
+`ProcessContext::ensure_heap_space` directly for the same word budget on a
+fresh default-heap process returns the SAME term.
+
+    64KiB   direct ensure_heap_space(8199)   -> OK
+    512KiB  direct ensure_heap_space(65543)  -> OK
+    1MiB    direct ensure_heap_space(131079) -> ERR Term=Term(73) Atom=Atom(9) name="badarg"
+    4MiB    direct ensure_heap_space(524295) -> ERR Term=Term(73) Atom=Atom(9) name="badarg"
+
+
+WHAT THE NUMBERS SAY
+--------------------
+1. IT IS A FUNCTIONAL CEILING, NOT A MEMORY COST. At 1 MiB and above the
+   lookup cannot succeed on a default-heap process, at any price. The caller
+   receives `badarg` — structurally indistinguishable from a genuinely bad
+   argument, because `ensure_heap_space` (`native/context/mod.rs:788-795`)
+   maps EVERY `gc::ensure_space` error to `Term::atom(BADARG)` through
+   `.map_err(|_| …)`. Confirmed at the bytes; that flattening is the mechanism.
+
+2. THE WRITE PATH AND THE READ PATH DISAGREE. `ets:insert` SUCCEEDED at all
+   four sizes, including 4 MiB. The row goes into the table and can never come
+   back out to a default-heap process. The asymmetry is structural: insert
+   copies into ETS-owned `Box<[u64]>` allocations (`ets/copy.rs:243-252`),
+   which are not bounded by any process heap; lookup copies back onto the
+   caller heap, which is.
+
+3. A PROCBIN DOES NOT STAY REFCOUNTED ONCE IT IS IN ETS. The argument binary is
+   allocated as a 3-word ProcBin referencing off-heap bytes, which is why
+   insert is cheap at any size. But `ets/copy.rs:151-154` routes `ProcBin`
+   through `copy_binary`, which materialises the bytes INLINE
+   (`2 + packed_word_count(len)` words, `ets/copy.rs:234-241`), and the return
+   trip does the same (`copy_binary_to_heap`, `ets/copy.rs:369-377`). Sharing
+   is lost at the table boundary in both directions.
+
+4. THE BOUNDARY IS NOT WHERE THE CONSTANT PREDICTS — IT IS LOWER. The
+   arithmetic in the brief (131,072 words) implies a ceiling near 1 MiB. The
+   observed ceiling is 121,393 words / 971,088 bytes, about 7.4% below it.
+   131,072 nursery words are UNREACHABLE.
+
+   Mechanism, read at e168115. The nursery grows on a Fibonacci-like ladder:
+   `Heap::new` seeds `previous_capacity = fibonacci_previous(233) = 144`
+   (`process/heap.rs:265-266`, `:689-698`), and `next_capacity`
+   (`process/heap.rs:508-513`) returns `current + previous`. From 233 the
+   ladder is
+
+       233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946, 17711,
+       28657, 46368, 75025, 121393, 196418, ...
+
+   `grow_to_next_capacity_with_max` (`process/heap.rs:499-506`) REFUSES a step
+   whose target exceeds `max_capacity` — it returns `HeapFull`, it does not
+   clamp to `max_capacity`. So the largest nursery a default-heap process can
+   ever reach is the largest ladder entry <= 131,072, namely 121,393; the next
+   rung, 196,418, is refused forever.
+
+   The two instruments agree exactly. Solving the reserve formula at that cap,
+   `7 + ceil(B/8) <= 121,393` gives `B <= 971,088` — the bisected boundary to
+   the byte, and the bisected reserve is 121,393 words on the nose.
+
+5. Practical restatement: on a default-heap process the ETS big-binary ceiling
+   is ~948 KiB of binary payload per looked-up row, not ~1 MiB, and it is a
+   hard functional wall reported as `badarg`.
+
+
+JUDGEMENT CALL
+--------------
+The brief's caveat says the boundary should be checked "including whether the
+boundary sits where the constant predicts". It does not. Item 4 is reported as
+a correction to the brief's arithmetic, derived from code read in context and
+corroborated by an independent bisection.
+
+
+FILES
+-----
+TREE               rev-parse of the probe tree
+command.txt        build + run commands
+build.exit         cargo build rc, captured direct
+p5.log             probe stdout+stderr
+p5.exit            probe rc, captured direct
+disk-boundary.log  df -k /System/Volumes/Data around each cargo invocation

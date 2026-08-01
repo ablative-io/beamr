@@ -1,0 +1,32 @@
+# Probe lane #62 (P4 vheap/GC-pacing, P5 ETS big-binary).
+#
+# Deliberately its OWN workspace root (`[workspace]` below) so it is NOT a
+# member of the beamr workspace: `cargo test --workspace` neither builds nor
+# counts anything here. The registered denominator (2052 workspace tests) is
+# untouched by construction.
+#
+# Feature selection mirrors `crates/beamr-wasm/Cargo.toml`: the `cooperative`
+# set is a configuration the tree already builds, and it omits
+# jit/tokio/io-uring/net, which the probes do not use and which would cost
+# several GiB of build footprint against a tight disk bar.
+[workspace]
+
+[package]
+name = "beamr-lane62-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+
+[dependencies]
+beamr = { path = "../../crates/beamr", default-features = false, features = [
+    "cooperative",
+] }
+
+[[bin]]
+name = "p4"
+path = "src/p4.rs"
+
+[[bin]]
+name = "p5"
+path = "src/p5.rs"
