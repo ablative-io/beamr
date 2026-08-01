@@ -85,10 +85,13 @@ pub trait SystemInfoFacility: Send + Sync {
     /// Maximum atom count supported by this runtime.
     fn atom_limit(&self) -> usize;
 
-    /// Runtime statistics. Defaults to zeroed stubs until the scheduler tracks totals.
-    fn statistics_summary(&self) -> StatisticsSummary {
-        StatisticsSummary::default()
-    }
+    /// Runtime statistics, or `None` when this runtime does not measure them.
+    ///
+    /// Required, deliberately: a default that returned zeroed stubs made every
+    /// impl inherit a fabrication by omission. `None` means "no measurement
+    /// exists here" and `erlang:statistics/1` must refuse; only a summary this
+    /// impl actually measured may be returned as `Some`.
+    fn statistics_summary(&self) -> Option<StatisticsSummary>;
 
     /// Approximate memory usage. Defaults to an atom-table-only system estimate.
     fn memory_summary(&self) -> MemorySummary {
@@ -139,14 +142,16 @@ pub fn bif_statistics_1(args: &[Term], context: &mut ProcessContext) -> Result<T
         return Err(badarg());
     };
     let item_name = atom_name(*item_term, context)?.to_owned();
-    // Facility-absent refusal (WPORT-5 R2 item 5, OQ3 ruled): without a
-    // system-info facility this used to fabricate an all-zero summary via
-    // `.unwrap_or_default()` and present it as genuine data. Refuse with the
-    // dominant facility-absent badarg instead; facility-backed builds are
-    // unchanged.
+    // No-measurement refusal (WPORT-5 R2 item 5 + task #59, OQ3 ruled): this
+    // BIF fabricated an all-zero summary and presented it as genuine data —
+    // first when the facility was absent, then, once that was fixed, whenever
+    // a PRESENT facility did not measure statistics (the native case, where a
+    // facility is always injected). One seam covers both: an absent facility
+    // and a `None` summary are the same answer, "this runtime does not measure
+    // this", and both refuse with the dominant badarg.
     let summary = context
         .system_info_facility()
-        .map(SystemInfoFacility::statistics_summary)
+        .and_then(SystemInfoFacility::statistics_summary)
         .ok_or_else(badarg)?;
 
     let (total, since_last) = match item_name.as_str() {
@@ -326,15 +331,15 @@ mod tests {
             u32::MAX as usize
         }
 
-        fn statistics_summary(&self) -> StatisticsSummary {
-            StatisticsSummary {
+        fn statistics_summary(&self) -> Option<StatisticsSummary> {
+            Some(StatisticsSummary {
                 wall_clock_millis: 100,
                 wall_clock_since_last_millis: 0,
                 runtime_millis: 20,
                 runtime_since_last_millis: 0,
                 reductions: 1_000,
                 reductions_since_last: 0,
-            }
+            })
         }
 
         fn memory_summary(&self) -> MemorySummary {
@@ -350,8 +355,8 @@ mod tests {
 
     /// A facility that answers the metrics it measures but does NOT measure
     /// statistics — the shape the native scheduler presents (no cumulative
-    /// reduction counter, no VM start-time accumulator). It states that by
-    /// leaving `statistics_summary` unimplemented, taking the trait default.
+    /// reduction counter, no VM start-time accumulator). It says so out loud,
+    /// with `None`.
     struct NonMeasuringSystemInfoFacility;
 
     impl SystemInfoFacility for NonMeasuringSystemInfoFacility {
@@ -369,6 +374,10 @@ mod tests {
 
         fn atom_limit(&self) -> usize {
             u32::MAX as usize
+        }
+
+        fn statistics_summary(&self) -> Option<StatisticsSummary> {
+            None
         }
     }
 

@@ -1312,6 +1312,17 @@ impl crate::native::SystemInfoFacility for SchedulerSystemInfoFacility {
         self.shared.atom_table.limit()
     }
 
+    /// Stated explicitly rather than inherited: `SharedState` carries no
+    /// cumulative reduction counter and no VM start-time accumulator. The
+    /// per-slice reduction budget is consumed and reset, never accumulated,
+    /// and `record_process_slice_metrics` (`scheduler/mod.rs`) is
+    /// feature-gated, sampled per-pid and write-only into the telemetry sink,
+    /// so it cannot back a totals BIF. When totals tracking lands, this is the
+    /// site that builds `Some`.
+    fn statistics_summary(&self) -> Option<crate::native::system_info_bifs::StatisticsSummary> {
+        None
+    }
+
     fn memory_summary(&self) -> crate::native::system_info_bifs::MemorySummary {
         self.shared.memory_summary()
     }
