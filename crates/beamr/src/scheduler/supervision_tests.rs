@@ -342,8 +342,8 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         io_registry: None,
         io_bridge: std::sync::Mutex::new(None),
         io_facility: None,
-        atom_table,
-        ets_registry: Arc::new(crate::ets::EtsRegistry::new()),
+        atom_table: Arc::clone(&atom_table),
+        ets_registry: Arc::new(crate::ets::EtsRegistry::new(atom_table)),
         pg_registry: Arc::new(crate::distribution::pg::PgRegistry::new(
             &crate::atom::AtomTable::with_common_atoms(),
         )),

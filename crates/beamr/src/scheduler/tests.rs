@@ -1444,8 +1444,8 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         io_registry: None,
         io_bridge: Mutex::new(None),
         io_facility: None,
-        atom_table,
-        ets_registry: Arc::new(crate::ets::EtsRegistry::new()),
+        atom_table: Arc::clone(&atom_table),
+        ets_registry: Arc::new(crate::ets::EtsRegistry::new(atom_table)),
         pg_registry: Arc::new(crate::distribution::pg::PgRegistry::new(
             &crate::atom::AtomTable::with_common_atoms(),
         )),
@@ -1949,8 +1949,8 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         io_registry: None,
         io_bridge: Mutex::new(None),
         io_facility: None,
-        atom_table,
-        ets_registry: Arc::new(crate::ets::EtsRegistry::new()),
+        atom_table: Arc::clone(&atom_table),
+        ets_registry: Arc::new(crate::ets::EtsRegistry::new(atom_table)),
         pg_registry: Arc::new(crate::distribution::pg::PgRegistry::new(
             &crate::atom::AtomTable::with_common_atoms(),
         )),

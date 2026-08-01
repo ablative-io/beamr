@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use dashmap::{DashMap, mapref::entry::Entry};
 
-use crate::atom::Atom;
+use crate::atom::{Atom, AtomTable};
 use crate::term::Term;
 use crate::term::boxed::Tuple;
 
@@ -42,15 +42,23 @@ pub struct EtsRegistry {
     next_table_id: AtomicU64,
     tables: DashMap<EtsTableId, Arc<dyn EtsTable>>,
     names: DashMap<Atom, EtsTableId>,
+    atom_table: Arc<AtomTable>,
 }
 
 impl EtsRegistry {
+    /// Construct a registry bound to the VM atom table.
+    ///
+    /// The handle is not decoration: `ordered_set` orders atom keys by atom
+    /// *name*, which requires resolving each atom against the same table that
+    /// interned it. A registry given any other table silently degrades atom
+    /// ordering to raw intern-index order.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(atom_table: Arc<AtomTable>) -> Self {
         Self {
             next_table_id: AtomicU64::new(1),
             tables: DashMap::new(),
             names: DashMap::new(),
+            atom_table,
         }
     }
 
@@ -62,7 +70,7 @@ impl EtsRegistry {
         }
         let id = metadata.id;
         let name = metadata.name;
-        let table = Self::table_from_metadata(metadata);
+        let table = self.table_from_metadata(metadata);
         if let Some(previous_table) = self.tables.insert(id, table)
             && let Some(previous_name) = previous_table.metadata().name
         {
@@ -89,7 +97,7 @@ impl EtsRegistry {
         }
         let id = metadata.id;
         let name = metadata.name;
-        let table = Self::table_from_metadata(metadata);
+        let table = self.table_from_metadata(metadata);
 
         let Some(name) = name else {
             self.tables.insert(id, table);
@@ -106,10 +114,13 @@ impl EtsRegistry {
         }
     }
 
-    fn table_from_metadata(metadata: EtsTableMetadata) -> Arc<dyn EtsTable> {
+    fn table_from_metadata(&self, metadata: EtsTableMetadata) -> Arc<dyn EtsTable> {
         match metadata.table_type {
             EtsTableType::Set => Arc::new(EtsSet::new(metadata)),
-            EtsTableType::OrderedSet => Arc::new(EtsOrderedSet::new(metadata)),
+            EtsTableType::OrderedSet => Arc::new(EtsOrderedSet::with_atom_table(
+                metadata,
+                Arc::clone(&self.atom_table),
+            )),
             EtsTableType::Bag => Arc::new(EtsBag::new(metadata)),
             EtsTableType::DuplicateBag => Arc::new(EtsDuplicateBag::new(metadata)),
         }
@@ -195,11 +206,11 @@ impl EtsRegistry {
     }
 }
 
-impl Default for EtsRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// `EtsRegistry` deliberately has no `Default`: a default-constructed registry
+// would have no VM atom table, and the only way to satisfy `Default` would be
+// to invent a private one — which is precisely the defect this construction
+// exists to prevent. `clippy::new_without_default` does not apply now that
+// `new` takes the table as a parameter.
 
 #[cfg(test)]
 mod tests {
@@ -211,9 +222,13 @@ mod tests {
         EtsTableMetadata::new(Some(Atom::OK), 0, table_type, Protection::Protected, 7)
     }
 
+    fn test_atom_table() -> Arc<AtomTable> {
+        Arc::new(AtomTable::with_common_atoms())
+    }
+
     #[test]
     fn registry_creates_set_table_and_round_trips_through_trait_object() {
-        let registry = EtsRegistry::new();
+        let registry = EtsRegistry::new(test_atom_table());
         let table_id = registry.create_table(metadata(EtsTableType::Set));
         let table = registry.lookup_table(table_id).expect("set table exists");
 
@@ -240,7 +255,7 @@ mod tests {
     /// two orderings are distinguishable.
     #[test]
     fn registry_ordered_set_sorts_atom_keys_by_name_from_the_vm_atom_table() {
-        let atom_table = Arc::new(crate::atom::AtomTable::with_common_atoms());
+        let atom_table = test_atom_table();
         let zebra = atom_table.intern("zebra");
         let apple = atom_table.intern("apple");
         assert!(
@@ -248,7 +263,7 @@ mod tests {
             "fixture precondition: reverse lexical intern order"
         );
 
-        let registry = EtsRegistry::new();
+        let registry = EtsRegistry::new(Arc::clone(&atom_table));
         let table_id = registry.create_table(metadata(EtsTableType::OrderedSet));
         let table = registry
             .lookup_table(table_id)
@@ -289,7 +304,7 @@ mod tests {
 
     #[test]
     fn registry_does_not_reuse_explicit_table_ids_for_implicit_tables() {
-        let registry = EtsRegistry::new();
+        let registry = EtsRegistry::new(test_atom_table());
         let mut explicit = metadata(EtsTableType::Set);
         explicit.id = 7;
 
@@ -308,7 +323,7 @@ mod tests {
 
     #[test]
     fn registry_keeps_reused_names_bound_to_latest_table_when_old_table_deleted() {
-        let registry = EtsRegistry::new();
+        let registry = EtsRegistry::new(test_atom_table());
         let first_id = registry.create_table(metadata(EtsTableType::Set));
         let second_id = registry.create_table(metadata(EtsTableType::Set));
 
@@ -335,7 +350,7 @@ mod tests {
 
     #[test]
     fn try_create_table_rejects_duplicate_names_without_rebinding() {
-        let registry = EtsRegistry::new();
+        let registry = EtsRegistry::new(test_atom_table());
         let first_id = registry
             .try_create_table(metadata(EtsTableType::Set))
             .expect("first named create succeeds");

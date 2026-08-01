@@ -1418,7 +1418,7 @@ mod tests {
     #[test]
     fn ets_new_named_public_set_returns_name_and_rejects_duplicate() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let my_table = atom_table.intern("my_table");
         let set = atom_table.intern("set");
         let public = atom_table.intern("public");
@@ -1444,7 +1444,7 @@ mod tests {
     #[test]
     fn give_away_transfers_owner_in_registry_facility_and_enforces_owner_only() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let private = atom_table.intern("private");
         let set = atom_table.intern("set");
         let mut owner_process = Process::new(1, 512);
@@ -1489,7 +1489,7 @@ mod tests {
     #[test]
     fn ets_new_unnamed_table_returns_numeric_id() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let table_name = atom_table.intern("unnamed_source_name");
         let mut process = Process::new(1, 128);
         let mut context = context(&mut process, Arc::clone(&atom_table), registry);
@@ -1503,7 +1503,7 @@ mod tests {
     #[test]
     fn ets_new_defaults_concurrency_options_to_false() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let table_name = atom_table.intern("default_concurrency_tab");
         let mut process = Process::new(1, 128);
         let mut context = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
@@ -1519,7 +1519,7 @@ mod tests {
     #[test]
     fn ets_new_parses_heir_pid_data_and_explicit_none() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let table_name = atom_table.intern("heir_tab");
         let none_table_name = atom_table.intern("heir_none_tab");
         let heir = atom_table.intern("heir");
@@ -1547,7 +1547,7 @@ mod tests {
     #[test]
     fn ets_new_parses_read_concurrency_option() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let table_name = atom_table.intern("read_concurrency_tab");
         let read_concurrency = atom_table.intern("read_concurrency");
         let mut process = Process::new(1, 128);
@@ -1565,7 +1565,7 @@ mod tests {
     #[test]
     fn ets_new_parses_write_concurrency_option() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let table_name = atom_table.intern("write_concurrency_tab");
         let write_concurrency = atom_table.intern("write_concurrency");
         let mut process = Process::new(1, 128);
@@ -1583,7 +1583,7 @@ mod tests {
     #[test]
     fn ets_new_parses_read_and_write_concurrency_together() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let table_name = atom_table.intern("both_concurrency_tab");
         let ordered_set = atom_table.intern("ordered_set");
         let read_concurrency = atom_table.intern("read_concurrency");
@@ -1610,7 +1610,7 @@ mod tests {
     #[test]
     fn ets_new_accepts_explicit_false_concurrency_options() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let table_name = atom_table.intern("false_concurrency_tab");
         let read_concurrency = atom_table.intern("read_concurrency");
         let write_concurrency = atom_table.intern("write_concurrency");
@@ -1632,7 +1632,7 @@ mod tests {
     #[test]
     fn ets_new_rejects_non_boolean_concurrency_options() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let write_table_name = atom_table.intern("auto_write_concurrency_tab");
         let read_table_name = atom_table.intern("auto_read_concurrency_tab");
         let write_concurrency = atom_table.intern("write_concurrency");
@@ -1659,7 +1659,7 @@ mod tests {
     #[test]
     fn insert_and_lookup_round_trip_for_set_bag_and_ordered_set() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let set = atom_table.intern("set");
         let bag = atom_table.intern("bag");
@@ -1700,7 +1700,7 @@ mod tests {
         }
 
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let set = atom_table.intern("set");
         let mut process = Process::new(1, 512);
@@ -1745,7 +1745,7 @@ mod tests {
     #[test]
     fn insert_accepts_proper_list_of_tuples() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let bag = atom_table.intern("bag");
         let mut process = Process::new(1, 512);
@@ -1775,7 +1775,7 @@ mod tests {
     #[test]
     fn tab2list_returns_all_inserted_tuples() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let set = atom_table.intern("set");
         let mut process = Process::new(1, 512);
@@ -1808,7 +1808,7 @@ mod tests {
     #[test]
     fn tab2list_empty_table_returns_nil_and_ordered_set_is_key_sorted() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let ordered_set = atom_table.intern("ordered_set");
         let mut process = Process::new(1, 512);
@@ -1851,7 +1851,7 @@ mod tests {
     #[test]
     fn foldl_queues_continuation_over_table_entries() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let set = atom_table.intern("set");
         let mut process = Process::new(1, 512);
@@ -1889,7 +1889,7 @@ mod tests {
     #[test]
     fn foldl_empty_table_returns_accumulator_and_rejects_wrong_fun_arity() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let set = atom_table.intern("set");
         let mut process = Process::new(1, 256);
@@ -1921,7 +1921,7 @@ mod tests {
     #[test]
     fn foldl_resume_passes_element_and_accumulator_until_done() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let ordered_set = atom_table.intern("ordered_set");
         let mut process = Process::new(1, 512);
@@ -1977,7 +1977,7 @@ mod tests {
     #[test]
     fn ordered_set_cursor_traversal_visits_keys_in_order() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let ordered_set = atom_table.intern("ordered_set");
         let end_of_table = atom_table.intern("$end_of_table");
@@ -2036,7 +2036,7 @@ mod tests {
     #[test]
     fn set_cursor_traversal_visits_all_keys_once_and_empty_tables_end() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let set = atom_table.intern("set");
         let end_of_table = atom_table.intern("$end_of_table");
@@ -2079,7 +2079,7 @@ mod tests {
     #[test]
     fn match_returns_bound_variable_lists_and_match_object_returns_tuples() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let ordered_set = atom_table.intern("ordered_set");
         let wildcard = atom_table.intern("_");
@@ -2129,7 +2129,7 @@ mod tests {
     #[test]
     fn select_runs_match_spec_with_guard() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let ordered_set = atom_table.intern("ordered_set");
         let gt = atom_table.intern(">");
@@ -2173,7 +2173,7 @@ mod tests {
     #[test]
     fn select_copies_constructed_results_to_process_heap() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let ordered_set = atom_table.intern("ordered_set");
         let first_var = atom_table.intern("$1");
@@ -2226,7 +2226,7 @@ mod tests {
     #[test]
     fn match_and_select_pagination_consumes_all_rows() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let ordered_set = atom_table.intern("ordered_set");
         let wildcard = atom_table.intern("_");
@@ -2294,7 +2294,7 @@ mod tests {
     #[test]
     fn match_delete_removes_only_matching_bag_objects() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let duplicate_bag = atom_table.intern("duplicate_bag");
         let wildcard = atom_table.intern("_");
@@ -2330,7 +2330,7 @@ mod tests {
     #[test]
     fn delete_key_and_member_round_trip() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let set = atom_table.intern("set");
         let mut process = Process::new(1, 512);
@@ -2364,7 +2364,7 @@ mod tests {
     #[test]
     fn delete_one_removes_named_table() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let named_table = atom_table.intern("named_table");
         let table_name = atom_table.intern("delete_named_tab");
@@ -2390,7 +2390,7 @@ mod tests {
     #[test]
     fn info_size_matches_inserted_entries() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let bag = atom_table.intern("bag");
         let size = atom_table.intern("size");
@@ -2419,7 +2419,7 @@ mod tests {
     #[test]
     fn info_one_returns_metadata_proplist() {
         let atom_table = Arc::new(AtomTable::with_common_atoms());
-        let registry = Arc::new(EtsRegistry::new());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
         let public = atom_table.intern("public");
         let named_table = atom_table.intern("named_table");
         let table_name = atom_table.intern("info_named_tab");

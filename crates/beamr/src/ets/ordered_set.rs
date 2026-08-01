@@ -36,7 +36,19 @@ enum OrderedSetRows {
 }
 
 impl EtsOrderedSet {
+    /// Construct a table backed by a fresh, private atom table.
+    ///
+    /// **This constructor cannot order atom keys correctly.** The table it
+    /// builds holds only the common atoms, so any atom interned by the VM
+    /// beyond those fails to resolve and comparison silently degrades to raw
+    /// intern-index order. Use [`Self::with_atom_table`] with the VM atom
+    /// table; the registry does exactly that. Retained only because the type
+    /// is publicly re-exported and removing an inherent constructor would
+    /// break out-of-tree callers.
     #[must_use]
+    #[deprecated(
+        note = "builds a private atom table that misorders atom keys; use `with_atom_table` with the VM atom table"
+    )]
     pub fn new(metadata: EtsTableMetadata) -> Self {
         Self::with_atom_table(metadata, Arc::new(AtomTable::with_common_atoms()))
     }

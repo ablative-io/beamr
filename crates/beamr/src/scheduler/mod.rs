@@ -1506,9 +1506,13 @@ impl Scheduler {
                 module_registry,
                 namespace_store,
                 next_namespace_id: AtomicU64::new(1),
-                atom_table,
+                // Cloned, not moved: the ETS registry two fields below needs
+                // the SAME table. Struct-literal fields evaluate in source
+                // order, so a shorthand `atom_table,` here would move the
+                // local out of scope before `ets_registry` could name it.
+                atom_table: Arc::clone(&atom_table),
                 local_node,
-                ets_registry: Arc::new(EtsRegistry::new()),
+                ets_registry: Arc::new(EtsRegistry::new(atom_table)),
                 pg_registry,
                 bif_registry,
                 capability_policy,
