@@ -228,6 +228,65 @@ mod tests {
         assert!(crate::term::compare::exact_eq(rows[0].root(), tuple));
     }
 
+    /// An `ordered_set` created through the registry must order atom keys by
+    /// their **names**, using the VM atom table the registry was built with.
+    ///
+    /// The two names here are deliberately outside `COMMON_ATOMS`: two common
+    /// atoms resolve identically in any table seeded by
+    /// `AtomTable::with_common_atoms`, so a fixture built from them would pass
+    /// even when the table is comparing against a private table it built for
+    /// itself. Interning in reverse lexical order ("zebra" before "apple")
+    /// makes raw intern-index order the exact opposite of name order, so the
+    /// two orderings are distinguishable.
+    #[test]
+    fn registry_ordered_set_sorts_atom_keys_by_name_from_the_vm_atom_table() {
+        let atom_table = Arc::new(crate::atom::AtomTable::with_common_atoms());
+        let zebra = atom_table.intern("zebra");
+        let apple = atom_table.intern("apple");
+        assert!(
+            zebra.index() < apple.index(),
+            "fixture precondition: reverse lexical intern order"
+        );
+
+        let registry = EtsRegistry::new();
+        let table_id = registry.create_table(metadata(EtsTableType::OrderedSet));
+        let table = registry
+            .lookup_table(table_id)
+            .expect("ordered_set table exists");
+
+        let mut zebra_heap = [0_u64; 3];
+        let zebra_row =
+            boxed::write_tuple(&mut zebra_heap, &[Term::atom(zebra), Term::small_int(1)])
+                .expect("tuple fits");
+        let mut apple_heap = [0_u64; 3];
+        let apple_row =
+            boxed::write_tuple(&mut apple_heap, &[Term::atom(apple), Term::small_int(2)])
+                .expect("tuple fits");
+
+        table.insert(zebra_row).expect("zebra row inserts");
+        table.insert(apple_row).expect("apple row inserts");
+
+        let rows = table.tab2list();
+        assert_eq!(rows.len(), 2);
+
+        let first_key = tuple_key(rows[0].root(), 1).expect("stored row has a key");
+        let first_name = first_key
+            .as_atom()
+            .and_then(|atom| atom_table.resolve(atom))
+            .expect("first key is an atom known to the VM atom table");
+        let second_key = tuple_key(rows[1].root(), 1).expect("stored row has a key");
+        let second_name = second_key
+            .as_atom()
+            .and_then(|atom| atom_table.resolve(atom))
+            .expect("second key is an atom known to the VM atom table");
+
+        assert_eq!(
+            (first_name, second_name),
+            ("apple", "zebra"),
+            "ordered_set must sort atom keys by name via the VM atom table"
+        );
+    }
+
     #[test]
     fn registry_does_not_reuse_explicit_table_ids_for_implicit_tables() {
         let registry = EtsRegistry::new();
