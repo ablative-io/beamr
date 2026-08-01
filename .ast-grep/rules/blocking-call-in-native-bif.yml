@@ -1,0 +1,17 @@
+id: blocking-call-in-native-bif
+language: Rust
+severity: error
+message: >-
+  Blocking construct inside crates/beamr/src/native/. A BIF body that blocks the
+  calling thread retires a scheduler thread unless it is registered with a
+  dirty_kind, and the dirty flag is hand-maintained in a table far from this line.
+note: >-
+  If this BIF is registered Some(DirtySchedulerKind::...), annotate the call site
+  to record that fact next to the code it licenses. If it is registered None,
+  this is the sleep_forever defect: suspend instead of blocking.
+rule:
+  any:
+    - pattern: std::thread::sleep($$$ARGS)
+    - pattern: thread::sleep($$$ARGS)
+    - pattern: std::thread::park()
+    - pattern: thread::park()

@@ -178,6 +178,10 @@ pub fn bif_timer_sleep(args: &[Term], _context: &mut ProcessContext) -> Result<T
         .and_then(|v| u64::try_from(v).ok())
         .ok_or_else(badarg)?;
 
+    // Licensed to block: this BIF is registered `Some(DirtySchedulerKind::Io)`
+    // in the stub registration table (stdlib_stubs/registrations.rs:619), so the
+    // call runs on a dirty I/O thread and retires no normal scheduler.
+    // ast-grep-ignore: blocking-call-in-native-bif
     std::thread::sleep(std::time::Duration::from_millis(ms));
 
     Ok(Term::atom(Atom::OK))

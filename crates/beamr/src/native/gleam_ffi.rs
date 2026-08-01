@@ -193,6 +193,10 @@ pub fn bif_sleep(args: &[Term], _context: &mut ProcessContext) -> Result<Term, T
     if ms < 0 {
         return Err(badarg());
     }
+    // Licensed to block: this BIF is registered `Some(DirtySchedulerKind::Io)`
+    // in `GLEAM_PROCESS_BIFS` above (gleam_ffi.rs:40-46), so the call runs on a
+    // dirty I/O thread and retires no normal scheduler.
+    // ast-grep-ignore: blocking-call-in-native-bif
     std::thread::sleep(Duration::from_millis(ms as u64));
     Ok(GLEAM_NIL)
 }
