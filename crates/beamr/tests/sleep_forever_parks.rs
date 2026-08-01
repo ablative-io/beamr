@@ -52,6 +52,12 @@ fn module(name: Atom, code: Vec<Instruction>) -> Module {
         .enumerate()
         .filter_map(|(ip, instruction)| match instruction {
             Instruction::Label { label } => Some((*label, ip)),
+            // The catch-all IS the filter, not a swallowed case. Index
+            // completeness is not load-bearing here: the only caller
+            // (`call_native_module`) emits `CallExt` + `Return`, so this index
+            // is always empty and no assertion consults it. A future
+            // label-bearing variant falling through would change nothing these
+            // tests prove. Same shape as `module.rs:607` in production.
             _ => None,
         })
         .collect();
