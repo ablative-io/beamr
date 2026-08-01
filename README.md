@@ -169,7 +169,7 @@ The Meridian integration layer (`beamr-meridian`) lives in the [yggdrasil](https
 - **JSON**: Native OTP 27 `json` module (`decode/1`, `encode/1`, `encode_integer/1`, `encode_float/1`, `encode_binary/1`) so `gleam_json` works out of the box; Term to `serde_json::Value` bridging remains behind the `json` feature flag
 - **Async NIF support**: `wake_with_result` for suspending a BEAM process and delivering results from host-side async operations
 - **JIT compilation**: Cranelift-backed JIT with hot-function profiling, an AOT code cache, and safepoint-based deoptimization
-- **Distributed Erlang**: OTP 23+ distribution handshake, control messages, remote links/monitors, and process groups
+- **Distribution (beamr-to-beamr)**: OTP-style distribution — a handshake in the OTP 23+ shape, control messages carrying OTP's opcode numbers, remote links/monitors, and process groups. beamr peers only: the framing is beamr-private and there is no EPMD, so beamr nodes do not interoperate with real Erlang/OTP nodes (the shared opcode vocabulary is a deliberate door, not a compatibility claim)
 - **ETF**: External Term Format encode/decode for term serialization and distribution
 - **ETS**: In-memory tables (`set`, `ordered_set`, `bag`) with match-spec query support
 - **io_uring I/O**: I/O backend with an io_uring ring on Linux (with a portable fallback)
