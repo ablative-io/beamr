@@ -1,0 +1,77 @@
+# BUNDLE-66 — beamr leg battery, six legs GREEN
+
+TREE      1a3f950d883ecfc18d97010c72a68f33535a8e60  (branch artemis/micro-landing-66)
+BASE      237f96c7a79fc7e199f836af309507fbad038698  (main at dispatch)
+STARTED   2026-08-02T08:02:03Z
+COMPLETE  2026-08-02T08:06:19Z
+BRIEF     BRIEF-66 r2, sha256 5535413528f783e38a1b6cd637a7a064ba7017df9981947d6985196652f1d130
+          (re-verified against the state-file record at fire time, not from memory)
+
+COMPLETE.marker records that the RUN FINISHED. It is NOT a verdict.
+The verdicts are the per-leg exit codes below, read from the .exit files.
+
+## Verdicts — 6/6 zero
+
+| leg                         | exit | figure                                            |
+|-----------------------------|------|---------------------------------------------------|
+| fmt                         | 0    | fmt.log 0 bytes                                    |
+| clippy                      | 0    | 0 compiler-messages at any level; 287 artifacts    |
+| wasm32-check                | 0    | clean; Finished dev in 21.28s                      |
+| wasm-tests                  | 0    | 80 passed / 0 failed / 0 ignored (the 80-wall)     |
+| tests                       | 0    | 72 suites, 2052 passed, 0 failed, 0 ignored        |
+| blocking-call-in-native-bif | 0    | `[]` — zero findings                               |
+
+Commands are VERBATIM from gates.json at TREE, authored once in the brief and
+recorded in command.txt. The runner is battery.sh. Per-leg rc was captured
+DIRECT via `echo $?`, never through a pipeline. stdout+stderr went to NAME.log —
+captured, never suppressed (no /dev/null, no `|| true`, no `-q`). Leg 6 was
+UNPIPED; its --json line numbers are ZERO-indexed against ast-grep's one-indexed
+human report, so a finding the human formatter prints as line 212 appears here
+as "line": 211. There were no findings, so the note is a rail, not a reading.
+
+## Denominator
+
+REGISTERED 2052, MEASURED 2052 — unchanged, zero test edits.
+
+Provenance checked at the bytes rather than assumed: 2052 was measured by lane
+#60 at cfbe0e0 (72 suites / 2052 passed / 0 failed), and
+`git diff --stat cfbe0e0 237f96c -- crates/ conformance/` is EMPTY — the three
+commits between that tree and this base are all docs/gate-artifact commits.
+`grep -c FAILED tests.log` = 0 (rc 1) and `grep -c panicked tests.log` = 0
+(rc 1), both UNPIPED.
+
+## Comment/string-only assertion
+
+The brief requires zero executable-line changes outside the :505 string literal.
+Re-asserted at the tested head over `git diff -U0 237f96c 1a3f950`:
+
+  41 changed lines = 37 comment lines (`%%` / `//!`) + 4 lines
+
+and all four non-comment lines are continuation lines of the ONE `format!`
+string literal in `parse_reason` (hunk `@@ -502,8 +517,8 @@`). ZERO executable
+lines changed. The error KIND `unmapped_down_reason` is untouched, which is what
+crates/beamr-wasm/src/connection_events_tests.rs:148 asserts via `starts_with` —
+so no test moves.
+
+## Disk gate
+
+THRESHOLD carries `41943040 KiB avail /System/Volumes/Data df -k`. A reading was
+written to boundary-<leg>.df BEFORE EVERY LEG and gated against it; a reading
+under the bar would have written HALTED-UNDER-BAR and started nothing further.
+No such file exists — all six cleared with a margin never below 14.3M KiB.
+
+| leg                         | timestamp            | avail KiB  | margin over bar |
+|-----------------------------|----------------------|------------|-----------------|
+| fmt                         | 2026-08-02T08:02:03Z | 61,756,588 | +19,813,548     |
+| clippy                      | 2026-08-02T08:02:04Z | 61,756,512 | +19,813,472     |
+| wasm32-check                | 2026-08-02T08:02:50Z | 61,141,424 | +19,198,384     |
+| wasm-tests                  | 2026-08-02T08:03:11Z | 60,888,936 | +18,945,896     |
+| tests                       | 2026-08-02T08:03:35Z | 60,327,100 | +18,384,060     |
+| blocking-call-in-native-bif | 2026-08-02T08:06:19Z | 56,284,464 | +14,341,424     |
+
+Draw across the run: 61,756,588 -> 56,284,464 = 5,472,124 KiB (~5.22 GiB)
+against a ~10 GiB price — came in under. Final footprint 5,531,012 KiB
+(~5.27 GiB) of target/, inside the 13 GiB bound (final-footprint.txt).
+
+Incremental stayed ON and target/debug/incremental was NOT deleted here — the
+measure-then-delete du bracket is coordinator teardown.

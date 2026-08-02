@@ -1,0 +1,35 @@
+Six legs, in gates.json order, commands VERBATIM from gates.json at TREE
+(1a3f950d883ecfc18d97010c72a68f33535a8e60) and authored once in BRIEF-66 r2.
+Leg NAME is the gates.json leg name; artifacts are NAME.exit / NAME.log.
+
+1. fmt
+cargo fmt --all --check
+
+2. clippy
+cargo clippy --workspace --all-targets --message-format=json --keep-going -- -D warnings
+
+3. wasm32-check
+cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked
+
+4. wasm-tests
+wasm-bindgen-test-runner --version && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked
+
+5. tests
+cargo test --workspace
+
+6. blocking-call-in-native-bif
+ast-grep scan -r .ast-grep/rules/blocking-call-in-native-bif.yml crates/beamr/src/native/ --json
+
+Leg 6 is never piped: there is no pipefail on this box, so a pipe would report
+the downstream tool's status instead of ast-grep's. Its --json line numbers are
+ZERO-indexed while ast-grep's human report is one-indexed — a finding printed as
+line 212 by the human formatter appears as "line": 211 here. Exit 0 = no
+findings; exit 1 = at least one blocking construct in a native BIF body.
+
+Runner: battery.sh in this directory. Per-leg rc captured DIRECT via `echo $?`,
+never through a pipeline. stdout+stderr captured to NAME.log — captured, never
+suppressed (no /dev/null, no `|| true`, no `-q`).
+
+Disk gate: THRESHOLD carries `41943040 KiB avail /System/Volumes/Data df -k`.
+A df reading is written to boundary-NAME.df BEFORE EVERY LEG and gated against
+it; a reading under the bar writes HALTED-UNDER-BAR and starts nothing further.

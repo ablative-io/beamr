@@ -1,0 +1,3 @@
+2026-08-02T08:02:50Z
+Filesystem   1024-blocks      Used Available Capacity  iused     ifree %iused  Mounted on
+/dev/disk3s5   971350180 878641368  61141424    94% 10144535 611414240    2%   /System/Volumes/Data
