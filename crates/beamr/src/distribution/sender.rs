@@ -201,7 +201,7 @@ pub const DIST_SEND_QUEUE_CAP: usize = 1024;
 ///
 /// Imported from [`MAX_DIST_FRAME_BYTES`] rather than minted, so the two cannot
 /// drift and the 64 MiB figure keeps its single home
-/// (`distribution/connection.rs`). Two max-size frames resident is already
+/// (`distribution/connection/`). Two max-size frames resident is already
 /// pathological for a lane that exists to carry small `pg` control traffic (see
 /// the module docs), and the multiplier keeps outbound retention well inside
 /// the envelope the receive side consumes.

@@ -38,18 +38,18 @@ const PASS_THROUGH: u8 = b'p';
 ///    is the count of concurrent peers each holding a frame buffer.
 /// 3. The 13 GiB budget holds IF AND ONLY IF `N <= 64`.
 /// 4. `N`'s accept-driven component is ENFORCED (lane #64, D5).
-///    `ConnectionManager::accept_loop` in `connection.rs` reserves
-///    `INBOUND_RESIDENCY_PER_PEER_BYTES` in `connection.rs` — one framed
+///    `ConnectionManager::accept_loop` in `connection/lifecycle.rs` reserves
+///    `INBOUND_RESIDENCY_PER_PEER_BYTES` in `connection/residency.rs` — one framed
 ///    buffer — for every stream it accepts, and DECLINES the stream when that
 ///    reservation would carry residency past
-///    `INBOUND_RESIDENCY_ENVELOPE_BYTES` in `connection.rs`. The reservation
+///    `INBOUND_RESIDENCY_ENVELOPE_BYTES` in `connection/residency.rs`. The reservation
 ///    is released when the link's read lifecycle ends. Not charged: locally
 ///    initiated outbound dials (`connect`), which this node's own resolver
 ///    enumerates rather than a peer.
 /// 5. The peer ceiling is therefore DERIVED, not configured — it is
 ///    `INBOUND_RESIDENCY_ENVELOPE_BYTES / INBOUND_RESIDENCY_PER_PEER_BYTES`,
 ///    which is 64. No peer count is written anywhere — not in this file, not
-///    in `connection.rs`'s accept path; changing either byte quantity moves
+///    in the `connection` module's accept path; changing either byte quantity moves
 ///    the ceiling with it. **`<= 64` accepted peers is now a property of the
 ///    system, enforced in residency BYTES, not merely this budget's design
 ///    target.**
@@ -77,7 +77,7 @@ const PASS_THROUGH: u8 = b'p';
 ///
 /// # The rail this restores
 ///
-/// `frame_buffer_for_header` in `connection.rs` allocates through
+/// `frame_buffer_for_header` in `connection/frame.rs` allocates through
 /// `try_reserve_exact` — the fallible-allocation rail that, after the framing
 /// move, survived only in THIS module. Read the precedent precisely:
 /// **`etf.rs`'s `LengthTooLarge` is a fallible-ALLOC rail, NOT a size cap.** It
