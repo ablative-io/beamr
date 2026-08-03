@@ -1,0 +1,1 @@
+HEAD is now at 8d31abc fix(distribution): cap read_dist_message at MAX_DIST_FRAME_BYTES, move the constant home

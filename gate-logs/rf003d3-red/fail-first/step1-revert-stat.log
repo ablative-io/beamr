@@ -1,0 +1,19 @@
+ crates/beamr/src/distribution/connection.rs        |  70 ++++++++-
+ crates/beamr/src/distribution/etf.rs               | 142 +-----------------
+ crates/beamr/src/distribution/sender.rs            |   8 +-
+ gate-logs/rf003d3-battery/PROHIBITION.md           |  73 ---------
+ .../rf003d3-battery/prohibition-1-veczero.log      |  13 --
+ gate-logs/rf003d3-battery/prohibition-1-veczero.rc |   1 -
+ .../rf003d3-battery/prohibition-2-wirealloc.log    |  27 ----
+ .../rf003d3-battery/prohibition-2-wirealloc.rc     |   1 -
+ .../rf003d3-battery/prohibition-3-capsites.log     |  41 ------
+ .../rf003d3-battery/prohibition-3-capsites.rc      |   1 -
+ gate-logs/rf003d3-impl/boundary-impl.df            |   5 -
+ gate-logs/rf003d3-impl/cargo-check-all-targets.log | 164 ---------------------
+ gate-logs/rf003d3-impl/cargo-check-all-targets.rc  |   1 -
+ gate-logs/rf003d3-impl/du-impl.txt                 |   1 -
+ gate-logs/rf003d3-impl/green-etf-tests.log         |  21 ---
+ gate-logs/rf003d3-impl/green-etf-tests.rc          |   1 -
+ gate-logs/rf003d3-impl/impl-end.utc                |   1 -
+ gate-logs/rf003d3-impl/impl-start.utc              |   1 -
+ 18 files changed, 77 insertions(+), 495 deletions(-)

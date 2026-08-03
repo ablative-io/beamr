@@ -1,0 +1,16 @@
+# Named-test list diff: registered baseline (1624f43) vs battery leg 5 (final head)
+# Method: grep '^test <name> ... ok' from each log, strip to the name, sort, comm.
+# Names are per-binary-qualified only by their module path, so a name is
+# counted once per occurrence in the sorted list; both sides are built the
+# same way, which is what makes the comparison sound.
+
+baseline named-ok lines:     2060
+leg-5   named-ok lines:     2064
+
+## ADDED (in leg 5, not in baseline)
+distribution::etf::tests::deframe_boundary_accepts_exactly_max_and_refuses_one_over
+distribution::etf::tests::deframe_refuses_extreme_header_without_allocating
+distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes
+distribution::etf::tests::deframe_zero_length_frame_does_not_hit_the_cap
+
+## REMOVED (in baseline, not in leg 5)

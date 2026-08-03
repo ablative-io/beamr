@@ -1,0 +1,5 @@
+instrument: df -k /System/Volumes/Data
+threshold: 47710208 KiB per THRESHOLD.txt
+Filesystem   1024-blocks      Used Available Capacity  iused      ifree %iused  Mounted on
+/dev/disk3s5   971350180 840294892 100536548    90% 10650531 1005365480    1%   /System/Volumes/Data
+read available KiB: 100536560

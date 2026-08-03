@@ -1,0 +1,20 @@
+diff --git a/crates/beamr/src/distribution/etf.rs b/crates/beamr/src/distribution/etf.rs
+index 6660e53..2acd78f 100644
+--- a/crates/beamr/src/distribution/etf.rs
++++ b/crates/beamr/src/distribution/etf.rs
+@@ -216,15 +216,6 @@ pub fn read_dist_message<R: Read>(stream: &mut R) -> Result<(Vec<u8>, Option<Vec
+     let mut header = [0_u8; 4];
+     read_exact_classified(stream, &mut header, Error::TruncatedHeader)?;
+     let length = usize::try_from(u32::from_be_bytes(header)).map_err(|_| Error::LengthTooLarge)?;
+-    // The cap precedes the reservation, because `try_reserve_exact` is a
+-    // fallible-ALLOC rail and not a ceiling: a size the allocator CAN satisfy
+-    // still succeeds, so without this the peer's 4 header bytes name the
+-    // allocation. Strictly `>`: a length of exactly the cap is accepted, and
+-    // `length == 0` never reaches this arm at all — it keeps its existing
+-    // empty-body path.
+-    if length > MAX_DIST_FRAME_BYTES {
+-        return Err(Error::LengthTooLarge);
+-    }
+     let mut body = Vec::new();
+     body.try_reserve_exact(length)
+         .map_err(|_| Error::LengthTooLarge)?;

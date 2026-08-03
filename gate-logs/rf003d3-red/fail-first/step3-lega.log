@@ -1,0 +1,24 @@
+   Compiling beamr v0.16.2 (/Users/tom/Developer/ablative/stack/beamr-rf003d3/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.81s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+test distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes ... FAILED
+
+failures:
+
+---- distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes stdout ----
+
+thread 'distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes' (62849425) panicked at crates/beamr/src/distribution/etf.rs:1393:9:
+assertion `left == right` failed
+  left: Err(TruncatedBody { expected: 67108865, actual: 0 })
+ right: Err(LengthTooLarge)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1783 filtered out; finished in 0.23s
+
+error: test failed, to rerun pass `-p beamr --lib`

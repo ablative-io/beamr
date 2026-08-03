@@ -1,0 +1,6 @@
+instrument: df -k /System/Volumes/Data
+threshold: 47710208 KiB (45.5 GiB, joiner-inclusive, GUARD-1 live) per THRESHOLD.txt
+Filesystem   1024-blocks      Used Available Capacity  iused     ifree %iused  Mounted on
+/dev/disk3s5   971350180 842280868  98550572    90% 10650460 985505720    1%   /System/Volumes/Data
+read available KiB: 98550572
+verdict: above threshold - fire leg 5
