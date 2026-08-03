@@ -1,0 +1,18 @@
+BOUNDARY-DISK THRESHOLD — lane #67 DIST-EXTRACT
+
+value       44,564,480 KiB   (42.5 GiB)
+noun        /System/Volumes/Data
+instrument  df -k             (never -g, never /)
+basis       floor 25 GiB
+            + #67 ceiling 10.5 GiB (joiner-inclusive)
+            + Hermes-F8-attempt-2 stop 4.0 GiB
+              (authorized-live at Cally's GO ~04:45Z)
+            + margin 3 GiB
+            = 42.5 GiB = 44,564,480 KiB
+
+RULE  df -k /System/Volumes/Data is captured to leg-N.df BEFORE every leg.
+      If the Available column falls below 44,564,480 KiB, the leg is NOT
+      fired: STOP and report raw. No leg is run on an unrecorded boundary.
+
+Per-leg boundary readings are in leg-1.df .. leg-6.df; du-final.txt records the
+worktree's own footprint after the battery.

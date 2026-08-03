@@ -1,0 +1,42 @@
+BASE 227267e1b9d69ab78a3bd4dee935497f5e2421dd:crates/beamr/src/distribution/connection.rs = 3449 lines
+
+== PART A: per-block byte-intact verification ==
+blocks declared: 82
+block diffs rc 0: 82
+
+== PART B: OLD-side coverage (base crates/beamr/src/distribution/connection.rs, 1..3449) ==
+block-covered base lines: 3329
+enumerated OLD-side edit lines: 120
+OLD-side partition EXACT: blocks + edits = 1..3449, no gap, no overlap
+
+== PART C: NEW-side coverage (crates/beamr/src/distribution/connection/) ==
+  dial.rs: 104 lines = 93 block-moved + 11 enumerated
+  frame.rs: 64 lines = 58 block-moved + 6 enumerated
+  lifecycle.rs: 273 lines = 243 block-moved + 30 enumerated
+  link.rs: 412 lines = 364 block-moved + 48 enumerated
+  mod.rs: 999 lines = 936 block-moved + 63 enumerated
+  residency.rs: 111 lines = 87 block-moved + 24 enumerated
+  tests.rs: 1559 lines = 1548 block-moved + 11 enumerated
+
+== PART D: deictic consumers (etf.rs, sender.rs) ==
+  etf.rs: 10 changed lines in the working diff, 10 enumerated
+  sender.rs: 2 changed lines in the working diff, 2 enumerated
+
+== PART E: no other path changed vs 227267e1b9d69ab78a3bd4dee935497f5e2421dd ==
+D	crates/beamr/src/distribution/connection.rs
+A	crates/beamr/src/distribution/connection/dial.rs
+A	crates/beamr/src/distribution/connection/frame.rs
+A	crates/beamr/src/distribution/connection/lifecycle.rs
+A	crates/beamr/src/distribution/connection/link.rs
+A	crates/beamr/src/distribution/connection/mod.rs
+A	crates/beamr/src/distribution/connection/residency.rs
+A	crates/beamr/src/distribution/connection/tests.rs
+M	crates/beamr/src/distribution/etf.rs
+M	crates/beamr/src/distribution/sender.rs
+  confined to: crates/beamr/src/distribution/connection.rs (deleted), crates/beamr/src/distribution/connection/, etf.rs, sender.rs, gate-logs/67-dist-extract/
+
+CENSUS: REMAINDER EMPTY
+  full-diff 227267e1b9d69ab78a3bd4dee935497f5e2421dd..HEAD
+    = 82 byte-intact block moves (all rc 0)
+    + 325 enumerated edit lines
+    + nothing else

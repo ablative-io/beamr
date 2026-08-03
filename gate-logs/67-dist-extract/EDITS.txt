@@ -1,0 +1,325 @@
+E-a	OLD	connection.rs	2	
+E-a	OLD	connection.rs	3	use std::fmt;
+E-a	OLD	connection.rs	4	use std::io;
+E-a	OLD	connection.rs	5	use std::net::SocketAddr;
+E-a	OLD	connection.rs	6	#[cfg(unix)]
+E-a	OLD	connection.rs	7	use std::os::fd::OwnedFd;
+E-a	OLD	connection.rs	8	#[cfg(unix)]
+E-a	OLD	connection.rs	9	use std::sync::Mutex as StdMutex;
+E-a	OLD	connection.rs	10	use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+E-a	OLD	connection.rs	11	use std::sync::{Arc, OnceLock, RwLock, Weak};
+E-a	OLD	connection.rs	12	use std::time::{Duration, Instant};
+E-a	OLD	connection.rs	13	
+E-a	OLD	connection.rs	14	use dashmap::DashMap;
+E-a	OLD	connection.rs	15	use tokio::io::{AsyncReadExt, AsyncWriteExt};
+E-a	OLD	connection.rs	16	use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+E-a	OLD	connection.rs	17	use tokio::net::{TcpListener, TcpStream};
+E-a	OLD	connection.rs	18	use tokio::runtime::Handle;
+E-a	OLD	connection.rs	19	use tokio::sync::{Mutex, Notify};
+E-a	OLD	connection.rs	20	use tokio::task::JoinHandle;
+E-a	OLD	connection.rs	21	
+E-a	OLD	connection.rs	22	use crate::atom::{Atom, AtomTable};
+E-a	OLD	connection.rs	23	use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
+E-a	OLD	connection.rs	24	use crate::distribution::handshake::{
+E-a	OLD	connection.rs	25	    HandshakeError, HandshakeNode, SimultaneousDecision, initiate_handshake_async,
+E-a	OLD	connection.rs	26	    respond_handshake_async_with,
+E-a	OLD	connection.rs	27	};
+E-a	OLD	connection.rs	28	use crate::distribution::resolver::NodeResolver;
+E-a	OLD	connection.rs	29	
+E-a	OLD	connection.rs	31	
+E-a	OLD	connection.rs	36	
+E-b	OLD	connection.rs	43	const KEEPALIVE_FRAME: [u8; 8] = [0_u8; 8];
+E-a	OLD	connection.rs	44	
+E-a	OLD	connection.rs	48	
+E-a	OLD	connection.rs	54	
+E-c	OLD	connection.rs	60	/// and this module is compiled for wasm32 (see [`FrameError::LengthOverflow`]).
+E-b	OLD	connection.rs	61	const INBOUND_RESIDENCY_ENVELOPE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+E-a	OLD	connection.rs	62	
+E-c	OLD	connection.rs	70	/// configured as a count. No peer count is written anywhere in this file.
+E-b	OLD	connection.rs	71	const INBOUND_RESIDENCY_PER_PEER_BYTES: u64 = MAX_DIST_FRAME_BYTES as u64;
+E-a	OLD	connection.rs	72	
+E-c	OLD	connection.rs	77	/// alive — [`DistConnection::manager`] is already `Weak` for the same reason,
+E-b	OLD	connection.rs	80	struct InboundResidency {
+E-b	OLD	connection.rs	82	    charged: AtomicU64,
+E-b	OLD	connection.rs	91	    refused: AtomicU64,
+E-a	OLD	connection.rs	93	
+E-b	OLD	connection.rs	95	    fn new() -> Self {
+E-b	OLD	connection.rs	109	    fn try_admit(self: &Arc<Self>) -> Option<InboundAdmissionPermit> {
+E-a	OLD	connection.rs	136	
+E-b	OLD	connection.rs	146	struct InboundAdmissionPermit {
+E-a	OLD	connection.rs	150	
+E-a	OLD	connection.rs	158	
+E-a	OLD	connection.rs	183	
+E-b	OLD	connection.rs	190	fn frame_buffer_for_header(header: [u8; 8]) -> Result<(usize, Vec<u8>), FrameError> {
+E-a	OLD	connection.rs	213	
+E-a	OLD	connection.rs	246	
+E-a	OLD	connection.rs	248	
+E-a	OLD	connection.rs	252	
+E-a	OLD	connection.rs	254	
+E-a	OLD	connection.rs	281	
+E-b	OLD	connection.rs	284	    node: Atom,
+E-b	OLD	connection.rs	306	    down: AtomicBool,
+E-b	OLD	connection.rs	319	    shutdown: Arc<Notify>,
+E-b	OLD	connection.rs	324	    direction: LinkDirection,
+E-b	OLD	connection.rs	335	    down_reason: OnceLock<ConnectionDownReason>,
+E-a	OLD	connection.rs	337	
+E-b	OLD	connection.rs	343	struct PreparedSocket {
+E-a	OLD	connection.rs	350	
+E-b	OLD	connection.rs	352	    fn prepare(stream: TcpStream) -> io::Result<Self> {
+E-a	OLD	connection.rs	366	
+E-a	OLD	connection.rs	374	
+E-b	OLD	connection.rs	378	    fn new(
+E-b	OLD	connection.rs	425	    fn note_inbound_activity(&self) {
+E-b	OLD	connection.rs	431	    fn inbound_idle_for(&self, deadline: Duration) -> bool {
+E-b	OLD	connection.rs	441	    fn mark_down_heartbeat_timeout(self: &Arc<Self>) {
+E-b	OLD	connection.rs	539	    fn mark_down(self: &Arc<Self>, reason: ConnectionDownReason) {
+E-a	OLD	connection.rs	577	
+E-b	OLD	connection.rs	580	    local_addr: SocketAddr,
+E-b	OLD	connection.rs	581	    shutdown: Arc<Notify>,
+E-b	OLD	connection.rs	582	    task: JoinHandle<()>,
+E-a	OLD	connection.rs	584	
+E-a	OLD	connection.rs	603	
+E-a	OLD	connection.rs	610	
+E-a	OLD	connection.rs	673	
+E-a	OLD	connection.rs	764	
+E-a	OLD	connection.rs	801	
+E-a	OLD	connection.rs	812	
+E-a	OLD	connection.rs	847	
+E-a	OLD	connection.rs	964	
+E-a	OLD	connection.rs	1064	
+E-a	OLD	connection.rs	1097	
+E-c	OLD	connection.rs	1120	    /// single framed buffer, [`MAX_DIST_FRAME_BYTES`].
+E-a	OLD	connection.rs	1151	
+E-a	OLD	connection.rs	1235	
+E-a	OLD	connection.rs	1284	
+E-a	OLD	connection.rs	1378	
+E-a	OLD	connection.rs	1570	
+E-a	OLD	connection.rs	1593	
+E-a	OLD	connection.rs	1635	
+E-b	OLD	connection.rs	1636	    fn spawn_read_lifecycle(
+E-a	OLD	connection.rs	1736	
+E-a	OLD	connection.rs	1774	
+E-c	OLD	connection.rs	1777	    /// Every accepted stream reserves [`INBOUND_RESIDENCY_PER_PEER_BYTES`] —
+E-c	OLD	connection.rs	1780	    /// inbound residency past [`INBOUND_RESIDENCY_ENVELOPE_BYTES`], the stream
+E-c	OLD	connection.rs	1797	    /// [`MAX_DIST_FRAME_BYTES`]'s derivation names as unbounded. Locally
+E-b	OLD	connection.rs	1800	    async fn accept_loop(&self, listener: TcpListener, shutdown: Arc<Notify>) {
+E-a	OLD	connection.rs	1822	
+E-c	OLD	connection.rs	1826	    /// [`ConnectionManagerInner::spawn_lifecycle`] — the same mechanism the
+E-a	OLD	connection.rs	1889	
+E-a	OLD	connection.rs	1890	#[cfg(test)]
+E-a	OLD	connection.rs	1891	mod tests {
+E-a	OLD	connection.rs	1903	use crate::distribution::handshake::HandshakeNode;
+E-f	OLD	connection.rs	2171	    let manager =
+E-f	OLD	connection.rs	2172	        manager_with_resolver(resolver).with_handshake_timeout(Duration::from_secs(1));
+E-f	OLD	connection.rs	2176	        tokio::time::timeout(Duration::from_secs(15), manager.connect("silent@127.0.0.1"))
+E-f	OLD	connection.rs	2177	            .await;
+E-f	OLD	connection.rs	2421	    let client_node = HandshakeNode::with_default_flags("alpha@127.0.0.1", 5)
+E-f	OLD	connection.rs	2422	        .expect("client node name valid");
+E-f	OLD	connection.rs	2451	        let local = HandshakeNode::with_default_flags("peer@127.0.0.1", 9)
+E-f	OLD	connection.rs	2452	            .expect("responder node valid");
+E-a	OLD	connection.rs	3449	}
+E-a	NEW	dial.rs	1	use std::io;
+E-a	NEW	dial.rs	2	use std::sync::Arc;
+E-a	NEW	dial.rs	3	
+E-a	NEW	dial.rs	4	use tokio::net::TcpStream;
+E-a	NEW	dial.rs	5	
+E-a	NEW	dial.rs	6	use crate::distribution::handshake::{HandshakeError, initiate_handshake_async};
+E-a	NEW	dial.rs	7	
+E-a	NEW	dial.rs	8	use super::{ConnectError, ConnectingGuard, ConnectionManager, DistConnection, LinkDirection};
+E-a	NEW	dial.rs	9	
+E-a	NEW	dial.rs	10	impl ConnectionManager {
+E-a	NEW	dial.rs	104	}
+E-a	NEW	frame.rs	1	use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
+E-a	NEW	frame.rs	2	
+E-b	NEW	frame.rs	9	pub(super) const KEEPALIVE_FRAME: [u8; 8] = [0_u8; 8];
+E-a	NEW	frame.rs	10	
+E-a	NEW	frame.rs	35	
+E-b	NEW	frame.rs	42	pub(super) fn frame_buffer_for_header(header: [u8; 8]) -> Result<(usize, Vec<u8>), FrameError> {
+E-a	NEW	lifecycle.rs	1	use std::io;
+E-a	NEW	lifecycle.rs	2	use std::net::SocketAddr;
+E-a	NEW	lifecycle.rs	3	use std::sync::Arc;
+E-a	NEW	lifecycle.rs	4	use std::sync::atomic::Ordering;
+E-a	NEW	lifecycle.rs	5	
+E-a	NEW	lifecycle.rs	6	use tokio::io::AsyncReadExt;
+E-a	NEW	lifecycle.rs	7	use tokio::net::tcp::OwnedReadHalf;
+E-a	NEW	lifecycle.rs	8	use tokio::net::{TcpListener, TcpStream};
+E-a	NEW	lifecycle.rs	9	use tokio::sync::Notify;
+E-a	NEW	lifecycle.rs	10	
+E-a	NEW	lifecycle.rs	11	use crate::distribution::handshake::respond_handshake_async_with;
+E-a	NEW	lifecycle.rs	12	
+E-a	NEW	lifecycle.rs	13	use super::frame::{KEEPALIVE_FRAME, frame_buffer_for_header};
+E-a	NEW	lifecycle.rs	14	use super::residency::InboundAdmissionPermit;
+E-a	NEW	lifecycle.rs	15	use super::{ConnectionDownReason, ConnectionManager, DistConnection, FrameError, LinkDirection};
+E-a	NEW	lifecycle.rs	16	
+E-a	NEW	lifecycle.rs	17	impl ConnectionManager {
+E-b	NEW	lifecycle.rs	18	    pub(super) fn spawn_read_lifecycle(
+E-a	NEW	lifecycle.rs	118	
+E-a	NEW	lifecycle.rs	156	
+E-c	NEW	lifecycle.rs	159	    /// Every accepted stream reserves
+E-c	NEW	lifecycle.rs	160	    /// [`INBOUND_RESIDENCY_PER_PEER_BYTES`](super::residency::INBOUND_RESIDENCY_PER_PEER_BYTES) —
+E-c	NEW	lifecycle.rs	163	    /// inbound residency past
+E-c	NEW	lifecycle.rs	164	    /// [`INBOUND_RESIDENCY_ENVELOPE_BYTES`](super::residency::INBOUND_RESIDENCY_ENVELOPE_BYTES), the stream
+E-c	NEW	lifecycle.rs	181	    /// [`MAX_DIST_FRAME_BYTES`](crate::distribution::etf::MAX_DIST_FRAME_BYTES)'s
+E-c	NEW	lifecycle.rs	182	    /// derivation names as unbounded. Locally
+E-b	NEW	lifecycle.rs	185	    pub(super) async fn accept_loop(&self, listener: TcpListener, shutdown: Arc<Notify>) {
+E-a	NEW	lifecycle.rs	207	
+E-c	NEW	lifecycle.rs	211	    /// [`ConnectionManagerInner::spawn_lifecycle`](super::ConnectionManagerInner::spawn_lifecycle) — the same mechanism the
+E-a	NEW	lifecycle.rs	273	}
+E-a	NEW	link.rs	1	use std::fmt;
+E-a	NEW	link.rs	2	use std::io;
+E-a	NEW	link.rs	3	use std::net::SocketAddr;
+E-a	NEW	link.rs	4	#[cfg(unix)]
+E-a	NEW	link.rs	5	use std::os::fd::OwnedFd;
+E-a	NEW	link.rs	6	#[cfg(unix)]
+E-a	NEW	link.rs	7	use std::sync::Mutex as StdMutex;
+E-a	NEW	link.rs	8	use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+E-a	NEW	link.rs	9	use std::sync::{Arc, OnceLock, Weak};
+E-a	NEW	link.rs	10	use std::time::{Duration, Instant};
+E-a	NEW	link.rs	11	
+E-a	NEW	link.rs	12	use tokio::io::AsyncWriteExt;
+E-a	NEW	link.rs	13	use tokio::net::TcpStream;
+E-a	NEW	link.rs	14	use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+E-a	NEW	link.rs	15	use tokio::sync::{Mutex, Notify};
+E-a	NEW	link.rs	16	use tokio::task::JoinHandle;
+E-a	NEW	link.rs	17	
+E-a	NEW	link.rs	18	use crate::atom::Atom;
+E-a	NEW	link.rs	19	
+E-a	NEW	link.rs	20	use super::{
+E-a	NEW	link.rs	21	    ConnectionDownReason, ConnectionGeneration, ConnectionManagerInner, DEFAULT_HEARTBEAT_DEADLINE,
+E-a	NEW	link.rs	22	    DEFAULT_HEARTBEAT_INTERVAL, LinkDirection,
+E-a	NEW	link.rs	23	};
+E-a	NEW	link.rs	24	
+E-a	NEW	link.rs	57	
+E-a	NEW	link.rs	84	
+E-b	NEW	link.rs	87	    pub(super) node: Atom,
+E-b	NEW	link.rs	109	    pub(super) down: AtomicBool,
+E-b	NEW	link.rs	122	    pub(super) shutdown: Arc<Notify>,
+E-b	NEW	link.rs	127	    pub(super) direction: LinkDirection,
+E-b	NEW	link.rs	138	    pub(super) down_reason: OnceLock<ConnectionDownReason>,
+E-a	NEW	link.rs	140	
+E-b	NEW	link.rs	146	pub(super) struct PreparedSocket {
+E-a	NEW	link.rs	153	
+E-b	NEW	link.rs	155	    pub(super) fn prepare(stream: TcpStream) -> io::Result<Self> {
+E-a	NEW	link.rs	169	
+E-a	NEW	link.rs	177	
+E-b	NEW	link.rs	181	    pub(super) fn new(
+E-b	NEW	link.rs	228	    pub(super) fn note_inbound_activity(&self) {
+E-b	NEW	link.rs	234	    pub(super) fn inbound_idle_for(&self, deadline: Duration) -> bool {
+E-b	NEW	link.rs	244	    pub(super) fn mark_down_heartbeat_timeout(self: &Arc<Self>) {
+E-b	NEW	link.rs	342	    pub(super) fn mark_down(self: &Arc<Self>, reason: ConnectionDownReason) {
+E-a	NEW	link.rs	380	
+E-b	NEW	link.rs	383	    pub(super) local_addr: SocketAddr,
+E-b	NEW	link.rs	384	    pub(super) shutdown: Arc<Notify>,
+E-b	NEW	link.rs	385	    pub(super) task: JoinHandle<()>,
+E-a	NEW	link.rs	387	
+E-a	NEW	link.rs	406	
+E-a	NEW	mod.rs	2	//!
+E-a	NEW	mod.rs	3	//! The install/dedup/reap core (LinkDirection, ConnectingGuard,
+E-a	NEW	mod.rs	4	//! canonical_direction, decide_inbound_status, connection_down,
+E-a	NEW	mod.rs	5	//! register_connection, build_connection) DELIBERATELY stays whole in mod.rs:
+E-a	NEW	mod.rs	6	//! its dashmap entry-guard ordering prose, the Arc::ptr_eq reap guard, and the
+E-a	NEW	mod.rs	7	//! mark_down<->connection_down pair are load-bearing side-by-side reading —
+E-a	NEW	mod.rs	8	//! this is a measured decision (#67 ground, dirtiest-seam), not an oversight;
+E-a	NEW	mod.rs	9	//! do not split it without re-measuring the coupling.
+E-a	NEW	mod.rs	10	
+E-a	NEW	mod.rs	11	mod dial;
+E-a	NEW	mod.rs	12	mod frame;
+E-a	NEW	mod.rs	13	mod lifecycle;
+E-a	NEW	mod.rs	14	mod link;
+E-a	NEW	mod.rs	15	mod residency;
+E-a	NEW	mod.rs	16	#[cfg(test)]
+E-a	NEW	mod.rs	17	mod tests;
+E-a	NEW	mod.rs	18	
+E-a	NEW	mod.rs	19	use std::io;
+E-a	NEW	mod.rs	20	use std::net::SocketAddr;
+E-a	NEW	mod.rs	21	use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+E-a	NEW	mod.rs	22	use std::sync::{Arc, RwLock};
+E-a	NEW	mod.rs	23	use std::time::Duration;
+E-a	NEW	mod.rs	24	
+E-a	NEW	mod.rs	25	use dashmap::DashMap;
+E-a	NEW	mod.rs	26	use tokio::net::tcp::OwnedReadHalf;
+E-a	NEW	mod.rs	27	use tokio::net::{TcpListener, TcpStream};
+E-a	NEW	mod.rs	28	use tokio::runtime::Handle;
+E-a	NEW	mod.rs	29	use tokio::sync::Notify;
+E-a	NEW	mod.rs	30	use tokio::task::JoinHandle;
+E-a	NEW	mod.rs	31	
+E-a	NEW	mod.rs	32	use crate::atom::{Atom, AtomTable};
+E-a	NEW	mod.rs	33	use crate::distribution::handshake::{HandshakeNode, SimultaneousDecision};
+E-a	NEW	mod.rs	34	use crate::distribution::resolver::NodeResolver;
+E-a	NEW	mod.rs	35	
+E-a	NEW	mod.rs	36	pub(crate) use frame::FrameError;
+E-a	NEW	mod.rs	37	#[cfg(all(test, unix))]
+E-a	NEW	mod.rs	38	pub(crate) use link::FAIL_TEARDOWN_DUP_FOR_TEST;
+E-a	NEW	mod.rs	39	use link::PreparedSocket;
+E-a	NEW	mod.rs	40	pub use link::{AcceptHandle, ConnectError, DistConnection, HeartbeatConfig};
+E-a	NEW	mod.rs	41	use residency::{InboundAdmissionPermit, InboundResidency};
+E-a	NEW	mod.rs	42	
+E-a	NEW	mod.rs	44	
+E-a	NEW	mod.rs	49	
+E-a	NEW	mod.rs	53	
+E-a	NEW	mod.rs	59	
+E-a	NEW	mod.rs	61	
+E-a	NEW	mod.rs	65	
+E-a	NEW	mod.rs	67	
+E-a	NEW	mod.rs	130	
+E-a	NEW	mod.rs	221	
+E-a	NEW	mod.rs	258	
+E-a	NEW	mod.rs	269	
+E-a	NEW	mod.rs	304	
+E-a	NEW	mod.rs	421	
+E-a	NEW	mod.rs	521	
+E-a	NEW	mod.rs	554	
+E-c	NEW	mod.rs	577	    /// single framed buffer,
+E-c	NEW	mod.rs	578	    /// [`MAX_DIST_FRAME_BYTES`](crate::distribution::etf::MAX_DIST_FRAME_BYTES).
+E-a	NEW	mod.rs	609	
+E-a	NEW	mod.rs	693	
+E-a	NEW	mod.rs	742	
+E-a	NEW	mod.rs	934	
+E-a	NEW	mod.rs	957	
+E-a	NEW	residency.rs	1	use std::sync::Arc;
+E-a	NEW	residency.rs	2	use std::sync::atomic::{AtomicU64, Ordering};
+E-a	NEW	residency.rs	3	
+E-a	NEW	residency.rs	4	use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
+E-a	NEW	residency.rs	5	
+E-c	NEW	residency.rs	11	/// and the `connection` module is compiled for wasm32 (see
+E-c	NEW	residency.rs	12	/// [`FrameError::LengthOverflow`](super::frame::FrameError::LengthOverflow)).
+E-b	NEW	residency.rs	13	pub(super) const INBOUND_RESIDENCY_ENVELOPE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+E-a	NEW	residency.rs	14	
+E-c	NEW	residency.rs	22	/// configured as a count. No peer count is written anywhere in the
+E-c	NEW	residency.rs	23	/// `connection` module.
+E-b	NEW	residency.rs	24	pub(super) const INBOUND_RESIDENCY_PER_PEER_BYTES: u64 = MAX_DIST_FRAME_BYTES as u64;
+E-a	NEW	residency.rs	25	
+E-c	NEW	residency.rs	30	/// alive — [`DistConnection::manager`](super::link::DistConnection) is already
+E-c	NEW	residency.rs	31	/// `Weak` for the same reason,
+E-b	NEW	residency.rs	34	pub(super) struct InboundResidency {
+E-b	NEW	residency.rs	36	    pub(super) charged: AtomicU64,
+E-b	NEW	residency.rs	45	    pub(super) refused: AtomicU64,
+E-a	NEW	residency.rs	47	
+E-b	NEW	residency.rs	49	    pub(super) fn new() -> Self {
+E-b	NEW	residency.rs	63	    pub(super) fn try_admit(self: &Arc<Self>) -> Option<InboundAdmissionPermit> {
+E-a	NEW	residency.rs	90	
+E-b	NEW	residency.rs	100	pub(super) struct InboundAdmissionPermit {
+E-a	NEW	residency.rs	104	
+E-a	NEW	tests.rs	7	use tokio::io::AsyncReadExt;
+E-a	NEW	tests.rs	12	use super::frame::frame_buffer_for_header;
+E-a	NEW	tests.rs	13	use super::residency::{INBOUND_RESIDENCY_ENVELOPE_BYTES, INBOUND_RESIDENCY_PER_PEER_BYTES};
+E-a	NEW	tests.rs	15	use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
+E-a	NEW	tests.rs	16	use crate::distribution::handshake::{HandshakeError, HandshakeNode};
+E-f	NEW	tests.rs	284	    let manager = manager_with_resolver(resolver).with_handshake_timeout(Duration::from_secs(1));
+E-f	NEW	tests.rs	288	        tokio::time::timeout(Duration::from_secs(15), manager.connect("silent@127.0.0.1")).await;
+E-f	NEW	tests.rs	532	    let client_node =
+E-f	NEW	tests.rs	533	        HandshakeNode::with_default_flags("alpha@127.0.0.1", 5).expect("client node name valid");
+E-f	NEW	tests.rs	562	        let local =
+E-f	NEW	tests.rs	563	            HandshakeNode::with_default_flags("peer@127.0.0.1", 9).expect("responder node valid");
+E-c	OLD	etf.rs	41	///    `ConnectionManager::accept_loop` in `connection.rs` reserves
+E-c	NEW	etf.rs	41	///    `ConnectionManager::accept_loop` in `connection/lifecycle.rs` reserves
+E-c	OLD	etf.rs	42	///    `INBOUND_RESIDENCY_PER_PEER_BYTES` in `connection.rs` — one framed
+E-c	NEW	etf.rs	42	///    `INBOUND_RESIDENCY_PER_PEER_BYTES` in `connection/residency.rs` — one framed
+E-c	OLD	etf.rs	45	///    `INBOUND_RESIDENCY_ENVELOPE_BYTES` in `connection.rs`. The reservation
+E-c	NEW	etf.rs	45	///    `INBOUND_RESIDENCY_ENVELOPE_BYTES` in `connection/residency.rs`. The reservation
+E-c	OLD	etf.rs	52	///    in `connection.rs`'s accept path; changing either byte quantity moves
+E-c	NEW	etf.rs	52	///    in the `connection` module's accept path; changing either byte quantity moves
+E-c	OLD	etf.rs	80	/// `frame_buffer_for_header` in `connection.rs` allocates through
+E-c	NEW	etf.rs	80	/// `frame_buffer_for_header` in `connection/frame.rs` allocates through
+E-c	OLD	sender.rs	204	/// (`distribution/connection.rs`). Two max-size frames resident is already
+E-c	NEW	sender.rs	204	/// (`distribution/connection/`). Two max-size frames resident is already
