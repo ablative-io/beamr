@@ -1,0 +1,18 @@
+# One line per byte-intact block move. Ranges are 1-based inclusive.
+# Form: block NN: base sender.rs:A-B -> <file>:C-D <transform>
+# transform: verbatim | dedent4 (exactly four leading spaces stripped from the
+# LANDED side before comparison -- the forced consequence of lifting the
+# `mod tests { ... }` body to file top level). Declared on EVERY line so the
+# parse is total; only block 12 carries a transform.
+block 01: base sender.rs:1-157 -> mod.rs:1-157 verbatim
+block 02: base sender.rs:160-170 -> mod.rs:173-183 verbatim
+block 03: base sender.rs:171-269 -> mod.rs:186-284 verbatim
+block 04: base sender.rs:361-660 -> mod.rs:285-584 verbatim
+block 05: base sender.rs:271-276 -> residency.rs:6-11 verbatim
+block 06: base sender.rs:278-284 -> residency.rs:13-19 verbatim
+block 07: base sender.rs:286-297 -> residency.rs:21-32 verbatim
+block 08: base sender.rs:299-324 -> residency.rs:34-59 verbatim
+block 09: base sender.rs:326-338 -> residency.rs:61-73 verbatim
+block 10: base sender.rs:340-356 -> residency.rs:75-91 verbatim
+block 11: base sender.rs:360-360 -> residency.rs:95-95 verbatim
+block 12: base sender.rs:664-2167 -> tests.rs:1-1504 dedent4

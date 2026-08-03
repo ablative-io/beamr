@@ -1,0 +1,47 @@
+E-a	OLD	sender.rs	158		blank separating module doc from the import block; consumed
+E-a	OLD	sender.rs	159	use std::sync::atomic::{AtomicUsize, Ordering};	sole consumer (the residency cluster) left for residency.rs; unused here
+E-a	OLD	sender.rs	270		blank separating ControlOutbound from the residency cluster; consumed
+E-a	OLD	sender.rs	661		blank before the cfg(test) module; consumed
+E-a	OLD	sender.rs	662	#[cfg(test)]	becomes `#[cfg(test)]` above `mod tests;` in mod.rs
+E-a	OLD	sender.rs	663	mod tests {	becomes `mod tests;` in mod.rs -- module path distribution::sender::tests preserved
+E-a	OLD	sender.rs	2168	}	closing brace of `mod tests`; consumed by the file split
+E-a	NEW	mod.rs	168		blank
+E-a	NEW	mod.rs	169	mod residency;	child module declaration
+E-a	NEW	mod.rs	170	#[cfg(test)]	cfg gate for the tests child
+E-a	NEW	mod.rs	171	mod tests;	child module declaration; preserves distribution::sender::tests
+E-a	NEW	mod.rs	172		blank
+E-a	NEW	mod.rs	184		blank separating the crate import group from the child import group
+E-a	NEW	mod.rs	185	use residency::{ChargedOutbound, LaneResidency};	child use-line: both names are consumed by mod.rs (tx/data_residency/new/enqueue/drain)
+E-a	NEW	residency.rs	1	use std::sync::Arc;	std import for what residency.rs needs
+E-a	NEW	residency.rs	2	use std::sync::atomic::{AtomicUsize, Ordering};	std import for what residency.rs needs
+E-a	NEW	residency.rs	3		blank
+E-a	NEW	residency.rs	4	use super::DistOutbound;	parent import: ChargedOutbound.item is a DistOutbound (stays pub in mod.rs)
+E-a	NEW	residency.rs	5		blank
+E-b	OLD	sender.rs	277	struct LaneResidency {	LaneResidency: base form, private to the old single file
+E-b	NEW	residency.rs	12	pub(super) struct LaneResidency {	LaneResidency: `pub(super)` added; ZERO pub(crate), ZERO pub
+E-b	OLD	sender.rs	285	    const fn new(budget: usize) -> Self {	LaneResidency::new: base form, private to the old single file
+E-b	NEW	residency.rs	20	    pub(super) const fn new(budget: usize) -> Self {	LaneResidency::new: `pub(super)` added; ZERO pub(crate), ZERO pub
+E-b	OLD	sender.rs	298	    fn try_charge(self: &Arc<Self>, bytes: usize) -> Option<ResidencyCharge> {	LaneResidency::try_charge: base form, private to the old single file
+E-b	NEW	residency.rs	33	    pub(super) fn try_charge(self: &Arc<Self>, bytes: usize) -> Option<ResidencyCharge> {	LaneResidency::try_charge: `pub(super)` added; ZERO pub(crate), ZERO pub
+E-b	OLD	sender.rs	325	    fn resident_bytes(&self) -> usize {	LaneResidency::resident_bytes: base form, private to the old single file
+E-b	NEW	residency.rs	60	    pub(super) fn resident_bytes(&self) -> usize {	LaneResidency::resident_bytes: `pub(super)` added; ZERO pub(crate), ZERO pub
+E-b	OLD	sender.rs	339	struct ResidencyCharge {	ResidencyCharge: base form, private to the old single file
+E-b	NEW	residency.rs	74	pub(super) struct ResidencyCharge {	ResidencyCharge: `pub(super)` added; ZERO pub(crate), ZERO pub
+E-b	OLD	sender.rs	357	struct ChargedOutbound {	ChargedOutbound: base form, private to the old single file
+E-b	NEW	residency.rs	92	pub(super) struct ChargedOutbound {	ChargedOutbound: `pub(super)` added; ZERO pub(crate), ZERO pub
+E-b	OLD	sender.rs	358	    item: DistOutbound,	ChargedOutbound.item: base form, private to the old single file
+E-b	NEW	residency.rs	93	    pub(super) item: DistOutbound,	ChargedOutbound.item: `pub(super)` added; ZERO pub(crate), ZERO pub
+E-b	OLD	sender.rs	359	    charge: ResidencyCharge,	ChargedOutbound.charge: base form, private to the old single file
+E-b	NEW	residency.rs	94	    pub(super) charge: ResidencyCharge,	ChargedOutbound.charge: `pub(super)` added; ZERO pub(crate), ZERO pub
+E-c	OLD	etf.rs	60	/// (`distribution/sender.rs`) are SLOT counts, and neither is what protects	deictic re-point: sender.rs is now a directory
+E-c	NEW	etf.rs	60	/// (`distribution/sender/`) are SLOT counts, and neither is what protects	module-truth wording; mirrors the #67 sender.rs:204 `distribution/connection/` treatment
+E-c	NEW	mod.rs	158	//!	Design Sentence (brief-verbatim), appended to the module doc
+E-c	NEW	mod.rs	159	//! ## Module shape — what deliberately stays in `mod.rs`	Design Sentence (brief-verbatim), appended to the module doc
+E-c	NEW	mod.rs	160	//!	Design Sentence (brief-verbatim), appended to the module doc
+E-c	NEW	mod.rs	161	//! The runtime-lifecycle core (DistSenderInner, its Drop ordering, new's inlined	Design Sentence (brief-verbatim), appended to the module doc
+E-c	NEW	mod.rs	162	//! biased two-lane drain, handle/worker_thread_names/shutdown) and the wire types	Design Sentence (brief-verbatim), appended to the module doc
+E-c	NEW	mod.rs	163	//! DELIBERATELY stay whole in mod.rs: the two-level ownership rationale (a queued	Design Sentence (brief-verbatim), appended to the module doc
+E-c	NEW	mod.rs	164	//! charge must not keep the runtime alive from inside its own queue) and Inner's	Design Sentence (brief-verbatim), appended to the module doc
+E-c	NEW	mod.rs	165	//! Drop shutdown ordering are load-bearing side-by-side reading with shutdown() —	Design Sentence (brief-verbatim), appended to the module doc
+E-c	NEW	mod.rs	166	//! this is a measured decision (sender ground, 5 inner reaches all in one	Design Sentence (brief-verbatim), appended to the module doc
+E-c	NEW	mod.rs	167	//! cluster), not an oversight; do not split it without re-measuring the coupling.	Design Sentence (brief-verbatim), appended to the module doc

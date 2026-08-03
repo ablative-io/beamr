@@ -1,0 +1,109 @@
+BASE e2c406e404db884e6a2f2039097791b4bd740b80:crates/beamr/src/distribution/sender.rs = 2168 lines
+
+== PART 0: BLOCKS.txt parse ==
+declaration lines: 12, parsed: 12
+
+== PART A: per-block byte-intact verification ==
+blocks declared: 12
+block diffs rc 0: 12
+
+== PART B: OLD-side coverage (base crates/beamr/src/distribution/sender.rs, 1..2168) ==
+block-covered base lines: 2153
+enumerated OLD-side edit lines: 15
+OLD-side partition EXACT: blocks + edits = 1..2168, no gap, no overlap
+
+== PART C: NEW-side coverage (crates/beamr/src/distribution/sender/) ==
+  mod.rs: 584 lines = 567 block-moved + 17 enumerated
+  residency.rs: 95 lines = 82 block-moved + 13 enumerated
+  tests.rs: 1504 lines = 1504 block-moved + 0 enumerated
+
+== PART D: deictic consumer (etf.rs) ==
+  etf.rs: 2 changed lines in the working diff, 2 enumerated
+
+== PART E: no other path changed vs e2c406e404db884e6a2f2039097791b4bd740b80 ==
+M	crates/beamr/src/distribution/etf.rs
+D	crates/beamr/src/distribution/sender.rs
+  tracked changes confined to: crates/beamr/src/distribution/sender.rs (deleted), etf.rs
+ M crates/beamr/src/distribution/etf.rs
+ D crates/beamr/src/distribution/sender.rs
+?? crates/beamr/src/distribution/sender/mod.rs
+?? crates/beamr/src/distribution/sender/residency.rs
+?? crates/beamr/src/distribution/sender/tests.rs
+?? gate-logs/70-sender-extract/BLOCKS.txt
+?? gate-logs/70-sender-extract/EDITS.txt
+?? gate-logs/70-sender-extract/README.md
+?? gate-logs/70-sender-extract/THRESHOLD.txt
+?? gate-logs/70-sender-extract/block-01.diff
+?? gate-logs/70-sender-extract/block-01.rc
+?? gate-logs/70-sender-extract/block-02.diff
+?? gate-logs/70-sender-extract/block-02.rc
+?? gate-logs/70-sender-extract/block-03.diff
+?? gate-logs/70-sender-extract/block-03.rc
+?? gate-logs/70-sender-extract/block-04.diff
+?? gate-logs/70-sender-extract/block-04.rc
+?? gate-logs/70-sender-extract/block-05.diff
+?? gate-logs/70-sender-extract/block-05.rc
+?? gate-logs/70-sender-extract/block-06.diff
+?? gate-logs/70-sender-extract/block-06.rc
+?? gate-logs/70-sender-extract/block-07.diff
+?? gate-logs/70-sender-extract/block-07.rc
+?? gate-logs/70-sender-extract/block-08.diff
+?? gate-logs/70-sender-extract/block-08.rc
+?? gate-logs/70-sender-extract/block-09.diff
+?? gate-logs/70-sender-extract/block-09.rc
+?? gate-logs/70-sender-extract/block-10.diff
+?? gate-logs/70-sender-extract/block-10.rc
+?? gate-logs/70-sender-extract/block-11.diff
+?? gate-logs/70-sender-extract/block-11.rc
+?? gate-logs/70-sender-extract/block-12.diff
+?? gate-logs/70-sender-extract/block-12.rc
+?? gate-logs/70-sender-extract/census.err
+?? gate-logs/70-sender-extract/census.log
+?? gate-logs/70-sender-extract/census.rc
+?? gate-logs/70-sender-extract/census.sh
+?? gate-logs/70-sender-extract/du-final.rc
+?? gate-logs/70-sender-extract/du-final.txt
+?? gate-logs/70-sender-extract/leg-1.df
+?? gate-logs/70-sender-extract/leg-1.err
+?? gate-logs/70-sender-extract/leg-1.log
+?? gate-logs/70-sender-extract/leg-1.rc
+?? gate-logs/70-sender-extract/leg-2.df
+?? gate-logs/70-sender-extract/leg-2.err
+?? gate-logs/70-sender-extract/leg-2.log
+?? gate-logs/70-sender-extract/leg-2.rc
+?? gate-logs/70-sender-extract/leg-3.df
+?? gate-logs/70-sender-extract/leg-3.err
+?? gate-logs/70-sender-extract/leg-3.log
+?? gate-logs/70-sender-extract/leg-3.rc
+?? gate-logs/70-sender-extract/leg-4.df
+?? gate-logs/70-sender-extract/leg-4.err
+?? gate-logs/70-sender-extract/leg-4.log
+?? gate-logs/70-sender-extract/leg-4.rc
+?? gate-logs/70-sender-extract/leg-5.df
+?? gate-logs/70-sender-extract/leg-5.err
+?? gate-logs/70-sender-extract/leg-5.log
+?? gate-logs/70-sender-extract/leg-5.rc
+?? gate-logs/70-sender-extract/leg-6.df
+?? gate-logs/70-sender-extract/leg-6.err
+?? gate-logs/70-sender-extract/leg-6.log
+?? gate-logs/70-sender-extract/leg-6.rc
+?? gate-logs/70-sender-extract/quote-parity-post.err
+?? gate-logs/70-sender-extract/quote-parity-post.rc
+?? gate-logs/70-sender-extract/quote-parity-post.txt
+?? gate-logs/70-sender-extract/quote-parity-pre.err
+?? gate-logs/70-sender-extract/quote-parity-pre.rc
+?? gate-logs/70-sender-extract/quote-parity-pre.txt
+  whole working tree confined to: crates/beamr/src/distribution/sender.rs (deleted), crates/beamr/src/distribution/sender/, etf.rs, gate-logs/70-sender-extract/
+
+== PART F: code bar over crates/beamr/src/distribution/sender/ ==
+  #[allow] landed=0 base=0
+  `_ =>` landed=0 base=0
+  unwrap landed=0 base=0
+  expect landed=149 base=149
+  panic landed=5 base=5
+
+CENSUS: REMAINDER EMPTY
+  full-diff e2c406e404db884e6a2f2039097791b4bd740b80..HEAD
+    = 12 byte-intact block moves (all rc 0)
+    + 47 enumerated edit lines
+    + nothing else

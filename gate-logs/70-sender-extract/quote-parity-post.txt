@@ -1,0 +1,22 @@
+QUOTE-PARITY POST — SAME instrument over the landed sender/tests.rs
+The two sides are comparable at the cfg(test) region: base sender.rs:662-2168
+is exactly what becomes tests.rs. Whole-file figures are recorded beside it so
+the prod-side residue is visible rather than hidden. RULED CONDITION: posterior
+counts EQUAL the base test-region counts, or every delta is enumerated under
+E-f in EDITS.txt — named, never absorbed.
+
+instrument 1 — token-boundary raw strings   grep -cE '(^|[^A-Za-z0-9_])(r|br)#*"'
+  landed tests.rs (1-1504):      0
+  landed tests.rs (1-1504):      0
+  EXPECTED 0 — no raw string anywhere, so no dedent can disturb one.
+
+instrument 2 — multi-line-string census: lines carrying an ODD number of
+  " characters (each such line opens or closes a string that spans lines)
+  landed tests.rs (1-1504):      22
+  landed tests.rs (1-1504):      22
+  EXPECTED 22 lines = 11 multi-line strings in the cfg(test) region.
+
+instrument 3 — continuation lines            grep -cE '\\$'
+  landed tests.rs (1-1504):      14
+  landed tests.rs (1-1504):      14
+  EXPECTED 14 — all fourteen are inside the cfg(test) region.

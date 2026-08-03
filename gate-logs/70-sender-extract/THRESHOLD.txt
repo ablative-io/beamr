@@ -1,0 +1,8 @@
+THRESHOLD 43 GiB = 45,088,768 KiB (instrument: df -k /System/Volumes/Data, column Available; STOP if under)
+Basis, self-certifying, every stop named (Cally named GO bd095352 2026-08-03T05:35:56Z):
+  floor 25.0
++ sender-extract CEILING 7.0 (this lane, joiner-included)
++ F8-2 stop 4.0 (Hermes fix phase, authorized-live at Cally's seat)
++ iridium-undo stop 4.0 (Doug, Athena's 05:17Z book row)
++ margin 3.0
+= 43.0 GiB
