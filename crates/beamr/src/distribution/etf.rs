@@ -57,7 +57,7 @@ const PASS_THROUGH: u8 = b'p';
 /// # Interacting constants, cited by value
 ///
 /// `DIST_SEND_QUEUE_CAP = 1024` and `DIST_CONTROL_QUEUE_CAP = 256`
-/// (`distribution/sender.rs`) are SLOT counts, and neither is what protects
+/// (`distribution/sender/`) are SLOT counts, and neither is what protects
 /// memory on its lane. The data lane is bounded in bytes by
 /// `DIST_SEND_QUEUE_BYTE_BUDGET = 2 * MAX_DIST_FRAME_BYTES`, imported from this
 /// constant so the two cannot drift — 1024's old justification assumed
