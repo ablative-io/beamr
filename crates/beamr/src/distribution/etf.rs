@@ -22,6 +22,75 @@ const MAX_ETF_DEPTH: usize = 256;
 const NONODE_NOHOST: &str = "nonode@nohost";
 const PASS_THROUGH: u8 = b'p';
 
+/// Maximum byte length of ONE inbound distribution data frame — the
+/// `control_len + payload_len` total declared by the 8-byte frame header. A
+/// frame claiming more is refused with a typed error BEFORE anything is
+/// allocated, so the header's two peer-controlled `u32`s cannot name an
+/// arbitrary allocation.
+///
+/// # Derivation
+///
+/// 64 MiB = the 4 GiB spike allowance out of beamr's 13 GiB memory bound,
+/// divided by the 64-peer design target. The five steps, in order:
+///
+/// 1. The cap bounds ONE frame allocation.
+/// 2. Worst-case inbound receive residency is therefore `N x 64 MiB`, where `N`
+///    is the count of concurrent peers each holding a frame buffer.
+/// 3. The 13 GiB budget holds IF AND ONLY IF `N <= 64`.
+/// 4. `N`'s accept-driven component is ENFORCED (lane #64, D5).
+///    [`ConnectionManager::accept_loop`] reserves
+///    [`INBOUND_RESIDENCY_PER_PEER_BYTES`] — one framed buffer — for every
+///    stream it accepts, and DECLINES the stream when that reservation would
+///    carry residency past [`INBOUND_RESIDENCY_ENVELOPE_BYTES`]. The
+///    reservation is released when the link's read lifecycle ends. Not charged:
+///    locally initiated outbound dials (`connect`), which this node's own
+///    resolver enumerates rather than a peer.
+/// 5. The peer ceiling is therefore DERIVED, not configured — it is
+///    `INBOUND_RESIDENCY_ENVELOPE_BYTES / INBOUND_RESIDENCY_PER_PEER_BYTES`,
+///    which is 64. No peer count is written anywhere in this file; changing
+///    either byte quantity moves the ceiling with it. **`<= 64` accepted peers
+///    is now a property of the system, enforced in residency BYTES, not merely
+///    this budget's design target.**
+///
+/// # Interacting constants, cited by value
+///
+/// `DIST_SEND_QUEUE_CAP = 1024` and `DIST_CONTROL_QUEUE_CAP = 256`
+/// (`distribution/sender.rs`) are SLOT counts, and neither is what protects
+/// memory on its lane. The data lane is bounded in bytes by
+/// `DIST_SEND_QUEUE_BYTE_BUDGET = 2 * MAX_DIST_FRAME_BYTES`, imported from this
+/// constant so the two cannot drift — 1024's old justification assumed
+/// control-only traffic, yet nothing at the type level prevents a
+/// `DistOutbound::ToNode` from carrying a user payload, which is exactly why a
+/// count could not be the protection. The control lane needs no byte budget:
+/// its frames are structurally ceilinged at a measured 131131 bytes, so 256
+/// slots retain ~32 MiB — less than one frame of this cap. That lane's own
+/// module docs carry the measurement and state the absence.
+///
+/// Two standing caveats still travel with them. `send_remote` bypasses both
+/// queues via a direct blocking write, so neither lane's bound covers it. And
+/// the send lane fans out over `Arc<[u8]>`, so a broadcast retains ONE buffer:
+/// do not double-count the send lane against THIS budget. (The send lane's own
+/// budget deliberately does over-count a fan-out, fail-closed; that is internal
+/// to it and does not reach the receive-side arithmetic here.)
+///
+/// # The rail this restores
+///
+/// [`frame_buffer_for_header`] allocates through `try_reserve_exact` — the
+/// fallible-allocation rail that, after the framing move, survived only in
+/// `distribution/etf.rs`. Read that file's precedent precisely:
+/// **`etf.rs`'s `LengthTooLarge` is a fallible-ALLOC rail, NOT a size cap.** It
+/// reports an allocation that the allocator refused; it does not refuse a
+/// declared size. The two guards are complementary, and this path now carries
+/// both — the cap first, the fallible allocation behind it.
+///
+/// # Not caught here (narrow-rail law)
+///
+/// - Unbounded remote atom interning driven by these same frames. `safe =
+///   false` is deliberate per `DIST-CONTROL-WIRE-SPEC`.
+/// - `ConnectionEventHub.queue` is unbounded, but its elements are small
+///   fixed-size events: a count hole, not a byte hole.
+pub(crate) const MAX_DIST_FRAME_BYTES: usize = 64 * 1024 * 1024;
+
 /// Errors produced by distribution ETF encoding.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum EncodeError {
@@ -74,9 +143,9 @@ impl fmt::Display for Error {
                 write!(formatter, "invalid distribution pass-through tag {tag}")
             }
             Self::InvalidControl(error) => write!(formatter, "invalid control ETF term: {error:?}"),
-            Self::LengthTooLarge => {
-                formatter.write_str("distribution frame length does not fit usize")
-            }
+            Self::LengthTooLarge => formatter.write_str(
+                "distribution frame length does not fit usize or exceeds the maximum frame size",
+            ),
         }
     }
 }
@@ -147,6 +216,15 @@ pub fn read_dist_message<R: Read>(stream: &mut R) -> Result<(Vec<u8>, Option<Vec
     let mut header = [0_u8; 4];
     read_exact_classified(stream, &mut header, Error::TruncatedHeader)?;
     let length = usize::try_from(u32::from_be_bytes(header)).map_err(|_| Error::LengthTooLarge)?;
+    // The cap precedes the reservation, because `try_reserve_exact` is a
+    // fallible-ALLOC rail and not a ceiling: a size the allocator CAN satisfy
+    // still succeeds, so without this the peer's 4 header bytes name the
+    // allocation. Strictly `>`: a length of exactly the cap is accepted, and
+    // `length == 0` never reaches this arm at all — it keeps its existing
+    // empty-body path.
+    if length > MAX_DIST_FRAME_BYTES {
+        return Err(Error::LengthTooLarge);
+    }
     let mut body = Vec::new();
     body.try_reserve_exact(length)
         .map_err(|_| Error::LengthTooLarge)?;
@@ -985,7 +1063,6 @@ impl<'a> Cursor<'a> {
 mod tests {
     use super::*;
     use crate::atom::Atom;
-    use crate::distribution::connection::MAX_DIST_FRAME_BYTES;
     use crate::term::binary::Binary;
     use crate::term::boxed::{
         Float, Map, write_external_pid, write_external_reference, write_reference,
@@ -1325,6 +1402,63 @@ mod tests {
         assert_eq!(
             read_dist_message(&mut over.to_be_bytes().as_slice()),
             Err(Error::LengthTooLarge)
+        );
+    }
+
+    /// RF-003 R3 boundary wall, BOTH DIRECTIONS in one test: a frame declaring
+    /// EXACTLY [`MAX_DIST_FRAME_BYTES`] is accepted and deframed intact, and
+    /// `MAX_DIST_FRAME_BYTES + 1` is refused.
+    ///
+    /// The accepted half is the direction a careless cap breaks: a `>=`
+    /// comparison would turn the largest legal frame into a refusal, so this
+    /// pins the boundary rather than leaving it incidental.
+    #[test]
+    fn deframe_boundary_accepts_exactly_max_and_refuses_one_over() {
+        let cap = u32::try_from(MAX_DIST_FRAME_BYTES).expect("the cap fits a u32 header field");
+        let control = vec![131, 97, 7];
+        // Sized so the declared body length lands exactly on the cap:
+        // PASS_THROUGH tag (1) + control + payload.
+        let payload = vec![0x5a_u8; MAX_DIST_FRAME_BYTES - 1 - control.len()];
+        let frame = write_dist_message(&control, Some(&payload));
+        assert_eq!(&frame[..4], &cap.to_be_bytes());
+        let (decoded_control, decoded_payload) =
+            read_dist_message(&mut frame.as_slice()).expect("a frame of exactly the cap deframes");
+        assert_eq!(decoded_control, control);
+        assert_eq!(decoded_payload, Some(payload));
+
+        let over = cap + 1;
+        assert_eq!(
+            read_dist_message(&mut over.to_be_bytes().as_slice()),
+            Err(Error::LengthTooLarge)
+        );
+    }
+
+    /// RF-003 R1 Leg C — GREEN-ONLY, and invalid against the uncapped bytes:
+    /// the largest length a 4-byte header can name is refused with ZERO
+    /// allocation.
+    ///
+    /// The zero-allocation claim is not measured here, it is STRUCTURAL: the
+    /// cap arm returns before `try_reserve_exact` is ever reached, so no
+    /// reservation of the declared 4294967295 bytes is attempted. That ordering
+    /// IS the proof. Run against the pre-cap bytes this test would have
+    /// committed ~4 GiB, which is why it could only be added after the cap.
+    #[test]
+    fn deframe_refuses_extreme_header_without_allocating() {
+        assert_eq!(
+            read_dist_message(&mut [0xFF_u8, 0xFF, 0xFF, 0xFF].as_slice()),
+            Err(Error::LengthTooLarge)
+        );
+    }
+
+    /// The zero-length path is pinned UNCHANGED by the cap: `length == 0` does
+    /// not enter the refusal arm, because the comparison is strictly `>`. An
+    /// empty body still resolves as `EmptyBody` — a `>=` comparison would make
+    /// this red, which is the whole reason the direction is written down.
+    #[test]
+    fn deframe_zero_length_frame_does_not_hit_the_cap() {
+        assert_eq!(
+            read_dist_message(&mut [0_u8, 0, 0, 0].as_slice()),
+            Err(Error::EmptyBody)
         );
     }
 

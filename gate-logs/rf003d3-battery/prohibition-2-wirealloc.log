@@ -1,0 +1,27 @@
+crates/beamr/src/distribution/etf.rs:78:/// [`frame_buffer_for_header`] allocates through `try_reserve_exact` — the
+crates/beamr/src/distribution/etf.rs:204:    let mut out = Vec::with_capacity(capacity);
+crates/beamr/src/distribution/etf.rs:219:    // The cap precedes the reservation, because `try_reserve_exact` is a
+crates/beamr/src/distribution/etf.rs:229:    body.try_reserve_exact(length)
+crates/beamr/src/distribution/etf.rs:231:    body.resize(length, 0);
+crates/beamr/src/distribution/etf.rs:335:    let mut bytes = Vec::with_capacity(capacity);
+crates/beamr/src/distribution/etf.rs:619:                .try_reserve_exact(len)
+crates/beamr/src/distribution/etf.rs:634:                .try_reserve_exact(len)
+crates/beamr/src/distribution/etf.rs:661:            keys.try_reserve_exact(len)
+crates/beamr/src/distribution/etf.rs:662:                .and_then(|_| values.try_reserve_exact(len))
+crates/beamr/src/distribution/etf.rs:688:        .try_reserve_exact(arity)
+crates/beamr/src/distribution/etf.rs:741:            .try_reserve_exact(limb_count)
+crates/beamr/src/distribution/etf.rs:1441:    /// cap arm returns before `try_reserve_exact` is ever reached, so no
+crates/beamr/src/distribution/control.rs:268:    let mut frame = Vec::with_capacity(8 + control_etf.len() + payload_etf.len());
+crates/beamr/src/distribution/atom_cache.rs:39:            by_atom: HashMap::with_capacity(ATOM_CACHE_SIZE),
+crates/beamr/src/distribution/atom_cache.rs:40:            lru: VecDeque::with_capacity(ATOM_CACHE_SIZE),
+crates/beamr/src/distribution/sender.rs:698:        let mut frame = Vec::with_capacity(8 + control.len());
+crates/beamr/src/distribution/sender.rs:972:        let mut wedged_frame = Vec::with_capacity(8 + big.len());
+crates/beamr/src/distribution/sender.rs:1129:        let mut big_frame = Vec::with_capacity(8 + big.len());
+crates/beamr/src/distribution/sender.rs:1635:        let mut frame = Vec::with_capacity(8 + control.len());
+crates/beamr/src/distribution/handshake.rs:591:        Vec::with_capacity(1 + 8 + 4 + challenge.map_or(0, |_| 4) + 2 + name_bytes.len());
+crates/beamr/src/distribution/handshake.rs:609:    let mut payload = Vec::with_capacity(1 + status.len());
+crates/beamr/src/distribution/handshake.rs:616:    let mut payload = Vec::with_capacity(1 + 4 + DIGEST_LEN);
+crates/beamr/src/distribution/handshake.rs:624:    let mut payload = Vec::with_capacity(1 + DIGEST_LEN);
+crates/beamr/src/distribution/connection.rs:206:        .try_reserve_exact(total_len)
+crates/beamr/src/distribution/connection.rs:210:    frame.resize(total_len, 0_u8);
+crates/beamr/src/distribution/connection.rs:3398:        let mut streams = Vec::with_capacity(over_subscribe);

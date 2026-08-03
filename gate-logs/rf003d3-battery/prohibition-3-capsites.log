@@ -1,0 +1,41 @@
+crates/beamr/src/distribution/etf.rs:60:/// `DIST_SEND_QUEUE_BYTE_BUDGET = 2 * MAX_DIST_FRAME_BYTES`, imported from this
+crates/beamr/src/distribution/etf.rs:92:pub(crate) const MAX_DIST_FRAME_BYTES: usize = 64 * 1024 * 1024;
+crates/beamr/src/distribution/etf.rs:225:    if length > MAX_DIST_FRAME_BYTES {
+crates/beamr/src/distribution/etf.rs:1392:    /// [`MAX_DIST_FRAME_BYTES`] BEFORE it reserves it.
+crates/beamr/src/distribution/etf.rs:1394:    /// BOUNDED RED (absolute): the header claims `MAX_DIST_FRAME_BYTES + 1`, not
+crates/beamr/src/distribution/etf.rs:1400:        let cap = u32::try_from(MAX_DIST_FRAME_BYTES).expect("the cap fits a u32 header field");
+crates/beamr/src/distribution/etf.rs:1409:    /// EXACTLY [`MAX_DIST_FRAME_BYTES`] is accepted and deframed intact, and
+crates/beamr/src/distribution/etf.rs:1410:    /// `MAX_DIST_FRAME_BYTES + 1` is refused.
+crates/beamr/src/distribution/etf.rs:1417:        let cap = u32::try_from(MAX_DIST_FRAME_BYTES).expect("the cap fits a u32 header field");
+crates/beamr/src/distribution/etf.rs:1421:        let payload = vec![0x5a_u8; MAX_DIST_FRAME_BYTES - 1 - control.len()];
+crates/beamr/src/distribution/sender.rs:60://! does not contradict the caveat at [`MAX_DIST_FRAME_BYTES`]'s derivation
+crates/beamr/src/distribution/sender.rs:122://! maximum-size inbound data frame ([`MAX_DIST_FRAME_BYTES`]). The count is
+crates/beamr/src/distribution/sender.rs:169:use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
+crates/beamr/src/distribution/sender.rs:194:/// Byte budget for data-lane residency: `2 * MAX_DIST_FRAME_BYTES` (128 MiB).
+crates/beamr/src/distribution/sender.rs:202:/// Imported from [`MAX_DIST_FRAME_BYTES`] rather than minted, so the two cannot
+crates/beamr/src/distribution/sender.rs:208:pub const DIST_SEND_QUEUE_BYTE_BUDGET: usize = 2 * MAX_DIST_FRAME_BYTES;
+crates/beamr/src/distribution/sender.rs:218:/// [`MAX_DIST_FRAME_BYTES`] data frame. That is why this lane carries no
+crates/beamr/src/distribution/sender.rs:676:    use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
+crates/beamr/src/distribution/sender.rs:1611:    /// [`MAX_DIST_FRAME_BYTES`] (so no per-frame cap is in play), yet large
+crates/beamr/src/distribution/sender.rs:1775:            lane_worst_case < MAX_DIST_FRAME_BYTES,
+crates/beamr/src/distribution/sender.rs:1777:             max-size data frame ({MAX_DIST_FRAME_BYTES} B)"
+crates/beamr/src/distribution/sender.rs:1883:        let budget = 2 * MAX_DIST_FRAME_BYTES;
+crates/beamr/src/distribution/sender.rs:1949:            lane_worst_case < MAX_DIST_FRAME_BYTES,
+crates/beamr/src/distribution/sender.rs:1952:             ({MAX_DIST_FRAME_BYTES} B)"
+crates/beamr/src/distribution/connection.rs:23:use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
+crates/beamr/src/distribution/connection.rs:64:/// framed buffer, i.e. [`MAX_DIST_FRAME_BYTES`], which is precisely what the
+crates/beamr/src/distribution/connection.rs:71:const INBOUND_RESIDENCY_PER_PEER_BYTES: u64 = MAX_DIST_FRAME_BYTES as u64;
+crates/beamr/src/distribution/connection.rs:170:    /// The declared frame length exceeds [`MAX_DIST_FRAME_BYTES`].
+crates/beamr/src/distribution/connection.rs:174:        /// The cap in force, i.e. [`MAX_DIST_FRAME_BYTES`].
+crates/beamr/src/distribution/connection.rs:187:/// order: overflow, then the [`MAX_DIST_FRAME_BYTES`] cap, then a fallible
+crates/beamr/src/distribution/connection.rs:196:    if total_len > MAX_DIST_FRAME_BYTES {
+crates/beamr/src/distribution/connection.rs:199:            max_frame_bytes: MAX_DIST_FRAME_BYTES,
+crates/beamr/src/distribution/connection.rs:1120:    /// single framed buffer, [`MAX_DIST_FRAME_BYTES`].
+crates/beamr/src/distribution/connection.rs:1797:    /// [`MAX_DIST_FRAME_BYTES`]'s derivation names as unbounded. Locally
+crates/beamr/src/distribution/connection.rs:3308:        let cap = u32::try_from(MAX_DIST_FRAME_BYTES).expect("the cap fits a u32 header field");
+crates/beamr/src/distribution/connection.rs:3313:                frame_bytes: MAX_DIST_FRAME_BYTES + 1,
+crates/beamr/src/distribution/connection.rs:3314:                max_frame_bytes: MAX_DIST_FRAME_BYTES,
+crates/beamr/src/distribution/connection.rs:3324:        let cap = u32::try_from(MAX_DIST_FRAME_BYTES).expect("the cap fits a u32 header field");
+crates/beamr/src/distribution/connection.rs:3333:            MAX_DIST_FRAME_BYTES,
+crates/beamr/src/distribution/connection.rs:3351:             64-peer design target the MAX_DIST_FRAME_BYTES derivation names"
+crates/beamr/src/distribution/connection.rs:3354:            INBOUND_RESIDENCY_PER_PEER_BYTES, MAX_DIST_FRAME_BYTES as u64,

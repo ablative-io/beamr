@@ -1,0 +1,21 @@
+   Compiling beamr v0.16.2 (/Users/tom/Developer/ablative/stack/beamr-rf003d3/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.34s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 13 tests
+test distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes ... ok
+test distribution::etf::tests::deframe_refuses_extreme_header_without_allocating ... ok
+test distribution::etf::tests::deframe_zero_length_frame_does_not_hit_the_cap ... ok
+test distribution::etf::tests::deframe_rejects_bad_frames ... ok
+test distribution::etf::tests::frames_and_deframes_distribution_messages ... ok
+test distribution::etf::tests::encodes_small_integer_and_integer_ext ... ok
+test distribution::etf::tests::decodes_invalid_input_as_errors ... ok
+test distribution::etf::tests::encodes_atoms_with_utf8_tags ... ok
+test distribution::etf::tests::encodes_and_decodes_external_pid_and_reference ... ok
+test distribution::etf::tests::encodes_tuple_nil_list_binary_float_map_pid_and_reference ... ok
+test distribution::etf::tests::decodes_boxed_payloads_to_heap_terms ... ok
+test distribution::etf::tests::decodes_round_trip_for_distribution_terms ... ok
+test distribution::etf::tests::deframe_boundary_accepts_exactly_max_and_refuses_one_over ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 1771 filtered out; finished in 0.25s
+

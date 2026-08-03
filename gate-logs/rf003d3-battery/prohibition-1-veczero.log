@@ -1,0 +1,13 @@
+crates/beamr/src/distribution/sender.rs:754:                let mut body = vec![0u8; control_len + payload_len];
+crates/beamr/src/distribution/sender.rs:839:                let mut body = vec![0u8; control_len + payload_len];
+crates/beamr/src/distribution/sender.rs:947:                let mut body = vec![0u8; control_len + payload_len];
+crates/beamr/src/distribution/sender.rs:969:        let mut big = vec![0u8; 16 * 1024 * 1024];
+crates/beamr/src/distribution/sender.rs:1046:                let mut body = vec![0u8; control_len + payload_len];
+crates/beamr/src/distribution/sender.rs:1126:        let mut big = vec![0u8; 16 * 1024 * 1024];
+crates/beamr/src/distribution/sender.rs:1257:                let mut body = vec![0u8; control_len + payload_len];
+crates/beamr/src/distribution/sender.rs:1333:            let payload = vec![0u8; 16 * 1024 * 1024];
+crates/beamr/src/distribution/sender.rs:1632:        let mut control = vec![0u8; body];
+crates/beamr/src/distribution/sender.rs:1815:                let mut body = vec![0u8; control_len + payload_len];
+crates/beamr/src/distribution/sender.rs:2037:                let mut body = vec![0u8; control_len + payload_len];
+crates/beamr/src/distribution/handshake.rs:524:    let mut payload = vec![0_u8; length];
+crates/beamr/src/distribution/handshake.rs:579:    let mut payload = vec![0_u8; length];

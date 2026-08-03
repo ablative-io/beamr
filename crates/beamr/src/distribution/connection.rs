@@ -20,6 +20,7 @@ use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 
 use crate::atom::{Atom, AtomTable};
+use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
 use crate::distribution::handshake::{
     HandshakeError, HandshakeNode, SimultaneousDecision, initiate_handshake_async,
     respond_handshake_async_with,
@@ -50,75 +51,6 @@ const DEFAULT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 /// interval so a healthy peer's keepalives always refresh liveness in time and
 /// no healthy idle link is ever spuriously downed.
 const DEFAULT_HEARTBEAT_DEADLINE: Duration = Duration::from_secs(45);
-
-/// Maximum byte length of ONE inbound distribution data frame — the
-/// `control_len + payload_len` total declared by the 8-byte frame header. A
-/// frame claiming more is refused with a typed error BEFORE anything is
-/// allocated, so the header's two peer-controlled `u32`s cannot name an
-/// arbitrary allocation.
-///
-/// # Derivation
-///
-/// 64 MiB = the 4 GiB spike allowance out of beamr's 13 GiB memory bound,
-/// divided by the 64-peer design target. The five steps, in order:
-///
-/// 1. The cap bounds ONE frame allocation.
-/// 2. Worst-case inbound receive residency is therefore `N x 64 MiB`, where `N`
-///    is the count of concurrent peers each holding a frame buffer.
-/// 3. The 13 GiB budget holds IF AND ONLY IF `N <= 64`.
-/// 4. `N`'s accept-driven component is ENFORCED (lane #64, D5).
-///    [`ConnectionManager::accept_loop`] reserves
-///    [`INBOUND_RESIDENCY_PER_PEER_BYTES`] — one framed buffer — for every
-///    stream it accepts, and DECLINES the stream when that reservation would
-///    carry residency past [`INBOUND_RESIDENCY_ENVELOPE_BYTES`]. The
-///    reservation is released when the link's read lifecycle ends. Not charged:
-///    locally initiated outbound dials (`connect`), which this node's own
-///    resolver enumerates rather than a peer.
-/// 5. The peer ceiling is therefore DERIVED, not configured — it is
-///    `INBOUND_RESIDENCY_ENVELOPE_BYTES / INBOUND_RESIDENCY_PER_PEER_BYTES`,
-///    which is 64. No peer count is written anywhere in this file; changing
-///    either byte quantity moves the ceiling with it. **`<= 64` accepted peers
-///    is now a property of the system, enforced in residency BYTES, not merely
-///    this budget's design target.**
-///
-/// # Interacting constants, cited by value
-///
-/// `DIST_SEND_QUEUE_CAP = 1024` and `DIST_CONTROL_QUEUE_CAP = 256`
-/// (`distribution/sender.rs`) are SLOT counts, and neither is what protects
-/// memory on its lane. The data lane is bounded in bytes by
-/// `DIST_SEND_QUEUE_BYTE_BUDGET = 2 * MAX_DIST_FRAME_BYTES`, imported from this
-/// constant so the two cannot drift — 1024's old justification assumed
-/// control-only traffic, yet nothing at the type level prevents a
-/// `DistOutbound::ToNode` from carrying a user payload, which is exactly why a
-/// count could not be the protection. The control lane needs no byte budget:
-/// its frames are structurally ceilinged at a measured 131131 bytes, so 256
-/// slots retain ~32 MiB — less than one frame of this cap. That lane's own
-/// module docs carry the measurement and state the absence.
-///
-/// Two standing caveats still travel with them. `send_remote` bypasses both
-/// queues via a direct blocking write, so neither lane's bound covers it. And
-/// the send lane fans out over `Arc<[u8]>`, so a broadcast retains ONE buffer:
-/// do not double-count the send lane against THIS budget. (The send lane's own
-/// budget deliberately does over-count a fan-out, fail-closed; that is internal
-/// to it and does not reach the receive-side arithmetic here.)
-///
-/// # The rail this restores
-///
-/// [`frame_buffer_for_header`] allocates through `try_reserve_exact` — the
-/// fallible-allocation rail that, after the framing move, survived only in
-/// `distribution/etf.rs`. Read that file's precedent precisely:
-/// **`etf.rs`'s `LengthTooLarge` is a fallible-ALLOC rail, NOT a size cap.** It
-/// reports an allocation that the allocator refused; it does not refuse a
-/// declared size. The two guards are complementary, and this path now carries
-/// both — the cap first, the fallible allocation behind it.
-///
-/// # Not caught here (narrow-rail law)
-///
-/// - Unbounded remote atom interning driven by these same frames. `safe =
-///   false` is deliberate per `DIST-CONTROL-WIRE-SPEC`.
-/// - `ConnectionEventHub.queue` is unbounded, but its elements are small
-///   fixed-size events: a count hole, not a byte hole.
-pub(crate) const MAX_DIST_FRAME_BYTES: usize = 64 * 1024 * 1024;
 
 /// Inbound receive-residency ENVELOPE, in bytes: the 4 GiB spike allowance out
 /// of beamr's 13 GiB memory bound. This is the primitive quantity — the budget

@@ -165,7 +165,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::atom::Atom;
-use crate::distribution::connection::{ConnectionManager, DistConnection, MAX_DIST_FRAME_BYTES};
+use crate::distribution::connection::{ConnectionManager, DistConnection};
+use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
 use crate::distribution::join_runtime_drop;
 
 /// OS thread name of the sender's single tokio worker.
@@ -671,9 +672,8 @@ mod tests {
 
     use super::*;
     use crate::atom::AtomTable;
-    use crate::distribution::connection::{
-        ConnectionDownReason, ConnectionManager, MAX_DIST_FRAME_BYTES,
-    };
+    use crate::distribution::connection::{ConnectionDownReason, ConnectionManager};
+    use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
     use crate::distribution::resolver::StaticResolver;
 
     fn manager() -> (ConnectionManager, Arc<AtomTable>) {

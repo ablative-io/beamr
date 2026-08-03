@@ -1,0 +1,5 @@
+instrument: df -k /System/Volumes/Data
+threshold: 47710208 KiB per ../rf003d3-battery/THRESHOLD.txt
+Filesystem   1024-blocks      Used Available Capacity  iused     ifree %iused  Mounted on
+/dev/disk3s5   971350180 841084932  99746508    90% 10643948 997465080    1%   /System/Volumes/Data
+read available KiB: 99746508
