@@ -428,7 +428,9 @@ mod tests {
 
     use super::*;
     use crate::atom::AtomTable;
-    use crate::distribution::connection::{ConnectionDownReason, ConnectionManager};
+    use crate::distribution::connection::{
+        ConnectionDownReason, ConnectionManager, MAX_DIST_FRAME_BYTES,
+    };
     use crate::distribution::resolver::StaticResolver;
 
     fn manager() -> (ConnectionManager, Arc<AtomTable>) {
@@ -1353,5 +1355,361 @@ mod tests {
         done_rx
             .recv_timeout(Duration::from_secs(10))
             .expect("final-clone drop on the sender's own worker must complete, not deadlock");
+    }
+
+    // ---- #64: byte-currency residency bounds on the outbound lanes ----------
+    //
+    // The tests below are the RED-FIRST artifact for lane #64 (DIST bounds
+    // COUNT -> BYTES). They are written against the clean base, where both
+    // lanes are bounded ONLY by a slot COUNT and are therefore blind to the
+    // bytes those slots retain.
+
+    /// Body size of one red-artifact frame: far below
+    /// [`MAX_DIST_FRAME_BYTES`] (so no per-frame cap is in play), yet large
+    /// enough that a handful of them dwarf any sane lane residency budget.
+    const RED_FRAME_BODY_BYTES: usize = 4 * 1024 * 1024;
+
+    /// How many red-artifact frames to offer a parked lane. Chosen so the
+    /// COUNT stays far below both lanes' slot caps (1024 data / 256 control)
+    /// while the BYTES total 256 MiB.
+    const RED_FRAME_COUNT: usize = 64;
+
+    /// A framed control frame of `body` bytes, tagged with `seq` in its first
+    /// byte so a reading peer can identify which frames arrived.
+    fn framed_of_size(seq: u8, body: usize) -> Arc<[u8]> {
+        let mut control = vec![0u8; body];
+        control[0] = seq;
+        let control_len = u32::try_from(control.len()).expect("control fits u32");
+        let mut frame = Vec::with_capacity(8 + control.len());
+        frame.extend_from_slice(&control_len.to_be_bytes());
+        frame.extend_from_slice(&0u32.to_be_bytes());
+        frame.extend_from_slice(&control);
+        Arc::from(frame.into_boxed_slice())
+    }
+
+    /// A peer socket that is accepted but NEVER read, plus the connection
+    /// registered against it. Writing more than the kernel send+recv buffers
+    /// can hold parks the drain until `WRITE_TIMEOUT`, which is what lets a
+    /// test observe what a lane RETAINS rather than what it forwards.
+    struct WedgedPeer {
+        connection: Arc<DistConnection>,
+        node: Atom,
+        _held: tokio::net::TcpStream,
+    }
+
+    async fn wedged_peer(connections: &ConnectionManager, atom_table: &AtomTable) -> WedgedPeer {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind wedged");
+        let addr = listener.local_addr().expect("wedged addr");
+        let node = atom_table.intern("wedged@127.0.0.1");
+        let stream = std::net::TcpStream::connect(addr).expect("wedged connects");
+        let peer_addr = stream.peer_addr().expect("wedged peer addr");
+        let accept = tokio::spawn(async move { listener.accept().await });
+        let connection = connections
+            .register_test_connection(node, peer_addr, stream)
+            .expect("register wedged connection");
+        let (held, _) = accept
+            .await
+            .expect("wedged accept join")
+            .expect("wedged accepted");
+        WedgedPeer {
+            connection,
+            node,
+            _held: held,
+        }
+    }
+
+    /// One frame big enough to overflow the kernel buffers a wedged peer never
+    /// drains, so the drain parks on it until `WRITE_TIMEOUT`.
+    fn drain_parking_frame() -> Arc<[u8]> {
+        framed_of_size(0x01, 16 * 1024 * 1024)
+    }
+
+    /// #64 D2 EVIDENCE — the encoded size of the control lane's ONLY
+    /// production traffic, measured at the bytes rather than read off the
+    /// encoder.
+    ///
+    /// The control lane's producers are enumerated and closed: every frame on
+    /// it is minted by `scheduler::dist_control_out` through the
+    /// `distribution::control_link` encoders, and every one of those is
+    /// `{Op, FromExtPid, ToExtPid[, ReasonAtom]}` over an ALWAYS-NIL payload.
+    /// A control frame therefore carries no user term at all. Its only
+    /// variable-length components are the two node-name atoms and, for
+    /// EXIT/EXIT2, a reason atom drawn from `ExitReason`'s closed six-atom
+    /// set — so the frame has a STRUCTURAL size ceiling, set by the ETF atom
+    /// encoding's own `u16` length field.
+    ///
+    /// This test measures both ends of that range: realistic node names, and
+    /// node names at the wire-permitted ceiling a hostile peer could actually
+    /// advertise through the handshake.
+    #[test]
+    fn control_frame_encoded_sizes_measured_at_the_bytes() {
+        use crate::distribution::control_link::{
+            ControlOp, encode_exit_frame, encode_link_frame, encode_unlink_frame,
+        };
+        use crate::process::{ExitReason, RemotePid};
+
+        let atom_table = AtomTable::with_common_atoms();
+
+        // The ceiling `encode_atom_name` permits: it writes ATOM_UTF8_EXT with
+        // a u16 length, and the handshake refuses any advertised name longer
+        // than `u16::MAX`. A hostile peer can reach exactly this.
+        let ceiling_name = "n".repeat(usize::from(u16::MAX));
+
+        let mut measurements: Vec<(String, usize)> = Vec::new();
+        for (label, local_name, peer_name) in [
+            ("typical", "local@127.0.0.1", "peer@127.0.0.1"),
+            ("atom-ceiling", ceiling_name.as_str(), ceiling_name.as_str()),
+        ] {
+            let local_node = atom_table.intern(local_name);
+            let to = RemotePid {
+                node: atom_table.intern(peer_name),
+                pid_number: u64::from(u32::MAX),
+                serial: u64::from(u32::MAX),
+            };
+            let link = encode_link_frame(local_node, u64::from(u32::MAX), to, &atom_table)
+                .expect("LINK encodes");
+            let unlink = encode_unlink_frame(local_node, u64::from(u32::MAX), to, &atom_table)
+                .expect("UNLINK encodes");
+            // `noconnection` is the longest atom in `ExitReason`'s closed set,
+            // so it is the reason worst case for both EXIT and EXIT2.
+            let exit = encode_exit_frame(
+                ControlOp::Exit,
+                local_node,
+                u64::from(u32::MAX),
+                to,
+                ExitReason::NoConnection,
+                &atom_table,
+            )
+            .expect("EXIT encodes");
+            let exit2 = encode_exit_frame(
+                ControlOp::Exit2,
+                local_node,
+                u64::from(u32::MAX),
+                to,
+                ExitReason::NoConnection,
+                &atom_table,
+            )
+            .expect("EXIT2 encodes");
+            for (op, frame) in [
+                ("LINK", &link),
+                ("UNLINK", &unlink),
+                ("EXIT", &exit),
+                ("EXIT2", &exit2),
+            ] {
+                measurements.push((format!("{label}/{op}"), frame.len()));
+            }
+        }
+
+        for (what, bytes) in &measurements {
+            println!("#64 D2 measurement: {what} encodes to {bytes} bytes");
+        }
+
+        let worst = measurements
+            .iter()
+            .map(|(_, bytes)| *bytes)
+            .max()
+            .expect("measurements are non-empty");
+        println!("#64 D2 measurement: worst-case control frame = {worst} bytes");
+        let lane_worst_case = worst * DIST_CONTROL_QUEUE_CAP;
+        println!(
+            "#64 D2 measurement: control lane at full {DIST_CONTROL_QUEUE_CAP}-slot occupancy \
+             retains at most {lane_worst_case} bytes"
+        );
+
+        // The evidence claim: a control frame is STRUCTURALLY small, so the
+        // lane's slot count already implies a hard byte ceiling — and that
+        // ceiling is smaller than a SINGLE maximum-size data frame.
+        assert!(
+            lane_worst_case < MAX_DIST_FRAME_BYTES,
+            "control lane worst-case residency ({lane_worst_case} B) must be below one \
+             max-size data frame ({MAX_DIST_FRAME_BYTES} B)"
+        );
+    }
+
+    /// #64 RED (D1) — the data lane is byte-BLIND.
+    ///
+    /// With the drain parked on a wedged peer, this offers the lane
+    /// [`RED_FRAME_COUNT`] frames of [`RED_FRAME_BODY_BYTES`] each: a COUNT of
+    /// 64 against a 1024-slot cap (6% full), but 256 MiB of retained bytes.
+    /// Every one is accepted and later delivered, because nothing on this lane
+    /// looks at `frame.len()`.
+    ///
+    /// The property asserted is the one that SHOULD hold: a lane whose
+    /// residency is bounded in bytes cannot forward more than its byte budget
+    /// out of a single parked burst. At the clean base it does not hold.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn data_lane_bounds_retained_bytes_not_just_slot_count() {
+        let (connections, atom_table) = manager();
+        let wedged = wedged_peer(&connections, &atom_table).await;
+
+        // Healthy node: read every frame and total the bytes that arrive.
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind live");
+        let addr = listener.local_addr().expect("live addr");
+        let received_bytes = Arc::new(AtomicUsize::new(0));
+        let received_frames = Arc::new(AtomicUsize::new(0));
+        let bytes_for_task = Arc::clone(&received_bytes);
+        let frames_for_task = Arc::clone(&received_frames);
+        let reader = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("live accept");
+            loop {
+                let mut header = [0u8; 8];
+                if stream.read_exact(&mut header).await.is_err() {
+                    break;
+                }
+                let control_len =
+                    u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
+                let payload_len =
+                    u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as usize;
+                let mut body = vec![0u8; control_len + payload_len];
+                if stream.read_exact(&mut body).await.is_err() {
+                    break;
+                }
+                frames_for_task.fetch_add(1, Ordering::SeqCst);
+                bytes_for_task.fetch_add(8 + body.len(), Ordering::SeqCst);
+            }
+        });
+        let live_stream = std::net::TcpStream::connect(addr).expect("live connects");
+        let live_node = atom_table.intern("live@127.0.0.1");
+        let live_peer_addr = live_stream.peer_addr().expect("live peer addr");
+        connections
+            .register_test_connection(live_node, live_peer_addr, live_stream)
+            .expect("register live connection");
+
+        let sender = DistSender::new(connections.clone()).expect("sender builds");
+
+        // Park the drain FIRST. The lane is FIFO, so this frame is taken
+        // before any of the burst below and holds the drain for WRITE_TIMEOUT.
+        sender.enqueue(DistOutbound::ToNode {
+            node: wedged.node,
+            frame: drain_parking_frame(),
+        });
+        // The burst: count far under the slot cap, bytes far over any budget.
+        for index in 0..RED_FRAME_COUNT {
+            let seq = u8::try_from(index).expect("seq fits u8");
+            sender.enqueue(DistOutbound::ToNode {
+                node: live_node,
+                frame: framed_of_size(seq, RED_FRAME_BODY_BYTES),
+            });
+        }
+
+        // Let the parked write time out, then wait for delivery to go quiet.
+        // Quiescence rather than a fixed sleep: the point of measurement is
+        // "how much did this lane ultimately let through", which is only
+        // settled once nothing more is arriving.
+        let deadline = std::time::Instant::now() + Duration::from_secs(120);
+        let mut previous = 0usize;
+        let mut quiet_rounds = 0u32;
+        loop {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let current = received_bytes.load(Ordering::SeqCst);
+            if current > 0 && current == previous {
+                quiet_rounds += 1;
+            } else {
+                quiet_rounds = 0;
+            }
+            previous = current;
+            if quiet_rounds >= 4 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "data lane never went quiet; {current} bytes delivered so far"
+            );
+        }
+
+        let delivered_bytes = received_bytes.load(Ordering::SeqCst);
+        let delivered_frames = received_frames.load(Ordering::SeqCst);
+        let offered_bytes = RED_FRAME_COUNT * (8 + RED_FRAME_BODY_BYTES);
+        println!(
+            "#64 RED (data lane): offered {RED_FRAME_COUNT} frames / {offered_bytes} bytes \
+             behind a parked drain; delivered {delivered_frames} frames / {delivered_bytes} bytes"
+        );
+
+        // The byte-bounded property. A lane that accounts in bytes cannot let a
+        // single parked burst through in excess of its residency budget; a lane
+        // that counts slots lets all 256 MiB through.
+        let budget = 2 * MAX_DIST_FRAME_BYTES;
+        assert!(
+            delivered_bytes <= budget,
+            "data lane must bound RETAINED BYTES, not just slots: {RED_FRAME_COUNT} frames \
+             ({delivered_frames} delivered) carried {delivered_bytes} bytes through a lane \
+             whose byte budget is {budget}, with the slot count at {RED_FRAME_COUNT} of \
+             {DIST_SEND_QUEUE_CAP}"
+        );
+
+        sender.shutdown();
+        drop(sender);
+        reader.abort();
+        drop(wedged);
+    }
+
+    /// #64 RED (D2) — the control lane is byte-BLIND.
+    ///
+    /// Mirror of the data-lane red on the must-deliver lane, where acceptance
+    /// is directly observable through [`ControlEnqueueError`]. With the drain
+    /// parked, [`RED_FRAME_COUNT`] frames of [`RED_FRAME_BODY_BYTES`] each are
+    /// offered: 64 of 256 slots, but 256 MiB retained. Every one is accepted.
+    ///
+    /// The property asserted is DC-1-preserving refusal on bytes: a lane
+    /// bounded in bytes must report `Overflow` (which marks the pinned
+    /// connection down — never a silent drop) rather than admit a quarter of a
+    /// gigabyte into 64 slots.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn control_lane_bounds_retained_bytes_not_just_slot_count() {
+        let (connections, atom_table) = manager();
+        let wedged = wedged_peer(&connections, &atom_table).await;
+        let sender = DistSender::new(connections.clone()).expect("sender builds");
+
+        // Park the drain on a write the wedged peer will never absorb.
+        sender
+            .enqueue_control(ControlOutbound {
+                connection: Arc::clone(&wedged.connection),
+                frame: drain_parking_frame(),
+            })
+            .expect("first control accepted into an empty lane");
+
+        let mut accepted = 0usize;
+        let mut refused = 0usize;
+        for index in 0..RED_FRAME_COUNT {
+            let seq = u8::try_from(index).expect("seq fits u8");
+            match sender.enqueue_control(ControlOutbound {
+                connection: Arc::clone(&wedged.connection),
+                frame: framed_of_size(seq, RED_FRAME_BODY_BYTES),
+            }) {
+                Ok(()) => accepted += 1,
+                Err(ControlEnqueueError::Overflow) => {
+                    // DC-1 is intact only if the refusal already downed the
+                    // pinned connection: the lane has no silent-drop arm.
+                    assert!(
+                        wedged.connection.is_down(),
+                        "a byte-budget refusal must mark the pinned connection down \
+                         before returning, exactly as a slot overflow does"
+                    );
+                    refused += 1;
+                }
+                Err(ControlEnqueueError::Closed) => {
+                    panic!("control lane must not close while the sender is live")
+                }
+            }
+        }
+
+        let offered_bytes = RED_FRAME_COUNT * (8 + RED_FRAME_BODY_BYTES);
+        println!(
+            "#64 RED (control lane): offered {RED_FRAME_COUNT} frames / {offered_bytes} bytes \
+             into {DIST_CONTROL_QUEUE_CAP} slots behind a parked drain; \
+             accepted {accepted}, refused {refused}"
+        );
+
+        let budget = 2 * MAX_DIST_FRAME_BYTES;
+        assert!(
+            refused > 0,
+            "control lane must bound RETAINED BYTES, not just slots: all {accepted} frames \
+             ({offered_bytes} bytes) were admitted into {RED_FRAME_COUNT} of \
+             {DIST_CONTROL_QUEUE_CAP} slots against a byte budget of {budget}"
+        );
+
+        sender.shutdown();
+        drop(sender);
+        drop(wedged);
     }
 }

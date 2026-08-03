@@ -1,0 +1,19 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 1 test
+#64 RED (control lane): offered 64 frames / 268435968 bytes into 256 slots behind a parked drain; accepted 64, refused 0
+
+thread 'distribution::sender::tests::control_lane_bounds_retained_bytes_not_just_slot_count' (62278086) panicked at crates/beamr/src/distribution/sender.rs:1704:9:
+control lane must bound RETAINED BYTES, not just slots: all 64 frames (268435968 bytes) were admitted into 64 of 256 slots against a byte budget of 134217728
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test distribution::sender::tests::control_lane_bounds_retained_bytes_not_just_slot_count ... FAILED
+
+failures:
+
+failures:
+    distribution::sender::tests::control_lane_bounds_retained_bytes_not_just_slot_count
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1774 filtered out; finished in 0.05s
+
+error: test failed, to rerun pass `-p beamr --lib`
