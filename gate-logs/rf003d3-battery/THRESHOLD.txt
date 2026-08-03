@@ -1,0 +1,10 @@
+VALUE:      47710208
+NOUN:       KiB available on /System/Volumes/Data (df -k column 4, "Available")
+INSTRUMENT: df -k /System/Volumes/Data
+BASIS:      45.5 GiB = floor 25 + sum of live lane stops INCLUDING THIS LANE's own
+            stop + margin 3, joiner-inclusive per Athena 764e8d14 (2026-08-03
+            01:09Z) as adopted by Cally 60162ffc. GUARD-1 LIVE lane set at GO
+            c9c71b21 (2026-08-03T01:12:17Z). GUARD-1-closed alternative, NOT in
+            force here: 40370176 KiB (38.5 GiB).
+RULE:       read before EVERY battery leg; a reading below VALUE = HOLD, do not
+            fire the leg. Each boundary-N-<leg>.df echoes the value it read.
