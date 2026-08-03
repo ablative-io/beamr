@@ -985,6 +985,7 @@ impl<'a> Cursor<'a> {
 mod tests {
     use super::*;
     use crate::atom::Atom;
+    use crate::distribution::connection::MAX_DIST_FRAME_BYTES;
     use crate::term::binary::Binary;
     use crate::term::boxed::{
         Float, Map, write_external_pid, write_external_reference, write_reference,
@@ -1308,6 +1309,23 @@ mod tests {
             read_dist_message(&mut frame.as_slice()).expect("deframe payload");
         assert_eq!(decoded_control, control);
         assert_eq!(payload, Some(payload_bytes.to_vec()));
+    }
+
+    /// RF-003 R1 Leg A — the framing helper must refuse a declared length above
+    /// [`MAX_DIST_FRAME_BYTES`] BEFORE it reserves it.
+    ///
+    /// BOUNDED RED (absolute): the header claims `MAX_DIST_FRAME_BYTES + 1`, not
+    /// `0xFFFFFFFF`. At the unfixed bytes this path really does perform the
+    /// reservation, so the claimed size has to stay small enough to hold
+    /// briefly (~64 MiB) — the extreme header is a GREEN-ONLY leg.
+    #[test]
+    fn deframe_refuses_length_above_max_dist_frame_bytes() {
+        let cap = u32::try_from(MAX_DIST_FRAME_BYTES).expect("the cap fits a u32 header field");
+        let over = cap + 1;
+        assert_eq!(
+            read_dist_message(&mut over.to_be_bytes().as_slice()),
+            Err(Error::LengthTooLarge)
+        );
     }
 
     #[test]

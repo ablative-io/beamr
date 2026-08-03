@@ -1,0 +1,62 @@
+   Compiling unicode-ident v1.0.24
+   Compiling num-traits v0.2.19
+   Compiling serde_json v1.0.150
+   Compiling beamr v0.16.2 (/Users/tom/Developer/ablative/stack/beamr-rf003d3/crates/beamr)
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling syn v2.0.117
+   Compiling plotters v0.3.7
+   Compiling zerocopy-derive v0.8.50
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.18
+   Compiling tokio-macros v2.7.0
+   Compiling futures-macro v0.3.32
+   Compiling tokio v1.52.3
+   Compiling futures-util v0.3.32
+   Compiling thiserror v2.0.18
+   Compiling zerocopy v0.8.50
+   Compiling serde v1.0.228
+   Compiling opentelemetry v0.32.0
+   Compiling futures-executor v0.3.32
+   Compiling tinytemplate v1.2.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling rand_chacha v0.9.0
+   Compiling ciborium-ll v0.2.2
+   Compiling rand v0.9.4
+   Compiling ciborium v0.2.2
+   Compiling criterion v0.8.2
+   Compiling opentelemetry_sdk v0.32.1
+   Compiling proptest v1.11.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 46.14s
+     Running unittests src/lib.rs (target/debug/deps/beamr-855e48ea83f5646c)
+
+running 10 tests
+test distribution::etf::tests::deframe_rejects_bad_frames ... ok
+test distribution::etf::tests::frames_and_deframes_distribution_messages ... ok
+test distribution::etf::tests::encodes_small_integer_and_integer_ext ... ok
+test distribution::etf::tests::decodes_invalid_input_as_errors ... ok
+test distribution::etf::tests::encodes_atoms_with_utf8_tags ... ok
+test distribution::etf::tests::encodes_and_decodes_external_pid_and_reference ... ok
+test distribution::etf::tests::decodes_boxed_payloads_to_heap_terms ... ok
+test distribution::etf::tests::encodes_tuple_nil_list_binary_float_map_pid_and_reference ... ok
+test distribution::etf::tests::decodes_round_trip_for_distribution_terms ... ok
+test distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes ... FAILED
+
+failures:
+
+---- distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes stdout ----
+
+thread 'distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes' (62791319) panicked at crates/beamr/src/distribution/etf.rs:1325:9:
+assertion `left == right` failed
+  left: Err(TruncatedBody { expected: 67108865, actual: 0 })
+ right: Err(LengthTooLarge)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    distribution::etf::tests::deframe_refuses_length_above_max_dist_frame_bytes
+
+test result: FAILED. 9 passed; 1 failed; 0 ignored; 0 measured; 1771 filtered out; finished in 0.22s
+
+error: test failed, to rerun pass `-p beamr --lib`

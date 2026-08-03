@@ -1,0 +1,6 @@
+instrument: df -k /System/Volumes/Data
+threshold: 47710208 KiB (45.5 GiB, joiner-inclusive, GUARD-1 live) per ../rf003d3-battery/THRESHOLD.txt
+reading taken IMMEDIATELY AFTER the red run (labelled honestly: the pre-run reading for this phase is the baseline commit's boundary-baseline.df at 106343652 KiB)
+Filesystem   1024-blocks      Used Available Capacity  iused      ifree %iused  Mounted on
+/dev/disk3s5   971350180 839954476 100876964    90% 10637330 1008769640    1%   /System/Volumes/Data
+read available KiB: 100876964
