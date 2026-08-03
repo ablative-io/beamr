@@ -1,0 +1,15 @@
+924	/Users/tom/Developer/ablative/stack/beamr-69-docs/.meridian
+48	/Users/tom/Developer/ablative/stack/beamr-69-docs/probes
+8176	/Users/tom/Developer/ablative/stack/beamr-69-docs/crates
+5591908	/Users/tom/Developer/ablative/stack/beamr-69-docs/target
+5296	/Users/tom/Developer/ablative/stack/beamr-69-docs/gate-logs
+24	/Users/tom/Developer/ablative/stack/beamr-69-docs/.yggdrasil
+340	/Users/tom/Developer/ablative/stack/beamr-69-docs/.claude
+9012	/Users/tom/Developer/ablative/stack/beamr-69-docs/docs
+36	/Users/tom/Developer/ablative/stack/beamr-69-docs/examples
+8	/Users/tom/Developer/ablative/stack/beamr-69-docs/scripts
+12	/Users/tom/Developer/ablative/stack/beamr-69-docs/.github
+4	/Users/tom/Developer/ablative/stack/beamr-69-docs/.ast-grep
+324	/Users/tom/Developer/ablative/stack/beamr-69-docs/test-workflows
+56	/Users/tom/Developer/ablative/stack/beamr-69-docs/conformance
+5616372	/Users/tom/Developer/ablative/stack/beamr-69-docs

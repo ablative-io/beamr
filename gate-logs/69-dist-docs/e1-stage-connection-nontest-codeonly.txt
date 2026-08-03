@@ -1,0 +1,1164 @@
+
+use std::fmt;
+use std::io;
+use std::net::SocketAddr;
+#[cfg(unix)]
+use std::os::fd::OwnedFd;
+#[cfg(unix)]
+use std::sync::Mutex as StdMutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock, RwLock, Weak};
+use std::time::{Duration, Instant};
+
+use dashmap::DashMap;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::runtime::Handle;
+use tokio::sync::{Mutex, Notify};
+use tokio::task::JoinHandle;
+
+use crate::atom::{Atom, AtomTable};
+use crate::distribution::etf::MAX_DIST_FRAME_BYTES;
+use crate::distribution::handshake::{
+    HandshakeError, HandshakeNode, SimultaneousDecision, initiate_handshake_async,
+    respond_handshake_async_with,
+};
+use crate::distribution::resolver::NodeResolver;
+
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+
+const KEEPALIVE_FRAME: [u8; 8] = [0_u8; 8];
+
+const DEFAULT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+
+const DEFAULT_HEARTBEAT_DEADLINE: Duration = Duration::from_secs(45);
+
+const INBOUND_RESIDENCY_ENVELOPE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+const INBOUND_RESIDENCY_PER_PEER_BYTES: u64 = MAX_DIST_FRAME_BYTES as u64;
+
+struct InboundResidency {
+    charged: AtomicU64,
+    envelope: u64,
+    per_peer: u64,
+    refused: AtomicU64,
+}
+
+impl InboundResidency {
+    fn new() -> Self {
+        Self {
+            charged: AtomicU64::new(0),
+            envelope: INBOUND_RESIDENCY_ENVELOPE_BYTES,
+            per_peer: INBOUND_RESIDENCY_PER_PEER_BYTES,
+            refused: AtomicU64::new(0),
+        }
+    }
+
+    fn try_admit(self: &Arc<Self>) -> Option<InboundAdmissionPermit> {
+        let mut current = self.charged.load(Ordering::Relaxed);
+        loop {
+            let next = current.saturating_add(self.per_peer);
+            if next > self.envelope {
+                self.refused.fetch_add(1, Ordering::Relaxed);
+                return None;
+            }
+            match self.charged.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    return Some(InboundAdmissionPermit {
+                        residency: Arc::clone(self),
+                        bytes: self.per_peer,
+                    });
+                }
+                Err(observed) => current = observed,
+            }
+        }
+    }
+}
+
+struct InboundAdmissionPermit {
+    residency: Arc<InboundResidency>,
+    bytes: u64,
+}
+
+impl Drop for InboundAdmissionPermit {
+    fn drop(&mut self) {
+        self.residency
+            .charged
+            .fetch_sub(self.bytes, Ordering::AcqRel);
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum FrameError {
+    LengthOverflow,
+    FrameTooLarge {
+        frame_bytes: usize,
+        max_frame_bytes: usize,
+    },
+    AllocationFailed {
+        frame_bytes: usize,
+    },
+}
+
+fn frame_buffer_for_header(header: [u8; 8]) -> Result<(usize, Vec<u8>), FrameError> {
+    let control_len = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
+    let payload_len = u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as usize;
+    let Some(total_len) = control_len.checked_add(payload_len) else {
+        return Err(FrameError::LengthOverflow);
+    };
+    if total_len > MAX_DIST_FRAME_BYTES {
+        return Err(FrameError::FrameTooLarge {
+            frame_bytes: total_len,
+            max_frame_bytes: MAX_DIST_FRAME_BYTES,
+        });
+    }
+    let mut frame = Vec::new();
+    frame
+        .try_reserve_exact(total_len)
+        .map_err(|_| FrameError::AllocationFailed {
+            frame_bytes: total_len,
+        })?;
+    frame.resize(total_len, 0_u8);
+    Ok((control_len, frame))
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ConnectError {
+    ResolveFailure,
+    ConnectionRefused,
+    Timeout,
+    SimultaneousAbort,
+    Io(String),
+}
+
+impl fmt::Display for ConnectError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ResolveFailure => formatter.write_str("distribution node resolution failed"),
+            Self::ConnectionRefused => formatter.write_str("distribution TCP connection refused"),
+            Self::Timeout => formatter.write_str("distribution TCP connection timed out"),
+            Self::SimultaneousAbort => formatter
+                .write_str("distribution outbound aborted by simultaneous-connect tie-break"),
+            Self::Io(error) => write!(formatter, "distribution TCP connection failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for ConnectError {}
+
+pub use super::connection_events::{ConnectionDownEvent, ConnectionDownHook, ConnectionDownReason};
+
+use super::connection_events::{
+    ConnectionEvent, ConnectionEventHub, ConnectionGeneration, NodeUp, SubscriberId,
+};
+
+type ControlFrameHandler = dyn Fn(Atom, &[u8], &[u8]) + Send + Sync + 'static;
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct HeartbeatConfig {
+    pub interval: Duration,
+    pub deadline: Duration,
+}
+
+impl HeartbeatConfig {
+    #[must_use]
+    pub fn with_defaults() -> Self {
+        Self {
+            interval: DEFAULT_HEARTBEAT_INTERVAL,
+            deadline: DEFAULT_HEARTBEAT_DEADLINE,
+        }
+    }
+}
+
+pub struct DistConnection {
+    node: Atom,
+    peer_addr: SocketAddr,
+    writer: Mutex<Option<OwnedWriteHalf>>,
+    #[cfg(unix)]
+    socket_fd: StdMutex<Option<OwnedFd>>,
+    down: AtomicBool,
+    manager: Weak<ConnectionManagerInner>,
+    created_at: Instant,
+    last_inbound_millis: AtomicU64,
+    shutdown: Arc<Notify>,
+    direction: LinkDirection,
+    generation: ConnectionGeneration,
+    peer_creation: u32,
+    down_reason: OnceLock<ConnectionDownReason>,
+}
+
+struct PreparedSocket {
+    stream: TcpStream,
+    #[cfg(unix)]
+    teardown_fd: OwnedFd,
+}
+
+impl PreparedSocket {
+    fn prepare(stream: TcpStream) -> io::Result<Self> {
+        #[cfg(all(test, unix))]
+        if FAIL_TEARDOWN_DUP_FOR_TEST.with(std::cell::Cell::get) {
+            return Err(io::Error::other("teardown dup failure injected"));
+        }
+        #[cfg(unix)]
+        let teardown_fd = rustix::io::fcntl_dupfd_cloexec(&stream, 0).map_err(io::Error::from)?;
+        Ok(Self {
+            stream,
+            #[cfg(unix)]
+            teardown_fd,
+        })
+    }
+}
+
+#[cfg(all(test, unix))]
+thread_local! {
+    pub(crate) static FAIL_TEARDOWN_DUP_FOR_TEST: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+impl DistConnection {
+    fn new(
+        node: Atom,
+        peer_addr: SocketAddr,
+        socket: PreparedSocket,
+        manager: Weak<ConnectionManagerInner>,
+        direction: LinkDirection,
+        generation: ConnectionGeneration,
+        peer_creation: u32,
+    ) -> (Self, OwnedReadHalf) {
+        #[cfg(unix)]
+        let teardown_fd = socket.teardown_fd;
+        let (read_half, writer) = socket.stream.into_split();
+        let connection = Self {
+            node,
+            peer_addr,
+            writer: Mutex::new(Some(writer)),
+            #[cfg(unix)]
+            socket_fd: StdMutex::new(Some(teardown_fd)),
+            down: AtomicBool::new(false),
+            manager,
+            created_at: Instant::now(),
+            last_inbound_millis: AtomicU64::new(0),
+            shutdown: Arc::new(Notify::new()),
+            direction,
+            generation,
+            peer_creation,
+            down_reason: OnceLock::new(),
+        };
+        (connection, read_half)
+    }
+
+    #[cfg(all(test, unix))]
+    pub(crate) fn teardown_fd_cloexec(&self) -> Option<bool> {
+        self.socket_fd
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|fd| {
+                rustix::io::fcntl_getfd(fd)
+                    .map(|flags| flags.contains(rustix::io::FdFlags::CLOEXEC))
+                    .unwrap_or(false)
+            })
+    }
+
+    fn note_inbound_activity(&self) {
+        let elapsed = u64::try_from(self.created_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.last_inbound_millis.store(elapsed, Ordering::Release);
+    }
+
+    fn inbound_idle_for(&self, deadline: Duration) -> bool {
+        let last = self.last_inbound_millis.load(Ordering::Acquire);
+        let now = u64::try_from(self.created_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let deadline_millis = u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX);
+        now.saturating_sub(last) >= deadline_millis
+    }
+
+    fn mark_down_heartbeat_timeout(self: &Arc<Self>) {
+        self.mark_down(ConnectionDownReason::HeartbeatTimeout);
+    }
+
+    #[must_use]
+    pub fn node(&self) -> Atom {
+        self.node
+    }
+
+    #[must_use]
+    pub fn peer_addr(&self) -> SocketAddr {
+        self.peer_addr
+    }
+
+    #[must_use]
+    pub fn generation(&self) -> ConnectionGeneration {
+        self.generation
+    }
+
+    #[must_use]
+    pub fn peer_creation(&self) -> u32 {
+        self.peer_creation
+    }
+
+    #[cfg(test)]
+    pub(crate) fn force_down_without_reap(&self) {
+        self.down.store(true, Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn is_down(&self) -> bool {
+        self.down.load(Ordering::Acquire)
+    }
+
+    pub async fn write_raw(self: &Arc<Self>, bytes: &[u8]) -> io::Result<()> {
+        let result = {
+            let mut writer = self.writer.lock().await;
+            let result = match writer.as_mut() {
+                Some(writer) => writer.write_all(bytes).await,
+                None => Err(io::Error::from(io::ErrorKind::NotConnected)),
+            };
+            if self.is_down() {
+                writer.take();
+            }
+            result
+        };
+        if result.is_err() {
+            self.mark_down(ConnectionDownReason::WriteError);
+        }
+        result
+    }
+
+    pub fn mark_down_write_timeout(self: &Arc<Self>) {
+        self.mark_down(ConnectionDownReason::WriteTimeout);
+    }
+
+    pub(crate) fn mark_down_control_overflow(self: &Arc<Self>) {
+        self.mark_down(ConnectionDownReason::ControlOverflow);
+    }
+
+    fn mark_down(self: &Arc<Self>, reason: ConnectionDownReason) {
+        let _ = self.down_reason.set(reason);
+        if self.down.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        self.shutdown.notify_waiters();
+        #[cfg(unix)]
+        if let Some(fd) = self
+            .socket_fd
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+        {
+            let _ = rustix::net::shutdown(&fd, rustix::net::Shutdown::Both);
+        }
+        if let Ok(mut writer) = self.writer.try_lock() {
+            writer.take();
+        }
+        if let Some(manager) = self.manager.upgrade() {
+            manager.connection_down(self.node, self, reason);
+        }
+    }
+}
+
+pub struct AcceptHandle {
+    local_addr: SocketAddr,
+    shutdown: Arc<Notify>,
+    task: JoinHandle<()>,
+}
+
+impl AcceptHandle {
+    #[must_use]
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    pub fn shutdown(&self) {
+        self.shutdown.notify_waiters();
+    }
+
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.task.is_finished()
+    }
+}
+
+impl Drop for AcceptHandle {
+    fn drop(&mut self) {
+        self.shutdown.notify_waiters();
+        self.task.abort();
+    }
+}
+
+struct ConnectionManagerInner {
+    connections: DashMap<Atom, Arc<DistConnection>>,
+    connecting: DashMap<Atom, Arc<AtomicBool>>,
+    atom_table: Arc<AtomTable>,
+    resolver: Arc<dyn NodeResolver + Send + Sync>,
+    connect_timeout: Duration,
+    handshake_timeout: Duration,
+    events: ConnectionEventHub,
+    control_frame_handler: RwLock<Option<Arc<ControlFrameHandler>>>,
+    cookie: String,
+    local_node_name: String,
+    local_creation: u32,
+    runtime_handle: RwLock<Option<Handle>>,
+    heartbeat: Option<HeartbeatConfig>,
+    heartbeat_tasks_spawned: AtomicU64,
+    inbound_residency: Arc<InboundResidency>,
+}
+
+impl ConnectionManagerInner {
+    fn spawn_lifecycle<F>(&self, future: F) -> JoinHandle<()>
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let handle = self
+            .runtime_handle
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        match handle {
+            Some(handle) => handle.spawn(future),
+            None => tokio::spawn(future),
+        }
+    }
+
+    fn handshake_node(&self) -> Result<HandshakeNode, ConnectError> {
+        HandshakeNode::with_default_flags(self.local_node_name.clone(), self.local_creation)
+            .map_err(|error| ConnectError::Io(error.to_string()))
+    }
+
+    fn gen_challenge(&self) -> u32 {
+        rand::random::<u32>()
+    }
+
+    fn decide_inbound_status(&self, peer_name: &str) -> SimultaneousDecision {
+        let peer_atom = self.atom_table.intern(peer_name);
+        let Some(abort) = self
+            .connecting
+            .get(&peer_atom)
+            .map(|entry| Arc::clone(&entry))
+        else {
+            return SimultaneousDecision::Continue;
+        };
+        match peer_name.cmp(self.local_node_name.as_str()) {
+            std::cmp::Ordering::Greater => {
+                abort.store(true, Ordering::SeqCst);
+                SimultaneousDecision::ContinueSimultaneous
+            }
+            std::cmp::Ordering::Less => SimultaneousDecision::Reject,
+            std::cmp::Ordering::Equal => SimultaneousDecision::Continue,
+        }
+    }
+
+    fn canonical_direction(&self, peer: Atom) -> LinkDirection {
+        let Some(peer_name) = self.atom_table.resolve(peer) else {
+            return LinkDirection::Inbound;
+        };
+        if self.local_node_name.as_str() > peer_name {
+            LinkDirection::Outbound
+        } else {
+            LinkDirection::Inbound
+        }
+    }
+}
+
+impl ConnectionManagerInner {
+    fn connection_down(
+        &self,
+        node: Atom,
+        connection: &Arc<DistConnection>,
+        reason: ConnectionDownReason,
+    ) {
+        use dashmap::mapref::entry::Entry;
+        if let Entry::Occupied(occupied) = self.connections.entry(node)
+            && Arc::ptr_eq(occupied.get(), connection)
+        {
+            self.events
+                .enqueue(ConnectionEvent::down(node, connection.generation(), reason));
+            occupied.remove();
+        }
+        self.events.dispatch();
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LinkDirection {
+    Outbound,
+    Inbound,
+}
+
+struct ConnectingGuard {
+    inner: Arc<ConnectionManagerInner>,
+    peer: Atom,
+    abort: Arc<AtomicBool>,
+}
+
+impl ConnectingGuard {
+    fn new(inner: &Arc<ConnectionManagerInner>, peer_name: &str) -> Self {
+        let peer = inner.atom_table.intern(peer_name);
+        let abort = Arc::new(AtomicBool::new(false));
+        inner.connecting.insert(peer, Arc::clone(&abort));
+        Self {
+            inner: Arc::clone(inner),
+            peer,
+            abort,
+        }
+    }
+
+    fn is_aborted(&self) -> bool {
+        self.abort.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for ConnectingGuard {
+    fn drop(&mut self) {
+        self.inner.connecting.remove(&self.peer);
+    }
+}
+
+#[derive(Clone)]
+pub struct ConnectionManager {
+    inner: Arc<ConnectionManagerInner>,
+}
+
+impl ConnectionManager {
+    #[must_use]
+    pub fn new(
+        atom_table: Arc<AtomTable>,
+        resolver: Arc<dyn NodeResolver + Send + Sync>,
+        cookie: impl Into<String>,
+        local_node_name: impl Into<String>,
+        local_creation: u32,
+    ) -> Self {
+        Self::with_connect_timeout(
+            atom_table,
+            resolver,
+            cookie,
+            local_node_name,
+            local_creation,
+            DEFAULT_CONNECT_TIMEOUT,
+        )
+    }
+
+    #[must_use]
+    pub fn with_connect_timeout(
+        atom_table: Arc<AtomTable>,
+        resolver: Arc<dyn NodeResolver + Send + Sync>,
+        cookie: impl Into<String>,
+        local_node_name: impl Into<String>,
+        local_creation: u32,
+        connect_timeout: Duration,
+    ) -> Self {
+        Self {
+            inner: Arc::new(ConnectionManagerInner {
+                connections: DashMap::new(),
+                connecting: DashMap::new(),
+                atom_table,
+                resolver,
+                connect_timeout,
+                handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
+                events: ConnectionEventHub::new(),
+                control_frame_handler: RwLock::new(None),
+                cookie: cookie.into(),
+                local_node_name: local_node_name.into(),
+                local_creation,
+                runtime_handle: RwLock::new(None),
+                heartbeat: None,
+                heartbeat_tasks_spawned: AtomicU64::new(0),
+                inbound_residency: Arc::new(InboundResidency::new()),
+            }),
+        }
+    }
+
+    #[must_use]
+    pub fn with_heartbeat(mut self, config: HeartbeatConfig) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.heartbeat = Some(config);
+        }
+        self
+    }
+
+    pub fn set_runtime_handle(&self, handle: Handle) {
+            .inner
+            .runtime_handle
+            .write()
+            .unwrap_or_else(|error| error.into_inner()) = Some(handle);
+    }
+
+    #[must_use]
+    pub fn connect_timeout(&self) -> Duration {
+        self.inner.connect_timeout
+    }
+
+    #[must_use]
+    pub fn handshake_timeout(&self) -> Duration {
+        self.inner.handshake_timeout
+    }
+
+    #[must_use]
+    pub fn with_handshake_timeout(mut self, handshake_timeout: Duration) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.handshake_timeout = handshake_timeout;
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn connection_down_hook(&self) -> ConnectionDownHook {
+        self.inner.events.legacy_down_hook()
+    }
+
+    pub fn register_connection_down<F>(&self, callback: F)
+    where
+        F: Fn(ConnectionDownEvent) + Send + Sync + 'static,
+    {
+        self.inner.events.legacy_down_hook().register(callback);
+    }
+
+    pub fn subscribe_connection_events<F>(&self, callback: F) -> SubscriberId
+    where
+        F: Fn(ConnectionEvent) + Send + Sync + 'static,
+    {
+        self.inner.events.subscribe(callback)
+    }
+
+    pub fn unsubscribe_connection_events(&self, id: SubscriberId) -> bool {
+        self.inner.events.unsubscribe(id)
+    }
+
+    pub fn subscribe_connection_events_with_snapshot<F>(&self, callback: F) -> SubscriberId
+    where
+        F: Fn(ConnectionEvent) + Send + Sync + 'static,
+    {
+        self.inner
+            .events
+            .subscribe_with_snapshot(callback, || self.connected_peers())
+    }
+
+    #[must_use]
+    pub fn connected_peers(&self) -> Vec<NodeUp> {
+        self.inner
+            .connections
+            .iter()
+            .filter(|entry| !entry.value().is_down())
+            .map(|entry| NodeUp {
+                node: *entry.key(),
+                generation: entry.value().generation(),
+                peer_creation: entry.value().peer_creation(),
+            })
+            .collect()
+    }
+
+    #[must_use]
+    pub fn last_peer_generation(&self, node: Atom) -> Option<ConnectionGeneration> {
+        self.inner.events.last_generation(node)
+    }
+
+    pub fn register_control_frame_handler<F>(&self, handler: F)
+    where
+        F: Fn(&[u8], &[u8]) + Send + Sync + 'static,
+    {
+        self.register_control_frame_handler_with_origin(move |_origin, control, payload| {
+            handler(control, payload);
+        });
+    }
+
+    pub fn register_control_frame_handler_with_origin<F>(&self, handler: F)
+    where
+        F: Fn(Atom, &[u8], &[u8]) + Send + Sync + 'static,
+    {
+        let mut slot = self
+            .inner
+            .control_frame_handler
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+    }
+
+    #[must_use]
+    pub fn connection_count(&self) -> usize {
+        self.inner.connections.len()
+    }
+
+    #[must_use]
+    pub fn heartbeat_enabled(&self) -> bool {
+        self.inner.heartbeat.is_some()
+    }
+
+    #[must_use]
+    pub fn heartbeat_tasks_spawned(&self) -> u64 {
+        self.inner.heartbeat_tasks_spawned.load(Ordering::Relaxed)
+    }
+
+    #[must_use]
+    pub fn inbound_residency_bytes(&self) -> u64 {
+        self.inner.inbound_residency.charged.load(Ordering::Acquire)
+    }
+
+    #[must_use]
+    pub fn inbound_accepts_refused(&self) -> u64 {
+        self.inner.inbound_residency.refused.load(Ordering::Relaxed)
+    }
+
+    #[must_use]
+    pub fn atom_table(&self) -> Arc<AtomTable> {
+        Arc::clone(&self.inner.atom_table)
+    }
+
+    #[must_use]
+    pub fn get_connection(&self, node: Atom) -> Option<Arc<DistConnection>> {
+        self.inner
+            .connections
+            .get(&node)
+            .map(|entry| Arc::clone(entry.value()))
+    }
+
+    #[must_use]
+    pub fn connected_nodes(&self) -> Vec<Atom> {
+        let mut nodes: Vec<_> = self
+            .inner
+            .connections
+            .iter()
+            .map(|entry| *entry.key())
+            .collect();
+        nodes.sort_unstable_by_key(|node| node.index());
+        nodes
+    }
+
+    pub async fn connect_node(&self, node: Atom) -> bool {
+        if self
+            .get_connection(node)
+            .is_some_and(|connection| !connection.is_down())
+        {
+            return true;
+        }
+        let Some(node_name) = self.inner.atom_table.resolve(node).map(str::to_owned) else {
+            return false;
+        };
+        matches!(
+            self.connect(&node_name).await,
+            Ok(_) | Err(ConnectError::SimultaneousAbort)
+        )
+    }
+
+    pub fn disconnect_node(&self, node: Atom) -> bool {
+        let Some(connection) = self.get_connection(node) else {
+            return true;
+        };
+        connection.mark_down(ConnectionDownReason::ManualDisconnect);
+        true
+    }
+
+    pub fn disconnect_all(&self) {
+        for entry in &self.inner.connecting {
+            entry.value().store(true, Ordering::Release);
+        }
+        let nodes: Vec<Atom> = self
+            .inner
+            .connections
+            .iter()
+            .map(|entry| *entry.key())
+            .collect();
+        for node in nodes {
+            self.disconnect_node(node);
+        }
+    }
+
+    pub async fn start(
+        listen_addr: SocketAddr,
+        resolver: Arc<dyn NodeResolver + Send + Sync>,
+        cookie: impl Into<String>,
+        local_node_name: impl Into<String>,
+        local_creation: u32,
+    ) -> io::Result<(Self, AcceptHandle)> {
+        let manager = Self::new(
+            Arc::new(AtomTable::with_common_atoms()),
+            resolver,
+            cookie,
+            local_node_name,
+            local_creation,
+        );
+        let handle = manager.listen(listen_addr).await?;
+        Ok((manager, handle))
+    }
+
+    pub async fn listen(&self, listen_addr: SocketAddr) -> io::Result<AcceptHandle> {
+        let listener = TcpListener::bind(listen_addr).await?;
+        Ok(self.listen_with(listener))
+    }
+
+    #[must_use]
+    pub fn listen_with(&self, listener: TcpListener) -> AcceptHandle {
+        let local_addr = listener
+            .local_addr()
+            .unwrap_or_else(|_| SocketAddr::from(([0, 0, 0, 0], 0)));
+        let shutdown = Arc::new(Notify::new());
+        let task_shutdown = Arc::clone(&shutdown);
+        let manager = self.clone();
+        let task = self.inner.spawn_lifecycle(async move {
+            manager.accept_loop(listener, task_shutdown).await;
+        });
+        AcceptHandle {
+            local_addr,
+            shutdown,
+            task,
+        }
+    }
+
+    pub async fn connect(&self, node_name: &str) -> Result<Arc<DistConnection>, ConnectError> {
+        let addr = self
+            .inner
+            .resolver
+            .resolve(node_name)
+            .await
+            .map_err(|_| ConnectError::ResolveFailure)?;
+        let mut stream = match tokio::time::timeout(
+            self.inner.connect_timeout,
+            TcpStream::connect(addr),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(error)) if error.kind() == io::ErrorKind::ConnectionRefused => {
+                return Err(ConnectError::ConnectionRefused);
+            }
+            Ok(Err(error)) => return Err(ConnectError::Io(error.to_string())),
+            Err(_) => return Err(ConnectError::Timeout),
+        };
+        let peer_addr = stream.peer_addr().unwrap_or(addr);
+
+        let local = self.inner.handshake_node()?;
+        let _connecting = ConnectingGuard::new(&self.inner, node_name);
+        let result = match tokio::time::timeout(
+            self.inner.handshake_timeout,
+            initiate_handshake_async(
+                &mut stream,
+                &local,
+                &self.inner.cookie,
+                self.inner.gen_challenge(),
+            ),
+        )
+        .await
+        {
+            Ok(Ok(result)) => result,
+            Ok(Err(HandshakeError::BadStatus(status))) if status == "nok" => {
+                return Err(ConnectError::SimultaneousAbort);
+            }
+            Ok(Err(error)) => return Err(ConnectError::Io(error.to_string())),
+            Err(_) => return Err(ConnectError::Io(HandshakeError::Timeout.to_string())),
+        };
+        if _connecting.is_aborted() {
+            drop(stream);
+            return Err(ConnectError::SimultaneousAbort);
+        }
+        let node = self.inner.atom_table.intern(result.remote_name());
+        self.register_connection(
+            node,
+            peer_addr,
+            stream,
+            LinkDirection::Outbound,
+            result.remote_creation(),
+            None,
+        )
+        .map_err(|error| ConnectError::Io(error.to_string()))
+    }
+
+    fn register_connection(
+        &self,
+        node: Atom,
+        peer_addr: SocketAddr,
+        stream: TcpStream,
+        direction: LinkDirection,
+        peer_creation: u32,
+        admission: Option<InboundAdmissionPermit>,
+    ) -> io::Result<Arc<DistConnection>> {
+        use dashmap::mapref::entry::Entry;
+
+        let socket = PreparedSocket::prepare(stream)?;
+        let canonical = self.inner.canonical_direction(node);
+        let (installed, read_half, displaced) = match self.inner.connections.entry(node) {
+            Entry::Occupied(mut occupied) => {
+                let incumbent = occupied.get();
+                let creation_mismatch = incumbent.peer_creation() != 0
+                    && peer_creation != 0
+                    && incumbent.peer_creation() != peer_creation;
+                if !incumbent.is_down() && incumbent.direction == canonical && !creation_mismatch {
+                    drop(socket);
+                    return Ok(Arc::clone(incumbent));
+                }
+                let previous = Arc::clone(incumbent);
+                let previous_down = previous.is_down();
+                let peer_bounced = !previous_down && creation_mismatch;
+                let generation = if previous_down {
+                    self.inner.events.enqueue(ConnectionEvent::down(
+                        node,
+                        previous.generation(),
+                        previous
+                            .down_reason
+                            .get()
+                            .copied()
+                            .unwrap_or(ConnectionDownReason::ReadError),
+                    ));
+                    self.inner.events.next_generation(node)
+                } else if peer_bounced {
+                    self.inner.events.enqueue(ConnectionEvent::down(
+                        node,
+                        previous.generation(),
+                        ConnectionDownReason::ReadError,
+                    ));
+                    self.inner.events.next_generation(node)
+                } else {
+                    previous.generation()
+                };
+                let (connection, read_half) = self.build_connection(
+                    node,
+                    peer_addr,
+                    socket,
+                    direction,
+                    generation,
+                    peer_creation,
+                );
+                occupied.insert(Arc::clone(&connection));
+                if previous_down || peer_bounced {
+                    self.inner
+                        .events
+                        .enqueue(ConnectionEvent::up(node, generation, peer_creation));
+                }
+                (connection, read_half, Some(previous))
+            }
+            Entry::Vacant(vacant) => {
+                let generation = self.inner.events.next_generation(node);
+                let (connection, read_half) = self.build_connection(
+                    node,
+                    peer_addr,
+                    socket,
+                    direction,
+                    generation,
+                    peer_creation,
+                );
+                let entry_ref = vacant.insert(Arc::clone(&connection));
+                self.inner
+                    .events
+                    .enqueue(ConnectionEvent::up(node, generation, peer_creation));
+                drop(entry_ref);
+                (connection, read_half, None)
+            }
+        };
+        if let Some(previous) = displaced {
+            previous.mark_down(ConnectionDownReason::ReadError);
+        }
+        self.inner.events.dispatch();
+        self.spawn_read_lifecycle(Arc::clone(&installed), read_half, admission);
+        Ok(installed)
+    }
+
+    fn build_connection(
+        &self,
+        node: Atom,
+        peer_addr: SocketAddr,
+        socket: PreparedSocket,
+        direction: LinkDirection,
+        generation: ConnectionGeneration,
+        peer_creation: u32,
+    ) -> (Arc<DistConnection>, OwnedReadHalf) {
+        let (connection, read_half) = DistConnection::new(
+            node,
+            peer_addr,
+            socket,
+            Arc::downgrade(&self.inner),
+            direction,
+            generation,
+            peer_creation,
+        );
+        (Arc::new(connection), read_half)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn register_test_connection(
+        &self,
+        node: Atom,
+        peer_addr: SocketAddr,
+        stream: std::net::TcpStream,
+    ) -> io::Result<Arc<DistConnection>> {
+        self.register_test_connection_with_creation(node, peer_addr, stream, 0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn register_test_connection_with_creation(
+        &self,
+        node: Atom,
+        peer_addr: SocketAddr,
+        stream: std::net::TcpStream,
+        peer_creation: u32,
+    ) -> io::Result<Arc<DistConnection>> {
+        stream.set_nonblocking(true)?;
+        let stream = TcpStream::from_std(stream)?;
+        self.register_connection(
+            node,
+            peer_addr,
+            stream,
+            LinkDirection::Inbound,
+            peer_creation,
+            None,
+        )
+    }
+
+    fn spawn_read_lifecycle(
+        &self,
+        connection: Arc<DistConnection>,
+        mut read_half: OwnedReadHalf,
+        admission: Option<InboundAdmissionPermit>,
+    ) {
+        connection.note_inbound_activity();
+        self.spawn_heartbeat(Arc::clone(&connection));
+        let manager = Arc::clone(&self.inner);
+        let shutdown = Arc::clone(&connection.shutdown);
+        self.inner.spawn_lifecycle(async move {
+            let _admission = admission;
+            let notified = shutdown.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            loop {
+                let mut header = [0_u8; 8];
+                if connection.is_down() {
+                    break;
+                }
+                let read_header = tokio::select! {
+                    biased;
+                    () = &mut notified => break,
+                    result = read_half.read_exact(&mut header) => result,
+                };
+                match read_header {
+                    Ok(_) => {
+                        connection.note_inbound_activity();
+                        let (control_len, mut frame) = match frame_buffer_for_header(header) {
+                            Ok(sized) => sized,
+                            Err(
+                                FrameError::LengthOverflow
+                                | FrameError::FrameTooLarge { .. }
+                                | FrameError::AllocationFailed { .. },
+                            ) => {
+                                connection.mark_down(ConnectionDownReason::ReadError);
+                                break;
+                            }
+                        };
+                        if read_half.read_exact(&mut frame).await.is_err() {
+                            connection.mark_down(ConnectionDownReason::ReadError);
+                            break;
+                        }
+                        let handler = manager
+                            .control_frame_handler
+                            .read()
+                            .unwrap_or_else(|error| error.into_inner())
+                            .clone();
+                        if let Some(handler) = handler {
+                            let (control, payload) = frame.split_at(control_len);
+                            handler(connection.node, control, payload);
+                        }
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                        connection.mark_down(ConnectionDownReason::PeerClosed);
+                        break;
+                    }
+                    Err(_) => {
+                        connection.mark_down(ConnectionDownReason::ReadError);
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    fn spawn_heartbeat(&self, connection: Arc<DistConnection>) {
+        let Some(config) = self.inner.heartbeat else {
+            return;
+        };
+        self.inner
+            .heartbeat_tasks_spawned
+            .fetch_add(1, Ordering::Relaxed);
+        self.inner.spawn_lifecycle(async move {
+            let mut ticker = tokio::time::interval(config.interval);
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                if connection.is_down() {
+                    break;
+                }
+                if connection.inbound_idle_for(config.deadline) {
+                    connection.mark_down_heartbeat_timeout();
+                    break;
+                }
+                let _ = connection.write_raw(&KEEPALIVE_FRAME).await;
+            }
+        });
+    }
+
+    async fn accept_loop(&self, listener: TcpListener, shutdown: Arc<Notify>) {
+        loop {
+            tokio::select! {
+                _ = shutdown.notified() => {
+                    break;
+                }
+                accepted = listener.accept() => {
+                    let Ok((stream, peer_addr)) = accepted else {
+                        continue;
+                    };
+                    let Some(admission) = self.inner.inbound_residency.try_admit() else {
+                        drop(stream);
+                        continue;
+                    };
+                    self.handle_accepted(stream, peer_addr, admission);
+                }
+            }
+        }
+    }
+
+    fn handle_accepted(
+        &self,
+        mut stream: TcpStream,
+        peer_addr: SocketAddr,
+        admission: InboundAdmissionPermit,
+    ) {
+        let manager = self.clone();
+        self.inner.spawn_lifecycle(async move {
+            let local = match manager.inner.handshake_node() {
+                Ok(local) => local,
+                Err(_) => return,
+            };
+            let decider = |peer_name: &str| manager.inner.decide_inbound_status(peer_name);
+            let outcome = tokio::time::timeout(
+                manager.inner.handshake_timeout,
+                respond_handshake_async_with(
+                    &mut stream,
+                    &local,
+                    &manager.inner.cookie,
+                    manager.inner.gen_challenge(),
+                    decider,
+                ),
+            )
+            .await;
+            match outcome {
+                Ok(Ok(result)) => {
+                    let node = manager.inner.atom_table.intern(result.remote_name());
+                    let _ = manager.register_connection(
+                        node,
+                        peer_addr,
+                        stream,
+                        LinkDirection::Inbound,
+                        result.remote_creation(),
+                        Some(admission),
+                    );
+                }
+                Ok(Err(_)) | Err(_) => {
+                    drop(admission);
+                    drop(stream);
+                }
+            }
+        });
+    }
+}
+

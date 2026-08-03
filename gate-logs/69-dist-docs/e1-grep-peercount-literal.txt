@@ -1,0 +1,21 @@
+crates/beamr/src/distribution/etf.rs:33:/// 64 MiB = the 4 GiB spike allowance out of beamr's 13 GiB memory bound,
+crates/beamr/src/distribution/etf.rs:34:/// divided by the 64-peer design target. The five steps, in order:
+crates/beamr/src/distribution/etf.rs:37:/// 2. Worst-case inbound receive residency is therefore `N x 64 MiB`, where `N`
+crates/beamr/src/distribution/etf.rs:39:/// 3. The 13 GiB budget holds IF AND ONLY IF `N <= 64`.
+crates/beamr/src/distribution/etf.rs:40:/// 4. `N`'s accept-driven component is ENFORCED (lane #64, D5).
+crates/beamr/src/distribution/etf.rs:50:///    which is 64. No peer count is written anywhere in this file; changing
+crates/beamr/src/distribution/etf.rs:51:///    either byte quantity moves the ceiling with it. **`<= 64` accepted peers
+crates/beamr/src/distribution/etf.rs:92:pub(crate) const MAX_DIST_FRAME_BYTES: usize = 64 * 1024 * 1024;
+crates/beamr/src/distribution/etf.rs:1397:    /// briefly (~64 MiB) — the extreme header is a GREEN-ONLY leg.
+crates/beamr/src/distribution/connection.rs:69:/// 64-peer design target, now DERIVED from the two byte quantities rather than
+crates/beamr/src/distribution/connection.rs:167:    /// `usize` is narrower than 64 bits (wasm32); kept unconditionally because
+crates/beamr/src/distribution/connection.rs:666:    /// Inbound accept-side residency meter (lane #64, D5). Every stream the
+crates/beamr/src/distribution/connection.rs:3267:    /// the literal `64 * 1024 * 1024 + 1`, split across the two header fields;
+crates/beamr/src/distribution/connection.rs:3283:        let header = frame_header(64 * 1024 * 1024, 1);
+crates/beamr/src/distribution/connection.rs:3338:    // ---- #64 D5: the accept-side residency bound ---------------------------
+crates/beamr/src/distribution/connection.rs:3340:    /// The peer ceiling is DERIVED from two byte quantities, and it is 64.
+crates/beamr/src/distribution/connection.rs:3342:    /// This is the ONLY place the number 64 appears in connection.rs, and it
+crates/beamr/src/distribution/connection.rs:3349:            derived, 64,
+crates/beamr/src/distribution/connection.rs:3350:            "4 GiB of spike allowance divided by one 64 MiB framed buffer is the \
+crates/beamr/src/distribution/connection.rs:3351:             64-peer design target the MAX_DIST_FRAME_BYTES derivation names"
+crates/beamr/src/distribution/connection.rs:3360:    /// #64 D5 — `accept_loop` bounds the population it admits in residency

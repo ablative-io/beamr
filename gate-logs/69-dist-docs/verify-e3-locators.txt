@@ -1,0 +1,5 @@
+41:///    `ConnectionManager::accept_loop` in `connection.rs` reserves
+42:///    `INBOUND_RESIDENCY_PER_PEER_BYTES` in `connection.rs` — one framed
+45:///    `INBOUND_RESIDENCY_ENVELOPE_BYTES` in `connection.rs`. The reservation
+52:///    in `connection.rs`'s accept path; changing either byte quantity moves
+80:/// `frame_buffer_for_header` in `connection.rs` allocates through

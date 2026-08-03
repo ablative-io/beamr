@@ -1,0 +1,73 @@
+crates/beamr/src/distribution/connection.rs:10:use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+crates/beamr/src/distribution/connection.rs:59:/// `u64` rather than `usize` deliberately: 4 GiB does not fit a 32-bit `usize`,
+crates/beamr/src/distribution/connection.rs:61:const INBOUND_RESIDENCY_ENVELOPE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+crates/beamr/src/distribution/connection.rs:69:/// 64-peer design target, now DERIVED from the two byte quantities rather than
+crates/beamr/src/distribution/connection.rs:71:const INBOUND_RESIDENCY_PER_PEER_BYTES: u64 = MAX_DIST_FRAME_BYTES as u64;
+crates/beamr/src/distribution/connection.rs:82:    charged: AtomicU64,
+crates/beamr/src/distribution/connection.rs:84:    envelope: u64,
+crates/beamr/src/distribution/connection.rs:86:    per_peer: u64,
+crates/beamr/src/distribution/connection.rs:91:    refused: AtomicU64,
+crates/beamr/src/distribution/connection.rs:97:            charged: AtomicU64::new(0),
+crates/beamr/src/distribution/connection.rs:100:            refused: AtomicU64::new(0),
+crates/beamr/src/distribution/connection.rs:148:    bytes: u64,
+crates/beamr/src/distribution/connection.rs:167:    /// `usize` is narrower than 64 bits (wasm32); kept unconditionally because
+crates/beamr/src/distribution/connection.rs:313:    last_inbound_millis: AtomicU64,
+crates/beamr/src/distribution/connection.rs:399:            last_inbound_millis: AtomicU64::new(0),
+crates/beamr/src/distribution/connection.rs:426:        let elapsed = u64::try_from(self.created_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+crates/beamr/src/distribution/connection.rs:433:        let now = u64::try_from(self.created_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+crates/beamr/src/distribution/connection.rs:434:        let deadline_millis = u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX);
+crates/beamr/src/distribution/connection.rs:665:    heartbeat_tasks_spawned: AtomicU64,
+crates/beamr/src/distribution/connection.rs:666:    /// Inbound accept-side residency meter (lane #64, D5). Every stream the
+crates/beamr/src/distribution/connection.rs:903:                heartbeat_tasks_spawned: AtomicU64::new(0),
+crates/beamr/src/distribution/connection.rs:1114:    pub fn heartbeat_tasks_spawned(&self) -> u64 {
+crates/beamr/src/distribution/connection.rs:1126:    pub fn inbound_residency_bytes(&self) -> u64 {
+crates/beamr/src/distribution/connection.rs:1136:    pub fn inbound_accepts_refused(&self) -> u64 {
+crates/beamr/src/distribution/connection.rs:3267:    /// the literal `64 * 1024 * 1024 + 1`, split across the two header fields;
+crates/beamr/src/distribution/connection.rs:3283:        let header = frame_header(64 * 1024 * 1024, 1);
+crates/beamr/src/distribution/connection.rs:3338:    // ---- #64 D5: the accept-side residency bound ---------------------------
+crates/beamr/src/distribution/connection.rs:3340:    /// The peer ceiling is DERIVED from two byte quantities, and it is 64.
+crates/beamr/src/distribution/connection.rs:3342:    /// This is the ONLY place the number 64 appears in connection.rs, and it
+crates/beamr/src/distribution/connection.rs:3349:            derived, 64,
+crates/beamr/src/distribution/connection.rs:3350:            "4 GiB of spike allowance divided by one 64 MiB framed buffer is the \
+crates/beamr/src/distribution/connection.rs:3351:             64-peer design target the MAX_DIST_FRAME_BYTES derivation names"
+crates/beamr/src/distribution/connection.rs:3354:            INBOUND_RESIDENCY_PER_PEER_BYTES, MAX_DIST_FRAME_BYTES as u64,
+crates/beamr/src/distribution/connection.rs:3360:    /// #64 D5 — `accept_loop` bounds the population it admits in residency
+crates/beamr/src/distribution/etf.rs:33:/// 64 MiB = the 4 GiB spike allowance out of beamr's 13 GiB memory bound,
+crates/beamr/src/distribution/etf.rs:34:/// divided by the 64-peer design target. The five steps, in order:
+crates/beamr/src/distribution/etf.rs:37:/// 2. Worst-case inbound receive residency is therefore `N x 64 MiB`, where `N`
+crates/beamr/src/distribution/etf.rs:39:/// 3. The 13 GiB budget holds IF AND ONLY IF `N <= 64`.
+crates/beamr/src/distribution/etf.rs:40:/// 4. `N`'s accept-driven component is ENFORCED (lane #64, D5).
+crates/beamr/src/distribution/etf.rs:50:///    which is 64. No peer count is written anywhere in this file; changing
+crates/beamr/src/distribution/etf.rs:51:///    either byte quantity moves the ceiling with it. **`<= 64` accepted peers
+crates/beamr/src/distribution/etf.rs:92:pub(crate) const MAX_DIST_FRAME_BYTES: usize = 64 * 1024 * 1024;
+crates/beamr/src/distribution/etf.rs:311:fn encode_integer(value: i64, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+crates/beamr/src/distribution/etf.rs:319:        encode_i64_big(value, out)?;
+crates/beamr/src/distribution/etf.rs:324:fn encode_i64_big(value: i64, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+crates/beamr/src/distribution/etf.rs:333:        .checked_mul(std::mem::size_of::<u64>())
+crates/beamr/src/distribution/etf.rs:382:fn encode_local_pid(pid: u64, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+crates/beamr/src/distribution/etf.rs:591:            let value = f64::from_bits(u64::from_be_bytes([
+crates/beamr/src/distribution/etf.rs:596:        tag if tag == tags::SMALL_INTEGER_EXT => Ok(Term::small_int(i64::from(cursor.read_u8()?))),
+crates/beamr/src/distribution/etf.rs:597:        tag if tag == tags::INTEGER_EXT => decode_small_integer(i64::from(cursor.read_i32()?)),
+crates/beamr/src/distribution/etf.rs:622:                elements.push(Term::small_int(i64::from(*byte)));
+crates/beamr/src/distribution/etf.rs:708:fn decode_small_integer(value: i64) -> Result<Term, DecodeError> {
+crates/beamr/src/distribution/etf.rs:724:    if len <= std::mem::size_of::<i64>() {
+crates/beamr/src/distribution/etf.rs:730:        let integer = i64::try_from(signed).map_err(|_| DecodeError::IntegerOutOfRange)?;
+crates/beamr/src/distribution/etf.rs:738:        let limb_count = len.div_ceil(std::mem::size_of::<u64>());
+crates/beamr/src/distribution/etf.rs:743:        for chunk in bytes.chunks(std::mem::size_of::<u64>()) {
+crates/beamr/src/distribution/etf.rs:744:            let mut limb_bytes = [0_u8; std::mem::size_of::<u64>()];
+crates/beamr/src/distribution/etf.rs:746:            limbs.push(u64::from_le_bytes(limb_bytes));
+crates/beamr/src/distribution/etf.rs:759:    let id = u64::from(cursor.read_u32()?);
+crates/beamr/src/distribution/etf.rs:760:    let serial = u64::from(cursor.read_u32()?);
+crates/beamr/src/distribution/etf.rs:777:    let mut id = 0_u64;
+crates/beamr/src/distribution/etf.rs:779:        id = (id << u32::BITS) | u64::from(cursor.read_u32()?);
+crates/beamr/src/distribution/etf.rs:804:fn alloc_float_term(heap: &mut Heap, value: f64) -> Result<Term, DecodeError> {
+crates/beamr/src/distribution/etf.rs:826:fn alloc_bigint_term(heap: &mut Heap, negative: bool, limbs: &[u64]) -> Result<Term, DecodeError> {
+crates/beamr/src/distribution/etf.rs:850:    id: u64,
+crates/beamr/src/distribution/etf.rs:851:    serial: u64,
+crates/beamr/src/distribution/etf.rs:862:    id: u64,
+crates/beamr/src/distribution/etf.rs:1075:    fn test_reference(id: u64) -> Term {
+crates/beamr/src/distribution/etf.rs:1076:        let words = Box::leak(Box::new([0_u64; 2]));
+crates/beamr/src/distribution/etf.rs:1139:        expected_float.extend_from_slice(&1.5_f64.to_bits().to_be_bytes());
+crates/beamr/src/distribution/etf.rs:1344:        let mut pid_heap = [0_u64; 4];
+crates/beamr/src/distribution/etf.rs:1360:        let mut reference_heap = [0_u64; 3];
+crates/beamr/src/distribution/etf.rs:1397:    /// briefly (~64 MiB) — the extreme header is a GREEN-ONLY leg.

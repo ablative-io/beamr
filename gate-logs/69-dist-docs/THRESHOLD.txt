@@ -1,0 +1,14 @@
+BOUNDARY-DF THRESHOLD — lane #69 DIST-DOCS
+==========================================
+
+value       39321600 KiB  (37.5 GiB)
+noun        /System/Volumes/Data
+instrument  df -k
+basis       floor 25 + #69 ceiling 9.5 (joiner-inclusive, sole live lane)
+            + margin 3; GUARD-1 closed at Athena's book 2026-08-03 01:56Z
+
+Rule: df -k /System/Volumes/Data is captured BEFORE every leg into
+leg-N.df. If the Available column (4th field, KiB) falls below 39321600
+before any leg, that leg is NOT fired: STOP and report raw.
+
+Never `df -g`. Never `df /`.

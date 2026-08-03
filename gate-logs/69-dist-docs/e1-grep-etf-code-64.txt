@@ -1,0 +1,1 @@
+92:pub(crate) const MAX_DIST_FRAME_BYTES: usize = 64 * 1024 * 1024;

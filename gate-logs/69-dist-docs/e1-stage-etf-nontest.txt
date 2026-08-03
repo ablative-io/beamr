@@ -1,0 +1,1061 @@
+//! Distribution-facing ETF term codec and pass-through message framing.
+//!
+//! This module intentionally supports the uncompressed distribution term subset.
+//! `COMPRESSED_EXT` and atom-cache references are negotiated/implemented outside
+//! this codec.
+
+use std::fmt;
+use std::io::Read;
+
+use crate::atom::{Atom, AtomTable};
+use crate::etf::tags;
+use crate::process::heap::Heap;
+use crate::term::binary_ref::BinaryRef;
+use crate::term::boxed::{
+    BigInt, Cons, ExternalPid, ExternalReference, Float, Map, Reference, Tuple, write_bigint,
+    write_cons, write_external_pid, write_external_reference, write_float, write_map, write_tuple,
+};
+use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
+use crate::term::{Tag, Term};
+
+const MAX_ETF_DEPTH: usize = 256;
+const NONODE_NOHOST: &str = "nonode@nohost";
+const PASS_THROUGH: u8 = b'p';
+
+/// Maximum byte length of ONE inbound distribution data frame — the
+/// `control_len + payload_len` total declared by the 8-byte frame header. A
+/// frame claiming more is refused with a typed error BEFORE anything is
+/// allocated, so the header's two peer-controlled `u32`s cannot name an
+/// arbitrary allocation.
+///
+/// # Derivation
+///
+/// 64 MiB = the 4 GiB spike allowance out of beamr's 13 GiB memory bound,
+/// divided by the 64-peer design target. The five steps, in order:
+///
+/// 1. The cap bounds ONE frame allocation.
+/// 2. Worst-case inbound receive residency is therefore `N x 64 MiB`, where `N`
+///    is the count of concurrent peers each holding a frame buffer.
+/// 3. The 13 GiB budget holds IF AND ONLY IF `N <= 64`.
+/// 4. `N`'s accept-driven component is ENFORCED (lane #64, D5).
+///    [`ConnectionManager::accept_loop`] reserves
+///    [`INBOUND_RESIDENCY_PER_PEER_BYTES`] — one framed buffer — for every
+///    stream it accepts, and DECLINES the stream when that reservation would
+///    carry residency past [`INBOUND_RESIDENCY_ENVELOPE_BYTES`]. The
+///    reservation is released when the link's read lifecycle ends. Not charged:
+///    locally initiated outbound dials (`connect`), which this node's own
+///    resolver enumerates rather than a peer.
+/// 5. The peer ceiling is therefore DERIVED, not configured — it is
+///    `INBOUND_RESIDENCY_ENVELOPE_BYTES / INBOUND_RESIDENCY_PER_PEER_BYTES`,
+///    which is 64. No peer count is written anywhere in this file; changing
+///    either byte quantity moves the ceiling with it. **`<= 64` accepted peers
+///    is now a property of the system, enforced in residency BYTES, not merely
+///    this budget's design target.**
+///
+/// # Interacting constants, cited by value
+///
+/// `DIST_SEND_QUEUE_CAP = 1024` and `DIST_CONTROL_QUEUE_CAP = 256`
+/// (`distribution/sender.rs`) are SLOT counts, and neither is what protects
+/// memory on its lane. The data lane is bounded in bytes by
+/// `DIST_SEND_QUEUE_BYTE_BUDGET = 2 * MAX_DIST_FRAME_BYTES`, imported from this
+/// constant so the two cannot drift — 1024's old justification assumed
+/// control-only traffic, yet nothing at the type level prevents a
+/// `DistOutbound::ToNode` from carrying a user payload, which is exactly why a
+/// count could not be the protection. The control lane needs no byte budget:
+/// its frames are structurally ceilinged at a measured 131131 bytes, so 256
+/// slots retain ~32 MiB — less than one frame of this cap. That lane's own
+/// module docs carry the measurement and state the absence.
+///
+/// Two standing caveats still travel with them. `send_remote` bypasses both
+/// queues via a direct blocking write, so neither lane's bound covers it. And
+/// the send lane fans out over `Arc<[u8]>`, so a broadcast retains ONE buffer:
+/// do not double-count the send lane against THIS budget. (The send lane's own
+/// budget deliberately does over-count a fan-out, fail-closed; that is internal
+/// to it and does not reach the receive-side arithmetic here.)
+///
+/// # The rail this restores
+///
+/// [`frame_buffer_for_header`] allocates through `try_reserve_exact` — the
+/// fallible-allocation rail that, after the framing move, survived only in
+/// `distribution/etf.rs`. Read that file's precedent precisely:
+/// **`etf.rs`'s `LengthTooLarge` is a fallible-ALLOC rail, NOT a size cap.** It
+/// reports an allocation that the allocator refused; it does not refuse a
+/// declared size. The two guards are complementary, and this path now carries
+/// both — the cap first, the fallible allocation behind it.
+///
+/// # Not caught here (narrow-rail law)
+///
+/// - Unbounded remote atom interning driven by these same frames. `safe =
+///   false` is deliberate per `DIST-CONTROL-WIRE-SPEC`.
+/// - `ConnectionEventHub.queue` is unbounded, but its elements are small
+///   fixed-size events: a count hole, not a byte hole.
+pub(crate) const MAX_DIST_FRAME_BYTES: usize = 64 * 1024 * 1024;
+
+/// Errors produced by distribution ETF encoding.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum EncodeError {
+    UnsupportedTerm,
+    AtomResolveFailed,
+    TooDeep,
+}
+
+/// Errors produced by distribution ETF decoding.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum DecodeError {
+    EmptyInput,
+    BadVersion(u8),
+    Truncated,
+    TrailingBytes,
+    UnsupportedTag(u8),
+    InvalidUtf8,
+    TooDeep,
+    IntegerOutOfRange,
+    InvalidBigSign(u8),
+    InvalidExternalNode,
+    InvalidReferenceArity(u16),
+    HeapAllocationFailed,
+    SizeLimitExceeded,
+}
+
+/// Errors produced by distribution pass-through frame deframing.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Error {
+    Io(String),
+    TruncatedHeader,
+    TruncatedBody { expected: usize, actual: usize },
+    EmptyBody,
+    InvalidPassThrough(u8),
+    InvalidControl(DecodeError),
+    LengthTooLarge,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(error) => write!(formatter, "distribution frame I/O error: {error}"),
+            Self::TruncatedHeader => formatter.write_str("distribution frame header was truncated"),
+            Self::TruncatedBody { expected, actual } => write!(
+                formatter,
+                "distribution frame body was truncated: expected {expected} bytes, got {actual}"
+            ),
+            Self::EmptyBody => formatter.write_str("distribution frame body is empty"),
+            Self::InvalidPassThrough(tag) => {
+                write!(formatter, "invalid distribution pass-through tag {tag}")
+            }
+            Self::InvalidControl(error) => write!(formatter, "invalid control ETF term: {error:?}"),
+            Self::LengthTooLarge => formatter.write_str(
+                "distribution frame length does not fit usize or exceeds the maximum frame size",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// Encode a term to its ETF binary representation, including the ETF version byte.
+///
+/// For distribution-supported terms this returns BEAM-compatible ETF bytes. If a
+/// term outside the supported subset is supplied, an empty vector is returned;
+/// callers that need to distinguish that case should use [`encode_term_result`].
+#[must_use]
+pub fn encode_term(term: Term, atom_table: &AtomTable) -> Vec<u8> {
+    encode_term_result(term, atom_table).unwrap_or_default()
+}
+
+/// Fallible distribution ETF encoder used by callers that need explicit errors.
+pub fn encode_term_result(term: Term, atom_table: &AtomTable) -> Result<Vec<u8>, EncodeError> {
+    let mut out = vec![tags::VERSION];
+    encode_term_inner(term, atom_table, &mut out, 0)?;
+    Ok(out)
+}
+
+/// Decode a complete ETF binary representation into a term allocated on `heap`.
+pub fn decode_term(
+    bytes: &[u8],
+    heap: &mut Heap,
+    atom_table: &AtomTable,
+) -> Result<Term, DecodeError> {
+    let decoded = decode_term_prefix(bytes, heap, atom_table)?;
+    if decoded.used == bytes.len() {
+        Ok(decoded.term)
+    } else {
+        Err(DecodeError::TrailingBytes)
+    }
+}
+
+/// Write a distribution pass-through message frame.
+///
+/// The returned bytes are `u32_be(length) || 112 || control || payload?`.
+#[must_use]
+pub fn write_dist_message(control: &[u8], payload: Option<&[u8]>) -> Vec<u8> {
+    let payload_len = payload.map_or(0, <[u8]>::len);
+    let Some(body_len) = 1usize
+        .checked_add(control.len())
+        .and_then(|len| len.checked_add(payload_len))
+    else {
+        return Vec::new();
+    };
+    let Ok(length) = u32::try_from(body_len) else {
+        return Vec::new();
+    };
+    let Some(capacity) = 4usize.checked_add(body_len) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(capacity);
+    out.extend_from_slice(&length.to_be_bytes());
+    out.push(PASS_THROUGH);
+    out.extend_from_slice(control);
+    if let Some(payload) = payload {
+        out.extend_from_slice(payload);
+    }
+    out
+}
+
+/// Read and deframe one distribution pass-through message.
+pub fn read_dist_message<R: Read>(stream: &mut R) -> Result<(Vec<u8>, Option<Vec<u8>>), Error> {
+    let mut header = [0_u8; 4];
+    read_exact_classified(stream, &mut header, Error::TruncatedHeader)?;
+    let length = usize::try_from(u32::from_be_bytes(header)).map_err(|_| Error::LengthTooLarge)?;
+    // The cap precedes the reservation, because `try_reserve_exact` is a
+    // fallible-ALLOC rail and not a ceiling: a size the allocator CAN satisfy
+    // still succeeds, so without this the peer's 4 header bytes name the
+    // allocation. Strictly `>`: a length of exactly the cap is accepted, and
+    // `length == 0` never reaches this arm at all — it keeps its existing
+    // empty-body path.
+    if length > MAX_DIST_FRAME_BYTES {
+        return Err(Error::LengthTooLarge);
+    }
+    let mut body = Vec::new();
+    body.try_reserve_exact(length)
+        .map_err(|_| Error::LengthTooLarge)?;
+    body.resize(length, 0);
+    read_exact_classified(
+        stream,
+        &mut body,
+        Error::TruncatedBody {
+            expected: length,
+            actual: 0,
+        },
+    )?;
+    let Some((&tag, remaining)) = body.split_first() else {
+        return Err(Error::EmptyBody);
+    };
+    if tag != PASS_THROUGH {
+        return Err(Error::InvalidPassThrough(tag));
+    }
+
+    let used = scan_term_prefix(remaining).map_err(Error::InvalidControl)?;
+    let control = remaining[..used].to_vec();
+    let payload = if used == remaining.len() {
+        None
+    } else {
+        Some(remaining[used..].to_vec())
+    };
+    Ok((control, payload))
+}
+
+fn read_exact_classified<R: Read>(
+    stream: &mut R,
+    buf: &mut [u8],
+    truncated: Error,
+) -> Result<(), Error> {
+    let mut read = 0;
+    while read < buf.len() {
+        match stream.read(&mut buf[read..]) {
+            Ok(0) => {
+                return match truncated {
+                    Error::TruncatedBody { expected, .. } => Err(Error::TruncatedBody {
+                        expected,
+                        actual: read,
+                    }),
+                    other => Err(other),
+                };
+            }
+            Ok(n) => read = read.checked_add(n).ok_or(Error::LengthTooLarge)?,
+            Err(error) => return Err(Error::Io(error.to_string())),
+        }
+    }
+    Ok(())
+}
+
+fn encode_term_inner(
+    term: Term,
+    atom_table: &AtomTable,
+    out: &mut Vec<u8>,
+    depth: usize,
+) -> Result<(), EncodeError> {
+    if depth > MAX_ETF_DEPTH {
+        return Err(EncodeError::TooDeep);
+    }
+
+    match term.tag() {
+        Tag::SmallInt => encode_integer(
+            term.as_small_int().ok_or(EncodeError::UnsupportedTerm)?,
+            out,
+        ),
+        Tag::Atom => encode_atom(
+            term.as_atom().ok_or(EncodeError::UnsupportedTerm)?,
+            atom_table,
+            out,
+        ),
+        Tag::Pid => encode_local_pid(term.as_pid().ok_or(EncodeError::UnsupportedTerm)?, out),
+        Tag::Nil => {
+            out.push(tags::NIL_EXT);
+            Ok(())
+        }
+        Tag::List => encode_list(term, atom_table, out, depth),
+        Tag::Boxed => encode_boxed(term, atom_table, out, depth),
+    }
+}
+
+fn encode_integer(value: i64, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    if let Ok(byte) = u8::try_from(value) {
+        out.push(tags::SMALL_INTEGER_EXT);
+        out.push(byte);
+    } else if let Ok(integer) = i32::try_from(value) {
+        out.push(tags::INTEGER_EXT);
+        out.extend_from_slice(&integer.to_be_bytes());
+    } else {
+        encode_i64_big(value, out)?;
+    }
+    Ok(())
+}
+
+fn encode_i64_big(value: i64, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    let negative = value.is_negative();
+    let magnitude = value.unsigned_abs();
+    encode_big_bytes(negative, magnitude.to_le_bytes().as_slice(), out)
+}
+
+fn encode_bigint(bigint: BigInt, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    let capacity = bigint
+        .limb_count()
+        .checked_mul(std::mem::size_of::<u64>())
+        .ok_or(EncodeError::UnsupportedTerm)?;
+    let mut bytes = Vec::with_capacity(capacity);
+    for limb in bigint.limbs() {
+        bytes.extend_from_slice(&limb.to_le_bytes());
+    }
+    encode_big_bytes(bigint.is_negative(), &bytes, out)
+}
+
+fn encode_big_bytes(negative: bool, bytes: &[u8], out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    let trimmed_len = bytes
+        .iter()
+        .rposition(|byte| *byte != 0)
+        .map_or(1, |index| index + 1);
+    let magnitude = &bytes[..trimmed_len];
+    if let Ok(length) = u8::try_from(magnitude.len()) {
+        out.push(tags::SMALL_BIG_EXT);
+        out.push(length);
+    } else {
+        let length = u32::try_from(magnitude.len()).map_err(|_| EncodeError::UnsupportedTerm)?;
+        out.push(tags::LARGE_BIG_EXT);
+        out.extend_from_slice(&length.to_be_bytes());
+    }
+    out.push(u8::from(negative));
+    out.extend_from_slice(magnitude);
+    Ok(())
+}
+
+fn encode_atom(atom: Atom, atom_table: &AtomTable, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    let name = atom_table
+        .resolve(atom)
+        .ok_or(EncodeError::AtomResolveFailed)?;
+    encode_atom_name(name, out)
+}
+
+fn encode_atom_name(name: &str, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    let bytes = name.as_bytes();
+    if let Ok(length) = u8::try_from(bytes.len()) {
+        out.push(tags::SMALL_ATOM_UTF8_EXT);
+        out.push(length);
+    } else {
+        let length = u16::try_from(bytes.len()).map_err(|_| EncodeError::UnsupportedTerm)?;
+        out.push(tags::ATOM_UTF8_EXT);
+        out.extend_from_slice(&length.to_be_bytes());
+    }
+    out.extend_from_slice(bytes);
+    Ok(())
+}
+
+fn encode_local_pid(pid: u64, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    out.push(tags::NEW_PID_EXT);
+    encode_atom_name(NONODE_NOHOST, out)?;
+    let id = u32::try_from(pid).map_err(|_| EncodeError::UnsupportedTerm)?;
+    out.extend_from_slice(&id.to_be_bytes());
+    out.extend_from_slice(&0_u32.to_be_bytes());
+    out.extend_from_slice(&0_u32.to_be_bytes());
+    Ok(())
+}
+
+fn encode_external_pid(
+    pid: ExternalPid,
+    atom_table: &AtomTable,
+    out: &mut Vec<u8>,
+) -> Result<(), EncodeError> {
+    out.push(tags::NEW_PID_EXT);
+    encode_atom(
+        pid.node().ok_or(EncodeError::UnsupportedTerm)?,
+        atom_table,
+        out,
+    )?;
+    let id = u32::try_from(pid.pid_number()).map_err(|_| EncodeError::UnsupportedTerm)?;
+    let serial = u32::try_from(pid.serial()).map_err(|_| EncodeError::UnsupportedTerm)?;
+    out.extend_from_slice(&id.to_be_bytes());
+    out.extend_from_slice(&serial.to_be_bytes());
+    out.extend_from_slice(&0_u32.to_be_bytes());
+    Ok(())
+}
+
+fn encode_local_reference(reference: Reference, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    out.push(tags::NEWER_REFERENCE_EXT);
+    out.extend_from_slice(&2_u16.to_be_bytes());
+    encode_atom_name(NONODE_NOHOST, out)?;
+    out.extend_from_slice(&0_u32.to_be_bytes());
+    let id = reference.id();
+    out.extend_from_slice(&((id >> u32::BITS) as u32).to_be_bytes());
+    out.extend_from_slice(&(id as u32).to_be_bytes());
+    Ok(())
+}
+
+fn encode_external_reference(
+    reference: ExternalReference,
+    atom_table: &AtomTable,
+    out: &mut Vec<u8>,
+) -> Result<(), EncodeError> {
+    out.push(tags::NEWER_REFERENCE_EXT);
+    out.extend_from_slice(&2_u16.to_be_bytes());
+    encode_atom(
+        reference.node().ok_or(EncodeError::UnsupportedTerm)?,
+        atom_table,
+        out,
+    )?;
+    out.extend_from_slice(&0_u32.to_be_bytes());
+    let id = reference.id();
+    out.extend_from_slice(&((id >> u32::BITS) as u32).to_be_bytes());
+    out.extend_from_slice(&(id as u32).to_be_bytes());
+    Ok(())
+}
+
+fn encode_boxed(
+    term: Term,
+    atom_table: &AtomTable,
+    out: &mut Vec<u8>,
+    depth: usize,
+) -> Result<(), EncodeError> {
+    if let Some(float) = Float::new(term) {
+        out.push(tags::NEW_FLOAT_EXT);
+        out.extend_from_slice(&float.value().to_bits().to_be_bytes());
+        return Ok(());
+    }
+    if let Some(tuple) = Tuple::new(term) {
+        return encode_tuple(tuple, atom_table, out, depth);
+    }
+    if let Some(binary) = BinaryRef::new(term) {
+        return encode_binary(binary, out);
+    }
+    if let Some(map) = Map::new(term) {
+        return encode_map(map, atom_table, out, depth);
+    }
+    if let Some(reference) = Reference::new(term) {
+        return encode_local_reference(reference, out);
+    }
+    if let Some(pid) = ExternalPid::new(term) {
+        return encode_external_pid(pid, atom_table, out);
+    }
+    if let Some(reference) = ExternalReference::new(term) {
+        return encode_external_reference(reference, atom_table, out);
+    }
+    if let Some(bigint) = BigInt::new(term) {
+        return encode_bigint(bigint, out);
+    }
+    Err(EncodeError::UnsupportedTerm)
+}
+
+fn encode_tuple(
+    tuple: Tuple,
+    atom_table: &AtomTable,
+    out: &mut Vec<u8>,
+    depth: usize,
+) -> Result<(), EncodeError> {
+    let arity = tuple.arity();
+    if let Ok(small_arity) = u8::try_from(arity) {
+        out.push(tags::SMALL_TUPLE_EXT);
+        out.push(small_arity);
+    } else {
+        let large_arity = u32::try_from(arity).map_err(|_| EncodeError::UnsupportedTerm)?;
+        out.push(tags::LARGE_TUPLE_EXT);
+        out.extend_from_slice(&large_arity.to_be_bytes());
+    }
+    for index in 0..arity {
+        let element = tuple.get(index).ok_or(EncodeError::UnsupportedTerm)?;
+        encode_term_inner(element, atom_table, out, depth + 1)?;
+    }
+    Ok(())
+}
+
+fn encode_list(
+    term: Term,
+    atom_table: &AtomTable,
+    out: &mut Vec<u8>,
+    depth: usize,
+) -> Result<(), EncodeError> {
+    let (elements, tail) = collect_list(term)?;
+    let length = u32::try_from(elements.len()).map_err(|_| EncodeError::UnsupportedTerm)?;
+    out.push(tags::LIST_EXT);
+    out.extend_from_slice(&length.to_be_bytes());
+    for element in elements {
+        encode_term_inner(element, atom_table, out, depth + 1)?;
+    }
+    encode_term_inner(tail, atom_table, out, depth + 1)
+}
+
+fn collect_list(term: Term) -> Result<(Vec<Term>, Term), EncodeError> {
+    let mut elements = Vec::new();
+    let mut current = term;
+    while current.is_list() {
+        let cons = Cons::new(current).ok_or(EncodeError::UnsupportedTerm)?;
+        elements.push(cons.head());
+        current = cons.tail();
+    }
+    Ok((elements, current))
+}
+
+fn encode_binary(binary: BinaryRef, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    let bytes = binary.as_bytes();
+    let length = u32::try_from(bytes.len()).map_err(|_| EncodeError::UnsupportedTerm)?;
+    out.push(tags::BINARY_EXT);
+    out.extend_from_slice(&length.to_be_bytes());
+    out.extend_from_slice(bytes);
+    Ok(())
+}
+
+fn encode_map(
+    map: Map,
+    atom_table: &AtomTable,
+    out: &mut Vec<u8>,
+    depth: usize,
+) -> Result<(), EncodeError> {
+    let len = u32::try_from(map.len()).map_err(|_| EncodeError::UnsupportedTerm)?;
+    out.push(tags::MAP_EXT);
+    out.extend_from_slice(&len.to_be_bytes());
+    for index in 0..map.len() {
+        let key = map.key(index).ok_or(EncodeError::UnsupportedTerm)?;
+        let value = map.value(index).ok_or(EncodeError::UnsupportedTerm)?;
+        encode_term_inner(key, atom_table, out, depth + 1)?;
+        encode_term_inner(value, atom_table, out, depth + 1)?;
+    }
+    Ok(())
+}
+
+struct DecodedTerm {
+    term: Term,
+    used: usize,
+}
+
+fn decode_term_prefix(
+    bytes: &[u8],
+    heap: &mut Heap,
+    atom_table: &AtomTable,
+) -> Result<DecodedTerm, DecodeError> {
+    let mut cursor = Cursor::new(bytes);
+    let version = cursor.read_u8().map_err(|error| match error {
+        DecodeError::Truncated => DecodeError::EmptyInput,
+        other => other,
+    })?;
+    if version != tags::VERSION {
+        return Err(DecodeError::BadVersion(version));
+    }
+    let term = decode_one(&mut cursor, heap, atom_table, 0)?;
+    Ok(DecodedTerm {
+        term,
+        used: cursor.position(),
+    })
+}
+
+fn decode_one(
+    cursor: &mut Cursor<'_>,
+    heap: &mut Heap,
+    atom_table: &AtomTable,
+    depth: usize,
+) -> Result<Term, DecodeError> {
+    if depth > MAX_ETF_DEPTH {
+        return Err(DecodeError::TooDeep);
+    }
+
+    let tag = cursor.read_u8()?;
+    match tag {
+        tag if tag == tags::NEW_FLOAT_EXT => {
+            let bytes = cursor.read_bytes(8)?;
+            let value = f64::from_bits(u64::from_be_bytes([
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            ]));
+            alloc_float_term(heap, value)
+        }
+        tag if tag == tags::SMALL_INTEGER_EXT => Ok(Term::small_int(i64::from(cursor.read_u8()?))),
+        tag if tag == tags::INTEGER_EXT => decode_small_integer(i64::from(cursor.read_i32()?)),
+        tag if tag == tags::ATOM_UTF8_EXT => {
+            let len = usize::from(cursor.read_u16()?);
+            decode_atom(cursor.read_bytes(len)?, atom_table)
+        }
+        tag if tag == tags::SMALL_ATOM_UTF8_EXT => {
+            let len = usize::from(cursor.read_u8()?);
+            decode_atom(cursor.read_bytes(len)?, atom_table)
+        }
+        tag if tag == tags::SMALL_TUPLE_EXT => {
+            let arity = usize::from(cursor.read_u8()?);
+            decode_tuple(cursor, arity, heap, atom_table, depth)
+        }
+        tag if tag == tags::LARGE_TUPLE_EXT => {
+            let arity = cursor.read_u32()? as usize;
+            decode_tuple(cursor, arity, heap, atom_table, depth)
+        }
+        tag if tag == tags::NIL_EXT => Ok(Term::NIL),
+        tag if tag == tags::STRING_EXT => {
+            let len = usize::from(cursor.read_u16()?);
+            let mut elements = Vec::new();
+            elements
+                .try_reserve_exact(len)
+                .map_err(|_| DecodeError::SizeLimitExceeded)?;
+            for byte in cursor.read_bytes(len)? {
+                elements.push(Term::small_int(i64::from(*byte)));
+            }
+            alloc_list(heap, &elements, Term::NIL)
+        }
+        tag if tag == tags::LIST_EXT => {
+            let len = cursor.read_u32()? as usize;
+            ensure_decodable_sequence(
+                cursor,
+                len.checked_add(1).ok_or(DecodeError::SizeLimitExceeded)?,
+            )?;
+            let mut elements = Vec::new();
+            elements
+                .try_reserve_exact(len)
+                .map_err(|_| DecodeError::SizeLimitExceeded)?;
+            for _ in 0..len {
+                elements.push(decode_one(cursor, heap, atom_table, depth + 1)?);
+            }
+            let tail = decode_one(cursor, heap, atom_table, depth + 1)?;
+            alloc_list(heap, &elements, tail)
+        }
+        tag if tag == tags::BINARY_EXT => {
+            let len = cursor.read_u32()? as usize;
+            let bytes = cursor.read_bytes(len)?;
+            alloc_binary_term(heap, bytes)
+        }
+        tag if tag == tags::SMALL_BIG_EXT => {
+            let len = usize::from(cursor.read_u8()?);
+            decode_big_integer(cursor, len, heap)
+        }
+        tag if tag == tags::LARGE_BIG_EXT => {
+            let len = cursor.read_u32()? as usize;
+            decode_big_integer(cursor, len, heap)
+        }
+        tag if tag == tags::MAP_EXT => {
+            let len = cursor.read_u32()? as usize;
+            let term_count = len.checked_mul(2).ok_or(DecodeError::SizeLimitExceeded)?;
+            ensure_decodable_sequence(cursor, term_count)?;
+            let mut keys = Vec::new();
+            let mut values = Vec::new();
+            keys.try_reserve_exact(len)
+                .and_then(|_| values.try_reserve_exact(len))
+                .map_err(|_| DecodeError::SizeLimitExceeded)?;
+            for _ in 0..len {
+                keys.push(decode_one(cursor, heap, atom_table, depth + 1)?);
+                values.push(decode_one(cursor, heap, atom_table, depth + 1)?);
+            }
+            alloc_map_term(heap, &keys, &values)
+        }
+        tag if tag == tags::NEW_PID_EXT => decode_new_pid(cursor, heap, atom_table, depth),
+        tag if tag == tags::NEWER_REFERENCE_EXT => {
+            decode_newer_reference(cursor, heap, atom_table, depth)
+        }
+        other => Err(DecodeError::UnsupportedTag(other)),
+    }
+}
+
+fn decode_tuple(
+    cursor: &mut Cursor<'_>,
+    arity: usize,
+    heap: &mut Heap,
+    atom_table: &AtomTable,
+    depth: usize,
+) -> Result<Term, DecodeError> {
+    ensure_decodable_sequence(cursor, arity)?;
+    let mut elements = Vec::new();
+    elements
+        .try_reserve_exact(arity)
+        .map_err(|_| DecodeError::SizeLimitExceeded)?;
+    for _ in 0..arity {
+        elements.push(decode_one(cursor, heap, atom_table, depth + 1)?);
+    }
+    alloc_tuple_term(heap, &elements)
+}
+
+fn ensure_decodable_sequence(cursor: &Cursor<'_>, term_count: usize) -> Result<(), DecodeError> {
+    if cursor.remaining() < term_count {
+        return Err(DecodeError::Truncated);
+    }
+    Ok(())
+}
+
+fn decode_atom(bytes: &[u8], atom_table: &AtomTable) -> Result<Term, DecodeError> {
+    let name = std::str::from_utf8(bytes).map_err(|_| DecodeError::InvalidUtf8)?;
+    Ok(Term::atom(atom_table.intern(name)))
+}
+
+fn decode_small_integer(value: i64) -> Result<Term, DecodeError> {
+    Term::try_small_int(value).ok_or(DecodeError::IntegerOutOfRange)
+}
+
+fn decode_big_integer(
+    cursor: &mut Cursor<'_>,
+    len: usize,
+    heap: &mut Heap,
+) -> Result<Term, DecodeError> {
+    let sign = cursor.read_u8()?;
+    let negative = match sign {
+        0 => false,
+        1 => true,
+        other => return Err(DecodeError::InvalidBigSign(other)),
+    };
+    let bytes = cursor.read_bytes(len)?;
+    if len <= std::mem::size_of::<i64>() {
+        let mut value: i128 = 0;
+        for (shift, byte) in bytes.iter().enumerate() {
+            value += i128::from(*byte) << (shift * u8::BITS as usize);
+        }
+        let signed = if negative { -value } else { value };
+        let integer = i64::try_from(signed).map_err(|_| DecodeError::IntegerOutOfRange)?;
+        if let Some(term) = Term::try_small_int(integer) {
+            Ok(term)
+        } else {
+            let magnitude = integer.unsigned_abs();
+            alloc_bigint_term(heap, integer.is_negative(), &[magnitude])
+        }
+    } else {
+        let limb_count = len.div_ceil(std::mem::size_of::<u64>());
+        let mut limbs = Vec::new();
+        limbs
+            .try_reserve_exact(limb_count)
+            .map_err(|_| DecodeError::SizeLimitExceeded)?;
+        for chunk in bytes.chunks(std::mem::size_of::<u64>()) {
+            let mut limb_bytes = [0_u8; std::mem::size_of::<u64>()];
+            limb_bytes[..chunk.len()].copy_from_slice(chunk);
+            limbs.push(u64::from_le_bytes(limb_bytes));
+        }
+        alloc_bigint_term(heap, negative, &limbs)
+    }
+}
+
+fn decode_new_pid(
+    cursor: &mut Cursor<'_>,
+    heap: &mut Heap,
+    atom_table: &AtomTable,
+    depth: usize,
+) -> Result<Term, DecodeError> {
+    let node = decode_node_atom(cursor, heap, atom_table, depth)?;
+    let id = u64::from(cursor.read_u32()?);
+    let serial = u64::from(cursor.read_u32()?);
+    let _creation = cursor.read_u32()?;
+    alloc_external_pid_term(heap, node, id, serial)
+}
+
+fn decode_newer_reference(
+    cursor: &mut Cursor<'_>,
+    heap: &mut Heap,
+    atom_table: &AtomTable,
+    depth: usize,
+) -> Result<Term, DecodeError> {
+    let len = cursor.read_u16()?;
+    if len == 0 || len > 2 {
+        return Err(DecodeError::InvalidReferenceArity(len));
+    }
+    let node = decode_node_atom(cursor, heap, atom_table, depth)?;
+    let _creation = cursor.read_u32()?;
+    let mut id = 0_u64;
+    for _ in 0..len {
+        id = (id << u32::BITS) | u64::from(cursor.read_u32()?);
+    }
+    alloc_external_reference_term(heap, node, id)
+}
+
+fn decode_node_atom(
+    cursor: &mut Cursor<'_>,
+    heap: &mut Heap,
+    atom_table: &AtomTable,
+    depth: usize,
+) -> Result<Atom, DecodeError> {
+    let node = decode_one(cursor, heap, atom_table, depth + 1)?;
+    node.as_atom().ok_or(DecodeError::InvalidExternalNode)
+}
+
+fn alloc_tuple_term(heap: &mut Heap, elements: &[Term]) -> Result<Term, DecodeError> {
+    let words = 1usize
+        .checked_add(elements.len())
+        .ok_or(DecodeError::SizeLimitExceeded)?;
+    let slice = heap
+        .alloc_slice(words)
+        .map_err(|_| DecodeError::HeapAllocationFailed)?;
+    write_tuple(slice, elements).ok_or(DecodeError::HeapAllocationFailed)
+}
+
+fn alloc_float_term(heap: &mut Heap, value: f64) -> Result<Term, DecodeError> {
+    let slice = heap
+        .alloc_slice(2)
+        .map_err(|_| DecodeError::HeapAllocationFailed)?;
+    write_float(slice, value).ok_or(DecodeError::HeapAllocationFailed)
+}
+
+fn alloc_binary_term(heap: &mut Heap, bytes: &[u8]) -> Result<Term, DecodeError> {
+    let words = alloc_binary_word_count(bytes.len());
+    let slice = heap
+        .alloc_slice(words)
+        .map_err(|_| DecodeError::HeapAllocationFailed)?;
+    let term = alloc_binary(slice, bytes).ok_or(DecodeError::HeapAllocationFailed)?;
+    // Large binaries land as a refcounted ProcBin; mark the allocation so a
+    // release walk over this heap drops its Arc. (Small inline binaries are
+    // marked too; the walk reads their Binary tag and skips them.) The replay
+    // loader's scratch heaps depend on this mark: they never GC, so the
+    // drop-time release walk is the only release those Arcs ever get.
+    heap.mark_last_young_allocation_maybe_refcounted();
+    Ok(term)
+}
+
+fn alloc_bigint_term(heap: &mut Heap, negative: bool, limbs: &[u64]) -> Result<Term, DecodeError> {
+    let words = 3usize
+        .checked_add(limbs.len())
+        .ok_or(DecodeError::SizeLimitExceeded)?;
+    let slice = heap
+        .alloc_slice(words)
+        .map_err(|_| DecodeError::HeapAllocationFailed)?;
+    write_bigint(slice, negative, limbs).ok_or(DecodeError::HeapAllocationFailed)
+}
+
+fn alloc_map_term(heap: &mut Heap, keys: &[Term], values: &[Term]) -> Result<Term, DecodeError> {
+    let words = 2usize
+        .checked_add(keys.len())
+        .and_then(|count| count.checked_add(values.len()))
+        .ok_or(DecodeError::SizeLimitExceeded)?;
+    let slice = heap
+        .alloc_slice(words)
+        .map_err(|_| DecodeError::HeapAllocationFailed)?;
+    write_map(slice, keys, values).ok_or(DecodeError::HeapAllocationFailed)
+}
+
+fn alloc_external_pid_term(
+    heap: &mut Heap,
+    node: Atom,
+    id: u64,
+    serial: u64,
+) -> Result<Term, DecodeError> {
+    let slice = heap
+        .alloc_slice(4)
+        .map_err(|_| DecodeError::HeapAllocationFailed)?;
+    write_external_pid(slice, node, id, serial).ok_or(DecodeError::HeapAllocationFailed)
+}
+
+fn alloc_external_reference_term(
+    heap: &mut Heap,
+    node: Atom,
+    id: u64,
+) -> Result<Term, DecodeError> {
+    let slice = heap
+        .alloc_slice(3)
+        .map_err(|_| DecodeError::HeapAllocationFailed)?;
+    write_external_reference(slice, node, id).ok_or(DecodeError::HeapAllocationFailed)
+}
+
+fn alloc_list(heap: &mut Heap, elements: &[Term], mut tail: Term) -> Result<Term, DecodeError> {
+    for element in elements.iter().rev().copied() {
+        let slice = heap
+            .alloc_slice(2)
+            .map_err(|_| DecodeError::HeapAllocationFailed)?;
+        tail = write_cons(slice, element, tail).ok_or(DecodeError::HeapAllocationFailed)?;
+    }
+    Ok(tail)
+}
+
+fn scan_term_prefix(bytes: &[u8]) -> Result<usize, DecodeError> {
+    let mut cursor = Cursor::new(bytes);
+    let version = cursor.read_u8().map_err(|error| match error {
+        DecodeError::Truncated => DecodeError::EmptyInput,
+        other => other,
+    })?;
+    if version != tags::VERSION {
+        return Err(DecodeError::BadVersion(version));
+    }
+    scan_one(&mut cursor, 0)?;
+    Ok(cursor.position())
+}
+
+fn scan_one(cursor: &mut Cursor<'_>, depth: usize) -> Result<(), DecodeError> {
+    if depth > MAX_ETF_DEPTH {
+        return Err(DecodeError::TooDeep);
+    }
+    let tag = cursor.read_u8()?;
+    match tag {
+        tag if tag == tags::NEW_FLOAT_EXT => cursor.skip_bytes(8),
+        tag if tag == tags::SMALL_INTEGER_EXT => cursor.skip_bytes(1),
+        tag if tag == tags::INTEGER_EXT => cursor.skip_bytes(4),
+        tag if tag == tags::ATOM_UTF8_EXT => {
+            let len = usize::from(cursor.read_u16()?);
+            let bytes = cursor.read_bytes(len)?;
+            std::str::from_utf8(bytes).map_err(|_| DecodeError::InvalidUtf8)?;
+            Ok(())
+        }
+        tag if tag == tags::SMALL_ATOM_UTF8_EXT => {
+            let len = usize::from(cursor.read_u8()?);
+            let bytes = cursor.read_bytes(len)?;
+            std::str::from_utf8(bytes).map_err(|_| DecodeError::InvalidUtf8)?;
+            Ok(())
+        }
+        tag if tag == tags::SMALL_TUPLE_EXT => {
+            let arity = usize::from(cursor.read_u8()?);
+            for _ in 0..arity {
+                scan_one(cursor, depth + 1)?;
+            }
+            Ok(())
+        }
+        tag if tag == tags::LARGE_TUPLE_EXT => {
+            let arity = cursor.read_u32()? as usize;
+            for _ in 0..arity {
+                scan_one(cursor, depth + 1)?;
+            }
+            Ok(())
+        }
+        tag if tag == tags::NIL_EXT => Ok(()),
+        tag if tag == tags::STRING_EXT => {
+            let len = usize::from(cursor.read_u16()?);
+            cursor.skip_bytes(len)
+        }
+        tag if tag == tags::LIST_EXT => {
+            let len = cursor.read_u32()? as usize;
+            for _ in 0..len {
+                scan_one(cursor, depth + 1)?;
+            }
+            scan_one(cursor, depth + 1)
+        }
+        tag if tag == tags::BINARY_EXT => {
+            let len = cursor.read_u32()? as usize;
+            cursor.skip_bytes(len)
+        }
+        tag if tag == tags::SMALL_BIG_EXT => {
+            let len = usize::from(cursor.read_u8()?);
+            scan_big(cursor, len)
+        }
+        tag if tag == tags::LARGE_BIG_EXT => {
+            let len = cursor.read_u32()? as usize;
+            scan_big(cursor, len)
+        }
+        tag if tag == tags::MAP_EXT => {
+            let len = cursor.read_u32()? as usize;
+            for _ in 0..len {
+                scan_one(cursor, depth + 1)?;
+                scan_one(cursor, depth + 1)?;
+            }
+            Ok(())
+        }
+        tag if tag == tags::NEW_PID_EXT => {
+            scan_node_atom(cursor)?;
+            cursor.skip_bytes(12)
+        }
+        tag if tag == tags::NEWER_REFERENCE_EXT => {
+            let len = cursor.read_u16()?;
+            if len == 0 || len > 2 {
+                return Err(DecodeError::InvalidReferenceArity(len));
+            }
+            scan_node_atom(cursor)?;
+            cursor.skip_bytes(4 + usize::from(len) * 4)
+        }
+        other => Err(DecodeError::UnsupportedTag(other)),
+    }
+}
+
+fn scan_node_atom(cursor: &mut Cursor<'_>) -> Result<(), DecodeError> {
+    let tag = cursor.read_u8()?;
+    match tag {
+        tag if tag == tags::ATOM_UTF8_EXT => {
+            let len = usize::from(cursor.read_u16()?);
+            let bytes = cursor.read_bytes(len)?;
+            std::str::from_utf8(bytes).map_err(|_| DecodeError::InvalidUtf8)?;
+            Ok(())
+        }
+        tag if tag == tags::SMALL_ATOM_UTF8_EXT => {
+            let len = usize::from(cursor.read_u8()?);
+            let bytes = cursor.read_bytes(len)?;
+            std::str::from_utf8(bytes).map_err(|_| DecodeError::InvalidUtf8)?;
+            Ok(())
+        }
+        _ => Err(DecodeError::InvalidExternalNode),
+    }
+}
+
+fn scan_big(cursor: &mut Cursor<'_>, len: usize) -> Result<(), DecodeError> {
+    let sign = cursor.read_u8()?;
+    match sign {
+        0 | 1 => cursor.skip_bytes(len),
+        other => Err(DecodeError::InvalidBigSign(other)),
+    }
+}
+
+struct Cursor<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> Cursor<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn position(&self) -> usize {
+        self.offset
+    }
+
+    fn remaining(&self) -> usize {
+        self.bytes.len().saturating_sub(self.offset)
+    }
+
+    fn skip_bytes(&mut self, len: usize) -> Result<(), DecodeError> {
+        self.read_bytes(len)?;
+        Ok(())
+    }
+
+    fn read_u8(&mut self) -> Result<u8, DecodeError> {
+        let byte = self
+            .bytes
+            .get(self.offset)
+            .copied()
+            .ok_or(DecodeError::Truncated)?;
+        self.offset = self.offset.checked_add(1).ok_or(DecodeError::Truncated)?;
+        Ok(byte)
+    }
+
+    fn read_u16(&mut self) -> Result<u16, DecodeError> {
+        let bytes = self.read_bytes(2)?;
+        Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
+    }
+
+    fn read_u32(&mut self) -> Result<u32, DecodeError> {
+        let bytes = self.read_bytes(4)?;
+        Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    fn read_i32(&mut self) -> Result<i32, DecodeError> {
+        let bytes = self.read_bytes(4)?;
+        Ok(i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    fn read_bytes(&mut self, len: usize) -> Result<&'a [u8], DecodeError> {
+        let end = self.offset.checked_add(len).ok_or(DecodeError::Truncated)?;
+        let slice = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or(DecodeError::Truncated)?;
+        self.offset = end;
+        Ok(slice)
+    }
+}
+

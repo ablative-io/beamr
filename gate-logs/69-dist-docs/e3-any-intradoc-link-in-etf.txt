@@ -1,0 +1,3 @@
+161:/// callers that need to distinguish that case should use [`encode_term_result`].
+1394:    /// [`MAX_DIST_FRAME_BYTES`] BEFORE it reserves it.
+1411:    /// EXACTLY [`MAX_DIST_FRAME_BYTES`] is accepted and deframed intact, and
