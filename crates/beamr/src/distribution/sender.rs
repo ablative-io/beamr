@@ -16,14 +16,59 @@
 //! `SharedState -> DistSender -> SharedState` cycle, and the scheduler still drops
 //! cleanly.
 //!
-//! ## Backpressure
+//! ## Backpressure — the data lane is bounded in BYTES
 //!
-//! The data queue is bounded ([`DIST_SEND_QUEUE_CAP`]). [`DistSender::enqueue`]
-//! uses a non-blocking `try_send`: on a full or closed channel the frame is
-//! DROPPED. A dropped membership update is self-correcting — the next `pg`
-//! join/leave or a node-down purge re-establishes the correct view — so
-//! dropping is safe and is strictly preferable to blocking a scheduler worker
-//! behind a stalled peer.
+//! **What protects memory on this lane is [`DIST_SEND_QUEUE_BYTE_BUDGET`], not
+//! a slot count.** The lane carries `Arc<[u8]>` frames of unbounded individual
+//! size, so a slot count says nothing about how many bytes are resident: 64 of
+//! the 1024 slots can hold a quarter of a gigabyte. Every frame is charged
+//! `frame.len()` against the budget at [`DistSender::enqueue`] and the charge
+//! is released when the drain finishes with it, so the lane's retention has a
+//! byte ceiling regardless of frame size.
+//!
+//! [`DIST_SEND_QUEUE_CAP`] survives as the `mpsc` channel's slot count — a
+//! secondary bound on the NUMBER of pending items (and on the `Arc` handles
+//! they retain). It is not the memory protection and must not be read as one.
+//!
+//! Refusal fires on bytes OR slots; the ACTION is unchanged. [`DistSender::enqueue`]
+//! uses a non-blocking `try_send` behind a non-blocking charge: on an exhausted
+//! byte budget, a full channel, or a closed channel the frame is DROPPED. A
+//! dropped membership update is self-correcting — the next `pg` join/leave or a
+//! node-down purge re-establishes the correct view — so dropping is safe and is
+//! strictly preferable to blocking a scheduler worker behind a stalled peer.
+//!
+//! ### Fan-out is charged per ENQUEUE, not per buffer (deliberate over-count)
+//!
+//! A broadcast clones the `Arc` handle, not the bytes: `pg_propagation` encodes
+//! one frame and enqueues it once per connected node, so N slots can share ONE
+//! buffer. The accounting charges `frame.len()` on each enqueue and therefore
+//! OVER-COUNTS a fan-out by a factor of N.
+//!
+//! This is chosen over unique-buffer tracking, and the consequence is stated
+//! rather than hidden. A pointer-keyed side table would have to be consulted on
+//! the enqueue fast path — a path whose whole contract is that it never blocks a
+//! scheduler worker — and keying on `Arc::as_ptr` is a correctness trap, since a
+//! freed buffer's address can be reused by the next allocation. The cost of the
+//! over-count is that a wide fan-out reaches the budget sooner than its true
+//! retention warrants (one 1 MiB frame broadcast to 64 peers charges 64 MiB
+//! while retaining 1 MiB), so the effective admitted volume under fan-out is
+//! lower than the nominal budget. The error is ENTIRELY in the fail-closed
+//! direction: the charge is never less than the bytes actually retained, so the
+//! budget remains a true upper bound on this lane's retention.
+//!
+//! Note the scope of that over-count. It applies to this lane's OWN budget. It
+//! does not contradict the caveat at [`MAX_DIST_FRAME_BYTES`]'s derivation
+//! ("the send lane fans out over `Arc<[u8]>`, so a broadcast retains ONE
+//! buffer: do not double-count the send lane against this budget") — that
+//! caveat governs charging the send lane against the RECEIVE-side 13 GiB
+//! envelope, which this lane still does not do.
+//!
+//! ### Coverage — what these bounds do NOT cover
+//!
+//! `send_remote` bypasses both queues entirely via a direct blocking write (see
+//! the same derivation comment). Bytes on that path are never enqueued, so they
+//! are neither charged nor bounded here. The budgets below bound what the two
+//! QUEUES retain, not the total outbound distribution traffic.
 //!
 //! ## Must-deliver control lane — DC-1 (send-or-down; no silent arm)
 //!
@@ -54,6 +99,31 @@
 //! window a control to a HEALTHY peer may still overflow, marking the healthy
 //! peer down — a spurious noconnection + redial (availability blip), never a
 //! lost signal.
+//!
+//! ### Why the control lane carries NO byte budget (stated absence)
+//!
+//! The data lane got a byte budget because its frames have no structural size
+//! ceiling. The control lane's do, so its slot count already IS a byte bound
+//! and a second, redundant budget would buy nothing while adding a refusal arm
+//! to a must-deliver lane — where every refusal costs a healthy connection.
+//!
+//! The ceiling, measured at the bytes (see
+//! `control_frame_encoded_sizes_measured_at_the_bytes`): a control frame is
+//! `{Op, FromExtPid, ToExtPid[, ReasonAtom]}` over an ALWAYS-NIL payload, so it
+//! carries no user term at all. Its only variable-length components are the two
+//! node-name atoms — each ceilinged at 65535 bytes by `ATOM_UTF8_EXT`'s `u16`
+//! length field, and independently refused above `u16::MAX` by the handshake —
+//! and a reason atom drawn from `ExitReason`'s closed six-atom set. With
+//! realistic node names LINK/UNLINK encode to 74 bytes and EXIT/EXIT2 to 88;
+//! against an adversarial peer advertising a name at the atom ceiling the worst
+//! case is 131131 bytes.
+//!
+//! [`DIST_CONTROL_QUEUE_CAP`] slots x that ceiling is ~32 MiB — LESS THAN ONE
+//! maximum-size inbound data frame ([`MAX_DIST_FRAME_BYTES`]). The count is
+//! therefore load-bearing here in a way it is not on the data lane: it bounds
+//! bytes because the per-frame size is bounded. This is pinned by
+//! `control_lane_slot_cap_bounds_retained_bytes_below_one_max_data_frame`, so
+//! the claim cannot rot silently if a wider frame ever reaches this lane.
 //!
 //! ## Generation pinning — DC-2
 //!
@@ -86,6 +156,7 @@
 //! elapse the connection is marked down (firing the connection-down hook and
 //! remote-node purge) and the drain proceeds.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -94,7 +165,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::atom::Atom;
-use crate::distribution::connection::{ConnectionManager, DistConnection};
+use crate::distribution::connection::{ConnectionManager, DistConnection, MAX_DIST_FRAME_BYTES};
 use crate::distribution::join_runtime_drop;
 
 /// OS thread name of the sender's single tokio worker.
@@ -103,13 +174,48 @@ use crate::distribution::join_runtime_drop;
 /// probe and the service inventory (spec §5) attribute the worker under.
 pub const DIST_SEND_THREAD_NAME: &str = "beamr-dist-send";
 
-/// Bounded depth of the outbound distribution queue.
+/// Bounded SLOT COUNT of the outbound distribution queue.
 ///
-/// Sized for low-frequency control traffic (pg join/leave). When full, the
-/// producer drops rather than blocks; see the module docs.
+/// **This number does not protect memory.** It bounds how many items may be
+/// pending, and with them how many `Arc` handles the lane retains; it says
+/// nothing about the bytes behind those handles, because a data-lane frame has
+/// no structural size ceiling. The memory protection on this lane is
+/// [`DIST_SEND_QUEUE_BYTE_BUDGET`], and a frame is refused when EITHER bound
+/// would be exceeded. Retained as the `mpsc` channel's capacity because the
+/// constructor takes a count and a slot bound is still worth having: it caps
+/// per-item overhead and keeps the queue's own allocation bounded even when
+/// every frame is tiny.
+///
+/// Sized for low-frequency control traffic (pg join/leave). When either bound
+/// refuses, the producer drops rather than blocks; see the module docs.
 pub const DIST_SEND_QUEUE_CAP: usize = 1024;
 
-/// Bounded depth of the must-deliver control lane.
+/// Byte budget for data-lane residency: `2 * MAX_DIST_FRAME_BYTES` (128 MiB).
+///
+/// **This is the load-bearing memory protection on the data lane.** Every frame
+/// is charged `frame.len()` at enqueue and released when the drain is done with
+/// it; a frame that would push residency past this budget is dropped.
+///
+/// # Derivation
+///
+/// Imported from [`MAX_DIST_FRAME_BYTES`] rather than minted, so the two cannot
+/// drift and the 64 MiB figure keeps its single home
+/// (`distribution/connection.rs`). Two max-size frames resident is already
+/// pathological for a lane that exists to carry small `pg` control traffic (see
+/// the module docs), and the multiplier keeps outbound retention well inside
+/// the envelope the receive side consumes.
+pub const DIST_SEND_QUEUE_BYTE_BUDGET: usize = 2 * MAX_DIST_FRAME_BYTES;
+
+/// Bounded SLOT COUNT of the must-deliver control lane.
+///
+/// Unlike [`DIST_SEND_QUEUE_CAP`], this count IS the byte bound — because a
+/// control frame's size is structurally ceilinged. Every frame on this lane is
+/// `{Op, FromExtPid, ToExtPid[, ReasonAtom]}` over an always-NIL payload, whose
+/// only variable-length parts are two `u16`-length-ceilinged node atoms and a
+/// reason atom from a closed six-atom set. Measured worst case is 131131 bytes,
+/// so these slots retain at most ~32 MiB — less than ONE
+/// [`MAX_DIST_FRAME_BYTES`] data frame. That is why this lane carries no
+/// separate byte budget; the module docs state the absence and its evidence.
 ///
 /// Small on purpose: a peer that cannot absorb this many pending LINK/EXIT
 /// controls is effectively down (DC-1), and `enqueue_control` marks the pinned
@@ -159,6 +265,97 @@ pub struct ControlOutbound {
     /// Pre-encoded control frame (encoded by the producer on the calling
     /// worker thread; the drain performs only TCP I/O).
     pub frame: Arc<[u8]>,
+}
+
+/// Byte meter for one lane's resident frames.
+///
+/// A leaf: it holds a counter and a budget and nothing else. That is what keeps
+/// it safe to hand to every in-flight frame — a charge can outlive the sender
+/// without keeping the sender (and therefore its runtime) alive, so the
+/// `Arc`-cycle invariant in the module docs is untouched by this accounting.
+struct LaneResidency {
+    /// Bytes currently charged to the lane.
+    charged: AtomicUsize,
+    /// Ceiling `charged` may not exceed.
+    budget: usize,
+}
+
+impl LaneResidency {
+    const fn new(budget: usize) -> Self {
+        Self {
+            charged: AtomicUsize::new(0),
+            budget,
+        }
+    }
+
+    /// Reserve `bytes` if they fit, returning the RAII charge that releases
+    /// them. `None` means the budget is exhausted — the caller must refuse.
+    ///
+    /// Lock-free and wait-free-ish by construction (a CAS retry loop over a
+    /// single word), because the enqueue path it sits on must never block a
+    /// scheduler worker.
+    fn try_charge(self: &Arc<Self>, bytes: usize) -> Option<ResidencyCharge> {
+        let mut current = self.charged.load(Ordering::Relaxed);
+        loop {
+            // Saturating, not wrapping: a hypothetical overflow must refuse,
+            // never wrap around into a spuriously-available budget.
+            let next = current.saturating_add(bytes);
+            if next > self.budget {
+                return None;
+            }
+            match self.charged.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    return Some(ResidencyCharge {
+                        residency: Arc::clone(self),
+                        bytes,
+                    });
+                }
+                Err(observed) => current = observed,
+            }
+        }
+    }
+
+    /// Bytes currently charged.
+    fn resident_bytes(&self) -> usize {
+        self.charged.load(Ordering::Acquire)
+    }
+}
+
+/// An outstanding byte reservation, released on drop.
+///
+/// Release is tied to `Drop` rather than to an explicit call at each exit
+/// because a LEAKED reservation is a slow-starve: bytes that are never returned
+/// shrink the budget permanently until the lane refuses everything. Drop covers
+/// every exit path there is — the drain finishing a write, a write error, a
+/// write timeout, the pinned connection being marked down, a `try_send` that
+/// bounces the item straight back, and the receiver being dropped at shutdown
+/// with items still queued.
+struct ResidencyCharge {
+    residency: Arc<LaneResidency>,
+    bytes: usize,
+}
+
+impl Drop for ResidencyCharge {
+    fn drop(&mut self) {
+        self.residency
+            .charged
+            .fetch_sub(self.bytes, Ordering::AcqRel);
+    }
+}
+
+/// A data-lane item travelling with its byte reservation.
+///
+/// The charge rides INSIDE the channel so the reservation's lifetime is exactly
+/// the item's residency in the lane, with no exit path able to skip the
+/// release.
+struct ChargedOutbound {
+    item: DistOutbound,
+    charge: ResidencyCharge,
 }
 
 /// Why [`DistSender::enqueue_control`] did not accept a control frame.
@@ -229,8 +426,14 @@ impl Drop for DistSenderInner {
 /// runtime, queue, and drain task.
 #[derive(Clone)]
 pub struct DistSender {
-    tx: mpsc::Sender<DistOutbound>,
+    tx: mpsc::Sender<ChargedOutbound>,
     control_tx: mpsc::Sender<ControlOutbound>,
+    /// Data-lane byte meter. Held beside `inner` rather than inside it: a
+    /// queued charge holds an `Arc` to this, and queued items are owned by the
+    /// receiver that `inner`'s runtime drives. Were the meter reachable through
+    /// `Arc<DistSenderInner>`, a pending frame would keep the sender — and so
+    /// its runtime — alive from inside its own queue.
+    data_residency: Arc<LaneResidency>,
     inner: Arc<DistSenderInner>,
 }
 
@@ -247,7 +450,7 @@ impl DistSender {
             .enable_all();
         crate::distribution::stamp_runtime_threads(&mut builder, mark);
         let runtime = builder.build().ok()?;
-        let (tx, mut rx) = mpsc::channel::<DistOutbound>(DIST_SEND_QUEUE_CAP);
+        let (tx, mut rx) = mpsc::channel::<ChargedOutbound>(DIST_SEND_QUEUE_CAP);
         let (control_tx, mut control_rx) = mpsc::channel::<ControlOutbound>(DIST_CONTROL_QUEUE_CAP);
         // The drain closure captures ONLY `connections` (an
         // `Arc<ConnectionManagerInner>`) and the receivers — never
@@ -289,7 +492,19 @@ impl DistSender {
                         None => control_open = false,
                     },
                     item = rx.recv(), if data_open => match item {
-                        Some(DistOutbound::ToNode { node, frame }) => {
+                        Some(charged) => {
+                            // Take the byte reservation out of the item and
+                            // hold it across the write: the bytes ARE resident
+                            // until the write is done with them. `charge` is
+                            // dropped at the end of this arm, so every exit —
+                            // write completed, write error, write timeout, or
+                            // no connection to write to at all — releases it
+                            // exactly once, with no path able to skip the
+                            // release.
+                            let ChargedOutbound {
+                                item: DistOutbound::ToNode { node, frame },
+                                charge,
+                            } = charged;
                             // CONNECTED-ONLY: look up an already-established
                             // connection; never trigger an inline reconnect
                             // from the send path.
@@ -313,6 +528,7 @@ impl DistSender {
                                     connection.mark_down_write_timeout();
                                 }
                             }
+                            drop(charge);
                         }
                         None => data_open = false,
                     },
@@ -323,6 +539,7 @@ impl DistSender {
         Some(Self {
             tx,
             control_tx,
+            data_residency: Arc::new(LaneResidency::new(DIST_SEND_QUEUE_BYTE_BUDGET)),
             inner: Arc::new(DistSenderInner {
                 runtime: Mutex::new(Some(runtime)),
                 mark,
@@ -362,12 +579,38 @@ impl DistSender {
         }
     }
 
-    /// Enqueue an outbound frame. NON-BLOCKING: on a full or closed queue the
-    /// frame is dropped (see module docs on backpressure). Never blocks the
-    /// calling thread, so it is safe to call from a scheduler worker.
+    /// Enqueue an outbound frame. NON-BLOCKING: on an exhausted byte budget, a
+    /// full queue, or a closed queue the frame is dropped (see module docs on
+    /// backpressure). Never blocks the calling thread, so it is safe to call
+    /// from a scheduler worker.
+    ///
+    /// The byte charge is taken FIRST, because the byte budget — not the slot
+    /// count — is what protects memory here. A frame that does not fit the
+    /// budget never reaches the channel; a frame that fits the budget but finds
+    /// no free slot hands its charge back when `try_send` returns the item.
     pub fn enqueue(&self, item: DistOutbound) {
-        // `try_send` returns `Err` on `Full` or `Closed`; both are dropped.
-        let _ = self.tx.try_send(item);
+        let DistOutbound::ToNode { frame, .. } = &item;
+        // Charge the frame's own bytes. A fan-out charges once per enqueue and
+        // so over-counts a shared buffer; the module docs state that choice and
+        // its consequence. The over-count is fail-closed — never an under-count.
+        let Some(charge) = self.data_residency.try_charge(frame.len()) else {
+            return;
+        };
+        // `try_send` returns `Err` on `Full` or `Closed`, handing the item back;
+        // dropping it releases the charge with it.
+        let _ = self.tx.try_send(ChargedOutbound { item, charge });
+    }
+
+    /// Bytes currently charged to the data lane's residency budget
+    /// ([`DIST_SEND_QUEUE_BYTE_BUDGET`]).
+    ///
+    /// A frame is charged from the moment [`enqueue`](Self::enqueue) accepts it
+    /// until the drain is done with it. Exposed so the byte bound is
+    /// observable — a leaked reservation is a slow-starve, and a bound nobody
+    /// can read is a bound nobody can test.
+    #[must_use]
+    pub fn data_lane_resident_bytes(&self) -> usize {
+        self.data_residency.resident_bytes()
     }
 
     /// NON-BLOCKING must-deliver enqueue for LINK/UNLINK/EXIT/EXIT2 controls
@@ -1374,6 +1617,15 @@ mod tests {
     /// while the BYTES total 256 MiB.
     const RED_FRAME_COUNT: usize = 64;
 
+    /// Vacuity guard, enforced at COMPILE time: the burst those two constants
+    /// describe must exceed the data lane's byte budget. If it ever stopped
+    /// doing so, the red artifact and the byte-refusal wall would both pass
+    /// without a refusal ever firing — green for the wrong reason.
+    const _: () = assert!(
+        RED_FRAME_COUNT * (8 + RED_FRAME_BODY_BYTES) > DIST_SEND_QUEUE_BYTE_BUDGET,
+        "the red burst must exceed the data lane's byte budget"
+    );
+
     /// A framed control frame of `body` bytes, tagged with `seq` in its first
     /// byte so a reading peer can identify which frames arrived.
     fn framed_of_size(seq: u8, body: usize) -> Arc<[u8]> {
@@ -1643,73 +1895,274 @@ mod tests {
         drop(wedged);
     }
 
-    /// #64 RED (D2) — the control lane is byte-BLIND.
+    /// #64 D2 WALL — the control lane's slot cap IS its byte bound.
     ///
-    /// Mirror of the data-lane red on the must-deliver lane, where acceptance
-    /// is directly observable through [`ControlEnqueueError`]. With the drain
-    /// parked, [`RED_FRAME_COUNT`] frames of [`RED_FRAME_BODY_BYTES`] each are
-    /// offered: 64 of 256 slots, but 256 MiB retained. Every one is accepted.
+    /// The control-lane red (see `gate-logs/64-red/`) showed this lane is
+    /// byte-blind as an API surface: a synthetic caller can put a 4 MiB
+    /// `Arc<[u8]>` on it and nothing objects. The measurement in
+    /// `control_frame_encoded_sizes_measured_at_the_bytes` is what decided the
+    /// disposition — the frames this lane actually carries are structurally
+    /// ceilinged, so its slot count already bounds bytes and a second budget
+    /// would only add a refusal arm to a must-deliver lane.
     ///
-    /// The property asserted is DC-1-preserving refusal on bytes: a lane
-    /// bounded in bytes must report `Overflow` (which marks the pinned
-    /// connection down — never a silent drop) rather than admit a quarter of a
-    /// gigabyte into 64 slots.
+    /// This test is the wall on that stated absence. It floods the lane past
+    /// its slot cap with REAL production frames at the adversarial worst case —
+    /// EXIT frames whose node names sit at the ETF atom ceiling — and pins two
+    /// things: that the lane's only refusal arm is the slot cap, with DC-1
+    /// intact (overflow marks the pinned connection down, never a silent drop),
+    /// and that a full lane of such frames retains less than ONE maximum-size
+    /// data frame. If a wider frame class is ever routed here, this fails.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn control_lane_bounds_retained_bytes_not_just_slot_count() {
+    async fn control_lane_slot_cap_bounds_retained_bytes_below_one_max_data_frame() {
+        use crate::distribution::control_link::{ControlOp, encode_exit_frame};
+        use crate::process::{ExitReason, RemotePid};
+
         let (connections, atom_table) = manager();
+
+        // The worst control frame a peer can force: node names at the ETF atom
+        // ceiling, and the longest reason atom in the closed set.
+        let ceiling_name = "n".repeat(usize::from(u16::MAX));
+        let local_node = atom_table.intern(&ceiling_name);
+        let to = RemotePid {
+            node: local_node,
+            pid_number: u64::from(u32::MAX),
+            serial: u64::from(u32::MAX),
+        };
+        let worst = encode_exit_frame(
+            ControlOp::Exit,
+            local_node,
+            u64::from(u32::MAX),
+            to,
+            ExitReason::NoConnection,
+            &atom_table,
+        )
+        .expect("worst-case EXIT encodes");
+        let worst_frame_bytes = worst.len();
+
+        // The stated-absence arithmetic, over the MEASURED ceiling.
+        let lane_worst_case = worst_frame_bytes * DIST_CONTROL_QUEUE_CAP;
+        println!(
+            "#64 D2 wall: worst-case production control frame = {worst_frame_bytes} bytes; \
+             {DIST_CONTROL_QUEUE_CAP} slots retain at most {lane_worst_case} bytes"
+        );
+        assert!(
+            lane_worst_case < MAX_DIST_FRAME_BYTES,
+            "the control lane's slot cap is only a byte bound while a full lane \
+             ({lane_worst_case} B) stays under one max-size data frame \
+             ({MAX_DIST_FRAME_BYTES} B)"
+        );
+
+        // Behavioural half: flood past the slot cap with those real frames
+        // behind a parked drain, and confirm the refusal arm is the slot cap
+        // with DC-1 intact.
         let wedged = wedged_peer(&connections, &atom_table).await;
         let sender = DistSender::new(connections.clone()).expect("sender builds");
 
-        // Park the drain on a write the wedged peer will never absorb.
-        sender
-            .enqueue_control(ControlOutbound {
-                connection: Arc::clone(&wedged.connection),
-                frame: drain_parking_frame(),
-            })
-            .expect("first control accepted into an empty lane");
-
+        let start = std::time::Instant::now();
         let mut accepted = 0usize;
-        let mut refused = 0usize;
-        for index in 0..RED_FRAME_COUNT {
-            let seq = u8::try_from(index).expect("seq fits u8");
+        let mut overflowed = 0usize;
+        for _ in 0..(DIST_CONTROL_QUEUE_CAP + 32) {
+            // A distinct buffer each time: 256 EXIT frames bound for different
+            // peers share nothing, which is the residency worst case.
+            let frame: Arc<[u8]> = Arc::from(worst.clone().into_boxed_slice());
             match sender.enqueue_control(ControlOutbound {
                 connection: Arc::clone(&wedged.connection),
-                frame: framed_of_size(seq, RED_FRAME_BODY_BYTES),
+                frame,
             }) {
                 Ok(()) => accepted += 1,
                 Err(ControlEnqueueError::Overflow) => {
-                    // DC-1 is intact only if the refusal already downed the
-                    // pinned connection: the lane has no silent-drop arm.
                     assert!(
                         wedged.connection.is_down(),
-                        "a byte-budget refusal must mark the pinned connection down \
-                         before returning, exactly as a slot overflow does"
+                        "DC-1: overflow must mark the pinned connection down before returning"
                     );
-                    refused += 1;
+                    overflowed += 1;
                 }
                 Err(ControlEnqueueError::Closed) => {
                     panic!("control lane must not close while the sender is live")
                 }
             }
         }
+        let elapsed = start.elapsed();
 
-        let offered_bytes = RED_FRAME_COUNT * (8 + RED_FRAME_BODY_BYTES);
         println!(
-            "#64 RED (control lane): offered {RED_FRAME_COUNT} frames / {offered_bytes} bytes \
-             into {DIST_CONTROL_QUEUE_CAP} slots behind a parked drain; \
-             accepted {accepted}, refused {refused}"
+            "#64 D2 wall: accepted {accepted}, overflowed {overflowed} \
+             (slot cap {DIST_CONTROL_QUEUE_CAP})"
         );
-
-        let budget = 2 * MAX_DIST_FRAME_BYTES;
+        // Note what `accepted` is and is not. It counts CUMULATIVE admissions,
+        // which legitimately exceed the slot cap: the drain keeps draining
+        // while the flood runs (a wedged peer's kernel buffers absorb the first
+        // frames before the write finally parks), and every frame it takes
+        // frees a slot. The slot cap bounds RESIDENCY, not cumulative
+        // admission, and residency is what the arithmetic above bounds in
+        // bytes.
         assert!(
-            refused > 0,
-            "control lane must bound RETAINED BYTES, not just slots: all {accepted} frames \
-             ({offered_bytes} bytes) were admitted into {RED_FRAME_COUNT} of \
-             {DIST_CONTROL_QUEUE_CAP} slots against a byte budget of {budget}"
+            overflowed > 0,
+            "flooding past the slot cap behind a parked drain must overflow the lane"
+        );
+        assert!(
+            elapsed < WRITE_TIMEOUT,
+            "enqueue_control must stay non-blocking; flood took {elapsed:?}"
         );
 
         sender.shutdown();
         drop(sender);
         drop(wedged);
+    }
+
+    /// #64 D4 — every data-lane reservation is released once the drain is done
+    /// with it.
+    ///
+    /// A leaked reservation is a slow-starve: the budget would shrink
+    /// permanently until the lane refused everything, with nothing actually
+    /// resident. Frames are driven all the way through to a reading peer, and
+    /// the meter must return to exactly zero.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn data_lane_releases_every_reservation_once_the_drain_completes() {
+        let (connections, atom_table) = manager();
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let count = 32usize;
+
+        let reader = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            for _ in 0..count {
+                let mut header = [0u8; 8];
+                if stream.read_exact(&mut header).await.is_err() {
+                    break;
+                }
+                let control_len =
+                    u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
+                let payload_len =
+                    u32::from_be_bytes([header[4], header[5], header[6], header[7]]) as usize;
+                let mut body = vec![0u8; control_len + payload_len];
+                if stream.read_exact(&mut body).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let std_stream = std::net::TcpStream::connect(addr).expect("client connects");
+        let node = atom_table.intern("peer@127.0.0.1");
+        let peer_addr: SocketAddr = std_stream.peer_addr().expect("peer addr");
+        connections
+            .register_test_connection(node, peer_addr, std_stream)
+            .expect("register test connection");
+
+        let sender = DistSender::new(connections).expect("sender builds");
+        assert_eq!(
+            sender.data_lane_resident_bytes(),
+            0,
+            "a fresh lane holds no reservation"
+        );
+
+        for index in 0..count {
+            let seq = u8::try_from(index).expect("seq fits u8");
+            sender.enqueue(DistOutbound::ToNode {
+                node,
+                frame: framed_of_size(seq, 64 * 1024),
+            });
+        }
+
+        reader.await.expect("reader task joins");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        while sender.data_lane_resident_bytes() != 0 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "every reservation must be released once the drain is done; {} bytes \
+                 still charged",
+                sender.data_lane_resident_bytes()
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+
+        sender.shutdown();
+        drop(sender);
+    }
+
+    /// #64 D4 — the data lane's byte refusal never blocks its caller, and never
+    /// lets residency past the budget.
+    ///
+    /// `enqueue` is called from scheduler worker threads, so a refusal that
+    /// waited for room would stall a worker behind a stalled peer — the exact
+    /// hazard the drop semantics exist to avoid. The refusal must therefore
+    /// stay a prompt drop, exactly as a full slot queue already is.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn data_lane_byte_refusal_drops_promptly_without_blocking() {
+        let (connections, atom_table) = manager();
+        let wedged = wedged_peer(&connections, &atom_table).await;
+        let sender = DistSender::new(connections.clone()).expect("sender builds");
+
+        // Park the drain so nothing is released while the burst runs.
+        sender.enqueue(DistOutbound::ToNode {
+            node: wedged.node,
+            frame: drain_parking_frame(),
+        });
+
+        let start = std::time::Instant::now();
+        for index in 0..RED_FRAME_COUNT {
+            let seq = u8::try_from(index).expect("seq fits u8");
+            sender.enqueue(DistOutbound::ToNode {
+                node: wedged.node,
+                frame: framed_of_size(seq, RED_FRAME_BODY_BYTES),
+            });
+            assert!(
+                sender.data_lane_resident_bytes() <= DIST_SEND_QUEUE_BYTE_BUDGET,
+                "residency must never exceed the byte budget: {} > {}",
+                sender.data_lane_resident_bytes(),
+                DIST_SEND_QUEUE_BYTE_BUDGET
+            );
+        }
+        let elapsed = start.elapsed();
+
+        println!(
+            "#64 D4: after offering {RED_FRAME_COUNT} x {RED_FRAME_BODY_BYTES} B behind a \
+             parked drain, residency is {} B of a {DIST_SEND_QUEUE_BYTE_BUDGET} B budget",
+            sender.data_lane_resident_bytes()
+        );
+        assert!(
+            elapsed < WRITE_TIMEOUT,
+            "enqueue must stay non-blocking under byte refusal; burst took {elapsed:?}"
+        );
+        sender.shutdown();
+        drop(sender);
+        drop(wedged);
+    }
+
+    /// #64 D4 — a queued byte charge must not keep the sender alive.
+    ///
+    /// The module's load-bearing invariant is that the sender does not
+    /// transitively own itself: the drain closure captures only the
+    /// `ConnectionManager`. A reservation riding inside the queue would break
+    /// that if it referenced the sender, because the queue is owned by the
+    /// receiver the sender's own runtime drives — a pending frame would keep
+    /// the runtime alive from inside its own queue, and the blocking
+    /// runtime-drop join would never complete. The meter is a leaf for exactly
+    /// this reason; this test is the wall.
+    #[test]
+    fn queued_byte_charges_do_not_keep_the_sender_alive() {
+        let (connections, atom_table) = manager();
+        let node = atom_table.intern("absent@127.0.0.1");
+        let sender = DistSender::new(connections).expect("sender builds");
+
+        // Leave frames — and therefore live charges — in the queue. With no
+        // connection registered the drain discards them, so enqueue faster than
+        // it can keep up and drop the sender with charges still outstanding.
+        for index in 0..RED_FRAME_COUNT {
+            let seq = u8::try_from(index).expect("seq fits u8");
+            sender.enqueue(DistOutbound::ToNode {
+                node,
+                frame: framed_of_size(seq, RED_FRAME_BODY_BYTES),
+            });
+        }
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            drop(sender);
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("dropping a sender with charged frames still queued must complete");
     }
 }

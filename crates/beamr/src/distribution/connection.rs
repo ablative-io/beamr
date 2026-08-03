@@ -66,26 +66,41 @@ const DEFAULT_HEARTBEAT_DEADLINE: Duration = Duration::from_secs(45);
 /// 2. Worst-case inbound receive residency is therefore `N x 64 MiB`, where `N`
 ///    is the count of concurrent peers each holding a frame buffer.
 /// 3. The 13 GiB budget holds IF AND ONLY IF `N <= 64`.
-/// 4. `N` is today UNBOUNDED. [`ConnectionManager::accept_loop`]
-///    (`distribution/connection.rs:1666`) carries no semaphore, no max-peers
-///    setting, and no limit of any kind: every stream the listener accepts
-///    becomes a link.
-/// 5. The accept-bound is a separate named remedy OWNED BY LANE #64 — the DIST
-///    queue count-to-bytes conversion lane, which gains the accept site as
-///    in-scope. The bound lands there in residency BYTES, with the 64-peer
-///    figure DERIVED rather than hardcoded. **Until #64 lands, `<= 64` is this
-///    budget's DESIGN TARGET, not a property of the system.**
+/// 4. `N`'s accept-driven component is ENFORCED (lane #64, D5).
+///    [`ConnectionManager::accept_loop`] reserves
+///    [`INBOUND_RESIDENCY_PER_PEER_BYTES`] — one framed buffer — for every
+///    stream it accepts, and DECLINES the stream when that reservation would
+///    carry residency past [`INBOUND_RESIDENCY_ENVELOPE_BYTES`]. The
+///    reservation is released when the link's read lifecycle ends. Not charged:
+///    locally initiated outbound dials (`connect`), which this node's own
+///    resolver enumerates rather than a peer.
+/// 5. The peer ceiling is therefore DERIVED, not configured — it is
+///    `INBOUND_RESIDENCY_ENVELOPE_BYTES / INBOUND_RESIDENCY_PER_PEER_BYTES`,
+///    which is 64. No peer count is written anywhere in this file; changing
+///    either byte quantity moves the ceiling with it. **`<= 64` accepted peers
+///    is now a property of the system, enforced in residency BYTES, not merely
+///    this budget's design target.**
 ///
 /// # Interacting constants, cited by value
 ///
 /// `DIST_SEND_QUEUE_CAP = 1024` and `DIST_CONTROL_QUEUE_CAP = 256`
-/// (`distribution/sender.rs`) — quoted by value because changing either
-/// invalidates the arithmetic above. Two standing caveats travel with them:
-/// 1024's own justification assumes control-only traffic, yet nothing at the
-/// type level prevents a `DistOutbound::ToNode` from carrying a user payload,
-/// and `send_remote` today bypasses both queues via a direct blocking write.
-/// The send lane fans out over `Arc<[u8]>`, so a broadcast retains ONE buffer:
-/// do not double-count the send lane against this budget.
+/// (`distribution/sender.rs`) are SLOT counts, and neither is what protects
+/// memory on its lane. The data lane is bounded in bytes by
+/// `DIST_SEND_QUEUE_BYTE_BUDGET = 2 * MAX_DIST_FRAME_BYTES`, imported from this
+/// constant so the two cannot drift — 1024's old justification assumed
+/// control-only traffic, yet nothing at the type level prevents a
+/// `DistOutbound::ToNode` from carrying a user payload, which is exactly why a
+/// count could not be the protection. The control lane needs no byte budget:
+/// its frames are structurally ceilinged at a measured 131131 bytes, so 256
+/// slots retain ~32 MiB — less than one frame of this cap. That lane's own
+/// module docs carry the measurement and state the absence.
+///
+/// Two standing caveats still travel with them. `send_remote` bypasses both
+/// queues via a direct blocking write, so neither lane's bound covers it. And
+/// the send lane fans out over `Arc<[u8]>`, so a broadcast retains ONE buffer:
+/// do not double-count the send lane against THIS budget. (The send lane's own
+/// budget deliberately does over-count a fan-out, fail-closed; that is internal
+/// to it and does not reach the receive-side arithmetic here.)
 ///
 /// # The rail this restores
 ///
@@ -104,6 +119,110 @@ const DEFAULT_HEARTBEAT_DEADLINE: Duration = Duration::from_secs(45);
 /// - `ConnectionEventHub.queue` is unbounded, but its elements are small
 ///   fixed-size events: a count hole, not a byte hole.
 pub(crate) const MAX_DIST_FRAME_BYTES: usize = 64 * 1024 * 1024;
+
+/// Inbound receive-residency ENVELOPE, in bytes: the 4 GiB spike allowance out
+/// of beamr's 13 GiB memory bound. This is the primitive quantity — the budget
+/// the accept path is allowed to spend.
+///
+/// `u64` rather than `usize` deliberately: 4 GiB does not fit a 32-bit `usize`,
+/// and this module is compiled for wasm32 (see [`FrameError::LengthOverflow`]).
+const INBOUND_RESIDENCY_ENVELOPE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+/// Worst-case inbound receive residency attributable to ONE peer: a single
+/// framed buffer, i.e. [`MAX_DIST_FRAME_BYTES`], which is precisely what the
+/// per-frame cap bounds.
+///
+/// This is the CURRENCY the accept path spends. The peer ceiling it implies is
+/// `INBOUND_RESIDENCY_ENVELOPE_BYTES / INBOUND_RESIDENCY_PER_PEER_BYTES` — the
+/// 64-peer design target, now DERIVED from the two byte quantities rather than
+/// configured as a count. No peer count is written anywhere in this file.
+const INBOUND_RESIDENCY_PER_PEER_BYTES: u64 = MAX_DIST_FRAME_BYTES as u64;
+
+/// Byte meter for inbound accept-side residency.
+///
+/// A leaf: counters and a ceiling, nothing more. That is what lets a permit be
+/// held by a per-connection lifecycle task without the task keeping the manager
+/// alive — [`DistConnection::manager`] is already `Weak` for the same reason,
+/// and this accounting must not reintroduce the ownership edge that `Weak`
+/// exists to break.
+struct InboundResidency {
+    /// Bytes currently reserved by admitted inbound links.
+    charged: AtomicU64,
+    /// Ceiling `charged` may not exceed.
+    envelope: u64,
+    /// Bytes one admitted inbound link reserves.
+    per_peer: u64,
+    /// Accepted streams declined for want of envelope, since construction.
+    /// Counter-plus-accessor, matching `heartbeat_tasks_spawned`: a refusal is
+    /// an async event with no thread of its own, so it is inventoried as a
+    /// count.
+    refused: AtomicU64,
+}
+
+impl InboundResidency {
+    fn new() -> Self {
+        Self {
+            charged: AtomicU64::new(0),
+            envelope: INBOUND_RESIDENCY_ENVELOPE_BYTES,
+            per_peer: INBOUND_RESIDENCY_PER_PEER_BYTES,
+            refused: AtomicU64::new(0),
+        }
+    }
+
+    /// Reserve one peer's worth of residency, or refuse.
+    ///
+    /// `None` means admitting this peer would carry inbound residency past the
+    /// envelope. Lock-free (a CAS retry over one word) because this runs inline
+    /// on the accept loop, which must keep accepting.
+    fn try_admit(self: &Arc<Self>) -> Option<InboundAdmissionPermit> {
+        let mut current = self.charged.load(Ordering::Relaxed);
+        loop {
+            // Saturating: an overflow must refuse, never wrap into a
+            // spuriously-available envelope.
+            let next = current.saturating_add(self.per_peer);
+            if next > self.envelope {
+                self.refused.fetch_add(1, Ordering::Relaxed);
+                return None;
+            }
+            match self.charged.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    return Some(InboundAdmissionPermit {
+                        residency: Arc::clone(self),
+                        bytes: self.per_peer,
+                    });
+                }
+                Err(observed) => current = observed,
+            }
+        }
+    }
+}
+
+/// One admitted inbound link's residency reservation, released on drop.
+///
+/// Held by the link's read-lifecycle task, which runs for exactly as long as
+/// the link does: it exits on peer EOF, on a read error, or when `mark_down`
+/// fires the shutdown `Notify`. Release is tied to `Drop` rather than to an
+/// explicit call at each of those exits because a leaked reservation is a
+/// slow-starve — it would shrink the envelope permanently until the node
+/// refused every new peer. Drop also covers a task dropped wholesale at runtime
+/// teardown.
+struct InboundAdmissionPermit {
+    residency: Arc<InboundResidency>,
+    bytes: u64,
+}
+
+impl Drop for InboundAdmissionPermit {
+    fn drop(&mut self) {
+        self.residency
+            .charged
+            .fetch_sub(self.bytes, Ordering::AcqRel);
+    }
+}
 
 /// Why the framing read path refused an inbound data frame.
 ///
@@ -612,6 +731,12 @@ struct ConnectionManagerInner {
     /// heartbeats are async tasks with no OS thread, so they are inventoried as a
     /// counter, never a thread line.
     heartbeat_tasks_spawned: AtomicU64,
+    /// Inbound accept-side residency meter (lane #64, D5). Every stream the
+    /// listener accepts reserves one peer's worth of receive residency before a
+    /// responder task is spawned for it; the reservation is released when that
+    /// link's read lifecycle ends. Held as a separate `Arc` rather than inline
+    /// so a permit can outlive nothing but itself — see [`InboundResidency`].
+    inbound_residency: Arc<InboundResidency>,
 }
 
 impl ConnectionManagerInner {
@@ -844,6 +969,7 @@ impl ConnectionManager {
                 runtime_handle: RwLock::new(None),
                 heartbeat: None,
                 heartbeat_tasks_spawned: AtomicU64::new(0),
+                inbound_residency: Arc::new(InboundResidency::new()),
             }),
         }
     }
@@ -1055,6 +1181,28 @@ impl ConnectionManager {
     #[must_use]
     pub fn heartbeat_tasks_spawned(&self) -> u64 {
         self.inner.heartbeat_tasks_spawned.load(Ordering::Relaxed)
+    }
+
+    /// Bytes of inbound receive residency currently reserved by admitted links
+    /// (D5). One admitted inbound link reserves the worst case it can hold: a
+    /// single framed buffer, [`MAX_DIST_FRAME_BYTES`].
+    ///
+    /// Exposed so the accept bound is observable — a leaked reservation would
+    /// shrink the envelope permanently, and a bound nobody can read is a bound
+    /// nobody can test.
+    #[must_use]
+    pub fn inbound_residency_bytes(&self) -> u64 {
+        self.inner.inbound_residency.charged.load(Ordering::Acquire)
+    }
+
+    /// Accepted streams DECLINED because admitting them would have carried
+    /// inbound residency past the envelope (D5), since construction.
+    ///
+    /// The declined stream is dropped, closing the TCP connection; this counter
+    /// is what makes that refusal observable rather than silent.
+    #[must_use]
+    pub fn inbound_accepts_refused(&self) -> u64 {
+        self.inner.inbound_residency.refused.load(Ordering::Relaxed)
     }
 
     /// The atom table this manager keys its connection table by.
@@ -1282,12 +1430,16 @@ impl ConnectionManager {
             return Err(ConnectError::SimultaneousAbort);
         }
         let node = self.inner.atom_table.intern(result.remote_name());
+        // `None`: the accept bound charges the population the LISTENER admits.
+        // A locally initiated dial is enumerated by this node's own resolver,
+        // not by a peer, so it spends no accept-side envelope.
         self.register_connection(
             node,
             peer_addr,
             stream,
             LinkDirection::Outbound,
             result.remote_creation(),
+            None,
         )
         .map_err(|error| ConnectError::Io(error.to_string()))
     }
@@ -1319,6 +1471,12 @@ impl ConnectionManager {
     /// only its canonical-direction link (the canonical socket is never torn down
     /// by either side), while a LONE re-dial — which only ever meets a stale,
     /// non-canonical, or absent incumbent — always re-establishes the link.
+    ///
+    /// `admission` carries the accept-side residency reservation for an INBOUND
+    /// link (D5); outbound dials and the test helper pass `None`. Every exit
+    /// from here either hands it to the installed link's read lifecycle or lets
+    /// it drop — including the dedup arm below, where a losing newcomer's
+    /// reservation is returned because no buffer of its own will ever exist.
     fn register_connection(
         &self,
         node: Atom,
@@ -1326,6 +1484,7 @@ impl ConnectionManager {
         stream: TcpStream,
         direction: LinkDirection,
         peer_creation: u32,
+        admission: Option<InboundAdmissionPermit>,
     ) -> io::Result<Arc<DistConnection>> {
         use dashmap::mapref::entry::Entry;
 
@@ -1473,7 +1632,7 @@ impl ConnectionManager {
         // completes (INV-FRAME-ORDER), and a queued prior Down's cleanup has
         // run before the new generation's read loop exists.
         self.inner.events.dispatch();
-        self.spawn_read_lifecycle(Arc::clone(&installed), read_half);
+        self.spawn_read_lifecycle(Arc::clone(&installed), read_half, admission);
         Ok(installed)
     }
 
@@ -1528,23 +1687,41 @@ impl ConnectionManager {
         stream.set_nonblocking(true)?;
         let stream = TcpStream::from_std(stream)?;
         // Test helper: a pre-connected stream, no handshake, so the direction
-        // only selects the install arm; `Inbound` here.
+        // only selects the install arm; `Inbound` here. `None` admission — this
+        // stream never passed through `accept_loop`, so it holds no reservation
+        // to hand on, and a helper that minted one would let tests drain an
+        // envelope the accept path never spent.
         self.register_connection(
             node,
             peer_addr,
             stream,
             LinkDirection::Inbound,
             peer_creation,
+            None,
         )
     }
 
-    fn spawn_read_lifecycle(&self, connection: Arc<DistConnection>, mut read_half: OwnedReadHalf) {
+    fn spawn_read_lifecycle(
+        &self,
+        connection: Arc<DistConnection>,
+        mut read_half: OwnedReadHalf,
+        admission: Option<InboundAdmissionPermit>,
+    ) {
         // A fresh link is live now; seed its inbound clock and start its net-tick.
         connection.note_inbound_activity();
         self.spawn_heartbeat(Arc::clone(&connection));
         let manager = Arc::clone(&self.inner);
         let shutdown = Arc::clone(&connection.shutdown);
         self.inner.spawn_lifecycle(async move {
+            // D5: an INBOUND link's accept-side residency reservation lives
+            // here, moved into the task that runs for exactly this link's
+            // lifetime — the loop below exits on peer EOF, on a read error, or
+            // when `mark_down` fires the shutdown `Notify`. Whichever exit is
+            // taken, and equally if the whole task is dropped at runtime
+            // teardown, the permit drops with the task and returns this peer's
+            // share of the envelope. `None` for an outbound dial, which the
+            // accept bound does not charge.
+            let _admission = admission;
             // A single long-lived `Notified` future, re-polled via `&mut` each
             // iteration so `notify_waiters` (which wakes only already-registered
             // waiters) is never missed mid-loop. `enable()` registers the waiter
@@ -1663,6 +1840,31 @@ impl ConnectionManager {
         });
     }
 
+    /// Accept inbound links, bounded by the receive-residency envelope (D5).
+    ///
+    /// Every accepted stream reserves [`INBOUND_RESIDENCY_PER_PEER_BYTES`] —
+    /// one framed buffer, the worst-case residency a single peer can hold —
+    /// before any work is spawned for it. When the reservation would carry
+    /// inbound residency past [`INBOUND_RESIDENCY_ENVELOPE_BYTES`], the stream
+    /// is DECLINED: it is dropped, which closes the TCP connection so the peer
+    /// sees EOF and may redial once residency frees up. That is the same
+    /// disposal this path already applies to a stream whose handshake fails or
+    /// times out (`handle_accepted`), so a declined peer is indistinguishable
+    /// from a refused one — and, like a refused install, it is observable as a
+    /// counter ([`ConnectionManager::inbound_accepts_refused`]).
+    ///
+    /// The reservation is charged here rather than at registration on purpose:
+    /// a burst of concurrent inbound handshakes would otherwise all pass an
+    /// uncharged check and register together, overshooting the envelope. The
+    /// permit travels with the stream and is released by whichever exit it
+    /// meets — handshake failure, a lost install dedup, or the link's own read
+    /// lifecycle ending.
+    ///
+    /// Scope, stated: this bounds the population the LISTENER admits, which is
+    /// the population a remote party controls and the one step 4 of
+    /// [`MAX_DIST_FRAME_BYTES`]'s derivation names as unbounded. Locally
+    /// initiated outbound dials (`connect`) are not charged: they are
+    /// enumerated by this node's own resolver and configuration, not by a peer.
     async fn accept_loop(&self, listener: TcpListener, shutdown: Arc<Notify>) {
         loop {
             tokio::select! {
@@ -1673,7 +1875,14 @@ impl ConnectionManager {
                     let Ok((stream, peer_addr)) = accepted else {
                         continue;
                     };
-                    self.handle_accepted(stream, peer_addr);
+                    let Some(admission) = self.inner.inbound_residency.try_admit() else {
+                        // Envelope exhausted. Dropping the stream closes the
+                        // TCP connection (the handshake-failure disposal), and
+                        // the loop keeps accepting so the listener never wedges.
+                        drop(stream);
+                        continue;
+                    };
+                    self.handle_accepted(stream, peer_addr, admission);
                 }
             }
         }
@@ -1689,7 +1898,12 @@ impl ConnectionManager {
     /// registered and its data-frame read loop starts. On success the connection
     /// is keyed by the peer's authenticated handshake name; on failure the stream
     /// is dropped, closing the TCP connection.
-    fn handle_accepted(&self, mut stream: TcpStream, peer_addr: SocketAddr) {
+    fn handle_accepted(
+        &self,
+        mut stream: TcpStream,
+        peer_addr: SocketAddr,
+        admission: InboundAdmissionPermit,
+    ) {
         let manager = self.clone();
         self.inner.spawn_lifecycle(async move {
             let local = match manager.inner.handshake_node() {
@@ -1726,9 +1940,14 @@ impl ConnectionManager {
                         stream,
                         LinkDirection::Inbound,
                         result.remote_creation(),
+                        Some(admission),
                     );
                 }
                 Ok(Err(_)) | Err(_) => {
+                    // The residency reservation goes with the stream: dropping
+                    // `admission` here returns this peer's envelope share the
+                    // moment the handshake fails or times out.
+                    drop(admission);
                     drop(stream);
                 }
             }
@@ -2394,11 +2613,21 @@ mod tests {
             .expect("client_inbound connects");
         let (server_inbound, _) = listener.accept().await.expect("accept server_inbound");
 
+        // `None` admission on both: these streams are handed to the installer
+        // directly, never through `accept_loop`, so neither carries a
+        // reservation.
         let displaced = manager
-            .register_connection(node, addr, server_outbound, LinkDirection::Outbound, 0)
+            .register_connection(
+                node,
+                addr,
+                server_outbound,
+                LinkDirection::Outbound,
+                0,
+                None,
+            )
             .expect("outbound installs");
         let winner = manager
-            .register_connection(node, addr, server_inbound, LinkDirection::Inbound, 0)
+            .register_connection(node, addr, server_inbound, LinkDirection::Inbound, 0, None)
             .expect("inbound installs");
 
         // Exactly one table entry, and it is the canonical (inbound) winner, not
@@ -3172,5 +3401,117 @@ mod tests {
             MAX_DIST_FRAME_BYTES,
             "the buffer is sized to the declared total, exactly"
         );
+    }
+
+    // ---- #64 D5: the accept-side residency bound ---------------------------
+
+    /// The peer ceiling is DERIVED from two byte quantities, and it is 64.
+    ///
+    /// This is the ONLY place the number 64 appears in connection.rs, and it
+    /// appears as a derivation RESULT being checked — never as a configured
+    /// peer count. If either byte quantity moves, this test says so.
+    #[test]
+    fn the_accept_envelope_derives_the_sixty_four_peer_design_target() {
+        let derived = INBOUND_RESIDENCY_ENVELOPE_BYTES / INBOUND_RESIDENCY_PER_PEER_BYTES;
+        assert_eq!(
+            derived, 64,
+            "4 GiB of spike allowance divided by one 64 MiB framed buffer is the \
+             64-peer design target the MAX_DIST_FRAME_BYTES derivation names"
+        );
+        assert_eq!(
+            INBOUND_RESIDENCY_PER_PEER_BYTES, MAX_DIST_FRAME_BYTES as u64,
+            "one peer's worst-case residency is exactly one framed buffer, so the \
+             per-peer currency must stay tied to the frame cap"
+        );
+    }
+
+    /// #64 D5 — `accept_loop` bounds the population it admits in residency
+    /// BYTES, and declines beyond the envelope.
+    ///
+    /// One more stream than the envelope can hold is opened, and none of them
+    /// sends handshake bytes: every accepted stream parks in the responder,
+    /// holding its reservation for the whole handshake deadline. That is what
+    /// makes the overflow observable without needing real peers.
+    ///
+    /// Also the leak-free wall: once the parked responders time out and drop
+    /// their streams, every reservation must come back. A reservation that did
+    /// not return would be a slow-starve — the node would refuse peers forever
+    /// while holding nothing.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn accept_loop_declines_inbound_peers_beyond_the_residency_envelope() {
+        let (manager, handle) = ConnectionManager::start(
+            SocketAddr::from(([127, 0, 0, 1], 0)),
+            Arc::new(StaticResolver::new(HashMap::new())),
+            TEST_COOKIE,
+            "local@127.0.0.1",
+            1,
+        )
+        .await
+        .expect("listener starts");
+        let addr = handle.local_addr();
+
+        assert_eq!(
+            manager.inbound_residency_bytes(),
+            0,
+            "a fresh manager holds no inbound reservation"
+        );
+        assert_eq!(manager.inbound_accepts_refused(), 0);
+
+        // Computed the way the accept path computes it — no literal count.
+        let ceiling = INBOUND_RESIDENCY_ENVELOPE_BYTES / INBOUND_RESIDENCY_PER_PEER_BYTES;
+        let over_subscribe =
+            usize::try_from(ceiling + 1).expect("the derived peer ceiling fits a usize");
+
+        // Hold every stream open and send nothing on any of them.
+        let mut streams = Vec::with_capacity(over_subscribe);
+        for _ in 0..over_subscribe {
+            streams.push(
+                TcpStream::connect(addr)
+                    .await
+                    .expect("client stream connects"),
+            );
+        }
+
+        // Wait for the accept loop to work through the backlog and refuse the
+        // stream that does not fit. Bounded well inside the handshake deadline
+        // that holds the reservations open.
+        let deadline = Instant::now() + Duration::from_secs(4);
+        while manager.inbound_accepts_refused() == 0 {
+            assert!(
+                Instant::now() < deadline,
+                "accepting {over_subscribe} streams against a {ceiling}-peer envelope must \
+                 refuse at least one; residency was {} bytes",
+                manager.inbound_residency_bytes()
+            );
+            assert!(
+                manager.inbound_residency_bytes() <= INBOUND_RESIDENCY_ENVELOPE_BYTES,
+                "inbound residency must never exceed the envelope"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        assert!(
+            manager.inbound_residency_bytes() <= INBOUND_RESIDENCY_ENVELOPE_BYTES,
+            "inbound residency must never exceed the envelope, got {} against {}",
+            manager.inbound_residency_bytes(),
+            INBOUND_RESIDENCY_ENVELOPE_BYTES
+        );
+
+        // Leak-free: the parked responders time out (HS-1), drop their streams,
+        // and every reservation returns.
+        drop(streams);
+        let release_deadline = Instant::now() + Duration::from_secs(30);
+        while manager.inbound_residency_bytes() != 0 {
+            assert!(
+                Instant::now() < release_deadline,
+                "every accept reservation must be released once its stream's lifecycle \
+                 ends; {} bytes still held",
+                manager.inbound_residency_bytes()
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        handle.shutdown();
+        manager.disconnect_all();
     }
 }
