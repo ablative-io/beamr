@@ -1,0 +1,3 @@
+# boundary before leg 4 (wasm-tests) at 2026-08-03T00:50:14Z
+Filesystem   1024-blocks      Used Available Capacity  iused      ifree %iused  Mounted on
+/dev/disk3s5   971350180 836577784 104253656    89% 10608878 1042536560    1%   /System/Volumes/Data

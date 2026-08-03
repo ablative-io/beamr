@@ -1,0 +1,3 @@
+# boundary before leg 1 (fmt) at 2026-08-03T00:49:21Z
+Filesystem   1024-blocks      Used Available Capacity  iused      ifree %iused  Mounted on
+/dev/disk3s5   971350180 836329136 104502304    89% 10606962 1045023040    1%   /System/Volumes/Data

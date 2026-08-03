@@ -1,0 +1,1 @@
+THRESHOLD 47185920 KiB available on /System/Volumes/Data (45 GiB), instrument: df -k

@@ -1,0 +1,3 @@
+# boundary before leg 2 (clippy) at 2026-08-03T00:49:35Z
+Filesystem   1024-blocks      Used Available Capacity  iused      ifree %iused  Mounted on
+/dev/disk3s5   971350180 836330384 104501056    89% 10607121 1045010560    1%   /System/Volumes/Data

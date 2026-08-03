@@ -1,0 +1,3 @@
+# boundary before leg 6 (blocking-call-in-native-bif) at 2026-08-03T00:53:11Z
+Filesystem   1024-blocks      Used Available Capacity  iused      ifree %iused  Mounted on
+/dev/disk3s5   971350180 838488524 102342920    90% 10616013 1023429200    1%   /System/Volumes/Data

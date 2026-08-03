@@ -1,0 +1,3 @@
+# boundary before leg 3 (wasm32-check) at 2026-08-03T00:49:46Z
+Filesystem   1024-blocks      Used Available Capacity  iused      ifree %iused  Mounted on
+/dev/disk3s5   971350180 836331720 104499720    89% 10607255 1044997200    1%   /System/Volumes/Data
