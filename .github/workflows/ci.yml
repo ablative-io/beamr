@@ -1,0 +1,155 @@
+# The general gate: every leg of the gates.json canon, run on every push and
+# pull request against main.
+#
+# THE LEGS ARE NOT DUPLICATED HERE. They are read out of gates.json at run
+# time, so this workflow cannot drift from the canon by transcription: adding,
+# removing or editing a leg there changes what CI runs, with no edit to this
+# file. A workflow that restates its legs is a second copy of the truth, and
+# the two copies disagree the first time somebody edits one of them.
+#
+# VERDICT CHANGE, READ THIS BEFORE ADDING A STEP: in GitHub Actions a step's
+# verdict channel IS its exit code. That is NOT true of every harness — the
+# local battery's verdict channel is its per-leg rc artifacts, and its wrapper
+# exit code is explicitly unreadable. Adding CI as a consumer is what makes the
+# exit code load-bearing here, so the question has to be re-asked at every new
+# consumer rather than inherited from the last one.
+#
+# AND THE EXIT CODE IS NOT ENOUGH ON ITS OWN. The per-leg rc files are kept and
+# asserted separately, because a runner that dies mid-loop leaves an incomplete
+# set and a truncated set is not a passing set. Count first, then read.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gates:
+    name: gates.json canon
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Provisioning is fail-loud and version-echoed: the gate never skips.
+      # A leg that cannot run must stop the job, never quietly pass. Versions
+      # are printed so a green run says WHICH tools produced it.
+      - name: Provision leg tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install wasm-bindgen-cli --version 0.2.123 --locked
+          cargo install ast-grep --locked
+          rustc --version --verbose
+          cargo --version
+          cargo fmt --version
+          cargo clippy --version
+          wasm-bindgen-test-runner --version
+          ast-grep --version
+          jq --version
+
+      - name: Run the canon
+        shell: bash
+        run: |
+          # No `set -e` here ON PURPOSE: a failing leg must not abort the loop.
+          # Every leg runs, every rc is recorded, and the verdict is taken
+          # afterwards from the recorded set. Aborting on the first failure
+          # would report one defect and hide the rest.
+          set -uo pipefail
+          mkdir -p gate-rc
+
+          declared=$(jq -r '.legs | length' gates.json)
+          echo "$declared" > gate-rc/declared.count
+          echo "gates.json declares ${declared} legs"
+
+          for i in $(seq 0 $((declared - 1))); do
+            name=$(jq -r ".legs[$i].name" gates.json)
+            cmd=$(jq -r ".legs[$i].cmd" gates.json)
+            echo "::group::leg $((i + 1)) — ${name}"
+            echo "COMMAND: ${cmd}"
+            # Not piped: there is no pipefail guarantee for the leg itself and
+            # a pipe would report the downstream tool's status instead of the
+            # leg's (gates.json says this explicitly of the ast-grep leg).
+            #
+            # SUBSHELL, and it is load-bearing: `eval` runs in the CURRENT
+            # shell, so a leg shaped `cd crates/foo && cargo test` would leave
+            # every LATER leg running from the wrong directory — silently,
+            # because cargo would still find a manifest there. Same for a leg
+            # that exports a variable or assigns one the loop uses ($i, $name,
+            # $cmd, $rc, $declared). The subshell makes the legs genuinely
+            # independent, so the verdict does not depend on leg ORDER.
+            # Where a gate sits relative to its siblings is part of its
+            # correctness, not its performance (Hermes, 2026-08-06).
+            ( eval "$cmd" )
+            rc=$?
+            echo "$rc" > "gate-rc/${name}.rc"
+            echo "LEG $((i + 1)) (${name}) rc=${rc}"
+            echo "::endgroup::"
+          done
+
+      - name: Verdict
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          # DENOMINATOR FIRST. A zero-failure count over a truncated set reads
+          # exactly like a clean run, so establish the population before
+          # believing any verdict drawn from it. If the previous step died
+          # mid-loop, declared and recorded disagree and that IS the finding.
+          if [ ! -f gate-rc/declared.count ]; then
+            echo "no declared-leg count: the canon step did not reach its first leg" >&2
+            exit 1
+          fi
+          declared=$(cat gate-rc/declared.count)
+          recorded=$(find gate-rc -name '*.rc' | wc -l | tr -d ' ')
+
+          echo "declared legs: ${declared}"
+          echo "recorded legs: ${recorded}"
+
+          if [ "$declared" -ne "$recorded" ]; then
+            echo "LEG COUNT MISMATCH: ${declared} declared, ${recorded} recorded — a leg is missing, so no verdict is available from this set" >&2
+            exit 1
+          fi
+          if [ "$recorded" -eq 0 ]; then
+            echo "zero legs recorded: nothing ran, which is not a pass" >&2
+            exit 1
+          fi
+
+          verdict=0
+          for rc_file in gate-rc/*.rc; do
+            leg=$(basename "$rc_file" .rc)
+            rc=$(cat "$rc_file")
+            echo "  ${leg}: rc=${rc}"
+            if [ "$rc" -ne 0 ]; then
+              verdict=1
+            fi
+          done
+
+          # `rc`/`verdict`, never `status`: in zsh `status` is a read-only
+          # alias for $? and assigning to it is fatal. This file runs under
+          # bash, but the name is a trap for anyone lifting the idiom.
+          exit "$verdict"
+
+      - name: Upload per-leg rc artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-rc
+          path: gate-rc/
+          if-no-files-found: error

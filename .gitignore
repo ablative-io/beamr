@@ -16,3 +16,6 @@ erl_crash.dump
 
 # norn fetch cache
 .norn/
+
+# CI leg-verdict artifacts, written by the gates.json canon loop
+gate-rc/
