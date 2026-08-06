@@ -1,0 +1,25 @@
+#74 PRE-REGISTERED EXPECTATION — written BEFORE the green battery ran.
+
+AXES (named, per the AXES RIDER — expected-priors travel with named axes):
+  result-lines : 72     (unchanged; no new test binary)
+  passed       : 2067   (main's prior 2064 + EXACTLY THREE)
+  failed       : 0
+  ignored      : 0
+
+BASIS for +3, derived not guessed:
+  - 49ab8cf (walls) ADDS three tests:
+      replay_of_a_log_recorded_against_different_behaviour_fails
+      replay_of_a_log_with_no_drivable_events_fails_loudly
+      replay_refuses_dir_flag
+  - cdbf895 (fix) RENAMES one test, it does not add one:
+      record_then_replay_fixture_preserves_stdout_and_exit_code
+        -> record_writes_a_loadable_log_and_replay_refuses_to_reprint_it
+    net contribution ZERO.
+  - 5239e1c and 493f5b8 are CHANGELOG + strings/docs: zero tests.
+  MEASURED CORROBORATION: beamr-cli's own binary ran 26 passed at main and
+  26 passed + 3 failed = 29 at the red point. 29 - 26 = 3, at my own hands.
+
+RED, already measured at 49ab8cf: rc=101, 26 passed / 3 failed / 0 ignored.
+  The three failures ARE the three walls, by name. In that same run the
+  always-green test record_then_replay_fixture_preserves_stdout_and_exit_code
+  PASSED — the endorsement and the walls in one measurement.

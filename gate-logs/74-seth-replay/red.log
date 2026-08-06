@@ -1,0 +1,151 @@
+   Compiling libc v0.2.186
+   Compiling libm v0.2.16
+   Compiling foldhash v0.2.0
+   Compiling cranelift-srcgen v0.131.2
+   Compiling wasmtime-internal-core v44.0.2
+   Compiling cranelift-isle v0.131.2
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling cfg-if v1.0.4
+   Compiling cranelift-codegen-shared v0.131.2
+   Compiling smallvec v1.15.1
+   Compiling hashbrown v0.16.1
+   Compiling heck v0.5.0
+   Compiling pkg-config v0.3.33
+   Compiling cranelift-assembler-x64-meta v0.131.2
+   Compiling log v0.4.32
+   Compiling hashbrown v0.17.1
+   Compiling crossbeam-utils v0.8.21
+   Compiling equivalent v1.0.2
+   Compiling target-lexicon v0.13.5
+   Compiling allocator-api2 v0.2.21
+   Compiling proc-macro2 v1.0.106
+   Compiling fnv v1.0.7
+   Compiling bumpalo v3.20.3
+   Compiling arbitrary v1.4.2
+   Compiling indexmap v2.14.0
+   Compiling rustc-hash v2.1.2
+   Compiling cranelift-codegen-meta v0.131.2
+   Compiling gimli v0.33.0
+   Compiling cranelift-control v0.131.2
+   Compiling regalloc2 v0.15.1
+   Compiling cranelift-assembler-x64 v0.131.2
+   Compiling jobserver v0.1.34
+   Compiling cc v1.2.63
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling zstd-safe v7.2.4
+   Compiling anyhow v1.0.102
+   Compiling crc32fast v1.5.0
+   Compiling camino v1.2.2
+   Compiling parking_lot_core v0.9.12
+   Compiling cranelift-bitset v0.131.2
+   Compiling getrandom v0.4.2
+   Compiling rand_core v0.10.1
+   Compiling cranelift-entity v0.131.2
+   Compiling cranelift-codegen v0.131.2
+   Compiling syn v2.0.117
+   Compiling cranelift-bforest v0.131.2
+   Compiling mach2 v0.4.3
+   Compiling simd-adler32 v0.3.9
+   Compiling rustix v1.1.4
+   Compiling scopeguard v1.2.0
+   Compiling bitflags v1.3.2
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.8.9
+   Compiling region v3.0.2
+   Compiling lock_api v0.4.14
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling chacha20 v0.10.0
+   Compiling wasmtime-internal-jit-icache-coherence v44.0.2
+   Compiling crossbeam-epoch v0.9.18
+   Compiling mio v1.2.1
+   Compiling socket2 v0.6.4
+   Compiling errno v0.3.14
+   Compiling bitflags v2.13.0
+   Compiling once_cell v1.21.4
+   Compiling ecow v0.2.6
+   Compiling bytes v1.11.1
+   Compiling pin-project-lite v0.2.17
+   Compiling hashbrown v0.14.5
+   Compiling gleam-types v0.4.3 (/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/wt-74/crates/gleam-types)
+   Compiling crossbeam-deque v0.8.6
+   Compiling rand v0.10.1
+   Compiling flate2 v1.1.9
+   Compiling dashmap v6.2.1
+   Compiling crossbeam-channel v0.5.15
+   Compiling crossbeam-queue v0.3.12
+   Compiling num_cpus v1.17.0
+   Compiling md5 v0.8.0
+   Compiling unicode-segmentation v1.13.3
+   Compiling web-time v1.1.0
+   Compiling tokio-macros v2.7.0
+   Compiling tokio v1.52.3
+   Compiling zstd v0.13.3
+   Compiling beamr v0.16.2 (/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/wt-74/crates/beamr)
+   Compiling cranelift-native v0.131.2
+   Compiling cranelift-module v0.131.2
+   Compiling cranelift-frontend v0.131.2
+   Compiling cranelift-jit v0.131.2
+   Compiling beamr-cli v0.4.0 (/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/wt-74/crates/beamr-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 52.92s
+     Running unittests src/main.rs (target/debug/deps/beamr-ce810e44884901ce)
+
+running 29 tests
+test tests::parses_beam_file_only_as_run_without_entry ... ok
+test tests::parses_dir_flag_with_beam_file ... ok
+test tests::parses_compile_command_with_verbose ... ok
+test tests::parses_entry_flag_and_runtime_args ... ok
+test tests::parses_beam_file_and_entry_as_run_with_entry ... ok
+test tests::error_display_formats_io_load_and_exec_errors ... ok
+test tests::parses_help_flags ... ok
+test tests::parses_imports_command ... ok
+test tests::parses_imports_command_carrying_dir_flags ... ok
+test tests::compile_refuses_dir_flag_instead_of_silently_dropping_it ... ok
+test tests::parses_multiple_dir_flags ... ok
+test tests::parses_record_command_with_log_and_runtime_args ... ok
+test tests::parses_replay_command ... ok
+test tests::parses_version_flags ... ok
+test tests::rejects_log_flag_outside_record_command ... ok
+test tests::rejects_non_beam_path ... ok
+test tests::rejects_invalid_run_entry ... ok
+test tests::rejects_record_log_without_value ... ok
+test tests::rejects_dir_without_value ... ok
+test tests::rejects_unknown_flag ... ok
+test tests::rejects_unknown_flag_after_imports_as_flag ... ok
+test tests::replay_refuses_dir_flag ... FAILED
+test tests::validates_entry_format ... ok
+test tests::malformed_beam_bytes_return_load_error_without_panicking ... ok
+test tests::replay_of_a_log_with_no_drivable_events_fails_loudly ... FAILED
+test tests::imports_report_for_fixture_is_informational_and_omits_gate1_bifs ... ok
+test tests::imports_with_dir_satisfying_deferred_import_prints_empty_report ... ok
+test tests::record_then_replay_fixture_preserves_stdout_and_exit_code ... ok
+test tests::replay_of_a_log_recorded_against_different_behaviour_fails ... FAILED
+
+failures:
+
+---- tests::replay_refuses_dir_flag stdout ----
+
+thread 'tests::replay_refuses_dir_flag' (17304111) panicked at crates/beamr-cli/src/tests.rs:407:10:
+--dir must be refused for replay: Replay { log: "run.rlog" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::replay_of_a_log_with_no_drivable_events_fails_loudly stdout ----
+
+thread 'tests::replay_of_a_log_with_no_drivable_events_fails_loudly' (17304110) panicked at crates/beamr-cli/src/tests.rs:385:24:
+replay must not succeed with nothing to drive; got WithExitCode { stdout: "STORED TRANSCRIPT THAT MUST NEVER BE PRINTED AS THE ANSWER\n", exit_code: 0 }
+
+---- tests::replay_of_a_log_recorded_against_different_behaviour_fails stdout ----
+
+thread 'tests::replay_of_a_log_recorded_against_different_behaviour_fails' (17304109) panicked at crates/beamr-cli/src/tests.rs:353:24:
+replay must not succeed on a run it cannot reproduce; it reprinted the recorded transcript instead: WithExitCode { stdout: "OUTPUT FROM BUILD A THAT THIS BUILD DOES NOT PRODUCE\n", exit_code: 0 }
+
+
+failures:
+    tests::replay_of_a_log_recorded_against_different_behaviour_fails
+    tests::replay_of_a_log_with_no_drivable_events_fails_loudly
+    tests::replay_refuses_dir_flag
+
+test result: FAILED. 26 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p beamr-cli --bin beamr`

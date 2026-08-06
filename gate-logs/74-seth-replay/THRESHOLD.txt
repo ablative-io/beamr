@@ -1,0 +1,2 @@
+40
+value=40 noun=GiB-available instrument=df -k /System/Volumes/Data (avail field / 1048576)

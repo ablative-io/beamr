@@ -1,0 +1,18 @@
+#74 BLAST RADIUS — callers of the beamr replay SUBCOMMAND
+population: /Users/tom/Developer/ablative
+denominator: 157534 files
+excluded: .git internals, target/, backups/, *-backup-*.git, .mirror-staging/ (session transcripts), *.jsonl, node_modules/, *.snapshot.js + tracking/ (generated doc-embedding artifacts)
+
+CONTROL (known caller must fire): stack/beamr/crates/beamr-cli/src/tests.rs:1 
+
+D. indirect invocation shapes (cargo run -- replay / $VAR replay / bin/beamr replay):
+apps/manifold/.worktrees/face-2/surface/page/scripts/tree-cases.mjs:1120:  // ------------------------------------------- replay, and applying once --
+apps/manifold/surface/page/scripts/tree-cases.mjs:1120:  // ------------------------------------------- replay, and applying once --
+
+E. files mentioning beamr-cli OUTSIDE stack/beamr:
+DECISIONS.md
+docs/prompts.md
+apps/nerva/company/ablative-stack-team-deep-dives.md
+apps/nerva/documentation/beamr-deep-dive.md
+.dispatch-loop.md
+stack/aion/docs/design/STACK-AUDIT-2026-06-30.md
