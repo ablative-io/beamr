@@ -1,0 +1,14 @@
+gates.json declares 3 legs
+::group::leg 1 — leg-that-cds
+COMMAND: cd /tmp && echo 'leg 1 moved to /tmp'
+leg 1 moved to /tmp
+LEG 1 (leg-that-cds) rc=0
+::endgroup::
+::group::leg 2 — leg-asserts-cwd
+COMMAND: test "$PWD" = "$C6_EXPECTED_PWD"
+LEG 2 (leg-asserts-cwd) rc=0
+::endgroup::
+::group::leg 3 — leg-exits-7
+COMMAND: sh -c 'exit 7'
+LEG 3 (leg-exits-7) rc=7
+::endgroup::

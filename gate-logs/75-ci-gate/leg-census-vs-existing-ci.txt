@@ -1,0 +1,20 @@
+CENSUS: are the six gates.json leg commands run by main's PRE-EXISTING CI?
+tree: d9f92bccd0bc369e197c65a079825341ccbf0a12
+target: .github/workflows/cooperative-wasm.yml (the ONLY tracked workflow on main)
+instrument: grep -qF against the leg's cmd string extracted from gates.json by jq
+
+declared legs: 6
+leg 1 fmt                            ABSENT
+leg 2 clippy                         ABSENT
+leg 3 wasm32-check                   ABSENT
+leg 4 wasm-tests                     ABSENT
+leg 5 tests                          ABSENT
+leg 6 blocking-call-in-native-bif    ABSENT
+
+POSITIVE CONTROL (same instrument, target = gates.json where every cmd MUST be present):
+  PRESENT 6/6 (expected 6/6) -- instrument CAN say PRESENT
+
+NEAR-MISS DISCLOSED: a SUBSTRING search for 'cargo test --manifest-path crates/beamr-wasm'
+does hit line 35 of the tracked workflow. That is NOT leg 4: leg 4's cmd is
+  wasm-bindgen-test-runner --version && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked
+which version-checks the runner first and pins --locked. Similar shape, different command.

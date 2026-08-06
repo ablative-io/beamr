@@ -1,0 +1,53 @@
+CONTROL C6 — two-arm, on the SUBSHELL change to canon.sh
+=========================================================
+
+WHY IT EXISTS. C1-C5 all exercise verdict.sh. None of them exercised canon.sh.
+The subshell change is IN canon.sh, so the existing controls do not cover it.
+A control exercises the path it travelled, never the path you meant.
+
+FIXTURE. A three-leg fake canon:
+  leg 1  cd /tmp && echo ...        <- leaks a directory change
+  leg 2  test "$PWD" = <expected>   <- detects the leak
+  leg 3  sh -c 'exit 7'             <- proves rc capture survives the subshell
+
+ARM "fixed"   = the SHIPPED canon.sh          (sha 14ec947e4bcf251c...)
+ARM "unfixed" = canon.sh.pre-subshell         (the previously-controlled bytes)
+Both arms run the SHIPPED verdict.sh          (sha 7d956a5f9dfe61b1...)
+
+RESULT — ARM "fixed"
+  leg-that-cds     rc=0
+  leg-asserts-cwd  rc=0   <- the cd did NOT leak; cwd intact for later legs
+  leg-exits-7      rc=7   <- rc capture works THROUGH the subshell
+  verdict.sh: declared 3 = recorded 3, verdict rc=1 (correct: leg 3 failed)
+
+RESULT — ARM "unfixed" — AND IT IS WORSE THAN A FAILED ASSERTION
+  The leaked `cd` broke the LOOP ITSELF, not just leg 2:
+    - every later `jq ... gates.json` failed (wrong directory), so
+    - leg 2 and leg 3 got an EMPTY name and an EMPTY cmd,
+    - the empty cmd ran nothing, and
+    - BOTH WERE REPORTED "rc=0".
+  Verbatim from unfixed.log:
+      ::group::leg 2 —
+      COMMAND:
+      LEG 2 () rc=0
+  Two legs that never executed, reported as passing. That is the silent-pass
+  class exactly.
+
+WHAT ACTUALLY CAUGHT IT. Not the loop. The DENOMINATOR ASSERTION:
+  every `> gate-rc/<name>.rc` write also failed (no such directory after the
+  cd), so recorded=0 against declared=3, and verdict.sh refused:
+      LEG COUNT MISMATCH: 3 declared, 0 recorded — a leg is missing,
+      so no verdict is available from this set
+  verdict rc=1.
+
+TWO INDEPENDENT MECHANISMS, BOTH LOAD-BEARING, AND THAT IS THE POINT:
+  - the subshell REMOVES the corruption at its source;
+  - the denominator check CATCHES a corruption whatever its source.
+  Neither substitutes for the other. C6 is the first control in this lane that
+  demonstrates the denominator check biting on a REAL fault rather than a
+  hand-built fixture.
+
+HONEST BOUND ON THE CLAIM. In this control the rc writes happened to fail,
+which is what made the corruption loud. I have NOT established that every
+possible cwd leak would fail loudly — only that this one did, and that the
+subshell prevents the class regardless.

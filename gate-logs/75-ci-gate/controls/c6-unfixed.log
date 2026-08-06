@@ -1,0 +1,21 @@
+gates.json declares 3 legs
+::group::leg 1 — leg-that-cds
+COMMAND: cd /tmp && echo 'leg 1 moved to /tmp'
+leg 1 moved to /tmp
+/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/EV-75/canon.sh.pre-subshell: line 22: gate-rc/leg-that-cds.rc: No such file or directory
+LEG 1 (leg-that-cds) rc=0
+::endgroup::
+jq: error: Could not open file gates.json: No such file or directory
+jq: error: Could not open file gates.json: No such file or directory
+::group::leg 2 — 
+COMMAND: 
+/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/EV-75/canon.sh.pre-subshell: line 22: gate-rc/.rc: No such file or directory
+LEG 2 () rc=0
+::endgroup::
+jq: error: Could not open file gates.json: No such file or directory
+jq: error: Could not open file gates.json: No such file or directory
+::group::leg 3 — 
+COMMAND: 
+/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/EV-75/canon.sh.pre-subshell: line 22: gate-rc/.rc: No such file or directory
+LEG 3 () rc=0
+::endgroup::

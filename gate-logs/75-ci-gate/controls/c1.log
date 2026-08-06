@@ -1,0 +1,8 @@
+declared legs: 6
+recorded legs: 6
+  blocking-call-in-native-bif: rc=0
+  clippy: rc=0
+  fmt: rc=0
+  tests: rc=0
+  wasm-tests: rc=0
+  wasm32-check: rc=0

@@ -1,0 +1,5 @@
+declared legs: 3
+recorded legs: 3
+  leg-asserts-cwd: rc=0
+  leg-exits-7: rc=7
+  leg-that-cds: rc=0

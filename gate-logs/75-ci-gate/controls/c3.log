@@ -1,0 +1,3 @@
+declared legs: 6
+recorded legs: 5
+LEG COUNT MISMATCH: 6 declared, 5 recorded — a leg is missing, so no verdict is available from this set

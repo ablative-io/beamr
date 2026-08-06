@@ -1,0 +1,29 @@
+AXES at tree d9f92bc — TWO runs of the canon step, one per script version
+
+⚠️ WINDOW THE HITS. The shipped canon step writes ALL legs to ONE stream (the CI
+job log) with ::group:: markers, NOT to per-leg log files. A whole-log grep is the
+WRONG DENOMINATOR for the axes, which are the 'tests' leg's numbers alone.
+
+RUN 2 — canon.sh sha 14ec947e4bcf251c... (THE SHIPPED BYTES, post-subshell)
+  tests          result-lines=72 passed=2067 failed=0 ignored=0
+  wasm-tests     result-lines=2 passed=80 failed=0 ignored=0
+  whole-log ^test result: = 74   <-- NOT the axis
+
+RUN 1 — canon.sh.pre-subshell (the pre-edit bytes), kept as a cross-check
+  tests          result-lines=72 passed=2067 failed=0 ignored=0
+  wasm-tests     result-lines=2 passed=80 failed=0 ignored=0
+
+AXIS (leg 5 'tests') = 72 / 2067 / 0 / 0 in BOTH runs
+PRIOR (#74, landed at this same tree) = 72 / 2067 / 0 / 0  -> HOLDS EXACTLY
+
+ATTRIBUTION: leg 4 'wasm-tests' contributes 2 result-lines / 80 passed.
+72 + 2 = 74 = the whole-log count. The +2 is fully attributed, not drift.
+
+WHY TWO RUNS. The subshell edit to canon.sh landed AFTER run 1, so run 1's bytes
+were no longer the shipped bytes. Rather than downgrade the claim, the battery was
+re-run on the shipped bytes. Run 1 is retained as an independent cross-check, and
+the two agree on every axis.
+
+FAILURE/PANIC GREPS run 2 (unpiped): ^failures: 0 hits, panicked at 0 hits
+
+BOUNDARY df: 90.86 start / 85.79 before re-run / 85.14 final, THRESHOLD 40 GiB
