@@ -5,25 +5,48 @@
 **The wrapper's exit status is not a verdict and must not be read.**
 `battery-74.sh` ends on an `echo`, so it exits 0 regardless of what any leg
 did; the only non-zero exits it can produce are the disk-threshold halt (9)
-and a failed `cd` (20). This is the estate-wide harness defect found on
-2026-08-06 across four seats — it is the shell's default, not a habit: a
-script exits with the status of its last command, `set -e` does not catch it
-because the `echo` succeeds, and the same trap eats `cmd | tee log`.
+and a failed `cd` (20).
+
+**This script's verdict channel is the per-leg `leg-N.rc` artifacts** — not
+the wrapper's exit code, and not its stdout. That is the question to ask
+*before* running any harness control (Waffles, 2026-08-06): what IS the
+verdict channel? The answer decides which controls can bite. Here it means
+controls 2, 3 and 4 are the ones that bite, and all three fired; control 1 is
+**not applicable, not failed**. A wrapper exit code that no reader consults
+cannot mislead a reader.
+
+**This is a narrowing of my own earlier finding, and it makes my first
+reading less alarming than I stated it.** The estate-wide pattern found on
+2026-08-06 across four seats is real — a script exits with the status of its
+last command, `set -e` does not catch it because the `echo` succeeds, and the
+same trap eats `cmd | tee log`. It is the shell's default, not a habit. But
+it is only a *defect* where the exit code is the verdict channel. I counted
+this harness inside the pattern before asking that question; the receipt as
+first committed overstated it, and this amendment is the correction. Nothing
+about any measured result changes.
 
 **Read only the per-leg `leg-N.rc` artifacts.** They are what this receipt
-quotes. The defect was found mid-run and is recorded here as an annotation;
-the script was NOT edited while it was running (zsh reads scripts
+quotes. The question was raised mid-run and is recorded here as an
+annotation; the script was NOT edited while it was running (zsh reads scripts
 incrementally, so an edit under a live interpreter is its own corruption
 class).
+
+Related, and checked at the bytes rather than assumed: in zsh `status` is a
+read-only alias for `$?`, so `status=0` silently fails and an `exit "$status"`
+idiom exits on the last command's rc instead of the intended verdict
+(Waffles' correction to his own cure, 2026-08-06). Both `battery-74.sh` and
+`control-74.sh` are `#!/bin/zsh` and capture into `rc`, never `status`; the
+only occurrence of the string in either file is a comment about pipelines.
+This harness is unaffected.
 
 **Every green below was provisional until control 2 fired.** It fired, and it
 passed in both directions. The four controls come first for that reason.
 
-## The four controls (all FIRED, both directions where applicable)
+## The four controls (2, 3, 4 FIRED — both directions where applicable; 1 N/A)
 
 | # | Control | Question | Result |
 |---|---|---|---|
-| 1 | Wrapper exit | Can the wrapper's status go non-zero if a leg fails? | **NO — declared unreadable.** Receipt reads per-leg rc only. |
+| 1 | Wrapper exit | Can the wrapper's status go non-zero if a leg fails? | **NO — and NOT APPLICABLE, not failed.** The wrapper's exit code is not this script's verdict channel; the per-leg rc artifacts are. No reader consults it. |
 | 2 | Leg rc capture | Can a leg's RECORDED rc go non-zero when capture sits behind a function and an `eval`? | **YES.** `leg-c1.rc = 7`, `leg-c2.rc = 0`, both pre-chosen. |
 | 3 | Leg count | Does the recorded leg count match the declared one, asserted before any rc is read? | **6 declared = 6 recorded.** No stage silently absent. |
 | 4 | Verdict parse | Does the matcher match the runner's REAL output, including a failing run? | **YES.** Run against `red.log`: reads 26 passed / 3 failed, the independently known answer. Negative arm returns 0/0 and does not read as a pass. |
