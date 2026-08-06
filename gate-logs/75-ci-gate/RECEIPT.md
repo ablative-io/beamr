@@ -200,6 +200,33 @@ Producer-side silence redirection is banned, and provisioning is deliberately
 fail-loud and version-echoed: a green run says *which* toolchain produced it,
 and a leg that cannot run stops the job rather than quietly passing.
 
+## Closing verification — the controlled bytes ARE the committed bytes
+
+Everything above tests scripts extracted from a *working-tree* file. That
+leaves one gap worth closing explicitly: the file that got committed could
+differ from the file that was controlled.
+
+So the extractor was re-run against the **committed git object**
+(`git show <commit>:.github/workflows/ci.yml`), and the results match the pins
+exactly:
+
+| Script | From the committed object | Pinned in evidence |
+|---|---|---|
+| `canon.sh` | `14ec947e4bcf251c…` | `14ec947e4bcf251c…` |
+| `verdict.sh` | `7d956a5f9dfe61b1…` | `7d956a5f9dfe61b1…` |
+
+The workflow also parses as YAML, and its structure is what it claims: one job
+`gates` on `ubuntu-latest`, seven steps, with **both** terminal steps —
+`Verdict` and `Upload per-leg rc artifacts` — carrying `if: always()`, so a
+failing canon step cannot skip the verdict or discard the artifacts.
+
+**One parsing note, recorded because it will confuse somebody eventually:**
+under YAML 1.1 an unquoted `on:` key loads as the *boolean* `true`, not the
+string `"on"`. Every GitHub workflow in existence has this property and
+GitHub's own parser is authoritative, so it is not a defect here — but a
+home-grown linter reading `y["on"]` will find nothing and may report the
+workflow as having no triggers.
+
 ## Not shipped, and why — the file-size gate
 
 **The tokei file-size job is deliberately NOT in `ci.yml`.** It needs a ruling
