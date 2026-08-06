@@ -45,12 +45,39 @@ below. The fix for that class is tracked for `0.17.0`.
   deregisters it. Fires are appended strictly after outcome
   installation and the existing event publication, preserving the
   ordering aion's drainer errors on.
+- **`Scheduler::replay_with_services_and_code_server`** — the replay
+  counterpart of `Scheduler::with_services_and_code_server`, carrying
+  services, module registry, atom table and a populated BIF registry into
+  replay mode. `new_replay` and `new_replay_with_registry` both default
+  the native BIF registry to an EMPTY one, so a replayed module importing
+  `erlang:*` refuses process-fatal at its first guard-BIF; this is the
+  registry-carrying path their docs now direct embedders to.
 
 Main's manifest deliberately holds `0.16.2` while this tree carries
 0.16.3's forward-ported fixes plus the unreleased breaking changes below:
 stamping `0.16.3` here would claim a registry equivalence that does not
 hold, and the version number moves once, to `0.17.0` (ruling of record in
 `edeba6d`'s commit body).
+
+### Changed
+
+- **`beamr replay` refuses instead of reprinting the recorded
+  transcript.** It previously loaded the log, read its stored
+  `cli_result`, and returned that recorded stdout and exit code as the
+  replay's own result — so a log recorded against a working build still
+  reported success after the build stopped producing that output, and a
+  stored transcript was emitted as though it were a reproduction. It is
+  now a loud `CliError::ReplayCannotReproduce` at exit 1. The log format
+  records no module identity, entry point, or runtime arguments, so there
+  is nothing to re-execute: **replay now fails for every log**, which is
+  the honest state of the feature rather than a regression in it. The
+  recording half is unwired (`ReplayRecorder` has no callers, `record`
+  writes zero events), so no round trip was working to break. The round
+  trip returns when the log format carries code identity.
+- **`beamr replay` refuses `--dir`**, mirroring the existing `compile`
+  guard. Module context belongs to the recording; accepting it from a
+  replay-time flag would be a supported way to replay against different
+  code than was recorded.
 
 ### Removed (breaking — 0.17.0 window)
 
