@@ -34,7 +34,12 @@ pub enum CliError {
     MissingLogValue(String),
     ReplayLog(ReplayLogFileError),
     ReplayLogMissingTranscript,
-    /// Replay could not reproduce the recorded run. Carries the divergence.
+    /// Replay could not reproduce the recorded run. Carries the reason.
+    ///
+    /// "Could not reproduce" is not "diverged": the run is refused before it
+    /// starts, so nothing ran and nothing disagreed. Say refused, not
+    /// diverged — a fix for a command that reported what did not happen must
+    /// not itself report what did not happen.
     ///
     /// This is never a fallback to the recorded transcript: a replay that
     /// silently degraded into a transcript reprint would report success for a
@@ -111,8 +116,8 @@ impl fmt::Display for CliError {
             Self::ReplayLogMissingTranscript => formatter.write_str(
                 "replay log does not contain a recorded CLI transcript; use beamr record to create replayable logs",
             ),
-            Self::ReplayCannotReproduce(divergence) => {
-                write!(formatter, "replay diverged: {divergence}")
+            Self::ReplayCannotReproduce(reason) => {
+                write!(formatter, "replay refused: {reason}")
             }
         }
     }

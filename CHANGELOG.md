@@ -72,8 +72,27 @@ hold, and the version number moves once, to `0.17.0` (ruling of record in
   is nothing to re-execute: **replay now fails for every log**, which is
   the honest state of the feature rather than a regression in it. The
   recording half is unwired (`ReplayRecorder` has no callers, `record`
-  writes zero events), so no round trip was working to break. The round
-  trip returns when the log format carries code identity.
+  writes zero events), so no round trip was working to break.
+
+  **Why it survived: a test was endorsing it.**
+  `record_then_replay_fixture_preserves_stdout_and_exit_code` asserted
+  that the replayed result equalled the recorded one — but both sides
+  came from the same stored string, so the assertion held no matter what
+  the runtime did. It was green, and it could only ever have been green.
+  **A test that cannot fail is not weak coverage; it is an active
+  endorsement of the defect it covers.** That test is deleted and
+  replaced by three walls that assert the refusal and, in each case, that
+  the refusal does not smuggle the recorded transcript back out through
+  the error message.
+
+  **What would restore replay:** a log format that records the code
+  identity it recorded against — module identity or module bytes, the
+  entry point, and the runtime arguments — so a replay scheduler can
+  reload that code and re-execute it with the driver supplying the
+  recorded nondeterministic decisions. This is a refusal pending a format
+  that can carry those fields, not an abandonment of record/replay; the
+  replay-side driver, the step debugger and the on-disk format are all
+  present and unchanged.
 - **`beamr replay` refuses `--dir`**, mirroring the existing `compile`
   guard. Module context belongs to the recording; accepting it from a
   replay-time flag would be a supported way to replay against different

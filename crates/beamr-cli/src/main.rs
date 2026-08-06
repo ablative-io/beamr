@@ -199,7 +199,7 @@ fn run_compile(dir: &Path, verbose: bool) -> Result<CliSuccess, CliError> {
 /// `beamr replay` is a REPRODUCTION, not a transcript player. The recorded
 /// `cli_result` is the claim to be CHECKED against a replayed run — never the
 /// answer to be printed. When the run cannot be reproduced this fails
-/// non-zero naming the divergence, and it must NEVER fall back to printing the
+/// non-zero naming the reason, and it must NEVER fall back to printing the
 /// recorded stdout: a replay that silently degrades into a transcript reprint
 /// reports GREEN for a build that no longer produces that output, which is the
 /// defect this command previously had.
