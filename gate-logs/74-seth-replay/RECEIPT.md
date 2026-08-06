@@ -32,12 +32,24 @@ incrementally, so an edit under a live interpreter is its own corruption
 class).
 
 Related, and checked at the bytes rather than assumed: in zsh `status` is a
-read-only alias for `$?`, so `status=0` silently fails and an `exit "$status"`
-idiom exits on the last command's rc instead of the intended verdict
-(Waffles' correction to his own cure, 2026-08-06). Both `battery-74.sh` and
-`control-74.sh` are `#!/bin/zsh` and capture into `rc`, never `status`; the
-only occurrence of the string in either file is a comment about pipelines.
-This harness is unaffected.
+read-only alias for `$?`, so a wrapper-level `status=0` / `exit "$status"`
+idiom does not do what it says. **It fails LOUDLY, not silently** — Apollo
+measured it: the script dies at the assignment with `read-only variable` on
+stderr and visibly stops. It does not run on to emit a wrong verdict. (That
+is Waffles' correction to his own correction, 2026-08-06; his first telling
+said "silently fails", which is wrong in the direction that matters, and this
+receipt repeated it before the measurement arrived.)
+
+Neither script uses it. Both capture into `rc`; the only occurrence of the
+string `status` in either file is a comment about pipelines.
+
+**The interpreter is established by the launch command, not by the shebang.**
+A shebang is a claim about intent — the file mode and the launch command are
+the facts, and a `#!` line selects nothing when the script is handed to an
+interpreter by name. Both were launched explicitly as `zsh <path>` (recorded
+verbatim in this session's transcript), and both are mode 0755. So zsh is the
+interpreter by the fact, not by the claim, and the read-only-`status`
+behaviour above is the applicable one. This harness is unaffected.
 
 **Every green below was provisional until control 2 fired.** It fired, and it
 passed in both directions. The four controls come first for that reason.
