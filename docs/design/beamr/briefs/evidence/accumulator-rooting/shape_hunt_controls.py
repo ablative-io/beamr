@@ -58,11 +58,18 @@ CASES = [
     ("C_unbalanced",
      "fn broken() {\n    let a = 1;\n",
      None, 1),
+    # D and E carry an UNBALANCED brace inside the literal on purpose. The
+    # original cases (`'{'` then `'}'`, and r#"{{{ x }}}"#) were balanced, so
+    # removing the handling shifted depth by +1 then -1 and landed back on 0 --
+    # they passed with the mechanism deleted. See shape_hunt_mutations.py.
     ("D_char_literal",
-     "fn f() {\n    let c = '{';\n    let d = '}';\n}\n",
+     "fn f<'a>() {\n    let x: &'a str = \"\";\n    let c = '}';\n}\n",
      set(), 0),
     ("E_raw_string",
-     'fn f() {\n    let s = r#"{{{ x }}}"#;\n}\n',
+     'fn f() {\n    let s = r#"{ " }"#;\n}\n',
+     set(), 0),
+    ("H_plain_string",
+     'fn f() {\n    let s = "{";\n}\n',
      set(), 0),
     ("F_block_comment",
      "fn f() {\n    /* } } } */\n    let a = 1;\n}\n",
