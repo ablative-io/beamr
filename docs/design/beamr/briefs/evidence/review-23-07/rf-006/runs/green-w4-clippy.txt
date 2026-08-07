@@ -1,0 +1,2 @@
+    Checking beamr v0.17.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 17.74s
