@@ -42,6 +42,32 @@ and require the check to go RED. A green never observed red is a regression test
 
 ---
 
+## ROW STATUS AT HEAD — A POINTER TABLE, NOT A SECOND SOURCE
+
+⚠️ **THIS TABLE MAY NAME WHERE A ROW'S CURRENT FORM LIVES. IT MAY NEVER RESTATE THE CRITERION.**
+A criterion copied here becomes a second source that can disagree with the amendment, which is the
+exact defect the `created`-field deletion cured this same night. **If a cell needs a second line, the
+cell is wrong.** The amendments are authoritative; this is an index, and an index that grows into a
+payload rots — measured, on my own memory index, an hour before this table was written.
+
+| row | current state | last moved by |
+|---|---|---|
+| 1 | OPEN — ordering-sensitive detector, unbuilt | as written |
+| 2 | **BLOCKED** — three-disposition ledger; **the ledger file does not exist** | A3 |
+| 3 | OPEN — four `UNRULED-PRERESERVE` rows undischarged | as written |
+| 4 | OPEN — wasm leg unpriced; **per-site commit granularity now required** | A3 |
+| 5 | ✅ **MET** — ancestry checked | A2 |
+| 6 | OPEN, **unfired** — my sighting was false and is retracted | A4 |
+| 7 | ✅ **DISCHARGED** — S3e hunt, 14 → 17 | A1 |
+| 8 | OPEN — Osiris' verdict, not this lane's to give | as written |
+| 9 | ✅ **DISCHARGED** — 56/56 measured | A2 |
+| R10 | OPEN — labelling **landed `4fcc9a7`**; fixture + per-class controls unbuilt | A4 |
+
+**Counts at head:** 32 raw hits · **27 production · 5 `cfg(test)`** · **the seventeen unchanged.**
+S3c remains 0 **and uncontrolled** — an uninterpretable zero, not a clean one.
+
+---
+
 ## THE ROWS
 
 ### 1. ⛔ SIGN-BLOCKING — THE DETECTOR IS ORDERING-SENSITIVE, NOT PRESENCE-SENSITIVE
