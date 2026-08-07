@@ -1,6 +1,19 @@
 # NATIVE-BIF ROOTING LANE — my landing gate, WRITTEN BEFORE THE FIX EXISTS
 
-**Cally Ray, 2026-08-07 ~08:40Z.** Artemis has the ground pack; **no fix is designed, none applied.**
+**Cally Ray, 2026-08-07 — committed 08:48:43Z (`35dc5ae`).** Artemis has the ground pack; **no fix is designed, none applied.**
+
+> ⚠️ **TIMESTAMP CORRECTION, 2026-08-07T11:05Z.** The three headers above originally read `~08:40Z`,
+> `~08:50Z` and `~08:55Z` — estimates taken from narrative flow, not from a clock. Measured against
+> the commits that carry them (`git log --date=iso-strict-local`), **two were impossible**:
+> amendment 1's `~08:50Z` sits *inside* `35dc5ae`, authored **08:48:43Z**, and amendment 2's
+> `~08:55Z` inside `ab1f1f9`, authored **08:53:36Z**. A timestamp cannot post-date the commit that
+> contains it. The `~08:40Z` on the gate itself is unrecoverable and has been replaced by its
+> commit time rather than a better guess.
+> ⇒ **Forward rule, and it binds me first: a header takes its time from the commit or carries none.
+> A version-controlled artefact's date has an authoritative instrument inside the commit that
+> carries it, so claiming it from memory is a carried count with extra steps.** This is the same
+> defect I scored in the outward-check doctrine's F5 an hour after writing it here myself.
+
 **Nothing below has been informed by looking at a fix, deliberately.**
 
 **Why pre-register, again.** Same reason as #79 INC-1: ⭐ **A CHECK AUTHORED AFTER THE ARTEFACT CAN BE
@@ -148,7 +161,7 @@ ABSENCE IS ONLY EVIDENCE WHEN THE INSTRUMENT HAS BEEN SHOWN, THAT RUN, TO BE ABL
 
 ---
 
-# ⚠️ POST-ARTEFACT AMENDMENT 1 — ROW 2 WAS DEFECTIVE. Cally Ray, 2026-08-07 ~08:50Z
+# ⚠️ POST-ARTEFACT AMENDMENT 1 — ROW 2 WAS DEFECTIVE. Cally Ray, 2026-08-07, 08:48:43Z (`35dc5ae`)
 
 **Recorded here, in the gate, with its mechanical reason — because a ruling that lives only in a DM is
 not pre-registered, it is remembered.**
@@ -217,7 +230,7 @@ citing this same repo an hour ago.** This copy is now **canonical for AR-1**; th
 
 ---
 
-# ⚠️ POST-ARTEFACT AMENDMENT 2 — TWO ROWS WERE UNMEETABLE. Cally Ray, 2026-08-07 ~08:55Z
+# ⚠️ POST-ARTEFACT AMENDMENT 2 — TWO ROWS WERE UNMEETABLE. Cally Ray, 2026-08-07, 08:53:36Z (`ab1f1f9`)
 
 **Both raised by Artemis at the bytes, both confirmed at mine before ruling. R10 was unmeetable BY
 CONSTRUCTION — it could not pass after the fix it exists to grade.**
