@@ -1,0 +1,16 @@
+{
+ "alloc_binary_word_count": "const fn -> usize; a SIZE CALCULATION, not an allocator (name-matched in)",
+ "alloc_pid": "WasmScheduler -> u64; mints a pid NUMBER, touches no heap",
+ "alloc_old": "impl Heap; bump-only (brief's named immunity class)",
+ "alloc_in_region": "impl Heap; bump-only",
+ "alloc_in_region_maybe_refcounted": "impl Heap; bump-only",
+ "alloc_maybe_refcounted": "impl Heap; bump-only",
+ "alloc_slice": "impl Heap / impl HeapRegion; bump-only",
+ "alloc_slice_maybe_refcounted": "impl Heap; bump-only",
+ "alloc_with_kind": "impl HeapRegion; bump-only",
+ "alloc_slice_with_kind": "impl HeapRegion; bump-only",
+ "alloc_young_tuple": "supervision/monitor_tests.rs; test helper",
+ "alloc_floats": "gc_rooting_tests.rs; test helper",
+ "alloc_tuple_roots_boxed_arguments_across_gc": "a #[test] fn name",
+ "alloc_list_fun_entries_reserve_the_full_closure_base": "a #[test] fn name"
+}
