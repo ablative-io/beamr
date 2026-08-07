@@ -1,0 +1,26 @@
+### I1 — module declaration visibility (the chain that terminates reachability)
+--- the three touched modules, as declared in jit/mod.rs ---
+crates/beamr/src/jit/mod.rs:23:pub(crate) mod runtime;
+crates/beamr/src/jit/mod.rs:25:pub(crate) mod runtime_binary_match;
+crates/beamr/src/jit/mod.rs:27:pub(crate) mod runtime_map;
+--- CONTROL: a module in the same file that IS pub ---
+3:pub mod aot;
+5:pub mod cache;
+6:pub mod compile_job;
+7:pub mod compiler;
+22:pub mod profiler;
+29:pub mod safepoint;
+30:pub mod type_info;
+31:pub mod types;
+
+### I2 — re-export census out of the three modules
+--- target grep (expect ZERO) ---
+target-rc=1
+--- POSITIVE CONTROL: same grep form against a module that IS re-exported ---
+crates/beamr/src/jit/mod.rs:47:pub use types::{NativeCode, RootLocation, StackMapEntry};
+control-rc=0
+
+### I3 — is alloc_words_rooted referenced anywhere outside jit/ ?
+outside-jit-rc=1
+--- CONTROL: total references (must be non-zero, proving the pattern matches) ---
+      16

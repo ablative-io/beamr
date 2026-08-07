@@ -1,0 +1,10 @@
+### I4b — API-surface pages ONLY (target/doc/beamr/**), excluding the source listing target/doc/src/
+A hit under doc/src/ is rustdoc rendering the FILE, not exposing the ITEM. Different subject.
+--- alloc_words_rooted in the API surface (expect ZERO) ---
+0
+--- CONTROL: StackMapEntry in the API surface (expect NON-ZERO) ---
+6
+--- CONTROL 2: the three modules' own names in the API surface ---
+runtime_binary_match: 0
+runtime_map: 0
+jit::types (control): 5

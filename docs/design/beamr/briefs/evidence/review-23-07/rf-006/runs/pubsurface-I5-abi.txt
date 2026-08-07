@@ -1,0 +1,11 @@
+### I5 — did ANY extern "C" signature change in the lane? (the ABI question, distinct from the API question)
+--- extern "C" fn declaration lines touched by the diff 4055cbe..HEAD ---
+extern-C-diff-rc=1
+
+--- CONTROL: the pattern DOES match in the tree (non-zero) ---
+crates/beamr/src/jit/runtime_map.rs:4
+crates/beamr/src/jit/runtime.rs:11
+crates/beamr/src/jit/runtime_binary_match.rs:8
+
+--- hard stop: ir_helpers.rs (JIT ABI signatures) diff lines vs lane base ---
+0
