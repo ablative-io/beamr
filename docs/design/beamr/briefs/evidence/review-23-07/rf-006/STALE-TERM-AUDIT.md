@@ -47,7 +47,7 @@ AMENDMENT 1. This rider sweeps **stale `Term` and raw-pointer captures**.
 | — in `cfg(test)` | **2,287** |
 | — **production** | **5,030** |
 
-### ⚠️ Two corrections to my own instrument, both found mid-sweep
+### ⚠️ Three corrections to my own instrument, all found mid-sweep
 
 **C-i — the whole-file `cfg(test)` spelling.** The first index counted only
 inline `#[cfg(test)] mod x { … }`. beamr also uses `#[cfg(test)] mod x;` with
@@ -126,10 +126,12 @@ That distinction is load-bearing and I got it wrong first. A name-based
 transitive closure over this crate marks **2,985 of 5,030 production
 functions — 59%** — as "can collect", which is a **ceiling on reachability,
 not a measurement of it**, and useless as a discriminator: almost every BIF
-eventually allocates. Under the closure the capture sweep returned 1,630
-candidate sites. Under the brief's actual closed list it returns 83. ⇒ **AN
-OVER-BROAD SEARCH SPACE DOES NOT PRODUCE A CAUTIOUS ANSWER, IT PRODUCES NO
-ANSWER** — 59% of a crate is not a finding.
+eventually allocates. Holding every other setting fixed, the capture sweep
+returns **1,630** candidate sites under the closure against **158** under the
+brief's closed list — and **36** once the three instrument corrections below
+are also applied. ⇒ **AN OVER-BROAD SEARCH SPACE DOES NOT PRODUCE A CAUTIOUS
+ANSWER, IT PRODUCES NO ANSWER** — 59% of a crate is not a finding, and it
+would have shipped looking like rigour.
 
 Auto-discovery of `alloc_*` yielded 51 names; **14 are ruled out**, each at
 its definition bytes (`sweep/family-exclusions.json`), leaving **37**:
@@ -147,7 +149,7 @@ made every one of them look like it collected one line earlier than it does.
 
 ---
 
-## Population — 83 candidate sites
+## Population — 36 candidate sites
 
 A site is a candidate when a `Term` / `Vec<Term>` / `[Term]` / `*mut u64` /
 `*const u64` local is **bound**, a collecting call happens, and **the same
