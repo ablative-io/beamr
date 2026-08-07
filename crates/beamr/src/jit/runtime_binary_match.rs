@@ -412,6 +412,7 @@ mod gc_hazard_tests {
     use super::*;
     use crate::atom::AtomTable;
     use crate::native::ProcessContext;
+    use crate::term::boxed::SubBinary;
     use crate::term::sub_binary::SUB_BINARY_WORDS;
     use std::sync::Arc;
 
@@ -567,6 +568,83 @@ mod gc_hazard_tests {
         // The box referent: the extraction must still reach live parent bytes
         // after the collection moved the ProcBin box — a stale pre-alloc Term
         // capture leaves the result referencing the zeroed old young region.
+        assert_eq!(extracted_bytes(Term::from_raw(out_raw)), raw[..20].to_vec());
+    }
+
+    /// W4. Guards the O(1) sharing arm of `jit_bs_get_binary` — the arm
+    /// `0.16.3` deleted rather than repaired, whose *deletion* is the
+    /// O(1)→O(m) extraction regression.
+    ///
+    /// Two distinct claims, and the wall asserts both because the arm can fail
+    /// either way:
+    ///
+    /// 1. **Sharing, not copying.** A ProcBin keeps its bytes off-heap and
+    ///    Arc-retained, so an extraction can be a `SubBinary` view. Reverting
+    ///    to the `to_vec` path still returns byte-correct data — it is
+    ///    invisible to every other wall here — so the result's *shape* has to
+    ///    be asserted or the regression returns silently.
+    /// 2. **The forwarded parent is stored.** The ProcBin box itself lives on
+    ///    the young heap and moves under the sub-binary allocation. Writing the
+    ///    pre-move box address into `heap[1]` is the identical stale-`Term`
+    ///    defect as H3, and it is why this arm could not simply be restored
+    ///    before `alloc_words_rooted` existed.
+    #[test]
+    fn bs_get_binary_procbin_extraction_shares_forwarded_parent() {
+        let mut process = Process::new(1, 256);
+        // 100 bytes — above the inline threshold, so the source is a ProcBin.
+        let raw: Vec<u8> = (0..100).map(|byte| byte as u8).collect();
+        let source = {
+            let mut ctx = test_context(&mut process, 0);
+            ctx.alloc_binary(&raw).expect("procbin source")
+        };
+        let match_term = start_match_rooted(&mut process, source);
+        let before = process.x_reg(0);
+
+        fill_until(&mut process, SUB_BINARY_WORDS);
+        assert!(
+            process.heap().available() < SUB_BINARY_WORDS,
+            "geometry must force the sub-binary allocation to collect"
+        );
+        assert_eq!(
+            process.heap().old_used(),
+            0,
+            "nothing may be promoted before the subject call"
+        );
+
+        let out_raw = jit_bs_get_binary(&mut process, match_term.raw(), 160);
+        assert_ne!(out_raw, 0, "sub-binary allocation must succeed");
+        assert_ne!(out_raw, BINARY_HELPER_FAILURE);
+        assert!(
+            process.heap().old_used() > 0,
+            "the extraction allocation must have run a collection"
+        );
+        let forwarded = process.x_reg(0);
+        assert_ne!(
+            forwarded, before,
+            "live ProcBin box should be promoted by the collection"
+        );
+
+        // Claim 1. A copy comes back as a Binary or a ProcBin, never a
+        // SubBinary, so this is the shape assertion the byte checks cannot make.
+        let extracted = SubBinary::new(Term::from_raw(out_raw)).expect(
+            "ProcBin extraction must SHARE through a sub-binary, not copy: \
+             the O(1) arm is gone",
+        );
+        assert_eq!(extracted.len(), 20, "160 bits were requested");
+
+        // Claim 2, stated directly: the stored parent must be the FORWARDED
+        // box. Raws are reported so the evidence log carries the observed wrong
+        // term rather than a downstream refusal.
+        let parent = extracted.parent();
+        assert_eq!(
+            parent,
+            forwarded,
+            "sub-binary stored a pre-move parent: stored={:#018x} forwarded={:#018x} original={:#018x}",
+            parent.raw(),
+            forwarded.raw(),
+            before.raw()
+        );
+
         assert_eq!(extracted_bytes(Term::from_raw(out_raw)), raw[..20].to_vec());
     }
 }

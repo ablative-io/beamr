@@ -1,0 +1,19 @@
+   Compiling beamr v0.17.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 01s
+     Running unittests src/lib.rs (target/debug/deps/beamr-b491f11a8bb11087)
+
+running 1 test
+
+thread 'jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_extraction_shares_forwarded_parent' (38272445) panicked at crates/beamr/src/jit/runtime_binary_match.rs:629:65:
+ProcBin extraction must SHARE through a sub-binary, not copy: the O(1) arm is gone
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_extraction_shares_forwarded_parent ... FAILED
+
+failures:
+
+failures:
+    jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_extraction_shares_forwarded_parent
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1791 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p beamr --lib`
