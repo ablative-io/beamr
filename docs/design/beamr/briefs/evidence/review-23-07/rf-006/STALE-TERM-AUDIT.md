@@ -355,10 +355,40 @@ a denominator rather than a single-site note:
 | of those that are JIT stack slots | **0** |
 | enumerated-root kinds a `ExplicitSlot` staging could hide behind | **0** |
 
-The population of staging sites is **not yet enumerated** — that count is
-part of the remaining per-site pass, and stating the class without it would
-be the "single-site note" this row exists to avoid. What *is* established is
-the denominator that makes the class real: **0 of 8**.
+**POPULATION ENUMERATED (2026-08-07) — it is exactly ONE site.**
+
+| axis | count |
+|---|---|
+| files containing a stack-slot staging primitive | **1** — `jit/ir_map.rs` |
+| functions | **1** — `stage_pairs()` |
+| staging-primitive occurrences | **2** — `create_sized_stack_slot` (`:230`) + `stack_addr` (`:231`) |
+
+Searched tree-wide, non-test, for `ExplicitSlot` / `StackSlotData` /
+`create_sized_stack_slot` / `stack_store` / `stack_addr`. **No other site
+stages a term into a JIT stack slot.**
+
+⚠️ **CITE CORRECTION:** this section previously said
+`jit/compiler/ir_map.rs`. **The file is `crates/beamr/src/jit/ir_map.rs`** —
+there is no `jit/compiler/` path component. Corrected here; the finding is
+unchanged.
+
+⭐ **AND THE POPULATION OF ONE IS THE POINT, NOT A DEFLATION OF IT.** A class
+with one member is still a class when the mechanism is structural: the
+collector cannot see a JIT stack slot **by construction**, so the count is
+one only because the codebase stages terms in exactly one place *today*.
+**The denominator 0-of-8 is what bounds the risk; the numerator 1 is what
+bounds the work.** A second `stage_pairs`-shaped site would be invisible on
+arrival and would not trip any existing check.
+
+**Denominator RE-DERIVED at the bytes (2026-08-07), `process/mod.rs:562`.**
+`roots_with_live_x` enumerates exactly **8** root kinds — x regs (to
+`live_x`), y regs, mailbox scan, current exception (reason + stacktrace),
+dictionary (key + value), group leader, `native_roots`, and
+`native_continuations`. **Zero are JIT stack slots.**
+✅ **Control on that absence:** the enumeration *does* include two non-register
+kinds (`native_roots`, `native_continuations`), so it is demonstrably capable
+of naming a non-register root — and still names no stack slot. **The absence
+is measured, not merely unobserved.**
 
 ---
 
