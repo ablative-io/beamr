@@ -355,17 +355,71 @@ that "no STOP was raised" is never read as "the sweep found nothing".
 
 ---
 
+## 🔴 A4 STOP — four real crossings, and C-vi
+
+Raised to the lane lead at discovery, per acceptance A4. **No fix is designed
+or applied here**; A4 requires the stop to precede fix design, and these are
+pre-existing `native/` defects, not regressions of this lane. **None of them
+is in the `0.16.4` backport set (R2 + H3 + H4), which is jit-side.**
+
+| # | site | carrier | crosses | why it is real |
+|---|---|---|---|---|
+| 1 | `native/code_management_bifs.rs::all_loaded` | `list` | `alloc_tuple` | boxed cons chain in a bare local; **no `with_rooted` in the function**; `alloc_tuple` roots its own arguments only |
+| 2 | `native/stdlib_stubs/uri_bifs.rs::bif_uri_string_dissect_query` | `key` | the value-arm `alloc_binary` | boxed binary, live and unrooted, then written into a tuple |
+| 3 | same function | `terms` | every allocation in the loop | `Vec<Term>` accumulator; `alloc_list(&terms)` roots the elements **after** they are already stale |
+| 4 | `native/udp_bifs.rs::finish_udp_recv` | `ip` | `alloc_binary(datagram)` | `ipv4_tuple` returns `context.alloc_tuple(..)`, so `ip` is **boxed**, not the immediate it looks like |
+
+### ⚠️ C-vi — a false-negative class, found by row 4
+
+**The sweep did not flag row 4.** In that function it flagged `port`
+(`Term::try_small_int(..)` — an immediate, which cannot move and was never at
+risk) and stayed silent on `ip`, the boxed carrier two lines above it. It
+**reported the safe variable and missed the dangerous one in the same six
+lines.**
+
+Cause: the binder recognises a carrier only by an explicit `: Term`
+annotation or by an RHS matching a **hard-coded list of constructor
+spellings**. A local bound from a **domain helper that returns a `Term`** —
+`ipv4_tuple(..)`, `ok_tuple(..)` — matches neither. Adding one rule (RHS calls
+a function whose signature returns a `Term`; **794** such names) makes **+19
+sites across 15 functions** visible, with the baseline still reproducing
+**exactly 36** and `finish_udp_recv/ip` as the positive control. A **second
+sub-shape remains unhandled**: an unannotated `Vec<Term>` accumulator from
+`Vec::with_capacity` (row 3 is one, and the widening does not see it either).
+
+⇒ **C-i, C-ii and C-iii every one made the population smaller, and I read that
+as the instrument getting sharper.** They removed false positives, so each was
+self-confirming. The two-arm control on C-iii proved the tightened binder
+still caught H3's *known* shape; **it could not prove it caught shapes I had
+not thought of.** ⇒ **A NARROWING THAT ONLY EVER REMOVES FALSE POSITIVES IS
+UNFALSIFIED IN THE DIRECTION THAT HURTS** — a false-negative class costs
+nothing visible, which is exactly why it survives.
+
+---
+
 ## Status
 
-**Established and committed:** the search space and its denominators; both
-instrument corrections; the collecting family with 14 ruled exclusions and
-their reasons; the 36-site candidate population with its full listing; the
-four post-fix verdicts for the sites this lane repaired; the AUDIT.md
-relationship in both directions; the backport-owned rows and the named
-`&'static` launder follow-on; N1 and N2.
+**Established and committed:** the search space and its denominators; the five
+instrument corrections C-i…C-v; the collecting family and its ruled
+exclusions; the 36-site population with its full listing, now
+**byte-reproducible from the committed instrument** (C-iv); the four post-fix
+verdicts for the sites this lane repaired; the AUDIT.md relationship in both
+directions; the backport-owned rows and the named `&'static` launder
+follow-on; N1 and N2.
 
-**Remaining:** the per-site verdict pass over the 36 candidates —
-SAFE-with-immunity-reason or REAL-CROSSING, at per-(site, consumer)
-granularity, each taken at the bytes — plus the `stage_pairs` site population
-for N2. R6's acceptance A1 is not met until every row carries a verdict, and
-this document does not claim otherwise.
+**⚠️ The 36 is NOT a sound denominator, and this document no longer offers it
+as one.** C-vi shows it is the population the binder *could see*, not the
+population of candidate carriers. Per-site verdicts over it would have been 36
+correct verdicts over an unsound denominator — and would have read as
+completeness.
+
+**Remaining, in this order:** (1) the lane lead's ruling on the A4 stop —
+whether the four crossings become RF-006 rows or a separate lane, and whether
+the binder is widened before the verdict pass; (2) the widened re-run;
+(3) the per-site verdict pass, SAFE-with-immunity-reason or REAL-CROSSING at
+per-(site, consumer) granularity, each at the bytes; (4) the `stage_pairs`
+site population for N2. **R6 acceptance A1 is not met**, and the gap is now
+larger than it was when this document was first written.
+
+`native/stdlib_stubs/string_bifs.rs` is another seat's lane; three
+newly-visible sites fall in it and are **recorded, not touched**.
