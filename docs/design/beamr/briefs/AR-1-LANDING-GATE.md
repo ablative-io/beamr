@@ -214,3 +214,86 @@ Pre-registration's value is that criteria are fixed **and visible** before the w
 gatekeeper can see them, nobody can verify they were not edited afterwards. **This is the second time
 tonight I have pointed someone at an unreachable citation — I diagnosed the identical fault in a runner
 citing this same repo an hour ago.** This copy is now **canonical for AR-1**; the `docs` copy is history.
+
+---
+
+# ⚠️ POST-ARTEFACT AMENDMENT 2 — TWO ROWS WERE UNMEETABLE. Cally Ray, 2026-08-07 ~08:55Z
+
+**Both raised by Artemis at the bytes, both confirmed at mine before ruling. R10 was unmeetable BY
+CONSTRUCTION — it could not pass after the fix it exists to grade.**
+
+## ⛔ R10 WAS SELF-DEFEATING
+
+`shape_hunt.py:65-69` keys its known-positive control on `code_management_bifs.rs:148`
+(`list = context.alloc_cons(tuple, list)?`) — **verified live at my hands.** That is a defect **this
+programme repairs.** ⇒ the moment it is fixed, the control's target ceases to exist, the hunt exits 2,
+and **R10 reads "the instrument went blind" when what happened is "the lane did its job."**
+
+⭐⭐ **A KNOWN-POSITIVE CONTROL KEYED ON A LIVE DEFECT IS DESTROYED BY THE REPAIR IT EXISTS TO SURVIVE.**
+A control's positive must be **stable under the change being graded** — a fixture, never a finding.
+
+**And "come back empty" was wrong independently:** the hunt currently returns **32 hits**
+(S3a 8 · S3b 11 · S3d 4 · S3e 9), nearly all ruled not-defects. **Empty is unreachable, and the only way
+to force it is to narrow the hunt until it sees nothing — which is exactly what row 2 forbids, committed
+in order to pass row 10.** ⭐ *A success condition that can only be met by blinding the instrument is an
+instruction to blind the instrument.*
+
+## ⛔ ROW 2 CONTRADICTED THE REMEDY CRITERION
+
+Criterion: a remedy is IN only if the shape **cannot be written.** Row 2: the seventeen must be
+**present and reclassified `SAFE-ROOTED`.** **A remedy that satisfies the criterion necessarily makes
+those sites stop matching** — no carrier, no bind, nothing for any binder to classify. ⇒ **the better the
+remedy, the more certainly row 2 reds.** The two selected opposite outcomes.
+
+⭐⭐ **ROW 2'S INTENT WAS RIGHT AND ITS IMPLEMENTATION WAS WRONG: it separated "defect gone" from
+"instrument blind" by keying on POPULATION MEMBERSHIP — and membership is precisely what a
+deletion-class remedy destroys.** My error, and the same shape as pinning a count: I graded the
+numerator and trusted the divisor, then graded presence and trusted the shape.
+
+## THE REPAIR — ONE LEDGER, TWO ROWS
+
+**ROW 2, AMENDED AGAIN.** Each of the seventeen is accounted for **BY NAME** at fix time as exactly one
+of:
+- **(a) `SAFE-ROOTED`** — rooted in place, still recognisable to a re-derivation; or
+- **(b) `STRUCTURALLY-ELIMINATED`** — the shape is gone, **and the replacement construct is NAMED and
+  SHOWN PRESENT at that site**; or
+- **(c) `FIXED-UNVERIFIED`** — repaired but not exercised (see row 4). **Sign-blocking, never silent.**
+
+**⛔ SILENCE ABOUT A SITE IS THE FAILURE.** A count falling to zero with **seventeen named dispositions**
+is a PASS; falling to zero with **seventeen silences** is the defect the row exists to catch.
+
+**R10, AMENDED.** Control points at a **committed synthetic fixture** the lane will never repair.
+Success is **not** "empty": **every hit is RULED, and the ruled set matches the pre-registered ledger.**
+A new unruled hit fails. **A vanished hit fails unless it carries a disposition.**
+
+## ⭐ TWO CONDITIONS I ADD, BECAUSE THE REPAIR OPENS THEM
+
+1. **ONE LEDGER, NOT TWO.** Row 2 and R10 are keyed on the same population and **must share a single
+   disposition ledger.** ⭐ **TWO ACCOUNTINGS OVER ONE POPULATION WILL DISAGREE, AND THE DISAGREEMENT
+   RESOLVES TO WHICHEVER IS CHECKED SECOND** — a site marked eliminated in one and missing in the other
+   is the seam this whole gate exists to close.
+2. **THE DISPOSITION IS MACHINE-VERIFIED, NOT ASSERTED.** Every `STRUCTURALLY-ELIMINATED` row **cites
+   file:line of the replacement construct, and a checker confirms it is present at that site.**
+   ⭐ *Without positive evidence at the site, "structurally eliminated" is an unfalsifiable claim in a
+   table* — the same defect as a caveat in prose beside a SAFE label.
+
+## ROW 4 — the wasm leg is priced or the site is named
+
+Sites 16/17 are in `beamr-wasm/src/convert.rs`; **17 (`value_to_term`, `:199`) takes `JsValue`/`Object`,
+so a red-at-parent test needs wasm32 + `wasm-bindgen-test` + node** — a build leg nobody has costed.
+**Price it, or the site's disposition is `FIXED-UNVERIFIED` and sign-off blocks until the leg lands or
+the risk is explicitly ruled accepted.** ⛔ **The one escape that stays forbidden is a class-level test
+standing in for it.** ⭐ *Forcing a binary where an honest third state exists is what makes people fudge.*
+
+## ROWS VERIFIED, NOT TAKEN ON REPORT
+
+**ROW 5 IS MET, AND THE DAG PROVES IT:** `git merge-base --is-ancestor 9587d2f 35dc5ae` → **true.** The
+205-site census is an **ancestor** of this gate ⇒ the blast radius was measured **before the gate
+required it and before any remedy was designed**, and it **killed a candidate rather than justifying
+one.** ⭐ *Ancestry is checkable without taking anyone's word — the best kind of evidence for an ordering
+claim.*
+
+**ROW 7 DISCHARGED** by the S3e hunt. **ROW 9 UPGRADED FROM ASSERTION TO MEASUREMENT:** "present in
+every released version" will be **measured** by pulling each released `.crate` and reading
+`.cargo_vcs_info.json` (Seth's method — curl+tar, no cargo, no build), carrying his trap: **a subject
+line is not a release.** **Rows 1, 3, 6, 8 stand as written.**
