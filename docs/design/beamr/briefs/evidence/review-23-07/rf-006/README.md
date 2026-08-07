@@ -337,17 +337,116 @@ Both raised against the parent commit, both discharged here.
 
 ---
 
+## Mutation evidence — every wall kills its own defect
+
+*A wall whose regression-catching is unproven is an untested test.* The red
+sections above prove each wall catches the defect **as it stood**; these prove
+each wall catches the defect **coming back**. Different claim, different
+experiment.
+
+Driver: `mutations/run-mutations.sh`. Each mutation is a minimal semantic
+change to production code, stored as a diff and **never committed into the
+tree** — the script applies one, measures, and reverts.
+
+| id | mutation | Δ lines | wall that must catch it |
+|---|---|---|---|
+| **M1** | `jit_bs_start_match` drops `let [source] = roots;` — rooted, then the forwarded value discarded | 1 | `start_match_source_survives_forced_collection` |
+| **M2** | `write_map_entries` roots `&mut roots.clone()` — the read-back lands in a temporary | 2 | `map_update_boxed_values_survive_forced_collection` |
+| **M4** | the sharing arm drops `let [source] = roots;` | 1 | `bs_get_binary_procbin_extraction_shares_forwarded_parent` |
+
+M1 and M4 are one-line **deletions** and M2 is a one-token **insertion**. None
+of them removes the rooting: each one roots correctly and then throws the
+forwarded value away. That is deliberate — a mutation that deleted
+`alloc_words_rooted` outright would be caught by anything, and would prove
+nothing about whether the wall watches the part that matters.
+
+### Results, quoted from `runs/mut-driver.txt`
+
+| id | rc | suite | caught by its wall |
+|---|---|---|---|
+| M1 | 101 | 1791 passed; **1 failed** | yes |
+| M2 | 101 | 1791 passed; **1 failed** | yes |
+| M4 | 101 | 1790 passed; **2 failed** | yes |
+
+**M1 and M2 each kill exactly one test — their own wall.** Nothing else in
+1792 catches either defect. That is the sharpest thing in this section: it
+measures how much of the suite stood between the codebase and these defects
+before this lane, and the answer is **none of it**.
+
+M4 kills two: its own wall and the pre-existing
+`bs_get_binary_procbin_source_box_referent_survives_forced_collection`, which
+becomes load-bearing again now that the sharing arm exists.
+
+### Controls
+
+An exit code cannot report that nothing ran, and an unapplied patch with a
+green suite is indistinguishable from a killed mutation if the rc is all you
+read. The driver therefore asserts:
+
+- **C1** — tree clean before each apply.
+- **C2** — the patch **applied**, changed-line count equal to the recorded
+  expectation (1 / 2 / 1, all three matched).
+- **C3** — tree clean after each revert, so no leg contaminates the next.
+
+C2 is the load-bearing one.
+
+### ⚠️ The mutation exercise found a defect in W4 itself
+
+M4's first run went red through **claim 1's message** — *"the O(1) arm is
+gone"* — while the arm was present and writing a sub-binary. Only its parent
+word was stale.
+
+`SubBinary::new` validates the parent as well as the tag, so it refuses a
+claim-2 violation and reports it under claim 1's name. **One name for two
+different defects, in the wall built to tell them apart** — and it would have
+sent a reader hunting for a deleted arm that was never deleted.
+
+The claims are now separated **at the instrument** rather than in prose: the
+tag is read off the header, then the parent word straight out of the layout,
+and only then does the validating constructor run — where a refusal now means
+the view itself is malformed. Fixed at `5bea1fb`; M4 re-run reds correctly:
+
+```
+assertion `left == right` failed: sub-binary stored a pre-move parent:
+  stored=0x000000092acf5804 forwarded=0x000000092acf5004 original=0x000000092acf5804
+```
+
+`stored == original` exactly — the defect stated directly.
+
+**The wall was green, correct, and misleading.** No amount of re-reading it
+would have surfaced that; only running a defect through it did. This is the
+argument for mutation evidence being part of the lane rather than a follow-up.
+
+### An unrelated flake, recorded rather than re-run away
+
+One full-lib run during this work went red on
+`scheduler::tests::busy_poll_natives_all_progress_under_heavy_concurrent_churn`
+(`runs/flake-scheduler-busy-poll.txt`, rc 101), starving 2 of 9 spinners on a
+box running back-to-back cargo invocations. `crates/beamr/src/scheduler/tests.rs`
+is at **zero diff** against the lane base `4055cbe`, and the immediately
+following run was 1792/0.
+
+A starvation test that depends on scheduling fairness is load-sensitive by
+construction. It is kept here because **a green obtained by re-running is not
+the same as a green** — whoever owns that test should see the observation
+whether or not it belongs to this lane.
+
 ## Still owed in this lane
 
-- **Mutation evidence** (one minimal semantic mutation per wall, as a diff
-  file plus its observed red, never applied to the tree) — produced **after**
-  the fix, since its job is to prove the wall catches a regression rather
-  than that it catches the current defect. The red above already proves the
-  latter.
-- R2 (rooting facility), then H3, H4, and the sharing restoration.
-- R6's site table, including two rows that are **not defects**:
-  the unconsumed JIT stack-map machinery, and the `stage_pairs` staging class
-  (see below).
+- ~~R2 (rooting facility), then H3, H4, and the sharing restoration.~~ **Done**
+  — R2 + H3 + H4 at `d901c36`/`d5c3eee`, sharing at `e8c09bc`/`a122903`.
+- ~~Mutation evidence.~~ **Done** — see above. It was deferred to post-fix on
+  the reasoning that its job is proving the wall catches a *regression*, and
+  the red sections already prove it catches the *current* defect. That
+  reasoning held, but the exercise also turned out to be the only thing that
+  could have found W4's misdirected face, so "after the fix" is the right
+  ordering and "with the lane" is the right boundary.
+- **R6's site table** (`STALE-TERM-AUDIT.md`), including two rows that are
+  **not defects**: the unconsumed JIT stack-map machinery, and the
+  `stage_pairs` staging class **with a population and a denominator** (see
+  below).
+- **R5 addendum** — gated on the backport landing SHA.
+- Battery, independent tear, landing word.
 
 ## Two findings that belong in R6 but are not defects
 

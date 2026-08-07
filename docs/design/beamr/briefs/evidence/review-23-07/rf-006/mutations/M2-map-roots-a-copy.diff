@@ -1,0 +1,13 @@
+diff --git a/crates/beamr/src/jit/runtime_map.rs b/crates/beamr/src/jit/runtime_map.rs
+index 52fc71f..281af13 100644
+--- a/crates/beamr/src/jit/runtime_map.rs
++++ b/crates/beamr/src/jit/runtime_map.rs
+@@ -141,7 +141,7 @@ fn write_map_entries(process: &mut Process, entries: &[(Term, Term)]) -> Option<
+         .iter()
+         .flat_map(|(key, value)| [*key, *value])
+         .collect::<Vec<_>>();
+-    let ptr = alloc_words_rooted(process, words, &mut roots);
++    let ptr = alloc_words_rooted(process, words, &mut roots.clone());
+     if ptr.is_null() {
+         return None;
+     }
