@@ -3,9 +3,10 @@ use super::runtime::{alloc_words, alloc_words_rooted, process_from_abi};
 use crate::process::Process;
 use crate::term::Term;
 use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
+use crate::term::sub_binary::{SUB_BINARY_WORDS, write_sub_binary};
 use crate::term::{
     binary_ref::BinaryRef,
-    boxed::{BoxedHeader, BoxedTag},
+    boxed::{BoxedHeader, BoxedTag, ProcBin},
 };
 
 const MATCH_CONTEXT_WORDS: usize = 4;
@@ -93,18 +94,49 @@ pub(crate) extern "C" fn jit_bs_get_binary(
     let Some(bytes) = context.slice(bits) else {
         return BINARY_HELPER_FAILURE;
     };
+    let source = context.source_term();
+    if ProcBin::new(source).is_some() {
+        // O(1) extraction. A ProcBin keeps its bytes off-heap and Arc-retained,
+        // so the result can SHARE them through a sub-binary rather than copy
+        // them. `bytes` is deliberately NOT read on this path — that borrow is
+        // the O(m) copy this arm exists to avoid.
+        //
+        // 0.16.3 deleted this arm rather than repairing it, because the repair
+        // needs real rooting: the ProcBin BOX lives on the young heap and moves
+        // under the allocation below, and writing a pre-move box address into
+        // the sub-binary is the same stale-Term defect as H3. `source` is
+        // therefore rooted across the allocation and the FORWARDED value is
+        // what gets written.
+        let start = context.position_bits() / u8::BITS as usize;
+        let length = bits / u8::BITS as usize;
+        // Advance before allocating, for the same reason the copy path does —
+        // see the note below, which covers this arm's refusal too.
+        context.set_position_bits(context.position_bits() + bits);
+        let mut roots = [source];
+        let ptr = alloc_words_rooted(process, SUB_BINARY_WORDS, &mut roots);
+        if ptr.is_null() {
+            return 0;
+        }
+        let [source] = roots;
+        // SAFETY: `alloc_words_rooted` returned a non-null pointer to exactly
+        // `SUB_BINARY_WORDS` heap words owned by `process` for this call.
+        let heap = unsafe { std::slice::from_raw_parts_mut(ptr, SUB_BINARY_WORDS) };
+        return write_sub_binary(heap, source, start, length).map_or(0, Term::raw);
+    }
+
     // Own the bytes: the allocation below can collect, moving (and
-    // zero-filling) a young-heap source under this borrow. This also
-    // replaces the former ProcBin sub-binary arm, whose pre-allocation
-    // source-Term capture went stale the same way — the copy is taken
+    // zero-filling) a young-heap source under this borrow. The copy is taken
     // before anything can move.
     let bytes = bytes.to_vec();
     // Advance the position BEFORE the allocation: the allocation can collect
     // and move this match context, and a post-collection write through the
     // pre-collection pointer is a wild read-modify-write of whatever now
     // occupies that address (observed corrupting the freshly allocated
-    // result). On allocation failure the match is abandoned, never resumed,
-    // so the early advance is unobservable there.
+    // result). Every refusal in this function returns 0 and the caller abandons
+    // the match rather than resuming it, so the early advance is unobservable.
+    // That rests on the CALLER'S response, not on the cause: it covers a failed
+    // allocation here, and equally `alloc_words_rooted` declining to return an
+    // unrecoverable root on the sharing arm above.
     context.set_position_bits(context.position_bits() + bits);
     let Some(binary) = allocate_binary(process, &bytes) else {
         return 0;

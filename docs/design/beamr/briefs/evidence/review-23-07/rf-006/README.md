@@ -227,6 +227,116 @@ test result: ok. 1791 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 Denominator: 1790 → **1791**, the one new invariant test.
 
+---
+
+## O(1) sharing restoration — W4 red, then green
+
+This is the item the re-pin table said the ordering hangs on: the ProcBin arm
+was **discharged by deletion, not by repair**, and the deletion *is* the
+O(1)→O(m) extraction regression. Restoring sharing re-introduces the identical
+stale-`Term` capture unless rooting exists first — so it comes after R2, and
+its wall comes before it.
+
+### W4 — what it asserts, and why the existing walls could not
+
+| claim | assertion | why it needs its own wall |
+|---|---|---|
+| **sharing, not copying** | result is a `SubBinary`, `len() == 20` | the `to_vec` copy path returns **byte-correct data**, so a regression from sharing back to copying is invisible to every byte assertion in this file |
+| **the forwarded parent is stored** | `sub.parent() == process.x_reg(0)` | the ProcBin **box** lives on the young heap and moves under the sub-binary allocation; writing the pre-move box address into `heap[1]` is the identical stale-`Term` defect as H3 |
+
+The first claim is the one worth naming. Three walls here already check the
+extracted bytes and all three stay green across the copy/share boundary —
+**bytes cannot distinguish a view from a copy.** The regression this arm
+suffered in 0.16.3 was a *performance* regression with correct output, which
+is exactly the shape a byte-checking suite waves through.
+
+### Observed RED at `e8c09bc`
+
+Wall commit **`e8c09bc`**; production bytes identical to its parent `d5c3eee`
+(both diff hunks fall inside `mod gc_hazard_tests`). The fix commit is its
+child.
+
+```
+runs/red-w4-targeted.txt   rc → runs/red-w4-targeted.rc   = 101
+runs/red-w4-full-lib.txt   rc → runs/red-w4-full-lib.rc   = 101
+```
+
+```
+test result: FAILED. 1791 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+Face, verbatim:
+
+```
+thread '...::bs_get_binary_procbin_extraction_shares_forwarded_parent' panicked at
+crates/beamr/src/jit/runtime_binary_match.rs:629:65:
+ProcBin extraction must SHARE through a sub-binary, not copy: the O(1) arm is gone
+```
+
+Neither a segfault nor garbage — a clean **shape refusal**, so R1's STOP
+condition was not triggered.
+
+⚠️ **Claim 2 has no red face at this commit, and that is a real limit on this
+evidence.** With no arm present there is nothing that could store a stale
+parent, so only claim 1 is exercised red. Claim 2's red is owed as **mutation
+evidence** (`alloc_words_rooted` → `alloc_words` inside the arm), and it is
+listed there rather than counted here. **A wall with two claims and one
+observed red is one-half proven.**
+
+### GREEN — the arm restored
+
+`jit_bs_get_binary` takes the ProcBin path ahead of the `to_vec` copy:
+`source` is rooted across the `SUB_BINARY_WORDS` allocation, the match position
+is advanced **before** allocating (the copy path's reason applies unchanged),
+and the **forwarded** source is what `write_sub_binary` records as the parent.
+The `bytes` borrow is deliberately not read on this path — that borrow is the
+O(m) copy the arm exists to avoid.
+
+```
+runs/green-w4-full-lib.txt   rc → .rc = 0
+runs/green-w4-clippy.txt     rc → .rc = 0
+runs/green-w4-fmt.txt        rc → .rc = 0
+test result: ok. 1792 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+Clippy artifact carries **zero** lines matching `^(warning|error)`.
+
+**Denominator walk:** 1791 → 1792, the one new wall. Nothing else moved.
+
+The pre-existing `bs_get_binary_procbin_source_box_referent_survives_forced_collection`
+becomes **load-bearing again** on this arm — it was written against the
+extraction path generally and now exercises the sharing arm rather than the
+copy path. It passes.
+
+**Bar re-checked on the changed file:** zero `#[allow]`, zero `_ =>`, zero
+`unwrap`/`expect`/`panic` in the production region (everything before the first
+`#[cfg(test)]`). Hard stops still at **zero diff lines each** against the lane
+base `4055cbe`: `native/stdlib_stubs/string_bifs.rs`, `loader/encode/**`,
+`jit/compiler/ir_helpers.rs`.
+
+### Two carried notes from the independent verification of `d5c3eee`
+
+Both raised against the parent commit, both discharged here.
+
+1. **The early-position-advance comment no longer enumerated its cases.** It
+   read "on allocation failure the match is abandoned" — still *true* after
+   R2, because it rests on the caller's response rather than on the cause, but
+   there is now a second route to `return 0` that is not an allocation failure
+   (`alloc_words_rooted` declining an unrecoverable root). **A fix changes what
+   the surrounding lines CLAIM**, and a sentence can stay accurate while
+   quietly ceasing to be a complete account of what a reader must reason about.
+   The comment now states the caller-response basis explicitly and names both
+   causes.
+2. **`alloc_words_rooted`'s refusal arm is unexecuted by construction.**
+   Nothing drives `all_recovered == false`, because reaching it requires a
+   collector that violates the invariant `collection_preserves_native_roots`
+   pins. **An unexecuted branch is not a passing branch.** The seam to inject
+   one sits in a JIT allocation path and the price is not worth this branch —
+   so it is **accepted deliberately, recorded here so it reads as a decision
+   and not an oversight.**
+
+---
+
 ## Still owed in this lane
 
 - **Mutation evidence** (one minimal semantic mutation per wall, as a diff
