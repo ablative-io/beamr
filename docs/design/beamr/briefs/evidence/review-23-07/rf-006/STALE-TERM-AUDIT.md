@@ -65,10 +65,54 @@ up as `gc/tests.rs` contributing 30 candidate sites. ⇒ **A CORRECTION APPLIED
 AT ONE CALL SITE OF A SHARED INSTRUMENT LEAVES THE OTHER CALL SITES
 UNCORRECTED** — and the second one looks fixed, because the first one is.
 
-Both corrections moved the answer, so both are stated rather than quietly
-absorbed. Residual known to me and **not** yet excluded: four files named
-`*_tests.rs` that are declared by neither spelling still contribute **6** of
-the sites below; they are in the population and flagged, not silently dropped.
+**C-iii — the unchecked destructuring arm.** The binder registered *every*
+name in a destructuring `let` as a term carrier, with **no type or
+initialiser check at all**. So
+
+```rust
+let (fail, source, destination) = match (op, operands) { … };
+```
+
+put three `&Operand` references into the population — and instruction
+operands are **module-resident**: they never move and never need rooting.
+That single unchecked arm accounted for **all 20** sites in
+`interpreter/opcodes/binary/matching.rs` and **47 of 83** overall. Requiring
+a destructuring bind to also look like it carries terms takes the population
+from **83 → 36**.
+
+> **Two-arm control on the tightening**, because narrowing an instrument is
+> exactly when it goes blind: the tightened binder must still see a KNOWN
+> positive. It does — `jit_bs_start_match` `source`, bound at `:19` by
+> `let source = Term::from_raw(binary);`, crossing `:30`, used at `:34`. That
+> is H3's pre-fix shape verbatim, and it survives the tightening because it
+> arrives through the typed-`let` arm rather than the destructuring one.
+> ⇒ **A NARROWED INSTRUMENT IS ONLY NARROWER IF IT STILL CATCHES WHAT IT
+> CAUGHT BEFORE**, and that has to be shown, not assumed.
+
+All three corrections moved the answer, so all three are stated rather than
+quietly absorbed. Residual known to me and **not** yet excluded: files named
+`*_tests.rs` declared by neither `cfg(test)` spelling still contribute **3**
+of the sites below; they are in the population and flagged, not silently
+dropped.
+
+### The operand immunity class, established by C-iii
+
+Ruling out those 20 sites is not bookkeeping — it names an immunity class the
+brief's other classes did not cover:
+
+**Operand-carried, re-read after reserve.** The interpreter's binary opcodes
+reserve *first* and then read the term *from its bytecode operand*:
+
+```rust
+gc::ensure_space(process, MATCH_CONTEXT_WORDS, 256)…;
+let source = core::read_term(process, module, source)?;   // AFTER the reserve
+```
+
+The carrier across the collection is an `&Operand`, not a `Term`. **This is
+the capability `put_map` has and a JIT helper does not** — which is precisely
+why R4's "mirror `put_map`" spec was unrealisable, and why R4 depends on R2.
+The same shape is safe in the interpreter and impossible in the JIT, so the
+class has to be stated in terms of the *mechanism* rather than the *shape*.
 
 ---
 
@@ -109,21 +153,25 @@ A site is a candidate when a `Term` / `Vec<Term>` / `[Term]` / `*mut u64` /
 `*const u64` local is **bound**, a collecting call happens, and **the same
 local is read afterwards** inside the same function.
 
-**83 (var, call) sites · 47 distinct functions · 29 distinct files.**
+**36 (var, call) sites · 30 distinct functions · 22 distinct files.**
 
 | file | sites |
 |---|---|
-| `interpreter/opcodes/binary/matching.rs` | 20 |
-| `distribution/control.rs` | 7 |
-| `native/stdlib_stubs/string_bifs.rs` | 7 |
-| `native/stdlib_stubs/uri_bifs.rs` | 5 |
-| `native/tcp_bifs.rs` | 5 |
-| `native/process_info_bifs.rs` | 4 |
+| `distribution/control.rs` | 4 |
 | `jit/runtime_binary_match.rs` | 3 |
 | `scheduler/execution.rs` | 3 |
 | `beamr-wasm/capability.rs` | 3 |
 | `beamr-wasm/convert.rs` | 3 |
-| 19 further files | 1–2 each |
+| `native/stdlib_stubs/string_bifs.rs` | 2 |
+| `native/stdlib_stubs/uri_bifs.rs` | 2 |
+| `beamr-wasm/capability_tests.rs` | 2 |
+| 14 further files | 1 each |
+
+Narrowing walk, every step named: **1,630** under the call-graph closure →
+**158** under the brief's closed enumeration → **148** after the 14 ruled
+family exclusions → **83** once whole-file `cfg(test)` was honoured in the
+second script too → **36** once destructuring binds had to look like they
+carry terms.
 
 The full list with file, function, variable, bind line, collecting call line,
 callee name and first post-call use is `sweep/candidates.json`.
@@ -225,7 +273,7 @@ silently absorb new sites, and a finding does not authorise its own
 follow-up.
 
 **Status: no new real crossing has been STOPped, because no per-site verdict
-has been taken yet.** The 83 rows are candidates. That sentence is here so
+has been taken yet.** The 36 rows are candidates. That sentence is here so
 that "no STOP was raised" is never read as "the sweep found nothing".
 
 ---
@@ -234,12 +282,12 @@ that "no STOP was raised" is never read as "the sweep found nothing".
 
 **Established and committed:** the search space and its denominators; both
 instrument corrections; the collecting family with 14 ruled exclusions and
-their reasons; the 83-site candidate population with its full listing; the
+their reasons; the 36-site candidate population with its full listing; the
 four post-fix verdicts for the sites this lane repaired; the AUDIT.md
 relationship in both directions; the backport-owned rows and the named
 `&'static` launder follow-on; N1 and N2.
 
-**Remaining:** the per-site verdict pass over the 83 candidates —
+**Remaining:** the per-site verdict pass over the 36 candidates —
 SAFE-with-immunity-reason or REAL-CROSSING, at per-(site, consumer)
 granularity, each taken at the bytes — plus the `stage_pairs` site population
 for N2. R6's acceptance A1 is not met until every row carries a verdict, and

@@ -55,7 +55,13 @@ def main():
                 if m and (TYPE_HINT.search(m.group("rest")) or RHS_HINT.search(m.group("rest"))):
                     binds.setdefault(m.group("name"), i)
                 m = DESTRUCT.match(line)
-                if m:
+                # A destructuring bind must ALSO look like it carries terms.
+                # Without this, `let (fail, source, destination) = match (op,
+                # operands) { .. }` registers three &Operand references as Term
+                # carriers -- and instruction operands are module-resident, so
+                # they neither move nor need rooting. That single unchecked arm
+                # accounted for every site in binary/matching.rs.
+                if m and (TYPE_HINT.search(line) or RHS_HINT.search(line)):
                     for nm in re.findall(r'\w+', m.group("names")):
                         binds.setdefault(nm, i)
             if not binds:
