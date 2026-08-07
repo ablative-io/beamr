@@ -66,18 +66,22 @@
   {
    "id": "R4",
    "title": "H4 — the map-update helper reserves before it captures",
-   "spec": "Per D4: the collecting reserve moves ahead of `map_entries`/`map_pair_terms`, mirroring `put_map` (`closures.rs:462-488`) including its overflow-safe upper-bound arithmetic and its deliberate refusal to trust a `live` operand; the map words are then written with a non-collecting allocation. The `exact` refusal at `runtime_map.rs:68-76` and every `return 0` are preserved.",
+   "spec": "Per D4: the collecting reserve moves ahead of `map_entries`/`map_pair_terms`, mirroring `put_map` (`closures.rs:462-488`) including its overflow-safe upper-bound arithmetic and its deliberate refusal to trust a `live` operand; the map words are then written with a non-collecting allocation. The `exact` refusal at `runtime_map.rs:68-76` and every `return 0` are preserved.\n\nAMENDMENT 1 (2026-08-07, domain owner, forward-only — the original text above is RETAINED deliberately, because the next reader must see what was wrong in order not to re-derive it): THE INSTRUCTION ABOVE IS UNREALISABLE AS WRITTEN, AND R4 DEPENDS ON R2. Hoisting the reserve ahead of the captures does NOT fix H4 on its own. `put_map` is safe not because of the hoist but because it RE-READS THE SOURCE FROM ITS OPERAND after reserving (`interpreter/opcodes/closures.rs:476-480`); the interpreter holds an operand index into the register file, and the register file is a GC root. A JIT helper has no operand — `jit_map_update` receives raw term VALUES — and generated code stages the update pairs into a Cranelift `ExplicitSlot` (`jit/ir_map.rs`, `stage_pairs`) which `Process::roots_with_live_x` (`process/mod.rs:562-591`) does not enumerate. Re-reading that slot after a collection therefore returns the SAME STALE WORD. Explicit rooting via R2 is the only mechanism that yields post-collection values here, which makes D1 FORCED rather than preferred. THE GENERAL LESSON, which is why this amendment exists rather than a silent correction: A SPEC CAN NAME THE RIGHT PRECEDENT, CITE IT PRECISELY, AND STILL BE IMPOSSIBLE — because the precedent's safety came from a CAPABILITY THE NEW SITE DOES NOT HAVE. A citation that is accurate about its source can still be wrong about its target. Check that the MECHANISM ports, not that the SHAPE matches.",
    "acceptance": [
     "W3 green; `jit_map_new` and `jit_map_update` return the same values as before on every non-collecting path — pinned by the existing map tests staying green with no edits",
     "The word bound is overflow-safe by construction (checked arithmetic, as `map_word_count` at `:142-144` and `put_map` at `closures.rs:468-475` already are) and the `live` value passed to `ensure_space` still roots the full register file",
     "If the drafter takes the D4 alternative (root the vectors rather than hoist the reserve), the handoff states the choice and why; the acceptance above is unchanged either way",
-    "Fail-first recorded: revert R4 → W3 goes red at the key/value equality assert → restore"
+    "Fail-first recorded: revert R4 → W3 goes red at the key/value equality assert → restore",
+    "R4 is not attempted before R2 exists, and the handoff states the dependency and its reason (AMENDMENT 1) rather than only the fact — a bare 'blocked by R2' lets the next reader re-derive the impossible shape from the same document"
    ],
    "files": {
     "modify": [
      "crates/beamr/src/jit/runtime_map.rs"
     ]
-   }
+   },
+   "depends_on": [
+    "R2"
+   ]
   },
   {
    "id": "R5",
