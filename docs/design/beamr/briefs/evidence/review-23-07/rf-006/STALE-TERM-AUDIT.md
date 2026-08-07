@@ -82,7 +82,7 @@ AMENDMENT 1. This rider sweeps **stale `Term` and raw-pointer captures**.
 | — in `cfg(test)` | **2,287** |
 | — **production** | **5,030** |
 
-### ⚠️ Six corrections to my own instrument, all found by me
+### ⚠️ Seven corrections — six to the instrument, one to my prose about it
 
 C-i to C-iii were found mid-sweep and moved the population. **C-iv, C-v and
 C-vi were all found after the population was already committed and
@@ -90,6 +90,14 @@ reported** — C-iv in `sweep/` (the committed instrument did not reproduce the
 committed output), C-v in this document (a ratio taken across two instrument
 generations), and **C-vi in the binder itself**. C-iv and C-v changed what
 the 36 was entitled to claim; **C-vi changed the number, 36 → 69.**
+
+**C-i…C-vi I found myself. C-vii I did not** — the lane lead asked a one-line
+question about a claim in my summary (*which is the second file?*), and the
+answer was that the claim was wrong in both of its halves. It is recorded with
+the others, below the A4 STOP, because **a correction found by the reviewer
+belongs in the same list as the ones found by the author, marked as such** —
+a document that quietly lists only self-caught errors misrepresents how much
+of its own accuracy it is responsible for.
 
 **C-i — the whole-file `cfg(test)` spelling.** The first index counted only
 inline `#[cfg(test)] mod x { … }`. beamr also uses `#[cfg(test)] mod x;` with
@@ -374,7 +382,8 @@ is never read as "the sweep found nothing".
 
 Every row in `sweep/candidates.json` carries a verdict in
 `sweep/verdicts.json`, taken at the bytes at per-(site, consumer)
-granularity. **69 of 69; none deferred.**
+granularity. **69 of 69 examined: 65 RULED, 4 DEFERRED** with a named
+discharge condition (`UNRULED-PRERESERVE` — see below).
 
 | verdict | n | meaning |
 |---|---|---|
@@ -382,7 +391,7 @@ granularity. **69 of 69; none deferred.**
 | **REAL-OSIRIS** | **1** | same, in `string_bifs.rs`, **another seat's lane** — recorded, not touched |
 | SAFE-C | 19 | immediate (small int / atom / NIL / local pid) — cannot move |
 | FP-D | 17 | not a `Term` at all (usize, `&str`, `&[u8]`, `&mut [u64]`, a closure) |
-| SAFE-PRERESERVE | 4 | `ensure_heap_space` for the whole budget before the sequence |
+| **UNRULED-PRERESERVE** | **4** | **DEFERRED, not cleared** — rests on a word-count arithmetic nobody has audited; discharge condition named below |
 | SAFE-ROOTED | 3 | `with_rooted` + `rooted_push`, re-read after the reserve |
 | SAFE-DETACHED | 3 | `ProcessContext::new()` — detached contexts never collect |
 | SAFE-A | 2 | passed **as an argument** to the collecting allocator, which roots it |
@@ -396,16 +405,46 @@ granularity. **69 of 69; none deferred.**
 FP-F together. That is the price of a binder that must not miss things, and
 it is the right direction to be wrong in. **C-vi was the wrong direction.**
 
-### ⚠️ SAFE-PRERESERVE is conditional and I am not discharging the condition
+### 🔴 UNRULED-PRERESERVE — four rows DEFERRED, with a named discharge condition
 
-Four rows are safe *because* a caller reserved the whole budget up front, so
-the allocations that follow cannot collect. That immunity **is only as good
+Four rows would be safe *because* a caller reserved the whole budget up front,
+so the allocations that follow cannot collect. That immunity **is only as good
 as the word-count calculation** (`info_proplist_heap_words`,
-`value_heap_words`). **I have not audited those calculations**, and an
-under-count would silently re-arm every one of these sites. Stated as a
-scoped assumption, not a clearance. ⇒ **A PRERESERVATION IS A PROMISE MADE BY
-AN ARITHMETIC EXPRESSION, AND CLEARING A SITE ON IT INHERITS THAT
-ARITHMETIC.**
+`value_heap_words`, and whatever backs `system_info_bifs.rs:186`). **Nobody
+has audited those calculations**, and an under-count would silently re-arm
+every one of these sites. ⇒ **A PRERESERVATION IS A PROMISE MADE BY AN
+ARITHMETIC EXPRESSION, AND CLEARING A SITE ON IT INHERITS THAT ARITHMETIC.**
+
+**These were originally labelled `SAFE-PRERESERVE` with the assumption written
+into the prose. The lane lead ruled that wrong, and the ruling is right:**
+
+> ⭐⭐ **A CLEARANCE THAT RESTS ON AN UNAUDITED COMPUTATION IS NOT A VERDICT,
+> IT IS A HYPOTHESIS WEARING A SAFE-SOUNDING LABEL.**
+
+The defect was not the disclosure — the disclosure was there. The defect was
+that **the caveat lived in prose and the claim lived in the label.** Prose
+fires when somebody reads it; a label fires at every lookup, every
+`startswith('SAFE')` filter, every downstream count. The two disagreed, and
+the label is what travels. **An undercount would re-arm all four silently —
+the exact silent-arm shape this lane exists to hunt, shipped inside the audit
+that hunts it.**
+
+**Discharge condition** (per row, carried in `sweep/verdicts.json` as a
+`discharge` field — these are cheap, bounded, and *not* done here):
+
+| row | discharge |
+|---|---|
+| `ets_bifs::bif_info_1` | `info_proplist_heap_words` must count ≥ the words allocated between the reserve at `:561` and the last prereserved call |
+| `process_info_bifs::bif_process_info_1` | the word count backing the `:198` reserve must cover every allocation it fronts |
+| `process_info_bifs::alloc_monitor_list` | same `:198` budget — this one allocates on *the caller's* reservation |
+| `system_info_bifs::bif_memory_0` | the word count backing the `:186` reserve must cover every allocation to the return |
+
+✅ **One axis of this IS discharged, and it came back in the lane lead's
+favour to check and mine to keep.** `alloc_monitor_list` is cleared by the
+*caller's* budget, so its safety depends on **every** caller reserving — a
+different risk from the arithmetic above. Enumerated at the bytes: it is
+private with **exactly one caller** (`process_info_bifs.rs:263`, same file).
+**Callership axis clean.** The arithmetic axis remains open.
 
 ---
 
@@ -444,13 +483,60 @@ accumulator. The terminal `alloc_list` **does** root its elements — which is
 precisely the trap, because **by then it is rooting values that are already
 stale, and rooting a stale pointer does not recover it.**
 
-**The codebase already has the right tool and uses it correctly in nine other
-places** — `with_rooted` + `rooted_push` + re-read, in `ets_bifs` (×4),
-`etf_bifs`, `json_bifs` (×3), `string_bifs::bif_next_grapheme`. Two of those
-sit in files that *also* contain an unfixed instance. ⇒ **THIS IS NOT A
-MISSING FACILITY, IT IS AN UNEVENLY APPLIED ONE** — which is why a
-name-based or facility-based search would never have found it, and why the
-fix is a sweep rather than a patch.
+**The codebase already has the right tool and uses it correctly**, in **11
+`with_rooted` scopes across 11 distinct functions in 6 files** (non-test,
+outside `native/context/`). ⇒ **THIS IS NOT A MISSING FACILITY, IT IS AN
+UNEVENLY APPLIED ONE** — which is why a name-based or facility-based search
+would never have found it, and why the fix is a sweep rather than a patch.
+
+**And there are TWO correct shapes, not one:**
+
+| shape | how | where |
+|---|---|---|
+| **S1 — root as you go** | `with_rooted` + `rooted_push` after each allocation + `rooted()` re-read | 8 functions / 4 files: `ets_bifs` ×4, `etf_bifs::segments_to_iolist`, `json_bifs::{parse_array, parse_object}`, `string_bifs::bif_next_grapheme` (**10** `rooted_push` sites — `parse_object` and `bif_next_grapheme` hold two each) |
+| **S2 — root up front, reserve once** | `with_rooted` over the whole input, one `ensure_heap_space`, then **only `_prereserved` allocators**, so nothing can collect again | 3 functions / 2 files: `lists_bifs::list_from_vec`, `maps_bifs::{bif_maps_find, make_map_from_entries}` |
+
+S1 is correct when allocation happens *during* accumulation. S2 is correct
+when the inputs already exist. **The fourteen are the shape that needs S1 and
+got neither.**
+
+⭐ **`lists_bifs::list_from_vec` is the safe twin of defect #11.** It builds a
+list by threading a `tail` — the identical shape to
+`term/json.rs::array_to_list_term` — and is safe purely because it takes its
+elements as an already-complete `&[Term]` and roots them before reserving.
+**Note carefully what that does *not* buy: it is a sink, not a cure.** Calling
+it with a `Vec` accumulated across allocations inherits exactly the defect,
+because the elements went stale before the call. **Any remedy census must
+count `list_from_vec` as a sink alongside `alloc_list`/`alloc_tuple`.**
+
+### ⚠️ C-vii — I miscounted the facility, and the lane lead's question found it
+
+I wrote "**nine** other places … two of those sit in files that *also* contain
+an unfixed instance." **Both halves were wrong.**
+
+- **The count** was keyed on `rooted_push`, which is S1's marker. It therefore
+  **could not see S2 at all** — `lists_bifs` and `maps_bifs` were invisible to
+  it, the same instrument-shaped blindness as C-vi, one level up. It also mixed
+  units, counting `json_bifs` by push site and `string_bifs` by function.
+  **Measured: 11 scopes / 11 functions / 6 files.** My error ran **under**, so
+  the facility is *more* widely and correctly used than I claimed — which
+  strengthens "unevenly applied", it does not weaken it.
+- **"Two files"** is **one file**. Intersecting the 6 facility files with the
+  11 files holding a real crossing gives exactly **`string_bifs.rs`**. The
+  phantom second was `native/stdlib_stubs/json_bifs.rs` (3 correct uses)
+  conflated with `crates/beamr/src/term/json.rs` (1 real crossing) — **two
+  different files in two different modules whose basenames both say "json".**
+  A coordinate crossing by name, in my own summary prose.
+
+⭐ **The compounding the lane lead predicted is real, and it arrives on a
+different axis than either of us expected.** She asked whether the second file
+was `ets_bifs.rs`, because a file that both demonstrates the tool and carries
+an unruled row is worth stating up front. It is **not** in the overlap — it
+holds no unfixed instance. But `ets_bifs.rs` **does** hold 4 of the facility's
+11 correct uses **and** `bif_info_1`, one of the four `UNRULED-PRERESERVE`
+rows. **So the file that best demonstrates "the tool was right there" is also
+a file with a deferred row — via the prereservation axis, not the unfixed-instance
+axis.** Stated here rather than discovered later.
 
 ### ⚠️ C-vi — a false-negative class, found by row 4
 
@@ -494,25 +580,32 @@ nothing visible, which is exactly why it survives.
 
 ## Status
 
-**Established and committed:** the search space and its denominators; the five
-instrument corrections C-i…C-vi; the collecting family and its ruled
+**Established and committed:** the search space and its denominators; the
+seven corrections C-i…C-vii (six to the instrument, one to my own summary of
+it); the collecting family and its ruled
 exclusions; the 69-site population with its full listing, **byte-reproducible
 from the committed instrument in both binder arms** (C-iv, C-vi); the four post-fix
 verdicts for the sites this lane repaired; the AUDIT.md relationship in both
 directions; the backport-owned rows and the named `&'static` launder
 follow-on; N1 and N2.
 
-**The verdict pass is COMPLETE over the widened population: 69 of 69 rows
-carry a verdict** (`sweep/verdicts.json`), at per-(site, consumer)
-granularity, each taken at the bytes. **R6 acceptance A1 is met.**
+**The verdict pass covers the whole widened population: 69 of 69 rows carry a
+verdict** (`sweep/verdicts.json`), at per-(site, consumer) granularity, each
+taken at the bytes. **Of those, 65 are RULED and 4 are DEFERRED with a named
+discharge condition** (`UNRULED-PRERESERVE`, above).
 
-**⚠️ What A1 does NOT mean.** It means every row in *this* population is
-ruled. C-vi is the standing reminder that a population is an instrument's
-field of view: the binder now sees two carrier shapes it could not see
-yesterday, and nothing proves there is not a third. Four rows are cleared
-only by a **prereservation whose arithmetic I have not audited**. The honest
-claim is *complete over what the instrument can see, with the blind spots
-named* — not *complete*.
+**⇒ R6 acceptance A1 reads: 65 of 69 ruled, 4 deferred, 0 unexamined.** It
+does *not* read "69 of 69 ruled" — that was the original claim, and it rested
+on four rows whose clearance was a hypothesis. The lane lead ruled the label
+before it reached anyone downstream.
+
+**⚠️ What A1 does NOT mean, even restated.** It means every row in *this*
+population has been examined. C-vi and C-vii are the standing reminder that a
+population is an instrument's field of view — and that the same blindness
+recurs one level up, in the prose an instrument's author writes about it. The
+binder now sees two carrier shapes it could not see yesterday; **nothing
+proves there is not a third.** The honest claim is *complete over what the
+instrument can see, with the blind spots named* — not *complete*.
 
 **Remaining:** the `stage_pairs` site population for N2. The fourteen real
 crossings are **ruled out of this document** — the lane lead ruled them a
