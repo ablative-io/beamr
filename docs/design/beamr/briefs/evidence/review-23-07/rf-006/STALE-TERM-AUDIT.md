@@ -12,10 +12,16 @@ collecting family), `sweep/r6_stage3.py` (capture-side narrowing),
 Re-derive with:
 
 ```sh
-python3 sweep/r6_sweep.py /tmp/stage1.json direct   # 37-name collecting set
-python3 sweep/r6_stage3.py /tmp/stage1.json /tmp/candidates.json
-cmp sweep/candidates.json /tmp/candidates.json      # byte-identical
+python3 sweep/r6_sweep.py  /tmp/stage1.json direct              # 37-name collecting set
+python3 sweep/r6_stage3.py /tmp/stage1.json /tmp/wide.json wide
+cmp sweep/candidates.json        /tmp/wide.json                 # byte-identical, 69 sites
+python3 sweep/r6_stage3.py /tmp/stage1.json /tmp/narrow.json narrow
+cmp sweep/candidates-narrow.json /tmp/narrow.json               # byte-identical, the historical 36
 ```
+
+`candidates.json` is the current population under the **corrected (wide)**
+binder. `candidates-narrow.json` is the pre-C-vi 36, kept so the C-iv and C-v
+provenance chain stays checkable against the numbers those corrections quote.
 
 > **Correction C-iv — until this commit, the committed instrument did not
 > reproduce the committed output, and the sentence above was false.**
@@ -29,9 +35,10 @@ cmp sweep/candidates.json /tmp/candidates.json      # byte-identical
 > committed record, with a **positive control that exits non-zero if any
 > excluded name has left the tree** — an exclusion that no longer matches
 > anything is a silent no-op, and a typo is indistinguishable from a correct
-> ruling. Verified two-arm at this commit: `direct` reproduces
-> `candidates.json` **byte-identically** (sha256
-> `5311ab26…`), `closure` still yields the 167-site ceiling.
+> ruling. Verified two-arm when raised: `direct` + the then-current binder
+> reproduced the population **byte-identically** (sha256 `5311ab26…`, now
+> carried by `candidates-narrow.json`), `closure` still yielded its ceiling.
+> Both binder arms are re-verified byte-identical at the current commit.
 > ⇒ **"THE INSTRUMENTS ARE COMMITTED" IS A CLAIM ABOUT THE FILES, NOT ABOUT
 > REPRODUCIBILITY** — the only proof is running the committed bytes and
 > diffing against the committed output. This is C-ii's shape again at one
@@ -75,13 +82,14 @@ AMENDMENT 1. This rider sweeps **stale `Term` and raw-pointer captures**.
 | — in `cfg(test)` | **2,287** |
 | — **production** | **5,030** |
 
-### ⚠️ Five corrections to my own instrument, all found by me
+### ⚠️ Six corrections to my own instrument, all found by me
 
-C-i to C-iii were found mid-sweep and moved the population. **C-iv and C-v
-were found after the population was already committed and reported** — C-iv
-in `sweep/` (the committed instrument did not reproduce the committed output)
-and C-v in this document (a ratio taken across two instrument generations).
-Neither changed the 36; both changed what the 36 is entitled to claim.
+C-i to C-iii were found mid-sweep and moved the population. **C-iv, C-v and
+C-vi were all found after the population was already committed and
+reported** — C-iv in `sweep/` (the committed instrument did not reproduce the
+committed output), C-v in this document (a ratio taken across two instrument
+generations), and **C-vi in the binder itself**. C-iv and C-v changed what
+the 36 was entitled to claim; **C-vi changed the number, 36 → 69.**
 
 **C-i — the whole-file `cfg(test)` spelling.** The first index counted only
 inline `#[cfg(test)] mod x { … }`. beamr also uses `#[cfg(test)] mod x;` with
@@ -125,9 +133,9 @@ from **83 → 36**.
 
 All three corrections moved the answer, so all three are stated rather than
 quietly absorbed. Residual known to me and **not** yet excluded: files named
-`*_tests.rs` declared by neither `cfg(test)` spelling still contribute **3**
-of the sites below; they are in the population and flagged, not silently
-dropped.
+`*_tests.rs` declared by neither `cfg(test)` spelling still contribute **5**
+of the 69 sites below (it was 3 of 36 before the C-vi widening); they are in
+the population and flagged, not silently dropped.
 
 ### The operand immunity class, established by C-iii
 
@@ -216,13 +224,16 @@ made every one of them look like it collected one line earlier than it does.
 
 ---
 
-## Population — 36 candidate sites
+## Population — 69 candidate sites
 
 A site is a candidate when a `Term` / `Vec<Term>` / `[Term]` / `*mut u64` /
 `*const u64` local is **bound**, a collecting call happens, and **the same
 local is read afterwards** inside the same function.
 
-**36 (var, call) sites · 30 distinct functions · 22 distinct files.**
+**69 (var, call) sites · 51 distinct functions · 33 distinct files**, under
+the corrected (wide) binder. The pre-C-vi figure was 36 · 30 · 22; the
+file-by-file table below predates the widening and is **not** re-tabulated
+here, because the widened listing in `sweep/candidates.json` supersedes it.
 
 | file | sites |
 |---|---|
@@ -244,7 +255,8 @@ the last row is a comparison at fixed settings (see C-v):
 |---|---|---|
 | as first written (pre C-i, pre C-iii) | 1,630 | 158 |
 | + C-i, whole-file `cfg(test)` in both scripts | — | 83 |
-| **corrected (C-i + C-iii), current** | **167** | **36** |
+| corrected (C-i + C-iii), **narrow** binder | 167 | 36 |
+| + C-vi, **wide** binder — current | — | **69** |
 
 Read down a column for what the instrument corrections were worth; read
 across the bottom row for what the spec-reading is worth (**4.6×**). Reading
@@ -349,9 +361,12 @@ discovery, before any fix design** — the lane-3 protocol. RF-006 does not
 silently absorb new sites, and a finding does not authorise its own
 follow-up.
 
-**Status: no new real crossing has been STOPped, because no per-site verdict
-has been taken yet.** The 36 rows are candidates. That sentence is here so
-that "no STOP was raised" is never read as "the sweep found nothing".
+**Status: an A4 STOP HAS now been raised** — four real crossings, recorded
+above and routed to the lane lead before any fix design. The remaining 65
+rows are candidates carrying no verdict. The original form of this sentence
+read "no new real crossing has been STOPped"; it was true when written and
+is now superseded, and it is kept in this shape so that "no STOP was raised"
+is never read as "the sweep found nothing".
 
 ---
 
@@ -377,15 +392,27 @@ risk) and stayed silent on `ip`, the boxed carrier two lines above it. It
 **reported the safe variable and missed the dangerous one in the same six
 lines.**
 
-Cause: the binder recognises a carrier only by an explicit `: Term`
+Cause: the binder recognised a carrier only by an explicit `: Term`
 annotation or by an RHS matching a **hard-coded list of constructor
-spellings**. A local bound from a **domain helper that returns a `Term`** —
-`ipv4_tuple(..)`, `ok_tuple(..)` — matches neither. Adding one rule (RHS calls
-a function whose signature returns a `Term`; **794** such names) makes **+19
-sites across 15 functions** visible, with the baseline still reproducing
-**exactly 36** and `finish_udp_recv/ip` as the positive control. A **second
-sub-shape remains unhandled**: an unannotated `Vec<Term>` accumulator from
-`Vec::with_capacity` (row 3 is one, and the widening does not see it either).
+spellings**. Two real shapes match neither:
+
+- **w1 — bound from a domain helper that returns a `Term`**: `ipv4_tuple(..)`,
+  `ok_tuple(..)`. Now recognised by return type (**794** such names).
+- **w2 — an unannotated `Vec<Term>` accumulator** from `Vec::with_capacity` /
+  `Vec::new`, pushed terms and handed to an allocator at the end. Row 3 is one.
+  The push can sit far below the bind, so this rule reads the whole body.
+
+**Both are now handled, and the binder mode is an argument** (`wide` default,
+`narrow` retained). Result: **36 → 69 sites, 30 → 51 functions, 22 → 33
+files** — **33 carriers that were invisible.** Four controls, all passing:
+
+| control | result |
+|---|---|
+| `narrow` still byte-reproduces the historical 36 | ✅ `candidates-narrow.json` |
+| `wide` is a strict **superset** of `narrow` | ✅ 36 ⊂ 69 |
+| `finish_udp_recv/ip` visible (w1 positive control) | ✅ |
+| `bif_uri_string_dissect_query/terms` visible (w2) | ✅ |
+| H3's pre-fix shape still caught (regression control) | ✅ |
 
 ⇒ **C-i, C-ii and C-iii every one made the population smaller, and I read that
 as the instrument getting sharper.** They removed false positives, so each was
@@ -400,9 +427,9 @@ nothing visible, which is exactly why it survives.
 ## Status
 
 **Established and committed:** the search space and its denominators; the five
-instrument corrections C-i…C-v; the collecting family and its ruled
-exclusions; the 36-site population with its full listing, now
-**byte-reproducible from the committed instrument** (C-iv); the four post-fix
+instrument corrections C-i…C-vi; the collecting family and its ruled
+exclusions; the 69-site population with its full listing, **byte-reproducible
+from the committed instrument in both binder arms** (C-iv, C-vi); the four post-fix
 verdicts for the sites this lane repaired; the AUDIT.md relationship in both
 directions; the backport-owned rows and the named `&'static` launder
 follow-on; N1 and N2.

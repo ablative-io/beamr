@@ -23,16 +23,6 @@
   "file": "crates/beamr/src/distribution/control.rs",
   "fn": "alloc_spawn_request",
   "fn_line": 513,
-  "var": "opt_list",
-  "bind": 523,
-  "call": 527,
-  "call_name": "alloc_tuple",
-  "use": 533
- },
- {
-  "file": "crates/beamr/src/distribution/control.rs",
-  "fn": "alloc_spawn_request",
-  "fn_line": 513,
   "var": "op",
   "bind": 524,
   "call": 527,
@@ -48,36 +38,6 @@
   "call": 527,
   "call_name": "alloc_tuple",
   "use": 529
- },
- {
-  "file": "crates/beamr/src/distribution/etf.rs",
-  "fn": "decode_one",
-  "fn_line": 579,
-  "var": "elements",
-  "bind": 619,
-  "call": 626,
-  "call_name": "alloc_list",
-  "use": 634
- },
- {
-  "file": "crates/beamr/src/distribution/pg.rs",
-  "fn": "members",
-  "fn_line": 470,
-  "var": "terms",
-  "bind": 486,
-  "call": 491,
-  "call_name": "alloc_external_pid",
-  "use": 493
- },
- {
-  "file": "crates/beamr/src/etf/decode.rs",
-  "fn": "decode_after_tag",
-  "fn_line": 122,
-  "var": "elements",
-  "bind": 170,
-  "call": 175,
-  "call_name": "alloc_list",
-  "use": 184
  },
  {
   "file": "crates/beamr/src/interpreter/opcodes/binary/construction/segments.rs",
@@ -180,26 +140,6 @@
   "use": 148
  },
  {
-  "file": "crates/beamr/src/native/dictionary_bifs.rs",
-  "fn": "entries_to_list",
-  "fn_line": 127,
-  "var": "tuples",
-  "bind": 128,
-  "call": 130,
-  "call_name": "alloc_tuple",
-  "use": 132
- },
- {
-  "file": "crates/beamr/src/native/ets_bifs.rs",
-  "fn": "bif_info_1",
-  "fn_line": 543,
-  "var": "entries",
-  "bind": 562,
-  "call": 564,
-  "call_name": "alloc_tuple",
-  "use": 566
- },
- {
   "file": "crates/beamr/src/native/ets_bifs.rs",
   "fn": "finish_paged_results",
   "fn_line": 888,
@@ -208,26 +148,6 @@
   "call": 906,
   "call_name": "alloc_match_continuation",
   "use": 916
- },
- {
-  "file": "crates/beamr/src/native/ets_bifs.rs",
-  "fn": "finish_paged_results",
-  "fn_line": 888,
-  "var": "pattern_or_spec",
-  "bind": 904,
-  "call": 906,
-  "call_name": "alloc_match_continuation",
-  "use": 911
- },
- {
-  "file": "crates/beamr/src/native/ets_bifs.rs",
-  "fn": "alloc_match_continuation",
-  "fn_line": 921,
-  "var": "tag",
-  "bind": 929,
-  "call": 930,
-  "call_name": "alloc_tuple",
-  "use": 931
  },
  {
   "file": "crates/beamr/src/native/file_bifs_tests.rs",
@@ -240,86 +160,6 @@
   "use": 470
  },
  {
-  "file": "crates/beamr/src/native/file_meta_bifs.rs",
-  "fn": "finish_list_dir",
-  "fn_line": 156,
-  "var": "terms",
-  "bind": 166,
-  "call": 168,
-  "call_name": "alloc_binary",
-  "use": 170
- },
- {
-  "file": "crates/beamr/src/native/gate3_bifs/type_conversion_tests.rs",
-  "fn": "float_to_binary_badarg_malformed_options",
-  "fn_line": 494,
-  "var": "float",
-  "bind": 498,
-  "call": 500,
-  "call_name": "alloc_list",
-  "use": 503
- },
- {
-  "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
-  "fn": "bif_os_getenv_0",
-  "fn_line": 62,
-  "var": "variables",
-  "bind": 66,
-  "call": 68,
-  "call_name": "alloc_binary",
-  "use": 70
- },
- {
-  "file": "crates/beamr/src/native/process_info_bifs.rs",
-  "fn": "bif_process_info_1",
-  "fn_line": 180,
-  "var": "tuples",
-  "bind": 200,
-  "call": 203,
-  "call_name": "alloc_value",
-  "use": 204
- },
- {
-  "file": "crates/beamr/src/native/process_info_bifs.rs",
-  "fn": "bif_process_info_1",
-  "fn_line": 180,
-  "var": "item_atom",
-  "bind": 202,
-  "call": 203,
-  "call_name": "alloc_value",
-  "use": 204
- },
- {
-  "file": "crates/beamr/src/native/process_info_bifs.rs",
-  "fn": "alloc_monitor_list",
-  "fn_line": 304,
-  "var": "terms",
-  "bind": 310,
-  "call": 314,
-  "call_name": "alloc_tuple",
-  "use": 317
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/io_bifs.rs",
-  "fn": "bif_io_format_2",
-  "fn_line": 36,
-  "var": "target",
-  "bind": 40,
-  "call": 42,
-  "call_name": "alloc_binary",
-  "use": 43
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/io_bifs.rs",
-  "fn": "bif_io_get_line_1",
-  "fn_line": 46,
-  "var": "target",
-  "bind": 50,
-  "call": 52,
-  "call_name": "alloc_binary",
-  "use": 54
- },
- {
   "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
   "fn": "unexpected_sequence",
   "fn_line": 246,
@@ -328,36 +168,6 @@
   "call": 251,
   "call_name": "alloc_binary",
   "use": 256
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
-  "fn": "parse_number",
-  "fn_line": 486,
-  "var": "text",
-  "bind": 531,
-  "call": 534,
-  "call_name": "alloc_float",
-  "use": 536
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
-  "fn": "bif_lists_unzip",
-  "fn_line": 163,
-  "var": "elements",
-  "bind": 167,
-  "call": 177,
-  "call_name": "alloc_tuple",
-  "use": 183
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
-  "fn": "bif_split",
-  "fn_line": 69,
-  "var": "terms",
-  "bind": 89,
-  "call": 91,
-  "call_name": "alloc_binary",
-  "use": 93
  },
  {
   "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
@@ -380,96 +190,6 @@
   "use": 140
  },
  {
-  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
-  "fn": "bif_pad",
-  "fn_line": 145,
-  "var": "target_len",
-  "bind": 150,
-  "call": 161,
-  "call_name": "alloc_binary",
-  "use": 164
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
-  "fn": "bif_pad",
-  "fn_line": 145,
-  "var": "direction",
-  "bind": 151,
-  "call": 161,
-  "call_name": "alloc_binary",
-  "use": 165
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
-  "fn": "bif_pad",
-  "fn_line": 145,
-  "var": "pad",
-  "bind": 152,
-  "call": 161,
-  "call_name": "alloc_binary",
-  "use": 171
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
-  "fn": "bif_slice",
-  "fn_line": 202,
-  "var": "text",
-  "bind": 206,
-  "call": 210,
-  "call_name": "alloc_binary",
-  "use": 212
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
-  "fn": "bif_slice",
-  "fn_line": 202,
-  "var": "offset",
-  "bind": 207,
-  "call": 210,
-  "call_name": "alloc_binary",
-  "use": 212
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
-  "fn": "bif_slice",
-  "fn_line": 202,
-  "var": "length",
-  "bind": 208,
-  "call": 210,
-  "call_name": "alloc_binary",
-  "use": 216
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
-  "fn": "bif_uri_string_parse",
-  "fn_line": 16,
-  "var": "keys",
-  "bind": 60,
-  "call": 64,
-  "call_name": "alloc_binary",
-  "use": 67
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
-  "fn": "bif_uri_string_parse",
-  "fn_line": 16,
-  "var": "values",
-  "bind": 61,
-  "call": 64,
-  "call_name": "alloc_binary",
-  "use": 68
- },
- {
-  "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
-  "fn": "bif_uri_string_dissect_query",
-  "fn_line": 97,
-  "var": "terms",
-  "bind": 127,
-  "call": 129,
-  "call_name": "alloc_binary",
-  "use": 134
- },
- {
   "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
   "fn": "bif_uri_string_dissect_query",
   "fn_line": 97,
@@ -490,36 +210,6 @@
   "use": 262
  },
  {
-  "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
-  "fn": "error_tuple",
-  "fn_line": 255,
-  "var": "reason",
-  "bind": 257,
-  "call": 261,
-  "call_name": "alloc_binary",
-  "use": 262
- },
- {
-  "file": "crates/beamr/src/native/system_info_bifs.rs",
-  "fn": "bif_memory_0",
-  "fn_line": 171,
-  "var": "entries",
-  "bind": 187,
-  "call": 189,
-  "call_name": "alloc_tuple",
-  "use": 191
- },
- {
-  "file": "crates/beamr/src/native/tcp_bifs.rs",
-  "fn": "finish_tcp_recv",
-  "fn_line": 397,
-  "var": "read_bytes",
-  "bind": 417,
-  "call": 418,
-  "call_name": "alloc_binary",
-  "use": 422
- },
- {
   "file": "crates/beamr/src/native/tcp_bifs.rs",
   "fn": "finish_tcp_recv",
   "fn_line": 397,
@@ -528,16 +218,6 @@
   "call": 427,
   "call_name": "alloc_binary",
   "use": 428
- },
- {
-  "file": "crates/beamr/src/native/udp_bifs.rs",
-  "fn": "finish_udp_recv",
-  "fn_line": 231,
-  "var": "ip",
-  "bind": 245,
-  "call": 247,
-  "call_name": "alloc_binary",
-  "use": 248
  },
  {
   "file": "crates/beamr/src/native/udp_bifs.rs",
@@ -658,16 +338,6 @@
   "call": 186,
   "call_name": "alloc_cons",
   "use": 189
- },
- {
-  "file": "crates/beamr-wasm/src/convert.rs",
-  "fn": "object_to_term",
-  "fn_line": 192,
-  "var": "property",
-  "bind": 205,
-  "call": 207,
-  "call_name": "alloc_binary",
-  "use": 209
  },
  {
   "file": "crates/beamr-wasm/src/convert.rs",
