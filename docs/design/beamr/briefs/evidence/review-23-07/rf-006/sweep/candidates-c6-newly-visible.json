@@ -1,0 +1,154 @@
+[
+ {
+  "file": "crates/beamr/src/distribution/control.rs",
+  "fn": "alloc_spawn_request",
+  "var": "opt_list",
+  "bind": 523,
+  "call": 527,
+  "call_name": "alloc_tuple"
+ },
+ {
+  "file": "crates/beamr/src/native/ets_bifs.rs",
+  "fn": "finish_paged_results",
+  "var": "pattern_or_spec",
+  "bind": 904,
+  "call": 906,
+  "call_name": "alloc_match_continuation"
+ },
+ {
+  "file": "crates/beamr/src/native/ets_bifs.rs",
+  "fn": "alloc_match_continuation",
+  "var": "tag",
+  "bind": 929,
+  "call": 930,
+  "call_name": "alloc_tuple"
+ },
+ {
+  "file": "crates/beamr/src/native/gate3_bifs/type_conversion_tests.rs",
+  "fn": "float_to_binary_badarg_malformed_options",
+  "var": "float",
+  "bind": 498,
+  "call": 500,
+  "call_name": "alloc_list"
+ },
+ {
+  "file": "crates/beamr/src/native/process_info_bifs.rs",
+  "fn": "bif_process_info_1",
+  "var": "item_atom",
+  "bind": 202,
+  "call": 203,
+  "call_name": "alloc_value"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/io_bifs.rs",
+  "fn": "bif_io_format_2",
+  "var": "target",
+  "bind": 40,
+  "call": 42,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/io_bifs.rs",
+  "fn": "bif_io_get_line_1",
+  "var": "target",
+  "bind": 50,
+  "call": 52,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
+  "fn": "parse_number",
+  "var": "text",
+  "bind": 531,
+  "call": 534,
+  "call_name": "alloc_float"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+  "fn": "bif_lists_unzip",
+  "var": "elements",
+  "bind": 167,
+  "call": 177,
+  "call_name": "alloc_tuple"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+  "fn": "bif_pad",
+  "var": "target_len",
+  "bind": 150,
+  "call": 161,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+  "fn": "bif_pad",
+  "var": "direction",
+  "bind": 151,
+  "call": 161,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+  "fn": "bif_pad",
+  "var": "pad",
+  "bind": 152,
+  "call": 161,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+  "fn": "bif_slice",
+  "var": "text",
+  "bind": 206,
+  "call": 210,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+  "fn": "bif_slice",
+  "var": "offset",
+  "bind": 207,
+  "call": 210,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+  "fn": "bif_slice",
+  "var": "length",
+  "bind": 208,
+  "call": 210,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+  "fn": "error_tuple",
+  "var": "reason",
+  "bind": 257,
+  "call": 261,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/tcp_bifs.rs",
+  "fn": "finish_tcp_recv",
+  "var": "read_bytes",
+  "bind": 417,
+  "call": 418,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr/src/native/udp_bifs.rs",
+  "fn": "finish_udp_recv",
+  "var": "ip",
+  "bind": 245,
+  "call": 247,
+  "call_name": "alloc_binary"
+ },
+ {
+  "file": "crates/beamr-wasm/src/convert.rs",
+  "fn": "object_to_term",
+  "var": "property",
+  "bind": 205,
+  "call": 207,
+  "call_name": "alloc_binary"
+ }
+]
