@@ -1,0 +1,10 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.29s
+     Running unittests src/lib.rs (target/debug/deps/beamr-b491f11a8bb11087)
+
+running 3 tests
+test jit::runtime_binary_match::gc_release_tests::large_extracted_binary_is_released_by_minor_gc ... ok
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection ... ok
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1781 filtered out; finished in 0.00s
+

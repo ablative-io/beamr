@@ -1,0 +1,2 @@
+legs_declared=6
+denominator_rc=0

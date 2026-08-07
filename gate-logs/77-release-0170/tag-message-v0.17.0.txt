@@ -1,0 +1,49 @@
+beamr 0.17.0
+
+Minor release cut from main. The version is forced, not chosen: main carries
+Scheduler::watch_exit (additive public API) and the spawn_link_dirty removal
+(breaking). Either alone disqualifies a patch number under 0.x, so a 0.16.4
+cut from main would ship a version that misdescribes its own contents.
+
+TWO RELEASE LINEAGES, AND THIS IS A STANDING PROPERTY OF THE REPOSITORY.
+
+The minor line lives on main. Patch releases on the 0.16.x line are cut from
+the 0.16.3 release point, tagged v0.16.3, which is NOT an ancestor of main.
+main carries 0.16.3's memory-safety fixes as forward-ports, established file
+by file rather than assumed: every source file carrying a 0.16.3 fix or its
+wall is byte-identical between the tag and this commit.
+
+Consequently, whether a given base carries the 0.16.2 memory-safety fixes is
+a COMMIT-ANCESTRY question and not a version comparison:
+
+    git merge-base --is-ancestor 67f89c4 <base>
+
+0.16.2 has no tag and is pinned by that commit. A cut from a base that does
+not contain it carries the two 0.16.2 classes regardless of its version
+number.
+
+WHAT THIS RELEASE DOES NOT DO.
+
+0.17.0 makes the 0.16.2 and 0.16.3 memory-safety fixes available on the minor
+line. It does NOT close the JIT rooting class. One named site and two open
+classes remain disclosed and reachable under the `jit` feature, which is on
+by default — stale source Terms in jit_bs_start_match, the helper-argument
+staleness class, and the accumulated-results class. The two classes are not
+enumerated. That work is owned by RF-006 and is not released in any version
+to date.
+
+AND `jit` CANNOT BE DISABLED IN ANY BUILD THAT RETAINS `threads`. The
+manifest declares jit = ["std", "threads", …], but parts of the scheduler are
+gated on `threads` while referencing `crate::jit`, so a build with `threads`
+and without `jit` does not compile. Disabling this class therefore requires
+giving up `threads` as well. That is a defect under repair, not an intended
+property. It predates 0.17.0 and is present at v0.16.3. If you run threaded
+beamr you carry this surface, and turning the feature off is not a mitigation
+open to you.
+
+See "Known remaining JIT sites (still open at this release)" and "Correction
+to the 0.16.2 and 0.16.3 advisories" in the CHANGELOG, which carry the same
+facts; this message declares nothing the CHANGELOG does not.
+
+Crates in this release: beamr 0.17.0, beamr-cli 0.5.0, beamr-wasm 0.8.0.
+gleam-types stays 0.4.3 — no commits since its version was set.

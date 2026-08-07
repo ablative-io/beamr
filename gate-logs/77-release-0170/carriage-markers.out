@@ -1,0 +1,27 @@
+pre  = 67f89c4124f8eb4c89e84f201abf0dd0c7b708f8
+163  = 9d0d0e0d900631b9e14dca1e2e5b193b8cdfa493
+post = 377b6de0d1157e5cc44d3dd2cec3c3942cec0e48
+
+=== marker counts ===
+jit/runtime_binary_match.rs          Own the bytes                                pre=0   post=1
+jit/runtime_binary_match.rs          let bytes = bytes.to_vec();                  pre=0   post=1
+jit/runtime_binary_match.rs          Advance the position BEFORE the allocation   pre=0   post=1
+native/gate3_bifs/mod.rs             to_vec()                                     pre=0   post=1
+native/stdlib_stubs/misc_bifs.rs     to_vec()                                     pre=0   post=1
+native/stdlib_stubs/uri_bifs.rs      to_vec()                                     pre=0   post=1
+native/stdlib_stubs/string_bifs.rs   to_vec()                                     pre=2   post=7
+native/etf_bifs.rs                   to_vec()                                     pre=0   post=2
+
+=== CONTROLS ===
+C1 absent-pattern (expect 0): 0
+C2 present-pattern (expect >0): 31
+C3 producer-assertion fires on a bad path: OK (rc=9, said: fatal: path 'crates/beamr/src/native/no_such_file_xyzzy.rs' does not exist in '377b6de0d1157e5cc44d3dd2cec3c3942cec0e48'
+PRODUCER-FAILED rc=128 377b6de0d1157e5cc44d3dd2cec3c3942cec0e48:native/no_such_file_xyzzy.rs)
+
+=== byte-identity v0.16.3 vs v0.17.0 (the stronger claim) ===
+jit/runtime_binary_match.rs          IDENTICAL 1b003425d94312801fb79b0d00126375863acab4
+native/gate3_bifs/mod.rs             IDENTICAL c97f9c1a3059b9681273ed2dfa4856c9f5204f86
+native/stdlib_stubs/misc_bifs.rs     IDENTICAL 2006e85006b8435f97a447399cb2cbd9fe4ba5ee
+native/stdlib_stubs/uri_bifs.rs      IDENTICAL 92fcd2f6482f9382e3d6967f6da6f6761e7372ea
+native/stdlib_stubs/string_bifs.rs   IDENTICAL 6618a417278051a01bc777ba009bec70711f1de5
+native/etf_bifs.rs                   IDENTICAL 22ba91cd025fd40ee9b5a17e0d4e3d1dbada0098

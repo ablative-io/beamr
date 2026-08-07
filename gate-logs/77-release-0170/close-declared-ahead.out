@@ -1,0 +1,16 @@
+--- declared in the tree ---
+crates/beamr-cli/Cargo.toml:version = "0.5.0"
+crates/beamr-wasm/Cargo.toml:version = "0.8.0"
+crates/beamr/Cargo.toml:version = "0.17.0"
+crates/gleam-types/Cargo.toml:version = "0.4.3"
+
+--- declared-ahead probe ---
+gleam-types                  0.4.3    HTTP 200
+beamr                        0.17.0   HTTP 200
+beamr-cli                    0.5.0    HTTP 200
+beamr-wasm                   0.8.0    HTTP 200
+
+--- controls, same invocation ---
+beamr                        0.16.3   HTTP 200
+beamr                        0.99.0   HTTP 404
+beamr-nonexistent-xyzzy      1.0.0    HTTP 404
