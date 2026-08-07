@@ -365,14 +365,25 @@ pub(crate) fn process_from_abi(process: *mut Process) -> Option<&'static mut Pro
 /// allocation failure. A null process cannot reach here: every caller resolves
 /// its pointer through [`process_from_abi`] first, which rejects null before
 /// any root is pushed.
+///
+/// If any slot cannot be read back, the allocation is REFUSED — a null return —
+/// rather than handing the caller its pre-collection term. Continuing there
+/// would reintroduce exactly the stale-`Term` defect this facility exists to
+/// remove, so the unreadable case must be the loud one. The invariant that
+/// makes it unreachable belongs to the collector, not to this function, and is
+/// pinned by `collection_preserves_native_roots` below.
 pub(super) fn alloc_words_rooted(
     process: &mut Process,
     words: usize,
     roots: &mut [Term],
 ) -> *mut u64 {
     let depth = process.native_root_depth();
+    // Keep the indices the root stack hands back rather than deriving them as
+    // `depth + n`: one fact, one source, and no arithmetic that could disagree
+    // with it.
+    let mut indices = Vec::with_capacity(roots.len());
     for root in roots.iter() {
-        process.push_native_root(*root);
+        indices.push(process.push_native_root(*root));
     }
 
     let ptr = alloc_words(process, words);
@@ -380,13 +391,20 @@ pub(super) fn alloc_words_rooted(
     // Read back BEFORE truncating. A failed allocation can still have run a
     // collection that moved these terms, so the forwarded values are handed
     // back on every path, not only on success.
-    for (index, root) in roots.iter_mut().enumerate() {
-        if let Some(forwarded) = process.native_root(depth + index) {
-            *root = forwarded;
+    let mut all_recovered = true;
+    for (root, index) in roots.iter_mut().zip(indices.iter()) {
+        match process.native_root(*index) {
+            Some(forwarded) => *root = forwarded,
+            None => all_recovered = false,
         }
     }
     process.truncate_native_roots(depth);
-    ptr
+
+    if all_recovered {
+        ptr
+    } else {
+        std::ptr::null_mut()
+    }
 }
 
 pub(crate) fn alloc_words(process: &mut Process, words: usize) -> *mut u64 {
@@ -426,6 +444,65 @@ mod rooting_tests {
             ctx.alloc_cons(Term::small_int(1), Term::NIL)
                 .expect("filler");
         }
+    }
+
+    /// The invariant `alloc_words_rooted` must not merely ASSUME: a collection
+    /// forwards the native root stack IN PLACE and never truncates or clears
+    /// it, so a slot pushed before an allocation is still readable after it.
+    ///
+    /// This is a claim about the collector, not about the helper, so it is
+    /// pinned here at the behaviour itself rather than left as a comment in the
+    /// function that depends on it. If this test ever reds, the helper's
+    /// refusal path becomes reachable and every JIT caller starts refusing.
+    #[test]
+    fn collection_preserves_native_roots() {
+        let mut process = Process::new(1, 256);
+        let raw: Vec<u8> = (1..=32).collect();
+        let term = {
+            let mut ctx = test_context(&mut process, 0);
+            ctx.alloc_binary(&raw).expect("inline binary")
+        };
+
+        let depth_before = process.native_root_depth();
+        let index = process.push_native_root(term);
+
+        let words = alloc_binary_word_count(raw.len());
+        fill_until(&mut process, words);
+        assert!(
+            process.heap().available() < words,
+            "geometry must force a collection"
+        );
+        assert_eq!(process.heap().old_used(), 0);
+
+        let ptr = alloc_words(&mut process, words);
+        assert!(!ptr.is_null(), "allocation must succeed");
+        assert!(
+            process.heap().old_used() > 0,
+            "a collection must actually have run"
+        );
+
+        assert_eq!(
+            process.native_root_depth(),
+            depth_before + 1,
+            "a collection must not truncate the native root stack"
+        );
+        let forwarded = process
+            .native_root(index)
+            .expect("the slot must still be readable after a collection");
+        assert_ne!(
+            forwarded, term,
+            "a rooted young-heap term must have been forwarded"
+        );
+        assert_eq!(
+            BinaryRef::new(forwarded)
+                .expect("forwarded root must still be a binary")
+                .as_bytes(),
+            raw.as_slice(),
+            "forwarding must preserve the bytes"
+        );
+
+        process.truncate_native_roots(depth_before);
+        assert_eq!(process.native_root_depth(), depth_before);
     }
 
     /// R2 acceptance: the handed-back terms are the POST-collection values.

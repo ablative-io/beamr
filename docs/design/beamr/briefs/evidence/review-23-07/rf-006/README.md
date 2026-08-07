@@ -184,6 +184,49 @@ diff lines each: `native/stdlib_stubs/string_bifs.rs` (Osiris' H5 lane),
 signatures, so generated code is byte-identical). The refcount marking in
 `allocate_binary` is unchanged and its `gc_release_tests` wall stays green.
 
+## Review finding on `alloc_words_rooted` — fixed
+
+Raised by the domain lead against the first version of the facility, and it
+was right. The read-back was:
+
+```rust
+if let Some(forwarded) = process.native_root(depth + index) {
+    *root = forwarded;
+}                    // and on None: *root keeps the PRE-COLLECTION term
+```
+
+`native_root` returns `None` for an out-of-bounds slot. On `None` the caller
+silently continued with the stale term — **precisely the defect this lane
+exists to remove, wearing a safe-looking `if let`.** The silent arm was the
+dangerous arm.
+
+Two changes:
+
+1. **The unreadable case is now loud**: the allocation is REFUSED (null
+   return) rather than handing back a pre-collection term. Callers already
+   treat null as a refusal — `jit_bs_start_match` returns `0`,
+   `write_map_entries` returns `None` — so this rides existing, generated-code
+   -visible paths and introduces no new edge.
+2. **The indices come from `push_native_root`'s return value** instead of
+   being recomputed as `depth + index`. One fact, one source; the arithmetic
+   relationship that could disagree with it is gone rather than guarded.
+
+The invariant that makes `None` unreachable — that a collection forwards the
+native root stack in place and never truncates it — is a claim about **the
+collector, not about this function**. It is now pinned by
+`collection_preserves_native_roots`, which forces a real collection over a
+pushed root and asserts the depth is unchanged, the slot is still readable,
+the term was forwarded, and the bytes survive. **A function whose safety
+rests on an invariant elsewhere should assert it, not assume it.**
+
+```
+runs/green-r2-hardening-full-lib.txt   rc → .rc = 0
+runs/green-r2-hardening-clippy.txt     rc → .rc = 0
+test result: ok. 1791 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+Denominator: 1790 → **1791**, the one new invariant test.
+
 ## Still owed in this lane
 
 - **Mutation evidence** (one minimal semantic mutation per wall, as a diff
