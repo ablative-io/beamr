@@ -4,6 +4,44 @@ A ground-up BEAM virtual machine written in Rust, targeting [Gleam](https://glea
 
 Built for [Meridian](https://github.com/ablative/yggdrasil) workflow execution, where Gleam's type system provides compile-time validation: if the workflow compiles, the types are correct.
 
+## ⚠️ Security advisory (2026-08-07)
+
+**If you are on `0.16.0` or `0.16.1`, upgrade.** Those releases carry three
+classes of silent memory-safety defect. None of them produce an error or a
+crash — corrupted or freed data is read as valid — so a passing test suite
+proves nothing about your exposure.
+
+**Your options are `0.17.0` or `0.16.3`.** Both carry the fixes. `0.17.0` is
+the current line and the one to prefer; note it is a breaking change
+(`spawn_link_dirty` is removed). `0.16.3` is the last patch on the `0.16.x`
+line if something holds you there.
+
+**A correction to what the earlier advisories told you.** The `0.16.2` and
+`0.16.3` notes described the remaining JIT-reachable sites as *"reachable
+only under the optional `jit` feature"*, which reads as a mitigation you
+could apply. **It is not one.** `jit` cannot be disabled in any build that
+retains `threads` — such a build does not compile. The word was wrong in the
+direction that matters, and it was wrong for `0.16.2` and `0.16.3` exactly as
+published. This is a defect under repair, not an intended property.
+
+**So neither `0.16.3` nor `0.17.0` is a clean bill of health**, and the only
+configuration that removes that surface is **dropping the `threads` feature**
+— not dropping `jit`. The remaining JIT sites are owned and are not fixed in
+any released version to date.
+
+Full mechanics — the affected classes, the exact failing build command, how
+to test a git base for the fixes, and what remains open — are in
+[`CHANGELOG.md`](https://github.com/ablative-io/beamr/blob/main/CHANGELOG.md),
+under **"Advisory — memory-safety fixes on the 0.16.x line"** and
+**"Correction to the 0.16.2 and 0.16.3 advisories"**. Site-level detail is in
+`AMENDMENT 3` of
+[`AUDIT.md`](https://github.com/ablative-io/beamr/blob/main/docs/design/beamr/briefs/evidence/aion-encode-gc-defect/asbytes-sweep/AUDIT.md).
+
+This note points rather than restates, on purpose: two copies of a safety
+fact drift apart, and the copy a reader happens to find is the one that
+misleads them. That is exactly how the word *optional* survived as long as it
+did.
+
 ## Getting started
 
 ```bash
