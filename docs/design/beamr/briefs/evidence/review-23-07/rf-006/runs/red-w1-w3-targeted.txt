@@ -1,0 +1,34 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.38s
+     Running unittests src/lib.rs (/Users/tom/Developer/ablative/stack/beamr/target/debug/deps/beamr-b491f11a8bb11087)
+
+running 4 tests
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_procbin_source_box_referent_survives_forced_collection ... ok
+test jit::runtime_binary_match::gc_hazard_tests::bs_get_binary_inline_source_survives_forced_collection ... ok
+test jit::runtime_binary_match::gc_hazard_tests::start_match_source_survives_forced_collection ... FAILED
+test jit::runtime_map::gc_hazard_tests::map_update_boxed_values_survive_forced_collection ... FAILED
+
+failures:
+
+---- jit::runtime_binary_match::gc_hazard_tests::start_match_source_survives_forced_collection stdout ----
+
+thread 'jit::runtime_binary_match::gc_hazard_tests::start_match_source_survives_forced_collection' (37784921) panicked at crates/beamr/src/jit/runtime_binary_match.rs:495:9:
+assertion `left == right` failed: context stored the pre-move source: stored=0x00000001064ff234 forwarded=0x0000000106500a34 original=0x00000001064ff234
+  left: Term(4400869940)
+ right: Term(4400876084)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- jit::runtime_map::gc_hazard_tests::map_update_boxed_values_survive_forced_collection stdout ----
+
+thread 'jit::runtime_map::gc_hazard_tests::map_update_boxed_values_survive_forced_collection' (37784922) panicked at crates/beamr/src/jit/runtime_map.rs:257:13:
+assertion `left == right` failed: merged map stored a pre-move value for key 0: stored=0x0000000a3ec0c004 forwarded=0x0000000a3ec0c86c
+  left: Term(44002492420)
+ right: Term(44002494572)
+
+
+failures:
+    jit::runtime_binary_match::gc_hazard_tests::start_match_source_survives_forced_collection
+    jit::runtime_map::gc_hazard_tests::map_update_boxed_values_survive_forced_collection
+
+test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 1782 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p beamr --lib`
