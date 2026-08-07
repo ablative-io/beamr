@@ -1,0 +1,2252 @@
+[
+  {
+    "file": "crates/beamr/examples/actor_per_shard.rs",
+    "line": 75,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[\n            Term::try_small_int(self.key)?,\n            T",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control.rs",
+    "line": 517,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&request.mfa.args",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control.rs",
+    "line": 642,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control.rs",
+    "line": 195,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(SEND), cookie, to_pid]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control.rs",
+    "line": 212,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[\n            Term::small_int(REG_SEND),\n            from_p",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control.rs",
+    "line": 248,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[\n            Term::small_int(PG_UPDATE),\n            Term:",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control.rs",
+    "line": 518,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[\n        Term::atom(request.mfa.module),\n        Term::ato",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control.rs",
+    "line": 527,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[\n        op,\n        req_id,\n        request.from,\n       ",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control.rs",
+    "line": 546,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[op, req_id, pid]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 219,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(op.opcode()), from, to]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 221,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(op.opcode()), from, to, reason.as_term()]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 787,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(EXIT), from, to, Term::atom(weird)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 813,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(77), from, to]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 835,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(LINK), from, to, Term::atom(Atom::NORMAL)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 843,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(EXIT), from, to]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 871,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(LINK), Term::pid(1), to]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 878,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(UNLINK), from, Term::pid(2)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 907,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(LINK), Term::pid(1), ext]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 910,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(LINK), ext, Term::pid(1)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 932,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), Term::small_int(1)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/control_link.rs",
+    "line": 935,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(op), from, to, reason]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/distribution/pg.rs",
+    "line": 493,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&terms",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/etf/decode.rs",
+    "line": 197,
+    "sink": "alloc_list_with_tail",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/etf/decode.rs",
+    "line": 175,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/etf/decode.rs",
+    "line": 1075,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/etf/decode.rs",
+    "line": 238,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[module, function, arity]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/etf/decode.rs",
+    "line": 409,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/etf/decode.rs",
+    "line": 1068,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/etf/decode.rs",
+    "line": 269,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": false,
+    "arg": "&keys",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/ets/match_arena.rs",
+    "line": 74,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(1), Term::small_int(2)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/ets/match_arena.rs",
+    "line": 89,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/ets/match_arena.rs",
+    "line": 60,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(1), Term::small_int(2)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/ets/match_spec.rs",
+    "line": 121,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/ets/match_spec.rs",
+    "line": 384,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&evaluated",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/ets/match_spec.rs",
+    "line": 392,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&values",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/ets/match_spec.rs",
+    "line": 117,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/ets/match_spec.rs",
+    "line": 380,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&evaluated",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/jit/runtime.rs",
+    "line": 444,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "Term::small_int(1)",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+    "line": 464,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "Term::small_int(1)",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/jit/runtime_map.rs",
+    "line": 222,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": false,
+    "arg": "&keys",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/jit/runtime_map.rs",
+    "line": 181,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "Term::small_int(1)",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/actor.rs",
+    "line": 177,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(TAG_CAST), payload]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/actor.rs",
+    "line": 231,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[\n                            Term::small_int(TAG_REPLY),\n ",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/actor_clients.rs",
+    "line": 56,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(TAG_CAST), payload]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/actor_clients.rs",
+    "line": 90,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(TAG_CALL), reference, reply_to, request]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/actor_cooperative.rs",
+    "line": 241,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(TAG_CAST), payload]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/actor_cooperative.rs",
+    "line": 304,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(TAG_CALL), reference, reply_to, request]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/actor_dynamic_tests.rs",
+    "line": 68,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[element]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/actor_dynamic_tests.rs",
+    "line": 97,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[incremented, ok]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/bifs.rs",
+    "line": 235,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(source_key), Term::atom(source)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/bifs.rs",
+    "line": 237,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "source_tuple",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/code_management_bifs.rs",
+    "line": 84,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::MODULE), Term::atom(result.module_name)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/code_management_bifs.rs",
+    "line": 147,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[module, source]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/code_management_bifs.rs",
+    "line": 148,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "tuple",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/dictionary_bifs.rs",
+    "line": 116,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&keys",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/dictionary_bifs.rs",
+    "line": 132,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&tuples",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/dictionary_bifs.rs",
+    "line": 130,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[key, value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/dictionary_bifs.rs",
+    "line": 221,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(10)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/dictionary_bifs.rs",
+    "line": 227,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(11)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 83,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[binary]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 142,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&terms",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 377,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(compressed_atom)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 400,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[tuple]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 430,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(compressed_atom)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 468,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[tuple]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 494,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[tuple]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 520,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[tuple]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 572,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(safe_atom)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 615,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(used_atom)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 118,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[decoded.term, used_term]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 398,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(compressed_atom), Term::small_int(10)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 466,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(compressed_atom), Term::small_int(0)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 492,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(minor_version_atom), Term::small_int(2)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/etf_bifs.rs",
+    "line": 518,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(compressed_atom), Term::small_int(10)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 372,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&results",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 392,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&results",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 419,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&results",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 566,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&entries",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 902,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&page.results",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 967,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&values",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1297,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&copied",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1361,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&terms",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1496,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1510,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1532,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[heir_option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1541,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[none_option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1556,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1574,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1596,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(ordered_set), read_option, write_option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1622,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[read_option, write_option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1644,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[write_option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1652,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[read_option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1761,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[first, second]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1793,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[first, second, third]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1867,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[first, second]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1937,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[second, first]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2102,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[first, second, third]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2164,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[guard]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2165,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(second_var)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2167,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[clause]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2199,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2205,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[body_constructor]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2207,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[clause]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2276,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2277,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(second_var)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2279,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[clause]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2314,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[first, second, duplicate]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 2407,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[first, second]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 564,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(item_atom), value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 917,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[results, continuation]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 930,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[\n        tag,\n        small_int_from_u64(table_id)?,\n     ",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/ets_bifs.rs",
+    "line": 1365,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/file_bifs.rs",
+    "line": 491,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/file_bifs.rs",
+    "line": 495,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), Term::atom(reason)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/file_bifs.rs",
+    "line": 503,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::INCOMPLETE), count]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/file_bifs.rs",
+    "line": 504,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), reason]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/file_bifs_tests.rs",
+    "line": 150,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": true,
+    "arg": "values",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/file_meta_bifs.rs",
+    "line": 170,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&terms",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/file_meta_bifs.rs",
+    "line": 242,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&fields",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/file_meta_bifs.rs",
+    "line": 311,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/file_meta_bifs.rs",
+    "line": 315,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), Term::atom(reason)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/gate3_bifs/mod.rs",
+    "line": 845,
+    "sink": "alloc_list_with_tail",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/gate3_bifs/mod.rs",
+    "line": 321,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/gate3_bifs/mod.rs",
+    "line": 769,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/gate3_bifs/type_conversion.rs",
+    "line": 108,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/gate3_bifs/type_conversion.rs",
+    "line": 259,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/gate3_bifs/type_conversion_tests.rs",
+    "line": 30,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": true,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/gate3_bifs/type_conversion_tests.rs",
+    "line": 485,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/gate3_bifs/type_conversion_tests.rs",
+    "line": 500,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[Term::atom(Atom::OK)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/gate3_bifs/type_conversion_tests.rs",
+    "line": 519,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[option]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/gleam_ffi.rs",
+    "line": 282,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), pid_term]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/gleam_ffi.rs",
+    "line": 284,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), GLEAM_NIL]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/gleam_ffi.rs",
+    "line": 301,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), *term]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/gleam_ffi.rs",
+    "line": 303,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), GLEAM_NIL]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/inet_bifs.rs",
+    "line": 93,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&values",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/inet_bifs.rs",
+    "line": 638,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "values",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/inet_bifs.rs",
+    "line": 403,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(option), term]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/inet_bifs.rs",
+    "line": 428,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[\n        small_int(i64::from(ip[0]))?,\n        small_int(i",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/inet_bifs.rs",
+    "line": 435,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[address, port]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/inet_bifs.rs",
+    "line": 495,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/inet_bifs.rs",
+    "line": 499,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), Term::atom(reason)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/inet_bifs.rs",
+    "line": 643,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[left, right]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/meridian_ffi.rs",
+    "line": 68,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), binary]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/meridian_ffi.rs",
+    "line": 73,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), binary]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/meridian_ffi.rs",
+    "line": 77,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), Term::NIL]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+    "line": 54,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(app)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+    "line": 70,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&variables",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+    "line": 302,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+    "line": 55,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), apps]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+    "line": 149,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(family), Term::atom(name)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+    "line": 353,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), Term::atom(bad_name)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+    "line": 358,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(not_loaded), Term::atom(app)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+    "line": 359,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(app), inner]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+    "line": 360,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), reason]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/mod.rs",
+    "line": 129,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), pid_term]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/otp_stubs/tests.rs",
+    "line": 416,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": true,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/process_info_bifs.rs",
+    "line": 206,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&tuples",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/process_info_bifs.rs",
+    "line": 301,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&terms",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/process_info_bifs.rs",
+    "line": 317,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&terms",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/process_info_bifs.rs",
+    "line": 176,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[*item_term, value_term]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/process_info_bifs.rs",
+    "line": 204,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(item_atom), value_term]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/process_info_bifs.rs",
+    "line": 248,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[\n                Term::atom(module),\n                Term:",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/process_info_bifs.rs",
+    "line": 314,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[process_atom, target]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b038_tests.rs",
+    "line": 30,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": true,
+    "arg": "*element",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b127_tests.rs",
+    "line": 81,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[a, Term::small_int(1)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b127_tests.rs",
+    "line": 82,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[b, Term::small_int(2)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b127_tests.rs",
+    "line": 148,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[a, Term::small_int(1)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b127_tests.rs",
+    "line": 149,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[b, Term::small_int(2)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b127_tests.rs",
+    "line": 152,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[a, Term::small_int(99)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b127_tests.rs",
+    "line": 173,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[Term::small_int(1)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b127_tests.rs",
+    "line": 204,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[Term::small_int(1), Term::small_int(2), Term::small_int(3)",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b127_tests.rs",
+    "line": 288,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": true,
+    "arg": "&keys",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/b127_tests.rs",
+    "line": 29,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": true,
+    "arg": "*element",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs",
+    "line": 86,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[a, b]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs",
+    "line": 40,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": true,
+    "arg": "&floats",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs",
+    "line": 64,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": true,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs",
+    "line": 188,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": true,
+    "arg": "Term::small_int(1)",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/gc_rooting_tests.rs",
+    "line": 458,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": true,
+    "arg": "used",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/io_bifs.rs",
+    "line": 189,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(request_tag), Term::atom(unicode), data]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/io_bifs.rs",
+    "line": 263,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), Term::atom(reason)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
+    "line": 242,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[tag, Term::small_int(i64::from(byte))]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
+    "line": 256,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[tag, binary]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
+    "line": 337,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
+    "line": 380,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": false,
+    "arg": "&keys",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs",
+    "line": 88,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[label]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs",
+    "line": 85,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": true,
+    "arg": "Term::small_int(2)",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs",
+    "line": 86,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": true,
+    "arg": "Term::small_int(1)",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs",
+    "line": 237,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": true,
+    "arg": "Term::small_int(0)",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/json_bifs_tests.rs",
+    "line": 270,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": true,
+    "arg": "Term::small_int(1)",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+    "line": 177,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::NIL, Term::NIL]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+    "line": 21,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&flattened",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+    "line": 64,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&joined",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+    "line": 116,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+    "line": 128,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&flattened",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+    "line": 242,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+    "line": 267,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&results",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+    "line": 286,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+    "line": 302,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&results",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/lists_hof_bifs.rs",
+    "line": 300,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&results",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/maps_bifs.rs",
+    "line": 183,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&keys?",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/maps_bifs.rs",
+    "line": 194,
+    "sink": "list_from_vec",
+    "kind": "collection",
+    "test": false,
+    "arg": "&values?",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/misc_bifs.rs",
+    "line": 110,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&elements",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/misc_bifs.rs",
+    "line": 193,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[*item, value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+    "line": 93,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&terms",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+    "line": 136,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&codepoints",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+    "line": 141,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "head",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/type_conversion_bifs.rs",
+    "line": 131,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&values",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/type_conversion_bifs.rs",
+    "line": 205,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&terms?",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/type_conversion_bifs.rs",
+    "line": 119,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&list_to_vec(*list_term)?",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+    "line": 136,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&terms",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+    "line": 134,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[key, value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+    "line": 149,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[badkey, *key]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+    "line": 262,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[error, reason, detail]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+    "line": 93,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": false,
+    "arg": "&keys",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs_tests.rs",
+    "line": 158,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[key]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/system_info_bifs.rs",
+    "line": 191,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&entries",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/system_info_bifs.rs",
+    "line": 167,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[small_int(total)?, small_int(since_last)?]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/system_info_bifs.rs",
+    "line": 189,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(item_atom), value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/tcp_bifs.rs",
+    "line": 250,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), Term::atom(not_owner)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/tcp_bifs.rs",
+    "line": 746,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/tcp_bifs.rs",
+    "line": 750,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), Term::atom(reason)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/udp_bifs.rs",
+    "line": 248,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[ip, port, binary]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/udp_bifs.rs",
+    "line": 351,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[a, b, c, d]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/udp_bifs.rs",
+    "line": 355,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::OK), value]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/udp_bifs.rs",
+    "line": 359,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), Term::atom(reason)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/udp_bifs.rs",
+    "line": 367,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::INCOMPLETE), count]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/udp_bifs.rs",
+    "line": 368,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), reason]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/native/udp_bifs.rs",
+    "line": 467,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "terms",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/native/udp_bifs.rs",
+    "line": 473,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "*term",
+    "shape": "other"
+  },
+  {
+    "file": "crates/beamr/src/scheduler/wasm_tests.rs",
+    "line": 171,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[Term::small_int(1), Term::small_int(2)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/src/term/json.rs",
+    "line": 390,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": false,
+    "arg": "&keys",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/src/term/json.rs",
+    "line": 369,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "head",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr/tests/native_actor.rs",
+    "line": 201,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[\n                Term::try_small_int(i64::try_from(self.re",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/tests/suspend_reexec.rs",
+    "line": 75,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[Term::atom(Atom::OK), fired]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr/tests/suspend_result_binary.rs",
+    "line": 82,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[Term::atom(Atom::OK), payload]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/capability.rs",
+    "line": 444,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[kind, detail]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/capability.rs",
+    "line": 445,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), inner]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/capability.rs",
+    "line": 462,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[kind_term, detail_term]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/capability.rs",
+    "line": 463,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::atom(Atom::ERROR), inner]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/capability.rs",
+    "line": 573,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[kind_term, detail_term]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/capability.rs",
+    "line": 595,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[tag, built]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/capability_tests.rs",
+    "line": 717,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[key]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/capability_tests.rs",
+    "line": 1029,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": true,
+    "arg": "&[key]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/convert.rs",
+    "line": 452,
+    "sink": "alloc_list",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[Term::small_int(7), Term::atom(Atom::TRUE)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/convert.rs",
+    "line": 455,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[utf8, Term::small_int(9)]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/convert.rs",
+    "line": 223,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": false,
+    "arg": "&keys",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr-wasm/src/convert.rs",
+    "line": 460,
+    "sink": "alloc_map",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[key]",
+    "shape": "literal"
+  },
+  {
+    "file": "crates/beamr-wasm/src/convert.rs",
+    "line": 141,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "head",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr-wasm/src/convert.rs",
+    "line": 186,
+    "sink": "alloc_cons",
+    "kind": "threading",
+    "test": false,
+    "arg": "head",
+    "shape": "variable"
+  },
+  {
+    "file": "crates/beamr-wasm/src/lib.rs",
+    "line": 1628,
+    "sink": "alloc_tuple",
+    "kind": "collection",
+    "test": false,
+    "arg": "&[error_atom, reason_term]",
+    "shape": "literal"
+  }
+]
