@@ -94,11 +94,32 @@ def cfg_test_lines(path):
     the 32/27/5 split published at f0be59a stands; the defect is in the
     instrument, not in that reading. Arm I in shape_hunt_controls.py fires on
     the unfixed walk. Found by Cally Ray while siting the R10 fixture.
+
+    ⚠️ THE DISARM MUST FIRE ON STRUCTURE, NOT ON PUNCTUATION. A `;` also appears
+    inside an item's OWN signature -- `fn f() -> [u8; 4] {`, `impl T for
+    [u8; 4]` -- where it ends nothing. Disarming there would label the whole
+    test block `prod`. So the disarm is taken only at BRACKET DEPTH 0, and
+    `bracket_depth` is RESET when the attribute arms: an unbalanced `[` earlier
+    in the file would otherwise leave the disarm permanently off and silently
+    resurrect the forward leak above. Arms L/L2 and N. Zero sites in crates/
+    carry the shape today -- this closes it before one does.
+
+    ⚠️ ARMING IS A CLAIM ABOUT WHAT SHIPS, so `all` and `any` are NOT the same.
+    `#[cfg(all(test, X))]` compiles only under test AND X => test-only, and the
+    walk must arm on it (25 sites, 2,992 lines were labelled `prod`).
+    `#[cfg(any(test, X))]` compiles under test OR X => IT SHIPS whenever X is
+    on, so `prod` is already correct and arming on it would introduce a fresh
+    mislabel IN THE HIDING DIRECTION -- the same direction the leak erred in,
+    caused by the fix for it. Arm K holds that line. ⭐ A POPULATION IS A CLAIM
+    ABOUT A PREDICATE: "mentions test" bundles two constructs whose correct
+    labels are OPPOSITE. Reported as 48 sites by Artemis Peach; the defect
+    population is 25, and the narrowing is the load-bearing half.
     """
     src = path.read_text().splitlines()
     depth = 0
     in_block_comment = False
     pending_cfg = False
+    bracket_depth = 0
     test_depth = None
     gated = set()
 
@@ -107,8 +128,11 @@ def cfg_test_lines(path):
             test_depth = None
         if test_depth is not None:
             gated.add(lineno)
-        if line.strip().startswith('#[cfg(test)]'):
+        # `all(test, X)` is test-ONLY and must arm. `any(test, X)` SHIPS under X
+        # and must not -- see the docstring; arm K fails if this widens.
+        if re.match(r'#\[cfg\(test\)\]|#\[cfg\(all\(test\b', line.strip()):
             pending_cfg = True
+            bracket_depth = 0
 
         depth_before_line = depth
         i = 0
@@ -153,9 +177,15 @@ def cfg_test_lines(path):
                     continue
                 i += 1
                 continue
-            if c == ';' and pending_cfg:
+            if c in '([':
+                bracket_depth += 1
+            elif c in ')]':
+                bracket_depth = max(0, bracket_depth - 1)
+            if c == ';' and pending_cfg and bracket_depth == 0:
                 # braceless cfg(test) item: it ends here and owns no block, so
                 # the attribute must not reach forward to the next `{`.
+                # DEPTH 0 ONLY: a `;` inside `[u8; N]` in the item's own
+                # signature is punctuation, not the end of the item.
                 pending_cfg = False
             if c == '{':
                 depth += 1
