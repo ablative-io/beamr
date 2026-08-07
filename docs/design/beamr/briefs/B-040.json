@@ -1,7 +1,6 @@
 {
   "id": "B-040",
   "status": "approved",
-  "created": "2026-05-31T00:00:00Z",
   "cluster": "beamr",
   "title": "Gleam stdlib wrappers — second wave and sample workflow e2e",
   "depends_on": ["B-037", "B-038", "B-039"],

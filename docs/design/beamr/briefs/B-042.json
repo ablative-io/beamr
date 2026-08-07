@@ -1,7 +1,6 @@
 {
   "id": "B-042",
   "status": "approved",
-  "created": "2026-06-02T00:00:00Z",
   "cluster": "beamr",
   "title": "Process version pinning and safe version transitions",
   "depends_on": ["B-041"],

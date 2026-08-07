@@ -1,7 +1,6 @@
 {
   "id": "B-040b",
   "status": "approved",
-  "created": "2026-05-31T00:00:00Z",
   "cluster": "beamr",
   "title": "Gleam stdlib I/O + URI wrappers and sample workflow e2e",
   "depends_on": ["B-040a"],

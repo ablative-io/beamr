@@ -1,7 +1,6 @@
 {
   "id": "B-034",
   "status": "approved",
-  "created": "2026-05-31T00:00:00Z",
   "cluster": "beamr",
   "title": "GC integration — wire generational copying collector to interpreter loop",
   "depends_on": ["B-021", "B-017"],

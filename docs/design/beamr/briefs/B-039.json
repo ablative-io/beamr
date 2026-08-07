@@ -1,7 +1,6 @@
 {
   "id": "B-039",
   "status": "approved",
-  "created": "2026-05-31T00:00:00Z",
   "cluster": "beamr",
   "title": "String, binary, and I/O BIFs — remaining sample workflow coverage",
   "depends_on": ["B-033"],

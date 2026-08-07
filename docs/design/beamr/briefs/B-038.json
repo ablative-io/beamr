@@ -1,7 +1,6 @@
 {
   "id": "B-038",
   "status": "approved",
-  "created": "2026-05-31T00:00:00Z",
   "cluster": "beamr",
   "title": "Collection BIFs — maps and lists operations",
   "depends_on": ["B-033"],

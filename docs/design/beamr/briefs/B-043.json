@@ -1,7 +1,6 @@
 {
   "id": "B-043",
   "status": "approved",
-  "created": "2026-06-02T00:00:00Z",
   "cluster": "beamr",
   "title": "Dynamic import resolution for cross-module calls",
   "depends_on": ["B-041"],

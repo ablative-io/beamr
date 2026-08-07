@@ -1,7 +1,6 @@
 {
   "id": "B-037",
   "status": "approved",
-  "created": "2026-05-31T00:00:00Z",
   "cluster": "beamr",
   "title": "Core erlang BIFs — arithmetic, type conversion, bitwise, and math",
   "depends_on": ["B-033"],

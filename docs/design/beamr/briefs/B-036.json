@@ -1,7 +1,6 @@
 {
   "id": "B-036",
   "status": "approved",
-  "created": "2026-05-31T00:00:00Z",
   "cluster": "beamr-meridian",
   "title": "beamr-meridian crate scaffold — MeridianRuntime, NIF wiring, run_workflow",
   "depends_on": ["B-033", "B-035"],

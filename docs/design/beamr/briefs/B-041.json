@@ -1,7 +1,6 @@
 {
   "id": "B-041",
   "status": "approved",
-  "created": "2026-06-02T00:00:00Z",
   "cluster": "beamr",
   "title": "Dual-version module registry with purge detection",
   "depends_on": ["B-032"],

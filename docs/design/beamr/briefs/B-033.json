@@ -1,7 +1,6 @@
 {
   "id": "B-033",
   "status": "approved",
-  "created": "2026-05-31T00:00:00Z",
   "cluster": "beamr",
   "title": "Gleam stdlib native stubs — string, iolist, and gleam_stdlib BIFs",
   "depends_on": ["B-032"],

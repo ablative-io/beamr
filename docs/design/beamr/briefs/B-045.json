@@ -1,7 +1,6 @@
 {
   "id": "B-045",
   "status": "approved",
-  "created": "2026-06-02T00:00:00Z",
   "cluster": "beamr",
   "title": "Code server API, on_load handler, and hot code loading integration",
   "depends_on": ["B-041", "B-042", "B-043", "B-044"],

@@ -1,7 +1,6 @@
 {
   "id": "B-035",
   "status": "approved",
-  "created": "2026-05-31T00:00:00Z",
   "cluster": "beamr",
   "title": "Term-to-Value bridge — bidirectional serde_json::Value conversion",
   "depends_on": ["B-033"],
