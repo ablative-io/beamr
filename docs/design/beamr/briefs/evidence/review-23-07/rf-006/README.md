@@ -129,6 +129,61 @@ same zero-fill.
 
 ---
 
+## GREEN — R2 + R3-remainder (H3) + R4 (H4)
+
+Wall commit (RED): **`5908a38`**. The fix commit is its child.
+
+**R2 — `alloc_words_rooted` (`jit/runtime.rs`).** Pushes the caller's terms
+onto the native root stack, allocates, reads the forwarded values back into
+the caller's slice, and truncates to entry depth. Single exit path, so depth
+is restored on success, on `words == 0`, and on allocation failure alike.
+The read-back happens **before** the truncate and on **every** path — a
+failed allocation can still have run a collection that moved the terms.
+
+**R3-remainder (H3).** `jit_bs_start_match` roots `source` across the
+match-context allocation and writes the forwarded value into `heap[3]`.
+
+**R4 (H4).** `write_map_entries` roots every key and value across the
+allocation and writes the forwarded values into the fresh map. It now uses
+`alloc_words_rooted` in place of `gc::ensure_space` + `alloc_slice`; the
+live-register count (`256`) and every refusal value are unchanged.
+
+⚠️ **R4's spec as written was unrealisable.** It said to move the reservation
+ahead of the captures "mirroring `put_map`". `put_map` is safe because it
+**re-reads the source from its operand** after reserving
+(`interpreter/opcodes/closures.rs:476-480`). This helper has no operand, and
+generated code stages the update pairs into a Cranelift `ExplicitSlot` the
+collector cannot see — so re-reading returns the same stale word. **Hoisting
+alone does not fix H4; R4 depends on R2.** Ruled and accepted before build.
+
+Artifacts:
+
+```
+runs/green-r2r3r4-full-lib.txt   rc → runs/green-r2r3r4-full-lib.rc   = 0
+runs/green-r2r3r4-clippy.txt     rc → runs/green-r2r3r4-clippy.rc     = 0
+```
+
+```
+test result: ok. 1790 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+`cargo fmt --all -- --check` rc 0. Clippy artifact carries **zero** lines
+matching `^(warning|error)`.
+
+**Denominator walk:** 1784 before this lane → 1786 at the wall commit (W1,
+W3) → 1790 after the fix (four R2 unit tests). Every delta named.
+
+**Fail-first is in history, not asserted.** W1 and W3 are red at `5908a38`
+and green at its child, with the production diff between them. No
+revert-and-restore was needed to demonstrate it.
+
+**Bar:** zero new `#[allow]`, zero `_ =>` arms, zero `unwrap`/`expect`/`panic`
+in production across all three files. Hard stops verified untouched at zero
+diff lines each: `native/stdlib_stubs/string_bifs.rs` (Osiris' H5 lane),
+`loader/encode/**` (Vesper's claim), `jit/compiler/ir_helpers.rs` (JIT ABI
+signatures, so generated code is byte-identical). The refcount marking in
+`allocate_binary` is unchanged and its `gc_release_tests` wall stays green.
+
 ## Still owed in this lane
 
 - **Mutation evidence** (one minimal semantic mutation per wall, as a diff
