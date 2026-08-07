@@ -55,7 +55,7 @@ payload rots — measured, on my own memory index, an hour before this table was
 | 1 | OPEN — ordering-sensitive detector, unbuilt | as written |
 | 2 | OPEN — ledger **pre-registered**, `evidence/accumulator-rooting/{dispositions,ledger_check}.*` | A5 |
 | 3 | OPEN — four `UNRULED-PRERESERVE` rows undischarged | as written |
-| 4 | OPEN — wasm leg unpriced; **per-site commit granularity now required** | A3 |
+| 4 | **PARTLY DISCHARGED** — leg priced (28.19 s, setup cost zero); **13 + 17 red-at-parent DEMONSTRATED**, 12 + 16 not; per-site commit granularity still required | A3, A6 |
 | 5 | ✅ **MET** — ancestry checked | A2 |
 | 6 | OPEN, **unfired** — my sighting was false and is retracted | A4 |
 | 7 | ✅ **DISCHARGED** — S3e hunt, 14 → 17 | A1 |
@@ -63,8 +63,11 @@ payload rots — measured, on my own memory index, an hour before this table was
 | 9 | ✅ **DISCHARGED** — 56/56 measured | A2 |
 | R10 | ✅ **DISCHARGED** — 5 fixtures + 5 controls; fmt/clippy/test green, hunt finds five | A5 |
 
-**Counts at head:** 32 raw hits · **27 production · 5 `cfg(test)`** · **the seventeen unchanged.**
-S3c remains 0 **and uncontrolled** — an uninterpretable zero, not a clean one.
+**Counts at `308b448`:** 39 raw hits · **27 production · 12 `cfg(test)`** · **the seventeen unchanged.**
+Production is unchanged at 27; raw and the `cfg(test)` column moved when R10's five fixtures landed.
+S3c is **0 but now controlled** — `ar1_shape_control.rs:152` holds it, so the zero is interpretable.
+⭐ **A COUNT LABELLED "AT HEAD" CARRIES AN EXPIRY THAT A COUNT LABELLED WITH A SHA DOES NOT** — same
+numbers, different lifetimes, and only one of them rots. These are pinned to a sha for that reason.
 
 ---
 
@@ -329,7 +332,14 @@ A new unruled hit fails. **A vanished hit fails unless it carries a disposition.
 Sites 16/17 are in `beamr-wasm/src/convert.rs`; **17 (`value_to_term`, `:199`) takes `JsValue`/`Object`,
 so a red-at-parent test needs wasm32 + `wasm-bindgen-test` + node** — a build leg nobody has costed.
 **Price it, or the site's disposition is `FIXED-UNVERIFIED` and sign-off blocks until the leg lands or
-the risk is explicitly ruled accepted.** ⛔ **The one escape that stays forbidden is a class-level test
+the risk is explicitly ruled accepted.**
+
+> ⛔ **THE CLAUSE ABOVE IS RETAINED AS WRITTEN, AND ITS PREMISE WAS FALSE.** The leg was already
+> installed, pinned, and wired as `wasm-tests` in `gates.json:7` and in CI before this lane existed.
+> ⭐ **AN ABSENCE CLAIMED WITHOUT A SEARCH IS NOT A FINDING, IT IS A DEFAULT.** See **Amendment 6**;
+> the row's requirement survives intact, only its cost estimate was wrong.
+
+⛔ **The one escape that stays forbidden is a class-level test
 standing in for it.** ⭐ *Forcing a binary where an honest third state exists is what makes people fudge.*
 
 ## ROWS VERIFIED, NOT TAKEN ON REPORT
@@ -445,9 +455,9 @@ sites, "its own parent" is undefined for sixteen of them and the row is unmeetab
 site-group carrying its own test), and that is a requirement of row 4, stated here rather than
 discovered at landing.**
 
-The wasm leg (sites 16/17, `beamr-wasm/src/convert.rs`) is **still unpriced.** Row 4's honest third
-state stands: unpriced ⇒ disposition `FIXED-UNVERIFIED` ⇒ sign-off blocks. No class-level test may
-stand in for it.
+The wasm leg is **priced** (Amendment 6). Row 4's honest third state still stands for sites **12 and
+16**, which have no demonstrated red: unpriced-in-fact ⇒ `FIXED-UNVERIFIED` ⇒ sign-off blocks. No
+class-level test may stand in for them, and **priced-by-analogy is not priced.**
 
 ## ROWS 5, 7, 9 — DISCHARGE READ CONFIRMED AT MY HANDS
 
@@ -572,8 +582,10 @@ self-test **in both directions** — a claim true at the bytes must PASS, a refu
 CHECK WITH NOTHING TO ACT ON SHIPS AS PROSE IN A SCRIPT'S CLOTHING UNLESS SOMETHING MAKES IT RUN.**
 `--sign-off` refuses all 17 PENDING today, rc 2.
 
-**Row 4 feeds off the same ledger:** ids **12, 13, 16, 17** carry `wasm32 + wasm-bindgen-test + node —
-UNPRICED`. That is now written down per site rather than described once in prose.
+**Row 4 feeds off the same ledger:** ids **12, 13, 16, 17** now carry the **priced** leg, and 13/17
+additionally carry `RED-AT-PARENT DEMONSTRATED at 308b448` while 12/16 carry an explicit
+`NOT DEMONSTRATED`. That is written down per site rather than described once in prose — which is what
+kept 12 and 16 from inheriting a proof that was never run for them.
 
 ## 🔴 THE LABELLER LEAKED, AND ITS WHOLE ERROR BUDGET POINTED AT CONCEALMENT
 
@@ -608,3 +620,65 @@ the skip list *on purpose*, so it is the first artefact where the labeller carri
 The fixture is sited in-file, which is correct — **but I chose that reasoning about `source_files()`
 and had not considered cross-file gating at all. Right answer, incomplete reason; recorded as the
 coincidence it was rather than the decision it looks like.**
+
+---
+
+## AMENDMENT 6 — ROW 4: the wasm leg, priced (Cally, at `308b448`)
+
+Full working: `evidence/accumulator-rooting/row4_wasm_leg_pricing.md`.
+Artefacts: `row4_probe.rs.txt` (source), `row4_red_at_parent.txt` (transcript + hashes + load).
+
+### The premise was false, and cheaply checkable
+
+Row 4 called this **"a build leg nobody has costed."** Nobody had *looked*. The wasm32 target is
+installed and **pinned in `rust-toolchain.toml`**; `wasm-bindgen-test-runner` is on PATH at 0.2.123,
+**matching** `Cargo.lock`; `wasm-bindgen-test` is already a dev-dependency; node is v26.4.0; and the
+leg is a **named gate — `gates.json:7`, `wasm-tests`** — with the runner env var set, a version check
+prepended, and a CI workflow. **Setup cost: zero.**
+
+**Run cost: 28.19 s** for the full 80-test suite, `wasm32-check` a further 7.79 s. Taken under
+**declared contention** (10 cores, 1-min load 10.00–14.15), which **inflates** wall-clock — so these
+are **upper bounds**, the safe direction for a pricing decision. Warm-cache; **no cold figure was
+measured and none may be quoted.**
+
+### ⛔ The expensive part was never the toolchain
+
+**All 80 existing wasm tests are structurally incapable of failing on this class**, for **two
+independent reasons** — fixing either alone would not have helped:
+
+1. **No process ⇒ no collection at ANY input size.** Every test builds its context with
+   `ProcessContext::new()`, which sets `process: None` (`native/context/mod.rs:514`), and
+   `ensure_heap_space` (`:788`) early-returns `Ok(())` without a process. `gc::ensure_space` is never
+   reached. This is not "the tests are too small."
+2. **Immediates ⇒ no allocation between bind and use.** My first probe used 400 **small integers** and
+   went **green**: an immediate needs no allocation, so the accumulator is never live across one.
+
+⭐ **THAT GREEN WAS MINE, AND IT LOOKED EXACTLY LIKE A PASS.** A test can name the right function, hit
+the right line, allocate the right cells, and still never exercise the mechanism it claims to cover.
+Both probes therefore carry a **positive control** asserting the heap actually grew — without it a
+green cannot distinguish *"the accumulator survived a move"* from *"no move ever happened."*
+
+### Red-at-parent: DEMONSTRATED for 13 and 17, NOT for 12 and 16
+
+* **Site 13** (`array_to_term`, `tail`): control passed, then
+  `convert.rs:383:40 — converted JavaScript array is a proper list`. The list is no longer proper.
+* **Site 17** (`value_to_term` object arm, `pairs`): fails **at the conversion** —
+  `failed to allocate map term` — which alone proves nothing, since it could be an allocator limit.
+  Separated by a **two-armed control**: at **5 entries** the control reports `heap never grew
+  (466 -> 466)` and **the conversion SUCCEEDS**; at **60 and 200** it collects and **fails**.
+  ⭐ **THE FAILURE IS COLLECTION-DEPENDENT, AND THAT IS WHAT MAKES IT ATTRIBUTABLE.** The size arm was
+  the claim; the *no-collection* arm is the measurement.
+* **Sites 12 and 16** reach the same carriers through `serde_json::Value`. **No probe was run for
+  them. They are recorded `NOT DEMONSTRATED` and stay sign-blocking.** ⭐ **A SAMPLE OF TWO IS NOT A
+  CLASS, AND PRICED-BY-ANALOGY IS NOT PRICED.**
+
+### Status and what is deliberately NOT claimed
+
+Row 4's sign-blocking condition is **discharged for 13 and 17 only**. The probes are **banked, not
+landed** — they are red at HEAD, so landing them now would break the branch; they land **with the
+fix**, and per-site commit granularity still applies. The tree was restored and re-verified: **80
+passed, rc 0.**
+
+⭐ **A GATE THAT RUNS, PASSES, AND IS WIRED INTO CI CAN STILL BE BLIND TO THE ENTIRE DEFECT CLASS IT
+APPEARS TO COVER.** The wasm leg was never the missing piece. The missing piece was a context with a
+process attached — and nothing in the row, the gate, or the ledger had noticed the difference existed.
