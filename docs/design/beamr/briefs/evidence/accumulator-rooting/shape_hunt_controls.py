@@ -24,6 +24,13 @@ negative that must not, or a failure that must actually fire.
   E  raw strings          r#"{{{ }}}"# is text, not structure
   F  block comments       /* } } } */ is text, not structure
   G  cfg on a function    the attribute need not introduce a `mod`
+  I  braceless cfg item   `#[cfg(test)] mod tests;` owns NO block, so the
+                          attribute must not reach forward and capture the next
+                          brace. It did: 40 production lines in 9 files were
+                          labelled `cfg(test)` at f0be59a, ⭐ 40/40 IN THE
+                          HIDING DIRECTION. The hit set was untouched, so no
+                          published count moved -- but every unit of this
+                          instrument's error budget pointed at concealment.
 
 D/E/F are the ways a brace-counting walk silently loses track. Each would
 corrupt the labels WITHOUT tripping the self-check if the offsets happened to
@@ -77,6 +84,15 @@ CASES = [
     ("G_cfg_on_fn",
      "#[cfg(test)]\nfn helper() {\n    let b = 2;\n}\nfn prod() { let a = 1; }\n",
      {2, 3, 4}, 0),
+    # I is two-armed WITHIN the one case, on purpose: the braceless item must
+    # gate nothing AND the real block below it must still gate. A labeller that
+    # leaks forward fails on lines 4-6; a labeller that gates nothing at all
+    # fails on lines 9-11. Neither arm alone would catch both.
+    ("I_braceless_cfg_item",
+     "#[cfg(test)]\nmod tests;\n\nfn prod() {\n"
+     "    let x = c.alloc_cons(a, b);\n}\n\n"
+     "#[cfg(test)]\nmod inline {\n    fn helper() {}\n}\n",
+     {9, 10, 11}, 0),
 ]
 
 
