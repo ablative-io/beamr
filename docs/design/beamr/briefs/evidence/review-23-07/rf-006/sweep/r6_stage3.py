@@ -31,20 +31,61 @@ RHS_HINT = re.compile(
 BIND = re.compile(r'^\s*let\s+(?:mut\s+)?(?P<name>\w+)\s*(?P<rest>[:=].*)$')
 DESTRUCT = re.compile(r'^\s*let\s+(?:mut\s+)?[\[(](?P<names>[^\])]+)[\])]\s*=')
 
+# --- C-vi: the two carrier shapes the hints above CANNOT see -----------------
+#
+# The rules above recognise a carrier by an explicit `: Term` annotation or by
+# a hard-coded list of constructor spellings. Two real shapes match neither:
+#
+#   (w1) a local bound from a DOMAIN HELPER that returns a Term --
+#        `let ip = ipv4_tuple(..)?;`. Found by `finish_udp_recv`, where the
+#        narrow binder flagged `port` (a try_small_int IMMEDIATE, never at
+#        risk) and stayed silent on `ip`, boxed, two lines above it.
+#
+#   (w2) an unannotated Vec<Term> accumulator -- `let mut terms =
+#        Vec::with_capacity(..)` -- pushed with terms and handed to an
+#        allocator at the end, by which point the elements are already stale.
+#
+# C-i, C-ii and C-iii all made the population SMALLER, and a narrowing that
+# only ever removes false positives is unfalsified in the direction that
+# hurts. `narrow` is kept so the historical 36 stays re-derivable.
+RET_TERM = re.compile(r'->[^{]*\bTerm\b')
+VEC_BIND = re.compile(r'=\s*(?:Vec::(?:new|with_capacity)\s*\(|vec!\s*[\[\(])')
+PUSH = r'\.push\s*\('
+
+
+def term_returning_names(indexed):
+    """Names of functions whose signature returns a Term (w1)."""
+    out = set()
+    for fns, _ in indexed.values():
+        for fn in fns:
+            if RET_TERM.search("\n".join(fn["body"].splitlines()[:4])):
+                out.add(fn["name"])
+    return out
+
 
 def main():
     stage1 = json.loads(pathlib.Path(sys.argv[1]).read_text())
     collecting = set(stage1["collecting"])
     call_re = re.compile(r'\b(' + '|'.join(sorted(map(re.escape, collecting))) + r')\s*\(')
 
+    binder = sys.argv[3] if len(sys.argv) > 3 else "wide"
+    if binder not in ("narrow", "wide"):
+        print(f"unknown binder mode: {binder}", file=sys.stderr)
+        sys.exit(2)
+
     # The whole-file cfg(test) spelling must be honoured HERE TOO. Patching
     # the indexer's other caller left this one reading only inline spans.
     whole_test = test_files()
+    indexed = {str(p): index_file(p) for p in files()}
+    term_call = None
+    if binder == "wide":
+        names = term_returning_names(indexed)
+        term_call = re.compile(r'\b(' + '|'.join(sorted(map(re.escape, names))) + r')\s*\(')
     candidates = []
     for p in files():
         if str(p) in whole_test:
             continue
-        fns, spans = index_file(p)
+        fns, spans = indexed[str(p)]
         for fn in fns:
             if any(a <= fn["start"] <= b for a, b in spans):
                 continue
@@ -54,6 +95,20 @@ def main():
                 m = BIND.match(line)
                 if m and (TYPE_HINT.search(m.group("rest")) or RHS_HINT.search(m.group("rest"))):
                     binds.setdefault(m.group("name"), i)
+                elif m and binder == "wide":
+                    name, rest = m.group("name"), m.group("rest")
+                    # (w1) bound from a Term-returning domain helper.
+                    if term_call.search(rest):
+                        binds.setdefault(name, i)
+                    # (w2) a Vec accumulator that is pushed a term somewhere in
+                    # this function. The push may sit many lines below the
+                    # bind, so this looks at the whole body, not the RHS.
+                    elif VEC_BIND.search(rest):
+                        pushes = re.compile(r'\b' + re.escape(name) + PUSH)
+                        if any(pushes.search(l)
+                               and (RHS_HINT.search(l) or term_call.search(l))
+                               for l in lines):
+                            binds.setdefault(name, i)
                 m = DESTRUCT.match(line)
                 # A destructuring bind must ALSO look like it carries terms.
                 # Without this, `let (fail, source, destination) = match (op,
@@ -96,6 +151,7 @@ def main():
     out.write_text(json.dumps(candidates, indent=1))
     by_fn = {(c["file"], c["fn"]) for c in candidates}
     by_file = {c["file"] for c in candidates}
+    print(f"binder mode                 : {binder}")
     print(f"candidate (var, call) sites : {len(candidates)}")
     print(f"distinct functions          : {len(by_fn)}")
     print(f"distinct files              : {len(by_file)}")
