@@ -658,16 +658,27 @@ mod gc_hazard_tests {
 
         // Claim 1. A copy comes back as a Binary or a ProcBin, never a
         // SubBinary, so this is the shape assertion the byte checks cannot make.
-        let extracted = SubBinary::new(Term::from_raw(out_raw)).expect(
+        //
+        // The tag is read off the header rather than through `SubBinary::new`
+        // ON PURPOSE. That constructor also VALIDATES the parent, so it refuses
+        // a claim-2 violation too — and reports it with claim 1's message. Two
+        // different defects arriving under one name is exactly the misdirection
+        // this wall exists to prevent, so the claims are separated at the
+        // instrument, not just in the comment. (Found by the M4 mutation, which
+        // red through the wrong face until this was split.)
+        let out = Term::from_raw(out_raw);
+        let out_ptr = out.heap_ptr().expect("extraction result must be boxed") as *mut u64;
+        assert_eq!(
+            boxed_tag(out_ptr),
+            Some(BoxedTag::SubBinary),
             "ProcBin extraction must SHARE through a sub-binary, not copy: \
-             the O(1) arm is gone",
+             the O(1) arm is gone"
         );
-        assert_eq!(extracted.len(), 20, "160 bits were requested");
 
-        // Claim 2, stated directly: the stored parent must be the FORWARDED
-        // box. Raws are reported so the evidence log carries the observed wrong
-        // term rather than a downstream refusal.
-        let parent = extracted.parent();
+        // Claim 2, stated directly and read straight out of the layout so no
+        // validating constructor stands between the defect and its face. Raws
+        // are reported so the evidence log carries the observed wrong term.
+        let parent = Term::from_raw(read_word(out_ptr, 1));
         assert_eq!(
             parent,
             forwarded,
@@ -677,6 +688,13 @@ mod gc_hazard_tests {
             before.raw()
         );
 
-        assert_eq!(extracted_bytes(Term::from_raw(out_raw)), raw[..20].to_vec());
+        // Only now the validating constructor: with both claims already
+        // established, a refusal here means the VIEW itself is malformed.
+        let extracted =
+            SubBinary::new(out).expect("sub-binary must resolve against its parent binary");
+        assert_eq!(extracted.len(), 20, "160 bits were requested");
+        assert_eq!(extracted.parent(), forwarded);
+
+        assert_eq!(extracted_bytes(out), raw[..20].to_vec());
     }
 }
