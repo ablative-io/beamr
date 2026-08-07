@@ -445,6 +445,73 @@ mod gc_hazard_tests {
         match_term
     }
 
+    /// W1 (H3). `jit_bs_start_match` captures the source `Term` at entry
+    /// (`:18`) and writes it into the match context (`:33`) AFTER
+    /// `alloc_words` (`:25`), which can collect. Forced geometry makes that
+    /// allocation collect while the source is live in X0, so the context is
+    /// built around a pre-move pointer into the zero-filled young region.
+    ///
+    /// The register copy IS forwarded; the helper's local copy is not. That
+    /// asymmetry is the whole defect.
+    #[test]
+    fn start_match_source_survives_forced_collection() {
+        let mut process = Process::new(1, 256);
+        let raw: Vec<u8> = (1..=40).collect();
+        let source = {
+            let mut ctx = test_context(&mut process, 0);
+            ctx.alloc_binary(&raw).expect("inline source")
+        };
+        process.set_x_reg(0, source);
+
+        fill_until(&mut process, MATCH_CONTEXT_WORDS);
+        assert!(
+            process.heap().available() < MATCH_CONTEXT_WORDS,
+            "geometry must force the match-context allocation to collect"
+        );
+        assert_eq!(
+            process.heap().old_used(),
+            0,
+            "nothing may be promoted before the subject call"
+        );
+
+        let match_raw = jit_bs_start_match(&mut process, source.raw());
+        assert_ne!(match_raw, 0, "match-context allocation must succeed");
+        assert_ne!(match_raw, BINARY_HELPER_FAILURE);
+        assert!(
+            process.heap().old_used() > 0,
+            "the match-context allocation must have run a collection"
+        );
+        let moved = process.x_reg(0);
+        assert_ne!(
+            moved, source,
+            "live source should be promoted by the collection"
+        );
+
+        // The direct face of H3: the context must store the FORWARDED source,
+        // not the pre-move capture. Both raws are reported so the evidence log
+        // carries the observed wrong term, not just a refusal code.
+        let context = JitMatchContext::new(Term::from_raw(match_raw)).expect("match context");
+        let stored = context.source_term();
+        assert_eq!(
+            stored,
+            moved,
+            "context stored the pre-move source: stored={:#018x} forwarded={:#018x} original={:#018x}",
+            stored.raw(),
+            moved.raw(),
+            source.raw()
+        );
+
+        process.set_x_reg(1, Term::from_raw(match_raw));
+        let out_raw = jit_bs_get_binary(&mut process, match_raw, 160);
+        assert_ne!(
+            out_raw, BINARY_HELPER_FAILURE,
+            "the context must still reach its source after the collection"
+        );
+        assert_ne!(out_raw, 0, "extraction allocation must succeed");
+        let expected: Vec<u8> = (1..=20).collect();
+        assert_eq!(extracted_bytes(Term::from_raw(out_raw)), expected);
+    }
+
     #[test]
     fn bs_get_binary_inline_source_survives_forced_collection() {
         let mut process = Process::new(1, 256);

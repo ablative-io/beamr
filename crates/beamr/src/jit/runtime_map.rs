@@ -142,3 +142,136 @@ fn write_map_entries(process: &mut Process, entries: &[(Term, Term)]) -> Option<
 fn map_word_count(entries: usize) -> Option<usize> {
     entries.checked_mul(2)?.checked_add(2)
 }
+
+#[cfg(test)]
+mod gc_hazard_tests {
+    use super::*;
+    use crate::atom::AtomTable;
+    use crate::native::ProcessContext;
+    use crate::term::binary_ref::BinaryRef;
+    use std::sync::Arc;
+
+    fn test_context(process: &mut Process, live_x: u16) -> ProcessContext<'_> {
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::new(AtomTable::with_common_atoms())));
+        context.attach_process(process, usize::from(live_x));
+        context
+    }
+
+    /// Fills the nursery with live cons cells until fewer than `needed` words
+    /// remain, so the next allocation of that size must collect. Never
+    /// collects itself (it stops while `needed` still fits).
+    fn fill_until(process: &mut Process, needed: usize) {
+        let mut ctx = test_context(process, 4);
+        while ctx.process_heap().expect("heap").available() >= needed {
+            ctx.alloc_cons(Term::small_int(1), Term::NIL)
+                .expect("filler");
+        }
+    }
+
+    fn binary_bytes(term: Term) -> Vec<u8> {
+        BinaryRef::new(term)
+            .expect("map value must stay a readable binary")
+            .as_bytes()
+            .to_vec()
+    }
+
+    /// W3 (H4). `write_map_entries` copies the key and value `Term`s into
+    /// Rust-owned vectors (`:130`, `:131-134`) BEFORE the collecting
+    /// `gc::ensure_space` (`:135`), then writes those pre-collection words
+    /// into the freshly allocated map (`:139`).
+    ///
+    /// The vectors are neither register- nor `native_roots`-resident, so the
+    /// collection cannot forward them. Boxed values make the corruption
+    /// visible as bytes: the merged map ends up pointing into the zero-filled
+    /// young region.
+    ///
+    /// The update value is parked in X1 deliberately — it mirrors the real
+    /// lowering, where the pair terms are ALSO live in the register file and
+    /// are forwarded there, while the copy the helper actually writes is not.
+    #[test]
+    fn map_update_boxed_values_survive_forced_collection() {
+        let mut process = Process::new(1, 256);
+        let original: Vec<Vec<u8>> = (0..3)
+            .map(|slot: u8| (0..24).map(|byte| slot * 100 + byte).collect())
+            .collect();
+        let replacement: Vec<u8> = (200..224).collect();
+
+        let (source_map, update_value) = {
+            let mut ctx = test_context(&mut process, 0);
+            let values: Vec<Term> = original
+                .iter()
+                .map(|bytes| ctx.alloc_binary(bytes).expect("inline value"))
+                .collect();
+            let keys: Vec<Term> = (0..3).map(|index| Term::small_int(index)).collect();
+            let map = ctx.alloc_map(&keys, &values).expect("source map");
+            let update_value = ctx.alloc_binary(&replacement).expect("update value");
+            (map, update_value)
+        };
+        process.set_x_reg(0, source_map);
+        process.set_x_reg(1, update_value);
+
+        // The merged map keeps three entries, so the helper reserves
+        // `3 * 2 + 2` words.
+        let needed = map_word_count(3).expect("word count");
+        fill_until(&mut process, needed);
+        assert!(
+            process.heap().available() < needed,
+            "geometry must force the map allocation to collect"
+        );
+        assert_eq!(
+            process.heap().old_used(),
+            0,
+            "nothing may be promoted before the subject call"
+        );
+
+        let pairs = [Term::small_int(1).raw(), update_value.raw()];
+        let out_raw = jit_map_update(&mut process, source_map.raw(), pairs.as_ptr(), 1);
+        assert_ne!(out_raw, 0, "map update must succeed");
+        assert!(
+            process.heap().old_used() > 0,
+            "the map allocation must have run a collection"
+        );
+        assert_ne!(
+            process.x_reg(0),
+            source_map,
+            "live source map should be promoted by the collection"
+        );
+
+        let merged = Map::new(Term::from_raw(out_raw)).expect("result must be a map");
+        assert_eq!(merged.len(), 3, "entry count is unchanged by the update");
+
+        // The direct face of H4: every value the merged map stores must be the
+        // FORWARDED term. The forwarded values are readable from the promoted
+        // source map (X0) and the promoted update value (X1). Raws are reported
+        // so the evidence log carries the observed wrong terms themselves.
+        let promoted = Map::new(process.x_reg(0)).expect("promoted source map");
+        let forwarded: [Term; 3] = [
+            promoted.value(0).expect("promoted value 0"),
+            process.x_reg(1),
+            promoted.value(2).expect("promoted value 2"),
+        ];
+        for (index, want) in forwarded.iter().enumerate() {
+            let key = Term::small_int(index as i64);
+            let got = merged.get(key).expect("every original key must survive");
+            assert_eq!(
+                got,
+                *want,
+                "merged map stored a pre-move value for key {index}: stored={:#018x} forwarded={:#018x}",
+                got.raw(),
+                want.raw()
+            );
+        }
+
+        let expected: [&[u8]; 3] = [&original[0], &replacement, &original[2]];
+        for (index, want) in expected.iter().enumerate() {
+            let key = Term::small_int(index as i64);
+            let value = merged.get(key).expect("every original key must survive");
+            assert_eq!(
+                binary_bytes(value),
+                *want,
+                "value for key {index} must read back byte-exact"
+            );
+        }
+    }
+}
