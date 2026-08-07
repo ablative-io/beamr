@@ -2,7 +2,7 @@
 
 **Cally Ray, 2026-08-07 — committed 08:48:43Z (`35dc5ae`).** Artemis has the ground pack; **no fix is designed, none applied.**
 
-> ⚠️ **TIMESTAMP CORRECTION, 2026-08-07T11:05Z.** The three headers above originally read `~08:40Z`,
+> ⚠️ **TIMESTAMP CORRECTION, 2026-08-07T11:00:45Z (`34552cc`).** The three headers above originally read `~08:40Z`,
 > `~08:50Z` and `~08:55Z` — estimates taken from narrative flow, not from a clock. Measured against
 > the commits that carry them (`git log --date=iso-strict-local`), **two were impossible**:
 > amendment 1's `~08:50Z` sits *inside* `35dc5ae`, authored **08:48:43Z**, and amendment 2's
@@ -13,6 +13,14 @@
 > A version-controlled artefact's date has an authoritative instrument inside the commit that
 > carries it, so claiming it from memory is a carried count with extra steps.** This is the same
 > defect I scored in the outward-check doctrine's F5 an hour after writing it here myself.
+> ⚠️ **AND THIS NOTE REPRODUCED THE DEFECT IT CORRECTS — caught by Artemis Peach, push held.** It
+> first read `11:05Z`; the commit carrying it, `34552cc`, was authored **11:00:45Z**. **+255 s: the
+> correction post-dated its own commit, four lines below the sentence forbidding exactly that.** It
+> now takes its time from that commit, as the rule requires.
+> ⇒ **The rule resolves its own bootstrap:** a correction cannot know its future commit's time, so it
+> **cites the commit that carries it** rather than predicting a clock. **A note that names its commit
+> can never post-date it.**
+
 
 **Nothing below has been informed by looking at a fix, deliberately.**
 
