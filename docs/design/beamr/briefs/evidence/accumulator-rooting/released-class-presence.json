@@ -1,0 +1,1081 @@
+[
+  {
+    "version": "0.1.0",
+    "vcs_sha": "e880b50ee",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.2.0",
+    "vcs_sha": "0bb7f62cb",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.0",
+    "vcs_sha": "4de6b6c96",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.1",
+    "vcs_sha": "529e82062",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.2",
+    "vcs_sha": "bb219f9c2",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.3",
+    "vcs_sha": "89b5fb410",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.4",
+    "vcs_sha": "d885edf75",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.5",
+    "vcs_sha": "cd252fb29",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.6",
+    "vcs_sha": "6be3bb300",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.7",
+    "vcs_sha": "a7522da18",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.8",
+    "vcs_sha": "161badc7e",
+    "tail": 7,
+    "push": 1,
+    "s3e": 0,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs"
+    ]
+  },
+  {
+    "version": "0.3.9",
+    "vcs_sha": "c29a14a8a",
+    "tail": 7,
+    "push": 1,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.3.10",
+    "vcs_sha": "360fb2292",
+    "tail": 7,
+    "push": 1,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.3.11",
+    "vcs_sha": "6bba51dbf",
+    "tail": 7,
+    "push": 1,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.3.12",
+    "vcs_sha": "667aeade2",
+    "tail": 7,
+    "push": 1,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.3.13",
+    "vcs_sha": "9df853a0a",
+    "tail": 7,
+    "push": 1,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.3.14",
+    "vcs_sha": "6a64dbabb",
+    "tail": 7,
+    "push": 1,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.3.15",
+    "vcs_sha": "bb8824822",
+    "tail": 7,
+    "push": 1,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.0",
+    "vcs_sha": "73bb378fd",
+    "tail": 9,
+    "push": 11,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.1",
+    "vcs_sha": "1d561c96f",
+    "tail": 6,
+    "push": 11,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/selector_ffi.rs",
+      "src/native/stdlib_stubs/lists_bifs.rs",
+      "src/native/stdlib_stubs/maps_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.2",
+    "vcs_sha": "f85ce94c5",
+    "tail": 2,
+    "push": 9,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.3",
+    "vcs_sha": "440010945",
+    "tail": 2,
+    "push": 9,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.4",
+    "vcs_sha": "563f3dbe7",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.5",
+    "vcs_sha": "a3d2d2d9a",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.6",
+    "vcs_sha": "403a2ffe4",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.7",
+    "vcs_sha": "cfbef2030",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.8",
+    "vcs_sha": "123f51b96",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.4.9",
+    "vcs_sha": "577d2ac3c",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.5.0",
+    "vcs_sha": "1d708351a",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.6.0",
+    "vcs_sha": "79ff72bdc",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.6.1",
+    "vcs_sha": "ffdeb96a3",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.6.2",
+    "vcs_sha": "258a42ec1",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.6.3",
+    "vcs_sha": "65bd6cc05",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.6.4",
+    "vcs_sha": "0d4623994",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.7.0",
+    "vcs_sha": "4767cdfba",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.8.0",
+    "vcs_sha": "1d7340ad7",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.8.1",
+    "vcs_sha": "fb0f5d3d1",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.8.2",
+    "vcs_sha": "e37362fff",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.9.0",
+    "vcs_sha": "30c41aefa",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.10.0",
+    "vcs_sha": "dff4dcfc1",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.11.0",
+    "vcs_sha": "175f96c03",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.12.0",
+    "vcs_sha": "58987bb99",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.13.0",
+    "vcs_sha": "f6aa8e9b4",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.13.1",
+    "vcs_sha": "8a9eaf78d",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.13.2",
+    "vcs_sha": "ba19256df",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.14.0",
+    "vcs_sha": "1b07d034e",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.15.0",
+    "vcs_sha": "2cf308543",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.15.1",
+    "vcs_sha": "d9de35e4e",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.15.2",
+    "vcs_sha": "d60f826bc",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.15.3",
+    "vcs_sha": "4086030a2",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.15.4",
+    "vcs_sha": "c716992fd",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.16.0",
+    "vcs_sha": "5ebf94dac",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.16.1",
+    "vcs_sha": "5291de4ba",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.16.2",
+    "vcs_sha": "5206e7af1",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.16.3",
+    "vcs_sha": "9d0d0e0d9",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  },
+  {
+    "version": "0.17.0",
+    "vcs_sha": "377b6de0d",
+    "tail": 2,
+    "push": 16,
+    "s3e": 1,
+    "present": true,
+    "files": [
+      "src/distribution/pg.rs",
+      "src/native/code_management_bifs.rs",
+      "src/native/dictionary_bifs.rs",
+      "src/native/ets_bifs.rs",
+      "src/native/file_meta_bifs.rs",
+      "src/native/otp_stubs/erlang_stubs.rs",
+      "src/native/process_info_bifs.rs",
+      "src/native/stdlib_stubs/string_bifs.rs",
+      "src/native/stdlib_stubs/uri_bifs.rs",
+      "src/native/system_info_bifs.rs",
+      "src/native/udp_bifs.rs",
+      "src/term/json.rs"
+    ]
+  }
+]
