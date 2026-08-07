@@ -67,6 +67,17 @@ def cfg_test_lines(path):
 
     Returns (gated_lines, final_depth). final_depth != 0 means the walk lost
     track and the labels for this file must not be trusted.
+
+    ⚠️ A `#[cfg(test)]` on a BRACELESS item -- `mod tests;`, a `use`, a `const`
+    -- has no block of its own. The arming flag must therefore be DISARMED at
+    that item's `;`, or it stays live and captures the next brace in the file,
+    which can be production code hundreds of lines away. Measured before the
+    fix at f0be59a: 81 braceless cfg(test) sites in crates/, 9 files with wrong
+    labels, 40 lines wrong, and ⭐ ALL 40 IN THE HIDING DIRECTION -- production
+    reported as `cfg(test)`, none the safe way. The hit set was unaffected, so
+    the 32/27/5 split published at f0be59a stands; the defect is in the
+    instrument, not in that reading. Arm I in shape_hunt_controls.py fires on
+    the unfixed walk. Found by Cally Ray while siting the R10 fixture.
     """
     src = path.read_text().splitlines()
     depth = 0
@@ -126,6 +137,10 @@ def cfg_test_lines(path):
                     continue
                 i += 1
                 continue
+            if c == ';' and pending_cfg:
+                # braceless cfg(test) item: it ends here and owns no block, so
+                # the attribute must not reach forward to the next `{`.
+                pending_cfg = False
             if c == '{':
                 depth += 1
                 if pending_cfg and test_depth is None:
