@@ -370,10 +370,50 @@ is never read as "the sweep found nothing".
 
 ---
 
-## 🔴 A4 STOP — four real crossings, and C-vi
+## Verdict pass — all 69 rows, R6 acceptance A1
 
-Raised to the lane lead at discovery, per acceptance A4. **No fix is designed
-or applied here**; A4 requires the stop to precede fix design, and these are
+Every row in `sweep/candidates.json` carries a verdict in
+`sweep/verdicts.json`, taken at the bytes at per-(site, consumer)
+granularity. **69 of 69; none deferred.**
+
+| verdict | n | meaning |
+|---|---|---|
+| **REAL** | **13** | unrooted carrier live across a collecting call — see the STOP below |
+| **REAL-OSIRIS** | **1** | same, in `string_bifs.rs`, **another seat's lane** — recorded, not touched |
+| SAFE-C | 19 | immediate (small int / atom / NIL / local pid) — cannot move |
+| FP-D | 17 | not a `Term` at all (usize, `&str`, `&[u8]`, `&mut [u64]`, a closure) |
+| SAFE-PRERESERVE | 4 | `ensure_heap_space` for the whole budget before the sequence |
+| SAFE-ROOTED | 3 | `with_rooted` + `rooted_push`, re-read after the reserve |
+| SAFE-DETACHED | 3 | `ProcessContext::new()` — detached contexts never collect |
+| SAFE-A | 2 | passed **as an argument** to the collecting allocator, which roots it |
+| SAFE-FIXED | 2 | repaired by this lane (H3, H4) |
+| FP-E | 2 | bind and use are on mutually exclusive control-flow paths |
+| SAFE-OFFHEAP | 1 | `write_float` into a **stack** array, not the process heap |
+| SAFE-REREAD | 1 | stashes in `x_reg(0)`, reserves, re-reads and re-derives |
+| FP-F | 1 | the "collecting call" is inside a **`SAFETY` comment** |
+
+**The instrument's own false-positive rate is 20/69 (29%)** — FP-D, FP-E and
+FP-F together. That is the price of a binder that must not miss things, and
+it is the right direction to be wrong in. **C-vi was the wrong direction.**
+
+### ⚠️ SAFE-PRERESERVE is conditional and I am not discharging the condition
+
+Four rows are safe *because* a caller reserved the whole budget up front, so
+the allocations that follow cannot collect. That immunity **is only as good
+as the word-count calculation** (`info_proplist_heap_words`,
+`value_heap_words`). **I have not audited those calculations**, and an
+under-count would silently re-arm every one of these sites. Stated as a
+scoped assumption, not a clearance. ⇒ **A PRERESERVATION IS A PROMISE MADE BY
+AN ARITHMETIC EXPRESSION, AND CLEARING A SITE ON IT INHERITS THAT
+ARITHMETIC.**
+
+---
+
+## 🔴 A4 STOP — fourteen real crossings, one shape, and C-vi
+
+Raised to the lane lead at discovery (four crossings), per acceptance A4;
+the verdict pass then took it to fourteen. **No fix is designed or applied
+here**; A4 requires the stop to precede fix design, and these are
 pre-existing `native/` defects, not regressions of this lane. **None of them
 is in the `0.16.4` backport set (R2 + H3 + H4), which is jit-side.**
 
@@ -383,6 +423,34 @@ is in the `0.16.4` backport set (R2 + H3 + H4), which is jit-side.**
 | 2 | `native/stdlib_stubs/uri_bifs.rs::bif_uri_string_dissect_query` | `key` | the value-arm `alloc_binary` | boxed binary, live and unrooted, then written into a tuple |
 | 3 | same function | `terms` | every allocation in the loop | `Vec<Term>` accumulator; `alloc_list(&terms)` roots the elements **after** they are already stale |
 | 4 | `native/udp_bifs.rs::finish_udp_recv` | `ip` | `alloc_binary(datagram)` | `ipv4_tuple` returns `context.alloc_tuple(..)`, so `ip` is **boxed**, not the immediate it looks like |
+| 5 | `distribution/control.rs::alloc_spawn_request` | `mfa` | `spawn_options_to_list` | that helper ends in `alloc_list`, so it allocates; `mfa` is not passed to it |
+| 6 | `distribution/pg.rs::members` | `terms` | `alloc_external_pid` | external pids are **boxed** (4 words); local pids beside them are immediates |
+| 7 | `native/dictionary_bifs.rs::entries_to_list` | `tuples` | `alloc_tuple` | boxed tuples accumulate across further `alloc_tuple` |
+| 8 | `native/file_meta_bifs.rs::finish_list_dir` | `terms` | `alloc_binary` | boxed binaries accumulate across further `alloc_binary` |
+| 9 | `native/otp_stubs/erlang_stubs.rs::bif_os_getenv_0` | `variables` | `alloc_binary` | one boxed binary per env var, all unrooted |
+| 10 | `native/stdlib_stubs/uri_bifs.rs::bif_uri_string_parse` | `values` | `alloc_binary` | `keys` beside it are atoms and safe; `values` are boxed |
+| 11 | `term/json.rs::array_to_list_term` | `tail` | `value_to_term` | boxed cons spine live across a recursive builder that allocates |
+| 12 | `beamr-wasm/convert.rs::json_value_to_term` | `tail` | recursive self-call | same shape |
+| 13 | `beamr-wasm/convert.rs::array_to_term` | `tail` | `value_to_term` | same shape |
+| 14 | `native/stdlib_stubs/string_bifs.rs::bif_split` | `terms` | `alloc_binary` | **OSIRIS' LANE — recorded, not touched** |
+
+### ⭐ These are not fourteen defects, they are ONE — the unrooted accumulator
+
+Eleven of the fourteen are the same three lines: **build a term in a loop,
+push it into a `Vec<Term>` (or thread it through a `tail`), hand the whole
+collection to `alloc_list` / `alloc_tuple` at the end.** Every allocation
+after the first can collect, and nothing roots what is already in the
+accumulator. The terminal `alloc_list` **does** root its elements — which is
+precisely the trap, because **by then it is rooting values that are already
+stale, and rooting a stale pointer does not recover it.**
+
+**The codebase already has the right tool and uses it correctly in nine other
+places** — `with_rooted` + `rooted_push` + re-read, in `ets_bifs` (×4),
+`etf_bifs`, `json_bifs` (×3), `string_bifs::bif_next_grapheme`. Two of those
+sit in files that *also* contain an unfixed instance. ⇒ **THIS IS NOT A
+MISSING FACILITY, IT IS AN UNEVENLY APPLIED ONE** — which is why a
+name-based or facility-based search would never have found it, and why the
+fix is a sweep rather than a patch.
 
 ### ⚠️ C-vi — a false-negative class, found by row 4
 
@@ -434,19 +502,23 @@ verdicts for the sites this lane repaired; the AUDIT.md relationship in both
 directions; the backport-owned rows and the named `&'static` launder
 follow-on; N1 and N2.
 
-**⚠️ The 36 is NOT a sound denominator, and this document no longer offers it
-as one.** C-vi shows it is the population the binder *could see*, not the
-population of candidate carriers. Per-site verdicts over it would have been 36
-correct verdicts over an unsound denominator — and would have read as
-completeness.
+**The verdict pass is COMPLETE over the widened population: 69 of 69 rows
+carry a verdict** (`sweep/verdicts.json`), at per-(site, consumer)
+granularity, each taken at the bytes. **R6 acceptance A1 is met.**
 
-**Remaining, in this order:** (1) the lane lead's ruling on the A4 stop —
-whether the four crossings become RF-006 rows or a separate lane, and whether
-the binder is widened before the verdict pass; (2) the widened re-run;
-(3) the per-site verdict pass, SAFE-with-immunity-reason or REAL-CROSSING at
-per-(site, consumer) granularity, each at the bytes; (4) the `stage_pairs`
-site population for N2. **R6 acceptance A1 is not met**, and the gap is now
-larger than it was when this document was first written.
+**⚠️ What A1 does NOT mean.** It means every row in *this* population is
+ruled. C-vi is the standing reminder that a population is an instrument's
+field of view: the binder now sees two carrier shapes it could not see
+yesterday, and nothing proves there is not a third. Four rows are cleared
+only by a **prereservation whose arithmetic I have not audited**. The honest
+claim is *complete over what the instrument can see, with the blind spots
+named* — not *complete*.
+
+**Remaining:** the `stage_pairs` site population for N2. The fourteen real
+crossings are **ruled out of this document** — the lane lead ruled them a
+separate lane with its own brief and acceptance, so that a document carrying
+two unrelated defect classes cannot let the smaller ride in on the larger
+one's evidence.
 
 `native/stdlib_stubs/string_bifs.rs` is another seat's lane; three
 newly-visible sites fall in it and are **recorded, not touched**.
