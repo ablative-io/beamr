@@ -318,3 +318,118 @@ claim.*
 every released version" will be **measured** by pulling each released `.crate` and reading
 `.cargo_vcs_info.json` (Seth's method — curl+tar, no cargo, no build), carrying his trap: **a subject
 line is not a release.** **Rows 1, 3, 6, 8 stand as written.**
+
+---
+
+# ⚠️ POST-ARTEFACT AMENDMENT 3 — THE ACCEPTANCE PASS ON ROWS 2, 4 AND 10. Cally Ray, 2026-08-07
+
+**No clock in this header, deliberately.** Amendments 1 and 2 both fabricated one and amendment 2's
+correction fabricated a second. ⭐ **A FIELD THE CARRIER ALREADY RECORDS AUTHORITATIVELY MUST NOT BE
+COPIED INTO THE PAYLOAD — a copy is a second source, and a second source can disagree.** The instant of
+this amendment is its commit's, readable with `git log --date=iso-strict-local`. This is the previous
+rule's tier-1 form: not *cite the commit more carefully*, but **do not duplicate the field at all.**
+
+**Method:** graded at `3ba1096`, working tree reconciled to it (`git status --short` = one untracked
+`.claude/skills/`, nothing tracked modified). `shape_hunt.py` **run**, not read: rc=0, control PASS,
+32 hits (S3a 8 · S3b 11 · S3d 4 · S3e 9). Amendment 2's premise re-derived rather than taken from my
+own note — the control does key on `code_management_bifs.rs:148`, live, today.
+
+## 🔴 R10-a — AMENDMENT 2'S CURE RE-OPENS AMENDMENT 2'S OWN DEFECT, ONE LEVEL DOWN
+
+Amendment 2 ruled: *control points at a committed synthetic fixture **the lane will never repair**.*
+**That escape does not hold, and "never repair" is why I missed it.**
+
+A synthetic fixture is **a written instance of the defective shape**. The pre-registered remedy
+criterion is *a remedy is IN only if the shape **CANNOT BE WRITTEN***. Therefore:
+
+- remedy succeeds structurally ⇒ the shape is unwritable ⇒ **the fixture stops compiling** ⇒ control dies;
+- fixture survives ⇒ **the shape is still writable** ⇒ the remedy failed its own criterion.
+
+⭐⭐ **A CONTROL KEYED ON A LIVE DEFECT IS DESTROYED BY THE PATCH; A CONTROL KEYED ON THE SHAPE IS
+DESTROYED BY THE REMEDY WORKING. The second is worse, because it fires on SUCCESS.**
+⭐ **AN EXEMPTION BY INTENT CANNOT PRESERVE A CONSTRUCT THE COMPILER REFUSES** — "we won't repair it" is
+a promise about attention, and a structural remedy does not consult attention.
+
+Tested by negation: under a patches-plus-lint remedy the fixture survives, so the hazard is not a
+correlate of fixture-ness — it attaches **precisely to the remedy shape this gate prefers.**
+
+### THE RESOLUTION — MATCH THE CONTROL'S FAULT DOMAIN TO THE INSTRUMENT'S
+
+`shape_hunt.py` is **purely syntactic**: `ALLOC` is a regex over method-name spelling; it resolves no
+type and consults no API. ⇒ ⭐ **A SYNTACTIC INSTRUMENT TAKES A SYNTACTIC FIXTURE.** The control's target
+must depend only on what the instrument reads (bind syntax + spelling) and on **none** of the semantics
+a remedy changes. Four constraints, all derived from the instrument's code rather than from taste:
+
+1. **A local type with its own `alloc_cons`, in a `#[cfg(test)]` module inside a NON-test-named `.rs`
+   file under `crates/`.** It matches `\.alloc_cons\s*\(` and S3d's `^\s*\w+\s*=` with no `let`; it
+   touches no real `Term`/`Context`, so a type-level remedy cannot reach it; `cfg(test)` keeps it out
+   of the shipped binary while the regex — which does not evaluate `cfg` — still sees it.
+2. **Inside the walked population.** `source_files()` walks `pathlib.Path("crates").rglob("*.rs")` and
+   `continue`s on `tests.rs`, `*_tests.rs` and `src/native/context/`. ⚠️ **The instinctive placement — a
+   test file — is the one place the instrument is blind.** *A control drawn from outside the searched
+   population validates the instrument and not the search.*
+3. **Named in the ledger with a permanent `CONTROL-FIXTURE` disposition, and reported in its own section
+   rather than filtered silently** — otherwise it is a decoy every future sweep flags and someone
+   eventually "fixes", killing the control by the long route. Exclusion is by **exact literal path**:
+   denominator one, auditable, cannot swallow a real site.
+4. **Both defeat arms covered, because a guard written for one arm is invisible to "is there a guard
+   here?"** Type-level remedy → defeated by (1). **Lint-on-spelling remedy → defeated by an explicit
+   `#[allow]` at the fixture**, which the regex also does not read.
+
+⚠️ **DECLARED COUPLING, or it rots silently:** this fixture works *because* the hunt is regex-based and
+blind to `cfg` and attributes. That is a deliberate use of the instrument's blind spot, and it must be
+stated in `shape_hunt.py` itself — **if the hunt ever becomes AST-based, the control must be re-sited.**
+An undeclared dependence on a blind spot breaks the day someone improves the instrument.
+
+## 🔴 R10-b — THE CONTROL VALIDATES ONE SHAPE CLASS OF FIVE. S3c IS AN UNVALIDATED ZERO RIGHT NOW.
+
+`ctl = [h for h in hits['S3d'] if 'code_management_bifs' in str(h[0])]` — **S3d only.** S3a, S3b, S3c
+and S3e are wholly uncontrolled, and **S3e is the class that found the new defects (14 → 17).**
+
+⇒ the `TUPVEC` regex could break and the run still prints **PASS**. At fix time the reading on offer
+would be "S3e sites were structurally eliminated — disposition (b)", and ⭐ **a silently-broken S3e
+regex and a successful structural elimination produce the same output.** That is row 2's original
+defect, migrated intact into R10.
+
+⛔ **And S3c returns nothing today — no section is printed at all.** It has never been shown to produce
+a presence, so by this gate's own row-2 law *(an absence is only evidence when the instrument has been
+shown, that run, to be able to produce a presence)* **every S3c zero this instrument has ever reported
+is uninterpretable.** Not "probably fine": unmeasured.
+
+⇒ **one fixture per shape class, five controls, each exiting non-zero on its own failure.** A single
+aggregate PASS/FAIL is the loud-variant check that covers nothing of the silent one.
+
+## 🔴 ROW 2 — THE LEDGER IT DEPENDS ON DOES NOT EXIST
+
+Amendment 2 condition 1 requires row 2 and R10 to **share a single disposition ledger.** Measured at
+`3ba1096`: `evidence/accumulator-rooting/` holds `shape_hunt.py`, `sink_census.py`,
+`released_class_presence.py`, `sink-census.json`, `released-class-presence.json` — **and no ledger.**
+`sweep/verdicts.json` is RF-006's, a different population.
+
+⇒ **the seventeen are not written down by name anywhere.** Left as-is, the ledger gets built at fix time
+**from the post-fix state**, which is the pinned-count defect one level down: an accounting derived from
+the thing it audits. ⛔ **The ledger is pre-registration, not reporting: it commits BEFORE the fix, as
+this gate did**, with all seventeen named, plus the five `CONTROL-FIXTURE` rows.
+
+## 🔴 ROW 4 — "RED AT ITS OWN PARENT COMMIT" SILENTLY REQUIRES A COMMIT GRANULARITY NOBODY HAS STATED
+
+Row 4 grades each site against **its own parent commit.** If the lane lands as one commit for seventeen
+sites, "its own parent" is undefined for sixteen of them and the row is unmeetable — not refused,
+**unmeetable, which is the failure mode that reads as satisfied.** ⇒ **the lane commits per site (or per
+site-group carrying its own test), and that is a requirement of row 4, stated here rather than
+discovered at landing.**
+
+The wasm leg (sites 16/17, `beamr-wasm/src/convert.rs`) is **still unpriced.** Row 4's honest third
+state stands: unpriced ⇒ disposition `FIXED-UNVERIFIED` ⇒ sign-off blocks. No class-level test may
+stand in for it.
+
+## ROWS 5, 7, 9 — DISCHARGE READ CONFIRMED AT MY HANDS
+
+Row 5 `merge-base --is-ancestor 9587d2f 35dc5ae` true; row 7 discharged by the S3e hunt (14 → 17);
+row 9's 56/56 measured. Nothing owed by Artemis on AR-1.
+
+## ⚠️ FOR ROW 6, NOT ROW 10 — ITS NAMED DEFEAT IS ALREADY IN THE TREE
+
+S3d surfaces `native/udp_bifs.rs:473` — `tail = context.alloc_cons(*term, tail).unwrap_or(Term::NIL);`
+— which is **verbatim the defeat row 6 predicted before anyone looked** ("an `unwrap_or(term)` … will
+look like defensive programming"). Recorded against row 6; not absorbed here.
