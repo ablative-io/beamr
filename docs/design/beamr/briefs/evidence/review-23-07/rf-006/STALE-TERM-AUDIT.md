@@ -9,6 +9,34 @@ collecting family), `sweep/r6_stage3.py` (capture-side narrowing),
 `sweep/candidates.json` (the population), `sweep/family-exclusions.json`,
 `sweep/family-owners.txt`.
 
+Re-derive with:
+
+```sh
+python3 sweep/r6_sweep.py /tmp/stage1.json direct   # 37-name collecting set
+python3 sweep/r6_stage3.py /tmp/stage1.json /tmp/candidates.json
+cmp sweep/candidates.json /tmp/candidates.json      # byte-identical
+```
+
+> **Correction C-iv — until this commit, the committed instrument did not
+> reproduce the committed output, and the sentence above was false.**
+> `r6_sweep.py` always ran the transitive fixpoint and never read
+> `family-exclusions.json`; the closed-list reading and the 14 family
+> rulings were applied by **hand-editing the script between runs**, and the
+> edited version was never committed. A reader running the committed bytes
+> got **1,630** candidates, not the committed **36**, and nothing in the pack
+> said so. The mode is now an argument (`direct` | `closure`, defaulting to
+> the reading R6 specifies) and the exclusions are loaded from their
+> committed record, with a **positive control that exits non-zero if any
+> excluded name has left the tree** — an exclusion that no longer matches
+> anything is a silent no-op, and a typo is indistinguishable from a correct
+> ruling. Verified two-arm at this commit: `direct` reproduces
+> `candidates.json` **byte-identically** (sha256
+> `5311ab26…`), `closure` still yields the 167-site ceiling.
+> ⇒ **"THE INSTRUMENTS ARE COMMITTED" IS A CLAIM ABOUT THE FILES, NOT ABOUT
+> REPRODUCIBILITY** — the only proof is running the committed bytes and
+> diffing against the committed output. This is C-ii's shape again at one
+> remove: the correction lived in my shell history instead of the artifact.
+
 ---
 
 ## Relationship to AUDIT.md — stated in both directions
@@ -47,7 +75,13 @@ AMENDMENT 1. This rider sweeps **stale `Term` and raw-pointer captures**.
 | — in `cfg(test)` | **2,287** |
 | — **production** | **5,030** |
 
-### ⚠️ Three corrections to my own instrument, all found mid-sweep
+### ⚠️ Five corrections to my own instrument, all found by me
+
+C-i to C-iii were found mid-sweep and moved the population. **C-iv and C-v
+were found after the population was already committed and reported** — C-iv
+in `sweep/` (the committed instrument did not reproduce the committed output)
+and C-v in this document (a ratio taken across two instrument generations).
+Neither changed the 36; both changed what the 36 is entitled to claim.
 
 **C-i — the whole-file `cfg(test)` spelling.** The first index counted only
 inline `#[cfg(test)] mod x { … }`. beamr also uses `#[cfg(test)] mod x;` with
@@ -126,15 +160,48 @@ That distinction is load-bearing and I got it wrong first. A name-based
 transitive closure over this crate marks **2,985 of 5,030 production
 functions — 59%** — as "can collect", which is a **ceiling on reachability,
 not a measurement of it**, and useless as a discriminator: almost every BIF
-eventually allocates. Holding every other setting fixed, the capture sweep
-returns **1,630** candidate sites under the closure against **158** under the
-brief's closed list — and **36** once the three instrument corrections below
-are also applied. ⇒ **AN OVER-BROAD SEARCH SPACE DOES NOT PRODUCE A CAUTIOUS
-ANSWER, IT PRODUCES NO ANSWER** — 59% of a crate is not a finding, and it
-would have shipped looking like rigour.
+eventually allocates.
 
-Auto-discovery of `alloc_*` yielded 51 names; **14 are ruled out**, each at
-its definition bytes (`sweep/family-exclusions.json`), leaving **37**:
+Measured like-for-like on the **corrected** instrument, the closed-list
+reading narrows **167 → 36 candidate sites (4.6×)**; the closure marks
+**2,983 of 5,030 production functions — 59%** — as "can collect". ⇒ **AN
+OVER-BROAD SEARCH SPACE DOES NOT PRODUCE A CAUTIOUS ANSWER, IT PRODUCES NO
+ANSWER** — 59% of a crate is not a finding, and it would have shipped looking
+like rigour.
+
+> **Correction C-v — the 4.6× above replaces a 10.3× I previously reported,
+> and the earlier figure was not a like-for-like comparison.** This paragraph
+> used to read *"holding every other setting fixed, the sweep returns 1,630
+> under the closure against 158 under the closed list"*. **The settings were
+> not held fixed.** 1,630 and 158 were both measured **before** corrections
+> C-i and C-iii existed; 36 was measured after. Comparing them credits the
+> spec-reading with a narrowing that C-i and C-iii did most of the work for.
+> On one instrument the split is 167 → 36. ⇒ **A RATIO BETWEEN TWO NUMBERS
+> TAKEN FROM DIFFERENT GENERATIONS OF AN INSTRUMENT MEASURES THE EDITS, NOT
+> THE VARIABLE** — and it flatters whichever change you were writing up.
+> Both readings still nest correctly on the current instrument
+> (36 ⊆ 167 ⊆ 1,630 keyed on `(file, fn, var)`), which is what makes the
+> generation the only difference.
+
+The collecting set is built as: auto-discovered `alloc_*` (non-`_prereserved`,
+non-test) **43**, plus the **5** seed names not already in it, minus the
+hand-ruled exclusions that are still in the set, leaving **37**. Each
+exclusion was ruled at its definition bytes (`sweep/family-exclusions.json`):
+
+| step | count |
+|---|---|
+| `alloc_*` family (non-`_prereserved`, non-test) | 43 |
+| + seed names not already present | +5 → 48 |
+| − hand-ruled exclusions **that bite** | −11 → **37** |
+
+**11 of the 14 listed exclusions bite; 3 never reach the set** — `alloc_floats`
+and two `#[test]` fn names live in whole-`cfg(test)` files, so the C-i filter
+removes them before the family is formed. They stay in the record because a
+ruling that is currently redundant is not a ruling that is wrong, and the
+C-iv positive control now fails loudly if any of them leaves the tree
+entirely. (An earlier draft of this section said *"auto-discovery yielded 51
+names; 14 are ruled out, leaving 37"* — arithmetically tidy, and not what the
+instrument does: 51 was never measured and the 14 are not all subtractions.)
 
 | class | members | reason |
 |---|---|---|
@@ -169,11 +236,19 @@ local is read afterwards** inside the same function.
 | `beamr-wasm/capability_tests.rs` | 2 |
 | 14 further files | 1 each |
 
-Narrowing walk, every step named: **1,630** under the call-graph closure →
-**158** under the brief's closed enumeration → **148** after the 14 ruled
-family exclusions → **83** once whole-file `cfg(test)` was honoured in the
-second script too → **36** once destructuring binds had to look like they
-carry terms.
+Narrowing walk. The honest form of this is **two axes, not one chain** — the
+figures below were taken across three generations of the instrument, and only
+the last row is a comparison at fixed settings (see C-v):
+
+| instrument generation | closure reading | closed-list reading |
+|---|---|---|
+| as first written (pre C-i, pre C-iii) | 1,630 | 158 |
+| + C-i, whole-file `cfg(test)` in both scripts | — | 83 |
+| **corrected (C-i + C-iii), current** | **167** | **36** |
+
+Read down a column for what the instrument corrections were worth; read
+across the bottom row for what the spec-reading is worth (**4.6×**). Reading
+diagonally — 1,630 → 36 — is the mistake C-v records.
 
 The full list with file, function, variable, bind line, collecting call line,
 callee name and first post-call use is `sweep/candidates.json`.

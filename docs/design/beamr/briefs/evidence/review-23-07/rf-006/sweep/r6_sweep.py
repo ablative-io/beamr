@@ -20,6 +20,22 @@ import sys
 
 ROOTS = ["crates/beamr/src", "crates/beamr-wasm/src"]
 
+# Which reading of R6's "a call which can reach `gc::ensure_space`
+# (transitively: ...)" to use.
+#
+#   direct  -- the parenthetical is a CLOSED ENUMERATION of the allocation
+#              primitives. This is the reading R6 specifies and the one that
+#              produced the committed candidates.json.
+#   closure -- read the parenthetical as an instruction to close a call graph.
+#              Kept ONLY so the ceiling it produces stays re-derivable: it
+#              marks 2,985 of 5,030 production fns as "can collect" and yields
+#              1,630 candidates. 59% of a crate is not a finding.
+#
+# This was previously applied by hand-editing the script between runs, so the
+# committed instrument did not reproduce the committed output. See the audit's
+# correction C-iv.
+COLLECTING_MODE = "direct"
+
 FN_RE = re.compile(
     r'^(?P<indent>\s*)'
     r'(?:pub(?:\([^)]*\))?\s+)?'
@@ -150,6 +166,22 @@ def main():
     collecting = set(SEEDS) | alloc_family
     collecting -= {n for n in collecting if n.endswith(IMMUNE_SUFFIX)}
 
+    # Names ruled out at their definition bytes -- size calculations, bump-only
+    # region allocators, and test helpers that a name match took for
+    # allocators. Loaded from the committed record rather than inlined so the
+    # ruling and its reason travel together.
+    exclusions = json.loads((pathlib.Path(__file__).parent
+                             / "family-exclusions.json").read_text())
+    # Positive control: an excluded name that no longer exists in the tree is a
+    # SILENT no-op, and a typo is indistinguishable from a correct ruling. Fail
+    # loudly instead -- the exclusion list must still bite.
+    indexed_names = {fn["name"] for fn in all_fns}
+    inert = sorted(set(exclusions) - indexed_names)
+    if inert:
+        print(f"EXCLUSIONS NO LONGER PRESENT IN TREE: {inert}", file=sys.stderr)
+        sys.exit(2)
+    collecting -= set(exclusions)
+
     # Precompute the set of callee NAMES per production fn, once. The fixpoint
     # is then set intersection rather than a regex per (fn, target) pair.
     CALL_RE = re.compile(r'\b(\w+)\s*\(')
@@ -157,8 +189,13 @@ def main():
     for fn in prod:
         fn["calls"] = set(CALL_RE.findall(fn["body"])) - {fn["name"]}
 
+    mode = sys.argv[2] if len(sys.argv) > 2 else COLLECTING_MODE
+    if mode not in ("direct", "closure"):
+        print(f"unknown collecting mode: {mode}", file=sys.stderr)
+        sys.exit(2)
+
     rounds = 0
-    while True:
+    while mode == "closure":
         rounds += 1
         added = {fn["name"] for fn in prod
                  if fn["name"] not in collecting and (fn["calls"] & collecting)}
@@ -176,7 +213,10 @@ def main():
     print(f"fns in production        : {len(prod)}")
     print(f"seed names               : {len(SEEDS)}")
     print(f"alloc_* family (non-pre) : {len(alloc_family)}")
-    print(f"COLLECTING closure       : {len(collecting)}  (fixpoint in {rounds} rounds)")
+    print(f"family exclusions ruled  : {len(exclusions)}")
+    print(f"collecting mode          : {mode}")
+    print(f"COLLECTING set           : {len(collecting)}"
+          + (f"  (fixpoint in {rounds} rounds)" if mode == "closure" else "  (closed list)"))
 
     out = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "r6-stage1.json")
     out.write_text(json.dumps({
