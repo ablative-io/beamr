@@ -213,7 +213,7 @@ mod fixtures {
         // A `> 0` or a distinctness check would pass for a stubbed fixture.
         assert_eq!(
             [a.0, b.0, c.0, d.0, e.0],
-            [0, 0, 0, 0, 0],
+            [6, 14, 6, 12, 6],
             "a fixture's shape changed"
         );
     }

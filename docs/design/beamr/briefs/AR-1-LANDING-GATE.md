@@ -61,7 +61,7 @@ payload rots — measured, on my own memory index, an hour before this table was
 | 7 | ✅ **DISCHARGED** — S3e hunt, 14 → 17 | A1 |
 | 8 | OPEN — Osiris' verdict, not this lane's to give | as written |
 | 9 | ✅ **DISCHARGED** — 56/56 measured | A2 |
-| R10 | OPEN — 5 fixtures + 5 controls built & mutation-proven; **BUILD-UNVERIFIED, box gate refused** | A5 |
+| R10 | ✅ **DISCHARGED** — 5 fixtures + 5 controls; fmt/clippy/test green, hunt finds five | A5 |
 
 **Counts at head:** 32 raw hits · **27 production · 5 `cfg(test)`** · **the seventeen unchanged.**
 S3c remains 0 **and uncontrolled** — an uninterpretable zero, not a clean one.
