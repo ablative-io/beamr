@@ -66,6 +66,46 @@ established file-by-file rather than assumed. A fix that has to ship as a
 **whether a base carries the 0.16.2 fixes is a commit-ancestry question,
 not a version comparison** — see **Pinning** in the advisory above.
 
+#### Verifying the forward-ports yourself
+
+**Every identity-based carriage test reports these fixes as ABSENT from
+0.17.0, and each one is wrong.** A forward-port is the same change under a
+different patch, so commit SHA, ancestry, `git cherry` and `git patch-id` all
+answer "missing" — `git cherry` marks every 0.16.3 fix commit `+`, which reads
+plainly as *the memory-safety fixes did not make it*. **Only content answers.**
+"Established file-by-file" records that we checked; it hands you nothing to
+check with, so here are the markers:
+
+| lane | file (under `crates/beamr/src/`) | marker | at `67f89c4` | at `v0.17.0` |
+|---|---|---|---|---|
+| 3 | `jit/runtime_binary_match.rs` | `Own the bytes` | 0 | 1 |
+| 3 | `jit/runtime_binary_match.rs` | `let bytes = bytes.to_vec();` | 0 | 1 |
+| 3 | `jit/runtime_binary_match.rs` | `Advance the position BEFORE the allocation` | 0 | 1 |
+| 1 | `native/gate3_bifs/mod.rs` | `to_vec()` | 0 | 1 |
+| 1 | `native/stdlib_stubs/misc_bifs.rs` | `to_vec()` | 0 | 1 |
+| 1 | `native/stdlib_stubs/uri_bifs.rs` | `to_vec()` | 0 | 1 |
+| 1 | `native/stdlib_stubs/string_bifs.rs` | `to_vec()` | **2** | **7** |
+| 2 | `native/etf_bifs.rs` | `to_vec()` | 0 | 2 |
+
+```sh
+git show <rev>:crates/beamr/src/<file> | grep -c -F '<marker>'
+```
+
+⚠️ **COMPARE THE TWO COLUMNS — DO NOT TEST FOR PRESENCE.** `string_bifs.rs`
+is **2 → 7**, not 0 → n: it already contained the idiom before the fix, so a
+presence test passes at the pre-fix state and reports carriage that is not
+there. That row is the reason this table has a left-hand column at all.
+
+The counts are a *carriage* check, not a proof of equivalence — they tell you
+the forward-port arrived, not that it is byte-identical to the `0.16.x` patch.
+For the stronger claim, compare the blobs. **All six files named above are
+byte-identical between `v0.16.3` and `v0.17.0`:**
+
+```sh
+git rev-parse v0.16.3:crates/beamr/src/<file> \
+              v0.17.0:crates/beamr/src/<file>   # two identical object ids
+```
+
 `beamr-cli` moves to `0.5.0` and `beamr-wasm` to `0.8.0` in the same commit;
 both pin `beamr = "0.17.0"`. `gleam-types` is deliberately not bumped — no
 commits since its version was set.

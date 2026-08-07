@@ -125,8 +125,11 @@ main. It is an evidence transcript, not code.
 
 ## 3. Version edits, with the pin trap called out
 
-Current manifest state (`grep -m1 '^version' crates/*/Cargo.toml`) against the
-registry (probed with a User-Agent — see §6):
+Manifest state **as staged at `9294be0`, before the bump** (`grep -m1 '^version'
+crates/*/Cargo.toml`) against the registry (probed with a User-Agent — see §6).
+**This table is the starting state, not the current one** — the bump landed at
+`8dcf747` (all three `version =` lines plus `Cargo.lock`), so a reader running
+that `grep` on main today gets the right-hand column, not the left:
 
 | crate | manifest | published | commits since its version was set | action |
 |---|---|---|---|---|
@@ -271,6 +274,14 @@ act had nothing. `scripts/release.sh` now prints its full intended set before
 the first upload (`9294be0`) — that is the *announcement*, not the claim. The
 claim is taken on the box, by the operator, in the normal way.
 
+**As executed, the declared set was all three publishable crates — `beamr`
+0.17.0, `beamr-cli` 0.5.0, `beamr-wasm` 0.8.0 — and the claim was taken on the
+credential-holding box for the duration.** `gleam-types` was declared *out*:
+its manifest 0.4.3 is already its published version, with zero commits since it
+was set, so the script skips it. **Stating the exclusion is part of the
+declaration** — a set that silently omits a member is indistinguishable from
+one that lost it.
+
 ## 5. Gates — and there is no CI behind you
 
 **GitHub Actions is disabled org-wide (failed payment).** There is no CI green
@@ -278,12 +289,39 @@ for this release and none is coming. The `gates.json` battery at the release
 commit is the *only* evidence, which makes `RELEASE_CHECKLIST.md` §"Validation
 gates" load-bearing rather than ceremonial.
 
-- Run the full 5-leg battery at the release commit and land its evidence commit
-  bound to the tree hash.
-- **No battery has been run at `9294be0` or later.** This runbook stages the
-  release; it does not certify the tree. Certification is the executor's, at the
-  commit actually being cut.
-- **⚠ THE CLIPPY LEG ITSELF IS UNEXERCISED.** `gates.json`'s clippy leg was
+- Run the full battery at the release commit and land its evidence commit
+  bound to the tree hash. **Do not hardcode the leg count here** — `gates.json`
+  declares it and the runner reads it at run time; it is **6** as of this
+  release, and this line previously said 5.
+- ~~**No battery has been run at `9294be0` or later.**~~ **DISCHARGED — this
+  was true when the runbook was written and was falsified by the act the
+  runbook exists to direct.** **Two batteries scored on the release tree**,
+  each 6/6, each scored against `gates.json`'s own declared leg count:
+
+  | commit | legs | what it is |
+  |---|---|---|
+  | `8dcf747` | 6/6 | pre-tag; Rust-identical to the cut |
+  | **`377b6de`** | **6/6** | **the tagged commit** — `COMPLETE legs_declared=6 legs_scored=6 commit=377b6de…` |
+
+  **A third run preceded these and does not count — it was VOID**, and it is
+  named here rather than dropped. Its runner wrote its completion marker
+  unconditionally as the literal `DONE` and emitted **no per-leg rc artifacts
+  at all**, so nothing in it distinguishes six passing legs from six legs that
+  never ran. **A completion marker written unconditionally is not a marker, it
+  is a constant**: it attests that the script reached its last line. The two
+  rows above come from a repaired runner whose marker is derived from the work
+  — it counts the `leg-*.rc` files it actually wrote and compares that to the
+  denominator it read out of `gates.json`, and writes `VOID.marker` and exits
+  non-zero on a mismatch.
+
+  The runbook still stages rather than certifies: **certification is the
+  executor's, at the commit actually being cut**, and that is what the second
+  row is. Do not read the row as a standing green for a later tree.
+- ~~**⚠ THE CLIPPY LEG ITSELF IS UNEXERCISED.**~~ **DISCHARGED twice over** —
+  by the red-drive demonstration recorded below, and by execution: clippy is
+  `gates.json` leg 2, and `leg-2.rc` reads **0** in both scored batteries
+  above. The history is kept because the reasoning under it is what makes the
+  demonstration worth having. `gates.json`'s clippy leg was
   rewritten to harness R2 at `c6043d2`, and the newest evidence under
   `gate-logs/` is `74c7d3c`, which **predates it**:
   ```sh
@@ -383,6 +421,28 @@ crates this wave must publish → publish → re-run → the set MUST return to
 empty.** Non-empty at the end means a crate did not publish, **and the check
 names which one** rather than leaving an operator to compare four numbers by
 eye.
+
+**AS EXECUTED — the close returned EMPTY, and the scope is all three published
+crates.** Re-run at `377b6de`, `2026-08-07T04:32:13Z`, against the versions
+actually declared in the tree (`grep -m1 '^version' crates/*/Cargo.toml`):
+
+```
+gleam-types  0.4.3   HTTP 200   not ahead   (declared out of the wave; unchanged)
+beamr        0.17.0  HTTP 200   not ahead
+beamr-cli    0.5.0   HTTP 200   not ahead
+beamr-wasm   0.8.0   HTTP 200   not ahead
+controls, same invocation:
+  beamr/0.16.3               -> 200   (positive)
+  beamr/0.99.0               -> 404   (negative, existing crate)
+  beamr-nonexistent-xyzzy/1.0.0 -> 404 (negative, absent crate)
+```
+
+**Declared-ahead set: EMPTY. No named residue.** The controls are the
+load-bearing part, not the four `200`s: a run in which every probe answers `200`
+closes perfectly whether or not anything published, so **the close is only
+evidence when a negative control reddens in the same invocation.** Two do, one
+of them on a crate name that has never existed, which is the arm that catches
+an interposing proxy answering `200` to everything.
 
 Run it with a **positive and a negative control in the same invocation** — an
 absent name must answer `HTTP-404`, never an empty `200`, which is what a
