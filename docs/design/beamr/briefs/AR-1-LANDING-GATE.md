@@ -433,3 +433,64 @@ row 9's 56/56 measured. Nothing owed by Artemis on AR-1.
 S3d surfaces `native/udp_bifs.rs:473` — `tail = context.alloc_cons(*term, tail).unwrap_or(Term::NIL);`
 — which is **verbatim the defeat row 6 predicted before anyone looked** ("an `unwrap_or(term)` … will
 look like defensive programming"). Recorded against row 6; not absorbed here.
+🔴 **RETRACTED BY AMENDMENT 4 — THIS SIGHTING IS FALSE. The line is inside `#[cfg(test)] mod tests`.**
+
+---
+
+# ⚠️ POST-ARTEFACT AMENDMENT 4 — I FILED A FALSE POSITIVE AGAINST ROW 6. Cally Ray
+
+*(No clock: the commit records it. See amendment 3's rule.)*
+
+## 🔴 THE RETRACTION
+
+`native/udp_bifs.rs:473` sits inside `#[cfg(test)] mod tests`. **Row 6's predicted defeat has NOT
+occurred; it remains unfired.** Refuted by Artemis with three differently-shaped proofs — the only
+column-0 `}` after `:380` is `:579` (EOF); a depth-aware walk puts minimum depth across `:384–:472` at
+**1**, never closing, with `:473` at **depth 3**; and `mod tests {` is the only column-0 item
+declaration after `:382`. She deliberately did **not** settle it with a column-0 brace check, because
+that is a sibling of the instrument that produced the sighting.
+
+⛔ **AND THE DISCLOSURE PREDATED MY GRADING.** `AR-1-GROUND-PACK.md` at `9587d2f`, section *"Row 6's
+shape appears — in TEST code only"*, names `:466-476` and the `cfg(test)` opener at `:382`.
+
+⭐⭐ **MY ERROR'S SHAPE: I GRADED RAW INSTRUMENT OUTPUT AS THOUGH IT WERE A FINDING, WHEN A CLASSIFIED
+READING OF THAT SAME OUTPUT ALREADY EXISTED AND PREDATED ME.** Raw output is not evidence — it is the
+input to a classification someone had already done and banked. Re-deriving it from the hit list alone
+reproduced that work worse **and aimed a false positive at a colleague's lane.** The instrument was in
+front of me; the ground pack was one file away, cited in this gate's own subject line.
+
+## 🔴 AMENDMENT 3'S FIGURES ARE CORRECTED
+
+**32 is the RAW hit count; production is 27.** Five hits are `#[cfg(test)]`:
+`jit/runtime_binary_match.rs:579`, `:627`, `jit/runtime_map.rs:221`, `native/ets_bifs.rs:1360`,
+`native/udp_bifs.rs:473`.
+
+| class | production | `cfg(test)` |
+|---|---|---|
+| S3a | **4** (amendment 3 said 8) | 4 |
+| S3b | 11 | 0 |
+| S3c | **0 — still uncontrolled, still uninterpretable (R10-b stands)** | 0 |
+| S3d | **3** (amendment 3 said 4) | 1 |
+| S3e | 9 | 0 |
+
+✅ **THE SEVENTEEN DO NOT MOVE.** None of the five is a class member — `udp_bifs`' member is
+`finish_udp_recv/ip`, a different site in the same file. Row 2's population is unchanged at 17.
+
+## ⭐⭐ THE CONSEQUENCE FOR R10-a, AND IT IS ARTEMIS' FINDING
+
+**My fixture design makes the hunt's `cfg`-blindness LOAD-BEARING** — it is precisely why a
+`#[cfg(test)]` fixture is visible to the instrument yet absent from the shipped binary. **And that same
+blindness produced this false positive within the hour.** One property, two roles, opposite signs.
+
+⇒ **the instrument cannot distinguish its own control from a real site**, so a reader of the post-fix
+run sees N hits with no way to separate fixture / test-helper / production **from the very output that
+is supposed to certify the remedy.** That is row 2's defect arriving a third time by a third door.
+
+⭐⭐ **A DELIBERATE USE OF A BLIND SPOT CREATES AN OBLIGATION TO LABEL EVERYTHING THAT BLIND SPOT HIDES.
+You have converted an accident into a dependency, and everyone downstream inherits it without being
+told.** The fixture is only sound if it ships with the labelling.
+
+**RULED — LABEL, NEVER FILTER.** `shape_hunt.py` gains a `cfg(test)` column on every hit; counts do not
+change beyond the labels; the five are named. ⛔ **Filtering is wrong twice over: it blinds the hunt in
+the direction that hurts, and it would hide the control fixture.** A docstring caveat fires at 0%; a
+column fires at every lookup. **The script is Artemis'; the change is hers to land.**
