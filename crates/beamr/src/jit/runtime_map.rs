@@ -1,13 +1,12 @@
 //! Map runtime helpers callable from JIT-generated code.
 
-use crate::gc;
 use crate::process::Process;
 use crate::term::Term;
 use crate::term::boxed::{Map, write_map};
 use crate::term::compare;
 
 use super::ir_exceptions::JitReturn;
-use super::runtime::process_from_abi;
+use super::runtime::{alloc_words_rooted, process_from_abi};
 
 pub(crate) extern "C" fn jit_map_new(
     process: *mut Process,
@@ -127,15 +126,30 @@ fn map_entries(map: Map) -> Option<Vec<(Term, Term)>> {
 
 fn write_map_entries(process: &mut Process, entries: &[(Term, Term)]) -> Option<Term> {
     let words = map_word_count(entries.len())?;
-    let keys = entries.iter().map(|(key, _value)| *key).collect::<Vec<_>>();
-    let values = entries
+    // Every key and value is rooted across the allocation. They live in
+    // Rust-owned vectors, which are not GC roots, and the reservation inside
+    // `alloc_words_rooted` can collect and move every one of them; writing the
+    // pre-move copies into the fresh map is H4.
+    //
+    // Hoisting the reservation alone would NOT be enough here. The interpreter
+    // twin (`put_map`, `interpreter/opcodes/closures.rs:476-480`) re-reads the
+    // source map from its operand after reserving; this helper has no operand
+    // to re-read, and generated code stages the update pairs into a Cranelift
+    // stack slot the collector cannot see. Rooting is the only mechanism that
+    // yields post-collection values here.
+    let mut roots = entries
         .iter()
-        .map(|(_key, value)| *value)
+        .flat_map(|(key, value)| [*key, *value])
         .collect::<Vec<_>>();
-    if gc::ensure_space(process, words, 256).is_err() {
+    let ptr = alloc_words_rooted(process, words, &mut roots);
+    if ptr.is_null() {
         return None;
     }
-    let heap = process.heap_mut().alloc_slice(words).ok()?;
+    let keys = roots.iter().step_by(2).copied().collect::<Vec<_>>();
+    let values = roots.iter().skip(1).step_by(2).copied().collect::<Vec<_>>();
+    // SAFETY: `alloc_words_rooted` returned a non-null pointer to exactly
+    // `words` heap words owned by `process` for the duration of this call.
+    let heap = unsafe { std::slice::from_raw_parts_mut(ptr, words) };
     write_map(heap, &keys, &values)
 }
 
@@ -176,15 +190,16 @@ mod gc_hazard_tests {
             .to_vec()
     }
 
-    /// W3 (H4). `write_map_entries` copies the key and value `Term`s into
-    /// Rust-owned vectors (`:130`, `:131-134`) BEFORE the collecting
-    /// `gc::ensure_space` (`:135`), then writes those pre-collection words
-    /// into the freshly allocated map (`:139`).
+    /// W3 (H4). Guards `write_map_entries` against reverting to the shape it
+    /// had at `4055cbe`, where the key and value `Term`s were copied into
+    /// Rust-owned vectors BEFORE the collecting reservation and those
+    /// pre-collection words were then written into the freshly allocated map.
+    /// Red evidence for that shape: the wall commit on this lane.
     ///
-    /// The vectors are neither register- nor `native_roots`-resident, so the
-    /// collection cannot forward them. Boxed values make the corruption
-    /// visible as bytes: the merged map ends up pointing into the zero-filled
-    /// young region.
+    /// The vectors are neither register- nor `native_roots`-resident, so a
+    /// collection cannot forward them on its own. Boxed values make the
+    /// corruption visible as bytes: the merged map ends up pointing into the
+    /// zero-filled young region.
     ///
     /// The update value is parked in X1 deliberately — it mirrors the real
     /// lowering, where the pair terms are ALSO live in the register file and
@@ -203,7 +218,7 @@ mod gc_hazard_tests {
                 .iter()
                 .map(|bytes| ctx.alloc_binary(bytes).expect("inline value"))
                 .collect();
-            let keys: Vec<Term> = (0..3).map(|index| Term::small_int(index)).collect();
+            let keys: Vec<Term> = (0..3i64).map(Term::small_int).collect();
             let map = ctx.alloc_map(&keys, &values).expect("source map");
             let update_value = ctx.alloc_binary(&replacement).expect("update value");
             (map, update_value)

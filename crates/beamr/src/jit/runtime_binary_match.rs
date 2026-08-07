@@ -1,5 +1,5 @@
 //! Binary matching runtime helpers callable from JIT-generated code.
-use super::runtime::{alloc_words, process_from_abi};
+use super::runtime::{alloc_words, alloc_words_rooted, process_from_abi};
 use crate::process::Process;
 use crate::term::Term;
 use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
@@ -22,10 +22,15 @@ pub(crate) extern "C" fn jit_bs_start_match(process: *mut Process, binary: u64) 
     let Some(total_bits) = binary.len().checked_mul(u8::BITS as usize) else {
         return BINARY_HELPER_FAILURE;
     };
-    let ptr = alloc_words(process, MATCH_CONTEXT_WORDS);
+    // Root the source across the allocation: it can collect, and the local
+    // `source` above is a bare copy that no collection can reach. Writing the
+    // pre-move value into the context at the end of this function is H3.
+    let mut roots = [source];
+    let ptr = alloc_words_rooted(process, MATCH_CONTEXT_WORDS, &mut roots);
     if ptr.is_null() {
         return 0;
     }
+    let [source] = roots;
     let heap = unsafe { std::slice::from_raw_parts_mut(ptr, MATCH_CONTEXT_WORDS) };
     heap[0] = BoxedHeader::new(BoxedTag::MatchContext, MATCH_CONTEXT_WORDS - 1);
     heap[1] = 0;

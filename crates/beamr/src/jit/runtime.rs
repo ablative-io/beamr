@@ -337,6 +337,58 @@ pub(crate) fn process_from_abi(process: *mut Process) -> Option<&'static mut Pro
     Some(unsafe { &mut *process })
 }
 
+/// Allocates `words` with `roots` held live across the allocation, writing the
+/// post-collection values back into `roots`.
+///
+/// The doctrine this exists to relax, quoted from
+/// `interpreter/opcodes/binary/matching.rs:41-42`:
+///
+/// > Reserve before reading the source: GC moves heap terms, and registers
+/// > are the only roots, so no term may be held across a collection.
+///
+/// The interpreter obeys it by reserving first and then re-reading each term
+/// from its operand — see `put_map` (`interpreter/opcodes/closures.rs:476-480`),
+/// which calls `ensure_space` and immediately re-reads the source map. **A JIT
+/// helper cannot do that.** It receives raw term VALUES rather than operands,
+/// and generated code stages some of them into Cranelift stack slots
+/// (`jit/ir_map.rs`, `stage_pairs`) that the collector cannot see at all — so
+/// re-reading a staged term after a collection returns the same stale word.
+///
+/// That is what makes the native root stack the only available mechanism, not
+/// merely the tidier one. `Process::roots_with_live_x` enumerates it at
+/// `process/mod.rs:584` and `replace_roots_with_live_x` forwards it at `:646`,
+/// so a term pushed there is a first-class root for the duration of the
+/// allocation. The registers-are-the-only-roots half of the doctrine sentence
+/// is precisely what this facility suspends, under a scope that always closes.
+///
+/// Root depth is restored on every exit path, including `words == 0` and
+/// allocation failure. A null process cannot reach here: every caller resolves
+/// its pointer through [`process_from_abi`] first, which rejects null before
+/// any root is pushed.
+pub(super) fn alloc_words_rooted(
+    process: &mut Process,
+    words: usize,
+    roots: &mut [Term],
+) -> *mut u64 {
+    let depth = process.native_root_depth();
+    for root in roots.iter() {
+        process.push_native_root(*root);
+    }
+
+    let ptr = alloc_words(process, words);
+
+    // Read back BEFORE truncating. A failed allocation can still have run a
+    // collection that moved these terms, so the forwarded values are handed
+    // back on every path, not only on success.
+    for (index, root) in roots.iter_mut().enumerate() {
+        if let Some(forwarded) = process.native_root(depth + index) {
+            *root = forwarded;
+        }
+    }
+    process.truncate_native_roots(depth);
+    ptr
+}
+
 pub(crate) fn alloc_words(process: &mut Process, words: usize) -> *mut u64 {
     if words == 0 {
         return std::ptr::null_mut();
@@ -349,5 +401,147 @@ pub(crate) fn alloc_words(process: &mut Process, words: usize) -> *mut u64 {
     match process.heap_mut().alloc(words) {
         Ok(ptr) => ptr,
         Err(_heap_full) => std::ptr::null_mut(),
+    }
+}
+
+#[cfg(test)]
+mod rooting_tests {
+    use super::*;
+    use crate::atom::AtomTable;
+    use crate::native::ProcessContext;
+    use crate::term::binary_ref::BinaryRef;
+    use crate::term::shared_binary::alloc_binary_word_count;
+    use std::sync::Arc;
+
+    fn test_context(process: &mut Process, live_x: u16) -> ProcessContext<'_> {
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::new(AtomTable::with_common_atoms())));
+        context.attach_process(process, usize::from(live_x));
+        context
+    }
+
+    fn fill_until(process: &mut Process, needed: usize) {
+        let mut ctx = test_context(process, 1);
+        while ctx.process_heap().expect("heap").available() >= needed {
+            ctx.alloc_cons(Term::small_int(1), Term::NIL)
+                .expect("filler");
+        }
+    }
+
+    /// R2 acceptance: the handed-back terms are the POST-collection values.
+    #[test]
+    fn rooted_allocation_hands_back_forwarded_terms() {
+        let mut process = Process::new(1, 256);
+        let raw: Vec<u8> = (1..=40).collect();
+        let original = {
+            let mut ctx = test_context(&mut process, 0);
+            ctx.alloc_binary(&raw).expect("inline binary")
+        };
+
+        let words = alloc_binary_word_count(raw.len());
+        fill_until(&mut process, words);
+        assert!(
+            process.heap().available() < words,
+            "geometry must force the rooted allocation to collect"
+        );
+        assert_eq!(process.heap().old_used(), 0);
+
+        let depth_before = process.native_root_depth();
+        let mut roots = [original];
+        let ptr = alloc_words_rooted(&mut process, words, &mut roots);
+
+        assert!(!ptr.is_null(), "allocation must succeed");
+        assert!(
+            process.heap().old_used() > 0,
+            "the rooted allocation must have run a collection"
+        );
+        assert_eq!(
+            process.native_root_depth(),
+            depth_before,
+            "root depth must be restored on the success path"
+        );
+        assert_ne!(
+            roots[0], original,
+            "the handed-back term must be the post-collection value"
+        );
+        assert_eq!(
+            BinaryRef::new(roots[0])
+                .expect("forwarded term must still be a binary")
+                .as_bytes(),
+            raw.as_slice(),
+            "the forwarded term must resolve to the same bytes"
+        );
+    }
+
+    /// R2 acceptance: depth restored on the `words == 0` path.
+    #[test]
+    fn rooted_allocation_restores_depth_on_zero_words() {
+        let mut process = Process::new(1, 256);
+        let term = Term::small_int(7);
+        let depth_before = process.native_root_depth();
+
+        let mut roots = [term];
+        let ptr = alloc_words_rooted(&mut process, 0, &mut roots);
+
+        assert!(ptr.is_null(), "a zero-word request allocates nothing");
+        assert_eq!(process.native_root_depth(), depth_before);
+        assert_eq!(roots[0], term, "an immediate is never moved");
+    }
+
+    /// R2 acceptance: depth restored when the reservation cannot be satisfied.
+    #[test]
+    fn rooted_allocation_restores_depth_on_allocation_failure() {
+        let mut process = Process::new(1, 256);
+        let raw: Vec<u8> = (1..=8).collect();
+        let original = {
+            let mut ctx = test_context(&mut process, 0);
+            ctx.alloc_binary(&raw).expect("inline binary")
+        };
+        let depth_before = process.native_root_depth();
+
+        // Far beyond any geometry this process can reach.
+        let mut roots = [original];
+        let ptr = alloc_words_rooted(&mut process, usize::MAX / 2, &mut roots);
+
+        assert!(ptr.is_null(), "an unsatisfiable request must fail");
+        assert_eq!(
+            process.native_root_depth(),
+            depth_before,
+            "root depth must be restored on the failure path"
+        );
+    }
+
+    /// R2 acceptance: nesting composes — an inner scope leaves an outer one
+    /// exactly as it found it, and the outer roots are still forwarded.
+    #[test]
+    fn rooted_scopes_nest_without_leaking_depth() {
+        let mut process = Process::new(1, 256);
+        let outer_term = {
+            let mut ctx = test_context(&mut process, 0);
+            ctx.alloc_binary(&[9u8; 16]).expect("outer binary")
+        };
+
+        let base = process.native_root_depth();
+        process.push_native_root(outer_term);
+        let outer_index = process.native_root_depth() - 1;
+
+        let words = alloc_binary_word_count(16);
+        fill_until(&mut process, words);
+        let mut roots = [outer_term];
+        let _ = alloc_words_rooted(&mut process, words, &mut roots);
+
+        assert_eq!(
+            process.native_root_depth(),
+            base + 1,
+            "the inner scope must not disturb the outer root"
+        );
+        let outer_now = process.native_root(outer_index).expect("outer root");
+        assert_eq!(
+            outer_now, roots[0],
+            "outer and inner views of the same term must agree after forwarding"
+        );
+
+        process.truncate_native_roots(base);
+        assert_eq!(process.native_root_depth(), base);
     }
 }
