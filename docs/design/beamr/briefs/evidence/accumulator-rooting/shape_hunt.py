@@ -18,13 +18,29 @@ S3e Vec OF TUPLES               <-- THE HIT: carrier is an element inside a
                                     tuple inside a Vec, so it is neither a
                                     `Vec<Term>` nor a Term-shaped push arg.
 
-Known-positive control: S3d must surface code_management_bifs.rs's
-`list = context.alloc_cons(tuple, list)?` -- RF-006 defect #1. If it does not,
-this instrument is broken and its zeroes mean nothing.
+## KNOWN-POSITIVE CONTROLS -- five, one per class, re-sited off the live defect
 
-⚠️ THE CONTROL IS KEYED ON A LIVE DEFECT THIS LANE REPAIRS, so it dies with the
-repair -- see AR-1-LANDING-GATE R10-a. Re-siting it on a synthetic fixture is a
-separate change and is NOT made here.
+The original control keyed on code_management_bifs.rs's
+`list = context.alloc_cons(tuple, list)?` -- RF-006 defect #1. ⭐ A CONTROL
+KEYED ON A LIVE DEFECT IS DESTROYED BY THE PATCH, so it has been retired in
+favour of committed fixtures at
+
+    crates/beamr/src/ar1_shape_control.rs
+
+one per shape class. Before that, S3a/S3b/S3c/S3e were WHOLLY UNCONTROLLED --
+the TUPVEC regex could have broken and this script would still have printed
+PASS -- and S3c had never once been shown to produce a presence, so every S3c
+zero it ever reported was uninterpretable rather than reassuring.
+
+⚠️ DECLARED COUPLING, and it rots silently if it is not read: the fixtures work
+BECAUSE this hunt is a regex, blind to `cfg` and to attributes. That blindness
+is load-bearing, not incidental -- a positive inside `#[cfg(test)]` is visible
+here yet absent from the shipped binary, which is what lets the control survive
+a structural remedy instead of dying when the remedy SUCCEEDS. ⇒ IF THIS HUNT
+EVER BECOMES AST-BASED OR cfg-AWARE, THE FIXTURES STOP BEING VISIBLE TO IT AND
+THE CONTROL MUST BE RE-SITED. The same goes for source_files(): the fixture file
+must never be renamed to anything ending `_tests.rs`, or all five controls
+vanish without a word.
 
 ## cfg(test) LABELLING -- added after a false positive it would have prevented
 
@@ -165,7 +181,9 @@ def source_files():
         yield p
 
 hits = collections.defaultdict(list)
+walked = []
 for p in source_files():
+    walked.append(str(p))
     lines = p.read_text().splitlines()
     for i, l in enumerate(lines):
         blk = "\n".join(lines[i:i+8])
@@ -226,8 +244,70 @@ for k in sorted(hits):
         if label(f, ln) == 'test':
             print(f"  cfg(test): {k}  {str(f).split('crates/')[-1]}:{ln}")
 
-ctl = [h for h in hits['S3d'] if 'code_management_bifs' in str(h[0])]
-ctl_where = f" [{label(ctl[0][0], ctl[0][1])}]" if ctl else ""
-print(f"\nKNOWN-POSITIVE CONTROL (RF-006 defect #1 via S3d){ctl_where}: "
-      f"{'PASS' if ctl else 'FAIL -- instrument is blind, its zeroes are meaningless'}")
-sys.exit(0 if ctl else 2)
+# ---- KNOWN-POSITIVE CONTROLS: one per class, on committed fixtures ----------
+# AR-1 R10. A single aggregate PASS is the loud-variant check that covers
+# nothing of the silent one: the old control read S3d ONLY, so TUPVEC could
+# have broken and this script would still have printed PASS -- and at fix time
+# the reading on offer would have been "S3e sites were structurally
+# eliminated". ⭐ A SILENTLY-BROKEN REGEX AND A SUCCESSFUL ELIMINATION PRODUCE
+# THE SAME OUTPUT. Hence five, each failing on its own.
+FIXTURE = "crates/beamr/src/ar1_shape_control.rs"
+# ⭐ KEYED ON THE BINDING NAME, NOT ON "any hit of this class in the fixture
+# file". Measured before this was tightened: the S3e fixture's own
+# `.map(..).collect()` tail registered as an S3a hit, and the S3b fixture's
+# match ARM (`_ => heap.alloc_cons(..)`) registered as an S3d hit -- the S3d
+# regex reads any `X => alloc(..)` as a reassignment. Keyed loosely,
+# EITHER WOULD HAVE HELD ITS NEIGHBOUR'S CLASS GREEN AFTER THAT NEIGHBOUR'S
+# FIXTURE BROKE -- one fixture silently standing in for another is the
+# mis-sited-mutation defect in a new dress. The marker is a binding name
+# rather than a trailing comment so that no comment-reflow can strip it.
+MARKERS = {'S3a': 's3a_mapped', 'S3b': 's3b_chosen', 'S3c': 's3c_pair',
+           'S3d': 's3d_acc', 'S3e': 's3e_pairs'}
+CLASSES = ('S3a', 'S3b', 'S3c', 'S3d', 'S3e')
+
+# Denominator control (doctrine §5 ①). Five green fixture controls would also
+# be produced by a run that walked the fixture file and NOTHING ELSE, so the
+# population is asserted, not assumed.
+print(f"\n=== CONTROLS: fixture {FIXTURE} ===")
+print(f"  population walked: {len(walked)} files")
+failed = []
+if FIXTURE not in walked:
+    failed.append(f"POPULATION -- {FIXTURE} was not walked at all "
+                  f"(renamed? moved out of crates/? matched a source_files() skip?)")
+elif len(walked) < 2:
+    failed.append(f"POPULATION -- only {len(walked)} file(s) walked; the fixture "
+                  f"cannot validate a search that searched nothing else")
+
+for k in CLASSES:
+    ctl = [h for h in hits[k] if str(h[0]) == FIXTURE and MARKERS[k] in h[2]]
+    if not ctl:
+        failed.append(f"{k} -- fixture `{MARKERS[k]}` not found; this class's zeroes "
+                      f"are meaningless (reflowed by fmt? renamed? regex broken?)")
+        print(f"  FAIL  {k}  fixture `{MARKERS[k]}` not detected")
+        continue
+    # UNIQUENESS, not existence. Two hits carrying one marker means the control
+    # cannot say WHICH line kept it green -- an existence predicate answering a
+    # uniqueness question is how the neighbouring-fixture defect got in above.
+    if len(ctl) != 1:
+        failed.append(f"{k} -- `{MARKERS[k]}` matched {len(ctl)} lines, expected exactly 1; "
+                      f"the control is ambiguous and cannot be trusted either way")
+        print(f"  FAIL  {k}  `{MARKERS[k]}` matched {len(ctl)} lines, expected 1")
+        continue
+    # The fixture is `#[cfg(test)]`, so a `prod` label here means the labeller
+    # has lost track -- the control would still be green while the production
+    # column it feeds is wrong.
+    where = {label(f, ln) for f, ln, _ in ctl}
+    if where != {'test'}:
+        failed.append(f"{k} -- fixture detected but labelled {sorted(where)}, expected ['test']")
+        print(f"  FAIL  {k}  labelled {sorted(where)}, expected ['test']")
+        continue
+    print(f"  PASS  {k}  line(s) {sorted(ln for _, ln, _ in ctl)} [test]")
+
+if failed:
+    print("\n⛔ CONTROL FAILURE -- this run's zeroes are uninterpretable:")
+    for f in failed:
+        print(f"  {f}")
+    sys.exit(2)
+print(f"\nALL {len(CLASSES)} CLASS CONTROLS PASS -- every class has been shown, "
+      f"THIS RUN, to be able to produce a presence.")
+sys.exit(0)

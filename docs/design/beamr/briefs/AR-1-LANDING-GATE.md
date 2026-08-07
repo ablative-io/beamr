@@ -53,7 +53,7 @@ payload rots — measured, on my own memory index, an hour before this table was
 | row | current state | last moved by |
 |---|---|---|
 | 1 | OPEN — ordering-sensitive detector, unbuilt | as written |
-| 2 | **BLOCKED** — three-disposition ledger; **the ledger file does not exist** | A3 |
+| 2 | OPEN — ledger **pre-registered**, `evidence/accumulator-rooting/{dispositions,ledger_check}.*` | A5 |
 | 3 | OPEN — four `UNRULED-PRERESERVE` rows undischarged | as written |
 | 4 | OPEN — wasm leg unpriced; **per-site commit granularity now required** | A3 |
 | 5 | ✅ **MET** — ancestry checked | A2 |
@@ -61,7 +61,7 @@ payload rots — measured, on my own memory index, an hour before this table was
 | 7 | ✅ **DISCHARGED** — S3e hunt, 14 → 17 | A1 |
 | 8 | OPEN — Osiris' verdict, not this lane's to give | as written |
 | 9 | ✅ **DISCHARGED** — 56/56 measured | A2 |
-| R10 | OPEN — labelling **landed `4fcc9a7`**; fixture + per-class controls unbuilt | A4 |
+| R10 | OPEN — 5 fixtures + 5 controls built & mutation-proven; **BUILD-UNVERIFIED, box gate refused** | A5 |
 
 **Counts at head:** 32 raw hits · **27 production · 5 `cfg(test)`** · **the seventeen unchanged.**
 S3c remains 0 **and uncontrolled** — an uninterpretable zero, not a clean one.
@@ -520,3 +520,91 @@ told.** The fixture is only sound if it ships with the labelling.
 change beyond the labels; the five are named. ⛔ **Filtering is wrong twice over: it blinds the hunt in
 the direction that hurts, and it would hide the control fixture.** A docstring caveat fires at 0%; a
 column fires at every lookup. **The script is Artemis'; the change is hers to land.**
+
+---
+
+# ⭐ AMENDMENT 5 — R10 BUILT (NOT YET DISCHARGED), ROW 2'S LEDGER EXISTS. Cally Ray; time from the commit carrying this note.
+
+> ⛔ **R10 IS NOT DISCHARGED AND THIS AMENDMENT FIRST SAID IT WAS.** The fixtures are Rust in a shipping
+> crate and **have not compiled** — the box gate refused every cargo leg (1-min 48.63 / 5-min 37.07
+> against 10 cores at entry; disk 41 GiB, above the band, so the refusal is load-only). Everything below
+> is graded **on text**. ⭐ **A ROW GRADED BY THE INSTRUMENT IT SATISFIES IS NOT GRADED: the hunt reads
+> source, so it cannot tell a fixture that compiles from one that does not**, and marking the row green
+> off a green hunt would have been this gate's own row-2 defect, committed by its author, in its own
+> status table. R10 closes when `fmt` + `clippy -D warnings` + the fixture's `#[test]` are green and the
+> hunt still finds five.
+
+**Both rows moved because the work was done, not because the bar moved.** Nothing below relaxes a
+criterion; two of the entries are defects in my own hands, found by building the thing.
+
+## R10 — the five fixtures exist, and each one's death is caught by its own control
+
+`crates/beamr/src/ar1_shape_control.rs`, one fixture per class S3a–S3e, built to amendment 3's four
+constraints. `shape_hunt.py`'s single S3d control on RF-006 defect #1 is **retired** — a control keyed
+on a live defect is destroyed by the patch — and replaced by five, each exiting non-zero on its own.
+
+**Shown red, not assumed green.** Five realistic deaths (fmt reflow, refactor-to-call, hoisted alloc,
+`let` on the line, `Vec::default`), **each caught ONE-TO-ONE**, M0-unmutated green first so a stuck-red
+harness could not credit a catch. The **denominator control** was shown red on both arms: a one-file
+walk, and the fixture renamed to `*_tests.rs`.
+
+## 🔴 R10-c — MY OWN FIXTURE CARRIED THE DEFECT THE ROW EXISTS TO CATCH
+
+The S3e fixture's `.map(..).collect()` tail is **also an S3a hit**; the S3b `match` arm is **also an
+S3d hit**. Keyed the obvious way — *any hit of this class in the fixture file* — ⛔ **EITHER WOULD HAVE
+HELD ITS NEIGHBOUR'S CLASS GREEN AFTER THAT NEIGHBOUR'S FIXTURE BROKE.**
+
+⭐⭐ **FIVE CONTROLS IN ONE FILE ARE NOT FIVE CONTROLS UNTIL EACH IS KEYED TO SOMETHING ONLY ITS OWN
+FIXTURE HAS.** Co-location is the hazard: it is what makes substitution possible and invisible at once.
+⇒ keyed on the **binding name** (`s3a_mapped` … `s3e_pairs`) — a *name*, not a trailing comment, so no
+reflow can strip it — **plus a uniqueness assert**: 0 or ≥2 matches is UNUSABLE, never PASS.
+
+## Row 2 — `evidence/accumulator-rooting/dispositions.json`, committed BEFORE the fix
+
+**22 rows: the 17 by name + the 5 `CONTROL-FIXTURE`.** Numbering reconciles with the ground pack
+(#11 `term/json.rs`, #12/#13 `convert.rs`, #14 Osiris'). Every crossing is **PENDING** by construction.
+**No clock in the file** — it takes its time from its commit, per the rule this gate's own header
+correction laid down.
+
+`ledger_check.py` makes the disposition machine-verified rather than asserted (amendment 2, condition
+2). ⚠️ Its `STRUCTURALLY-ELIMINATED` arm has **zero rows to act on today**, so it is forced in the
+self-test **in both directions** — a claim true at the bytes must PASS, a refuted one must FAIL. ⭐ **A
+CHECK WITH NOTHING TO ACT ON SHIPS AS PROSE IN A SCRIPT'S CLOTHING UNLESS SOMETHING MAKES IT RUN.**
+`--sign-off` refuses all 17 PENDING today, rc 2.
+
+**Row 4 feeds off the same ledger:** ids **12, 13, 16, 17** carry `wasm32 + wasm-bindgen-test + node —
+UNPRICED`. That is now written down per site rather than described once in prose.
+
+## 🔴 THE LABELLER LEAKED, AND ITS WHOLE ERROR BUDGET POINTED AT CONCEALMENT
+
+`#[cfg(test)] mod tests;` owns no block; the arming flag reached forward to the next `{`, up to **647
+lines** away. **9 files, 40 lines mislabelled, 40/40 reporting production as `cfg(test)`** — none the
+safe way. **0 disagreements across the 32 hits**, so the `32 raw · 27 production · 5 cfg(test)` split
+stands. Fixed at `f77719c` with arm I; re-derived independently by Artemis from committed bytes.
+
+⚠️ **MY CENSUS OF THE DEFECT WAS WRONG: I said 81, it is 71.** My predicate asked *is there a brace on
+the next line*; the defect's predicate is *does the item terminate at `;` before any brace*. ⭐ **A
+DENOMINATOR OVER-REPORT DOES NOT FAIL SAFE THE WAY A SPELLING OVER-REPORT DOES — it inflates the size
+of a defect.** It survived my reading because **the count was decoration on a finding that stood
+without it**: every consequence was measured on labels, none derived from the census.
+
+## S3d's CLASS ATTRIBUTION over-reports — recorded, no row re-graded
+
+The S3d regex reads `match` arms (`None => context.alloc_tuple(..)`) as reassignments: **3 of its 6
+hits, 2 of them production.** The hits are real carrier shapes; **the class label is wrong, not the
+finding**, and the direction is fail-safe. The 17 were verified by reading, so no verdict moves.
+
+## ⭐⭐ THE CROSS-FILE BLINDNESS — Artemis' finding, and the reason R10 is load-bearing
+
+`cfg_test_lines()` walks one file at a time, so a gate declared in a parent (`#[cfg(test)] mod x;` in
+`lib.rs`) leaves the module's own file with **no attribute and every hit labelled `prod`**. It has been
+inert for its entire life **not because the labeller handles it**, but because every gate of that shape
+in the tree points at a `tests.rs`/`*_tests.rs` file `source_files()` already skips. **Two unrelated
+mechanisms were covering it and neither was written to.**
+
+⇒ ⭐⭐ **A BLIND SPOT HELD SHUT BY A CONVENTION IS NOT CLOSED — IT IS UNTESTED, AND IT OPENS THE FIRST
+TIME SOMEONE HAS A REASON TO BREAK THE CONVENTION.** R10 is that reason: the fixture must sit outside
+the skip list *on purpose*, so it is the first artefact where the labeller carries that weight alone.
+The fixture is sited in-file, which is correct — **but I chose that reasoning about `source_files()`
+and had not considered cross-file gating at all. Right answer, incomplete reason; recorded as the
+coincidence it was rather than the decision it looks like.**

@@ -8,6 +8,11 @@
 #[cfg(any(not(feature = "std"), target_arch = "wasm32"))]
 extern crate alloc;
 
+// AR-1 R10: the accumulator-rooting hunt's control fixtures. Ships nothing —
+// every item inside is `#[cfg(test)]`. It must stay under `crates/` and must
+// NOT be renamed to anything ending `_tests.rs`, or the hunt stops walking it
+// and all five per-class controls silently disappear. See the module docs.
+mod ar1_shape_control;
 pub mod atom;
 pub mod capability;
 pub mod constant_pool;
