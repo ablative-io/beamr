@@ -1,0 +1,60 @@
+alloc_bigint                               impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:205
+alloc_bigint_term                          (free fn)                                      -> Result<Term, DecodeError>          crates/beamr/src/distribution/etf.rs:828
+alloc_binary                               impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:138
+alloc_binary                               (free fn)                                      -> Option<Term>                       crates/beamr/src/term/shared_binary.rs:107
+alloc_binary_term                          (free fn)                                      -> Result<Term, DecodeError>          crates/beamr/src/distribution/etf.rs:813
+alloc_binary_word_count                    (free fn)                                      -> usize                              crates/beamr/src/term/shared_binary.rs:25
+alloc_bindings_list                        (free fn)                                      -> Result<Term, Term>                 crates/beamr/src/native/ets_bifs.rs:948
+alloc_cons                                 impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:114
+alloc_external_pid                         impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:66
+alloc_external_pid_term                    (free fn)                                      -> Result<Term, DecodeError>          crates/beamr/src/distribution/etf.rs:849
+alloc_external_reference                   impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:91
+alloc_external_reference_term              (free fn)                                      -> Result<Term, DecodeError>          crates/beamr/src/distribution/etf.rs:861
+alloc_fd_resource                          impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:152
+alloc_fd_resource_or_close                 (free fn)                                      -> Result<Term, Term>                 crates/beamr/src/native/tcp_bifs.rs:753
+alloc_float                                impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:132
+alloc_float_term                           (free fn)                                      -> Result<Term, DecodeError>          crates/beamr/src/distribution/etf.rs:806
+alloc_in_region                            impl Heap                                      -> Result<*mut u64, HeapFull>         crates/beamr/src/process/heap.rs:326
+alloc_in_region_maybe_refcounted           impl Heap                                      -> Result<*mut u64, HeapFull>         crates/beamr/src/process/heap.rs:336
+alloc_list                                 (free fn)                                      -> Result<Term, DecodeError>          crates/beamr/src/distribution/etf.rs:872
+alloc_list                                 impl TermAllocator for MatchArena              -> Result<Term, Term>                 crates/beamr/src/ets/match_arena.rs:40
+alloc_list                                 (free fn)                                      -> Result<Term, Term>;                crates/beamr/src/ets/match_spec.rs:108
+alloc_list                                 impl TermAllocator for ProcessAllocator<'_, '_> -> Result<Term, Term>                 crates/beamr/src/ets/match_spec.rs:120
+alloc_list                                 impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:212
+alloc_list_with_tail                       impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:221
+alloc_map                                  impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:259
+alloc_map_term                             (free fn)                                      -> Result<Term, DecodeError>          crates/beamr/src/distribution/etf.rs:838
+alloc_match_continuation                   (free fn)                                      -> ()                                 crates/beamr/src/native/ets_bifs.rs:921
+alloc_maybe_refcounted                     impl Heap                                      -> Result<*mut u64, HeapFull>         crates/beamr/src/process/heap.rs:292
+alloc_monitor_list                         (free fn)                                      -> Result<Term, Term>                 crates/beamr/src/native/process_info_bifs.rs:304
+alloc_old                                  impl Heap                                      -> Result<*mut u64, HeapFull>         crates/beamr/src/process/heap.rs:321
+alloc_owned_term                           impl<'a> NativeContext<'a>                     -> Option<Term>                       crates/beamr/src/native/native_process.rs:299
+alloc_pid                                  impl WasmScheduler                             -> u64                                crates/beamr/src/scheduler/wasm.rs:702
+alloc_pid_list                             (free fn)                                      -> Result<Term, Term>                 crates/beamr/src/native/process_info_bifs.rs:296
+alloc_reference                            impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:53
+alloc_slice                                impl HeapRegion                                -> Result<&mut [u64], HeapFull>       crates/beamr/src/process/heap.rs:137
+alloc_slice                                impl Heap                                      -> Result<&mut [u64], HeapFull>       crates/beamr/src/process/heap.rs:298
+alloc_slice_maybe_refcounted               impl Heap                                      -> Result<&mut [u64], HeapFull>       crates/beamr/src/process/heap.rs:303
+alloc_slice_with_kind                      impl HeapRegion                                -> Result<&mut [u64], HeapFull>       crates/beamr/src/process/heap.rs:141
+alloc_sorted_map                           (free fn)                                      -> Result<Term, JsValue>              crates/beamr-wasm/src/convert.rs:215
+alloc_spawn_reply                          (free fn)                                      -> Result<Term, Term>                 crates/beamr/src/distribution/control.rs:538
+alloc_spawn_request                        (free fn)                                      -> Result<Term, Term>                 crates/beamr/src/distribution/control.rs:513
+alloc_tuple                                impl TermAllocator for MatchArena              -> Result<Term, Term>                 crates/beamr/src/ets/match_arena.rs:33
+alloc_tuple                                (free fn)                                      -> Result<Term, Term>;                crates/beamr/src/ets/match_spec.rs:107
+alloc_tuple                                impl TermAllocator for ProcessAllocator<'_, '_> -> Result<Term, Term>                 crates/beamr/src/ets/match_spec.rs:116
+alloc_tuple                                impl ProcessContext<'_>                        -> Result<Term, Term>                 crates/beamr/src/native/context/alloc.rs:24
+alloc_tuple                                impl<'a> NativeContext<'a>                     -> Option<Term>                       crates/beamr/src/native/native_process.rs:281
+alloc_tuple_term                           (free fn)                                      -> Result<Term, DecodeError>          crates/beamr/src/distribution/etf.rs:796
+alloc_value                                (free fn)                                      -> Result<Term, Term>                 crates/beamr/src/native/process_info_bifs.rs:239
+alloc_with_kind                            impl HeapRegion                                -> Result<*mut u64, HeapFull>         crates/beamr/src/process/heap.rs:116
+alloc_words                                (free fn)                                      -> *mut u64                           crates/beamr/src/jit/runtime.rs:410
+alloc_words                                (free fn)                                      -> Result<&mut [u64], SendError>      crates/beamr/src/mailbox/mod.rs:504
+alloc_words                                impl<'process> ProcessContext<'process>        -> Result<&mut [u64], Term>           crates/beamr/src/native/context/mod.rs:1692
+alloc_words_maybe_refcounted               (free fn)                                      -> Result<&mut [u64], SendError>      crates/beamr/src/mailbox/mod.rs:511
+alloc_words_rooted                         (free fn)                                      -> *mut u64                           crates/beamr/src/jit/runtime.rs:375
+alloc_young_tuple                          (free fn)                                      -> Term                               crates/beamr/src/supervision/monitor_tests.rs:137
+collect_major                              (free fn)                                      -> Result<GcStats, GcError>           crates/beamr/src/gc/mod.rs:118
+collect_minor                              (free fn)                                      -> Result<GcStats, GcError>           crates/beamr/src/gc/mod.rs:101
+collect_minor_with_live                    (free fn)                                      -> Result<GcStats, GcError>           crates/beamr/src/gc/mod.rs:106
+ensure_space                               (free fn)                                      -> Result<(), GcError>                crates/beamr/src/gc/mod.rs:149
+jit_test_heap                              (free fn)                                      -> u64                                crates/beamr/src/jit/runtime.rs:249
