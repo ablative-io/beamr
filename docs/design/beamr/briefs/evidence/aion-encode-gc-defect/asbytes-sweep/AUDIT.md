@@ -208,6 +208,9 @@ site can have multiple consumers with different allocation fates. The
 sibling `jit/runtime_binary_build.rs:90` was re-checked and stays SAFE
 (writes into a pre-existing builder buffer, no allocation in the span).
 
+> ⚠️ **SUPERSEDED IN PART — see AMENDMENT 3 (2026-08-07), below.**
+> Nothing in this paragraph is rewritten.
+
 **Reachability differs from the eleven:** the eleven are registered-BIF
 surface, callable from any embedding that loads those registration sets.
 Site 12 is JIT-runtime-helper surface — reachable only under the optional
