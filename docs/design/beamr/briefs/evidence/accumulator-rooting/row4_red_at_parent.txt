@@ -1,0 +1,47 @@
+# AR-1 row 4 -- red-at-parent transcript
+# HEAD: 308b448aad19523889ac298133bab962905318ab
+# convert.rs sha256 (with probes): 519e5718bfc8e42f652f11364de6def44627ec835e1f5c7fd0776f4c467008f2
+# probe source sha256: 4a85f7dc9f1e065d5676a157141ff1e20c1496803971f6187e7828a4d212dd05
+# load at run: { 14.15 13.60 15.62 } cores=10
+# cmd: CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked ar1_probe -- --nocapture
+
+   Compiling beamr-wasm v0.8.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.14s
+     Running unittests src/lib.rs (target/wasm32-unknown-unknown/debug/deps/beamr_wasm-325ddb8400c0f43e.wasm)
+running 2 tests
+Invoking test: convert::tests::ar1_probe_object_conversion_survives_a_collection
+panicked at crates/beamr-wasm/src/convert.rs:582:18:
+object of 60 string entries converts: JsValue("failed to allocate map term")
+Stack:
+Error
+    at logError (/private/var/folders/87/tdf6vfls1fj_4ydz_y6sk3580000gn/T/.tmp9EVwgN/wasm-bindgen-test.js:1502:18)
+    at __wbg_new_3887def06d2d5d1a (/private/var/folders/87/tdf6vfls1fj_4ydz_y6sk3580000gn/T/.tmp9EVwgN/wasm-bindgen-test.js:1019:57)
+    at beamr_wasm-325ddb8400c0f43e.wasm.<<wasm_bindgen_test[87cf12966e2ed19b]::__rt::Context>::new::panic_handling::Error>::new::__wbg_new_3887def06d2d5d1a externref shim (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[21441]:0x43e435)
+    at beamr_wasm-325ddb8400c0f43e.wasm.<<wasm_bindgen_test[87cf12966e2ed19b]::__rt::Context>::new::panic_handling::Error>::new (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[13284]:0x3ebd84)
+    at beamr_wasm-325ddb8400c0f43e.wasm.<wasm_bindgen_test[87cf12966e2ed19b]::__rt::Context>::new::panic_handling (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[4859]:0x2f493d)
+    at beamr_wasm-325ddb8400c0f43e.wasm.<wasm_bindgen_test[87cf12966e2ed19b]::__rt::Context>::new::{closure#0}::{closure#0} (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[13807]:0x3f3c03)
+    at beamr_wasm-325ddb8400c0f43e.wasm.std[9b61791517946214]::panicking::panic_with_hook (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[4149]:0x2cd423)
+    at beamr_wasm-325ddb8400c0f43e.wasm.std[9b61791517946214]::panicking::panic_handler::{closure#0} (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[8272]:0x37ae83)
+    at beamr_wasm-325ddb8400c0f43e.wasm.std[9b61791517946214]::sys::backtrace::__rust_end_short_backtrace::<std[9b61791517946214]::panicking::panic_handler::{closure#0}, !> (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[21943]:0x43fd13)
+test convert::tests::ar1_probe_object_conversion_survives_a_collection ... FAIL
+Invoking test: convert::tests::ar1_probe_array_conversion_survives_a_collection
+panicked at crates/beamr-wasm/src/convert.rs:383:40:
+converted JavaScript array is a proper list
+Stack:
+Error
+    at logError (/private/var/folders/87/tdf6vfls1fj_4ydz_y6sk3580000gn/T/.tmp9EVwgN/wasm-bindgen-test.js:1502:18)
+    at __wbg_new_3887def06d2d5d1a (/private/var/folders/87/tdf6vfls1fj_4ydz_y6sk3580000gn/T/.tmp9EVwgN/wasm-bindgen-test.js:1019:57)
+    at beamr_wasm-325ddb8400c0f43e.wasm.<<wasm_bindgen_test[87cf12966e2ed19b]::__rt::Context>::new::panic_handling::Error>::new::__wbg_new_3887def06d2d5d1a externref shim (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[21441]:0x43e435)
+    at beamr_wasm-325ddb8400c0f43e.wasm.<<wasm_bindgen_test[87cf12966e2ed19b]::__rt::Context>::new::panic_handling::Error>::new (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[13284]:0x3ebd84)
+    at beamr_wasm-325ddb8400c0f43e.wasm.<wasm_bindgen_test[87cf12966e2ed19b]::__rt::Context>::new::panic_handling (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[4859]:0x2f493d)
+    at beamr_wasm-325ddb8400c0f43e.wasm.<wasm_bindgen_test[87cf12966e2ed19b]::__rt::Context>::new::{closure#0}::{closure#0} (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[13807]:0x3f3c03)
+    at beamr_wasm-325ddb8400c0f43e.wasm.std[9b61791517946214]::panicking::panic_with_hook (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[4149]:0x2cd423)
+    at beamr_wasm-325ddb8400c0f43e.wasm.std[9b61791517946214]::panicking::panic_handler::{closure#0} (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[8272]:0x37ae83)
+    at beamr_wasm-325ddb8400c0f43e.wasm.std[9b61791517946214]::sys::backtrace::__rust_end_short_backtrace::<std[9b61791517946214]::panicking::panic_handler::{closure#0}, !> (wasm://wasm/beamr_wasm-325ddb8400c0f43e.wasm-0c07430a:wasm-function[21943]:0x43fd13)
+test convert::tests::ar1_probe_array_conversion_survives_a_collection ... FAIL
+failures:
+---- convert::tests::ar1_probe_object_conversion_survives_a_collection output ----
+    error output:
+        panicked at crates/beamr-wasm/src/convert.rs:582:18:
+        object of 60 string entries converts: JsValue("failed to allocate map term")
+        Stack:

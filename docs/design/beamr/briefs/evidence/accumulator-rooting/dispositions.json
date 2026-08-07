@@ -209,7 +209,7 @@
       "disposition": "PENDING",
       "replacement_construct": null,
       "replacement_site": null,
-      "verification_leg": "wasm32 + wasm-bindgen-test + node -- UNPRICED. Gate row 4: unpriced means this site's disposition is FIXED-UNVERIFIED and sign-off blocks. A class-level test may NOT stand in for it"
+      "verification_leg": "wasm32 + wasm-bindgen-test + node -- PRICED at 308b448. Setup cost ZERO: the leg was already installed, pinned in rust-toolchain.toml, and wired as `wasm-tests` in gates.json:7 plus CI. Run cost 28.19s warm for the full 80-test suite, measured under declared contention (10 cores, 1-min load 10.00-14.15) so it is an UPPER BOUND. Evidence: evidence/accumulator-rooting/row4_wasm_leg_pricing.md NOT DEMONSTRATED for this site. Same file and same leg as 13/17, but reached via serde_json::Value rather than JsValue, and no probe was run for it. Priced-by-analogy is not priced: this site stays UNVERIFIED until its own red-at-parent exists."
     },
     {
       "id": 13,
@@ -225,7 +225,7 @@
       "disposition": "PENDING",
       "replacement_construct": null,
       "replacement_site": null,
-      "verification_leg": "wasm32 + wasm-bindgen-test + node -- UNPRICED. Gate row 4 applies as for id 12"
+      "verification_leg": "wasm32 + wasm-bindgen-test + node -- PRICED at 308b448. Setup cost ZERO: the leg was already installed, pinned in rust-toolchain.toml, and wired as `wasm-tests` in gates.json:7 plus CI. Run cost 28.19s warm for the full 80-test suite, measured under declared contention (10 cores, 1-min load 10.00-14.15) so it is an UPPER BOUND. Evidence: evidence/accumulator-rooting/row4_wasm_leg_pricing.md RED-AT-PARENT DEMONSTRATED at 308b448, with a positive control asserting the heap actually grew first. Transcript: row4_red_at_parent.txt; probe source: row4_probe.rs.txt. The probe is BANKED NOT LANDED -- it is red at HEAD and lands with the fix."
     },
     {
       "id": 14,
@@ -273,7 +273,7 @@
       "disposition": "PENDING",
       "replacement_construct": null,
       "replacement_site": null,
-      "verification_leg": "wasm32 + wasm-bindgen-test + node -- UNPRICED. Gate row 4 applies"
+      "verification_leg": "wasm32 + wasm-bindgen-test + node -- PRICED at 308b448. Setup cost ZERO: the leg was already installed, pinned in rust-toolchain.toml, and wired as `wasm-tests` in gates.json:7 plus CI. Run cost 28.19s warm for the full 80-test suite, measured under declared contention (10 cores, 1-min load 10.00-14.15) so it is an UPPER BOUND. Evidence: evidence/accumulator-rooting/row4_wasm_leg_pricing.md NOT DEMONSTRATED for this site. Same file and same leg as 13/17, but reached via serde_json::Value rather than JsValue, and no probe was run for it. Priced-by-analogy is not priced: this site stays UNVERIFIED until its own red-at-parent exists."
     },
     {
       "id": 17,
@@ -289,7 +289,7 @@
       "disposition": "PENDING",
       "replacement_construct": null,
       "replacement_site": null,
-      "verification_leg": "wasm32 + wasm-bindgen-test + node -- UNPRICED and named by the gate. Price it, or this row is FIXED-UNVERIFIED and sign-off blocks until the leg lands or the risk is explicitly ruled accepted"
+      "verification_leg": "wasm32 + wasm-bindgen-test + node -- PRICED at 308b448. Setup cost ZERO: the leg was already installed, pinned in rust-toolchain.toml, and wired as `wasm-tests` in gates.json:7 plus CI. Run cost 28.19s warm for the full 80-test suite, measured under declared contention (10 cores, 1-min load 10.00-14.15) so it is an UPPER BOUND. Evidence: evidence/accumulator-rooting/row4_wasm_leg_pricing.md RED-AT-PARENT DEMONSTRATED at 308b448, with a positive control asserting the heap actually grew first. Transcript: row4_red_at_parent.txt; probe source: row4_probe.rs.txt. The probe is BANKED NOT LANDED -- it is red at HEAD and lands with the fix."
     },
     {
       "id": "CF-S3a",

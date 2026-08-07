@@ -1,0 +1,100 @@
+    // AR-1 row 4 PROBE -- not a permanent test. Establishes whether the wasm
+    // leg can produce a RED AT PARENT for ledger sites 13/17. Every test above
+    // uses a process-less ProcessContext, whose `ensure_heap_space` returns
+    // Ok(()) without collecting -- so none of them can move the heap at ANY
+    // input size, and their green says nothing about the rooting defect.
+    #[wasm_bindgen_test]
+    fn ar1_probe_array_conversion_survives_a_collection() {
+        let table = atom_table();
+        let mut process = beamr::process::Process::new(1, beamr::process::heap::DEFAULT_HEAP_SIZE);
+
+        // The elements MUST be strings, not numbers. A small integer is an
+        // IMMEDIATE -- `value_to_term` returns it without allocating, so `tail`
+        // is never held across an allocating call and the defect never fires.
+        // A string takes the `alloc_binary` path, which is what puts an
+        // allocation between the bind of `tail` and its next use (site 13).
+        let array = Array::new();
+        for index in 0..400 {
+            array.push(&JsValue::from_str(&format!("element-{index}")));
+        }
+
+        let before = process.heap().total_capacity();
+        // Scoped so the context's mutable borrow of `process` ends before the
+        // heap is read back for the positive control below.
+        let term = {
+            let mut context = ProcessContext::new();
+            context.set_atom_table(Some(Arc::clone(&table)));
+            context.attach_process(&mut process, 0);
+            value_to_term(JsValue::from(array), &mut context, 0)
+                .expect("array of 400 strings converts")
+        };
+
+        // POSITIVE CONTROL. Without this, a green means nothing: it cannot tell
+        // "the accumulator survived a move" from "no move ever happened".
+        let after = process.heap().total_capacity();
+        assert!(
+            after > before,
+            "heap never grew ({before} -> {after}) -- no collection occurred, \
+             so this test did not exercise the rooting defect at all"
+        );
+
+        let values = list_to_vec(term);
+        assert_eq!(values.len(), 400, "list length after the collection");
+        for (index, value) in values.iter().enumerate() {
+            let js = term_to_js_value(*value, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+            assert_eq!(
+                js.as_string().as_deref(),
+                Some(format!("element-{index}").as_str()),
+                "element {index} survived the collection intact"
+            );
+        }
+    }
+
+    // AR-1 row 4 PROBE for site 17 (`value_to_term`'s JS-object arm, `pairs`).
+    // This is the site the gate names explicitly. Same construction as site 13:
+    // string VALUES so each recursive `value_to_term` takes the allocating
+    // `alloc_binary` path while `pairs` is live.
+    #[wasm_bindgen_test]
+    fn ar1_probe_object_conversion_survives_a_collection() {
+        let table = atom_table();
+        let mut process = beamr::process::Process::new(2, beamr::process::heap::DEFAULT_HEAP_SIZE);
+
+        let object = Object::new();
+        for index in 0..60 {
+            assert!(
+                Reflect::set(
+                    &object,
+                    &JsValue::from_str(&format!("key-{index:03}")),
+                    &JsValue::from_str(&format!("value-{index}")),
+                )
+                .is_ok()
+            );
+        }
+
+        let before = process.heap().total_capacity();
+        let term = {
+            let mut context = ProcessContext::new();
+            context.set_atom_table(Some(Arc::clone(&table)));
+            context.attach_process(&mut process, 0);
+            value_to_term(JsValue::from(object), &mut context, 0)
+                .expect("object of 60 string entries converts")
+        };
+
+        let after = process.heap().total_capacity();
+        assert!(
+            after > before,
+            "heap never grew ({before} -> {after}) -- no collection occurred, \
+             so this test did not exercise the rooting defect at all"
+        );
+
+        let js = term_to_js_value(term, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        for index in 0..60 {
+            let got = Reflect::get(&js, &JsValue::from_str(&format!("key-{index:03}")))
+                .unwrap_or(JsValue::UNDEFINED);
+            assert_eq!(
+                got.as_string().as_deref(),
+                Some(format!("value-{index}").as_str()),
+                "entry {index} survived the collection intact"
+            );
+        }
+    }
