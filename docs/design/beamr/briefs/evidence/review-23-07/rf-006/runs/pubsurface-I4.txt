@@ -1,0 +1,19 @@
+### I4 — rustdoc emits pages ONLY for publicly-reachable items
+jit/runtime : no page
+jit/runtime_binary_match : no page
+jit/runtime_map : no page
+--- POSITIVE CONTROL: modules declared 'pub mod' in the same file ---
+jit/types : PAGE EXISTS (control ok)
+jit/cache : PAGE EXISTS (control ok)
+jit/compiler : PAGE EXISTS (control ok)
+jit/profiler : PAGE EXISTS (control ok)
+--- does the string alloc_words_rooted appear anywhere in the emitted docs? ---
+target/doc/src/beamr/jit/runtime_map.rs.html
+target/doc/src/beamr/jit/runtime.rs.html
+target/doc/src/beamr/jit/runtime_binary_match.rs.html
+docs-grep-rc=0
+--- CONTROL: a genuinely public jit item must appear ---
+target/doc/beamr/all.html
+target/doc/beamr/jit/types/sidebar-items.js
+target/doc/beamr/jit/types/index.html
+control-rc=0

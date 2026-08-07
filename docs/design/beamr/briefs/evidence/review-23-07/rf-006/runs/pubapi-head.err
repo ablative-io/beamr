@@ -1,0 +1,162 @@
+   Compiling libc v0.2.186
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling libm v0.2.16
+    Checking foldhash v0.2.0
+   Compiling cranelift-srcgen v0.131.2
+   Compiling pkg-config v0.3.33
+   Compiling wasmtime-internal-core v44.0.2
+    Checking cfg-if v1.0.4
+   Compiling cranelift-isle v0.131.2
+    Checking log v0.4.32
+   Compiling cranelift-codegen-shared v0.131.2
+    Checking hashbrown v0.16.1
+   Compiling cranelift-assembler-x64-meta v0.131.2
+   Compiling heck v0.5.0
+    Checking hashbrown v0.17.1
+    Checking smallvec v1.15.1
+   Compiling zstd-safe v7.2.4
+    Checking equivalent v1.0.2
+   Compiling crossbeam-utils v0.8.21
+   Compiling target-lexicon v0.13.5
+    Checking allocator-api2 v0.2.21
+    Checking fnv v1.0.7
+   Compiling proc-macro2 v1.0.106
+    Checking rustc-hash v2.1.2
+    Checking arbitrary v1.4.2
+    Checking bumpalo v3.20.3
+    Checking indexmap v2.14.0
+    Checking regalloc2 v0.15.1
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling anyhow v1.0.102
+   Compiling jobserver v0.1.34
+   Compiling getrandom v0.4.2
+   Compiling crc32fast v1.5.0
+   Compiling cc v1.2.63
+   Compiling cranelift-codegen-meta v0.131.2
+    Checking cranelift-control v0.131.2
+    Checking rand_core v0.10.1
+   Compiling camino v1.2.2
+   Compiling parking_lot_core v0.9.12
+   Compiling syn v2.0.117
+    Checking gimli v0.33.0
+    Checking cranelift-bitset v0.131.2
+    Checking mach2 v0.4.3
+    Checking cranelift-entity v0.131.2
+    Checking bitflags v1.3.2
+    Checking adler2 v2.0.1
+   Compiling rustix v1.1.4
+   Compiling cranelift-assembler-x64 v0.131.2
+    Checking cranelift-bforest v0.131.2
+    Checking simd-adler32 v0.3.9
+    Checking scopeguard v1.2.0
+    Checking lock_api v0.4.14
+    Checking miniz_oxide v0.8.9
+    Checking region v3.0.2
+    Checking wasmtime-internal-jit-icache-coherence v44.0.2
+    Checking chacha20 v0.10.0
+    Checking crossbeam-epoch v0.9.18
+    Checking socket2 v0.6.4
+    Checking mio v1.2.1
+    Checking errno v0.3.14
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+    Checking pin-project-lite v0.2.17
+    Checking bytes v1.11.1
+    Checking once_cell v1.21.4
+    Checking ecow v0.2.6
+    Checking hashbrown v0.14.5
+    Checking bitflags v2.13.0
+    Checking gleam-types v0.4.3 (/Users/tom/Developer/ablative/stack/beamr/crates/gleam-types)
+    Checking crossbeam-deque v0.8.6
+    Checking rand v0.10.1
+    Checking flate2 v1.1.9
+    Checking crossbeam-channel v0.5.15
+    Checking dashmap v6.2.1
+    Checking crossbeam-queue v0.3.12
+    Checking num_cpus v1.17.0
+    Checking md5 v0.8.0
+    Checking unicode-segmentation v1.13.3
+    Checking web-time v1.1.0
+   Compiling cranelift-codegen v0.131.2
+   Compiling tokio-macros v2.7.0
+    Checking tokio v1.52.3
+    Checking zstd v0.13.3
+   Compiling beamr v0.17.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Checking cranelift-module v0.131.2
+    Checking cranelift-native v0.131.2
+    Checking cranelift-frontend v0.131.2
+    Checking cranelift-jit v0.131.2
+ Documenting beamr v0.17.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+warning: public documentation for `inbound_residency_bytes` links to private item `crate::distribution::etf::MAX_DIST_FRAME_BYTES`
+   --> crates/beamr/src/distribution/connection/mod.rs:578:34
+    |
+578 |     /// [`MAX_DIST_FRAME_BYTES`](crate::distribution::etf::MAX_DIST_FRAME_BYTES).
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+    = note: `#[warn(rustdoc::private_intra_doc_links)]` on by default
+
+warning: public documentation for `sender` links to private item `MAX_DIST_FRAME_BYTES`
+  --> crates/beamr/src/distribution/sender/mod.rs:60:41
+   |
+60 | //! does not contradict the caveat at [`MAX_DIST_FRAME_BYTES`]'s derivation
+   |                                         ^^^^^^^^^^^^^^^^^^^^ this item is private
+   |
+   = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: public documentation for `sender` links to private item `MAX_DIST_FRAME_BYTES`
+   --> crates/beamr/src/distribution/sender/mod.rs:122:40
+    |
+122 | //! maximum-size inbound data frame ([`MAX_DIST_FRAME_BYTES`]). The count is
+    |                                        ^^^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: public documentation for `DIST_SEND_QUEUE_BYTE_BUDGET` links to private item `MAX_DIST_FRAME_BYTES`
+   --> crates/beamr/src/distribution/sender/mod.rs:217:21
+    |
+217 | /// Imported from [`MAX_DIST_FRAME_BYTES`] rather than minted, so the two cannot
+    |                     ^^^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: public documentation for `DIST_CONTROL_QUEUE_CAP` links to private item `MAX_DIST_FRAME_BYTES`
+   --> crates/beamr/src/distribution/sender/mod.rs:233:7
+    |
+233 | /// [`MAX_DIST_FRAME_BYTES`] data frame. That is why this lane carries no
+    |       ^^^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: public documentation for `alloc_maybe_refcounted` links to private item `AllocKind`
+   --> crates/beamr/src/process/heap.rs:291:41
+    |
+291 |     /// release walk inspects it. See [`AllocKind`].
+    |                                         ^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: `beamr` (lib doc) generated 6 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 42s
+Error: Failed to parse rustdoc JSON at "/Users/tom/Developer/ablative/stack/beamr/target/doc/beamr.json".
+
+This version of `cargo public-api` requires at least:
+
+    nightly-2025-03-24
+
+Ensure your nightly toolchain is up to date with:
+
+    rustup install nightly --profile minimal
+
+If that does not help, it might be `cargo public-api` that is out of date. Try
+to install the latest version with
+
+    cargo install cargo-public-api --locked
+
+If the issue remains, please report at
+
+    https://github.com/cargo-public-api/cargo-public-api/issues
+
+Caused by:
+    invalid type: map, expected a string at line 1 column 304

@@ -1,0 +1,54 @@
+   Compiling beamr v0.17.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+ Documenting beamr v0.17.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+warning: public documentation for `inbound_residency_bytes` links to private item `crate::distribution::etf::MAX_DIST_FRAME_BYTES`
+   --> crates/beamr/src/distribution/connection/mod.rs:578:34
+    |
+578 |     /// [`MAX_DIST_FRAME_BYTES`](crate::distribution::etf::MAX_DIST_FRAME_BYTES).
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+    = note: `#[warn(rustdoc::private_intra_doc_links)]` on by default
+
+warning: public documentation for `sender` links to private item `MAX_DIST_FRAME_BYTES`
+  --> crates/beamr/src/distribution/sender/mod.rs:60:41
+   |
+60 | //! does not contradict the caveat at [`MAX_DIST_FRAME_BYTES`]'s derivation
+   |                                         ^^^^^^^^^^^^^^^^^^^^ this item is private
+   |
+   = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: public documentation for `sender` links to private item `MAX_DIST_FRAME_BYTES`
+   --> crates/beamr/src/distribution/sender/mod.rs:122:40
+    |
+122 | //! maximum-size inbound data frame ([`MAX_DIST_FRAME_BYTES`]). The count is
+    |                                        ^^^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: public documentation for `DIST_SEND_QUEUE_BYTE_BUDGET` links to private item `MAX_DIST_FRAME_BYTES`
+   --> crates/beamr/src/distribution/sender/mod.rs:217:21
+    |
+217 | /// Imported from [`MAX_DIST_FRAME_BYTES`] rather than minted, so the two cannot
+    |                     ^^^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: public documentation for `DIST_CONTROL_QUEUE_CAP` links to private item `MAX_DIST_FRAME_BYTES`
+   --> crates/beamr/src/distribution/sender/mod.rs:233:7
+    |
+233 | /// [`MAX_DIST_FRAME_BYTES`] data frame. That is why this lane carries no
+    |       ^^^^^^^^^^^^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: public documentation for `alloc_maybe_refcounted` links to private item `AllocKind`
+   --> crates/beamr/src/process/heap.rs:291:41
+    |
+291 |     /// release walk inspects it. See [`AllocKind`].
+    |                                         ^^^^^^^^^ this item is private
+    |
+    = note: this link will resolve properly if you pass `--document-private-items`
+
+warning: `beamr` (lib doc) generated 6 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 21.34s
+   Generated /Users/tom/Developer/ablative/stack/beamr/target/doc/beamr/index.html
