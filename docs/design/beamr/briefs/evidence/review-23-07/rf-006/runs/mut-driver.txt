@@ -1,0 +1,25 @@
+=== M1-start-match-drops-forwarded-source ===
+/dev/disk3s5   971350180 887489644  56487428    95% 9245678 564874280    2%   /System/Volumes/Data
+C2 applied changed-lines: 1 (expected 1)
+rc: 101
+test result: FAILED. 1791 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.96s
+wall in failure list:
+1
+C3 ok: tree reverted
+=== M2-map-roots-a-copy ===
+/dev/disk3s5   971350180 888293188  55683884    95% 9247030 556838840    2%   /System/Volumes/Data
+C2 applied changed-lines: 2 (expected 2)
+rc: 101
+test result: FAILED. 1791 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.82s
+wall in failure list:
+1
+C3 ok: tree reverted
+=== M4-sharing-arm-drops-forwarded-parent ===
+/dev/disk3s5   971350180 888925296  55051776    95% 9235168 550517760    2%   /System/Volumes/Data
+C2 applied changed-lines: 1 (expected 1)
+rc: 101
+test result: FAILED. 1790 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.50s
+wall in failure list:
+1
+C3 ok: tree reverted
+=== all mutations measured and reverted ===

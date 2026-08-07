@@ -1,0 +1,12 @@
+diff --git a/crates/beamr/src/jit/runtime_binary_match.rs b/crates/beamr/src/jit/runtime_binary_match.rs
+index 0089f2a..4919250 100644
+--- a/crates/beamr/src/jit/runtime_binary_match.rs
++++ b/crates/beamr/src/jit/runtime_binary_match.rs
+@@ -31,7 +31,6 @@ pub(crate) extern "C" fn jit_bs_start_match(process: *mut Process, binary: u64)
+     if ptr.is_null() {
+         return 0;
+     }
+-    let [source] = roots;
+     let heap = unsafe { std::slice::from_raw_parts_mut(ptr, MATCH_CONTEXT_WORDS) };
+     heap[0] = BoxedHeader::new(BoxedTag::MatchContext, MATCH_CONTEXT_WORDS - 1);
+     heap[1] = 0;

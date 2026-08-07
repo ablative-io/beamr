@@ -1,0 +1,12 @@
+diff --git a/crates/beamr/src/jit/runtime_binary_match.rs b/crates/beamr/src/jit/runtime_binary_match.rs
+index 0089f2a..13d4800 100644
+--- a/crates/beamr/src/jit/runtime_binary_match.rs
++++ b/crates/beamr/src/jit/runtime_binary_match.rs
+@@ -117,7 +117,6 @@ pub(crate) extern "C" fn jit_bs_get_binary(
+         if ptr.is_null() {
+             return 0;
+         }
+-        let [source] = roots;
+         // SAFETY: `alloc_words_rooted` returned a non-null pointer to exactly
+         // `SUB_BINARY_WORDS` heap words owned by `process` for this call.
+         let heap = unsafe { std::slice::from_raw_parts_mut(ptr, SUB_BINARY_WORDS) };
