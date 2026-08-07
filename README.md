@@ -6,10 +6,19 @@ Built for [Meridian](https://github.com/ablative/yggdrasil) workflow execution, 
 
 ## ⚠️ Security advisory (2026-08-07)
 
-**If you are on `0.16.0` or `0.16.1`, upgrade.** Those releases carry three
-classes of silent memory-safety defect. None of them produce an error or a
-crash — corrupted or freed data is read as valid — so a passing test suite
-proves nothing about your exposure.
+**If you are on any version below `0.16.3`, upgrade.** Three classes of
+silent memory-safety defect were fixed across `0.16.2` and `0.16.3`. None of
+them produce an error or a crash — corrupted or freed data is read as valid —
+so a passing test suite proves nothing about your exposure.
+
+**This is not a `0.16.x` problem.** The `as_bytes` borrow-across-allocation
+class fixed in `0.16.3` is present in **every version from at least `0.4.4`**:
+`crates/beamr/src/native/stdlib_stubs/string_bifs.rs` is byte-identical
+(blob `d405462`) across all 29 tags from `v0.4.4` to `v0.15.2` and at the
+`0.16.2` commit, with all five affected BIFs (`trim`, `split`, `find`, `pad`,
+`slice`) present throughout. The two classes fixed in `0.16.2` have **not**
+had their introduction point measured — treat them the same way until they
+have.
 
 **Your options are `0.17.0` or `0.16.3`.** Both carry the fixes. `0.17.0` is
 the current line and the one to prefer; note it is a breaking change
@@ -32,7 +41,7 @@ any released version to date.
 Full mechanics — the affected classes, the exact failing build command, how
 to test a git base for the fixes, and what remains open — are in
 [`CHANGELOG.md`](https://github.com/ablative-io/beamr/blob/main/CHANGELOG.md),
-under **"Advisory — memory-safety fixes on the 0.16.x line"** and
+under **"Advisory — silent memory-safety defects in every version below 0.16.3"** and
 **"Correction to the 0.16.2 and 0.16.3 advisories"**. Site-level detail is in
 `AMENDMENT 3` of
 [`AUDIT.md`](https://github.com/ablative-io/beamr/blob/main/docs/design/beamr/briefs/evidence/aion-encode-gc-defect/asbytes-sweep/AUDIT.md).

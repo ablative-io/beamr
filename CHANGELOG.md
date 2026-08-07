@@ -1,12 +1,33 @@
 # Changelog
 
-## Advisory — memory-safety fixes on the 0.16.x line
+## Advisory — silent memory-safety defects in every version below 0.16.3
 
-**If you are on `0.16.0` or `0.16.1`, upgrade to `0.16.3`.** Those two
-releases carry three classes of silent memory-safety defect, all fixed on
-this line. None of them produce an error or a crash — the failure mode in
-every case is corrupted or freed data read as valid, so a suite that
-passes proves nothing about exposure.
+**If you are on any version below `0.16.3`, upgrade.** Three classes of
+silent memory-safety defect were fixed across `0.16.2` and `0.16.3`. None of
+them produce an error or a crash — the failure mode in every case is
+corrupted or freed data read as valid, so a suite that passes proves nothing
+about exposure.
+
+🔴 **CORRECTION (2026-08-07): THIS ADVISORY PREVIOUSLY SAID "IF YOU ARE ON
+`0.16.0` OR `0.16.1`". THAT WAS AN UNDERCOUNT, AND IN A SAFETY DISCLOSURE THE
+UNDERCOUNT IS THE DIRECTION THAT HURTS** — a reader on `0.15.4` read it as
+"not me". Measured: `crates/beamr/src/native/stdlib_stubs/string_bifs.rs`,
+which carries the `as_bytes` launder (`binary_bytes` returning
+`&'static [u8]`) and all five affected consumers (`bif_trim`, `bif_split`,
+`bif_find`, `bif_pad`, `bif_slice`), is **byte-identical — blob
+`d4054622d770886a7d91e1748cfd078d172206e3` — across all 29 tags from `v0.4.4`
+through `v0.15.2`, and at `67f89c4`** (the `0.16.2` commit). The launder's
+signature is present from `v0.2.0`. So the class fixed in `0.16.3` spans
+essentially the crate's whole published history, not one minor line.
+
+**The two classes fixed in `0.16.2` have NOT had their introduction point
+measured.** They are stated here as unmeasured rather than assumed narrow.
+Until someone measures them, treat any version below `0.16.3` as affected.
+
+The original wording was not wrong about `0.16.0`/`0.16.1` — it was wrong
+about everything it left out. A version enumeration in a disclosure is a
+claim about the versions it *omits*, and nothing in the sentence marked which
+of those two jobs it had done.
 
 - **Fixed in `0.16.2`** — two classes: the GC refcount-release walk
   inferred a type from `word[0]` and could call `Arc::from_raw` on a
