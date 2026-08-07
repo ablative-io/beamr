@@ -56,7 +56,8 @@ MUTATIONS = [
     ("M1_drop_opener_gate", "the opener-line fix (arm A2's defect)",
      "                    gated.add(lineno)\n", ""),
     ("M2_gate_everything", "the cfg-attribute test -- gate indiscriminately",
-     "        if line.strip().startswith('#[cfg(test)]'):", "        if True:"),
+     r"        if re.match(r'#\[cfg\(test\)\]|#\[cfg\(all\(test\b', line.strip()):",
+     "        if True:"),
     ("M3_no_block_comment", "block-comment skipping",
      "            if line.startswith('/*', i):",
      "            if False and line.startswith('/*', i):"),
@@ -67,6 +68,17 @@ MUTATIONS = [
      "                m = None"),
     ("M6_no_plain_string", "plain-string skipping",
      "            if c == '\"':", "            if False:"),
+    # M7-M9 cover the arms landed after the braceless-leak fix. Each was written
+    # by asking what input SEPARATES intact from mutated, not by paraphrasing
+    # the code -- see the D/E lesson above.
+    ("M7_disarm_on_punctuation", "the bracket-depth guard on the disarm",
+     "            if c == ';' and pending_cfg and bracket_depth == 0:",
+     "            if c == ';' and pending_cfg:"),
+    ("M8_arm_on_any_too", "the all/any distinction -- arm on code that SHIPS",
+     r"        if re.match(r'#\[cfg\(test\)\]|#\[cfg\(all\(test\b', line.strip()):",
+     r"        if re.match(r'#\[cfg\(test\)\]|#\[cfg\((all|any)\(test\b', line.strip()):"),
+    ("M9_no_bracket_reset", "the drift reset -- an earlier stray `[` disables the disarm",
+     "            bracket_depth = 0\n", ""),
 ]
 
 

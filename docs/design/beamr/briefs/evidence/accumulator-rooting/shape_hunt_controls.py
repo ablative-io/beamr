@@ -93,6 +93,34 @@ CASES = [
      "    let x = c.alloc_cons(a, b);\n}\n\n"
      "#[cfg(test)]\nmod inline {\n    fn helper() {}\n}\n",
      {9, 10, 11}, 0),
+    # J/K are a PAIR and neither is meaningful alone. `all(test, X)` compiles
+    # only under test AND X -- test-only, must gate. `any(test, X)` compiles
+    # under test OR X, so it SHIPS whenever X is on and must NOT gate. Arming on
+    # `any` would be a fresh mislabel IN THE HIDING DIRECTION -- the same
+    # direction the braceless leak erred in, introduced by the fix for it.
+    # ⭐ "mentions test" bundles two constructs whose correct labels are
+    # OPPOSITE: 25 sites need arming, 23 are already right. K holds that line.
+    ("J_cfg_all_test",
+     "#[cfg(all(test, unix))]\nmod t {\n    let a = c.alloc_cons(x, y);\n}\n",
+     {2, 3, 4}, 0),
+    ("K_cfg_any_test",
+     '#[cfg(any(test, feature = "x"))]\nmod t {\n    let a = 1;\n}\n',
+     set(), 0),
+    # L/L2: the disarm must fire on STRUCTURE, not on punctuation. A `;` inside
+    # the item's own signature ends nothing, and disarming there labels the
+    # whole test block `prod`.
+    ("L_semicolon_in_ret",
+     "#[cfg(test)]\nfn f() -> [u8; 4] {\n    let a = c.alloc_cons(x, y);\n}\n",
+     {2, 3, 4}, 0),
+    ("L2_semicolon_in_param",
+     "#[cfg(test)]\nfn f(buf: [u8; 8]) {\n    let a = 1;\n}\n",
+     {2, 3, 4}, 0),
+    # N: an unbalanced `[` earlier in the file must not leave the disarm off for
+    # the rest of the walk and silently resurrect the forward leak arm I covers.
+    ("N_bracket_drift_guard",
+     "macro_rules! m { ([) => {} }\n#[cfg(test)]\nmod tests;\n"
+     "fn prod() {\n    let a = 1;\n}\n",
+     set(), 0),
 ]
 
 
