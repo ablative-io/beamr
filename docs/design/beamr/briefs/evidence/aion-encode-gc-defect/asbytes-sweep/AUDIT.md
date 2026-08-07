@@ -249,3 +249,35 @@ scope for site 6 is unchanged (`error_tuple`'s own-the-bytes fix covers
 every caller); what changes is the red's driver — it must force the
 geometry via a `dissect_query` error path, and the parse-path consumer is
 recorded SAFE with this justification rather than walled.
+
+## AMENDMENT 3 (2026-08-07, Artemis Peach — forward-only correction, nothing above rewritten)
+
+**Site 12's reachability paragraph says "reachable only under the optional
+`jit` feature". The word *optional* is wrong**, and it is the same wrong word
+this line inherited from — and lent back to — the 0.16.2/0.16.3 CHANGELOG
+advisories. Corrected there in the 0.17.0 release commit; corrected here for
+the same reason.
+
+**`jit` cannot be disabled in any build that retains `threads`.** Measured:
+
+```
+cargo check -p beamr --no-default-features \
+  --features std,threads,net,fs,embedded,readiness --locked      → 7 errors
+cargo check -p beamr --no-default-features \
+  --features std,threads,net,fs,embedded,readiness,jit --locked   → clean
+```
+
+The manifest declares `jit = ["std", "threads", …]` — jit implies threads —
+but the code relies on the converse: `scheduler/mod.rs:216` and `:2126` carry
+`#[cfg(feature = "threads")]` over items reaching `crate::jit`, and
+`scheduler/mod.rs:173` gates the whole `supervision_integration` module on
+`threads` while five of its items reference `crate::jit` with no attribute of
+their own. **The effective cfg of an item is the conjunction of its own
+attribute and every enclosing module's declaration**, so a grep for the
+adjacent attribute measures annotation, not gating, and undercounts.
+
+⇒ **The reachability statement stands; the escape hatch it implies does
+not.** Site 12 is reachable by any consumer running threaded beamr,
+regardless of how they configure features. This is a defect under repair
+(no fixed-in version is promised here, deliberately), not an intended
+property, and it is present at `v0.16.3` and at `67f89c4` as published.

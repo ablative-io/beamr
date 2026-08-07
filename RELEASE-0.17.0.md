@@ -55,23 +55,65 @@ git merge-base --is-ancestor v0.16.3^{commit} main   # FALSE
 
 This looks alarming and is not. 0.16.3's fixes reached main by **forward-port**
 (the `fwdport lane-1..4` commits), so the content is present under different
-SHAs. Verified by content, not ancestry — all ten source files the 0.16.3
-release touched are byte-identical between the tag and main:
+SHAs. Verified by content, not ancestry — every source file carrying a 0.16.3
+fix or its wall is byte-identical between the tag and main. Classify, then read
+the classification against the rule below it:
 
 ```sh
 BASE=$(git merge-base main v0.16.3)
-for f in $(git diff --name-only "$BASE" v0.16.3); do
-  git cat-file -e "v0.16.3:$f" 2>/dev/null && git cat-file -e "main:$f" 2>/dev/null \
-    && [ "$(git rev-parse "v0.16.3:$f")" = "$(git rev-parse "main:$f")" ] \
-    && echo "IDENTICAL $f" || echo "DIFFERS/ABSENT $f"
+ident=0; diff=0; absent=0; total=0
+for f in $(git diff --no-ext-diff --name-only "$BASE" v0.16.3); do
+  total=$((total+1))
+  if git cat-file -e "v0.16.3:$f" && git cat-file -e "main:$f"; then
+    if [ "$(git rev-parse "v0.16.3:$f")" = "$(git rev-parse "main:$f")" ]; then
+      ident=$((ident+1)); echo "IDENTICAL $f"
+    else
+      diff=$((diff+1)); echo "DIFFERS   $f"
+    fi
+  else
+    absent=$((absent+1)); echo "ABSENT    $f"
+  fi
 done
+echo "total=$total identical=$ident differs=$diff absent=$absent"
 ```
 
-At `9294be0` this classifies 38 of 38 examined files: **16 identical, 21
-differing, 1 absent — and every differing or absent entry is CHANGELOG,
-Cargo.lock, RELEASE_CHECKLIST, the version line, gate logs, or evidence
-transcripts. Zero source files differ.** `rust-toolchain.toml` is identical, so
-the estate-wide 1.97.1 pin is in force here.
+**Read the CLASSIFICATION, not the tally.** The passing condition is a rule, not
+a number: *every* `DIFFERS`/`ABSENT` entry must fall in the exempt set —
+`CHANGELOG.md`, `Cargo.lock`, `RELEASE_CHECKLIST.md`, the version line in
+`crates/beamr/Cargo.toml`, `gates.json`, `gate-logs/*`, or an evidence
+transcript under `…/aion-encode-gc-defect/` — **or be individually explained in
+this section before the cut proceeds.** Any unexplained differing file under
+`crates/*/src/` is a stop.
+
+⚠️ **This check's numbers age, and a frozen tally is the wrong instrument.**
+This section previously read "16 identical, 21 differing, 1 absent … zero source
+files differ" as of `9294be0`, stated as if it were a constant. **Re-run
+before the 0.17.0 cut it reads 15 / 22 / 1, and one source file differs** —
+main's ordinary work moved
+a file the 0.16.3 release had also touched. A reader comparing against the old
+tally would have found a mismatch with no way to tell a regression from a
+routine drift. The rule above survives that; a count cannot.
+
+**Explained source divergence (as of the 0.17.0 cut; the cause is `7e235cc`,
+which is immutable history — this section deliberately cites no release-commit
+SHA, because the commit carrying this text cannot cite its own hash and an
+unpushed commit's hash moves on every amend):**
+`crates/beamr/src/scheduler/tests.rs` — 4 lines, both hunks the same mechanical
+edit: `EtsRegistry::new()` gained an atom-table argument in `7e235cc` (the
+ordered_set real-atom-table fix), so two test call sites pass
+`Arc::clone(&atom_table)` and `EtsRegistry::new(atom_table)`. Test-only, no
+0.16.3 content removed, unrelated to the memory-safety surface. **All ten source
+files carrying the 0.16.3 fixes and their walls remain byte-identical** —
+`gc_rooting_tests.rs`, `string_bifs.rs`, `uri_bifs.rs`, `misc_bifs.rs`,
+`etf_bifs.rs`, `gate3_bifs/mod.rs`, `runtime_binary_match.rs`, `mailbox/mod.rs`,
+`resolver.rs`, and `rust-toolchain.toml` (so the estate-wide 1.97.1 pin is in
+force here).
+
+*Note on the script:* the earlier form sent both `git cat-file -e` calls to
+`/dev/null` and printed a single collapsed `DIFFERS/ABSENT` label. That
+suppressed the stderr naming the absent path and merged two different findings
+into one word. Silence redirection is banned on the producer side, and an
+ambiguous result must not be collapsed — hence the three-way branch above.
 
 **Therefore 0.17.0 cut from main does not regress the shipped 0.16.3.** That is
 the question this section exists to answer; answer it again before cutting, and
@@ -186,6 +228,34 @@ before/after pair is the control — a sweep that returns 7 after the bump means
 the edits did not land, and one that returns fewer than 4 means someone has
 edited the repro crates. **A bare "did it come back empty" check can distinguish
 neither case, which is why the target is a list and not a zero.**
+
+### 3b. `Cargo.lock` is part of the version edit, not a side effect
+
+⚠️ **Added 2026-08-07, red-first: the first 0.17.0 bump commit shipped without
+it and could not have passed its own battery.** Bumping the three manifests
+leaves `Cargo.lock` still recording `beamr 0.16.2`, `beamr-cli 0.4.0`,
+`beamr-wasm 0.7.0`. **Two of the six canon legs pass `--locked`** —
+`wasm32-check` and `wasm-tests` (see `gates.json`) — and `--locked` refuses to
+proceed when the lock disagrees with the manifests. So a version-bump commit
+that omits the lock is not merely untidy; it is **a commit that fails its own
+release gate**, and it fails on the two legs least likely to be run ad hoc.
+
+⭐ **And note the shape of the near-miss: the lock updates itself.** Any
+`cargo check`/`cargo test` run before committing writes the three lines into
+the working tree, so the bump *looks* complete and every subsequent local
+command is green — while the committed object is not. **The evidence of
+correctness is generated by the act of testing and lives outside the commit.**
+Verify against the committed object, never the working tree:
+
+```sh
+git show HEAD:Cargo.lock | grep -A1 '^name = "beamr"$'    # must read 0.17.0
+git status --porcelain -- Cargo.lock                      # must be EMPTY
+```
+
+Stage `Cargo.lock` explicitly in the same commit as the manifests. The expected
+delta is exactly three version lines and nothing else — if `cargo` rewrote more
+than that, a dependency moved and that is a separate decision, not release
+bookkeeping.
 
 ## 4. Take a claim before the first upload
 

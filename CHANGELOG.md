@@ -22,13 +22,53 @@ published version. `0.16.2` has no tag and is pinned by commit
 carries the two 0.16.2 classes regardless of its version number — check
 with `git merge-base --is-ancestor 67f89c4 <base>`.
 
-**`0.16.3` is not a clean bill of health.** It ships with a disclosed set
-of remaining JIT sites (stale source `Term`s, unrooted helper arguments,
-accumulated results) that are reachable under the `jit` feature, which is
-**on by default**. See "Known remaining JIT sites" in the 0.16.3 entry
-below. The fix for that class is tracked for `0.17.0`.
+**Neither `0.16.3` nor `0.17.0` is a clean bill of health.** Both ship with a
+disclosed set of remaining JIT sites — one named site and two unenumerated
+classes (stale source `Term`s, unrooted helper arguments, accumulated
+results) — reachable under the `jit` feature, which is **on by default**.
+See "Known remaining JIT sites" in the `0.17.0` entry below for the current
+statement of the class, and in the `0.16.3` entry for the disclosure as first
+written.
 
-## Unreleased
+🔴 **`jit` CANNOT BE DISABLED IN ANY BUILD THAT RETAINS `threads`.** The
+manifest declares `jit = ["std", "threads", …]`, but parts of the scheduler
+are gated on `threads` while referencing `crate::jit`, so a build with
+`threads` and without `jit` does not compile. Disabling this class therefore
+requires giving up `threads` as well. **If you run threaded beamr you carry
+this surface, and turning the feature off is not a mitigation open to you.**
+**That is a defect under repair, not an intended property.** The exact
+failing command is in the `0.17.0` entry; the coupling predates `0.17.0` and
+is present at `v0.16.3` too.
+
+**That class is owned by RF-006 and is not fixed in any released version to
+date, including `0.17.0`.** This paragraph names an OWNER and deliberately
+names no target version. A safety disclosure that says "tracked for X" stops
+being true at the moment X ships without the fix — no actor causes that
+falsification, so no review catches it, and the sentence turns into a false
+assurance exactly when a reader is deciding whether to upgrade. RF-006 is an
+ABI-level GC-rooting change. When it lands, the release carrying it will say
+so under "Fixed" and this paragraph is removed in the same commit.
+
+## 0.17.0 — 2026-08-07
+
+Minor release, cut from `main`. **The version is forced, not chosen:**
+`Scheduler::watch_exit` is additive public API and the `spawn_link_dirty`
+removal is breaking, so a `0.16.4` cut from `main` would ship a version
+number that misdescribes its own contents.
+
+**This repository has two release lineages, and that is a standing property
+of it rather than an anomaly to be rediscovered.** The minor line lives on
+`main`. Patch releases on the `0.16.x` line are cut from the `0.16.3`
+release point, which is tagged `v0.16.3` and is **not an ancestor of
+`main`** — `main` carries 0.16.3's memory-safety fixes as forward-ports,
+established file-by-file rather than assumed. A fix that has to ship as a
+`0.16.x` patch is cut from that lineage, never from `main`. Consequently
+**whether a base carries the 0.16.2 fixes is a commit-ancestry question,
+not a version comparison** — see **Pinning** in the advisory above.
+
+`beamr-cli` moves to `0.5.0` and `beamr-wasm` to `0.8.0` in the same commit;
+both pin `beamr = "0.17.0"`. `gleam-types` is deliberately not bumped — no
+commits since its version was set.
 
 ### Added
 
@@ -52,12 +92,6 @@ below. The fix for that class is tracked for `0.17.0`.
   the native BIF registry to an EMPTY one, so a replayed module importing
   `erlang:*` refuses process-fatal at its first guard-BIF; this is the
   registry-carrying path their docs now direct embedders to.
-
-Main's manifest deliberately holds `0.16.2` while this tree carries
-0.16.3's forward-ported fixes plus the unreleased breaking changes below:
-stamping `0.16.3` here would claim a registry equivalence that does not
-hold, and the version number moves once, to `0.17.0` (ruling of record in
-`edeba6d`'s commit body).
 
 ### Changed
 
@@ -98,7 +132,7 @@ hold, and the version number moves once, to `0.17.0` (ruling of record in
   replay-time flag would be a supported way to replay against different
   code than was recorded.
 
-### Removed (breaking — 0.17.0 window)
+### Removed (breaking)
 
 - **`Scheduler::spawn_link_dirty`.** A behavioral `spawn_link` alias since
   2026-07-20 (`65f499c`): dirty scheduling is a property of the NATIVE
@@ -110,6 +144,60 @@ hold, and the version number moves once, to `0.17.0` (ruling of record in
   dirty dispatch and real-link coverage stay pinned by
   `spawn_link_dirty_dispatch_is_per_entry_on_the_linked_path` in
   `tests/dirty_scheduler.rs`.
+
+### Known remaining JIT sites (still open at this release)
+
+**`0.17.0` does not fix the JIT rooting class, and does not close it.** It
+makes the `0.16.2` and `0.16.3` memory-safety fixes available on the minor
+line. What remains is **one named site and two open classes**, carried
+forward from the `0.16.3` entry unchanged in substance. **The two classes are
+not enumerated** — each covers an unbounded set of call sites, so the list
+below is a description of the exposure, not a count of it. They are restated
+here rather than left as a back-reference, because a reader upgrading to
+`0.17.0` should not have to read a superseded entry to learn what is still
+exposed.
+
+⚠️ **AND `jit` CANNOT BE DISABLED IN ANY BUILD THAT RETAINS `threads` —
+CORRECTING WHAT EVERY PRIOR ENTRY IMPLIED.** Earlier disclosures called these
+sites reachable "only under the optional `jit` feature", which reads as an
+available mitigation. It is not one. The manifest declares
+`jit = ["std", "threads", …]`, but `scheduler/mod.rs` and the whole
+`scheduler::supervision_integration` module are gated on `threads` while
+referencing `crate::jit`, so:
+
+```
+cargo check -p beamr --no-default-features \
+  --features std,threads,net,fs,embedded,readiness      # 7 errors, unresolved crate::jit
+cargo check -p beamr --no-default-features \
+  --features std,threads,net,fs,embedded,readiness,jit  # clean
+```
+
+Disabling this class therefore requires giving up `threads` as well. **That
+is a defect under repair, not an intended property.** It is not new in
+`0.17.0` — the coupling dates to `106f91d` and is present at `v0.16.3` and at
+`67f89c4`. It is tracked for repair together with a gate that builds the
+configurations these notes describe. **Until then, assume a threaded beamr
+carries the JIT surface.**
+
+The sound fix for the rooting class itself requires GC rooting of JIT helper
+arguments and locals — an ABI-level change **owned by RF-006**, not yet
+released in any version.
+
+- `jit/runtime_binary_match.rs`, `jit_bs_start_match`: the source binary
+  Term is captured before the match-context allocation and written into
+  the new box after it — if that allocation collects, the stored source
+  Term is stale (the same class as the fixed `bs_get_binary` sibling).
+- Helper-argument staleness class (`jit/runtime*.rs`): raw Term arguments
+  and match-context pointers held in Rust locals are not GC roots
+  (`ensure_space` forwards x-registers only); any helper whose allocation
+  collects may afterwards use a stale value. The consumers fixed in
+  `0.16.3` no longer cross; the rest of the surface is audited under
+  RF-006.
+- Accumulated-results class (RF-006 finding F3): native loops that
+  accumulate result Terms in Rust vectors root only the allocator's call
+  arguments, so a second mid-loop collection can leave earlier accumulated
+  Terms stale. Not the audited `as_bytes` class; tracked with the same
+  rooting work.
 
 ## 0.16.3 — 2026-07-29
 
@@ -158,7 +246,7 @@ Red/green evidence for this branch: `…/aion-encode-gc-defect/fix-0163/`.
   copies the extracted range instead of building an O(1) shared
   sub-binary; extraction loops over large sources go O(len) per step.
   Restoring the sharing requires real GC rooting of helper-held terms —
-  0.17.0 / RF-006 material.
+  RF-006 material.
 
 ### Added
 
@@ -169,12 +257,30 @@ Red/green evidence for this branch: `…/aion-encode-gc-defect/fix-0163/`.
   collecting reroute cannot compile at the current signature) and the
   gate3 `binary_part` owned-copy fact.
 
+### Correction to the 0.16.2 and 0.16.3 advisories
+
+Those entries describe the remaining JIT sites as *"reachable only under the
+optional `jit` feature"*. **The word "optional" was wrong, and it was wrong
+in the direction that matters: it offered a mitigation that does not exist.**
+
+`jit` cannot be disabled in any build that retains `threads`. The manifest
+declares `jit = ["std", "threads", …]`, but parts of the scheduler are gated
+on `threads` while referencing `crate::jit`, so a build with `threads` and
+without `jit` does not compile. **This is true of 0.16.2 and 0.16.3 exactly
+as published** — it is not a regression introduced here, and consumers of
+those versions have no configuration that removes the class.
+
+The available mitigations are: upgrade, or drop the `threads` feature.
+**Disabling `jit` alone is not one of them, on any released version.**
+
 ### Known remaining JIT sites (disclosed; ships by project-lead ruling)
 
 The sound fix requires GC rooting of JIT helper arguments and locals —
-an ABI-level change owned by RF-006 on the 0.17.0 line, not
-backportable in a patch. All are reachable only under the optional
-`jit` feature (on by default) via compiled `bs_*` instructions.
+an ABI-level change owned by RF-006, not
+backportable in a patch. All are reachable under the
+`jit` feature (on by default) via compiled `bs_*` instructions — see the
+correction immediately above regarding the word *optional*, which this
+paragraph originally carried.
 
 - `jit/runtime_binary_match.rs`, `jit_bs_start_match`: the source
   binary Term is captured before the match-context allocation and
