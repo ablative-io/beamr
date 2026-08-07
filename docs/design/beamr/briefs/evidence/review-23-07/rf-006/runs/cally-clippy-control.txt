@@ -1,0 +1,11 @@
+    Checking beamr v0.17.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+error: unused variable: `unused_control_variable`
+  --> crates/beamr/src/lib.rs:82:36
+   |
+82 | fn _cally_injected_control() { let unused_control_variable = 5; }
+   |                                    ^^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_unused_control_variable`
+   |
+   = note: `-D unused-variables` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: could not compile `beamr` (lib) due to 1 previous error
