@@ -10,8 +10,10 @@ silently by whoever wires the recorder, and would look like success.
 
 ## The constraint, as the code stands
 
-`scheduler/mod.rs:1267-1271` — when a replay driver exists, the thread
-count is forced to `1` and the configured value is discarded:
+`scheduler/mod.rs`, in `Scheduler::construct_with_services` (cited by function
+rather than by line — the block has moved twice since this note was written, and
+a line number here goes stale on the next refactor) — when a replay driver
+exists, the thread count is forced to `1` and the configured value is discarded:
 
 ```rust
 let replay_enabled = replay_driver.is_some();

@@ -19,12 +19,15 @@ use beamr::atom::AtomTable;
 use beamr::loader::load_module;
 use beamr::module::ModuleRegistry;
 use beamr::native::{BifRegistryImpl, bifs::register_gate1_bifs};
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{Scheduler, SchedulerConfig, SchedulerServices};
 use beamr::process::ExitReason;
 
-// Set up the VM
-let atom_table = AtomTable::with_common_atoms();
-let bif_registry = BifRegistryImpl::new();
+// Set up the VM. The scheduler is handed the SAME registry the loader
+// resolved imports against — imports bind at LOAD time, so a scheduler
+// carrying a different registry object does not repair a load performed
+// against an empty one.
+let atom_table = Arc::new(AtomTable::with_common_atoms());
+let bif_registry = Arc::new(BifRegistryImpl::new());
 register_gate1_bifs(&bif_registry, &atom_table).unwrap();
 
 // Load a .beam file
@@ -36,9 +39,12 @@ let (module, unresolved) = load_module(
 
 // Spawn and run
 let registry = Arc::new(module_registry);
-let scheduler = Scheduler::new(
-    SchedulerConfig { thread_count: Some(1) },
+let scheduler = Scheduler::with_services_and_code_server(
+    SchedulerConfig { thread_count: Some(1), ..Default::default() },
+    SchedulerServices::from_config(),
     Arc::clone(&registry),
+    Arc::clone(&atom_table),
+    Arc::clone(&bif_registry),
 ).unwrap();
 
 let main_fn = atom_table.intern("main");
