@@ -43,13 +43,17 @@ published version. `0.16.2` has no tag and is pinned by commit
 carries the two 0.16.2 classes regardless of its version number — check
 with `git merge-base --is-ancestor 67f89c4 <base>`.
 
-**Neither `0.16.3` nor `0.17.0` is a clean bill of health.** Both ship with a
-disclosed set of remaining JIT sites — one named site and two unenumerated
-classes (stale source `Term`s, unrooted helper arguments, accumulated
-results) — reachable under the `jit` feature, which is **on by default**.
-See "Known remaining JIT sites" in the `0.17.0` entry below for the current
-statement of the class, and in the `0.16.3` entry for the disclosure as first
-written.
+**No version is a clean bill of health — `0.16.3`, `0.17.0` and `0.18.0`
+alike.** All of them ship with a disclosed set of remaining JIT sites — one
+named site and two unenumerated classes (stale source `Term`s, unrooted
+helper arguments, accumulated results) — reachable under the `jit` feature,
+which is **on by default**. See "Known remaining JIT sites" in the `0.17.0`
+entry below for the current statement of the class, and in the `0.16.3` entry
+for the disclosure as first written. `0.18.0` changes nothing under
+`crates/beamr/src/jit/`, so it carries the class unaltered; this sentence
+enumerates versions, and **the enumeration is a claim about the versions it
+omits**, so a version that ships without the fix is named here rather than
+left out.
 
 🔴 **`jit` CANNOT BE DISABLED IN ANY BUILD THAT RETAINS `threads`.** The
 manifest declares `jit = ["std", "threads", …]`, but parts of the scheduler
@@ -61,14 +65,133 @@ this surface, and turning the feature off is not a mitigation open to you.**
 failing command is in the `0.17.0` entry; the coupling predates `0.17.0` and
 is present at `v0.16.3` too.
 
-**That class is owned by RF-006 and is not fixed in any released version to
-date, including `0.17.0`.** This paragraph names an OWNER and deliberately
+**That class is owned by RF-006 and is not fixed in any version cut to date,
+including `0.17.0` and `0.18.0`.** This paragraph names an OWNER and deliberately
 names no target version. A safety disclosure that says "tracked for X" stops
 being true at the moment X ships without the fix — no actor causes that
 falsification, so no review catches it, and the sentence turns into a false
 assurance exactly when a reader is deciding whether to upgrade. RF-006 is an
 ABI-level GC-rooting change. When it lands, the release carrying it will say
 so under "Fixed" and this paragraph is removed in the same commit.
+
+## 0.18.0 — 2026-08-09
+
+Minor release, cut from `main`. **Breaking, deliberately.** Twelve public
+entry points across four families silently substituted an empty native
+surface — an empty `BifRegistryImpl`, or a `NativeServices::default()`, or
+both — when the caller did not supply one. That default cost two multi-seat
+attributions (the 2026-07-18 gc_bif incident is the sanctioned one), was
+already described in three long rustdoc footgun sections, and had already
+provoked a downstream wrapper (`frame_core::composition::compose_scheduler`)
+built specifically to route around it. **Documentation was tried, a
+downstream workaround was tried, and the second incident still happened.**
+
+**"No natives" remains a supported configuration.** Four shipped production
+consumers use it, and nothing here takes it away. What changes is that it is
+now a value you write down: `NativeBifs::none()` at the call site, not an
+empty registry conjured by a constructor that did not mention one. The sin
+was the default, not the emptiness.
+
+The error the wrong composition produces changes with it. `GuardBifUnavailable`
+used to name the module that was executing — which is never the module at
+fault — and its hint said "native BIF registry has no entry" without saying
+*which* registry, of which there are two: the one the loader resolved imports
+against, and the one the scheduler carries. It now reports which of the two
+was reachable at the refusal, and points at construction rather than at the
+executing module. It still does not claim your registry is empty, because
+`BifRegistry` exposes no emptiness predicate and the two registries can
+legitimately disagree — a claim we cannot substantiate is how the first
+incident accused an innocent component, and we are not repeating it in a new
+direction.
+
+### Removed (breaking)
+
+- **`interpreter::run`** — executed with `NativeServices::default()` and no
+  module registry. Migrate to
+  `run_with_native_services(process, module, &ModuleRegistry::new(), &NativeServices::default())`;
+  the substitution is behaviour-identical (every consumption of the optional
+  registry is `.and_then(|r| r.lookup(..))`, so an empty registry and no
+  registry are indistinguishable).
+- **`interpreter::run_with_registry`** — carried a module registry and
+  defaulted the services. Migrate to
+  `run_with_native_services(process, module, registry, &NativeServices::default())`.
+- **`interpreter::run_with_timer_services`** — filled one of `NativeServices`'
+  34 fields and nulled the registry. Zero callers estate-wide at removal.
+  Migrate to `run_with_native_services` with a `NativeServices` carrying your
+  `timers`.
+- **`interpreter::opcodes::dispatch_with_timer_services`** — same shape at the
+  opcode seam. Zero callers estate-wide at removal. Migrate to
+  `dispatch_with_services`.
+
+`interpreter::run_with_native_services` is unchanged and is now the single
+interpreter entry point.
+
+### Changed (breaking)
+
+- **`Scheduler::new(config, module_registry)` → `Scheduler::new(config, module_registry, natives)`.**
+  Pass `NativeBifs::registry(bifs)` to keep executing bytecode, or
+  `NativeBifs::none()` to declare that this scheduler resolves no natives.
+- **`Scheduler::with_services(config, services, module_registry)` → `(config, services, module_registry, natives)`.**
+  Same mapping. Note that this constructor's own docs used to redirect
+  embedders *here* from `Scheduler::new`, and it defaulted the registry too —
+  the prescribed migration target was itself in the defect class. It is no
+  longer, and the redirect now points at `with_services_and_code_server`.
+- **`Scheduler::new_replay(config, log)` → `(config, log, natives)`.**
+- **`Scheduler::new_replay_with_registry(config, module_registry, log)` → `(config, module_registry, log, natives)`.**
+  The "registry" this constructor names was always the MODULE registry; the
+  fourth argument is the native one.
+- **`ReplayDebugger::new(process, module)` → `(process, module, services)`** and
+  **`ReplayDebugger::with_snapshot_granularity(process, module, granularity)` → `(process, module, granularity, services)`.**
+  Pass `NativeServices::default()` for the previous behaviour. The builders
+  `with_registry` and `with_native_services` are unchanged and still override.
+- **`opcodes::dispatch(.., registry)` → `dispatch(.., registry, services)`** and
+  **`opcodes::dispatch_with_receiver(.., receiver, registry)` → `(.., receiver, registry, services)`.**
+  Pass `None` for the previous behaviour. `Some(&services)` now behaves exactly
+  as `dispatch_with_services` does with the same bundle.
+- **`ExecError::GuardBifUnavailable` gains a `runtime_natives` field**
+  (`RuntimeBifRegistryState::{Absent, Unwired, Wired}`). Matchers using
+  `{ .. }` are unaffected; exhaustive field destructuring needs the new name.
+  A field rather than a new `ExecError` variant, so exhaustive `ExecError`
+  matches (e.g. `beamr-wasm`'s reason mapper) keep compiling.
+
+Constructors NOT changed: `Scheduler::with_services_and_code_server`,
+`Scheduler::replay_with_services_and_code_server`, `Scheduler::with_code_server`,
+`Scheduler::with_code_server_and_policy`, `WasmScheduler::new`,
+`opcodes::dispatch_with_services`, `interpreter::run_with_native_services`.
+All of them already required the caller to supply the native surface; they are
+the shape the rest has been moved onto.
+
+### Changed
+
+- **The guard-BIF refusal points at construction instead of accusing the
+  executing module.** `GuardBifUnavailable` now renders which of the three
+  runtime registry states applied (`Absent` — no services bundle reached the
+  dispatch; `Unwired` — a bundle with no registry; `Wired` — a registry was
+  present) and carries a fixed pointer naming the constructor family. It does
+  NOT assert that your registry is empty: imports bind at LOAD time against the
+  loader's registry, `Module`/`ResolvedImport` record no provenance, and the two
+  registries can differ, so that assertion could accuse a correctly-composed
+  caller. The `Deferred` hint now says "the LOAD-TIME native BIF registry",
+  naming which of the two it means. Note what `Wired` does and does not tell
+  you: a scheduler declared `NativeBifs::none()` reports `Wired` too, because
+  `none()` wires an empty registry. On the scheduler path `Wired` is the value
+  you will almost always see; the discriminating information is the pointer, not
+  the state.
+
+### Downstream
+
+Estate consumers pinning `beamr = "0.16.3"` are unaffected until they bump.
+On bumping, four shipped production call sites need one argument each —
+haematite `db/startup.rs:343`, liminal `conversation/actor.rs:289`, liminal
+`channel/supervisor.rs:152`, liminal-server `connection/supervisor.rs:1091`
+— plus eleven test/example sites. `frame_core::composition::compose_scheduler`
+already constructs correctly; its module doc cites `0.15.1` coordinates and
+the retired `InvalidOperand("guard bif native import")` shape, and frame should
+decide whether the wrapper is still earning its keep.
+
+`beamr-cli` and `beamr-wasm` keep their own versions (`0.5.0` / `0.8.0`) — no
+source change in either crate — but both move their `beamr` dependency pin to
+`"0.18.0"`, which a path dependency requires to resolve.
 
 ## 0.17.0 — 2026-08-07
 
