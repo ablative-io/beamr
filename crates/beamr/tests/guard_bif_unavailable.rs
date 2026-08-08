@@ -59,17 +59,30 @@ const EXPECTED_DISPLAY_FALLBACK: &str = "guard bif #<unknown atom>:#<unknown ato
 
 /// Substrings the guard-BIF refusal SHALL NEVER carry.
 ///
-/// Two classes, both unsubstantiable at the mint point: a claim about what the
+/// Three classes, all unsubstantiable at the mint point: a claim about what the
 /// runtime registry CONTAINS (`BifRegistry` exposes no emptiness predicate, and
 /// the registry an import bound against at LOAD time is a different object from
-/// the one wired at runtime), and a runtime-state token that is FALSE of the
+/// the one wired at runtime); a runtime-state token that is FALSE of the
 /// divergence scenario — a services bundle reached the dispatch carrying a
-/// registry, so neither the absent nor the unwired state applies.
+/// registry, so neither the absent nor the unwired state applies; and a
+/// present-tense claim about whether the TARGET MODULE is loaded.
 ///
-/// The last entry is the arm that was RED before the attribution landed: the
-/// old hint said "native BIF registry has no entry" without saying WHICH of the
-/// two registries it meant, which is false of the runtime one here. It is
-/// banned unqualified, so the "LOAD-TIME" qualifier cannot be reverted quietly.
+/// The fourth-from-last entry is the arm that was RED before the attribution
+/// landed: the old hint said "native BIF registry has no entry" without saying
+/// WHICH of the two registries it meant, which is false of the runtime one
+/// here. It is banned unqualified, so the "LOAD-TIME" qualifier cannot be
+/// reverted quietly.
+///
+/// The last entry walls the OTHER half of the same sentence, and it is banned
+/// for the same reason rather than because it happens to be false here. Import
+/// resolution runs exactly once, at load (`loader::load::resolve_imports` is
+/// the sole producer of `Deferred`, and nothing re-resolves), while a
+/// `Deferred` import is late-bound against the LIVE module registry on the call
+/// path (`opcodes::core` resolves it through `ctx.registry` at execution time).
+/// "Deferred, and the target module is loaded NOW" is therefore a normal
+/// runtime state in this tree — and the mint point, which sees only the
+/// IMPORTING module and the services bundle, cannot tell the two apart. Both
+/// conjuncts of the hint must be stamped LOAD-TIME or neither is.
 ///
 /// Shortening this list is hollowing the wall, not fixing a test.
 const BANNED_ACCUSATIONS: &[&str] = &[
@@ -78,6 +91,7 @@ const BANNED_ACCUSATIONS: &[&str] = &[
     "Absent",
     "Unwired",
     "native BIF registry has no entry",
+    "the target module is not loaded",
 ];
 
 /// spawn -> mailbox delivery has a visibility window: `send_to_mailbox` returns
