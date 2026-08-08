@@ -71,9 +71,10 @@ pub use crate::loader::UnresolvedImportReport;
 ///
 /// `unresolved` carries the import resolution the load actually performed —
 /// deferred/denied/unresolved by module, byte-identical to what
-/// [`loader::load_module`](crate::loader::load_module) returns. Against the
-/// empty-registry default composition (see [`Scheduler::with_services`]), and
-/// absent a loaded bytecode `erlang` module, a module importing `erlang:*`
+/// [`loader::load_module`](crate::loader::load_module) returns. When the load
+/// resolved against a registry holding no `erlang:*` natives — a value the
+/// embedder declares at scheduler construction, never a default — and absent a
+/// loaded bytecode `erlang` module, a module importing `erlang:*`
 /// lands those imports under
 /// [`deferred_by_module`](UnresolvedImportReport::deferred_by_module); reading
 /// it after every load is how an embedder catches the composition footgun
@@ -1230,10 +1231,13 @@ impl Scheduler {
     /// takes the same services, module registry, atom table and BIF registry,
     /// so a replayed module resolves atoms and dispatches natives against the
     /// same load-time state the modules were loaded against. This is the
-    /// registry-carrying replay path [`Scheduler::new_replay`] and
-    /// [`Scheduler::new_replay_with_registry`] direct embedders to; unlike
-    /// them it does NOT default the BIF registry to an empty one, so
-    /// `erlang:*` imports do not refuse at the first guard-BIF.
+    /// full-composition replay path [`Scheduler::new_replay`] and
+    /// [`Scheduler::new_replay_with_registry`] direct embedders to. Those two
+    /// require a declared native surface of their own, so whether `erlang:*`
+    /// refuses is a property of the caller's declaration rather than of which
+    /// constructor was used; what this one adds is the REST of the load-time
+    /// state — an explicit [`SchedulerServices`] and the atom table the modules
+    /// were loaded against, both of which the other two mint fresh.
     ///
     /// As with every replay-mode scheduler the worker count is forced to 1 and
     /// the ancillary services that would introduce nondeterminism (generic and
