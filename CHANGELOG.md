@@ -172,11 +172,16 @@ the shape the rest has been moved onto.
   loader's registry, `Module`/`ResolvedImport` record no provenance, and the two
   registries can differ, so that assertion could accuse a correctly-composed
   caller. The `Deferred` hint now says "the LOAD-TIME native BIF registry",
-  naming which of the two it means. Note what `Wired` does and does not tell
-  you: a scheduler declared `NativeBifs::none()` reports `Wired` too, because
-  `none()` wires an empty registry. On the scheduler path `Wired` is the value
-  you will almost always see; the discriminating information is the pointer, not
-  the state.
+  naming which of the two it means, and stamps its other half the same way —
+  "the LOAD-TIME module registry did not hold the target". Both conjuncts are
+  load-time facts: imports resolve exactly once, at load, while a `Deferred`
+  import is late-bound against the live module registry on the call path, so a
+  present-tense "the target module is not loaded" would be a claim about
+  runtime state the refusal's mint point cannot see. Note what `Wired` does and
+  does not tell you: a scheduler declared `NativeBifs::none()` reports `Wired`
+  too, because `none()` wires an empty registry. On the scheduler path `Wired`
+  is the value you will almost always see; the discriminating information is the
+  pointer, not the state.
 
 ### Downstream
 

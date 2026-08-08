@@ -62,7 +62,8 @@ impl Error for LoadError {}
 /// `Copy` and its `Display` a single fixed word.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum GuardBifResolution {
-    /// Not in the native BIF registry and the target module is not loaded.
+    /// At load time, neither the native BIF registry nor the module registry
+    /// held the target.
     Deferred,
     /// Registered as a native BIF but capability-denied at load time.
     Denied,
@@ -88,10 +89,16 @@ impl GuardBifResolution {
     #[must_use]
     pub const fn hint(self) -> &'static str {
         match self {
-            // Names WHICH registry: imports bind at load time, and the runtime
-            // registry is a different object that may well hold the entry.
+            // BOTH conjuncts are load-time facts, and both say so. Imports
+            // resolve exactly once, at load; the runtime BIF registry is a
+            // different object that may well hold the entry, and a `Deferred`
+            // import is late-bound against the LIVE module registry on the call
+            // path, so the target module may well be loaded by now. Stamping
+            // only one clause leaves the other reading as a present-tense claim
+            // this mint point cannot substantiate.
             Self::Deferred => {
-                "the LOAD-TIME native BIF registry had no entry and the target module is not loaded"
+                "the LOAD-TIME native BIF registry had no entry and the LOAD-TIME module \
+                 registry did not hold the target"
             }
             Self::Denied => "registered but capability-denied at load",
             Self::CodeTarget => "resolved to a bytecode export — guard BIFs must be native",

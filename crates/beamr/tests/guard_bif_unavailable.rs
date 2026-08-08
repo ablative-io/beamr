@@ -38,7 +38,8 @@ const FIXTURE: &[u8] = include_bytes!("fixtures/guard_bif_probe.beam");
 /// The exact one-log-line refusal the 2026-07-18 sanction demanded, rendered
 /// through the runtime atom table (`format_with_atoms`) — the true MFA channel.
 const EXPECTED_DISPLAY: &str = "guard bif erlang:+/2 unavailable: import resolved Deferred \
-    (the LOAD-TIME native BIF registry had no entry and the target module is not loaded); \
+    (the LOAD-TIME native BIF registry had no entry and the LOAD-TIME module registry did not \
+    hold the target); \
     runtime natives: Wired — imports bind at LOAD time against the loader's registry, and a \
     scheduler declared NativeBifs::none() also reports Wired because none() wires a registry \
     with no BIFs registered; schedulers declare natives at construction (see NativeBifs::none \
@@ -51,7 +52,8 @@ const EXPECTED_DISPLAY: &str = "guard bif erlang:+/2 unavailable: import resolve
 /// are load-bearing; the fold amendment (dff20af) ruled `format_with_atoms` the
 /// exact-string carrier and this dual-channel wall its rot-guard.
 const EXPECTED_DISPLAY_FALLBACK: &str = "guard bif #<unknown atom>:#<unknown atom>/2 unavailable: import resolved Deferred \
-    (the LOAD-TIME native BIF registry had no entry and the target module is not loaded); \
+    (the LOAD-TIME native BIF registry had no entry and the LOAD-TIME module registry did not \
+    hold the target); \
     runtime natives: Wired — imports bind at LOAD time against the loader's registry, and a \
     scheduler declared NativeBifs::none() also reports Wired because none() wires a registry \
     with no BIFs registered; schedulers declare natives at construction (see NativeBifs::none \
@@ -224,7 +226,7 @@ fn diverged_registries_refusal_does_not_accuse_the_runtime_registry() {
             assert_eq!(
                 resolution,
                 GuardBifResolution::Deferred,
-                "the LOAD-TIME registry had no entry and the target module is not loaded"
+                "at load time neither the BIF registry nor the module registry held the target"
             );
         }
         other => panic!("expected GuardBifUnavailable, got {other:?}"),
