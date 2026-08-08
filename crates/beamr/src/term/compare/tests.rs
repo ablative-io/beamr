@@ -41,6 +41,70 @@ fn numeric_equality_compares_bigints_by_value() {
     assert!(!exact_eq(Term::small_int(42), small_bigint));
 }
 
+/// `2^70` -- a bignum whose value is exactly representable as an `f64`.
+const TWO_POW_70: f64 = 1_180_591_620_717_411_303_424.0;
+
+/// Limbs for `2^70`: `64 * 2^64`, little-endian.
+const TWO_POW_70_LIMBS: [u64; 2] = [0, 64];
+
+#[test]
+fn numeric_equality_coerces_bigint_float_pairs() {
+    let mut bigint_heap = [0_u64; 5];
+    let mut equal_float_heap = [0_u64; 2];
+    let mut larger_float_heap = [0_u64; 2];
+    let bigint = write_bigint(&mut bigint_heap, false, &TWO_POW_70_LIMBS).unwrap();
+    let equal_float = write_float(&mut equal_float_heap, TWO_POW_70).unwrap();
+    let larger_float = write_float(&mut larger_float_heap, TWO_POW_70 * 2.0).unwrap();
+
+    assert!(numeric_eq(bigint, equal_float));
+    assert!(numeric_eq(equal_float, bigint));
+    assert!(!numeric_eq(bigint, larger_float));
+    assert!(!numeric_eq(larger_float, bigint));
+    assert!(!exact_eq(bigint, equal_float));
+}
+
+#[test]
+fn numeric_equality_coerces_negative_bigint_float_pairs() {
+    let mut bigint_heap = [0_u64; 5];
+    let mut equal_float_heap = [0_u64; 2];
+    let mut positive_float_heap = [0_u64; 2];
+    let bigint = write_bigint(&mut bigint_heap, true, &TWO_POW_70_LIMBS).unwrap();
+    let equal_float = write_float(&mut equal_float_heap, -TWO_POW_70).unwrap();
+    let positive_float = write_float(&mut positive_float_heap, TWO_POW_70).unwrap();
+
+    assert!(numeric_eq(bigint, equal_float));
+    assert!(numeric_eq(equal_float, bigint));
+    assert!(!numeric_eq(bigint, positive_float));
+    assert!(!numeric_eq(positive_float, bigint));
+}
+
+#[test]
+fn bigint_float_equality_agrees_with_ordering() {
+    let mut bigint_heap = [0_u64; 5];
+    let mut equal_float_heap = [0_u64; 2];
+    let mut larger_float_heap = [0_u64; 2];
+    let bigint = write_bigint(&mut bigint_heap, false, &TWO_POW_70_LIMBS).unwrap();
+    let equal_float = write_float(&mut equal_float_heap, TWO_POW_70).unwrap();
+    let larger_float = write_float(&mut larger_float_heap, TWO_POW_70 * 2.0).unwrap();
+
+    let atom_table = common_atoms();
+    assert_eq!(cmp(bigint, equal_float, &atom_table), Ordering::Equal);
+    assert_eq!(cmp(equal_float, bigint, &atom_table), Ordering::Equal);
+    assert_eq!(cmp(bigint, larger_float, &atom_table), Ordering::Less);
+    assert_eq!(cmp(larger_float, bigint, &atom_table), Ordering::Greater);
+
+    assert_eq!(
+        numeric_eq(bigint, equal_float),
+        cmp(bigint, equal_float, &atom_table) == Ordering::Equal,
+        "`==` must agree with `=<`/`>=` for an equal bignum/float pair"
+    );
+    assert_eq!(
+        numeric_eq(bigint, larger_float),
+        cmp(bigint, larger_float, &atom_table) == Ordering::Equal,
+        "`==` must agree with `=<`/`>=` for an unequal bignum/float pair"
+    );
+}
+
 #[test]
 fn exact_equality_compares_boxed_terms_structurally() {
     let mut left_heap = [0_u64; 3];
