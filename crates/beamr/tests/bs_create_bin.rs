@@ -4,7 +4,7 @@
 //! expected bytes were produced by running the same functions on the BEAM.
 
 use beamr::atom::AtomTable;
-use beamr::interpreter::{ExecutionResult, run};
+use beamr::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
 use beamr::loader::{Instruction, prepare_module};
 use beamr::module::{Module, ModuleRegistry};
 use beamr::native::BifRegistryImpl;
@@ -40,7 +40,12 @@ fn call(module: &Module, atoms: &AtomTable, function: &str) -> Vec<u8> {
         instruction_pointer: entry_ip,
     }));
     assert_eq!(
-        run(&mut process, module),
+        run_with_native_services(
+            &mut process,
+            module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     BinaryRef::new(process.x_reg(0))

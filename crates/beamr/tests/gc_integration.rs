@@ -4,10 +4,10 @@ use std::{collections::HashMap, time::Instant};
 
 use beamr::{
     atom::Atom,
-    interpreter::{ExecutionResult, run},
+    interpreter::{ExecutionResult, NativeServices, run_with_native_services},
     loader::Instruction,
     loader::decode::compact::Operand,
-    module::{Module, ModuleOrigin},
+    module::{Module, ModuleOrigin, ModuleRegistry},
     process::{ExitReason, Process},
     term::{Term, boxed::Cons},
 };
@@ -66,7 +66,12 @@ fn interpreter_survives_10_000_allocations_under_gc_pressure() {
     process.heap_mut().set_max_capacity(32_768);
 
     let start = Instant::now();
-    let result = run(&mut process, &module);
+    let result = run_with_native_services(
+        &mut process,
+        &module,
+        &ModuleRegistry::new(),
+        &NativeServices::default(),
+    );
 
     assert_eq!(result, Ok(ExecutionResult::Exited(ExitReason::Normal)));
     assert!(start.elapsed().as_secs_f64() < 5.0);

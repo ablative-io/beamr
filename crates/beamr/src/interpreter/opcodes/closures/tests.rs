@@ -1,6 +1,6 @@
 use super::*;
 use crate::atom::AtomTable;
-use crate::interpreter::{ExecutionResult, run_with_registry};
+use crate::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
 use crate::loader::{Instruction, LambdaEntry};
 use crate::module::{ModuleOrigin, ModuleRegistry};
 use crate::process::ExitReason;
@@ -375,7 +375,12 @@ fn apply_uses_latest_registry_export_after_module_reload() {
     );
     let mut first_process = Process::new(1, 32);
     assert_eq!(
-        run_with_registry(&mut first_process, &caller, &registry),
+        run_with_native_services(
+            &mut first_process,
+            &caller,
+            &registry,
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(first_process.x_reg(0), Term::small_int(1));
@@ -399,7 +404,12 @@ fn apply_uses_latest_registry_export_after_module_reload() {
     registry.insert(second_target);
     let mut second_process = Process::new(2, 32);
     assert_eq!(
-        run_with_registry(&mut second_process, &caller, &registry),
+        run_with_native_services(
+            &mut second_process,
+            &caller,
+            &registry,
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(second_process.x_reg(0), Term::small_int(2));
@@ -656,7 +666,7 @@ fn map_tests_and_exact_update_branch_on_missing_keys() {
 }
 
 #[test]
-fn dispatch_and_run_with_registry_execute_new_opcode_families() {
+fn dispatch_and_run_with_native_services_execute_new_opcode_families() {
     let atoms = AtomTable::new();
     let module_atom = atoms.intern("math");
     let function_atom = atoms.intern("answer");
@@ -696,7 +706,7 @@ fn dispatch_and_run_with_registry_execute_new_opcode_families() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run_with_registry(&mut process, &caller, &registry),
+        run_with_native_services(&mut process, &caller, &registry, &NativeServices::default()),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));

@@ -193,9 +193,10 @@ pub fn bif_element(args: &[Term], _context: &mut ProcessContext) -> Result<Term,
 /// through the [`LocalSendFacility`](crate::native::LocalSendFacility) (the
 /// scheduler-implemented slot-locked delivery + wake, with the sender clock
 /// ticked for replay determinism); a remote send routes through the
-/// distribution facility. Without a local-send facility (e.g. a bare `run()`
-/// with no scheduler) a cross-process local send is a silent drop, matching
-/// BEAM and the opcode. Returns Message, matching BEAM's return-value semantics.
+/// distribution facility. Without a local-send facility (e.g.
+/// `run_with_native_services` under default services, with no scheduler) a
+/// cross-process local send is a silent drop, matching BEAM and the opcode.
+/// Returns Message, matching BEAM's return-value semantics.
 pub fn bif_send(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [pid_term, message_term] = args else {
         return Err(badarg());

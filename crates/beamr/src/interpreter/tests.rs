@@ -1,4 +1,4 @@
-use super::{ExecutionResult, NativeServices, run, run_with_native_services, run_with_registry};
+use super::{ExecutionResult, NativeServices, run_with_native_services};
 use crate::atom::{Atom, AtomTable};
 use crate::capability::{
     CapabilityAuditEvent, CapabilityAuditSink, Sandbox, StderrViolationHandler, ViolationHandler,
@@ -92,7 +92,12 @@ fn single_return_exits_normally() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
 }
@@ -118,7 +123,12 @@ fn call_chain_executes_in_sequence_and_returns() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -139,7 +149,15 @@ fn tight_call_loop_yields_at_reduction_budget_and_resumes() {
     let mut process = Process::new(1, 32);
     process.reset_reductions(3);
 
-    assert_eq!(run(&mut process, &module), Ok(ExecutionResult::Yielded));
+    assert_eq!(
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
+        Ok(ExecutionResult::Yielded)
+    );
     assert_eq!(process.reduction_counter(), 0);
     assert_eq!(
         process.code_position(),
@@ -149,7 +167,15 @@ fn tight_call_loop_yields_at_reduction_budget_and_resumes() {
         })
     );
     process.reset_reductions(1);
-    assert_eq!(run(&mut process, &module), Ok(ExecutionResult::Yielded));
+    assert_eq!(
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
+        Ok(ExecutionResult::Yielded)
+    );
 }
 
 #[test]
@@ -185,7 +211,12 @@ fn intra_module_calls_continue_on_pinned_version_after_reload() {
     process.set_current_module(Arc::clone(&module_v1));
 
     assert_eq!(
-        run_with_registry(&mut process, &module_v1, &registry),
+        run_with_native_services(
+            &mut process,
+            &module_v1,
+            &registry,
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(11));
@@ -251,7 +282,7 @@ fn external_return_restores_caller_version_and_qualified_self_call_upgrades() {
     process.set_current_module(Arc::clone(&a_v1));
 
     assert_eq!(
-        run_with_registry(&mut process, &a_v1, &registry),
+        run_with_native_services(&mut process, &a_v1, &registry, &NativeServices::default()),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(2));
@@ -332,7 +363,12 @@ fn func_info_raises_function_clause_and_move_covers_registers_literals_and_stack
     );
     let mut fc_process = Process::new(1, 32);
     assert_eq!(
-        run(&mut fc_process, &fc_module),
+        run_with_native_services(
+            &mut fc_process,
+            &fc_module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Error))
     );
     // current_mfa is now DERIVED from (current_module, ip); the Exit path clears
@@ -383,7 +419,12 @@ fn func_info_raises_function_clause_and_move_covers_registers_literals_and_stack
     let before_heap = process.heap().used();
 
     assert_eq!(
-        run(&mut process, &body),
+        run_with_native_services(
+            &mut process,
+            &body,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(1), Term::small_int(7));
@@ -424,7 +465,12 @@ fn func_info_ip_derives_the_exact_mfa_it_names() {
     // agreement with func_info's former explicit set.
     let mut fc_process = Process::new(1, 32);
     assert_eq!(
-        run(&mut fc_process, &fc_module),
+        run_with_native_services(
+            &mut fc_process,
+            &fc_module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Error))
     );
     let head = fc_process
@@ -462,7 +508,12 @@ fn swap_exchanges_x_registers_without_allocating() {
     let before_heap = process.heap().used();
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(99));
@@ -507,7 +558,12 @@ fn swap_exchanges_y_and_x_registers_without_clobbering() {
     let mut process = Process::new(2, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::atom(hello));
@@ -552,7 +608,12 @@ fn swap_exchanges_y_registers_without_clobbering() {
     let mut process = Process::new(2, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(99));
@@ -578,7 +639,12 @@ fn swap_same_register_is_no_op() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -638,7 +704,12 @@ fn trim_preserves_remaining_y_registers_and_deallocate_pops_trimmed_frame() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(30));
@@ -693,7 +764,12 @@ fn trim_zero_words_is_noop_when_slot_count_matches() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(10));
@@ -717,7 +793,12 @@ fn trim_rejects_mismatched_frame_size_and_empty_stack_errors() {
         ],
     );
     assert_eq!(
-        run(&mut Process::new(1, 32), &mismatch),
+        run_with_native_services(
+            &mut Process::new(1, 32),
+            &mismatch,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Err(ExecError::Badarg)
     );
 
@@ -729,7 +810,12 @@ fn trim_rejects_mismatched_frame_size_and_empty_stack_errors() {
         }],
     );
     assert!(matches!(
-        run(&mut Process::new(1, 32), &empty_stack),
+        run_with_native_services(
+            &mut Process::new(1, 32),
+            &empty_stack,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Err(ExecError::Stack(_))
     ));
 }
@@ -767,7 +853,12 @@ fn stack_heap_and_data_opcodes_work() {
     let mut process = Process::new(1, 8);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     let cons = Cons::new(process.x_reg(0)).expect("put_list creates cons");
@@ -807,7 +898,12 @@ fn put_list_survives_heap_exhaustion_via_gc_and_grow() {
     let module = module(Atom::OK, code);
     let mut process = Process::new(1, 233);
 
-    let result = run(&mut process, &module);
+    let result = run_with_native_services(
+        &mut process,
+        &module,
+        &ModuleRegistry::new(),
+        &NativeServices::default(),
+    );
     assert_eq!(result, Ok(ExecutionResult::Exited(ExitReason::Normal)));
 
     // Walk the list and verify all 200 elements are present (reversed: 199..0).
@@ -854,7 +950,12 @@ fn put_tuple2_survives_heap_exhaustion_via_gc_and_grow() {
     let module = module(Atom::OK, code);
     let mut process = Process::new(1, 233);
 
-    let result = run(&mut process, &module);
+    let result = run_with_native_services(
+        &mut process,
+        &module,
+        &ModuleRegistry::new(),
+        &NativeServices::default(),
+    );
     assert_eq!(result, Ok(ExecutionResult::Exited(ExitReason::Normal)));
 
     let tuple = Tuple::new(process.x_reg(1)).expect("put_tuple2 creates tuple");
@@ -927,7 +1028,12 @@ fn put_list_preserves_high_live_x_register_across_in_opcode_gc() {
     let module = module(Atom::OK, code);
     let mut process = Process::new(1, 233);
 
-    let result = run(&mut process, &module);
+    let result = run_with_native_services(
+        &mut process,
+        &module,
+        &ModuleRegistry::new(),
+        &NativeServices::default(),
+    );
     assert_eq!(result, Ok(ExecutionResult::Exited(ExitReason::Normal)));
 
     // The opcode's own result is correct.
@@ -973,7 +1079,12 @@ fn put_tuple2_preserves_high_live_x_register_across_in_opcode_gc() {
     let module = module(Atom::OK, code);
     let mut process = Process::new(1, 233);
 
-    let result = run(&mut process, &module);
+    let result = run_with_native_services(
+        &mut process,
+        &module,
+        &ModuleRegistry::new(),
+        &NativeServices::default(),
+    );
     assert_eq!(result, Ok(ExecutionResult::Exited(ExitReason::Normal)));
 
     let tuple = Tuple::new(process.x_reg(1)).expect("put_tuple2 creates tuple");
@@ -1035,7 +1146,12 @@ fn update_record_preserves_high_live_x_register_across_in_opcode_gc() {
     let module = module(Atom::OK, code);
     let mut process = Process::new(1, 233);
 
-    let result = run(&mut process, &module);
+    let result = run_with_native_services(
+        &mut process,
+        &module,
+        &ModuleRegistry::new(),
+        &NativeServices::default(),
+    );
     assert_eq!(result, Ok(ExecutionResult::Exited(ExitReason::Normal)));
 
     let tuple = Tuple::new(process.x_reg(1)).expect("update_record creates tuple");
@@ -1080,7 +1196,12 @@ fn update_record_copies_tuple_and_applies_pairs() {
     let mut process = Process::new(1, 16);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     let tuple = Tuple::new(process.x_reg(1)).expect("update_record creates tuple");
@@ -1123,7 +1244,12 @@ fn update_record_applies_multiple_pairs_and_supports_loader_list_shape() {
     let mut process = Process::new(1, 16);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     let tuple = Tuple::new(process.x_reg(1)).expect("update_record creates tuple");
@@ -1155,7 +1281,12 @@ fn update_record_without_pairs_allocates_identical_copy() {
     let mut process = Process::new(1, 16);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     let updated = Tuple::new(process.x_reg(1)).expect("copied tuple");
@@ -1181,7 +1312,12 @@ fn update_record_rejects_bad_source_and_invalid_operands() {
         }],
     );
     assert_eq!(
-        run(&mut Process::new(1, 16), &bad_source),
+        run_with_native_services(
+            &mut Process::new(1, 16),
+            &bad_source,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Err(ExecError::Badarg)
     );
 
@@ -1198,7 +1334,12 @@ fn update_record_rejects_bad_source_and_invalid_operands() {
         }],
     );
     assert_eq!(
-        run(&mut Process::new(1, 16), &invalid_pairs),
+        run_with_native_services(
+            &mut Process::new(1, 16),
+            &invalid_pairs,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Err(ExecError::InvalidOperand("update_record pairs"))
     );
 }
@@ -1236,7 +1377,12 @@ fn update_record_survives_gc_before_allocation() {
     let mut process = Process::new(1, 7);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert!(process.heap().old_used() > 0);
@@ -1259,7 +1405,12 @@ fn bad_tuple_access_and_heap_exhaustion_report_errors() {
         }],
     );
     assert_eq!(
-        run(&mut Process::new(1, 8), &bad_tuple),
+        run_with_native_services(
+            &mut Process::new(1, 8),
+            &bad_tuple,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Err(ExecError::Badarg)
     );
 
@@ -1275,7 +1426,12 @@ fn bad_tuple_access_and_heap_exhaustion_report_errors() {
     );
     let mut process = Process::new(1, 8);
     assert_eq!(
-        run(&mut process, &heap_check),
+        run_with_native_services(
+            &mut process,
+            &heap_check,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert!(process.heap().available() >= 10);
@@ -1497,7 +1653,13 @@ fn dirty_native_returns_dirty_call_without_inline_execution() {
     });
     let mut process = Process::new(1, 32);
 
-    let result = run(&mut process, &module).expect("dirty native yields");
+    let result = run_with_native_services(
+        &mut process,
+        &module,
+        &ModuleRegistry::new(),
+        &NativeServices::default(),
+    )
+    .expect("dirty native yields");
     let ExecutionResult::DirtyCall {
         entry, args, kind, ..
     } = result
@@ -1539,7 +1701,12 @@ fn pure_sandbox_denies_native_calls() {
     let mut process = Process::with_capabilities(1, 32, Sandbox::Pure.capabilities());
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     let tuple = Tuple::new(process.x_reg(0)).expect("capability denied tuple");
@@ -1581,7 +1748,12 @@ fn native_call_denied_by_process_capability_returns_error_tuple() {
     );
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     let tuple = Tuple::new(process.x_reg(0)).expect("capability denied tuple");
@@ -1673,7 +1845,12 @@ fn call_ext_invokes_registered_native_and_tail_call_deallocates() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -1686,7 +1863,12 @@ fn try_catches_throw_class_from_native_err() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -1698,7 +1880,12 @@ fn try_error_clause_does_not_catch_throw_class_from_native_err() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Error))
     );
     let exception = process.current_exception().expect("propagated throw");
@@ -1712,7 +1899,12 @@ fn try_catches_exit_class_from_native_err() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -1740,7 +1932,12 @@ fn native_err_without_exception_class_uses_error_class() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Error))
     );
     let exception = process.current_exception().expect("native Err exception");
@@ -1843,7 +2040,7 @@ fn call_ext_unresolved_target_returns_undef_without_index_drift() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run_with_registry(&mut process, &caller, &registry),
+        run_with_native_services(&mut process, &caller, &registry, &NativeServices::default()),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(9));
@@ -1869,7 +2066,7 @@ fn call_ext_unresolved_target_returns_undef() {
     let mut process = Process::new(1, 32);
 
     assert!(matches!(
-        run_with_registry(&mut process, &caller, &registry),
+        run_with_native_services(&mut process, &caller, &registry, &NativeServices::default()),
         Err(ExecError::Undef {
             module,
             function,
@@ -1896,7 +2093,7 @@ fn call_ext_denied_target_returns_mfa_rich_undef() {
     let mut process = Process::new(1, 32);
 
     assert!(matches!(
-        run_with_registry(&mut process, &caller, &registry),
+        run_with_native_services(&mut process, &caller, &registry, &NativeServices::default()),
         Err(ExecError::Undef {
             module,
             function,
@@ -1926,7 +2123,12 @@ fn call_ext_code_target_uses_latest_export_ip_after_reload() {
     let mut first_process = Process::new(1, 32);
 
     assert_eq!(
-        run_with_registry(&mut first_process, &caller, &registry),
+        run_with_native_services(
+            &mut first_process,
+            &caller,
+            &registry,
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(first_process.x_reg(0), Term::small_int(1));
@@ -1935,7 +2137,12 @@ fn call_ext_code_target_uses_latest_export_ip_after_reload() {
     let mut second_process = Process::new(2, 32);
 
     assert_eq!(
-        run_with_registry(&mut second_process, &caller, &registry),
+        run_with_native_services(
+            &mut second_process,
+            &caller,
+            &registry,
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(second_process.x_reg(0), Term::small_int(2));
@@ -1961,7 +2168,7 @@ fn call_ext_deferred_target_resolves_when_module_loads_later() {
 
     let mut missing_process = Process::new(1, 32);
     assert!(matches!(
-        run_with_registry(&mut missing_process, &caller, &registry),
+        run_with_native_services(&mut missing_process, &caller, &registry, &NativeServices::default()),
         Err(ExecError::Undef {
             module,
             function,
@@ -1973,7 +2180,12 @@ fn call_ext_deferred_target_resolves_when_module_loads_later() {
     let mut loaded_process = Process::new(2, 32);
 
     assert_eq!(
-        run_with_registry(&mut loaded_process, &caller, &registry),
+        run_with_native_services(
+            &mut loaded_process,
+            &caller,
+            &registry,
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(loaded_process.x_reg(0), Term::small_int(7));
@@ -2029,7 +2241,12 @@ fn call_ext_only_native_tail_call_exits_with_bif_result() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -2065,7 +2282,12 @@ fn call_ext_only_native_tail_call_does_not_fall_through_to_next_function() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(3));
@@ -2099,7 +2321,12 @@ fn nested_tail_calls_propagate_native_bif_result() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -2147,7 +2374,12 @@ fn call_ext_last_native_tail_call_deallocates_then_returns_to_caller() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -2207,7 +2439,12 @@ fn branching_opcode_sequence_dispatches_like_case_expression() {
     let mut process = Process::new(1, 32);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(1), Term::small_int(1));
@@ -2266,7 +2503,12 @@ fn select_val_and_comparison_sequence_dispatches_like_guarded_case_expression() 
     let mut process = Process::new(1, 16);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(1), Term::small_int(2));
@@ -2314,7 +2556,12 @@ fn guard_bif_failure_branches_without_exiting_process() {
     let mut process = Process::new(1, 16);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(1), Term::small_int(99));
@@ -2331,7 +2578,12 @@ fn unknown_opcode_reports_opcode_number() {
         }],
     );
     assert_eq!(
-        run(&mut Process::new(1, 8), &module),
+        run_with_native_services(
+            &mut Process::new(1, 8),
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Err(ExecError::UnknownOpcode { opcode: 222 })
     );
 }
@@ -2382,7 +2634,12 @@ fn call_ext_bif_error_preserves_exception_class_and_stacktrace() {
     let mut process = Process::new(1, 64);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::atom(Atom::THROW));
@@ -2417,7 +2674,12 @@ fn proof_of_life_load_spawn_execute_exit_pipeline_fixture() {
     }));
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(55));
@@ -2462,7 +2724,12 @@ fn interpreter_binary_opcodes_construct_and_match_binary_patterns() {
     let mut process = Process::new(1, 64);
 
     assert_eq!(
-        run(&mut process, &construct_module),
+        run_with_native_services(
+            &mut process,
+            &construct_module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(
@@ -2530,7 +2797,12 @@ fn interpreter_binary_opcodes_construct_and_match_binary_patterns() {
     process.set_x_reg(0, source);
 
     assert_eq!(
-        run(&mut process, &module),
+        run_with_native_services(
+            &mut process,
+            &module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(2).as_small_int(), Some(65));

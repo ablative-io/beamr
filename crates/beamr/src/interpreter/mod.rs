@@ -200,36 +200,12 @@ pub enum InstructionOutcome {
     },
 }
 
-/// Execute `process` against `module` until a scheduler boundary or exit.
-pub fn run(process: &mut Process, module: &Module) -> Result<ExecutionResult, ExecError> {
-    let empty = NativeServices::default();
-    run_loop(process, module, None, &empty)
-}
-
-/// Execute `process` with a registry so dynamic calls can cross module boundaries.
-pub fn run_with_registry(
-    process: &mut Process,
-    initial_module: &Module,
-    registry: &ModuleRegistry,
-) -> Result<ExecutionResult, ExecError> {
-    let empty = NativeServices::default();
-    run_loop(process, initial_module, Some(registry), &empty)
-}
-
-/// Execute `process` with timer services available to asynchronous timer BIFs.
-pub fn run_with_timer_services(
-    process: &mut Process,
-    initial_module: &Module,
-    timers: Arc<Mutex<TimerWheel>>,
-) -> Result<ExecutionResult, ExecError> {
-    let services = NativeServices {
-        timers: Some(timers),
-        ..NativeServices::default()
-    };
-    run_loop(process, initial_module, None, &services)
-}
-
 /// Execute `process` with all native services and a module registry.
+///
+/// This is the only interpreter entry point: both the module registry and the
+/// native services are values the caller writes down. A caller that resolves no
+/// native BIFs passes `&NativeServices::default()` explicitly — the emptiness is
+/// declared at the call site, never substituted here.
 /// Used by the scheduler for full BIF support.
 pub fn run_with_native_services(
     process: &mut Process,

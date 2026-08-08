@@ -5,7 +5,7 @@ use std::path::Path;
 
 use beamr::atom::{Atom, AtomTable};
 use beamr::constant_pool;
-use beamr::interpreter::{ExecutionResult, run_with_registry};
+use beamr::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
 use beamr::jit::{AotCompiler, JitCompiler, JitSettings, NativeCode};
 use beamr::loader::decode::compact::Operand;
 use beamr::loader::decode::{BifOp, ComparisonOp, MapOp, TypeTestOp};
@@ -679,8 +679,9 @@ fn execute_interpreter(
         module: module.name,
         instruction_pointer: entry_ip,
     }));
-    let result = run_with_registry(&mut process, module, registry)
-        .map_err(|error| format!("execution error: {error}"))?;
+    let result =
+        run_with_native_services(&mut process, module, registry, &NativeServices::default())
+            .map_err(|error| format!("execution error: {error}"))?;
     let mut side_effects = SideEffectTrace {
         pdict_modifications: process
             .dict_get_all()

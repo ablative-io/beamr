@@ -1,5 +1,7 @@
 use beamr::atom::{Atom, AtomTable};
-use beamr::interpreter::{ExecutionResult, InstructionOutcome, run};
+use beamr::interpreter::{
+    ExecutionResult, InstructionOutcome, NativeServices, run_with_native_services,
+};
 use beamr::loader::decode::Operand;
 use beamr::loader::{Instruction, load_beam_chunks, prepare_module};
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry};
@@ -43,7 +45,12 @@ fn call(module: &Module, atoms: &AtomTable, function: &str, args: &[Term]) -> Te
     }));
 
     assert_eq!(
-        run(&mut process, module),
+        run_with_native_services(
+            &mut process,
+            module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     process.x_reg(0)

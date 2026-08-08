@@ -5,11 +5,11 @@
 //! files — pure instruction-level proof that the engine works.
 
 use beamr::atom::AtomTable;
-use beamr::interpreter::{ExecutionResult, run};
+use beamr::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
 use beamr::loader::Instruction;
 use beamr::loader::decode::TypeTestOp;
 use beamr::loader::decode::compact::Operand;
-use beamr::module::{Module, ModuleOrigin};
+use beamr::module::{Module, ModuleOrigin, ModuleRegistry};
 use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
 use beamr::process::{ExitReason, Process};
@@ -88,7 +88,12 @@ fn proof_1_arithmetic_add_two_numbers_via_bif() {
 
     let mut process = Process::new(1, 64);
     assert_eq!(
-        run(&mut process, &m),
+        run_with_native_services(
+            &mut process,
+            &m,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -147,7 +152,12 @@ fn proof_2_branching_case_expression_selects_correct_arm() {
 
     let mut process = Process::new(1, 64);
     assert_eq!(
-        run(&mut process, &m),
+        run_with_native_services(
+            &mut process,
+            &m,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(2));
@@ -198,7 +208,12 @@ fn proof_3_data_structures_build_tuple_and_list() {
 
     let mut process = Process::new(1, 64);
     assert_eq!(
-        run(&mut process, &m),
+        run_with_native_services(
+            &mut process,
+            &m,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
 
@@ -274,7 +289,12 @@ fn proof_4_function_calls_with_stack_frames() {
 
     let mut process = Process::new(1, 64);
     assert_eq!(
-        run(&mut process, &m),
+        run_with_native_services(
+            &mut process,
+            &m,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
 
@@ -343,7 +363,12 @@ fn proof_5_type_guards_and_pattern_matching() {
 
     let mut process = Process::new(1, 64);
     assert_eq!(
-        run(&mut process, &m),
+        run_with_native_services(
+            &mut process,
+            &m,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     assert_eq!(process.x_reg(0), Term::small_int(42));
@@ -370,12 +395,28 @@ fn proof_6_reduction_counting_yields_and_resumes() {
     process.reset_reductions(5);
 
     // First run: should yield after 5 reductions, not crash
-    assert_eq!(run(&mut process, &m), Ok(ExecutionResult::Yielded));
+    assert_eq!(
+        run_with_native_services(
+            &mut process,
+            &m,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
+        Ok(ExecutionResult::Yielded)
+    );
     assert_eq!(process.reduction_counter(), 0);
 
     // Resume: give 3 more reductions, should yield again
     process.reset_reductions(3);
-    assert_eq!(run(&mut process, &m), Ok(ExecutionResult::Yielded));
+    assert_eq!(
+        run_with_native_services(
+            &mut process,
+            &m,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
+        Ok(ExecutionResult::Yielded)
+    );
 }
 
 #[test]
@@ -480,7 +521,12 @@ fn call_gleam_function(
         instruction_pointer: entry_ip,
     }));
 
-    match run(&mut process, module) {
+    match run_with_native_services(
+        &mut process,
+        module,
+        &ModuleRegistry::new(),
+        &NativeServices::default(),
+    ) {
         Ok(ExecutionResult::Exited(ExitReason::Normal)) => Ok(process.x_reg(0)),
         Ok(other) => Err(format!("unexpected result: {other:?}")),
         Err(e) => Err(format!("execution error: {e:?}")),

@@ -127,8 +127,9 @@ pub fn send(
         #[cfg(feature = "telemetry")]
         crate::telemetry::metrics::record_message_sent();
     }
-    // No `local_send` facility (e.g. bare `run()` with no scheduler) falls
-    // through here, preserving the pre-facility silent-set-x0 behaviour.
+    // No `local_send` facility (e.g. `run_with_native_services` under default
+    // services, with no scheduler) falls through here, preserving the
+    // pre-facility silent-set-x0 behaviour.
     process.set_x_reg(0, message);
     Ok(InstructionOutcome::Continue)
 }
@@ -364,9 +365,9 @@ fn send_error(error: crate::mailbox::SendError) -> ExecError {
 mod tests {
     use super::*;
     use crate::atom::Atom;
-    use crate::interpreter::{ExecutionResult, run};
+    use crate::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
     use crate::loader::Instruction;
-    use crate::module::ModuleOrigin;
+    use crate::module::{ModuleOrigin, ModuleRegistry};
     use crate::process::{ExitReason, Process};
     use crate::replay::{RecordedMessageDelivery, ReplayEvent, ReplayLog};
     use crate::term::Term;
@@ -549,7 +550,12 @@ mod tests {
         assert_eq!(sender.x_reg(0), message);
 
         assert_eq!(
-            run(&mut receiver, &receive_code),
+            run_with_native_services(
+                &mut receiver,
+                &receive_code,
+                &ModuleRegistry::new(),
+                &NativeServices::default()
+            ),
             Ok(ExecutionResult::Exited(ExitReason::Normal))
         );
         assert_eq!(receiver.x_reg(0), message);
@@ -655,7 +661,15 @@ mod tests {
         let mut sender = Process::new(0, 32);
         let mut receiver = Process::new(1, 32);
 
-        assert_eq!(run(&mut receiver, &wait_code), Ok(ExecutionResult::Waiting));
+        assert_eq!(
+            run_with_native_services(
+                &mut receiver,
+                &wait_code,
+                &ModuleRegistry::new(),
+                &NativeServices::default()
+            ),
+            Ok(ExecutionResult::Waiting)
+        );
         assert_eq!(receiver.status(), ProcessStatus::Waiting);
         sender.set_x_reg(0, Term::pid(1));
         sender.set_x_reg(1, Term::atom(Atom::OK));
@@ -695,7 +709,12 @@ mod tests {
         let mut process = Process::new(1, 32);
 
         assert_eq!(
-            run(&mut process, &receive_after_code),
+            run_with_native_services(
+                &mut process,
+                &receive_after_code,
+                &ModuleRegistry::new(),
+                &NativeServices::default()
+            ),
             Ok(ExecutionResult::Waiting)
         );
         assert_eq!(process.status(), ProcessStatus::Waiting);
@@ -728,7 +747,12 @@ mod tests {
                 .map(|timeout| timeout.timeout_position),
         );
         assert_eq!(
-            run(&mut process, &receive_after_code),
+            run_with_native_services(
+                &mut process,
+                &receive_after_code,
+                &ModuleRegistry::new(),
+                &NativeServices::default()
+            ),
             Ok(ExecutionResult::Exited(ExitReason::Normal))
         );
         assert_eq!(process.receive_timeout(), None);
@@ -736,7 +760,12 @@ mod tests {
         // A message wakeup rescans the loop and completes the receive.
         let mut process = Process::new(2, 32);
         assert_eq!(
-            run(&mut process, &receive_after_code),
+            run_with_native_services(
+                &mut process,
+                &receive_after_code,
+                &ModuleRegistry::new(),
+                &NativeServices::default()
+            ),
             Ok(ExecutionResult::Waiting)
         );
         process.mailbox_mut().push_owned(Term::small_int(5));
@@ -744,7 +773,12 @@ mod tests {
             .transition_to(ProcessStatus::Running)
             .expect("message arrival requeues process");
         assert_eq!(
-            run(&mut process, &receive_after_code),
+            run_with_native_services(
+                &mut process,
+                &receive_after_code,
+                &ModuleRegistry::new(),
+                &NativeServices::default()
+            ),
             Ok(ExecutionResult::Exited(ExitReason::Normal))
         );
         assert_eq!(process.x_reg(0), Term::small_int(5));

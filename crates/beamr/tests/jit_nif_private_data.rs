@@ -372,8 +372,9 @@ fn chain_below_a_jit_frame_sees_the_same_native_services() {
         describe(baseline.facilities),
         "a call below a JIT-compiled frame received a different native-services \
          bundle than the identical bytecode-only chain; beamr \
-         jit/runtime.rs:165 re-enters the interpreter via run_with_registry, \
-         which builds NativeServices::default()"
+         jit::runtime::jit_call_interpreted re-enters the interpreter via \
+         run_with_native_services, so the bundle it forwards is the one the \
+         caller declared"
     );
     assert_eq!(
         jitted.reached, PRESENT,

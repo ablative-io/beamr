@@ -13,7 +13,7 @@ use beamr::native::BifRegistryImpl;
 use beamr::process::{CodePosition, ExitReason, Process};
 use beamr::term::Term;
 
-use beamr::interpreter::{ExecutionResult, run};
+use beamr::interpreter::{ExecutionResult, NativeServices, run_with_native_services};
 
 fn load_fixture(atoms: &AtomTable) -> Module {
     let registry = ModuleRegistry::new();
@@ -43,7 +43,12 @@ fn call(module: &Module, atoms: &AtomTable, function: &str) -> Term {
     }));
 
     assert_eq!(
-        run(&mut process, module),
+        run_with_native_services(
+            &mut process,
+            module,
+            &ModuleRegistry::new(),
+            &NativeServices::default()
+        ),
         Ok(ExecutionResult::Exited(ExitReason::Normal))
     );
     process.x_reg(0)
