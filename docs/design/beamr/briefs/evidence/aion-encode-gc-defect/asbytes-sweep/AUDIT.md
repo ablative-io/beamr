@@ -284,3 +284,77 @@ not.** Site 12 is reachable by any consumer running threaded beamr,
 regardless of how they configure features. This is a defect under repair
 (no fixed-in version is promised here, deliberately), not an intended
 property, and it is present at `v0.16.3` and at `67f89c4` as published.
+
+## AMENDMENT 4 (2026-08-08, Artemis Peach — forward-only correction, nothing above rewritten)
+
+**Site 11's line cite is off by one. More consequentially: every `file:line`
+in the verdict table is a coordinate in the SWEEP BASE and in no other tree,
+and the base is now far enough behind `main` that the cites no longer resolve
+there at all.** Both measured against the committed objects, not a working
+tree, at the beamr seat 2026-08-08.
+
+### The base, restated — it governs every row and is stated only once above
+
+**Sweep base: main `f684d60`** (*"evidence(walls-lane-2): true the red record's
+exit-status line to the pipeline"*, 2026-07-24), worktree
+`.worktrees/asbytes-sweep`. The header carries this; the table does not repeat
+it, and the table is what gets quoted.
+
+### (a) The off-by-one, CONFIRMED — and it is the ONLY one
+
+At `f684d60`, `crates/beamr/src/native/stdlib_stubs/string_bifs.rs`:
+
+```
+207     let end = indices.nth(length - 1).map_or(text.len(), |(end, _)| end);
+208     context.alloc_binary(&text.as_bytes()[start..end])
+209 }
+```
+
+The quoted expression is at **`:208`**; **`:209` is the closing brace** of
+`bif_slice`. The row's *function* attribution is correct — `bif_slice` is
+declared at `:193` and its body ends at `:209` — so only the number is wrong,
+by +1.
+
+**The other ten rows were censused at the base rather than assumed, because a
+single wrong cite and a uniformly shifted table are different defects and the
+remedies differ.** Result: **no shift.** Rows 1, 2, 3, 6, 7, 8, 9 and 10 each
+land on the exact line their entry describes; row 5's range `63-90` is exact at
+both ends and spans exactly the six `alloc_binary` calls its text claims.
+⇒ **Site 11 is an isolated transcription error, not evidence against the
+table.**
+
+⚠️ **One row is correct but reads as though it were not, and it is worth
+naming so it is not "corrected" later by someone repeating this census.** Row
+4 cites `misc_bifs.rs:128`, which is `let bytes = binary.as_bytes();` — the
+BORROW — while its Expression column quotes `context.alloc_binary(&bytes[offset
+..end])`, which is four lines below at `:132`. That is the same anchoring
+convention rows 1 and 2 use (both cite the `as_bytes()` borrow and describe a
+downstream span). **The table anchors each row on the line its note is about,
+which is defensible per row and NOT uniform across the table.**
+
+### (b) ⛔ THE TABLE IS A RECORD AT THE BASE, NOT A LIVE MAP OF `main`
+
+Demonstrated at site 11, measured at `origin/main` = `5b854d0`: line `:209`
+there is `if length == 0 {`, inside a different function's guard, and
+`string_bifs.rs` has grown 351 → 362 lines. The row's coordinate now points at
+unrelated code that is not obviously unrelated — the most expensive kind of
+stale cite, because it resolves to something plausible.
+
+⛔ **This amendment makes NO claim about which sites' verdicts still stand.**
+Whether a given crossing has since been repaired, and whether it was ever real
+under a sharper discriminator, is a separate and larger question with its own
+lane; it is not answerable by the coordinate check performed here, and a reader
+must not read "the cite moved" as "the defect is gone" in either direction.
+
+### (c) ⭐ CITE BY FUNCTION, NOT BY LINE
+
+Every row above already carries its function name, and **the function name was
+right in the one case where the line was wrong** — `bif_slice` identified the
+subject unambiguously while `:209` pointed at a brace. The same asymmetry holds
+across the base→`main` drift: the eight `string_bifs` and `misc_bifs` function
+names still resolve today; their line numbers do not.
+
+⇒ **When quoting this audit, quote `file` + `function` + the expression, and
+treat the line number as a base-time convenience that decays.** A line number
+is the only field here that can go wrong silently, because it always resolves
+to *something*.
