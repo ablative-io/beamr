@@ -20,7 +20,7 @@ use beamr::native::BifRegistryImpl;
 use beamr::process::ExitReason;
 use beamr::replay::ReplayLog;
 use beamr::scheduler::dirty::{DirtyPool, DirtyTask};
-use beamr::scheduler::{Scheduler, SchedulerConfig, SchedulerServices};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig, SchedulerServices};
 use beamr::term::Term;
 
 const WAIT_BUDGET: Duration = Duration::from_secs(10);
@@ -307,8 +307,12 @@ fn local_hot_function_compiles_through_scheduler_and_matches_minimal_composition
 
     let registry = Arc::new(ModuleRegistry::new());
     let module = registry.insert(local_hot_module(module_name, function, threshold, 42));
-    let scheduler =
-        Scheduler::new(config(threshold as u32), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(
+        config(threshold as u32),
+        Arc::clone(&registry),
+        NativeBifs::none(),
+    )
+    .expect("scheduler starts");
 
     let heated = run_to_value(&scheduler, &module);
     assert_eq!(heated, Term::small_int(42));
@@ -373,6 +377,7 @@ fn local_hot_function_compiles_through_scheduler_and_matches_minimal_composition
         config(threshold as u32),
         SchedulerServices::minimal(),
         Arc::clone(&minimal_registry),
+        NativeBifs::none(),
     )
     .expect("minimal scheduler starts");
     let reference = run_to_value(&minimal, &minimal_module);
@@ -401,8 +406,12 @@ fn external_call_edge_heats_and_compiles_through_scheduler() {
     let (callee, caller) = external_pair(callee_name, function, caller_name, threshold, 7);
     let callee = registry.insert(callee);
     let caller = registry.insert(caller);
-    let scheduler =
-        Scheduler::new(config(threshold as u32), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(
+        config(threshold as u32),
+        Arc::clone(&registry),
+        NativeBifs::none(),
+    )
+    .expect("scheduler starts");
 
     assert_eq!(run_to_value(&scheduler, &caller), Term::small_int(7));
     assert_eq!(
@@ -464,6 +473,7 @@ fn replay_composition_submits_nothing_and_outputs_match() {
         config(threshold as u32),
         Arc::clone(&registry),
         ReplayLog::default(),
+        NativeBifs::none(),
     )
     .expect("replay scheduler starts");
 
@@ -516,6 +526,7 @@ fn minimal_composition_runs_interpreter_only_with_zero_submissions() {
         config(threshold as u32),
         SchedulerServices::minimal(),
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("minimal scheduler starts");
 
@@ -550,8 +561,8 @@ fn threshold_minus_one_calls_submit_nothing_and_the_crossing_call_submits_once()
     let registry = Arc::new(ModuleRegistry::new());
     // One call per spawn: submissions move only with the crossing call.
     let module = registry.insert(local_hot_module(module_name, function, 1, 42));
-    let scheduler =
-        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(config(threshold), Arc::clone(&registry), NativeBifs::none())
+        .expect("scheduler starts");
 
     for _ in 0..threshold - 1 {
         assert_eq!(run_to_value(&scheduler, &module), Term::small_int(42));
@@ -607,8 +618,12 @@ fn hot_reload_reheats_and_recompiles_at_the_new_generation() {
 
     let registry = Arc::new(ModuleRegistry::new());
     let v1 = registry.insert(local_hot_module(module_name, function, threshold, 42));
-    let scheduler =
-        Scheduler::new(config(threshold as u32), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(
+        config(threshold as u32),
+        Arc::clone(&registry),
+        NativeBifs::none(),
+    )
+    .expect("scheduler starts");
 
     assert_eq!(run_to_value(&scheduler, &v1), Term::small_int(42));
     assert!(
@@ -688,8 +703,8 @@ fn unsupported_function_retries_at_the_new_generation() {
     let registry = Arc::new(ModuleRegistry::new());
     // One call per spawn so the profiler state is observable between calls.
     let v1 = registry.insert(local_unsupported_module(module_name, function, 1, 7));
-    let scheduler =
-        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(config(threshold), Arc::clone(&registry), NativeBifs::none())
+        .expect("scheduler starts");
 
     for _ in 0..threshold {
         assert_eq!(run_to_value(&scheduler, &v1), Term::small_int(7));
@@ -775,8 +790,8 @@ fn body_position_call_function_is_walled_and_falls_back_to_the_interpreter() {
 
     let registry = Arc::new(ModuleRegistry::new());
     let v1 = registry.insert(local_body_call_module(module_name, f, g, 1, 42));
-    let scheduler =
-        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(config(threshold), Arc::clone(&registry), NativeBifs::none())
+        .expect("scheduler starts");
 
     // The interpreter runs the body-call function correctly every time.
     for _ in 0..threshold {
@@ -821,8 +836,8 @@ fn old_generation_calls_do_not_count_while_the_new_generation_heats() {
     let registry = Arc::new(ModuleRegistry::new());
     let v1 = registry.insert(local_hot_module(module_name, function, 1, 42));
 
-    let scheduler =
-        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(config(threshold), Arc::clone(&registry), NativeBifs::none())
+        .expect("scheduler starts");
 
     // Pre-heat the old generation a little, then load the new one.
     for _ in 0..2 {
@@ -922,6 +937,7 @@ fn refused_submission_leaves_bytecode_running_and_the_profile_reheatable() {
         config(threshold),
         SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler with the shared pool starts");
 
@@ -986,8 +1002,8 @@ fn delete_module_through_the_scheduler_drops_hot_profiles_and_cached_code() {
 
     let registry = Arc::new(ModuleRegistry::new());
     let module = registry.insert(local_hot_module(module_name, function, 2, 42));
-    let scheduler =
-        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(config(threshold), Arc::clone(&registry), NativeBifs::none())
+        .expect("scheduler starts");
 
     assert_eq!(run_to_value(&scheduler, &module), Term::small_int(42));
     assert_eq!(scheduler.jit_profiler().profile_entry_count(), 1);
@@ -1102,8 +1118,8 @@ fn aliased_export_never_runs_or_heats_another_functions_code() {
         imports,
     ));
 
-    let scheduler =
-        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(config(threshold), Arc::clone(&registry), NativeBifs::none())
+        .expect("scheduler starts");
 
     // Heat and compile the REAL foo/0.
     assert_eq!(run_to_value(&scheduler, &module), Term::small_int(42));
@@ -1173,6 +1189,7 @@ fn queued_compilation_completing_after_delete_publishes_nothing() {
         config(threshold as u32),
         SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler with the shared pool starts");
 
@@ -1259,6 +1276,7 @@ fn queued_stale_job_never_stamps_a_replacement_profile() {
         config(threshold as u32),
         SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler with the shared pool starts");
 
@@ -1370,8 +1388,8 @@ fn stale_record_call_after_delete_cannot_wedge_a_monotonic_reload() {
     let registry = Arc::new(ModuleRegistry::new());
     let v1 = registry.insert(local_hot_module(module_name, function, 1, 42));
     assert_eq!(v1.generation(), 1);
-    let scheduler =
-        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(config(threshold), Arc::clone(&registry), NativeBifs::none())
+        .expect("scheduler starts");
 
     // Delete, then the old-generation process (retained Arc) keeps calling:
     // its record_call recreates a profile stamped at the DEAD generation.
@@ -1455,6 +1473,7 @@ fn stale_unsupported_verdict_never_wedges_a_same_generation_replacement() {
         config(threshold as u32),
         SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler with the shared pool starts");
 
@@ -1586,8 +1605,8 @@ fn internal_label_calls_never_touch_the_jit_surface() {
     ];
     let registry = Arc::new(ModuleRegistry::new());
     let module = registry.insert(finish_module(module_name, code, HashMap::new(), Vec::new()));
-    let scheduler =
-        Scheduler::new(config(threshold), Arc::clone(&registry)).expect("scheduler starts");
+    let scheduler = Scheduler::new(config(threshold), Arc::clone(&registry), NativeBifs::none())
+        .expect("scheduler starts");
 
     assert_eq!(run_to_value(&scheduler, &module), Term::small_int(42));
     assert_eq!(

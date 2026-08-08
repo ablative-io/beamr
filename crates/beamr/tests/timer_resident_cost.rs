@@ -46,7 +46,7 @@ use beamr::module::ModuleRegistry;
 use beamr::native::native_process::{NativeContext, NativeHandler, NativeOutcome};
 use beamr::scheduler::thread_probe::{process_thread_names, thread_name_multiset};
 use beamr::scheduler::{
-    IDLE_PARK_TIMEOUT, IDLE_WAKES_PER_SEC_PER_WORKER, Scheduler, SchedulerConfig,
+    IDLE_PARK_TIMEOUT, IDLE_WAKES_PER_SEC_PER_WORKER, NativeBifs, Scheduler, SchedulerConfig,
 };
 use beamr::term::Term;
 
@@ -93,6 +93,7 @@ fn a_thousand_pending_timers_add_no_thread_no_wake_and_no_park_shortening() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let workers = scheduler.worker_names().len();

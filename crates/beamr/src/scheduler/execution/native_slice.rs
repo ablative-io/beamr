@@ -150,7 +150,7 @@ mod tests {
     use crate::process::heap::DEFAULT_HEAP_SIZE;
     use crate::process::{ExitReason, Process};
     use crate::replay::{RecordedDeliveryKind, RecordedMessageDelivery, ReplayEvent, ReplayLog};
-    use crate::scheduler::{Scheduler, SchedulerConfig, supervision_integration};
+    use crate::scheduler::{NativeBifs, Scheduler, SchedulerConfig, supervision_integration};
     use crate::term::Term;
     use std::sync::Arc;
 
@@ -170,7 +170,8 @@ mod tests {
             thread_count: Some(1),
             ..Default::default()
         };
-        Scheduler::new(config, Arc::new(ModuleRegistry::new())).expect("scheduler starts")
+        Scheduler::new(config, Arc::new(ModuleRegistry::new()), NativeBifs::none())
+            .expect("scheduler starts")
     }
 
     #[test]
@@ -217,8 +218,8 @@ mod tests {
                 message,
             },
         )]);
-        let scheduler =
-            Scheduler::new_replay(SchedulerConfig::default(), log).expect("replay scheduler");
+        let scheduler = Scheduler::new_replay(SchedulerConfig::default(), log, NativeBifs::none())
+            .expect("replay scheduler");
         let receiver_pid = scheduler.spawn_test_process(false);
         assert_eq!(receiver_pid, 1, "first spawned pid is 1");
 
@@ -269,8 +270,8 @@ mod tests {
                 message,
             },
         )]);
-        let scheduler =
-            Scheduler::new_replay(SchedulerConfig::default(), log).expect("replay scheduler");
+        let scheduler = Scheduler::new_replay(SchedulerConfig::default(), log, NativeBifs::none())
+            .expect("replay scheduler");
         let receiver_pid = scheduler.spawn_test_process(false);
 
         let services =

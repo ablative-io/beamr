@@ -21,7 +21,7 @@ use beamr::distribution::NET_KERNEL_THREAD_NAME;
 use beamr::distribution::sender::DIST_SEND_THREAD_NAME;
 use beamr::module::ModuleRegistry;
 use beamr::scheduler::thread_probe::{process_thread_names, thread_name_multiset};
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 
 fn live_count(name: &str) -> usize {
     thread_name_multiset(&process_thread_names())
@@ -52,6 +52,7 @@ fn distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown()
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -107,6 +108,7 @@ fn distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown()
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     assert!(SchedulerConfig::default().distribution.is_none());

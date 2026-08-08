@@ -29,7 +29,7 @@ use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, Resolv
 use beamr::native::gleam_ffi::bif_sleep_forever;
 use beamr::native::{Capability, NativeEntry, NativeFn, ProcessContext};
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 
 /// Bumped by the `normal_progress` native, so "other work still ran" is
@@ -167,6 +167,7 @@ fn scheduler_with_one_normal_thread(registry: &Arc<ModuleRegistry>) -> Arc<Sched
                 ..SchedulerConfig::default()
             },
             Arc::clone(registry),
+            NativeBifs::none(),
         )
         .expect("scheduler starts"),
     )

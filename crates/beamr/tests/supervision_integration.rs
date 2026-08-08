@@ -12,7 +12,7 @@ use beamr::loader::Instruction;
 use beamr::loader::decode::compact::Operand;
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry};
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::supervision::{LinkSet, MonitorSet};
 
 fn test_module(name: beamr::atom::Atom, code: Vec<Instruction>) -> Module {
@@ -102,6 +102,7 @@ fn process_exits_normally_and_is_removed() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|e| panic!("scheduler starts: {e}"));
 
@@ -126,6 +127,7 @@ fn unlinked_process_survives_normal_exit() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|e| panic!("scheduler starts: {e}"));
 
@@ -159,6 +161,7 @@ fn multiple_processes_exit_independently() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|e| panic!("scheduler starts: {e}"));
 
@@ -184,6 +187,7 @@ fn scheduler_initializes_supervision_data_structures() {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|e| panic!("scheduler starts: {e}"));
 
@@ -299,6 +303,7 @@ fn waiting_process_stays_alive_without_exit_signal() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|e| panic!("scheduler starts: {e}"));
 

@@ -55,6 +55,7 @@ fn all_five_commit6_riders_admit_before_drain_and_refuse_after() {
         },
         SchedulerServices::minimal().owned_readiness(),
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("rider scheduler starts: {error}"));
     for pid in [101, 102, 103] {

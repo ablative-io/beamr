@@ -19,7 +19,7 @@ use beamr::loader::decode::compact::Operand;
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use beamr::native::{Capability, NativeEntry, ProcessContext};
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 
 /// Test phases: 0 = not started, 1 = native is mid-slice (Executing),
@@ -101,6 +101,7 @@ fn marker_delivered_while_executing_resumes_the_suspending_process() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler starts");
 
@@ -185,6 +186,7 @@ fn delivery_during_in_flight_dirty_call_does_not_resume_the_process() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler starts");
 

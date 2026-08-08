@@ -22,6 +22,7 @@ fn test_scheduler(thread_count: usize) -> Scheduler {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .expect("scheduler starts")
 }

@@ -22,7 +22,7 @@ use beamr::module::ModuleRegistry;
 use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 
 const FIXTURE: &[u8] = include_bytes!("fixtures/guard_bif_probe.beam");
@@ -45,7 +45,16 @@ const EXPECTED_DISPLAY_FALLBACK: &str = "guard bif #<unknown atom>:#<unknown ato
 /// `NoSuchProcess` until a worker first schedules the process. Sleep past it.
 const SPAWN_VISIBILITY_DELAY: Duration = Duration::from_millis(100);
 
-fn start_scheduler(atoms: &AtomTable, bifs: &BifRegistryImpl) -> (Scheduler, Arc<ModuleRegistry>) {
+/// Load the fixture against `bifs` and start a scheduler declaring `natives`.
+///
+/// The two are separate parameters because the two arms declare differently:
+/// the refusal arm's scheduler resolves no natives, the clean arm's carries the
+/// same registry the loader bound the imports against.
+fn start_scheduler(
+    atoms: &AtomTable,
+    bifs: &BifRegistryImpl,
+    natives: NativeBifs,
+) -> (Scheduler, Arc<ModuleRegistry>) {
     let registry = Arc::new(ModuleRegistry::new());
     load_module(FIXTURE, atoms, &registry, bifs).expect("guard_bif_probe fixture loads");
     let scheduler = Scheduler::new(
@@ -54,6 +63,7 @@ fn start_scheduler(atoms: &AtomTable, bifs: &BifRegistryImpl) -> (Scheduler, Arc
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        natives,
     )
     .expect("scheduler starts");
     (scheduler, registry)
@@ -78,7 +88,7 @@ fn empty_registry_refusal_names_the_mfa_and_deferred_resolution() {
     let atoms = AtomTable::with_common_atoms();
     // The exact 2026-07-18 composition: no native BIFs registered at all.
     let bifs = BifRegistryImpl::new();
-    let (scheduler, _registry) = start_scheduler(&atoms, &bifs);
+    let (scheduler, _registry) = start_scheduler(&atoms, &bifs, NativeBifs::none());
 
     let pid = spawn_probe(&scheduler, &atoms);
     // The `bump` message drives the `Observed + 1` gc_bif clause.
@@ -125,9 +135,10 @@ fn empty_registry_refusal_names_the_mfa_and_deferred_resolution() {
 #[test]
 fn populated_registry_runs_the_arithmetic_clean() {
     let atoms = AtomTable::with_common_atoms();
-    let bifs = BifRegistryImpl::new();
+    let bifs = Arc::new(BifRegistryImpl::new());
     register_gate1_bifs(&bifs, &atoms).expect("gate1 bifs register");
-    let (scheduler, _registry) = start_scheduler(&atoms, &bifs);
+    let (scheduler, _registry) =
+        start_scheduler(&atoms, &bifs, NativeBifs::registry(Arc::clone(&bifs)));
 
     let pid = spawn_probe(&scheduler, &atoms);
     // Two `bump`s (Observed -> 2), then `report` returns the accumulator.

@@ -17,7 +17,7 @@ use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, Resolv
 use beamr::native::{Capability, NativeEntry, ProcessContext};
 use beamr::process::ExitReason;
 use beamr::scheduler::dirty::DirtySchedulerKind;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 
 struct EnginePrivateData {
@@ -94,6 +94,7 @@ fn scheduler_with_private_value(registry: &Arc<ModuleRegistry>, value: i64) -> S
             ..SchedulerConfig::default()
         },
         Arc::clone(registry),
+        NativeBifs::none(),
     )
     .expect("scheduler starts")
 }
@@ -167,6 +168,7 @@ fn natives_without_configured_private_data_see_none() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler starts");
 

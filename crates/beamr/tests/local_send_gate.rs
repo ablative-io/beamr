@@ -23,7 +23,7 @@ use beamr::loader::Instruction;
 use beamr::loader::decode::compact::Operand;
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry};
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 
 fn label_index(code: &[Instruction]) -> HashMap<u32, usize> {
@@ -148,8 +148,12 @@ fn cross_process_send_via_real_scheduler_delivers() {
     registry.insert(sender_module(&atoms, ping));
 
     let scheduler = Arc::new(
-        Scheduler::new(SchedulerConfig::default(), Arc::clone(&registry))
-            .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
+        Scheduler::new(
+            SchedulerConfig::default(),
+            Arc::clone(&registry),
+            NativeBifs::none(),
+        )
+        .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     );
 
     let receiver_mod = atoms.intern("gate_receiver");
@@ -204,8 +208,12 @@ fn receive_timeout_path_still_fires_when_no_send() {
     registry.insert(receiver_after_module(&atoms));
 
     let scheduler = Arc::new(
-        Scheduler::new(SchedulerConfig::default(), Arc::clone(&registry))
-            .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
+        Scheduler::new(
+            SchedulerConfig::default(),
+            Arc::clone(&registry),
+            NativeBifs::none(),
+        )
+        .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     );
 
     let receiver_mod = atoms.intern("gate_receiver_after");

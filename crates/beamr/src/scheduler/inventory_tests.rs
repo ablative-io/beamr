@@ -9,12 +9,16 @@ use std::thread;
 use std::time::Duration;
 
 use super::service::ServiceModeLabel;
-use super::{Scheduler, SchedulerConfig, dirty, execution, inventory, thread_probe};
+use super::{NativeBifs, Scheduler, SchedulerConfig, dirty, execution, inventory, thread_probe};
 use crate::module::ModuleRegistry;
 
 fn new_default_scheduler() -> Scheduler {
-    Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-        .unwrap_or_else(|error| panic!("scheduler starts: {error}"))
+    Scheduler::new(
+        SchedulerConfig::default(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    )
+    .unwrap_or_else(|error| panic!("scheduler starts: {error}"))
 }
 
 fn entries_by_service(
@@ -187,6 +191,7 @@ fn distribution_none_disables_the_bundle_and_some_names_both_runtimes() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let some_entry = entries_by_service(&some)[inventory::DISTRIBUTION].clone();
@@ -237,6 +242,7 @@ fn disabled_dirty_pools_report_disabled_entries_and_policy() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -443,6 +449,7 @@ fn post_shutdown_inventory_reports_all_joined_services_as_zero() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -496,6 +503,7 @@ fn generic_io_configured_is_stable_across_shutdown() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 

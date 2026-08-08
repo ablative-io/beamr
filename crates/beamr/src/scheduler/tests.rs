@@ -55,6 +55,7 @@ fn replay_scheduler_forces_single_worker_even_with_thread_override() {
             ..SchedulerConfig::default()
         },
         ReplayLog::default(),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("replay scheduler starts: {error}"));
 
@@ -80,6 +81,7 @@ fn replay_driver_exposes_recorded_schedule_order_without_run_queue_pop() {
                 reductions_consumed: 2,
             }),
         ]),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("replay scheduler starts: {error}"));
 
@@ -124,8 +126,12 @@ fn cleanup_exited_process_purges_pg_membership_without_connection() {
     // A dying process must drop its pg membership locally even when no
     // distribution connection exists — the local purge runs synchronously inside
     // `cleanup_exited_process`, and the propagated leave is a no-op (no peers).
-    let scheduler = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-        .expect("scheduler should start");
+    let scheduler = Scheduler::new(
+        SchedulerConfig::default(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    )
+    .expect("scheduler should start");
     let registry = scheduler.pg_registry();
     let scope = registry.default_scope();
     let group = scheduler.shared.atom_table.intern("exiting_workers");
@@ -156,9 +162,12 @@ fn default_distribution_config_resolves_nothing() {
 
     // Honest None (spec §3.6): the default profile builds NO distribution, so
     // the config accessor is absent rather than exposing a default resolver.
-    let default_scheduler =
-        Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-            .expect("scheduler should start");
+    let default_scheduler = Scheduler::new(
+        SchedulerConfig::default(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    )
+    .expect("scheduler should start");
     assert_eq!(
         default_scheduler.jit_profiler().current_threshold(),
         crate::jit::DEFAULT_JIT_THRESHOLD
@@ -177,6 +186,7 @@ fn default_distribution_config_resolves_nothing() {
         SchedulerConfig::default(),
         SchedulerServices::full_runtime(),
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .expect("scheduler should start");
     assert_eq!(
@@ -200,6 +210,7 @@ fn scheduler_uses_explicit_jit_threshold() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .expect("scheduler should start");
 
@@ -212,8 +223,12 @@ fn scheduler_uses_explicit_jit_threshold() {
 /// jit-compiled), replay mode is off, and the dirty-CPU service is live.
 #[test]
 fn replay_and_disabled_dirty_cpu_compose_the_jit_handle_away() {
-    let live = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-        .expect("live scheduler starts");
+    let live = Scheduler::new(
+        SchedulerConfig::default(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    )
+    .expect("live scheduler starts");
     let services =
         supervision_integration::build_native_services(&live.shared, NamespaceId::DEFAULT);
     assert!(
@@ -222,8 +237,12 @@ fn replay_and_disabled_dirty_cpu_compose_the_jit_handle_away() {
     );
     live.shutdown();
 
-    let replay = Scheduler::new_replay(SchedulerConfig::default(), ReplayLog::default())
-        .expect("replay scheduler starts");
+    let replay = Scheduler::new_replay(
+        SchedulerConfig::default(),
+        ReplayLog::default(),
+        NativeBifs::none(),
+    )
+    .expect("replay scheduler starts");
     let services =
         supervision_integration::build_native_services(&replay.shared, NamespaceId::DEFAULT);
     assert!(
@@ -236,6 +255,7 @@ fn replay_and_disabled_dirty_cpu_compose_the_jit_handle_away() {
         SchedulerConfig::default(),
         SchedulerServices::minimal(),
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .expect("minimal scheduler starts");
     let services =
@@ -250,7 +270,11 @@ fn replay_and_disabled_dirty_cpu_compose_the_jit_handle_away() {
 #[test]
 fn failing_jit_compiler_construction_surfaces_from_the_scheduler_constructor() {
     INJECT_JIT_COMPILER_FAILURE.with(|flag| flag.set(true));
-    let result = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()));
+    let result = Scheduler::new(
+        SchedulerConfig::default(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    );
     INJECT_JIT_COMPILER_FAILURE.with(|flag| flag.set(false));
 
     match result {
@@ -267,8 +291,12 @@ fn failing_jit_compiler_construction_surfaces_from_the_scheduler_constructor() {
 
 #[test]
 fn delete_module_drops_jit_profile_entries() {
-    let scheduler = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-        .expect("scheduler should start");
+    let scheduler = Scheduler::new(
+        SchedulerConfig::default(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    )
+    .expect("scheduler should start");
     let module = scheduler.shared.atom_table.intern("jit_deleted_module");
     let function = scheduler.shared.atom_table.intern("hot");
     // Entries are born at a live call edge; completions only update them.
@@ -293,8 +321,12 @@ fn delete_module_drops_jit_profile_entries() {
 
 #[test]
 fn ets_registry_create_lookup_name_and_delete() {
-    let scheduler = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-        .expect("scheduler should start");
+    let scheduler = Scheduler::new(
+        SchedulerConfig::default(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    )
+    .expect("scheduler should start");
     let name = scheduler.shared.atom_table.intern("named_ets_table");
 
     let first_id = scheduler.shared.create_table(ets_metadata(Some(name), 99));
@@ -540,6 +572,7 @@ fn scheduler_creates_requested_thread_count_and_names() {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -679,6 +712,7 @@ fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let events = Arc::new(Mutex::new(Vec::new()));
@@ -1192,6 +1226,7 @@ fn hook_fires_when_process_blocks_on_receive() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let events = Arc::new(Mutex::new(Vec::new()));
@@ -1225,7 +1260,7 @@ fn hook_fires_when_process_blocks_on_receive() {
 #[test]
 fn scheduler_default_thread_count_matches_available_parallelism() {
     let registry = Arc::new(ModuleRegistry::new());
-    let scheduler = Scheduler::new(SchedulerConfig::default(), registry)
+    let scheduler = Scheduler::new(SchedulerConfig::default(), registry, NativeBifs::none())
         .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
     let expected = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
@@ -1243,6 +1278,7 @@ fn shutdown_is_idempotent() {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -1277,6 +1313,7 @@ fn scheduler_shared_state_drops_without_leak() {
         },
         SchedulerServices::full_runtime(),
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -1322,6 +1359,7 @@ fn single_process_runs_to_completion_and_is_removed() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -1356,6 +1394,7 @@ fn exported_spawn_starts_at_entry_function_with_args() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -1514,6 +1553,7 @@ fn linked_test_spawn_inherits_parent_group_leader_not_child_pid() {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     scheduler.shutdown();
@@ -1544,6 +1584,7 @@ fn spawn_link_uses_executing_parent_namespace_and_merges_parent_link() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let namespace = scheduler.create_namespace();
@@ -1626,6 +1667,7 @@ fn spawn_facility_options_apply_link_monitor_priority_and_heap_before_wake() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let parent = scheduler.spawn_test_process_in(NamespaceId::DEFAULT, Arc::clone(&module));
@@ -1723,6 +1765,7 @@ fn spawn_facility_restricts_child_to_explicit_capabilities() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let parent = scheduler.spawn_test_process_in(NamespaceId::DEFAULT, Arc::clone(&module));
@@ -1791,6 +1834,7 @@ fn process_info_reads_executing_process_metadata() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     scheduler.shutdown();
@@ -1865,6 +1909,7 @@ fn process_info_current_function_is_derived_from_module_and_ip() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     scheduler.shutdown();
@@ -2060,6 +2105,7 @@ fn yielded_process_is_rescheduled() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -2082,6 +2128,7 @@ fn multiple_processes_fairly_complete() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -2103,6 +2150,7 @@ fn mailbox_send_wakes_waiting_process_event_driven() {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let pid = 42;
@@ -2149,6 +2197,7 @@ fn fired_timer_mark_for_a_dead_pid_does_not_orphan() {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let shared = &scheduler.shared;
@@ -2189,6 +2238,7 @@ fn file_io_result_for_a_dead_pid_does_not_orphan() {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let shared = &scheduler.shared;
@@ -2257,6 +2307,7 @@ fn idle_threads_park_instead_of_spinning() {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -2318,6 +2369,7 @@ fn delivery_in_the_wait_park_gap_is_not_a_lost_wakeup() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -2364,6 +2416,7 @@ fn delivery_after_wait_registration_schedules_the_process_once() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -2447,6 +2500,7 @@ fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -2582,6 +2636,7 @@ fn disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler() 
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -2736,6 +2791,7 @@ fn disabled_file_ring_refuses_file_submit_before_registering_a_suspension() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let shared = Arc::clone(&scheduler.shared);
@@ -2813,8 +2869,12 @@ fn disabled_file_ring_refuses_file_submit_before_registering_a_suspension() {
 
 #[test]
 fn disabled_standard_io_ring_registers_no_process_zero_and_reports_disabled() {
-    let scheduler = Scheduler::new_replay(SchedulerConfig::default(), ReplayLog::default())
-        .unwrap_or_else(|error| panic!("replay scheduler starts: {error}"));
+    let scheduler = Scheduler::new_replay(
+        SchedulerConfig::default(),
+        ReplayLog::default(),
+        NativeBifs::none(),
+    )
+    .unwrap_or_else(|error| panic!("replay scheduler starts: {error}"));
 
     // No process 0: a live scheduler registers the standard-IO server as pid 0
     // (process_count == 1); a Disabled standard ring registers none.
@@ -2905,6 +2965,7 @@ fn timer_expiry_in_the_wait_park_gap_is_not_a_lost_timeout() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -2957,6 +3018,7 @@ fn deliver_timer_pushes_message_into_target_mailbox() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -3013,6 +3075,7 @@ fn receive_timeout_timer_does_not_deliver_a_message() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -3061,6 +3124,7 @@ fn timer_expiry_after_wait_registration_schedules_the_process_once() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -3140,6 +3204,7 @@ fn single_thread_scheduler(registry: &Arc<ModuleRegistry>) -> Scheduler {
             ..SchedulerConfig::default()
         },
         Arc::clone(registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"))
 }
@@ -4184,6 +4249,7 @@ fn messages_to_saturated_busy_poll_native_processes_are_all_observed() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let pollers = spawn_busy_pollers(&scheduler, 12);
@@ -4300,6 +4366,7 @@ fn busy_poll_natives_all_progress_under_spawn_exit_churn() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -4377,6 +4444,7 @@ fn busy_poll_natives_all_progress_under_heavy_concurrent_churn() {
                 ..SchedulerConfig::default()
             },
             Arc::new(ModuleRegistry::new()),
+            NativeBifs::none(),
         )
         .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     );
@@ -4465,6 +4533,7 @@ fn shutdown_closes_active_distribution_connections_before_returning() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
@@ -4569,6 +4638,7 @@ fn top_level_group_leader_is_process_zero_when_owned_and_sentinel_when_disabled(
         },
         SchedulerServices::minimal(),
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("minimal scheduler starts: {error}"));
     let _minimal_pid = minimal.spawn_process(&module);
@@ -4672,6 +4742,7 @@ fn shutdown_drains_completion_bridges_while_a_shared_pool_job_is_still_running()
         },
         SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler A starts: {error}"));
     let scheduler_b = Scheduler::with_services(
@@ -4681,6 +4752,7 @@ fn shutdown_drains_completion_bridges_while_a_shared_pool_job_is_still_running()
         },
         SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler B starts: {error}"));
 
@@ -4790,6 +4862,7 @@ fn spawn_native_root_leader_matches_the_standard_io_pid() {
         },
         SchedulerServices::minimal(),
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("minimal scheduler starts: {error}"));
     let received = Arc::new(Mutex::new(Vec::new()));
@@ -4830,6 +4903,7 @@ fn every_spawn_facility_method_refuses_after_teardown() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     scheduler.shutdown();
@@ -4926,6 +5000,7 @@ fn shutdown_waits_for_an_admitted_spawn_and_refuses_the_next() {
                 ..SchedulerConfig::default()
             },
             Arc::clone(&registry),
+            NativeBifs::none(),
         )
         .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     );

@@ -14,7 +14,8 @@ use beamr::native::ReadinessFacility;
 use beamr::native::native_process::{NativeContext, NativeHandler, NativeOutcome};
 use beamr::process::ExitReason;
 use beamr::scheduler::{
-    Interest, ReadinessError, ReadinessToken, Scheduler, SchedulerConfig, SchedulerServices,
+    Interest, NativeBifs, ReadinessError, ReadinessToken, Scheduler, SchedulerConfig,
+    SchedulerServices,
 };
 use beamr::term::Term;
 
@@ -139,6 +140,7 @@ fn scheduler(services: SchedulerServices) -> Arc<Scheduler> {
             },
             services,
             Arc::new(ModuleRegistry::new()),
+            NativeBifs::none(),
         )
         .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     )

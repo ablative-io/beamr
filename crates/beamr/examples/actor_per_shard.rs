@@ -36,7 +36,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use beamr::module::ModuleRegistry;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 use beamr::term::boxed::Tuple;
 use beamr::{
@@ -144,8 +144,12 @@ fn shard_index(key: i64) -> usize {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scheduler = Arc::new(
-        Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-            .map_err(|error| format!("scheduler failed to start: {error}"))?,
+        Scheduler::new(
+            SchedulerConfig::default(),
+            Arc::new(ModuleRegistry::new()),
+            NativeBifs::none(),
+        )
+        .map_err(|error| format!("scheduler failed to start: {error}"))?,
     );
 
     // One restart-capable native actor per shard.

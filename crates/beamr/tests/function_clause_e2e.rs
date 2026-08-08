@@ -22,7 +22,7 @@ use beamr::loader::load_module;
 use beamr::module::ModuleRegistry;
 use beamr::native::BifRegistryImpl;
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 
 const DEADLINE: Duration = Duration::from_secs(5);
@@ -43,6 +43,7 @@ fn start(atoms: &AtomTable) -> Scheduler {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::registry(Arc::new(bifs)),
     )
     .expect("scheduler starts")
 }

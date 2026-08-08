@@ -14,7 +14,7 @@ use beamr::io::RingConfig;
 use beamr::module::ModuleRegistry;
 use beamr::scheduler::dirty::DirtyPool;
 use beamr::scheduler::{
-    Scheduler, SchedulerConfig, SchedulerServices, ServiceModeLabel, SharedIoRing,
+    NativeBifs, Scheduler, SchedulerConfig, SchedulerServices, ServiceModeLabel, SharedIoRing,
     WithServicesError, deduped_thread_aggregate,
 };
 
@@ -44,9 +44,13 @@ fn mode_of(scheduler: &Scheduler, service: &str) -> ServiceModeLabel {
 
 #[test]
 fn full_runtime_turns_distribution_on_and_keeps_other_services_from_config() {
-    let scheduler =
-        Scheduler::with_services(one_worker(), SchedulerServices::full_runtime(), registry())
-            .expect("full_runtime scheduler starts");
+    let scheduler = Scheduler::with_services(
+        one_worker(),
+        SchedulerServices::full_runtime(),
+        registry(),
+        NativeBifs::none(),
+    )
+    .expect("full_runtime scheduler starts");
 
     // full_runtime() explicitly owns distribution (the one service that is
     // honest-absent by default), while the dirty/IO services stay on their
@@ -68,9 +72,13 @@ fn full_runtime_turns_distribution_on_and_keeps_other_services_from_config() {
 
 #[test]
 fn minimal_disables_every_ancillary_service() {
-    let scheduler =
-        Scheduler::with_services(one_worker(), SchedulerServices::minimal(), registry())
-            .expect("minimal scheduler starts");
+    let scheduler = Scheduler::with_services(
+        one_worker(),
+        SchedulerServices::minimal(),
+        registry(),
+        NativeBifs::none(),
+    )
+    .expect("minimal scheduler starts");
 
     for entry in scheduler.service_inventory() {
         assert_eq!(
@@ -100,6 +108,7 @@ fn explicit_service_choice_wins_over_the_legacy_config_knob() {
         config,
         SchedulerServices::from_config().disable_dirty_cpu(),
         registry(),
+        NativeBifs::none(),
     )
     .expect("scheduler starts");
     assert!(
@@ -127,12 +136,14 @@ fn shared_dirty_pool_is_used_by_two_schedulers_and_stopped_by_neither() {
         one_worker(),
         SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
         registry(),
+        NativeBifs::none(),
     )
     .expect("scheduler A starts");
     let scheduler_b = Scheduler::with_services(
         one_worker(),
         SchedulerServices::minimal().shared_dirty_cpu(Arc::clone(&pool)),
         registry(),
+        NativeBifs::none(),
     )
     .expect("scheduler B starts");
 
@@ -220,10 +231,12 @@ fn shared_io_ring_injection_is_refused_naming_commit_6() {
     // with_services itself enforces the refusal (not just the standalone
     // validate): construction fails with a message naming commit 6. (`Scheduler`
     // is not `Debug`, so match rather than `expect_err`.)
-    let error = match Scheduler::with_services(one_worker(), file_services, registry()) {
-        Ok(_) => panic!("a shared file ring must be refused by with_services"),
-        Err(error) => error,
-    };
+    let error =
+        match Scheduler::with_services(one_worker(), file_services, registry(), NativeBifs::none())
+        {
+            Ok(_) => panic!("a shared file ring must be refused by with_services"),
+            Err(error) => error,
+        };
     assert!(
         error.contains("commit 6"),
         "the refusal must name the routing gate / commit 6: {error}"
@@ -258,6 +271,7 @@ fn replay_disables_the_distribution_bundle_even_with_some_config() {
             ..SchedulerConfig::default()
         },
         ReplayLog::default(),
+        NativeBifs::none(),
     )
     .expect("replay scheduler starts");
 

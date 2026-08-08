@@ -16,7 +16,9 @@ use super::supervision_integration::SchedulerSupervisionFacility;
 use super::supervision_tests::{
     insert_process, make_executing, make_shared_state, read_mailbox_tuple,
 };
-use super::{ProcessSlot, ScheduledProcess, Scheduler, SchedulerConfig, lock_or_recover};
+use super::{
+    NativeBifs, ProcessSlot, ScheduledProcess, Scheduler, SchedulerConfig, lock_or_recover,
+};
 
 const CHANNEL_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -247,7 +249,7 @@ fn monitor_with_result_reports_immediate_down_for_present_queued_watcher() {
         ..SchedulerConfig::default()
     };
     let scheduler = Arc::new(
-        Scheduler::new(config, Arc::new(ModuleRegistry::new()))
+        Scheduler::new(config, Arc::new(ModuleRegistry::new()), NativeBifs::none())
             .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     );
 

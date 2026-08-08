@@ -152,7 +152,7 @@ pub use service::{
     ServiceIdentity, ServiceInstanceId, ServiceMode, ServiceModeLabel, ShutdownService,
 };
 #[cfg(feature = "threads")]
-pub use services::{SchedulerServices, SharedIoRing, WithServicesError};
+pub use services::{NativeBifs, SchedulerServices, SharedIoRing, WithServicesError};
 #[cfg(feature = "threads")]
 mod module_management;
 #[cfg(feature = "threads")]
@@ -1029,17 +1029,22 @@ impl Scheduler {
     /// it uses them (spec §1). Distribution, however, follows `config` honestly:
     /// `config.distribution: None` (the default) builds NEITHER distribution
     /// runtime (spec §3.6, commit-4 change). Embedders that want a specific
-    /// service footprint should use [`Scheduler::with_services`] with
-    /// [`SchedulerServices::minimal`] / [`SchedulerServices::full_runtime`]
-    /// instead; this constructor is retained for source compatibility and will
-    /// keep the legacy defaults for one release (see CHANGELOG migration note).
+    /// service footprint should use [`Scheduler::with_services_and_code_server`]
+    /// with [`SchedulerServices::minimal`] /
+    /// [`SchedulerServices::full_runtime`] instead; this constructor is retained
+    /// for source compatibility and will keep the legacy defaults for one
+    /// release (see CHANGELOG migration note).
     ///
-    /// # Empty BIF registry (composition footgun)
+    /// # Declared native BIF surface
     ///
-    /// **This constructor defaults the native BIF registry to an EMPTY one**
-    /// (`BifRegistryImpl::new()`). Under this default composition — empty BIF
-    /// registry, no loaded bytecode `erlang` module — every `erlang:*` import
-    /// (essentially every erlc-compiled module: `module_info` alone imports
+    /// `natives` is the native BIF surface this scheduler resolves against, and
+    /// it is required: there is no default, so an empty surface is a value the
+    /// call site wrote down.
+    ///
+    /// [`NativeBifs::none()`](NativeBifs::none) declares that this scheduler
+    /// resolves no natives. Under that declaration — and absent a loaded
+    /// bytecode `erlang` module — every `erlang:*` import (essentially every
+    /// erlc-compiled module: `module_info` alone imports
     /// `erlang:get_module_info`) resolves
     /// [`Deferred`](crate::error::GuardBifResolution::Deferred), and the first
     /// guard-BIF execution (any arithmetic, comparison, or type guard) refuses
@@ -1047,27 +1052,27 @@ impl Scheduler {
     /// [`ExecError::GuardBifUnavailable`](crate::error::ExecError). If a bytecode
     /// `erlang` module IS loaded the same imports resolve `Code` (exported) or
     /// `Unresolved` (missing export) instead — still non-native, still
-    /// guard-refused, so the hazard stands; only the mechanism narrows. A
-    /// deterministic child-death at its first arithmetic instruction, once
-    /// mistaken for an interpreter wedge, traced to exactly this default.
+    /// guard-refused. That is a legitimate composition for a scheduler running
+    /// only native actors; it is a defect for one that loads a `.beam`.
     ///
-    /// To execute real BEAM bytecode, construct through a registry-carrying
-    /// constructor — [`Scheduler::with_services_and_code_server`] or
-    /// [`Scheduler::with_code_server`] — with at least
+    /// To execute real BEAM bytecode, declare
+    /// [`NativeBifs::registry`](NativeBifs::registry) with at least
     /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs) applied
-    /// to the registry, and consult the returned [`HotLoadResult`]'s
-    /// unresolved-import report after every load (see
-    /// [`Scheduler::with_services`] for a worked example).
+    /// to it, hand the SAME registry to
+    /// [`load_module`](crate::loader::load_module) — imports bind at LOAD time —
+    /// and consult the returned [`HotLoadResult`]'s unresolved-import report
+    /// after every load (see [`Scheduler::with_services`] for a worked example).
     pub fn new(
         config: SchedulerConfig,
         module_registry: Arc<ModuleRegistry>,
+        natives: NativeBifs,
     ) -> Result<Self, String> {
         Self::with_services_and_code_server(
             config,
             SchedulerServices::from_config(),
             module_registry,
             Arc::new(AtomTable::with_common_atoms()),
-            Arc::new(BifRegistryImpl::new()),
+            natives.into_registry(),
         )
     }
 
@@ -1084,28 +1089,27 @@ impl Scheduler {
     /// gate in commit 6 ([`WithServicesError`]). Validate ahead of construction
     /// with [`SchedulerServices::validate`].
     ///
-    /// # Empty BIF registry (composition footgun)
+    /// # Declared native BIF surface
     ///
-    /// **Like [`Scheduler::new`], this constructor defaults the native BIF
-    /// registry to an EMPTY one** (`BifRegistryImpl::new()`). It composes the
-    /// ancillary SERVICES you ask for, but registers ZERO native BIFs — so under
-    /// this default composition (empty registry, no loaded bytecode `erlang`
-    /// module) every `erlang:*` import resolves
+    /// Like [`Scheduler::new`], this constructor takes its native surface as a
+    /// required `natives` argument: it composes the ancillary SERVICES you ask
+    /// for, and the natives are a separate declaration it will not make for you.
+    ///
+    /// Under [`NativeBifs::none()`](NativeBifs::none) — and absent a loaded
+    /// bytecode `erlang` module — every `erlang:*` import resolves
     /// [`Deferred`](crate::error::GuardBifResolution::Deferred) and the first
     /// guard-BIF execution refuses, process-fatal, with
     /// [`ExecError::GuardBifUnavailable`](crate::error::ExecError); a loaded
     /// bytecode `erlang` module shifts that to `Code`/`Unresolved`, still
-    /// non-native and still refused. This default is the strongest single hazard
-    /// on the embedder surface — a scaffolded host that never registers a BIF
-    /// appears to load modules fine and then dies at the first arithmetic
-    /// instruction.
+    /// non-native and still refused.
     ///
-    /// Embedders executing real BEAM bytecode must construct through a
-    /// registry-carrying constructor — [`Scheduler::with_services_and_code_server`]
-    /// or [`Scheduler::with_code_server`] — with at least
-    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs) applied,
-    /// and consult the [`HotLoadResult`]'s unresolved-import report after every
-    /// load:
+    /// Embedders executing real BEAM bytecode declare
+    /// [`NativeBifs::registry`](NativeBifs::registry) with at least
+    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs)
+    /// applied, load against that same registry — imports bind at LOAD time, so
+    /// a scheduler carrying a different registry object does not repair a load
+    /// performed against an empty one — and consult the [`HotLoadResult`]'s
+    /// unresolved-import report after every load:
     ///
     /// ```rust,no_run
     /// # fn compose() -> Result<(), String> {
@@ -1139,13 +1143,14 @@ impl Scheduler {
         config: SchedulerConfig,
         services: SchedulerServices,
         module_registry: Arc<ModuleRegistry>,
+        natives: NativeBifs,
     ) -> Result<Self, String> {
         Self::with_services_and_code_server(
             config,
             services,
             module_registry,
             Arc::new(AtomTable::with_common_atoms()),
-            Arc::new(BifRegistryImpl::new()),
+            natives.into_registry(),
         )
     }
 
@@ -1173,43 +1178,49 @@ impl Scheduler {
 
     /// Create a scheduler in deterministic replay mode over `log`.
     ///
-    /// # Empty BIF registry (composition footgun)
+    /// # Declared native BIF surface
     ///
-    /// **Defaults the native BIF registry to an EMPTY one** (via the private
-    /// `construct` mint shared with [`Scheduler::new_replay_with_registry`]), so
-    /// a replayed module importing `erlang:*` refuses at its first guard-BIF
-    /// execution exactly as under [`Scheduler::new`] — see that constructor for
-    /// the full explanation.
+    /// `natives` is required and carries through to the replay scheduler
+    /// unchanged. Declared [`NativeBifs::none()`](NativeBifs::none), a replayed
+    /// module importing `erlang:*` refuses at its first guard-BIF execution
+    /// exactly as under [`Scheduler::new`] — see that constructor for the full
+    /// explanation.
     ///
     /// Embedders replaying real BEAM bytecode want
     /// [`Scheduler::replay_with_services_and_code_server`], which carries an
-    /// atom table and a populated BIF registry into replay mode.
-    pub fn new_replay(config: SchedulerConfig, log: ReplayLog) -> Result<Self, String> {
-        Self::new_replay_with_registry(config, Arc::new(ModuleRegistry::new()), log)
+    /// atom table alongside the BIF registry into replay mode.
+    pub fn new_replay(
+        config: SchedulerConfig,
+        log: ReplayLog,
+        natives: NativeBifs,
+    ) -> Result<Self, String> {
+        Self::new_replay_with_registry(config, Arc::new(ModuleRegistry::new()), log, natives)
     }
 
     /// Create a replay scheduler using an explicit module registry.
     ///
-    /// # Empty BIF registry (composition footgun)
+    /// # Declared native BIF surface
     ///
-    /// **Defaults the native BIF registry to an EMPTY one** (the private
-    /// `construct` mint) — the same footgun as [`Scheduler::new`]: `erlang:*`
+    /// The "registry" this constructor names is the MODULE registry; it carries
+    /// no natives. The native surface is the separate, required `natives`
+    /// argument. Declared [`NativeBifs::none()`](NativeBifs::none), `erlang:*`
     /// imports resolve non-native and refuse process-fatal at the first
-    /// guard-BIF execution. The "registry" this constructor names is the MODULE
-    /// registry; it carries no natives.
+    /// guard-BIF execution, the same shape as [`Scheduler::new`].
     ///
-    /// Embedders replaying real BEAM bytecode need a registry-carrying
-    /// construction path with at least
-    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs). That
-    /// path is [`Scheduler::replay_with_services_and_code_server`] — the replay
-    /// counterpart of [`Scheduler::with_services_and_code_server`]. See
-    /// [`Scheduler::new`] for the full explanation.
+    /// Embedders replaying real BEAM bytecode declare
+    /// [`NativeBifs::registry`](NativeBifs::registry) with at least
+    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs)
+    /// applied, or use [`Scheduler::replay_with_services_and_code_server`] — the
+    /// replay counterpart of [`Scheduler::with_services_and_code_server`], which
+    /// also carries the load-time atom table. See [`Scheduler::new`] for the
+    /// full explanation.
     pub fn new_replay_with_registry(
         config: SchedulerConfig,
         module_registry: Arc<ModuleRegistry>,
         log: ReplayLog,
+        natives: NativeBifs,
     ) -> Result<Self, String> {
-        Self::construct(config, module_registry, ReplayMode::Replay(log))
+        Self::construct(config, module_registry, ReplayMode::Replay(log), natives)
     }
 
     /// [`Scheduler::with_services_and_code_server`] in deterministic replay
@@ -1287,13 +1298,14 @@ impl Scheduler {
         config: SchedulerConfig,
         module_registry: Arc<ModuleRegistry>,
         replay_mode: ReplayMode,
+        natives: NativeBifs,
     ) -> Result<Self, String> {
         Self::construct_with_services(
             config,
             SchedulerServices::from_config(),
             module_registry,
             Arc::new(AtomTable::with_common_atoms()),
-            Arc::new(BifRegistryImpl::new()),
+            natives.into_registry(),
             Arc::new(AllCapabilitiesPolicy),
             replay_mode,
         )

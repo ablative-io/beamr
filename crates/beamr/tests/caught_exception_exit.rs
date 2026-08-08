@@ -13,7 +13,7 @@ use beamr::module::ModuleRegistry;
 use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 
 fn start_scheduler(atoms: &AtomTable) -> (Scheduler, Arc<ModuleRegistry>) {
@@ -33,6 +33,7 @@ fn start_scheduler(atoms: &AtomTable) -> (Scheduler, Arc<ModuleRegistry>) {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::registry(Arc::new(bifs)),
     )
     .expect("scheduler starts");
     (scheduler, registry)

@@ -98,6 +98,7 @@ fn harness(unique_id: u64) -> Harness {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let parent = scheduler.spawn_test_process(false);
@@ -247,6 +248,7 @@ fn killing_the_parent_kills_the_linked_thunk_child() {
             ..SchedulerConfig::default()
         },
         registry,
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
     let parent = scheduler.spawn_test_process(false);

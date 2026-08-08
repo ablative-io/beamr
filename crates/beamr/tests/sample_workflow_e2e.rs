@@ -17,7 +17,7 @@ use beamr::native::otp_stubs::{init_otp_atoms, register_otp_stubs};
 use beamr::native::process_bifs::register_gate2_bifs;
 use beamr::native::stdlib_stubs::register_stdlib_stubs;
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 use beamr::term::binary;
 
@@ -74,6 +74,7 @@ fn sample_workflow_run_completes_end_to_end() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&module_registry),
+        NativeBifs::registry(Arc::new(bif_registry)),
     )
     .expect("scheduler starts");
 

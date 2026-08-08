@@ -95,7 +95,7 @@ fn contract_scheduler() -> Arc<Scheduler> {
         ..SchedulerConfig::default()
     };
     Arc::new(
-        Scheduler::new(config, Arc::new(ModuleRegistry::new()))
+        Scheduler::new(config, Arc::new(ModuleRegistry::new()), NativeBifs::none())
             .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     )
 }
@@ -539,6 +539,7 @@ fn c2_gated_suspension_retains_marker_and_observes_at_completion() {
                 ..SchedulerConfig::default()
             },
             Arc::clone(&registry),
+            NativeBifs::none(),
         )
         .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     );

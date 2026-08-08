@@ -20,6 +20,7 @@ fn scheduler_with(services: SchedulerServices) -> Scheduler {
         },
         services,
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("readiness test scheduler starts: {error}"))
 }

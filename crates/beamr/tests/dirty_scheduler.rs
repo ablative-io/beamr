@@ -11,7 +11,7 @@ use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, Resolv
 use beamr::native::{Capability, NativeEntry, ProcessContext};
 use beamr::process::ExitReason;
 use beamr::scheduler::dirty::DirtySchedulerKind;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 
 static NORMAL_PROGRESS: AtomicUsize = AtomicUsize::new(0);
@@ -184,6 +184,7 @@ fn dirty_nif_round_trip_does_not_block_normal_scheduler() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler starts");
 
@@ -250,6 +251,7 @@ fn dirty_nif_error_resumes_and_raises_exception() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler starts");
 
@@ -450,6 +452,7 @@ fn disabled_dirty_cpu_pool_refuses_call_and_lets_peers_progress() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&registry),
+        NativeBifs::none(),
     )
     .expect("scheduler starts");
 

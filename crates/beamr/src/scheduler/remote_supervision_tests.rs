@@ -1067,8 +1067,12 @@ fn presend_messages_precede_wire_exit_and_trapping_target_survives() {
 /// distribution control facility with its preconditions intact.
 #[test]
 fn scheduler_link_remote_and_unlink_remote_delegate_with_preconditions() {
-    let scheduler = Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-        .expect("scheduler starts");
+    let scheduler = Scheduler::new(
+        SchedulerConfig::default(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    )
+    .expect("scheduler starts");
     let node = scheduler.shared.atom_table.intern("unconnected@test");
     let remote = RemotePid {
         node,

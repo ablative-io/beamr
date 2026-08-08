@@ -10,15 +10,19 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use beamr::module::ModuleRegistry;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 use beamr::term::boxed::Tuple;
 use beamr::{Actor, ActorContext, ActorMessage, NativeContext, SenderHandle, spawn_actor};
 
 fn scheduler() -> Arc<Scheduler> {
     Arc::new(
-        Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-            .expect("scheduler starts"),
+        Scheduler::new(
+            SchedulerConfig::default(),
+            Arc::new(ModuleRegistry::new()),
+            NativeBifs::none(),
+        )
+        .expect("scheduler starts"),
     )
 }
 

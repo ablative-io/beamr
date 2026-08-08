@@ -21,7 +21,7 @@ use beamr::native::bifs::register_gate1_bifs;
 use beamr::native::gate3_bifs::register_gate3_bifs;
 use beamr::native::process_bifs::register_gate2_bifs;
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 use beamr::term::Term;
 
 const PROBE_BEAM: &[u8] = include_bytes!("fixtures/monitor_down_probe.beam");
@@ -57,6 +57,7 @@ fn monitor_then_receive_down_matches_on_bound_ref() {
             ..SchedulerConfig::default()
         },
         Arc::clone(&module_registry),
+        NativeBifs::registry(Arc::new(bifs)),
     )
     .expect("scheduler starts");
 

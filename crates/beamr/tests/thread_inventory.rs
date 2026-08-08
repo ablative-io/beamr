@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 use beamr::module::ModuleRegistry;
 use beamr::scheduler::thread_probe::{process_thread_names, thread_name_multiset};
 use beamr::scheduler::{
-    IDLE_PARK_TIMEOUT, IDLE_WAKES_PER_SEC_PER_WORKER, Scheduler, SchedulerConfig,
+    IDLE_PARK_TIMEOUT, IDLE_WAKES_PER_SEC_PER_WORKER, NativeBifs, Scheduler, SchedulerConfig,
 };
 
 fn new_scheduler(threads: Option<usize>) -> Scheduler {
@@ -27,7 +27,7 @@ fn new_scheduler(threads: Option<usize>) -> Scheduler {
         thread_count: threads,
         ..SchedulerConfig::default()
     };
-    Scheduler::new(config, Arc::new(ModuleRegistry::new()))
+    Scheduler::new(config, Arc::new(ModuleRegistry::new()), NativeBifs::none())
         .unwrap_or_else(|error| panic!("scheduler starts: {error}"))
 }
 

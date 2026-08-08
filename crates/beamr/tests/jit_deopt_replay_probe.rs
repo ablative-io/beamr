@@ -27,7 +27,7 @@ use beamr::loader::Instruction;
 use beamr::loader::decode::compact::Operand;
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use beamr::process::ExitReason;
-use beamr::scheduler::{Scheduler, SchedulerConfig, SchedulerServices};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig, SchedulerServices};
 use beamr::term::Term;
 
 const WAIT_BUDGET: Duration = Duration::from_secs(10);
@@ -207,7 +207,8 @@ fn deopt_after_send_is_interpreter_equal() {
     registry.insert(sink_module(sink_name, sink_fn));
     let probe_mod = registry.insert(probe_module(name, driver, probe, hello));
     let generation = probe_mod.generation();
-    let jit = Scheduler::new(config(2), Arc::clone(&registry)).expect("jit scheduler starts");
+    let jit = Scheduler::new(config(2), Arc::clone(&registry), NativeBifs::none())
+        .expect("jit scheduler starts");
 
     let sink_pid = jit
         .spawn(sink_name, sink_fn, Vec::new())
@@ -255,6 +256,7 @@ fn deopt_after_send_is_interpreter_equal() {
         config(2),
         SchedulerServices::minimal(),
         Arc::clone(&minimal_registry),
+        NativeBifs::none(),
     )
     .expect("minimal scheduler starts");
     let msink = minimal

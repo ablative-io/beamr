@@ -11,7 +11,7 @@ use crate::process::heap::Heap;
 use crate::term::Term;
 use crate::term::boxed::{Tuple, write_tuple};
 
-use super::{MailboxSendError, Scheduler, SchedulerConfig};
+use super::{MailboxSendError, NativeBifs, Scheduler, SchedulerConfig};
 
 const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -60,8 +60,12 @@ fn owned_tagged(tag: Atom, payload: i64) -> OwnedTerm {
 
 fn scheduler() -> Arc<Scheduler> {
     Arc::new(
-        Scheduler::new(SchedulerConfig::default(), Arc::new(ModuleRegistry::new()))
-            .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
+        Scheduler::new(
+            SchedulerConfig::default(),
+            Arc::new(ModuleRegistry::new()),
+            NativeBifs::none(),
+        )
+        .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     )
 }
 

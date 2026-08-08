@@ -18,7 +18,7 @@ use std::time::Duration;
 use beamr::module::ModuleRegistry;
 use beamr::scheduler::ServiceModeLabel;
 use beamr::scheduler::thread_probe::{process_thread_names, thread_name_multiset};
-use beamr::scheduler::{Scheduler, SchedulerConfig};
+use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
 
 /// Every thread the scheduler attributes to itself: normal workers (outside
 /// the service model, spec §2.3) plus every inventory entry's names.
@@ -50,6 +50,7 @@ fn disabled_dirty_pools_own_zero_os_threads() {
             ..SchedulerConfig::default()
         },
         Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 

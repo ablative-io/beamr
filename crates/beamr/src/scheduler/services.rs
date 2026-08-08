@@ -44,6 +44,63 @@ use super::dirty::DirtyPool;
 use super::readiness::SharedReadiness;
 use crate::distribution::DistributionConfig;
 use crate::io::RingConfig;
+use crate::native::BifRegistryImpl;
+
+/// The native BIF surface a scheduler is DECLARED with at construction.
+///
+/// Every public [`Scheduler`](super::Scheduler) constructor takes one of these
+/// by value. There is no `Default` and no `From` conversion, so "this scheduler
+/// resolves no native BIFs" is a value the call site had to write down rather
+/// than a default it inherited.
+#[derive(Clone)]
+pub struct NativeBifs {
+    registry: Arc<BifRegistryImpl>,
+}
+
+impl NativeBifs {
+    /// Declare that this scheduler resolves NO native BIFs.
+    ///
+    /// `erlang:*` imports will refuse at guard-BIF execution: every
+    /// erlc-compiled module imports `erlang:*` (`module_info` alone imports
+    /// `erlang:get_module_info`), those imports resolve non-native, and the
+    /// first arithmetic, comparison or type guard raises a process-fatal
+    /// [`ExecError::GuardBifUnavailable`](crate::error::ExecError). This is a
+    /// legitimate configuration for a scheduler that runs only native actors and
+    /// loads no bytecode; it is a defect for any scheduler that loads a `.beam`.
+    #[must_use]
+    pub fn none() -> Self {
+        Self {
+            registry: Arc::new(BifRegistryImpl::new()),
+        }
+    }
+
+    /// Declare `registry` as this scheduler's native BIF surface.
+    ///
+    /// Apply at least
+    /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs) before
+    /// constructing, and hand the SAME `Arc` to
+    /// [`load_module`](crate::loader::load_module): imports bind at LOAD time
+    /// against the loader's registry, so a scheduler carrying a different
+    /// registry object does not repair a load performed against an empty one.
+    #[must_use]
+    pub const fn registry(registry: Arc<BifRegistryImpl>) -> Self {
+        Self { registry }
+    }
+
+    /// The declared registry, consumed on the way to the terminal constructor.
+    pub(crate) fn into_registry(self) -> Arc<BifRegistryImpl> {
+        self.registry
+    }
+}
+
+impl std::fmt::Debug for NativeBifs {
+    /// Deliberately opaque. `BifRegistryImpl` derives `Debug` over a map of
+    /// every registered MFA, so formatting the registry would dump the whole BIF
+    /// table into any diagnostic that happened to include a `NativeBifs`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("NativeBifs { .. }")
+    }
+}
 
 /// Composition choice for a dirty pool (spec §2.2/§3.2).
 #[derive(Clone)]
