@@ -20,6 +20,7 @@ pub fn validate_module(
 ) -> Result<(), LoadError> {
     let labels = collect_labels(&parsed.instructions);
     let functions = collect_function_arities(&parsed.instructions);
+    let frame_sizes = collect_function_frame_sizes(&parsed.instructions)?;
 
     for export in &parsed.exports {
         if !labels.contains(&export.label) {
@@ -30,9 +31,8 @@ pub fn validate_module(
         }
     }
 
-    let mut current_frame_size: Option<u32> = None;
     for (index, instruction) in parsed.instructions.iter().enumerate() {
-        validate_instruction_operands(index, instruction, current_frame_size)?;
+        validate_instruction_operands(index, instruction, frame_sizes[index])?;
         validate_control_flow(
             index,
             instruction,
@@ -41,10 +41,44 @@ pub fn validate_module(
             &labels,
             &functions,
         )?;
-        update_frame_size(index, instruction, &mut current_frame_size)?;
     }
 
     Ok(())
+}
+
+fn collect_function_frame_sizes(
+    instructions: &[Instruction],
+) -> Result<Vec<Option<u32>>, LoadError> {
+    let mut frame_sizes = vec![None; instructions.len()];
+    let mut function_start = 0;
+    let mut max_frame_size = None;
+
+    for (index, instruction) in instructions.iter().enumerate() {
+        if matches!(instruction, Instruction::FuncInfo { .. }) {
+            frame_sizes[function_start..index].fill(max_frame_size);
+            function_start = index;
+            max_frame_size = None;
+        }
+
+        if let Instruction::Allocate { stack_need, .. }
+        | Instruction::AllocateHeap { stack_need, .. }
+        | Instruction::AllocateZero { stack_need, .. } = instruction
+        {
+            let frame_size = operand_to_u32(stack_need).ok_or_else(|| {
+                validation_error(
+                    index,
+                    format!(
+                        "allocate stack frame operand {stack_need:?} is not an unsigned integer"
+                    ),
+                )
+            })?;
+            max_frame_size =
+                Some(max_frame_size.map_or(frame_size, |current: u32| current.max(frame_size)));
+        }
+    }
+    frame_sizes[function_start..].fill(max_frame_size);
+
+    Ok(frame_sizes)
 }
 
 fn collect_labels(instructions: &[Instruction]) -> HashSet<u32> {
@@ -203,30 +237,6 @@ fn validate_control_flow(
         Instruction::Catch { label, .. } | Instruction::Try { label, .. } => {
             expect_label_operand(instruction_index, label, labels)?;
         }
-        _ => {}
-    }
-    Ok(())
-}
-
-fn update_frame_size(
-    instruction_index: usize,
-    instruction: &Instruction,
-    current_frame_size: &mut Option<u32>,
-) -> Result<(), LoadError> {
-    match instruction {
-        Instruction::Allocate { stack_need, .. }
-        | Instruction::AllocateHeap { stack_need, .. }
-        | Instruction::AllocateZero { stack_need, .. } => {
-            *current_frame_size = Some(operand_to_u32(stack_need).ok_or_else(|| {
-                validation_error(
-                    instruction_index,
-                    format!(
-                        "allocate stack frame operand {stack_need:?} is not an unsigned integer"
-                    ),
-                )
-            })?);
-        }
-        Instruction::Deallocate { .. } => *current_frame_size = None,
         _ => {}
     }
     Ok(())
@@ -515,6 +525,67 @@ mod tests {
         ]);
 
         assert!(validate_module(&module, &[]).is_ok());
+    }
+
+    #[test]
+    fn y_register_uses_function_maximum_across_interleaved_blocks() {
+        let module = parsed(vec![
+            Instruction::Label { label: 1 },
+            Instruction::FuncInfo {
+                module: Operand::Atom(None),
+                function: Operand::Atom(None),
+                arity: Operand::Integer(0),
+            },
+            Instruction::Allocate {
+                stack_need: Operand::Integer(7),
+                live: Operand::Integer(0),
+            },
+            Instruction::Jump {
+                target: Operand::Label(3),
+            },
+            Instruction::Deallocate {
+                words: Operand::Integer(7),
+            },
+            Instruction::Label { label: 2 },
+            Instruction::Allocate {
+                stack_need: Operand::Integer(1),
+                live: Operand::Integer(0),
+            },
+            Instruction::Return,
+            Instruction::Label { label: 3 },
+            Instruction::Badmatch {
+                value: Operand::Y(5),
+            },
+        ]);
+
+        assert!(validate_module(&module, &[]).is_ok());
+    }
+
+    #[test]
+    fn y_register_beyond_function_maximum_is_validation_error() {
+        let module = parsed(vec![
+            Instruction::Label { label: 1 },
+            Instruction::FuncInfo {
+                module: Operand::Atom(None),
+                function: Operand::Atom(None),
+                arity: Operand::Integer(0),
+            },
+            Instruction::Allocate {
+                stack_need: Operand::Integer(7),
+                live: Operand::Integer(0),
+            },
+            Instruction::Move {
+                source: Operand::Y(7),
+                destination: Operand::X(0),
+            },
+        ]);
+
+        let message = validate_module(&module, &[])
+            .expect_err("Y register beyond every function frame")
+            .to_string();
+
+        assert!(message.contains("instruction 3"));
+        assert!(message.contains("outside frame size 7"));
     }
 
     #[test]
