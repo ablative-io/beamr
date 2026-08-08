@@ -46,41 +46,26 @@ struct DispatchCtx<'a> {
 }
 
 /// Dispatch one already-fetched instruction.
+///
+/// `services` is written down by the caller: `None` declares that this
+/// dispatch resolves no native services, and `Some(services)` derives the same
+/// runtime context [`dispatch_with_services`] does from the same bundle.
 pub fn dispatch(
     process: &mut Process,
     module: &Module,
     instruction: &Instruction,
     next_ip: usize,
     registry: Option<&ModuleRegistry>,
+    services: Option<&NativeServices>,
 ) -> Result<InstructionOutcome, ExecError> {
-    dispatch_with_receiver(process, module, instruction, next_ip, None, registry)
-}
-
-/// Dispatch one instruction with optional timer services for native BIFs.
-pub fn dispatch_with_timer_services(
-    process: &mut Process,
-    module: &Module,
-    instruction: &Instruction,
-    next_ip: usize,
-    timers: Option<&Arc<Mutex<TimerWheel>>>,
-    registry: Option<&ModuleRegistry>,
-) -> Result<InstructionOutcome, ExecError> {
-    dispatch_common(
+    dispatch_with_receiver(
         process,
         module,
         instruction,
         next_ip,
-        DispatchCtx {
-            receiver: None,
-            timers,
-            registry,
-            services: None,
-            atom_table: None,
-            #[cfg(feature = "jit")]
-            jit_cache: None,
-            #[cfg(feature = "jit")]
-            jit_profiling: None,
-        },
+        None,
+        registry,
+        services,
     )
 }
 
@@ -126,6 +111,7 @@ pub fn dispatch_with_receiver(
     next_ip: usize,
     receiver: Option<&mut Process>,
     registry: Option<&ModuleRegistry>,
+    services: Option<&NativeServices>,
 ) -> Result<InstructionOutcome, ExecError> {
     dispatch_common(
         process,
@@ -134,14 +120,14 @@ pub fn dispatch_with_receiver(
         next_ip,
         DispatchCtx {
             receiver,
-            timers: None,
+            timers: services.and_then(|services| services.timers.as_ref()),
             registry,
-            services: None,
-            atom_table: None,
+            services,
+            atom_table: services.and_then(|services| services.atom_table.as_deref()),
             #[cfg(feature = "jit")]
-            jit_cache: None,
+            jit_cache: services.and_then(|services| services.jit_cache.as_deref()),
             #[cfg(feature = "jit")]
-            jit_profiling: None,
+            jit_profiling: services.and_then(|services| services.jit_profiling.as_deref()),
         },
     )
 }
@@ -592,7 +578,7 @@ mod tests {
         };
 
         assert_eq!(
-            dispatch(&mut process, &module, &instruction, 1, None),
+            dispatch(&mut process, &module, &instruction, 1, None, None),
             Ok(InstructionOutcome::Continue)
         );
     }
@@ -614,6 +600,7 @@ mod tests {
                 },
                 1,
                 None,
+                None
             ),
             Ok(InstructionOutcome::Continue)
         );
@@ -629,6 +616,7 @@ mod tests {
                 },
                 2,
                 None,
+                None
             ),
             Ok(InstructionOutcome::Continue)
         );
@@ -642,6 +630,7 @@ mod tests {
                 },
                 3,
                 None,
+                None
             ),
             Ok(InstructionOutcome::Continue)
         );

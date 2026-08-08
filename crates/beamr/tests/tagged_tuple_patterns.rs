@@ -70,7 +70,7 @@ fn dispatch_is_tagged_tuple(
         arity: Operand::Unsigned(expected_arity),
         tag: Operand::Atom(Some(tag)),
     };
-    beamr::interpreter::opcodes::dispatch(&mut process, module, &instruction, 1, None)
+    beamr::interpreter::opcodes::dispatch(&mut process, module, &instruction, 1, None, None)
         .expect("is_tagged_tuple dispatch")
 }
 

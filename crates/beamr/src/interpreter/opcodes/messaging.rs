@@ -544,6 +544,7 @@ mod tests {
                 1,
                 Some(&mut receiver),
                 None,
+                None
             ),
             Ok(InstructionOutcome::Continue)
         );

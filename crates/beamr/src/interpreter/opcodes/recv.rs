@@ -130,6 +130,7 @@ mod tests {
                 },
                 1,
                 None,
+                None
             ),
             Ok(crate::interpreter::InstructionOutcome::Continue)
         );
@@ -152,6 +153,7 @@ mod tests {
                 },
                 1,
                 None,
+                None
             ),
             Ok(crate::interpreter::InstructionOutcome::Continue)
         );
@@ -164,6 +166,7 @@ mod tests {
                 },
                 1,
                 None,
+                None
             ),
             Ok(crate::interpreter::InstructionOutcome::Continue)
         );
@@ -182,6 +185,7 @@ mod tests {
                 },
                 1,
                 None,
+                None
             ),
             Ok(crate::interpreter::InstructionOutcome::Continue)
         );
@@ -203,6 +207,7 @@ mod tests {
                 },
                 1,
                 None,
+                None
             ),
             Err(ExecError::Badarg)
         );

@@ -597,7 +597,14 @@ mod tests {
         let mut process = Process::new(1, 16);
 
         assert_eq!(
-            dispatch(&mut process, &code, &Instruction::BuildStacktrace, 1, None),
+            dispatch(
+                &mut process,
+                &code,
+                &Instruction::BuildStacktrace,
+                1,
+                None,
+                None
+            ),
             Ok(InstructionOutcome::Continue)
         );
         assert_eq!(process.x_reg(0), Term::NIL);
@@ -737,7 +744,7 @@ mod tests {
             label: Operand::Label(20),
         };
         assert_eq!(
-            dispatch(&mut process, &code, &instruction, 1, None),
+            dispatch(&mut process, &code, &instruction, 1, None, None),
             Ok(InstructionOutcome::Continue)
         );
         assert_eq!(process.exception_handler_count(), 1);
