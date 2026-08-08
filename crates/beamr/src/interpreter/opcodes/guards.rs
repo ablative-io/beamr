@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 
 use crate::atom::{Atom, AtomTable};
-use crate::error::{ExecError, GuardBifResolution};
+use crate::error::{ExecError, GuardBifResolution, RuntimeBifRegistryState};
 use crate::interpreter::InstructionOutcome;
 use crate::loader::decode::compact::Operand;
 use crate::loader::decode::{BifOp, ComparisonOp, TypeTestOp};
@@ -164,13 +164,38 @@ pub fn jump(module: &Module, target: &Operand) -> Result<InstructionOutcome, Exe
 }
 
 /// Build the diagnosable guard-BIF refusal from the import that failed to
-/// resolve to a native entry, carrying its MFA and the resolution state.
-fn guard_bif_unavailable(resolved: &ResolvedImport, resolution: GuardBifResolution) -> ExecError {
+/// resolve to a native entry, carrying its MFA, the resolution state, and what
+/// native surface was reachable from this dispatch.
+fn guard_bif_unavailable(
+    resolved: &ResolvedImport,
+    resolution: GuardBifResolution,
+    runtime_natives: RuntimeBifRegistryState,
+) -> ExecError {
     ExecError::GuardBifUnavailable {
         module: resolved.module,
         function: resolved.function,
         arity: resolved.arity,
         resolution,
+        runtime_natives,
+    }
+}
+
+/// Classify the native surface reachable from this dispatch.
+///
+/// Only three facts are true by construction here — whether a services bundle
+/// arrived, and whether it carried a registry — so only those three are
+/// reported. What the registry HOLDS is deliberately not inspected: the import
+/// bound at load time against a different registry object, and a claim about
+/// this one could accuse a correctly-composed caller.
+fn runtime_bif_registry_state(
+    services: Option<&crate::interpreter::NativeServices>,
+) -> RuntimeBifRegistryState {
+    match services {
+        None => RuntimeBifRegistryState::Absent,
+        Some(services) => match &services.bif_registry {
+            None => RuntimeBifRegistryState::Unwired,
+            Some(_) => RuntimeBifRegistryState::Wired,
+        },
     }
 }
 
@@ -206,27 +231,35 @@ pub fn bif(
     // resolution state rather than a bare operand refusal (composition-honesty,
     // extended from `ServiceUnavailable`). Same mint point, same process-fatal
     // outcome — the fail-label handling below is untouched.
+    let natives = runtime_bif_registry_state(services);
     let entry = match resolved.target {
         ResolvedImportTarget::Native(entry) => entry,
         ResolvedImportTarget::Deferred { .. } => {
             return Err(guard_bif_unavailable(
                 resolved,
                 GuardBifResolution::Deferred,
+                natives,
             ));
         }
         ResolvedImportTarget::Denied { .. } => {
-            return Err(guard_bif_unavailable(resolved, GuardBifResolution::Denied));
+            return Err(guard_bif_unavailable(
+                resolved,
+                GuardBifResolution::Denied,
+                natives,
+            ));
         }
         ResolvedImportTarget::Code { .. } => {
             return Err(guard_bif_unavailable(
                 resolved,
                 GuardBifResolution::CodeTarget,
+                natives,
             ));
         }
         ResolvedImportTarget::Unresolved { .. } => {
             return Err(guard_bif_unavailable(
                 resolved,
                 GuardBifResolution::Unresolved,
+                natives,
             ));
         }
     };

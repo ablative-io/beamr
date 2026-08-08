@@ -578,3 +578,104 @@ fn guard_bif_success_writes_result_and_failure_branches() {
     .expect("bif failure branches");
     assert_eq!(jump_ip(outcome), 0);
 }
+
+/// An import fixed `Deferred` at load time — the shape every guard-BIF refusal
+/// in the attribution incidents took.
+fn deferred_import() -> ResolvedImport {
+    ResolvedImport {
+        module: Atom::OK,
+        function: Atom::OK,
+        arity: 2,
+        target: ResolvedImportTarget::Deferred {
+            module: Atom::OK,
+            function: Atom::OK,
+            arity: 2,
+        },
+    }
+}
+
+/// Refuse a `Deferred` guard BIF with `services` reaching the dispatch.
+fn deferred_refusal(services: Option<&crate::interpreter::NativeServices>) -> ExecError {
+    let mut module = module(vec![Instruction::Label { label: 9 }]);
+    module.resolved_imports.push(deferred_import());
+    let mut process = Process::new(1, 16);
+
+    match bif(
+        &mut process,
+        &module,
+        BifOp::GcBif2,
+        &[
+            Operand::Label(9),
+            Operand::Unsigned(0),
+            Operand::Integer(3),
+            Operand::Integer(4),
+            Operand::X(0),
+        ],
+        services,
+    ) {
+        Err(error) => error,
+        Ok(outcome) => panic!("expected a guard-bif refusal, got {outcome:?}"),
+    }
+}
+
+fn runtime_natives_of(error: &ExecError) -> RuntimeBifRegistryState {
+    match error {
+        ExecError::GuardBifUnavailable {
+            runtime_natives, ..
+        } => *runtime_natives,
+        other => panic!("expected GuardBifUnavailable, got {other:?}"),
+    }
+}
+
+#[test]
+fn guard_bif_refusal_reports_absent_when_no_services_reach_the_dispatch() {
+    // Reached only through `opcodes::dispatch` / `dispatch_with_receiver` with a
+    // typed `None`; every such call site in the tree is `#[cfg(test)]`.
+    let error = deferred_refusal(None);
+
+    assert_eq!(
+        runtime_natives_of(&error),
+        RuntimeBifRegistryState::Absent,
+        "no services bundle reached this dispatch"
+    );
+}
+
+#[test]
+fn guard_bif_refusal_reports_unwired_when_the_bundle_carries_no_registry() {
+    // Reached only through `ReplayDebugger`, which has zero non-test callers.
+    let services = crate::interpreter::NativeServices::default();
+    let error = deferred_refusal(Some(&services));
+
+    assert_eq!(
+        runtime_natives_of(&error),
+        RuntimeBifRegistryState::Unwired,
+        "a bundle arrived carrying no BIF registry"
+    );
+}
+
+#[test]
+fn guard_bif_refusal_reports_wired_and_the_state_alone_absolves_nobody() {
+    // The production shape: every scheduler-path bundle carries a registry, so
+    // this is the value a real refusal renders — including the empty-surface
+    // composition the attribution exists to point at.
+    let services = crate::interpreter::NativeServices {
+        bif_registry: Some(std::sync::Arc::new(crate::native::BifRegistryImpl::new())),
+        ..crate::interpreter::NativeServices::default()
+    };
+    let error = deferred_refusal(Some(&services));
+
+    assert_eq!(
+        runtime_natives_of(&error),
+        RuntimeBifRegistryState::Wired,
+        "a registry was wired into this execution"
+    );
+    // The state read alone would sound exculpatory here, so the rendered line
+    // pairs it with the fact that makes it not: a scheduler declaring no
+    // natives reports `Wired` too.
+    assert!(
+        error
+            .to_string()
+            .contains("NativeBifs::none() also reports Wired"),
+        "the non-exculpatory pairing is not decorative: {error}"
+    );
+}

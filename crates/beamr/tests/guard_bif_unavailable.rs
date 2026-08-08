@@ -38,7 +38,11 @@ const FIXTURE: &[u8] = include_bytes!("fixtures/guard_bif_probe.beam");
 /// The exact one-log-line refusal the 2026-07-18 sanction demanded, rendered
 /// through the runtime atom table (`format_with_atoms`) — the true MFA channel.
 const EXPECTED_DISPLAY: &str = "guard bif erlang:+/2 unavailable: import resolved Deferred \
-    (native BIF registry has no entry and the target module is not loaded)";
+    (the LOAD-TIME native BIF registry had no entry and the target module is not loaded); \
+    runtime natives: Wired — imports bind at LOAD time against the loader's registry, and a \
+    scheduler declared NativeBifs::none() also reports Wired because none() wires a registry \
+    with no BIFs registered; schedulers declare natives at construction (see NativeBifs::none \
+    / NativeBifs::registry)";
 
 /// The plain-`Display` fallback channel: `ExecError`'s `Display` resolves atoms
 /// through a fresh `AtomTable::with_common_atoms()`, and neither `erlang` nor
@@ -47,7 +51,11 @@ const EXPECTED_DISPLAY: &str = "guard bif erlang:+/2 unavailable: import resolve
 /// are load-bearing; the fold amendment (dff20af) ruled `format_with_atoms` the
 /// exact-string carrier and this dual-channel wall its rot-guard.
 const EXPECTED_DISPLAY_FALLBACK: &str = "guard bif #<unknown atom>:#<unknown atom>/2 unavailable: import resolved Deferred \
-    (native BIF registry has no entry and the target module is not loaded)";
+    (the LOAD-TIME native BIF registry had no entry and the target module is not loaded); \
+    runtime natives: Wired — imports bind at LOAD time against the loader's registry, and a \
+    scheduler declared NativeBifs::none() also reports Wired because none() wires a registry \
+    with no BIFs registered; schedulers declare natives at construction (see NativeBifs::none \
+    / NativeBifs::registry)";
 
 /// Substrings the guard-BIF refusal SHALL NEVER carry.
 ///
@@ -58,8 +66,19 @@ const EXPECTED_DISPLAY_FALLBACK: &str = "guard bif #<unknown atom>:#<unknown ato
 /// divergence scenario — a services bundle reached the dispatch carrying a
 /// registry, so neither the absent nor the unwired state applies.
 ///
+/// The last entry is the arm that was RED before the attribution landed: the
+/// old hint said "native BIF registry has no entry" without saying WHICH of the
+/// two registries it meant, which is false of the runtime one here. It is
+/// banned unqualified, so the "LOAD-TIME" qualifier cannot be reverted quietly.
+///
 /// Shortening this list is hollowing the wall, not fixing a test.
-const BANNED_ACCUSATIONS: &[&str] = &["empty", "your registry", "Absent", "Unwired"];
+const BANNED_ACCUSATIONS: &[&str] = &[
+    "empty",
+    "your registry",
+    "Absent",
+    "Unwired",
+    "native BIF registry has no entry",
+];
 
 /// spawn -> mailbox delivery has a visibility window: `send_to_mailbox` returns
 /// `NoSuchProcess` until a worker first schedules the process. Sleep past it.

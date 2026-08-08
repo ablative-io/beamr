@@ -88,8 +88,10 @@ impl GuardBifResolution {
     #[must_use]
     pub const fn hint(self) -> &'static str {
         match self {
+            // Names WHICH registry: imports bind at load time, and the runtime
+            // registry is a different object that may well hold the entry.
             Self::Deferred => {
-                "native BIF registry has no entry and the target module is not loaded"
+                "the LOAD-TIME native BIF registry had no entry and the target module is not loaded"
             }
             Self::Denied => "registered but capability-denied at load",
             Self::CodeTarget => "resolved to a bytecode export — guard BIFs must be native",
@@ -102,6 +104,79 @@ impl fmt::Display for GuardBifResolution {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.label())
     }
+}
+
+/// Whether a native BIF registry was reachable from the execution context that
+/// refused a guard/BIF import.
+///
+/// Says nothing about what such a registry CONTAINS: no emptiness predicate
+/// exists on [`BifRegistry`](crate::native::BifRegistry), and the registry an
+/// import bound against at LOAD time is a different object from the one wired
+/// at runtime, with no provenance recorded on
+/// [`ResolvedImport`](crate::module::ResolvedImport) to relate them. Each arm is
+/// true by construction at the refusal's mint point and nothing more is claimed,
+/// because a stronger claim could accuse a correctly-composed caller — which is
+/// how the attribution this type exists to repair went wrong in the first place.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum RuntimeBifRegistryState {
+    /// No native services bundle reached this dispatch.
+    Absent,
+    /// A services bundle reached it, carrying no BIF registry.
+    Unwired,
+    /// A BIF registry was wired into this execution.
+    Wired,
+}
+
+impl RuntimeBifRegistryState {
+    /// The one-word label used in the refusal's one-log-line form.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Absent => "Absent",
+            Self::Unwired => "Unwired",
+            Self::Wired => "Wired",
+        }
+    }
+}
+
+impl fmt::Display for RuntimeBifRegistryState {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.label())
+    }
+}
+
+/// The fixed clause every guard-BIF refusal carries after its runtime state.
+///
+/// A POINTER at the construction site, never a claim about the caller's
+/// registry. The `NativeBifs::none()` sentence is load-bearing rather than
+/// decorative: `Wired` is what every scheduler-path refusal renders — a
+/// scheduler declared with no natives wires the registry it minted — so the
+/// state read alone would sound like absolution in exactly the composition that
+/// is at fault.
+const GUARD_BIF_CONSTRUCTION_POINTER: &str = "imports bind at LOAD time against the loader's \
+     registry, and a scheduler declared NativeBifs::none() also reports Wired because none() \
+     wires a registry with no BIFs registered; schedulers declare natives at construction (see \
+     NativeBifs::none / NativeBifs::registry)";
+
+/// Render the guard-BIF refusal's one-log-line from already-resolved atom names.
+///
+/// Both rendering channels ([`fmt::Display`] and
+/// [`ExecError::format_with_atoms`]) go through here so they cannot drift apart:
+/// they differ only in which atom table resolved the MFA.
+fn render_guard_bif_unavailable(
+    module: &str,
+    function: &str,
+    arity: u8,
+    resolution: GuardBifResolution,
+    runtime_natives: RuntimeBifRegistryState,
+) -> String {
+    format!(
+        "guard bif {module}:{function}/{arity} unavailable: import resolved {} ({}); \
+         runtime natives: {} — {GUARD_BIF_CONSTRUCTION_POINTER}",
+        resolution.label(),
+        resolution.hint(),
+        runtime_natives.label(),
+    )
 }
 
 /// Failures that can occur while executing BEAM code.
@@ -176,6 +251,11 @@ pub enum ExecError {
     /// log line instead of a multi-seat attribution. Same mint point, same
     /// process-fatal outcome, same fail-label handling as the operand refusals
     /// it replaces — only the error VALUE gains structure.
+    ///
+    /// The refusal points at the CONSTRUCTION site rather than accusing the
+    /// module that happened to be executing: `runtime_natives` reports what was
+    /// reachable at the dispatch, and the rendered line closes with a fixed
+    /// pointer at the constructor family that declares a scheduler's natives.
     GuardBifUnavailable {
         /// Imported module atom.
         module: crate::atom::Atom,
@@ -185,6 +265,8 @@ pub enum ExecError {
         arity: u8,
         /// The non-`Native` resolution state the import landed in.
         resolution: GuardBifResolution,
+        /// Whether a native BIF registry was reachable at the refusal.
+        runtime_natives: RuntimeBifRegistryState,
     },
     /// Replay mode reached a decision point that does not match the recorded log.
     ReplayMismatch(String),
@@ -264,17 +346,16 @@ impl fmt::Display for ExecError {
                 function,
                 arity,
                 resolution,
+                runtime_natives,
             } => {
                 let fallback = AtomTable::with_common_atoms();
-                write!(
-                    formatter,
-                    "guard bif {}:{}/{} unavailable: import resolved {} ({})",
+                formatter.write_str(&render_guard_bif_unavailable(
                     fallback.resolve(*module).unwrap_or("#<unknown atom>"),
                     fallback.resolve(*function).unwrap_or("#<unknown atom>"),
-                    arity,
-                    resolution.label(),
-                    resolution.hint(),
-                )
+                    *arity,
+                    *resolution,
+                    *runtime_natives,
+                ))
             }
             Self::ReplayMismatch(message) => write!(formatter, "replay mismatch: {message}"),
         }
@@ -317,13 +398,13 @@ impl ExecError {
                 function,
                 arity,
                 resolution,
-            } => format!(
-                "guard bif {}:{}/{} unavailable: import resolved {} ({})",
+                runtime_natives,
+            } => render_guard_bif_unavailable(
                 atom_table.resolve(*module).unwrap_or("#<unknown atom>"),
                 atom_table.resolve(*function).unwrap_or("#<unknown atom>"),
-                arity,
-                resolution.label(),
-                resolution.hint(),
+                *arity,
+                *resolution,
+                *runtime_natives,
             ),
             _ => self.to_string(),
         }
