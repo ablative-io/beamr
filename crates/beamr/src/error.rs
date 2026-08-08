@@ -160,10 +160,34 @@ impl fmt::Display for RuntimeBifRegistryState {
 /// scheduler declared with no natives wires the registry it minted — so the
 /// state read alone would sound like absolution in exactly the composition that
 /// is at fault.
+///
+/// The constructor family it names is BUILD-DEPENDENT, because the constructor
+/// family IS. `NativeBifs` and the threaded `Scheduler` exist only under the
+/// `threads` feature; the cooperative build — the one `beamr-wasm` ships, and
+/// the one that hands this line to JavaScript as the `detail` field of its
+/// reason mapping — has neither. Its scheduler is `WasmScheduler`, whose `new`
+/// already takes the registry as a required argument. A pointer at a type the
+/// embedder's build does not export is not a pointer, so each build names the
+/// family it actually has.
+#[cfg(feature = "threads")]
 const GUARD_BIF_CONSTRUCTION_POINTER: &str = "imports bind at LOAD time against the loader's \
      registry, and a scheduler declared NativeBifs::none() also reports Wired because none() \
      wires a registry with no BIFs registered; schedulers declare natives at construction (see \
      NativeBifs::none / NativeBifs::registry)";
+
+/// The cooperative build's form of [`GUARD_BIF_CONSTRUCTION_POINTER`].
+///
+/// Same clause, same standard, pointed at the constructor this build has:
+/// `WasmScheduler::new` takes its `bif_registry` as a required argument, so the
+/// declaration is the argument itself and there is no `none()` to name. The
+/// non-exculpatory reading still needs saying — a registry with no BIFs
+/// registered is a wired registry — because `Wired` is what this path renders
+/// too.
+#[cfg(not(feature = "threads"))]
+const GUARD_BIF_CONSTRUCTION_POINTER: &str = "imports bind at LOAD time against the loader's \
+     registry, and a scheduler wired with a registry that has no BIFs registered also reports \
+     Wired; schedulers declare natives at construction (see WasmScheduler::new's bif_registry \
+     argument)";
 
 /// Render the guard-BIF refusal's one-log-line from already-resolved atom names.
 ///

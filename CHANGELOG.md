@@ -167,7 +167,13 @@ the shape the rest has been moved onto.
   executing module.** `GuardBifUnavailable` now renders which of the three
   runtime registry states applied (`Absent` — no services bundle reached the
   dispatch; `Unwired` — a bundle with no registry; `Wired` — a registry was
-  present) and carries a fixed pointer naming the constructor family. It does
+  present) and carries a fixed pointer naming the constructor family. Which
+  family it names follows the build: `NativeBifs::none` / `NativeBifs::registry`
+  under `threads`, and `WasmScheduler::new`'s `bif_registry` argument under
+  `cooperative`, where `NativeBifs` does not exist. That build is the one
+  `beamr-wasm` ships and the one whose reason mapper hands this line to
+  JavaScript, so a pointer at a threads-only type would point at nothing
+  there. It does
   NOT assert that your registry is empty: imports bind at LOAD time against the
   loader's registry, `Module`/`ResolvedImport` record no provenance, and the two
   registries can differ, so that assertion could accuse a correctly-composed
