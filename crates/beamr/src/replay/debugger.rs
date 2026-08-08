@@ -140,24 +140,31 @@ pub struct ReplayDebugger {
 
 impl ReplayDebugger {
     /// Create a debugger with snapshots captured after every instruction.
+    ///
+    /// The caller declares the native surface: `NativeServices::default()` carries no
+    /// BIF registry, so `erlang:*` imports refuse at guard-BIF execution.
     #[must_use]
-    pub fn new(process: Process, initial_module: Arc<Module>) -> Self {
-        Self::with_snapshot_granularity(process, initial_module, 1)
+    pub fn new(process: Process, initial_module: Arc<Module>, services: NativeServices) -> Self {
+        Self::with_snapshot_granularity(process, initial_module, 1, services)
     }
 
     /// Create a debugger with configurable checkpoint spacing.
+    ///
+    /// The caller declares the native surface: `NativeServices::default()` carries no
+    /// BIF registry, so `erlang:*` imports refuse at guard-BIF execution.
     #[must_use]
     pub fn with_snapshot_granularity(
         process: Process,
         initial_module: Arc<Module>,
         snapshot_granularity: usize,
+        services: NativeServices,
     ) -> Self {
         let snapshot_granularity = snapshot_granularity.max(1);
         let mut debugger = Self {
             process,
             initial_module,
             registry: None,
-            services: empty_native_services(),
+            services,
             snapshot_granularity,
             instruction_count: 0,
             snapshots: Vec::new(),
@@ -484,10 +491,6 @@ fn inspect_mailbox(mailbox: &Mailbox, atom_table: &AtomTable) -> MailboxInspecti
     }
 }
 
-fn empty_native_services() -> NativeServices {
-    NativeServices::default()
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -536,7 +539,12 @@ mod tests {
         let code = (0..12).map(move_int).collect();
         let module = module(code);
         let process = Process::new(1, 233);
-        let mut debugger = ReplayDebugger::with_snapshot_granularity(process, module, 3);
+        let mut debugger = ReplayDebugger::with_snapshot_granularity(
+            process,
+            module,
+            3,
+            NativeServices::default(),
+        );
 
         for expected in 0..10 {
             assert_eq!(debugger.step_forward(), Ok(ReplayStepOutcome::Continue));
@@ -578,7 +586,8 @@ mod tests {
         process
             .mailbox_mut()
             .push_owned_for_test(Term::small_int(99));
-        let mut debugger = ReplayDebugger::new(process, Arc::clone(&module));
+        let mut debugger =
+            ReplayDebugger::new(process, Arc::clone(&module), NativeServices::default());
         for _ in 0..4 {
             assert!(debugger.step_forward().is_ok());
         }
@@ -622,7 +631,7 @@ mod tests {
             },
         ]);
         let process = Process::new(1, 233);
-        let mut debugger = ReplayDebugger::new(process, module);
+        let mut debugger = ReplayDebugger::new(process, module, NativeServices::default());
         assert!(debugger.step_forward().is_ok());
         let tuple = debugger.process().x_reg(0);
         assert_eq!(
@@ -657,7 +666,7 @@ mod tests {
             },
         ]);
         let process = Process::new(1, 233);
-        let mut debugger = ReplayDebugger::new(process, module);
+        let mut debugger = ReplayDebugger::new(process, module, NativeServices::default());
         assert!(debugger.step_forward().is_ok());
         assert!(debugger.step_forward().is_ok());
         let list = debugger.process().x_reg(0);
