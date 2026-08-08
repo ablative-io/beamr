@@ -10,6 +10,14 @@
 //! typed-operand arithmetic fixture against an EMPTY registry and assert the
 //! refusal now names `erlang:+/2` AND the `Deferred` resolution; load it against
 //! a gate1-populated registry and assert the arithmetic runs clean.
+//!
+//! The third arm is the divergence guard (B-178 R9): the loader-time and the
+//! runtime registries are DIFFERENT OBJECTS with no provenance recorded on
+//! `Module`/`ResolvedImport`, so a refusal that asserts anything about the
+//! runtime registry's contents can accuse a correctly-composed caller. That arm
+//! builds the divergence on purpose — empty at load, gate1-populated at
+//! construction — and walls the refusal text against every claim it cannot
+//! substantiate.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,6 +48,18 @@ const EXPECTED_DISPLAY: &str = "guard bif erlang:+/2 unavailable: import resolve
 /// exact-string carrier and this dual-channel wall its rot-guard.
 const EXPECTED_DISPLAY_FALLBACK: &str = "guard bif #<unknown atom>:#<unknown atom>/2 unavailable: import resolved Deferred \
     (native BIF registry has no entry and the target module is not loaded)";
+
+/// Substrings the guard-BIF refusal SHALL NEVER carry.
+///
+/// Two classes, both unsubstantiable at the mint point: a claim about what the
+/// runtime registry CONTAINS (`BifRegistry` exposes no emptiness predicate, and
+/// the registry an import bound against at LOAD time is a different object from
+/// the one wired at runtime), and a runtime-state token that is FALSE of the
+/// divergence scenario — a services bundle reached the dispatch carrying a
+/// registry, so neither the absent nor the unwired state applies.
+///
+/// Shortening this list is hollowing the wall, not fixing a test.
+const BANNED_ACCUSATIONS: &[&str] = &["empty", "your registry", "Absent", "Unwired"];
 
 /// spawn -> mailbox delivery has a visibility window: `send_to_mailbox` returns
 /// `NoSuchProcess` until a worker first schedules the process. Sleep past it.
@@ -130,6 +150,79 @@ fn empty_registry_refusal_names_the_mfa_and_deferred_resolution() {
         EXPECTED_DISPLAY_FALLBACK,
         "the plain-Display fallback channel is byte-exact too"
     );
+}
+
+#[test]
+fn diverged_registries_refusal_does_not_accuse_the_runtime_registry() {
+    let atoms = AtomTable::with_common_atoms();
+    // The divergence, built on purpose: the loader binds `erlang:'+'/2` against
+    // an EMPTY registry, fixing the import `Deferred` at load time, while the
+    // scheduler is declared with a gate1-populated one. The refusal therefore
+    // mints in a context where a registry IS wired and IS populated — the case
+    // in which any emptiness claim would accuse an innocent composition.
+    let loader_bifs = BifRegistryImpl::new();
+    let runtime_bifs = Arc::new(BifRegistryImpl::new());
+    register_gate1_bifs(&runtime_bifs, &atoms).expect("gate1 bifs register");
+    let (scheduler, _registry) = start_scheduler(
+        &atoms,
+        &loader_bifs,
+        NativeBifs::registry(Arc::clone(&runtime_bifs)),
+    );
+
+    let pid = spawn_probe(&scheduler, &atoms);
+    send_int(&scheduler, pid, 7);
+    let (reason, _result) = scheduler.run_until_exit(pid);
+    let exit_error = scheduler.take_exit_error(pid);
+    scheduler.shutdown();
+
+    // (1) The refusal happened: load-time resolution decides, so a populated
+    // runtime registry does not rescue an import bound against an empty one.
+    assert_eq!(
+        reason,
+        ExitReason::Error,
+        "the guard-bif refusal is process-fatal even with natives wired at runtime"
+    );
+    let exit_error = exit_error.expect("the fatal exit retains its ExecError");
+    match exit_error {
+        ExecError::GuardBifUnavailable {
+            arity, resolution, ..
+        } => {
+            assert_eq!(arity, 2, "erlang:'+'/2");
+            assert_eq!(
+                resolution,
+                GuardBifResolution::Deferred,
+                "the LOAD-TIME registry had no entry and the target module is not loaded"
+            );
+        }
+        other => panic!("expected GuardBifUnavailable, got {other:?}"),
+    }
+
+    // (2) The divergence was actually constructed. Without this the test can go
+    // green by never building the subject at all, and (3) would be vacuous for
+    // a second, undetectable reason.
+    assert!(
+        runtime_bifs
+            .lookup(atoms.intern("erlang"), atoms.intern("+"), 2)
+            .is_some(),
+        "the registry handed to the constructor resolves erlang:'+'/2 — the two \
+         registries genuinely diverge"
+    );
+
+    // (3) The refusal does not accuse. Both rendering channels are walled: the
+    // exact-string carrier and the plain-Display fallback.
+    let rendered = exit_error.format_with_atoms(&atoms);
+    let fallback = exit_error.to_string();
+    for banned in BANNED_ACCUSATIONS {
+        assert!(
+            !rendered.contains(banned),
+            "the refusal must not carry {banned:?}, which is false or \
+             unsubstantiable here: {rendered}"
+        );
+        assert!(
+            !fallback.contains(banned),
+            "the plain-Display channel must not carry {banned:?} either: {fallback}"
+        );
+    }
 }
 
 #[test]
