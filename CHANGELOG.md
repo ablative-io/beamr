@@ -43,17 +43,32 @@ published version. `0.16.2` has no tag and is pinned by commit
 carries the two 0.16.2 classes regardless of its version number — check
 with `git merge-base --is-ancestor 67f89c4 <base>`.
 
-**No version is a clean bill of health — `0.16.3`, `0.17.0` and `0.18.0`
-alike.** All of them ship with a disclosed set of remaining JIT sites — one
-named site and two unenumerated classes (stale source `Term`s, unrooted
-helper arguments, accumulated results) — reachable under the `jit` feature,
-which is **on by default**. See "Known remaining JIT sites" in the `0.17.0`
-entry below for the current statement of the class, and in the `0.16.3` entry
-for the disclosure as first written. `0.18.0` changes nothing under
-`crates/beamr/src/jit/`, so it carries the class unaltered; this sentence
-enumerates versions, and **the enumeration is a claim about the versions it
-omits**, so a version that ships without the fix is named here rather than
-left out.
+**The "Known remaining JIT sites" class is FIXED in `0.18.1`** — see that
+entry's "Fixed" section. `0.16.3`, `0.17.0` and `0.18.0` all carry it,
+reachable under the `jit` feature, which is **on by default** in those
+versions. The disclosure as first written is in the `0.16.3` entry; its
+fullest statement is in the `0.17.0` entry. This sentence enumerates
+versions, and **the enumeration is a claim about the versions it omits**:
+every version below `0.18.1` carries the class, and the fix lane's own
+sweep at the fix commit shows zero remaining REAL-verdict sites under
+`crates/beamr/src/jit/`
+(`docs/design/beamr/briefs/evidence/review-23-07/rf-006/sweep/verdicts.json`).
+
+**`0.18.1` is still not a clean bill of health.** A second rooting class —
+accumulator rooting in native BIFs, **no JIT required**: a term accumulated
+into a `Vec` or threaded `tail` goes stale when a later allocation in the
+same loop collects, and the terminal `alloc_list`/`alloc_tuple` roots a
+pointer that is already stale — is **open, sized and unfixed in every
+released version including `0.18.1`**: 17 verified crossings, one shape,
+enumerated by name in
+`docs/design/beamr/briefs/evidence/accumulator-rooting/dispositions.json`,
+with a pre-registered landing gate at
+`docs/design/beamr/briefs/AR-1-LANDING-GATE.md`. Two of the seventeen have
+demonstrated red-at-parent probes; the class is real, not theoretical. Four
+further sites cleared on unaudited word-count arithmetic are recorded
+`UNRULED-PRERESERVE` (gate row 3) — unruled, not safe. The audit ships in
+this tree **before** any fix exists, deliberately, so the accounting cannot
+be derived from the post-fix state.
 
 🔴 **`jit` CANNOT BE DISABLED IN ANY BUILD THAT RETAINS `threads`.** The
 manifest declares `jit = ["std", "threads", …]`, but parts of the scheduler
@@ -65,14 +80,81 @@ this surface, and turning the feature off is not a mitigation open to you.**
 failing command is in the `0.17.0` entry; the coupling predates `0.17.0` and
 is present at `v0.16.3` too.
 
-**That class is owned by RF-006 and is not fixed in any version cut to date,
-including `0.17.0` and `0.18.0`.** This paragraph names an OWNER and deliberately
-names no target version. A safety disclosure that says "tracked for X" stops
-being true at the moment X ships without the fix — no actor causes that
-falsification, so no review catches it, and the sentence turns into a false
-assurance exactly when a reader is deciding whether to upgrade. RF-006 is an
-ABI-level GC-rooting change. When it lands, the release carrying it will say
-so under "Fixed" and this paragraph is removed in the same commit.
+*(A paragraph naming RF-006 as this class's owner stood here from `0.17.0`
+until `0.18.1`. Its own text required that when the fix landed, the release
+carrying it would say so under "Fixed" and the paragraph be removed in the
+same commit. That is this commit — see the `0.18.1` entry.)*
+
+## 0.18.1 — 2026-08-10
+
+Patch release, cut from `main`. Patch-level because the compatibility claim
+was **measured, not argued**: the entire production delta is three modules,
+all `pub(crate)` in `jit/`, with zero re-exports out — public Rust API
+surface UNCHANGED (measurement commit `799730c`; `cargo public-api` refused
+on a rustdoc-JSON version mismatch, which is recorded as a refusal and not
+as a negative, and two other instruments each with a positive control were
+used instead).
+
+### Fixed — RF-006: the JIT GC-rooting class
+
+The "Known remaining JIT sites" class disclosed in the `0.16.3` and
+`0.17.0` entries below is fixed. All sites reachable under the `jit`
+feature (on by default):
+
+- `jit_bs_start_match` roots the source binary `Term` across the
+  match-context allocation instead of capturing it at entry and writing a
+  potentially stale copy after (wall:
+  `start_match_source_survives_forced_collection`, RED at the parent by
+  design in this branch's history).
+- Helper-held terms are rooted across collecting allocations throughout
+  `jit/runtime.rs`, `jit/runtime_map.rs` and `jit/runtime_binary_match.rs`;
+  the new `alloc_words_rooted` **refuses** rather than returning a stale
+  term when rooting cannot be established.
+- `jit_bs_get_binary` ProcBin extraction **shares O(1) again** and roots
+  the forwarded parent — the sound fix, replacing the earlier
+  copy-workaround (walls:
+  `bs_get_binary_procbin_extraction_shares_forwarded_parent`,
+  `bs_get_binary_procbin_source_box_referent_survives_forced_collection`).
+
+Evidence, re-run at this release's rebased base rather than carried from
+the pre-rebase branch: the process-bearing probe suite
+(`native/stdlib_stubs/gc_rooting_tests.rs`, 17 tests, each asserting a
+collection actually fired via `old_used() > 0`) is green, and all three
+committed mutations (M1/M2/M4 under
+`docs/design/beamr/briefs/evidence/review-23-07/rf-006/mutations/`) were
+applied, went RED with their own wall in the failure list, and were
+reverted — artifacts in
+`docs/design/beamr/briefs/evidence/review-23-07/rf-006/runs/rebase-0.18.1/`.
+The fix lane's stale-`Term` sweep records **zero remaining REAL-verdict
+sites under `crates/beamr/src/jit/`** (`rf-006/sweep/verdicts.json`).
+
+The advisory paragraph that named RF-006 as this class's owner ("not fixed
+in any version cut to date") is removed in this same commit, as its own
+text required.
+
+### Correction, forward-only — "ABI-level" was an unmeasured claim, now refuted
+
+The `0.17.0` and `0.16.3` entries below describe the sound fix as "an
+ABI-level change owned by RF-006, not backportable in a patch". Those
+entries are released history and stay as written; the correction lives
+here: **measured at the fix, the change is not ABI-level and does not
+touch the public API** — which is why this release is `0.18.1` and not
+`0.19.0`. The earlier sentences carried a compatibility claim that had
+never been measured; this entry replaces it with a measured one.
+
+### Open and disclosed — the accumulator-rooting class (AR-1)
+
+This release fixes the JIT rooting class and **nothing else**. The
+native-BIF accumulator-rooting class described in the advisory at the top
+of this file — 17 verified crossings, one shape, **no JIT required**,
+present in every released version including this one — remains **OPEN**,
+with no fix designed. Its audit, named-site disposition ledger, control
+fixtures and pre-registered landing gate ship in this release's tree
+(`docs/design/beamr/briefs/AR-1-LANDING-GATE.md`) so the class is sized in
+public rather than known privately. Four further `UNRULED-PRERESERVE`
+sites are recorded there as unruled, not safe. **This entry must not be
+read as "the memory-safety fix": a release that fixes one class while a
+sized class stays open says so in the same breath.**
 
 ## 0.18.0 — 2026-08-09
 
