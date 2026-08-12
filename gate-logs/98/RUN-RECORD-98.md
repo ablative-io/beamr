@@ -95,3 +95,35 @@ deliberately did not add while red.
    beginning of a module". For any module whose code begins with `FuncInfo` —
    which is what the loader produces — that is the landing pad. Every call site
    today is a test. `pub`, so embedder-reachable.
+
+## Battery at the fix commit
+
+Ran at `3c1e08f`, the seven canon legs **read from `gates.json` at run time**
+(#75's arrangement — never transcribed). Runner: `battery-RUNNER.sh`; it aborts
+on an empty leg command rather than scoring a leg that ran nothing, which is
+the failure #75 caught by the denominator.
+
+**COMPLETE 7/7, pin stable, tree 0/0.** Raw: `battery-3c1e08f-BATTERY.log`,
+`battery-3c1e08f-legs.tsv`. Opened 2026-08-12T17:10:33Z, closed 17:12:06Z.
+
+| leg | rc |
+|---|---|
+| fmt | 0 |
+| clippy | 0 |
+| wasm32-check | 0 |
+| wasm-tests | 0 |
+| tests | 0 |
+| blocking-call-in-native-bif | 0 |
+| clippy-all-features | 0 |
+
+Canon `tests` leg axes (`cargo test --workspace --features beamr/encode`):
+**result-lines 73 · passed 2110 · failed 0 · ignored 0.**
+
+⚠️ **No delta is claimed against any earlier axis reading.** The last recorded
+prior at my seat is 72/2067/0/0 at `b96be7a` (#75), and several lanes have
+landed between — the populations are not comparable and the difference is not
+attributed here.
+
+Separately, `cargo test --workspace --all-features` — the leg this lane
+unblocks — is **1842 passed, 0 failed**, against the 1838/4 recorded when it
+was declared known-red.
