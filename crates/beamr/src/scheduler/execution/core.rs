@@ -1247,7 +1247,7 @@ fn exit_process(shared: &SharedState, process: &mut Process, reason: ExitReason)
         // point into it and the heap is freed during cleanup. Raise-time raw
         // frames are resolved to names here so diagnostics keep a usable
         // stacktrace even when the exception term carries none.
-        let frames = resolve_raise_frames(shared, process);
+        let frames = resolve_raise_frames(&shared.atom_table, process);
         shared.exit_exceptions.insert(
             pid,
             crate::scheduler::exit_capture::OwnedException::capture_with_frames(exception, frames),
@@ -1265,32 +1265,38 @@ fn exit_process(shared: &SharedState, process: &mut Process, reason: ExitReason)
 }
 
 /// Resolve the raise-time raw stacktrace into owned, name-resolved frames.
+///
+/// Takes the atom table rather than the whole [`SharedState`] because name
+/// resolution is all it needs, and a frame renderer that can be exercised with
+/// nothing but an atom table is a frame renderer that can be tested.
 fn resolve_raise_frames(
-    shared: &SharedState,
+    atom_table: &crate::atom::AtomTable,
     process: &Process,
 ) -> Vec<crate::scheduler::exit_capture::CapturedFrame> {
     process
         .raw_stacktrace()
         .iter()
         .map(|entry| {
-            let (function, arity) = entry
-                .mfa
-                .map(|(_, function, arity)| (function, arity))
-                .or_else(|| entry.module.function_at_ip(entry.ip))
-                .unwrap_or((crate::atom::Atom::UNDEFINED, 0));
+            let (module, function, arity) = entry.identity();
             crate::scheduler::exit_capture::CapturedFrame {
-                module: shared
-                    .atom_table
-                    .resolve(entry.module.name)
+                module: atom_table
+                    .resolve(module)
                     .unwrap_or("#<unknown>")
                     .to_owned(),
-                function: shared
-                    .atom_table
+                function: atom_table
                     .resolve(function)
                     .unwrap_or("#<unknown>")
                     .to_owned(),
                 arity,
-                line: entry.module.line_at_ip(entry.ip),
+                // A compiled frame has no interpreted instruction pointer — its
+                // `ip` is a placeholder zero, and resolving a line from it would
+                // report the module's FIRST line-table entry as though it were
+                // the raise site. `build_stacktrace` has always guarded this;
+                // this renderer did not, and a fabricated line is worse than an
+                // absent one because it looks measured.
+                line: (!entry.compiled)
+                    .then(|| entry.module.line_at_ip(entry.ip))
+                    .flatten(),
             }
         })
         .collect()
@@ -1736,4 +1742,135 @@ fn release_process_exit_resources(process: &mut Process, pid: u64) {
 
 fn take_process(process: &mut Process) -> Process {
     std::mem::replace(process, Process::new(u64::MAX, DEFAULT_HEAP_SIZE))
+}
+
+#[cfg(test)]
+mod frame_resolution_tests {
+    use super::resolve_raise_frames;
+    use crate::atom::{Atom, AtomTable};
+    use crate::loader::LineInfo;
+    use crate::module::{Module, ModuleOrigin};
+    use crate::process::{Process, RawStackEntry};
+    use crate::term::Term;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn module_named(name: Atom) -> Module {
+        Module {
+            name,
+            generation: 0,
+            origin: ModuleOrigin::Preloaded,
+            exports: HashMap::new(),
+            label_index: HashMap::new(),
+            code: Vec::new(),
+            literals: Vec::new(),
+            constant_pool: crate::constant_pool::ConstantPool::default(),
+            resolved_imports: Vec::new(),
+            lambdas: Vec::new(),
+            string_table: Vec::new(),
+            function_table: Vec::new(),
+            line_table: Vec::new(),
+            line_info: Vec::new(),
+        }
+    }
+
+    /// A module whose first line-table entry is line 54 — the shape that makes
+    /// a fabricated line look like a measured one.
+    fn module_with_first_line(name: Atom, first_line: u32) -> Module {
+        let mut module = module_named(name);
+        module.line_table = vec![(0, 0)];
+        module.line_info = vec![LineInfo {
+            file: 0,
+            line: first_line,
+        }];
+        module
+    }
+
+    fn compiled_frame(pinned: &Arc<Module>, mfa: (Atom, Atom, u8)) -> RawStackEntry {
+        RawStackEntry {
+            module: Arc::clone(pinned),
+            // `jit_add_compiled_frame` hardcodes this: a compiled frame has no
+            // interpreted instruction pointer to record.
+            ip: 0,
+            mfa: Some(mfa),
+            location_info: Term::NIL,
+            compiled: true,
+        }
+    }
+
+    #[test]
+    fn compiled_frame_reports_the_module_owning_the_compiled_function() {
+        // The process is positioned in the CALLER while compiled code from the
+        // CALLEE's module raises. Taking the module from the pinned side spliced
+        // the caller's module name onto the callee's function, producing a frame
+        // naming a function that does not exist in the module it claims.
+        let atom_table = AtomTable::new();
+        let caller = atom_table.intern("aion@awl@codec");
+        let callee = atom_table.intern("gleam@json");
+        let function = atom_table.intern("int");
+
+        let pinned = Arc::new(module_named(caller));
+        let mut process = Process::new(1, 128);
+        process.set_raw_stacktrace(vec![compiled_frame(&pinned, (callee, function, 1))]);
+
+        let frames = resolve_raise_frames(&atom_table, &process);
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].module, "gleam@json");
+        assert_eq!(frames[0].function, "int");
+        assert_eq!(frames[0].arity, 1);
+    }
+
+    #[test]
+    fn compiled_frame_reports_no_line_rather_than_the_modules_first_line() {
+        // With ip hardcoded to 0, `line_at_ip` returns the module's FIRST line
+        // marker for every compiled frame. That is not the raise site and never
+        // was; reporting it dresses a placeholder as a measurement.
+        let atom_table = AtomTable::new();
+        let owner = atom_table.intern("gleam_json_ffi");
+        let function = atom_table.intern("int");
+
+        let pinned = Arc::new(module_with_first_line(owner, 54));
+        // Control: the fabricated value this frame would otherwise carry is a
+        // real, plausible-looking line, not an obvious sentinel.
+        assert_eq!(pinned.line_at_ip(0), Some(54));
+
+        let mut process = Process::new(1, 128);
+        process.set_raw_stacktrace(vec![compiled_frame(&pinned, (owner, function, 1))]);
+
+        let frames = resolve_raise_frames(&atom_table, &process);
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].module, "gleam_json_ffi");
+        assert_eq!(frames[0].line, None);
+    }
+
+    #[test]
+    fn interpreted_frames_keep_resolving_their_line_from_the_instruction_pointer() {
+        // The compiled-frame guard must not blind the interpreted path: this is
+        // the arm that would go quiet if the guard were written the wrong way
+        // round.
+        let atom_table = AtomTable::new();
+        let owner = atom_table.intern("gleam_json_ffi");
+
+        let mut module = module_with_first_line(owner, 54);
+        module.function_table = vec![(0, atom_table.intern("int"), 1)];
+        let pinned = Arc::new(module);
+
+        let mut process = Process::new(1, 128);
+        process.set_raw_stacktrace(vec![RawStackEntry {
+            module: Arc::clone(&pinned),
+            ip: 0,
+            mfa: None,
+            location_info: Term::NIL,
+            compiled: false,
+        }]);
+
+        let frames = resolve_raise_frames(&atom_table, &process);
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].module, "gleam_json_ffi");
+        assert_eq!(frames[0].function, "int");
+        assert_eq!(frames[0].line, Some(54));
+    }
 }

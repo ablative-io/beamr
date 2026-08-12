@@ -215,6 +215,34 @@ pub struct RawStackEntry {
     pub compiled: bool,
 }
 
+impl RawStackEntry {
+    /// Resolves this frame's `(module, function, arity)` identity.
+    ///
+    /// The module comes from `mfa` whenever `mfa` is present, and only falls
+    /// back to the pinned module's own name when it is absent. That ordering is
+    /// load-bearing for compiled frames: a JIT frame records the identity of the
+    /// function that was *compiled*, while `module` is merely wherever the
+    /// process happened to be positioned when the frame was pushed. When
+    /// compiled code from one module is entered from another, those two
+    /// disagree, and taking the module from the pinned side splices one
+    /// module's name onto another module's function — naming a function that
+    /// does not exist in the module the frame claims.
+    ///
+    /// Interpreted frames are unaffected by construction: their `mfa` is
+    /// derived by [`Module::mfa_at_ip`], which pairs the function with that same
+    /// module's own name, so both sources always agree.
+    #[must_use]
+    pub fn identity(&self) -> (Atom, Atom, u8) {
+        match self.mfa {
+            Some((module, function, arity)) => (module, function, arity),
+            None => match self.module.function_at_ip(self.ip) {
+                Some((function, arity)) => (self.module.name, function, arity),
+                None => (self.module.name, Atom::UNDEFINED, 0),
+            },
+        }
+    }
+}
+
 /// Receive timeout state recorded while a process is waiting.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct ReceiveTimeout {

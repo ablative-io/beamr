@@ -206,11 +206,7 @@ pub fn build_stacktrace(process: &mut Process) -> Result<InstructionOutcome, Exe
     let mut list = Term::NIL;
 
     for entry in raw_stacktrace.iter().rev() {
-        let (function, arity) = entry
-            .mfa
-            .map(|(_, function, arity)| (function, arity))
-            .or_else(|| entry.module.function_at_ip(entry.ip))
-            .unwrap_or((Atom::UNDEFINED, 0));
+        let (module, function, arity) = entry.identity();
         let info = if !entry.compiled {
             stacktrace_info(process, entry.module.line_at_ip(entry.ip))?
         } else {
@@ -218,7 +214,7 @@ pub fn build_stacktrace(process: &mut Process) -> Result<InstructionOutcome, Exe
         };
         let frame = four_tuple(
             process,
-            Term::atom(entry.module.name),
+            Term::atom(module),
             Term::atom(function),
             Term::small_int(i64::from(arity)),
             info,
@@ -933,5 +929,58 @@ mod tests {
         assert_eq!(process.current_exception(), None);
         assert_eq!(process.exception_handler_count(), 1);
         assert_eq!(process.stack().y_reg(0), Ok(Term::NIL));
+    }
+
+    #[test]
+    fn compiled_frame_names_the_module_that_owns_the_compiled_function() {
+        // A JIT frame records the identity of the function that was COMPILED.
+        // The pinned module is only wherever the process happened to be
+        // positioned when the frame was pushed — for compiled code entered from
+        // another module those disagree, and preferring the pinned side names a
+        // function that does not exist in the module the frame claims.
+        let module_version = Arc::new(label20_module()); // module name = Atom::OK
+        let mut process = Process::new(1, 128);
+        process.set_raw_stacktrace(vec![RawStackEntry {
+            module: Arc::clone(&module_version),
+            ip: 0,
+            mfa: Some((Atom::FLUSH, Atom::BADARG, 1)),
+            location_info: Term::NIL,
+            compiled: true,
+        }]);
+
+        build_stacktrace(&mut process).expect("stacktrace builds");
+
+        let cons = Cons::new(process.x_reg(0)).expect("stacktrace cons");
+        let frame = Tuple::new(cons.head()).expect("stacktrace frame tuple");
+        assert_eq!(frame.get(0), Some(Term::atom(Atom::FLUSH)));
+        assert_eq!(frame.get(1), Some(Term::atom(Atom::BADARG)));
+        assert_eq!(frame.get(2), Some(Term::small_int(1)));
+        assert_eq!(frame.get(3), Some(Term::NIL));
+    }
+
+    #[test]
+    fn interpreted_frame_identity_agrees_whichever_source_it_comes_from() {
+        // The reason the compiled fix cannot disturb interpreted frames:
+        // `mfa_at_ip` pairs the function with that same module's own name, so
+        // for an interpreted frame the two sources are the same value. This is
+        // the arm that would go red if the change reached further than claimed.
+        let mut code = label20_module();
+        code.function_table = vec![(0, Atom::BADARG, 1)];
+        let module_version = Arc::new(code);
+        let carried = RawStackEntry {
+            module: Arc::clone(&module_version),
+            ip: 0,
+            mfa: module_version.mfa_at_ip(0),
+            location_info: Term::NIL,
+            compiled: false,
+        };
+        assert_eq!(carried.mfa, Some((Atom::OK, Atom::BADARG, 1)));
+        assert_eq!(carried.identity(), (Atom::OK, Atom::BADARG, 1));
+
+        let derived = RawStackEntry {
+            mfa: None,
+            ..carried.clone()
+        };
+        assert_eq!(derived.identity(), carried.identity());
     }
 }

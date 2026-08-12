@@ -1,0 +1,18 @@
+M-FRAME-1 — restore BOTH pre-fix behaviours, keep every test byte-identical.
+  mutation 1: identity() discards mfa.0 and takes the pinned module's name
+  mutation 2: resolve_raise_frames drops the !compiled line guard
+
+PRE-REGISTERED, written before the run:
+
+MUST GO RED (3)
+  scheduler::...::compiled_frame_reports_the_module_owning_the_compiled_function
+  scheduler::...::compiled_frame_reports_no_line_rather_than_the_modules_first_line
+  interpreter::...::compiled_frame_names_the_module_that_owns_the_compiled_function
+
+MUST STAY GREEN (2) — orthogonal BY CONSTRUCTION, not weak:
+  scheduler::...::interpreted_frames_keep_resolving_their_line_from_the_instruction_pointer
+  interpreter::...::interpreted_frame_identity_agrees_whichever_source_it_comes_from
+  Both assert the NO-OP property: for an interpreted frame mfa.0 == module.name
+  (mfa_at_ip pairs the module's own name), so fixed and mutated agree there by
+  construction. A mutation of the compiled path CANNOT move them. If either of
+  these goes red, the change reached further than claimed and the fix is wrong.
