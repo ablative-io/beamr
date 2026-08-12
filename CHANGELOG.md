@@ -3,9 +3,11 @@
 ## Advisory — JIT-compiled code silently dropped every message it sent to another process
 
 **Affects 40 of the 58 published versions: every version from `0.4.0` through
-`0.18.1`, with no holes in the published sequence.** Unfixed in every published
-version. The fix is built and gated but not yet released; the release commit
-that carries it will name the fixing version here.
+`0.18.1`, with no holes in the published sequence. FIXED IN `0.18.2`** — see
+that entry's "Fixed" section below. Backports to the `0.17.x` and `0.16.x`
+lines are in preparation and this advisory will name them when they exist;
+until then, note that each `0.x` minor is a semver major, so `^0.16` and
+`^0.17` requirements **cannot** resolve `0.18.2` and are not carried by it.
 
 **What happens.** With the JIT enabled, once a function has been compiled, a
 `!` executed from that compiled code delivers **only when the destination is
@@ -150,6 +152,85 @@ is present at `v0.16.3` too.
 until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
+
+## 0.18.2 — 2026-08-12
+
+Patch release, cut from `main`. Two fixes, both in the JIT's runtime helpers,
+both of the same class: **a wrong answer returned in the shape of a right
+one.**
+
+### Fixed — compiled code now delivers the messages it sends
+
+`jit_send_message` implemented exactly one destination — the sending process
+itself — and let every other destination fall through while returning the
+message term, which is what a successful `!` evaluates to. See the advisory at
+the top of this file for the affected range and how it was measured.
+
+The helper now reaches the full set of destinations through the `services`
+pointer already installed in `JitRuntimeContext` around every native call from
+compiled code: self-sends go through the interpreter's own `send_to_self`, and
+local sends through the same `LocalSendFacility` block the interpreter uses —
+**shared, not reimplemented**, because a second copy of a dispatch is a second
+copy that can drift. Remote destinations go to the distribution facility.
+
+Destinations that genuinely cannot be served park the interpreter's *own*
+`ExecError` in a new `Process::jit_exec_error` and abort: a non-pid destination
+raises the same `badarg` the interpreter raises, and a remote send with no
+distribution raises the same `noconnection`. `call_native` checks that field
+**before** the deopt status, so an abort can never be re-entered as a restart
+and a partially-completed send can never be replayed. `Send` is deliberately
+**not** added to `is_runtime_deopt_capable`: the admission guard is untouched
+and no function that compiles today stops compiling.
+
+The self-send arm additionally ticks the sender's logical clock and consults
+the replay driver, both of which it previously skipped — so compiled and
+interpreted self-sends no longer diverge under record/replay.
+
+### Fixed — a compiled stack frame named the wrong module, and invented a line
+
+Both stacktrace renderers read a frame's function and arity from its recorded
+`mfa` and then discarded that same `mfa`'s module atom, taking the module name
+from the frame's pinned module instead. For interpreted frames the two agree by
+construction and the discard was invisible. For a compiled frame they are
+different things — the pinned module is only wherever the process happened to
+be positioned — so a crash report could name **a function that does not exist
+in the module the frame claims**. Resolution now lives in one place,
+`RawStackEntry::identity`, and prefers the recorded `mfa`.
+
+The two renderers had also drifted: the in-VM one skipped line resolution for
+compiled frames, the crash-report one did not, and a compiled frame's
+instruction pointer is a placeholder zero — so every compiled frame in a crash
+report carried the module's *first* line-table entry as though it were the
+raise site. A compiled frame now reports **no line rather than a plausible
+wrong one**; a fabricated value is worse than an absent one precisely because
+it looks measured.
+
+### Known — the frame builder has a third defect, open and unfixed
+
+`function_table` records the ip of each `func_info` instruction while
+`line_table` records the ip of each `line` instruction, and a BEAM function
+prologue is `label → line → func_info`. There is therefore **one instruction
+position per function** (every function after the first) at which the line
+table has already advanced to the next function's head line while the function
+table still reports the previous function — so a frame resolved at that
+position pairs one function's name with the next one's line. Measured by
+decoding a shipped module through beamr's own loader.
+
+It is disclosed rather than fixed because **no path has been shown to place a
+recorded position there**: a `line` instruction cannot raise, the interpreter
+writes the position after dispatch rather than before, and the one instruction
+past a tail call is the following `label`, not its `line`. Two candidate
+firing paths were proposed during this work and both were refuted by
+measurement. The fix would move a function's recorded region to begin at its
+prologue, which changes `Module::mfa_at_ip` and therefore `Process::current_mfa`
+— not a change to make on a mechanism whose trigger is unnamed. Note that
+`mfa_at_ip`'s own doc-comment asserts the invariant this defect violates.
+
+### Not fixed here
+
+The accumulator-rooting class (AR-1) disclosed in the `0.18.1` entry remains
+**open and unfixed** in this release: 17 verified crossings, no JIT required.
+This release does not touch it and does not narrow it.
 
 ## 0.18.1 — 2026-08-10
 
