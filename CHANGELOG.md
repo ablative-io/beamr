@@ -206,6 +206,49 @@ feature, and the warning is gone.
 adjacent-leg question — *does anything else compile this code?* — is the one
 worth asking at the time.
 
+### Fixed — no gate compiled the `telemetry` module at all
+
+The canon compiled exactly **one** feature combination, and a whole module tree
+escaped it. `telemetry` is enabled by **nobody**: not `beamr-cli` (default
+features), not `beamr-wasm` (`default-features = false`, `cooperative` + `json`),
+not the `clippy`/`tests` legs' `--features beamr/encode`, and not
+dev-dependencies. Yet `#[cfg(feature = "telemetry")] pub mod telemetry;` gates
+four files and **156** `feature = "telemetry"` cfg sites.
+
+**Measured, not argued.** A deliberate type error planted in
+`telemetry/spans.rs` passed **all six** then-legs — `fmt` 0, `clippy` 0,
+`wasm32-check` 0, `wasm-tests` 0, `tests` 0, `blocking-call` 0 — while the
+positive control `cargo check -p beamr --features telemetry` returned rc 101
+naming exactly that line and nothing else.
+
+A new `clippy-all-features` leg closes it, and its own falsifier is recorded:
+that same specimen takes the new leg to rc 101 while the untouched tree is rc 0.
+
+⚠️ **The new leg does not replace its sibling, and must not be collapsed into
+it.** Every cfg has a complement: under `--all-features` all
+`#[cfg(not(feature = "…"))]` code stops being compiled, and `not(feature =
+"threads")` is how the cooperative runtime is selected. The canon now compiles
+**three named combinations on purpose** — default-union-`encode` (the shape host
+consumers build), `cooperative`+`json` with `default-features = false` (the
+`wasm32-check` leg, which is the only leg that type-checks the not-`threads`
+paths), and all-on (the new leg, the only leg that compiles `telemetry`).
+**Three named points out of 2^14 is not "every feature combination is gated"**;
+a green canon should be read as exactly those three and no more.
+
+`--all-features` rather than an enumerated `--features a,b,c` is deliberate: an
+enumerated list is a second copy of the feature set, and it drifts the first
+time somebody adds a feature and forgets the gate. This way a newly declared
+feature is covered by construction.
+
+⛔ **Known-red and deliberately NOT gated yet:** `cargo test --workspace
+--all-features` fails — 1838 passed, **4 failed**, all four telemetry-gated
+`scheduler::tests`. They are **not** the known parallel-run OTel flake: they
+fail identically under `--test-threads=1`. Probed, `execute_slice` returns
+`Exited(Error, nil)` where the tests expect `Requeue`. Whether that is a stale
+test setup or a live scheduler change is **unresolved** and tracked separately;
+the all-features *tests* leg lands when it is green, and is called out here
+rather than quietly dropped.
+
 ### Changed (breaking) — `resolve_imports` returns `Vec<ResolvedImport>`, not `Vec<Option<…>>`
 
 `resolve_imports` declared `Vec<Option<ResolvedImport>>` while **never producing
