@@ -95,8 +95,16 @@ jobs:
             # independent, so the verdict does not depend on leg ORDER.
             # Where a gate sits relative to its siblings is part of its
             # correctness, not its performance (Hermes, 2026-08-06).
-            ( eval "$cmd" )
+            # REDIRECTED, NOT PIPED. `| tee` would hand $? to tee and report
+            # the wrong leg verdict — the same trap the note above names. The
+            # log is written first and echoed after, so rc is the leg's own.
+            #
+            # The log is kept because the exit code is not the only thing a leg
+            # says: a `cargo test` that ran ZERO tests exits 0, and the leg
+            # count below cannot see that. The verdict step reads these.
+            ( eval "$cmd" ) > "gate-rc/${name}.log" 2>&1
             rc=$?
+            cat "gate-rc/${name}.log"
             echo "$rc" > "gate-rc/${name}.rc"
             echo "LEG $((i + 1)) (${name}) rc=${rc}"
             echo "::endgroup::"
@@ -130,6 +138,48 @@ jobs:
             echo "zero legs recorded: nothing ran, which is not a pass" >&2
             exit 1
           fi
+
+          # SECOND DENOMINATOR: a test leg that RAN NOTHING exits 0.
+          #
+          # The leg count above proves every leg ran. It cannot see that a leg
+          # ran and did no work. `cargo test` exits 0 when a feature flag, a
+          # `#![cfg(...)]` or a harness change leaves it with zero tests to
+          # execute — a green run over an empty population, which is exactly
+          # what "the encode suite is not in the gate" looked like before it
+          # was found. So every leg DECLARED `kind: cargo-test` must show at
+          # least one `test result:` line and a nonzero passed total.
+          #
+          # Keyed on the leg's declared KIND, not on its name, so a cargo-test
+          # leg added to gates.json inherits this assertion with no edit here —
+          # the same reason the legs themselves are read rather than restated.
+          #
+          # ⚠️ Asserted on the leg TOTAL, never per line: a feature-gated test
+          # binary legitimately prints `ok. 0 passed`, and today's wasm leg has
+          # one. A per-line rule would fail an honest run.
+          for i in $(seq 0 $((declared - 1))); do
+            kind=$(jq -r ".legs[$i].kind // \"\"" gates.json)
+            [ "$kind" = "cargo-test" ] || continue
+            name=$(jq -r ".legs[$i].name" gates.json)
+            log="gate-rc/${name}.log"
+            if [ ! -f "$log" ]; then
+              echo "TEST-COUNT: ${name} declares kind cargo-test but produced no log" >&2
+              exit 1
+            fi
+            # `| wc -l`, not `grep -c`: grep -c exits 1 on zero matches, so the
+            # count and the failure share one channel. Here zero IS the finding
+            # and must reach the check, not abort it.
+            lines=$(grep '^test result:' "$log" | wc -l | tr -d ' ')
+            passed=$(awk '/^test result:/ {for (j=1;j<=NF;j++) if ($j=="passed;") p+=$(j-1)} END {print p+0}' "$log")
+            echo "  ${name}: ${lines} result line(s), ${passed} passed"
+            if [ "$lines" -eq 0 ]; then
+              echo "TEST-COUNT: ${name} emitted no 'test result:' line — it ran no test binary, which is not a pass" >&2
+              exit 1
+            fi
+            if [ "$passed" -eq 0 ]; then
+              echo "TEST-COUNT: ${name} passed 0 tests across ${lines} binaries — an empty population, which is not a pass" >&2
+              exit 1
+            fi
+          done
 
           verdict=0
           for rc_file in gate-rc/*.rc; do
