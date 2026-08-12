@@ -361,6 +361,22 @@ fn test_module(name: Atom, code: Vec<Instruction>) -> Module {
             _ => None,
         })
         .collect();
+    // Mirror the loader's func_info table: each `FuncInfo` opens a function
+    // whose entry ip is the func_info's own position. Without it every
+    // scaffold has an EMPTY function table, `Module::mfa_at_ip` returns None
+    // for every ip, and MFA-derived telemetry silently reads as `Atom::NIL`.
+    let function_table = code
+        .iter()
+        .enumerate()
+        .filter_map(|(ip, instruction)| match instruction {
+            Instruction::FuncInfo {
+                function: Operand::Atom(Some(function)),
+                arity: Operand::Unsigned(arity),
+                ..
+            } => Some((ip, *function, u8::try_from(*arity).unwrap_or(u8::MAX))),
+            _ => None,
+        })
+        .collect();
     Module {
         name,
         generation: 0,
@@ -373,7 +389,7 @@ fn test_module(name: Atom, code: Vec<Instruction>) -> Module {
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
-        function_table: Vec::new(),
+        function_table,
         line_table: Vec::new(),
         line_info: Vec::new(),
     }
@@ -794,7 +810,11 @@ fn execute_slice_emits_telemetry_span_with_mfa_reductions_and_outcome() {
     let mut process = Process::new(44, DEFAULT_HEAP_SIZE);
     process.set_code_position(Some(CodePosition {
         module: module_name,
-        instruction_pointer: 0,
+        // Enter at the label AFTER `func_info`: that opcode is the
+        // clause-dispatch landing pad and raises `function_clause`
+        // (5bcd529), so ip 0 kills the process before the slice runs.
+        // `Scheduler::spawn_in` resolves `label_ip` for the same reason.
+        instruction_pointer: 1,
     }));
     process.set_current_module(Arc::clone(&module));
 
@@ -874,7 +894,11 @@ fn spawned_process_trace_context_nests_process_and_slice_under_workflow_span() {
         pid,
         module: module_name,
         module_version: module,
-        instruction_pointer: 0,
+        // Enter at the label AFTER `func_info`: that opcode is the
+        // clause-dispatch landing pad and raises `function_clause`
+        // (5bcd529), so ip 0 kills the process before the slice runs.
+        // `Scheduler::spawn_in` resolves `label_ip` for the same reason.
+        instruction_pointer: 1,
         args: Vec::new(),
         parent_pid: 0,
         function,
@@ -1003,7 +1027,11 @@ fn pid_narrowed_span_selection_survives_foreign_execute_slice_spans() {
         pid,
         module: module_name,
         module_version: module,
-        instruction_pointer: 0,
+        // Enter at the label AFTER `func_info`: that opcode is the
+        // clause-dispatch landing pad and raises `function_clause`
+        // (5bcd529), so ip 0 kills the process before the slice runs.
+        // `Scheduler::spawn_in` resolves `label_ip` for the same reason.
+        instruction_pointer: 1,
         args: Vec::new(),
         parent_pid: 0,
         function,
@@ -1102,7 +1130,11 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
     let mut process = Process::new(55, DEFAULT_HEAP_SIZE);
     process.set_code_position(Some(CodePosition {
         module: module_name,
-        instruction_pointer: 0,
+        // Enter at the label AFTER `func_info`: that opcode is the
+        // clause-dispatch landing pad and raises `function_clause`
+        // (5bcd529), so ip 0 kills the process before the slice runs.
+        // `Scheduler::spawn_in` resolves `label_ip` for the same reason.
+        instruction_pointer: 1,
     }));
     process.set_current_module(Arc::clone(&module));
     for index in 0..5 {

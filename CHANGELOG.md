@@ -240,14 +240,35 @@ enumerated list is a second copy of the feature set, and it drifts the first
 time somebody adds a feature and forgets the gate. This way a newly declared
 feature is covered by construction.
 
-⛔ **Known-red and deliberately NOT gated yet:** `cargo test --workspace
---all-features` fails — 1838 passed, **4 failed**, all four telemetry-gated
-`scheduler::tests`. They are **not** the known parallel-run OTel flake: they
-fail identically under `--test-threads=1`. Probed, `execute_slice` returns
-`Exited(Error, nil)` where the tests expect `Requeue`. Whether that is a stale
-test setup or a live scheduler change is **unresolved** and tracked separately;
-the all-features *tests* leg lands when it is green, and is called out here
-rather than quietly dropped.
+✅ **That known-red bar is now RESOLVED.** It was declared here as 1838 passed,
+**4 failed**, all four telemetry-gated `scheduler::tests`, with the cause —
+stale test setup or live scheduler change — explicitly unresolved. It was a
+stale setup, but by a mechanism neither candidate named, and the comfortable
+half of the guess was wrong too.
+
+All four entered at `instruction_pointer: 0`, which in their module layout is
+the `FuncInfo` instruction — the multi-clause dispatch **landing pad**. Since
+`5bcd529` (shipped in `0.16.3`) `func_info` raises a catchable
+`error:function_clause` instead of continuing, so each test killed its process
+on its first instruction, before the slice ran. **`shutdown` was irrelevant**:
+a probe with the shutdown call removed produced byte-identical outcomes, and a
+`Return` module expecting `Exited(Normal)` failed the same way, so the fault
+was never about yielding. Entered one instruction later, a looping process is
+preempted and requeued exactly as asserted — **there is no scheduler fairness
+defect**, and production never had one: `Scheduler::spawn_in` resolves
+`label_ip` and enters after the pad.
+
+Fixing that exposed a second one. With a live entry point the remaining test
+reported `code.module = "put_chars"`, reproducibly and alone. The `test_module`
+scaffold built an **empty `function_table`**, so `Module::mfa_at_ip` returned
+`None` for every ip and the span fell back to `Atom::NIL` — which resolved to a
+real, unrelated name because these tests build their table with
+`AtomTable::new()`, a constructor that seats **no** constants and assigns
+indices from 0, colliding with every `Atom::*`. The scaffold now derives its
+`function_table` from its `FuncInfo` instructions, mirroring the loader.
+
+`cargo test --workspace --all-features` is now **1842 passed, 0 failed**, and
+the all-features *tests* leg is unblocked. Full record in `gate-logs/98/`.
 
 ### Changed (breaking) — `resolve_imports` returns `Vec<ResolvedImport>`, not `Vec<Option<…>>`
 
