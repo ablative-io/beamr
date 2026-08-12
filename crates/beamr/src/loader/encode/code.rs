@@ -25,7 +25,7 @@ pub(crate) fn encode_code_chunk(
     let mut function_count = 0_u32;
 
     let mut body = Vec::new();
-    for instruction in instructions {
+    for (index, instruction) in instructions.iter().enumerate() {
         opcode_max = opcode_max.max(u32::from(instruction_opcode(instruction)?));
         if let Instruction::Label { label } = instruction {
             label_count = label_count.max(*label);
@@ -33,7 +33,11 @@ pub(crate) fn encode_code_chunk(
         if matches!(instruction, Instruction::FuncInfo { .. }) {
             function_count += 1;
         }
-        encode_instruction(&mut body, instruction, atoms)?;
+        // Operand writers raise errors without a position — this walk is the
+        // only place that knows one, so it attaches the instruction index that
+        // makes a refusal actionable rather than merely loud.
+        encode_instruction(&mut body, instruction, atoms)
+            .map_err(|error| error.at_instruction(index))?;
     }
 
     let mut chunk = Vec::with_capacity(20 + body.len());

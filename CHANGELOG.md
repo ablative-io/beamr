@@ -161,6 +161,51 @@ same commit. That is this commit — see the `0.18.1` entry.)*
 
 ## Unreleased
 
+### Changed (breaking, feature `encode`) — the encoder now REFUSES modules containing typed registers
+
+⛔ **`encode_module` returns an error instead of silently writing a broken
+module.** OTP 26+ emits typed-register (`#tr{}`) operands, each carrying an index
+into the module's `Type` chunk. beamr's decoder keeps the index and **drops the
+table**, and the encoder emits no `Type` chunk — so every re-encoded module
+carrying one had `Code` operands pointing into a chunk that was not in the
+container.
+
+**This produced no error of any kind.** beamr's own loader reads the index and
+ignores the table, so such a module round-tripped through beamr byte-for-
+structure perfectly and the ratchet went green; every other BEAM tool got a
+dangling reference. A silent fallback wearing a success exit code is the
+failure mode that hides longest, so the encoder now refuses, **naming the
+offending instruction index and `Type` entry**.
+
+**Measured scale: 55 of the 105 committed `.beam` fixtures** contain at least
+one typed register — the encoder could not faithfully represent a majority of
+real modules, and said nothing. This is why the refusal lands before the fix
+rather than with it.
+
+**This is a guard, not the fix.** The fix is to carry the raw `Type` chunk
+bytes through `ParsedModule` and re-emit them verbatim; the refusal is what
+stops the silent-success state existing in the meantime, and it disappears when
+the fix lands. Downgrading typed registers to plain registers was considered and
+**rejected**: `decode -> encode -> decode` structural equality is the encoder's
+whole ratchet, and a lossy rewrite would spend the instrument that catches the
+next regression in order to buy a green run.
+
+Blast radius: `encode` is **not** a default feature and has no in-tree caller
+outside the round-trip tests. External callers that encode OTP 26+ modules will
+now get a named error where they previously got bytes no other tool could read.
+
+### Fixed — the clippy gate never linted the `encode` module
+
+The canon `clippy` leg ran without `--features beamr/encode`, so the entire
+encoder was invisible to it — the **same blind spot** as the `tests` leg fixed
+in the entry below, one leg over. It was hiding a live `vec_init_then_push`
+warning introduced by that very fix. Both are corrected: the leg now passes the
+feature, and the warning is gone.
+
+⚠️ Finding a leg that skips a module is not evidence about that leg alone. The
+adjacent-leg question — *does anything else compile this code?* — is the one
+worth asking at the time.
+
 ### Changed (breaking) — `resolve_imports` returns `Vec<ResolvedImport>`, not `Vec<Option<…>>`
 
 `resolve_imports` declared `Vec<Option<ResolvedImport>>` while **never producing

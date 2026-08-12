@@ -31,17 +31,74 @@ pub enum EncodeError {
     /// An instruction shape cannot be expressed (e.g. a `MakeFun` with an
     /// operand count matching neither `make_fun2` nor `make_fun3`).
     UnsupportedInstruction,
+    /// A typed-register operand was reached. OTP 26+ emits `#tr{}` operands
+    /// carrying an index into the module's `Type` chunk; beamr's decoder keeps
+    /// the index but drops the table, so re-emitting the operand would produce
+    /// a `Code` chunk pointing into a chunk this encoder never writes.
+    ///
+    /// ⛔ Refusing is deliberate and is NOT the eventual fix. Until the `Type`
+    /// chunk is carried through `ParsedModule` and re-emitted verbatim, the
+    /// only honest options are "refuse loudly" and "emit a module whose
+    /// operands dangle". The second one wears a success exit code, which is
+    /// how it went unnoticed: every such module round-tripped perfectly
+    /// through beamr's own loader and was unreadable by every other tool.
+    TypedRegisterWithoutTypeChunk {
+        /// Position in the module's instruction stream, when the operand was
+        /// reached through the `Code` chunk walk. `None` when an operand is
+        /// encoded outside that walk, where no index exists to report.
+        instruction_index: Option<usize>,
+        /// The `Type` chunk entry the operand names — the datum that has no
+        /// home in the emitted container.
+        type_index: u64,
+    },
+}
+
+impl EncodeError {
+    /// Attaches an instruction position to an error raised while encoding that
+    /// instruction's operands. Errors that carry no position are unchanged.
+    pub(crate) fn at_instruction(self, index: usize) -> Self {
+        match self {
+            Self::TypedRegisterWithoutTypeChunk { type_index, .. } => {
+                Self::TypedRegisterWithoutTypeChunk {
+                    instruction_index: Some(index),
+                    type_index,
+                }
+            }
+            other => other,
+        }
+    }
 }
 
 impl fmt::Display for EncodeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self {
-            Self::AtomNotInTable => "operand atom is absent from the module atom table",
-            Self::ValueOutOfRange => "value exceeds the width of its BEAM chunk field",
-            Self::MalformedBigInteger => "big-integer literal is not a sign byte plus magnitude",
-            Self::UnsupportedInstruction => "instruction shape cannot be encoded",
-        };
-        formatter.write_str(message)
+        match self {
+            Self::AtomNotInTable => {
+                formatter.write_str("operand atom is absent from the module atom table")
+            }
+            Self::ValueOutOfRange => {
+                formatter.write_str("value exceeds the width of its BEAM chunk field")
+            }
+            Self::MalformedBigInteger => {
+                formatter.write_str("big-integer literal is not a sign byte plus magnitude")
+            }
+            Self::UnsupportedInstruction => {
+                formatter.write_str("instruction shape cannot be encoded")
+            }
+            Self::TypedRegisterWithoutTypeChunk {
+                instruction_index,
+                type_index,
+            } => {
+                write!(
+                    formatter,
+                    "typed-register operand names `Type` chunk entry {type_index}, \
+                     which this encoder does not emit"
+                )?;
+                match instruction_index {
+                    Some(index) => write!(formatter, " (instruction {index})"),
+                    None => Ok(()),
+                }
+            }
+        }
     }
 }
 
@@ -78,11 +135,12 @@ pub fn encode_module(
     // remains conditional: stripping it from a module that HAS literals leaves
     // dangling references, so that arm of the experiment is a confound rather
     // than evidence that it is mandatory.
-    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = Vec::new();
-    chunks.push((b"AtU8", encode_atom_chunk(&module.atoms, &encoder)?));
-    chunks.push((b"Code", encode_code_chunk(&module.instructions, &encoder)?));
-    chunks.push((b"ImpT", encode_import_chunk(&module.imports, &encoder)?));
-    chunks.push((b"ExpT", encode_export_chunk(&module.exports, &encoder)?));
+    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = vec![
+        (b"AtU8", encode_atom_chunk(&module.atoms, &encoder)?),
+        (b"Code", encode_code_chunk(&module.instructions, &encoder)?),
+        (b"ImpT", encode_import_chunk(&module.imports, &encoder)?),
+        (b"ExpT", encode_export_chunk(&module.exports, &encoder)?),
+    ];
     if !module.lambdas.is_empty() {
         chunks.push((b"FunT", encode_lambda_chunk(&module.lambdas, &encoder)?));
     }

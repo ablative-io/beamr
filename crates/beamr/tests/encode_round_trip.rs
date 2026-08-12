@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use beamr::atom::AtomTable;
 use beamr::loader::decode::{Instruction, Literal, Operand, TypeTestOp};
-use beamr::loader::encode::encode_module;
+use beamr::loader::encode::{EncodeError, encode_module};
 use beamr::loader::load::{ParsedModule, resolve_imports};
 use beamr::loader::validate::validate_module;
 use beamr::loader::{ExportEntry, load_beam_chunks};
@@ -72,6 +72,16 @@ enum Outcome {
     /// loader rejects, or produced a module that differs from the original.
     /// Every one of these is an encoder bug to fix.
     Failed(String),
+    /// The encoder REFUSED the module by name (#95): it contains typed-register
+    /// operands, whose `Type` chunk beamr's decoder drops, so the encoder cannot
+    /// represent it faithfully.
+    ///
+    /// This is neither a pass nor an encoder bug — it is the guard working. It
+    /// gets its own variant so the count stays VISIBLE: absorbing refusals into
+    /// `Passed` would hide the open defect behind a green run, and classing them
+    /// `Failed` would hold the guard hostage to the fix it precedes. When #95's
+    /// fix lands and the `Type` chunk is carried, this tally drops to zero.
+    Refused(String),
 }
 
 /// Drives one `.beam` payload through `decode -> encode -> decode` and reports
@@ -85,6 +95,19 @@ fn drive(bytes: &[u8]) -> Outcome {
     };
     let encoded = match encode_module(&original, &table) {
         Ok(bytes) => bytes,
+        // A typed-register refusal is the #95 guard firing, not an encoder
+        // fault. It is matched on the ERROR VALUE, never on the message text,
+        // so a reworded message cannot silently reclassify a real failure as an
+        // expected refusal.
+        Err(EncodeError::TypedRegisterWithoutTypeChunk {
+            instruction_index,
+            type_index,
+        }) => {
+            return Outcome::Refused(format!(
+                "typed register at instruction {} names Type entry {type_index}",
+                instruction_index.map_or_else(|| "?".to_string(), |index| index.to_string())
+            ));
+        }
         Err(error) => return Outcome::Failed(format!("encode failed: {error}")),
     };
     let reloaded = match load_beam_chunks(&encoded, &table) {
@@ -279,10 +302,14 @@ fn every_fixture_round_trips_through_encode() {
     );
 
     let mut failures = Vec::new();
+    let mut refused = Vec::new();
     for path in &fixtures {
         let bytes = std::fs::read(path).expect("fixture readable");
         match drive(&bytes) {
             Outcome::Passed => {}
+            Outcome::Refused(reason) => {
+                refused.push(format!("{}: {reason}", path.display()));
+            }
             Outcome::Excluded(reason) => {
                 // A committed fixture that the decoder itself rejects is a
                 // regression in the fixture corpus, not an acceptable skip.
@@ -295,6 +322,20 @@ fn every_fixture_round_trips_through_encode() {
                 failures.push(format!("{}: {detail}", path.display()));
             }
         }
+    }
+
+    // Stated so a run reports what it declined, not just that nothing failed.
+    // ⚠️ The harness CAPTURES this on a passing test — it surfaces on failure or
+    // under `--nocapture`, which is how the battery records the tally. It is not
+    // visible in an ordinary green `cargo test` run, and claiming otherwise
+    // would be the same silent-success shape this whole lane is about.
+    println!(
+        "=== committed-fixture ratchet: {} fixtures, {} refused (#95 typed registers) ===",
+        fixtures.len(),
+        refused.len()
+    );
+    for line in &refused {
+        println!("  REFUSED {line}");
     }
 
     assert!(
@@ -338,6 +379,7 @@ fn corpus_round_trips_when_env_set() {
     let mut passed = 0_usize;
     let mut failures = Vec::new();
     let mut excluded = Vec::new();
+    let mut refused = Vec::new();
     for path in &beams {
         let bytes = match std::fs::read(path) {
             Ok(bytes) => bytes,
@@ -349,6 +391,7 @@ fn corpus_round_trips_when_env_set() {
         match drive(&bytes) {
             Outcome::Passed => passed += 1,
             Outcome::Excluded(reason) => excluded.push(format!("{}: {reason}", path.display())),
+            Outcome::Refused(reason) => refused.push(format!("{}: {reason}", path.display())),
             Outcome::Failed(detail) => failures.push(format!("{}\n  {detail}", path.display())),
         }
     }
@@ -357,7 +400,14 @@ fn corpus_round_trips_when_env_set() {
     println!("  discovered .beam files : {}", beams.len());
     println!("  encoder round-tripped  : {passed}");
     println!("  excluded (undecodable) : {}", excluded.len());
+    println!("  refused (#95 typed reg): {}", refused.len());
     println!("  encoder failures       : {}", failures.len());
+    if !refused.is_empty() {
+        println!("--- refused (guard fired; encoder declined by name) ---");
+        for line in &refused {
+            println!("  REFUSED {line}");
+        }
+    }
     if !excluded.is_empty() {
         println!("--- excluded (decoder declined; encoder not exercised) ---");
         for line in &excluded {

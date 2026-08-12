@@ -96,12 +96,27 @@ pub(crate) fn encode_operand(
             }
         }
         Operand::TypedRegister {
-            register,
+            register: _,
             type_index,
         } => {
-            push_unsigned(out, 7, 5);
-            encode_operand(out, register, atoms)?;
-            push_unsigned(out, 0, *type_index);
+            // ⛔ REFUSE. Writing this operand emits a `#tr{}` whose type index
+            // points into a `Type` chunk `encode_module` never produces, so the
+            // result is a container OTP's tools cannot resolve — and beamr's own
+            // loader accepts it happily, because it reads the index and ignores
+            // the table. That combination is a silent fallback wearing a success
+            // exit: the encoder reports Ok, the round-trip ratchet goes green,
+            // and the bytes are wrong everywhere else.
+            //
+            // The guard is deliberately here, in the single operand writer, and
+            // not in a separate walk over `Instruction`'s 64 variants: every
+            // operand of every instruction — including nested `Operand::List`
+            // members, which recurse through this function — must pass through
+            // this match arm. A hand-written walk would have to be kept in step
+            // with the enum by someone remembering to.
+            return Err(EncodeError::TypedRegisterWithoutTypeChunk {
+                instruction_index: None,
+                type_index: *type_index,
+            });
         }
     }
     Ok(())
@@ -212,6 +227,73 @@ mod tests {
         AtomTable::with_common_atoms()
     }
 
+    /// Encodes one operand and returns the error, asserting the encoder refused.
+    fn refusal(operand: &Operand) -> EncodeError {
+        let atom_table = table();
+        let encoder = AtomEncoder::new(&[], &atom_table);
+        let mut bytes = Vec::new();
+        encode_operand(&mut bytes, operand, &encoder).expect_err("encoder must refuse this operand")
+    }
+
+    /// #95. A typed register names a `Type` chunk entry, and `encode_module`
+    /// emits no `Type` chunk — so writing the operand produces a `Code` chunk
+    /// referencing a table that is not in the container. beamr's own loader
+    /// reads the index and ignores the table, so this round-tripped green while
+    /// being unreadable by every other BEAM tool.
+    #[test]
+    fn typed_registers_are_refused_by_name() {
+        let error = refusal(&Operand::TypedRegister {
+            register: Box::new(Operand::X(4)),
+            type_index: 12,
+        });
+        assert_eq!(
+            error,
+            EncodeError::TypedRegisterWithoutTypeChunk {
+                instruction_index: None,
+                type_index: 12,
+            }
+        );
+        // "Loudly and by name": the message must carry the offending index, or
+        // a reader has to go find it themselves.
+        let rendered = error.to_string();
+        assert!(
+            rendered.contains("12") && rendered.contains("Type"),
+            "refusal must name the Type chunk entry, got: {rendered}"
+        );
+    }
+
+    /// The guard lives in the single operand writer precisely so nesting is
+    /// covered by construction. This proves the recursion rather than trusting
+    /// it: a typed register buried in a list must refuse exactly the same way.
+    #[test]
+    fn typed_registers_nested_in_a_list_are_refused() {
+        let error = refusal(&Operand::List(vec![
+            Operand::X(1),
+            Operand::TypedRegister {
+                register: Box::new(Operand::Y(2)),
+                type_index: 7,
+            },
+        ]));
+        assert_eq!(
+            error,
+            EncodeError::TypedRegisterWithoutTypeChunk {
+                instruction_index: None,
+                type_index: 7,
+            }
+        );
+    }
+
+    /// Positive control for both refusal tests: the surrounding shapes encode
+    /// fine, so the refusals above are caused by the typed register and not by
+    /// the operand wrapper or an unrelated encoder fault.
+    #[test]
+    fn the_refusal_control_encodes_when_the_typed_register_is_absent() {
+        let atoms = table();
+        let plain = Operand::List(vec![Operand::X(1), Operand::Y(2)]);
+        assert_eq!(round_trip(&plain, &[], &atoms), plain);
+        assert_eq!(round_trip(&Operand::X(4), &[], &atoms), Operand::X(4));
+    }
+
     #[test]
     fn small_and_wide_registers_round_trip() {
         let atoms = table();
@@ -293,10 +375,6 @@ mod tests {
                 Allocation::Funs(4),
                 Allocation::Unknown { tag: 9, value: 7 },
             ]),
-            Operand::TypedRegister {
-                register: Box::new(Operand::X(4)),
-                type_index: 12,
-            },
         ];
         for operand in &operands {
             assert_eq!(round_trip(operand, &[], &atoms), *operand);
