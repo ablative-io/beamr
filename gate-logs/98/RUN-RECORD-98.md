@@ -127,3 +127,33 @@ attributed here.
 Separately, `cargo test --workspace --all-features` — the leg this lane
 unblocks — is **1842 passed, 0 failed**, against the 1838/4 recorded when it
 was declared known-red.
+
+## The `tests-all-features` leg, added once green — with its own falsifier
+
+#97 declared this leg known-red and **withheld** it rather than dropping it
+quietly. It is green now, so it is added. A leg is worth nothing until it has
+been shown it can fail, so it ships with a two-arm control.
+
+The specimen: revert **one** of the four tests to `instruction_pointer: 0`.
+
+| arm | leg | result |
+|---|---|---|
+| specimen present | `tests-all-features` (`--all-features`) | **FAILED — 1841 passed, 1 failed** |
+| specimen present | `tests` (`--features beamr/encode`) | **green — 0 FAILED result lines** |
+
+Both arms ran against the **same bytes on disk**. The sibling leg cannot see
+this failure at all, which is the reach claim stated as a measurement rather
+than an argument: `--features beamr/encode` compiles no telemetry code, so
+these four — the only direct `execute_slice` call sites in the tree — were
+executed by **nothing** until this leg existed.
+
+That is the same hole `clippy-all-features` was added for, one layer down:
+`clippy-all-features` proves telemetry **compiles**, this leg proves it
+**runs**. The two must not be collapsed.
+
+`crates/beamr/src/scheduler/tests.rs` was restored to its committed bytes and
+the restoration was **verified** (`git status --porcelain` on that path, empty)
+rather than assumed — #97's own erratum 2 was an unchecked cleanup step.
+
+Full canon with the leg present: **COMPLETE 8/8, pin stable**
+(`battery-98b.log`).
