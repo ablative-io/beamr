@@ -1,0 +1,5 @@
+ M gates.json
+?? .ast-grep/fixtures/
+?? .claude/skills/
+?? gate-logs/97-gate-checker-control/
+?? scripts/gate-blocking-call.sh
