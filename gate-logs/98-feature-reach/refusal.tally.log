@@ -1,0 +1,65 @@
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 22.64s
+     Running tests/encode_round_trip.rs (target/debug/deps/encode_round_trip-229771cbf545839c)
+
+running 1 test
+=== committed-fixture ratchet: 105 fixtures, 55 refused (#95 typed registers) ===
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/bs_create_bin_fixture.beam: typed register at instruction 14 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/caught_exception_exit.beam: typed register at instruction 11 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/fc_probe.beam: typed register at instruction 20 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/beamr_gate.beam: typed register at instruction 30 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@bit_array.beam: typed register at instruction 56 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@dict.beam: typed register at instruction 13 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@dynamic@decode.beam: typed register at instruction 46 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@float.beam: typed register at instruction 85 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@int.beam: typed register at instruction 8 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@json.beam: typed register at instruction 69 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@list.beam: typed register at instruction 21 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@option.beam: typed register at instruction 7 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@set.beam: typed register at instruction 142 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@string.beam: typed register at instruction 88 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam@uri.beam: typed register at instruction 34 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam_json_ffi.beam: typed register at instruction 15 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_gate/gleam_stdlib.beam: typed register at instruction 4 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/actor_spike.beam: typed register at instruction 5 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam@bit_array.beam: typed register at instruction 56 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam@dict.beam: typed register at instruction 13 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam@dynamic@decode.beam: typed register at instruction 46 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam@erlang@process.beam: typed register at instruction 43 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam@float.beam: typed register at instruction 85 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam@int.beam: typed register at instruction 8 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam@list.beam: typed register at instruction 21 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam@otp@actor.beam: typed register at instruction 30 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam@string.beam: typed register at instruction 88 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam_erlang_ffi.beam: typed register at instruction 15 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam_otp_external.beam: typed register at instruction 146 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/gleam_otp_spike/beams/gleam_stdlib.beam: typed register at instruction 4 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/guard_bif_probe.beam: typed register at instruction 18 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/if_probe.beam: typed register at instruction 30 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/monitor_down_probe.beam: typed register at instruction 26 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/otp/gleam@erlang@process.beam: typed register at instruction 45 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/otp/gleam@otp@actor.beam: typed register at instruction 190 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/otp/gleam@otp@supervisor.beam: typed register at instruction 167 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/otp/gleam_erlang_ffi.beam: typed register at instruction 15 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/otp/gleam_otp_external.beam: typed register at instruction 131 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/proof.beam: typed register at instruction 28 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/recv_marker_fixture.beam: typed register at instruction 24 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/recv_marker_timeout_fixture.beam: typed register at instruction 16 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/suspend_binary_fixture.beam: typed register at instruction 22 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/fixtures/suspend_reexec_fixture.beam: typed register at instruction 23 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@bit_array.beam: typed register at instruction 41 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@dict.beam: typed register at instruction 13 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@dynamic@decode.beam: typed register at instruction 155 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@float.beam: typed register at instruction 104 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@int.beam: typed register at instruction 8 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@list.beam: typed register at instruction 21 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@option.beam: typed register at instruction 7 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@set.beam: typed register at instruction 105 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@string.beam: typed register at instruction 88 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam@uri.beam: typed register at instruction 28 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/gleam_stdlib.beam: typed register at instruction 4 names Type entry 1
+  REFUSED /Users/tom/Developer/ablative/stack/beamr/test-workflows/sample/sample_workflow@@main.beam: typed register at instruction 31 names Type entry 1
+test every_fixture_round_trips_through_encode ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.20s
+
