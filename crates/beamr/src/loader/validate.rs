@@ -16,7 +16,7 @@ use crate::module::ResolvedImport;
 /// Validates decoded instructions and import operands before registration.
 pub fn validate_module(
     parsed: &ParsedModule,
-    resolved_imports: &[Option<ResolvedImport>],
+    resolved_imports: &[ResolvedImport],
 ) -> Result<(), LoadError> {
     let labels = collect_labels(&parsed.instructions);
     let functions = collect_function_arities(&parsed.instructions);
@@ -132,7 +132,7 @@ fn validate_control_flow(
     instruction_index: usize,
     instruction: &Instruction,
     parsed: &ParsedModule,
-    resolved_imports: &[Option<ResolvedImport>],
+    resolved_imports: &[ResolvedImport],
     labels: &HashSet<u32>,
     functions: &HashMap<u32, u8>,
 ) -> Result<(), LoadError> {

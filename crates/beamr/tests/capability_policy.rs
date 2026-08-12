@@ -27,13 +27,8 @@ fn parsed_with_import(
     parsed
 }
 
-fn first_target(
-    resolved: &[Option<beamr::module::ResolvedImport>],
-) -> Option<ResolvedImportTarget> {
-    resolved
-        .first()
-        .and_then(Option::as_ref)
-        .map(|entry| entry.target)
+fn first_target(resolved: &[beamr::module::ResolvedImport]) -> Option<ResolvedImportTarget> {
+    resolved.first().map(|entry| entry.target)
 }
 
 #[test]

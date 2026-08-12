@@ -161,6 +161,30 @@ same commit. That is this commit — see the `0.18.1` entry.)*
 
 ## Unreleased
 
+### Changed (breaking) — `resolve_imports` returns `Vec<ResolvedImport>`, not `Vec<Option<…>>`
+
+`resolve_imports` declared `Vec<Option<ResolvedImport>>` while **never producing
+a `None`** — all four push sites wrapped in `Some`, and an import that fails to
+resolve becomes a `ResolvedImportTarget::Unresolved` *variant*, not an absence.
+The `Option` was vestigial, and it made a dangerous shape expressible.
+
+**What it would have cost.** The vector is positional: entry `i` is the
+resolution of `ImpT` entry `i`, and instructions name their target by that same
+index. Loading ran `resolved_by_index.into_iter().flatten().collect()` before
+handing the vector on, and `jit/runtime.rs` indexes the stored vector by the
+original instruction index. A single `None` would therefore have shifted every
+later import down one and **silently dispatched calls to the wrong function** —
+no error, no crash, a valid-looking target. Validation would not have caught it:
+it bounds-checks against the *unflattened* slice and never inspects `Some`.
+
+No released version could produce a `None`, so **this fixes no observed
+misbehaviour** — it removes the ability to express one. The `flatten` is gone
+along with the `Option`, and the shift is now a **compile error** rather than an
+invariant someone has to remember.
+
+Callers that matched on `Option` should drop that layer; callers that already
+treat every entry as present need no change.
+
 ### Fixed — modules beamr writes can now be opened by OTP's own tools
 
 `encode_module` emitted `ImpT`, `ExpT` and `StrT` **only when they had

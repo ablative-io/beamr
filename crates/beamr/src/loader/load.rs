@@ -501,12 +501,14 @@ pub fn prepare_module_with_origin_and_policy(
     let (resolved_by_index, report) =
         resolve_imports(&parsed, module_registry, bif_registry, capability_policy);
     validate_module(&parsed, &resolved_by_index)?;
-    let module = module_from_parsed(
-        parsed,
-        resolved_by_index.into_iter().flatten().collect(),
-        atom_table,
-        origin,
-    )?;
+    // `resolved_by_index` is positional: entry `i` is the resolution of `ImpT`
+    // entry `i`, and instructions name their target by that same index. It is
+    // handed to `module_from_parsed` WHOLE and unfiltered, because dropping any
+    // entry would shift every later one down and silently redirect calls to the
+    // wrong function. The type carries that requirement now — the vector holds
+    // `ResolvedImport`, not `Option<ResolvedImport>`, so there is nothing to
+    // filter and no way to express the shift.
+    let module = module_from_parsed(parsed, resolved_by_index, atom_table, origin)?;
     Ok((module, report))
 }
 
@@ -515,7 +517,7 @@ pub fn resolve_imports(
     module_registry: &ModuleRegistry,
     bif_registry: &impl BifRegistry,
     capability_policy: &dyn CapabilityPolicy,
-) -> (Vec<Option<ResolvedImport>>, UnresolvedImportReport) {
+) -> (Vec<ResolvedImport>, UnresolvedImportReport) {
     let mut resolved = Vec::with_capacity(parsed.imports.len());
     let mut unresolved = Vec::new();
     let mut deferred = Vec::new();
@@ -536,12 +538,12 @@ pub fn resolve_imports(
                     capability: entry.capability,
                 }
             };
-            resolved.push(Some(ResolvedImport {
+            resolved.push(ResolvedImport {
                 module: import.module,
                 function: import.function,
                 arity: import.arity,
                 target,
-            }));
+            });
             continue;
         }
 
@@ -551,7 +553,7 @@ pub fn resolve_imports(
                 import.function,
                 import.arity,
             ));
-            resolved.push(Some(ResolvedImport {
+            resolved.push(ResolvedImport {
                 module: import.module,
                 function: import.function,
                 arity: import.arity,
@@ -560,7 +562,7 @@ pub fn resolve_imports(
                     function: import.function,
                     arity: import.arity,
                 },
-            }));
+            });
             continue;
         };
 
@@ -570,7 +572,7 @@ pub fn resolve_imports(
             .copied()
         {
             Some(label) => {
-                resolved.push(Some(ResolvedImport {
+                resolved.push(ResolvedImport {
                     module: import.module,
                     function: import.function,
                     arity: import.arity,
@@ -578,7 +580,7 @@ pub fn resolve_imports(
                         module: import.module,
                         label,
                     },
-                }));
+                });
             }
             None => {
                 unresolved.push(UnresolvedImportEntry::new(
@@ -586,7 +588,7 @@ pub fn resolve_imports(
                     import.function,
                     import.arity,
                 ));
-                resolved.push(Some(ResolvedImport {
+                resolved.push(ResolvedImport {
                     module: import.module,
                     function: import.function,
                     arity: import.arity,
@@ -595,7 +597,7 @@ pub fn resolve_imports(
                         function: import.function,
                         arity: import.arity,
                     },
-                }));
+                });
             }
         }
     }
@@ -979,10 +981,7 @@ mod tests {
         assert!(report.is_empty());
         assert!(report.deferred_imports().is_empty());
         assert!(matches!(
-            resolved
-                .first()
-                .and_then(|entry| entry.as_ref())
-                .map(|entry| entry.target),
+            resolved.first().map(|entry| entry.target),
             Some(ResolvedImportTarget::Code { label: 42, .. })
         ));
     }
@@ -1040,10 +1039,7 @@ mod tests {
 
         assert!(report.is_empty());
         assert!(matches!(
-            resolved
-                .first()
-                .and_then(|entry| entry.as_ref())
-                .map(|entry| entry.target),
+            resolved.first().map(|entry| entry.target),
             Some(ResolvedImportTarget::Native(_))
         ));
     }
@@ -1093,10 +1089,8 @@ mod tests {
         assert!(report.has_denied());
         assert_eq!(report.denied_imports().len(), 1);
         assert!(report.to_string().contains("capability denied"));
-        let Some(ResolvedImportTarget::Denied { capability }) = resolved
-            .first()
-            .and_then(|entry| entry.as_ref())
-            .map(|entry| entry.target)
+        let Some(ResolvedImportTarget::Denied { capability }) =
+            resolved.first().map(|entry| entry.target)
         else {
             panic!("denied native should still occupy import slot");
         };
@@ -1140,7 +1134,6 @@ mod tests {
         assert!(matches!(
             resolved
                 .first()
-                .and_then(|entry| entry.as_ref())
                 .map(|entry| entry.target),
             Some(ResolvedImportTarget::Unresolved { module, function: unresolved_function, arity: 0 })
                 if module == callee && unresolved_function == function
@@ -1179,7 +1172,6 @@ mod tests {
         assert!(matches!(
             resolved
                 .first()
-                .and_then(|entry| entry.as_ref())
                 .map(|entry| entry.target),
             Some(ResolvedImportTarget::Deferred { module, function: deferred_function, arity: 0 })
                 if module == callee && deferred_function == function
