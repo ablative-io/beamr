@@ -4,10 +4,16 @@
 
 **Affects 40 of the 58 published versions: every version from `0.4.0` through
 `0.18.1`, with no holes in the published sequence. FIXED IN `0.18.2`** — see
-that entry's "Fixed" section below. Backports to the `0.17.x` and `0.16.x`
-lines are in preparation and this advisory will name them when they exist;
-until then, note that each `0.x` minor is a semver major, so `^0.16` and
-`^0.17` requirements **cannot** resolve `0.18.2` and are not carried by it.
+that entry's "Fixed" section below.
+
+**`0.18.2` reaches no existing consumer on its own.** Each `0.x` minor is a
+semver major, so `^0.16` and `^0.17` requirements **cannot** resolve `0.18.2`
+and are not carried by it — moving across a minor is a manifest edit, not a
+lock refresh. **The `0.16.x` line is unpatched, and backporting this fix to it
+was considered and ruled against** — the runtime seam the fix reaches through
+does not exist at that base, so a `0.16.x` fix is a redesign rather than a port.
+A version is patched only when it appears in this file with its own entry
+saying so; this file is the list, and it is appended to as releases are cut.
 
 **What happens.** With the JIT enabled, once a function has been compiled, a
 `!` executed from that compiled code delivers **only when the destination is
@@ -199,11 +205,42 @@ in the module the frame claims**. Resolution now lives in one place,
 
 The two renderers had also drifted: the in-VM one skipped line resolution for
 compiled frames, the crash-report one did not, and a compiled frame's
-instruction pointer is a placeholder zero — so every compiled frame in a crash
-report carried the module's *first* line-table entry as though it were the
-raise site. A compiled frame now reports **no line rather than a plausible
-wrong one**; a fabricated value is worse than an absent one precisely because
-it looks measured.
+instruction pointer is a placeholder zero. A compiled frame now reports no line
+**structurally**, rather than resolving one from a placeholder and relying on
+what that placeholder happens to produce.
+
+🔴 **CORRECTION, recorded because an earlier draft of this entry overstated
+this half.** That draft said the crash-report renderer carried "the module's
+first line-table entry" as the frame's line. **It does not.** `line_at_ip`
+binary-searches the line table and subtracts one from the insertion point, so
+`ip = 0` yields the first entry only if a line marker sits at **exactly** ip 0
+— and no measured module has one.
+
+**Stated with its ground, because the ground is bounded.** Across all 24 sample
+`.beam` modules, decoded through beamr's own loader, the instruction at ip 0 is
+a `label` and the first `line` marker is at ip 1 — without exception; and the
+loader's own producer-path test has asserted `line_at_ip(0) == None` on a built
+module throughout. That is **the observed behaviour of the current compiler
+over the measured set, not a rule beamr enforces.** The loader validates
+nothing about prologue ordering, so nothing here forbids some future producer
+emitting a `line` at ip 0. ⇒ **In every module measured, `line_at_ip(0)` is
+`None` and the placeholder produced no line at all** — and the claim is not
+extended past that population.
+
+That bound is also the honest justification for keeping the guard: it protects
+against a producer that does not behave the way today's does. A new loader test
+gates the assumption directly, so if that day comes, the fixtures depending on
+it fail loudly instead of quietly becoming fiction.
+
+⇒ **The observable effect of this half of the fix is nil.** It removes a
+correctness-by-coincidence — nothing forbids a producer emitting a line marker
+at ip 0, and the guard no longer depends on that — but it does not stop a wrong
+line being printed, because none was. **The module splice above is the half
+with observable effect**, and that half is confirmed against a real crash
+report from a production `0.17.0`. This claim was refuted by an external
+reviewer reading the shipped `0.17.0` bytes, then re-derived independently
+here; it is corrected in place rather than quietly dropped, because a changelog
+that overstates one fix teaches its readers to discount the rest.
 
 ### Known — the frame builder has a third defect, open and unfixed
 

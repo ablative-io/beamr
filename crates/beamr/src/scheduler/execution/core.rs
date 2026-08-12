@@ -1776,9 +1776,21 @@ mod frame_resolution_tests {
 
     /// A module whose first line-table entry is line 54 — the shape that makes
     /// a fabricated line look like a measured one.
-    fn module_with_first_line(name: Atom, first_line: u32) -> Module {
+    /// A module whose line table has the shape a real one has: the first `line`
+    /// marker sits at ip 1, because ip 0 is the leading `label` of the first
+    /// function's prologue (`label → line → func_info`).
+    ///
+    /// This previously put the marker at ip **0**, which no module produced by
+    /// the loader is observed to do — measured across every `.beam` in
+    /// `test-workflows/sample` (observed behaviour, not a loader-enforced
+    /// rule), and gated by
+    /// `loader::load::tests::no_real_module_carries_a_line_marker_at_ip_zero`. A fixture the
+    /// real producer cannot build proves a defect in a world that does not
+    /// exist, and that is exactly what it did here: it made `line_at_ip(0)`
+    /// return a line, which on a real module it never can.
+    fn module_with_realistic_line_table(name: Atom, first_line: u32) -> Module {
         let mut module = module_named(name);
-        module.line_table = vec![(0, 0)];
+        module.line_table = vec![(1, 0)];
         module.line_info = vec![LineInfo {
             file: 0,
             line: first_line,
@@ -1822,18 +1834,24 @@ mod frame_resolution_tests {
     }
 
     #[test]
-    fn compiled_frame_reports_no_line_rather_than_the_modules_first_line() {
-        // With ip hardcoded to 0, `line_at_ip` returns the module's FIRST line
-        // marker for every compiled frame. That is not the raise site and never
-        // was; reporting it dresses a placeholder as a measurement.
+    fn compiled_frame_reports_no_line_from_its_placeholder_ip() {
+        // ⚠️ THIS ARM DOES NOT DISCRIMINATE, and says so rather than being
+        // quietly counted. A compiled frame's ip is a placeholder zero, and on
+        // any realistic line table `line_at_ip(0)` is already `None` — so this
+        // assertion holds both with the `!compiled` guard and without it. The
+        // guard is still right: it makes the absent line structural instead of
+        // a coincidence of where the first marker happens to sit. But removing
+        // the guard would NOT turn this red, and an earlier version of this
+        // test only appeared to discriminate because its fixture put a line
+        // marker at ip 0 — a shape the loader never produces.
         let atom_table = AtomTable::new();
         let owner = atom_table.intern("gleam_json_ffi");
         let function = atom_table.intern("int");
 
-        let pinned = Arc::new(module_with_first_line(owner, 54));
-        // Control: the fabricated value this frame would otherwise carry is a
-        // real, plausible-looking line, not an obvious sentinel.
-        assert_eq!(pinned.line_at_ip(0), Some(54));
+        let pinned = Arc::new(module_with_realistic_line_table(owner, 54));
+        // The coincidence this guard removes reliance on: with the first marker
+        // at ip 1, a lookup at the placeholder ip already finds nothing.
+        assert_eq!(pinned.line_at_ip(0), None);
 
         let mut process = Process::new(1, 128);
         process.set_raw_stacktrace(vec![compiled_frame(&pinned, (owner, function, 1))]);
@@ -1853,14 +1871,17 @@ mod frame_resolution_tests {
         let atom_table = AtomTable::new();
         let owner = atom_table.intern("gleam_json_ffi");
 
-        let mut module = module_with_first_line(owner, 54);
+        let mut module = module_with_realistic_line_table(owner, 54);
         module.function_table = vec![(0, atom_table.intern("int"), 1)];
         let pinned = Arc::new(module);
 
         let mut process = Process::new(1, 128);
         process.set_raw_stacktrace(vec![RawStackEntry {
             module: Arc::clone(&pinned),
-            ip: 0,
+            // ip 2 is a realistic interpreted position: inside the function,
+            // past its prologue `line` marker at ip 1. An interpreted frame's
+            // ip is a real position, never the compiled path's placeholder 0.
+            ip: 2,
             mfa: None,
             location_info: Term::NIL,
             compiled: false,

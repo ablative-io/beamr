@@ -559,14 +559,20 @@ mod tests {
     fn build_stacktrace_resolves_mfa_and_line_info() {
         let mut code = label20_module();
         code.function_table = vec![(0, Atom::BADARG, 1), (10, Atom::FLUSH, 2)];
-        code.line_table = vec![(0, 0), (10, 1)];
+        // First marker at ip 1, not ip 0: in every measured module ip 0 is the
+        // first function's leading `label`, so no module the loader is observed
+        // to build carries a line marker at 0 (observed, not enforced). Gated by
+        // `loader::load::tests::no_real_module_carries_a_line_marker_at_ip_zero`.
+        code.line_table = vec![(1, 0), (10, 1)];
         code.line_info = vec![
             LineInfo { file: 0, line: 123 },
             LineInfo { file: 0, line: 456 },
         ];
         let module_version = Arc::new(code.clone());
         let mut process = Process::new(1, 128);
-        set_current_location(&mut process, Arc::clone(&module_version), 0);
+        // ip 2, not 0: a real interpreted position sits past the prologue's
+        // `line` marker, and `line_at_ip` resolves the last preceding marker.
+        set_current_location(&mut process, Arc::clone(&module_version), 2);
         process
             .stack_mut()
             .push_frame(Atom::OK, 10, Arc::clone(&module_version), 1)

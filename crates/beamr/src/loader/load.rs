@@ -1185,4 +1185,75 @@ mod tests {
                 if module == callee && deferred_function == function
         ));
     }
+
+    /// CONSTRUCTIBILITY GATE. A hand-built fixture is only evidence about the
+    /// real world if the real producer can emit that shape. This asserts the
+    /// one property three test fixtures elsewhere in this crate depend on: the
+    /// loader is not observed to produce a module whose first `line` marker
+    /// sits at ip 0: in every measured module ip 0 is the first function's
+    /// leading `label` (`label → line → func_info`).
+    ///
+    /// ⚠️ This is OBSERVED BEHAVIOUR OF THE CURRENT COMPILER, NOT A RULE THIS
+    /// LOADER ENFORCES. `validate_module` says nothing about prologue ordering,
+    /// so this gate is a tripwire on an assumption, not a restatement of a
+    /// contract. That distinction is the whole point: the fixtures below depend
+    /// on the assumption, so the assumption gets a test rather than a comment.
+    ///
+    /// Why it exists: a wall in `scheduler::execution::core` built
+    /// `line_table = vec![(0, 0)]` and asserted `line_at_ip(0) == Some(54)` as
+    /// a *control*. No module the loader builds can produce that, so the wall
+    /// certified a defect description that measurement refuted. The refuting
+    /// fact was already pinned by `module_builds_function_and_line_tables`
+    /// twenty lines up — known in one file, contradicted in another. This gate
+    /// is the cheap check that would have caught it before the claim was
+    /// written.
+    ///
+    /// Failing here does NOT mean the loader is wrong. It means the fixtures
+    /// that assume this shape must be re-examined against the new reality.
+    #[test]
+    fn no_real_module_carries_a_line_marker_at_ip_zero() {
+        let dir = std::path::Path::new("../../test-workflows/sample");
+        let mut paths: Vec<_> = std::fs::read_dir(dir)
+            .expect("sample .beam directory is present")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "beam"))
+            .collect();
+        paths.sort();
+
+        // Positive control: the corpus is non-empty and actually parses, so a
+        // vacuous pass cannot masquerade as a clean one.
+        assert!(
+            paths.len() >= 20,
+            "sample corpus shrank to {} modules; this gate is only as good as \
+             the population it sweeps",
+            paths.len()
+        );
+
+        let mut checked = 0usize;
+        for path in &paths {
+            let bytes = std::fs::read(path).expect("sample module reads");
+            let atoms = AtomTable::new();
+            let parsed = load_beam_chunks(&bytes, &atoms).expect("sample module parses");
+            let first_line = parsed
+                .instructions
+                .iter()
+                .position(|instruction| matches!(instruction, Instruction::Line { .. }));
+            assert_ne!(
+                first_line,
+                Some(0),
+                "{} carries a `line` at ip 0; `line_at_ip(0)` can now return a \
+                 line, and every fixture assuming otherwise is invalid",
+                path.display()
+            );
+            assert!(
+                matches!(parsed.instructions.first(), Some(Instruction::Label { .. })),
+                "{} does not begin with a label; the prologue assumption behind \
+                 the line-table fixtures no longer holds",
+                path.display()
+            );
+            checked += 1;
+        }
+        assert_eq!(checked, paths.len(), "every sample module must be checked");
+    }
 }
