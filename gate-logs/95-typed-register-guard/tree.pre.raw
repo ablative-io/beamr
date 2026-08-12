@@ -1,0 +1,8 @@
+ M CHANGELOG.md
+ M crates/beamr/src/loader/encode/code.rs
+ M crates/beamr/src/loader/encode/compact.rs
+ M crates/beamr/src/loader/encode/container.rs
+ M crates/beamr/tests/encode_round_trip.rs
+ M gates.json
+?? .claude/skills/
+?? gate-logs/95-typed-register-guard/
