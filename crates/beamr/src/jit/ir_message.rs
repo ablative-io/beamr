@@ -7,6 +7,7 @@ use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
 use super::ir_common::{RegisterAccess, read_operand_term, write_operand_term};
+use super::runtime_message::SEND_STATUS_SENT;
 
 const RECEIVE_STATUS_MESSAGE: i64 = 0;
 const RECEIVE_STATUS_EMPTY: i64 = 1;
@@ -48,8 +49,20 @@ pub(crate) fn translate_send(
     let call = builder
         .ins()
         .call(helpers.send, &[context.process, dest_pid, message]);
-    let sent = builder.inst_results(call)[0];
-    write_operand_term(builder, context.register_file, result_dest, sent)
+    let results = builder.inst_results(call).to_vec();
+    // SEND_STATUS_ABORT: the helper parked the interpreter's ExecError on the
+    // process; the deopt return ends the slice at `call_native`'s pending-error
+    // check — it is an abort, never a restart, which is why `Send` stays out of
+    // `is_runtime_deopt_capable`.
+    let aborted = builder
+        .ins()
+        .icmp_imm(IntCC::NotEqual, results[0], i64::from(SEND_STATUS_SENT));
+    let continuation = builder.create_block();
+    builder
+        .ins()
+        .brif(aborted, context.deopt, &[], continuation, &[]);
+    builder.switch_to_block(continuation);
+    write_operand_term(builder, context.register_file, result_dest, results[1])
 }
 
 pub(crate) fn translate_loop_rec(
