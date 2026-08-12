@@ -194,6 +194,35 @@ Blast radius: `encode` is **not** a default feature and has no in-tree caller
 outside the round-trip tests. External callers that encode OTP 26+ modules will
 now get a named error where they previously got bytes no other tool could read.
 
+### Fixed — a constant-less atom table made every `Atom::*` resolve to a WRONG name
+
+`AtomTable::new()` built a table that seated no constants and started its index
+counter at 0 — the very indices `Atom::OK`, `Atom::NIL` and the other 75
+constants already occupy. The first name such a table interned took `Atom::OK`,
+the fifth took `Atom::NIL`, and so on, so **every constant resolved to a real
+but unrelated name**.
+
+⚠️ **That is worse than resolving to nothing.** #98 found it as a telemetry span
+reporting `code.module = "put_chars"` — a plausible name, from the right domain,
+which survives the sanity check a missing name would fail. A confidently wrong
+answer outlives an absent one.
+
+`new()` now seats the constants and **there is no constructor that omits them**,
+so the door is closed rather than renamed. `with_common_atoms()` remains as a
+delegating alias, and `Default` — which nothing in the workspace reaches today,
+measured, but which `#[derive(Default)]` would reach without looking like a
+decision — is correct for free.
+
+**Blast radius: none in production.** All 185 `new()` call sites are test code;
+the scheduler builds its table with `with_common_atoms()`. This is recorded as a
+fixed footgun, not a shipped defect.
+
+The suite's only prior coverage of constant seating went through
+`with_common_atoms()` — **it pinned the safe door and left the unsafe one
+unpinned**, which is how this survived to be found by a telemetry span rather
+than by a test. Two pins now cover the property and all three public
+constructors.
+
 ### Fixed — the clippy gate never linted the `encode` module
 
 The canon `clippy` leg ran without `--features beamr/encode`, so the entire
