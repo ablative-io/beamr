@@ -1,0 +1,10 @@
+   Compiling serde_core v1.0.228
+    Checking smallvec v1.15.1
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+    Checking parking_lot_core v0.9.12
+    Checking dashmap v6.2.1
+    Checking serde_json v1.0.150
+   Compiling zstd-safe v7.2.4
+   Compiling zstd v0.13.3
+   Compiling beamr v0.18.1 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.47s

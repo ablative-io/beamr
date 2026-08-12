@@ -1,0 +1,2 @@
+legs_declared=6
+legs_scored=6
