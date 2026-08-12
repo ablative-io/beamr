@@ -1,0 +1,6 @@
+ M CHANGELOG.md
+ M crates/beamr/src/loader/load.rs
+ M crates/beamr/src/loader/validate.rs
+ M crates/beamr/tests/capability_policy.rs
+?? .claude/skills/
+?? gate-logs/94-import-invariant/
