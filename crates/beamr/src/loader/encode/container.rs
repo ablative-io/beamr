@@ -58,27 +58,38 @@ pub fn encode_module(
 ) -> Result<Vec<u8>, EncodeError> {
     let encoder = AtomEncoder::new(&module.atoms, atom_table);
 
-    // Canonical chunk order. `AtU8` and `Code` are always present; the rest are
-    // emitted only when they carry content (the loader treats an absent
-    // optional chunk as empty).
+    // Canonical chunk order.
+    //
+    // `AtU8`, `Code`, `ImpT`, `ExpT` and `StrT` are emitted UNCONDITIONALLY,
+    // even when empty. Our own loader treats an absent optional chunk as empty
+    // (`load.rs` reads `StrT` with `unwrap_or_default`), so omitting them round
+    // trips perfectly through beamr and is invisible to our own suite — but
+    // OTP's `beam_disasm` hard-requires all five and refuses the module with
+    // `{missing_chunk, _, "StrT"}` (or `"ExpT"` / `"ImpT"`) when one is absent.
+    // A module nobody else's tools can read is a module we cannot investigate
+    // with the ecosystem's instruments, and that cost has already been paid
+    // once: a 7,828-module sweep silently skipped our module because
+    // `beam_disasm` would not open it.
+    //
+    // The required set was measured, not assumed — each chunk was stripped in
+    // turn from a working module and fed to `beam_disasm` (OTP 29). `Attr`,
+    // `CInf`, `Dbgi`, `Docs`, `Line`, `LocT`, `Meta` and `Type` are genuinely
+    // optional and stay conditional. `FunT` is likewise not required. `LitT`
+    // remains conditional: stripping it from a module that HAS literals leaves
+    // dangling references, so that arm of the experiment is a confound rather
+    // than evidence that it is mandatory.
     let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = Vec::new();
     chunks.push((b"AtU8", encode_atom_chunk(&module.atoms, &encoder)?));
     chunks.push((b"Code", encode_code_chunk(&module.instructions, &encoder)?));
-    if !module.imports.is_empty() {
-        chunks.push((b"ImpT", encode_import_chunk(&module.imports, &encoder)?));
-    }
-    if !module.exports.is_empty() {
-        chunks.push((b"ExpT", encode_export_chunk(&module.exports, &encoder)?));
-    }
+    chunks.push((b"ImpT", encode_import_chunk(&module.imports, &encoder)?));
+    chunks.push((b"ExpT", encode_export_chunk(&module.exports, &encoder)?));
     if !module.lambdas.is_empty() {
         chunks.push((b"FunT", encode_lambda_chunk(&module.lambdas, &encoder)?));
     }
     if let Some(literal_chunk) = encode_literal_chunk(&module.literals, &encoder)? {
         chunks.push((b"LitT", literal_chunk));
     }
-    if !module.string_table.is_empty() {
-        chunks.push((b"StrT", encode_string_chunk(&module.string_table)));
-    }
+    chunks.push((b"StrT", encode_string_chunk(&module.string_table)));
     if !module.line_info.is_empty() {
         chunks.push((b"Line", encode_line_chunk(&module.line_info)?));
     }

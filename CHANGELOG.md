@@ -159,6 +159,56 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
+## Unreleased
+
+### Fixed — modules beamr writes can now be opened by OTP's own tools
+
+`encode_module` emitted `ImpT`, `ExpT` and `StrT` **only when they had
+contents**. Our own loader treats an absent optional chunk as an empty one, so
+such a module round-tripped through beamr perfectly and every in-tree test
+passed. **OTP does not agree.** `beam_lib` hard-requires all three, and refuses
+the file outright with `{missing_chunk, _, "StrT"}` before disassembly begins —
+so a module beamr wrote could not be read by `beam_disasm`, by `beam_lib`, or by
+anything built on them. That cost has already been paid once: a 7,828-module
+ecosystem sweep silently skipped our module, and a skip looks exactly like a
+clean result.
+
+The required set was **measured, not assumed** — each chunk was stripped in turn
+from a working module and the remainder fed to `beam_disasm` under OTP 29, with
+the unstripped module as a positive control. Required: `AtU8`, `Code`, `ImpT`,
+`ExpT`, `StrT`. Genuinely optional, and still conditional: `Attr`, `CInf`,
+`Dbgi`, `Docs`, `FunT`, `Line`, `LocT`, `Meta`, `Type`. `LitT` stays conditional
+and is *not* claimed either way — stripping it leaves dangling literal
+references, making that arm a confound rather than evidence.
+
+Effect, over all 24 sample fixtures re-encoded and fed to OTP 29 `beam_disasm`:
+**0 of 24 readable before, 12 of 24 after**, with the original `erlc` bytes
+reading 24 of 24 as the control.
+
+⚠️ **This does not make every beamr-emitted module disassemblable, and the
+remaining 12 failures are a different, disclosed defect.** beamr emits typed
+registers into `Code` while dropping the `Type` chunk they index, so the
+reference dangles and `beam_disasm` raises `cannot_disasm_instr`. The type table
+is discarded at decode — `ParsedModule` has no field for it — so this cannot be
+fixed by emitting a chunk and is tracked separately. The correlation is exact:
+the 12 fixtures containing at least one typed register are precisely the 12 that
+still fail, and the 12 containing none are precisely the 12 that now pass.
+
+### Fixed — the encoder's test suite now actually runs in the gate
+
+`encode` is not a default feature, and no `gates.json` leg and no CI workflow
+enabled it. `crates/beamr/tests/encode_round_trip.rs` is `#![cfg(feature =
+"encode")]`, so **the entire round-trip ratchet compiled to nothing** and had
+never run in the battery. The `tests` leg is now
+`cargo test --workspace --features beamr/encode`.
+
+⭐ **The way this hid is worth stating.** The binary was still built and still
+run; it simply printed `running 0 tests` and `test result: ok. 0 passed`. The
+result-line count — 73 before, 73 after — could not tell "ran" from "ran
+nothing", and `ok. 0 passed` is the same green as any other. Only the passed
+count moved: **2094 → 2107**, of which just 2 tests are newly written and 11 are
+pre-existing tests running for the first time.
+
 ## 0.18.2 — 2026-08-12
 
 Patch release, cut from `main`. Two fixes, both in the JIT's runtime helpers,

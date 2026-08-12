@@ -94,12 +94,96 @@ fn drive(bytes: &[u8]) -> Outcome {
     if let Some(detail) = first_mismatch(&original, &reloaded) {
         return Outcome::Failed(format!("round-trip mismatch: {detail}"));
     }
+    if let Some(detail) = missing_required_chunks(&encoded) {
+        return Outcome::Failed(format!(
+            "re-encoded container is not readable by OTP: {detail}"
+        ));
+    }
     // The re-encoded module must earn the same validation verdict as the
     // original — encoding neither introduces nor masks a validation fault.
     if validates(&original) != validates(&reloaded) {
         return Outcome::Failed("validation verdict changed after re-encode".to_string());
     }
     Outcome::Passed
+}
+
+/// The chunks OTP's `beam_lib`/`beam_disasm` hard-require in every module.
+///
+/// This set was MEASURED, not assumed: each chunk was stripped in turn from a
+/// working module and the remainder fed to `beam_disasm` under OTP 29. These
+/// five make it refuse the file outright with `{missing_chunk, _, "…"}`; `Attr`,
+/// `CInf`, `Dbgi`, `Docs`, `FunT`, `Line`, `LocT`, `Meta` and `Type` are
+/// genuinely optional. `LitT` is deliberately absent from this list — stripping
+/// it leaves dangling literal references, so that arm of the experiment is a
+/// confound rather than evidence, and the encoder still omits it when empty.
+const OTP_REQUIRED_CHUNKS: [&[u8; 4]; 5] = [b"AtU8", b"Code", b"ImpT", b"ExpT", b"StrT"];
+
+/// Walks the `FOR1 … BEAM` container and returns its chunk tags in order.
+///
+/// The container is PARSED — tags are read at the offsets the length fields
+/// dictate — rather than searched for as byte patterns, which would match a
+/// four-byte sequence occurring inside a chunk body (an atom name or a string
+/// literal) and report a chunk that is not there.
+fn container_chunk_tags(bytes: &[u8]) -> Result<Vec<[u8; 4]>, String> {
+    if bytes.len() < 12 || &bytes[0..4] != b"FOR1" || &bytes[8..12] != b"BEAM" {
+        return Err("not a FOR1/BEAM container".to_string());
+    }
+    let declared = u32::from_be_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let end = 8usize
+        .checked_add(declared)
+        .filter(|end| *end <= bytes.len())
+        .ok_or_else(|| {
+            format!(
+                "declared body length {declared} overruns {} bytes",
+                bytes.len()
+            )
+        })?;
+
+    let mut tags = Vec::new();
+    let mut offset = 12; // past FOR1 + size + BEAM
+    while offset < end {
+        if offset + 8 > end {
+            return Err(format!("truncated chunk header at offset {offset}"));
+        }
+        let tag: [u8; 4] = bytes[offset..offset + 4].try_into().unwrap();
+        let length = u32::from_be_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()) as usize;
+        tags.push(tag);
+        let padded = length.next_multiple_of(4);
+        offset = offset
+            .checked_add(8 + padded)
+            .ok_or_else(|| format!("chunk length {length} overflows the offset"))?;
+    }
+    if offset != end {
+        return Err(format!(
+            "chunk walk ended at {offset}, container body ends at {end}"
+        ));
+    }
+    Ok(tags)
+}
+
+/// Names the required chunks absent from an encoded container, or `None` when
+/// all five are present. A container the walk cannot parse is itself reported.
+fn missing_required_chunks(encoded: &[u8]) -> Option<String> {
+    let tags = match container_chunk_tags(encoded) {
+        Ok(tags) => tags,
+        Err(error) => return Some(error),
+    };
+    let missing: Vec<String> = OTP_REQUIRED_CHUNKS
+        .iter()
+        .filter(|required| !tags.iter().any(|tag| tag == **required))
+        .map(|required| String::from_utf8_lossy(*required).into_owned())
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "missing required chunk(s) {}; emitted {}",
+        missing.join(", "),
+        tags.iter()
+            .map(|tag| String::from_utf8_lossy(tag).into_owned())
+            .collect::<Vec<_>>()
+            .join(" ")
+    ))
 }
 
 /// Returns a human-readable description of the first field in which two parsed
@@ -402,4 +486,94 @@ fn empty_optional_chunks_round_trip() {
     let reloaded = load_beam_chunks(&encoded, &table).expect("bare module decodes");
     assert_eq!(module, reloaded);
     assert!(reloaded.literals.is_empty());
+}
+
+/// The five chunks OTP hard-requires are emitted even when their contents are
+/// empty — the case our own loader cannot see, because it treats an absent
+/// optional chunk as an empty one and round-trips either way.
+///
+/// The module below is the worst case on purpose: no imports, no exports, no
+/// string table, no literals, no lambdas, no line info. Before this gate the
+/// encoder omitted `ImpT`, `ExpT` and `StrT` here, and OTP's `beam_disasm`
+/// refuses such a file with `{missing_chunk, _, "StrT"}` — which is how a
+/// beamr-emitted module went silently unread by an ecosystem-wide sweep.
+#[test]
+fn required_chunks_are_emitted_even_when_empty() {
+    let table = AtomTable::with_common_atoms();
+    let name = table.intern("no_content_module");
+    let module = ParsedModule {
+        name,
+        atoms: vec![name],
+        instructions: vec![Instruction::Label { label: 1 }, Instruction::Return],
+        imports: Vec::new(),
+        exports: Vec::new(),
+        lambdas: Vec::new(),
+        literals: Vec::new(),
+        string_table: Vec::new(),
+        line_info: Vec::new(),
+    };
+
+    let encoded = encode_module(&module, &table).expect("empty module encodes");
+    let tags = container_chunk_tags(&encoded).expect("encoder emits a walkable container");
+    for required in OTP_REQUIRED_CHUNKS {
+        assert!(
+            tags.iter().any(|tag| tag == required),
+            "encoder omitted required chunk {}; emitted {:?}",
+            String::from_utf8_lossy(required),
+            tags.iter()
+                .map(|tag| String::from_utf8_lossy(tag).into_owned())
+                .collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(missing_required_chunks(&encoded), None);
+
+    // `LitT` stays conditional and is genuinely absent here — the gate asserts a
+    // required floor, not that every chunk is always emitted.
+    assert!(!tags.iter().any(|tag| tag == b"LitT"));
+}
+
+/// Positive control for the gate above: the chunk walk must actually SEE an
+/// absent chunk. A presence check that cannot fail proves nothing, so a
+/// container is hand-built with `StrT` removed and the walker is required to
+/// name it — the exact shape OTP reported for the module that started this.
+#[test]
+fn the_required_chunk_check_detects_an_absent_chunk() {
+    let table = AtomTable::with_common_atoms();
+    let name = table.intern("stripped_module");
+    let module = ParsedModule {
+        name,
+        atoms: vec![name],
+        instructions: vec![Instruction::Label { label: 1 }, Instruction::Return],
+        imports: Vec::new(),
+        exports: Vec::new(),
+        lambdas: Vec::new(),
+        literals: Vec::new(),
+        string_table: Vec::new(),
+        line_info: Vec::new(),
+    };
+    let encoded = encode_module(&module, &table).expect("module encodes");
+    assert_eq!(missing_required_chunks(&encoded), None, "control: intact");
+
+    // Re-frame the container with `StrT` dropped, rebuilding every length field
+    // so the result is a well-formed file that is merely missing a chunk.
+    let mut body = b"BEAM".to_vec();
+    let mut offset = 12;
+    while offset < encoded.len() {
+        let length =
+            u32::from_be_bytes(encoded[offset + 4..offset + 8].try_into().unwrap()) as usize;
+        let span = 8 + length.next_multiple_of(4);
+        if &encoded[offset..offset + 4] != b"StrT" {
+            body.extend_from_slice(&encoded[offset..offset + span]);
+        }
+        offset += span;
+    }
+    let mut stripped = b"FOR1".to_vec();
+    stripped.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    stripped.extend_from_slice(&body);
+
+    let verdict = missing_required_chunks(&stripped).expect("stripped container must be caught");
+    assert!(
+        verdict.contains("StrT"),
+        "the check must name the absent chunk, said: {verdict}"
+    );
 }
