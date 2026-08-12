@@ -1,5 +1,71 @@
 # Changelog
 
+## Advisory — JIT-compiled code silently dropped every message it sent to another process
+
+**Affects 40 of the 58 published versions: every version from `0.4.0` through
+`0.18.1`, with no holes in the published sequence.** Unfixed in every published
+version. The fix is built and gated but not yet released; the release commit
+that carries it will name the fixing version here.
+
+**What happens.** With the JIT enabled, once a function has been compiled, a
+`!` executed from that compiled code delivers **only when the destination is
+the sending process itself**. Every other destination — another local process,
+a remote process, a non-pid — is **silently discarded**, and the expression
+still evaluates to the message term, which is exactly what a successful `!`
+produces. There is no error, no crash, no log line, and no deopt: the send
+returns the success value and the message never arrives. The same program run
+without the JIT delivers correctly, so a suite that passes under interpretation
+proves nothing about a process that has run hot enough to tier up.
+
+**A second defect in the same helper.** The one destination that *was*
+implemented — the self-send — pushed straight to the mailbox and skipped the
+sender's logical-clock tick and the replay driver's delivery check, both of
+which the interpreter performs. Compiled self-sends therefore diverge from
+interpreted ones in recorded/replayed executions, silently.
+
+**Exposure.** The defect is in the JIT runtime helper, so it is reached only
+after a function tiers up — which means it lands on exactly the hot paths a
+long-running system depends on, and only after it has been running a while.
+
+- **`0.4.0` and `0.4.1`** — there is **no `jit` cargo feature**: the module is
+  declared with no cfg gate and the cranelift dependencies are non-optional.
+  The defective code compiles **unconditionally and cannot be disabled by
+  feature selection** in these two versions.
+- **`0.4.2` through `0.18.1` (38 versions)** — the `jit` feature exists, gates
+  the module, and is **in `default`** in every one of them. Default builds
+  carry the defect. A build with `default-features = false` and without `jit`
+  does not compile the module at all. **There is no published version where
+  `jit` exists but is not on by default.**
+- **`0.1.0` through `0.3.15` (18 versions) are unaffected** — they ship no
+  `src/jit/` directory and no `jit` feature.
+
+**How the range was established.** From the **packaged bytes of every published
+`.crate`**, downloaded from static.crates.io, with the version list taken from
+the crates.io registry API — **not from git tags**. All 58 downloads, all 58
+extractions and all 58 measurements succeeded; there are no
+failed-to-measure rows. Exactly **one** body variant of the helper exists
+across all 40 carriers (single body hash `e350f274…`), independently confirmed
+by byte-level diff of the first, a middle and the last packaged copy. The two
+yanked versions (`0.13.1`, `0.13.2`) are inside the affected range and are
+counted in the 40.
+
+🔴 **CORRECTION, recorded because the error ran the wrong way.** This range was
+first stated internally as beginning at `0.10.0`, read from the first line of
+`git tag --contains <the defect commit>`. **That output is sorted
+lexically, not by version — `v0.10.0` merely sorts before `v0.4.0`.** The
+measured first-affected version is `0.4.0`, confirmed both by the packaged
+bytes and by `git merge-base --is-ancestor`. A first line is not a minimum,
+and an affected range is a measured artifact, never a reasoned one. Had the
+undercount shipped, every reader on `0.4.x`–`0.9.x` would have read the
+advisory as "not me".
+
+**Not attributed to any incident.** This advisory rests on the two defects
+above **on their own merits** — silent message loss and silent replay
+divergence, evidenced by the packaged-bytes census. It is deliberately not
+tied to any production failure: one such attribution was investigated during
+this work and **retracted** when the mechanism was shown not to execute on the
+path in question.
+
 ## Advisory — silent memory-safety defects in every version below 0.16.3
 
 **If you are on any version below `0.16.3`, upgrade.** Three classes of
