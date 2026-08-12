@@ -1,0 +1,10 @@
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.06s
+     Running tests/jit_send_delivery_gate.rs (target/debug/deps/jit_send_delivery_gate-fd26e8a4ee3be2d5)
+
+running 2 tests
+test interpreted_cross_process_send_delivers_control ... ok
+test jit_compiled_cross_process_send_delivers ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+

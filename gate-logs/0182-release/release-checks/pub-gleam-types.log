@@ -1,0 +1,10 @@
+    Updating crates.io index
+warning: crate gleam-types@0.4.3 already exists on crates.io index
+   Packaging gleam-types v0.4.3 (/Users/tom/Developer/ablative/stack/beamr/crates/gleam-types)
+    Updating crates.io index
+    Packaged 9 files, 30.7KiB (7.7KiB compressed)
+   Verifying gleam-types v0.4.3 (/Users/tom/Developer/ablative/stack/beamr/crates/gleam-types)
+   Compiling gleam-types v0.4.3 (/Users/tom/Developer/ablative/stack/beamr/target/package/gleam-types-0.4.3)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.82s
+   Uploading gleam-types v0.4.3 (/Users/tom/Developer/ablative/stack/beamr/crates/gleam-types)
+warning: aborting upload due to dry run

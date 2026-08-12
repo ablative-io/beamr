@@ -1,0 +1,5 @@
+crates/beamr/src/interpreter/mod.rs:274:                eprintln!(
+crates/beamr/src/native/otp_stubs/tests.rs:376:        unimplemented!("not needed by OTP stub tests")
+crates/beamr/src/native/otp_stubs/tests.rs:380:        unimplemented!("not needed by OTP stub tests")
+crates/beamr/src/native/otp_stubs/tests.rs:384:        unimplemented!("not needed by OTP stub tests")
+crates/beamr/src/capability/audit.rs:55:        eprintln!(

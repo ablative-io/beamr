@@ -1,0 +1,2 @@
+Filesystem   1024-blocks      Used Available Capacity  iused     ifree %iused  Mounted on
+/dev/disk3s5   971350180 889182516  45352388    96% 10276243 453523880    2%   /System/Volumes/Data
