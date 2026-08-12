@@ -1,0 +1,10 @@
+pre-leg-1-fmt free=40709756 threshold=25000000
+pre-leg-2-clippy free=40725296 threshold=25000000
+pre-leg-3-wasm32-check free=40726712 threshold=25000000
+pre-leg-4-wasm-tests free=40692996 threshold=25000000
+pre-leg-5-tests free=40567084 threshold=25000000
+pre-leg-6-blocking-call-in-native-bif free=39657232 threshold=25000000
+pre-lane-walls-send free=39657232 threshold=25000000
+pre-lane-gate-integration free=39656824 threshold=25000000
+pre-extra-cooperative-json free=39651136 threshold=25000000
+post-battery free=39615420 threshold=25000000

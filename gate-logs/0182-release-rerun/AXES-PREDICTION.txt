@@ -1,0 +1,32 @@
+PRE-REGISTERED before the 0.18.2 re-run battery. Written first, on purpose.
+
+Base for comparison = the SUPERSEDED b42156c run: 73 / 2093 / 0 / 0
+                       (result-lines / passed / failed / ignored)
+
+PREDICTION for the re-run:  73 / 2094 / 0 / 0
+
+Reasoning, stated so a miss is diagnostic and not explainable after the fact:
+
+  result-lines 73 -> 73   No new test binary. The only added test is a unit
+                          test inside the existing lib target.
+
+  passed 2093 -> 2094     EXACTLY +1, and it is:
+                            loader::load::tests::
+                              no_real_module_carries_a_line_marker_at_ip_zero
+
+  NOT counted as changes (deliberately called out):
+    - compiled_frame_reports_no_line_rather_than_the_modules_first_line
+      was RENAMED to compiled_frame_reports_no_line_from_its_placeholder_ip.
+      A rename moves the NAME SET and leaves the COUNT alone. The count check
+      cannot see it; the name check must.
+    - Two fixtures had their line tables and positions rewritten
+      (core.rs 0->1 / ip 0->2, exceptions.rs 0->1 / ip 0->2). Behaviour of the
+      tests is unchanged, so no count movement.
+    - CHANGELOG edits are docs-only.
+
+IF passed != 2094: STOP. Either a test was lost in the fixture rewrite, or the
+new gate did not run. Do not reconcile after the fact -- find the delta by name
+against the b42156c name set before accepting any number.
+
+IF the new gate PASSES VACUOUSLY (its own >=20-module assertion is the control
+against that) the run is invalid regardless of the total.

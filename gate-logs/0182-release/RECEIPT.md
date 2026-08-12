@@ -110,3 +110,31 @@ on, is at the top of `CHANGELOG.md`; the census itself is reproducible from
   port; `v0.16.3` cannot — `JitRuntimeContext` at that base has no `services`
   pointer, so the mechanism the fix reaches through does not exist and 0.16.4
   would be a redesign, not a port.
+
+---
+
+## ⛔ SUPERSEDED 2026-08-12 — this is NOT the release gate of record
+
+**Do not cite this battery for 0.18.2.** It ran at `b42156c`, a commit whose
+`CHANGELOG.md` contained two claims that did not survive measurement:
+
+1. **F2 was described as fabricating "the module's first line-table entry".**
+   It does not — `line_at_ip(0)` is `None` in every module measured, so F2 had
+   no observable effect. See `gate-logs/89-jit-frame-identity/RECEIPT.md`'s
+   appended correction.
+2. **The advisory carried a forward-looking clause** ("backports … are in
+   preparation"). A claim whose truth value is scheduled to change must not be
+   minted into an immutable artifact, and `CHANGELOG.md` ships inside the
+   package.
+
+The run itself was clean and its artifacts are kept as-is — the legs, the tree
+check and the axes all stand for the tree they measured. **It is superseded on
+the tree, not on the measurement.**
+
+**Release gate of record: `gate-logs/0182-release-rerun/`, at `4ea651f`.**
+
+This directory's `release-checks/` (publish dry-runs, bench, doc, metadata,
+banned-macro audit) is **not** re-run there and remains valid: those checks
+exercise manifests, dependency metadata and non-test production source, none of
+which changed between `b42156c` and `4ea651f`. The delta is `CHANGELOG.md`
+plus three test-only sites plus one added test.

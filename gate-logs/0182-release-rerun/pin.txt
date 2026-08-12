@@ -1,0 +1,3 @@
+commit=4ea651f131ffa22a41bcaa7d2e070f706159a7d6
+tree=7f80a3955c7b22a5091043b8247782615d3bbed6
+branch=artemis/release-0.18.2
