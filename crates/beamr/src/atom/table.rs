@@ -190,20 +190,22 @@ pub struct AtomTable {
 }
 
 impl AtomTable {
-    /// Create an empty atom table.
+    /// Create an atom table with the common atoms at stable indices.
+    ///
+    /// There is deliberately no constructor that omits them. Every `Atom::*`
+    /// constant is an index into this table, so a table that seats nothing
+    /// hands those same indices to whatever it interns first, and `Atom::NIL`
+    /// then resolves to a real but unrelated name rather than to nothing. That
+    /// is worse than a missing name, because a wrong name from the right
+    /// domain survives the sanity check a missing one would fail: the telemetry
+    /// span that exposed this reported `code.module = "put_chars"`.
     #[must_use]
     pub fn new() -> Self {
-        Self {
+        let table = Self {
             by_name: DashMap::new(),
             by_index: DashMap::new(),
             next_index: AtomicU32::new(0),
-        }
-    }
-
-    /// Create an atom table with the common atoms at stable indices.
-    #[must_use]
-    pub fn with_common_atoms() -> Self {
-        let table = Self::new();
+        };
 
         for &(name, atom) in COMMON_ATOMS {
             table.by_name.insert(name.to_owned(), atom);
@@ -214,6 +216,15 @@ impl AtomTable {
             .next_index
             .store(COMMON_ATOMS.len() as u32, Ordering::Relaxed);
         table
+    }
+
+    /// Create an atom table with the common atoms at stable indices.
+    ///
+    /// Equivalent to [`AtomTable::new`], which seats them unconditionally.
+    /// Retained because the name states the invariant at the call site.
+    #[must_use]
+    pub fn with_common_atoms() -> Self {
+        Self::new()
     }
 
     /// Intern `name`, returning its existing or newly assigned atom.
@@ -280,7 +291,7 @@ impl Default for AtomTable {
 mod tests {
     use std::{collections::HashSet, sync::Arc, thread};
 
-    use super::{Atom, AtomTable};
+    use super::{Atom, AtomTable, COMMON_ATOMS};
 
     #[test]
     fn intern_resolve_round_trip() {
@@ -347,6 +358,46 @@ mod tests {
         assert_eq!(table.resolve(Atom::CUR), Some("cur"));
         assert_eq!(table.resolve(Atom::EOF), Some("eof"));
         assert_eq!(table.resolve(Atom::ENOTCONN), Some("enotconn"));
+    }
+
+    #[test]
+    fn interning_into_a_fresh_table_never_collides_with_a_constant() {
+        let table = AtomTable::new();
+        let interned = table.intern("a_name_that_is_not_a_common_atom");
+
+        // The defect (#103, surfaced by #98 at 81c6459): a table that seats
+        // nothing assigns 0, 1, 2, ... to the names it interns, which are the
+        // very indices the `Atom::*` constants already occupy. Every constant
+        // then resolves to a real but unrelated name. Interning is the half
+        // that has to hold -- seating alone is not enough if `next_index`
+        // starts anywhere inside the constant range.
+        assert_eq!(table.resolve(Atom::NIL), Some("nil"));
+        assert_eq!(
+            table.resolve(interned),
+            Some("a_name_that_is_not_a_common_atom")
+        );
+
+        for &(name, constant) in COMMON_ATOMS {
+            assert_ne!(interned, constant, "interned name took {name}'s index");
+        }
+    }
+
+    #[test]
+    fn every_public_constructor_seats_the_constants() {
+        // `Default` is the door nothing calls today and `#[derive(Default)]`
+        // would reach without looking like a decision, so it is pinned here
+        // rather than left to the constructors that happen to have callers.
+        let tables = [
+            AtomTable::new(),
+            AtomTable::with_common_atoms(),
+            AtomTable::default(),
+        ];
+
+        for table in tables {
+            assert_eq!(table.resolve(Atom::NIL), Some("nil"));
+            assert_eq!(table.resolve(Atom::OK), Some("ok"));
+            assert_ne!(table.intern("a_name_that_is_not_a_common_atom"), Atom::NIL);
+        }
     }
 
     #[test]
