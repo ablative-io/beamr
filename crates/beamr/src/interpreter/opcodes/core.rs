@@ -880,6 +880,14 @@ fn call_native(
     // valid for the synchronous duration of this call.
     let raw_fn: RawJitFn = unsafe { std::mem::transmute(native.call_ptr()) };
     let returned = raw_fn(register_file, process);
+    // A pending helper ExecError outranks every status: the helper aborted the
+    // slice (e.g. a Send arm's badarg/replay-mismatch) and returned through the
+    // deopt exit only as a way OUT of compiled code. Converting that deopt into
+    // an interpreted restart would re-execute the function's prefix; erroring
+    // here matches the interpreter failing on the same instruction.
+    if let Some(error) = process.take_jit_exec_error() {
+        return Err(error);
+    }
     match process.take_jit_status() {
         Some(JitStatus::Yield) => return Ok(Some(InstructionOutcome::Yield)),
         None => {}

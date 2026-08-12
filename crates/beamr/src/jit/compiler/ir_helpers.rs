@@ -246,12 +246,12 @@ fn declare_message_helpers(
     func: &mut cranelift_codegen::ir::Function,
 ) -> Result<MessageHelpers, JitError> {
     Ok(MessageHelpers {
-        send: declare_helper(
+        send: declare_multi_return_helper(
             module,
             func,
             "beamr_jit_send_message",
             &[types::I64, types::I64, types::I64],
-            types::I64,
+            &[types::I8, types::I64],
         )?,
         receive_peek: declare_multi_return_helper(
             module,

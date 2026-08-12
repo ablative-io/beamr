@@ -111,19 +111,7 @@ pub fn send(
         // Cross-process local send: route through the scheduler-implemented
         // facility, which performs the slot-locked delivery, the Present-case
         // clock/replay work, and the wake.
-        let previous_sender_clock = process.logical_clock();
-        let sender_clock = process.tick_logical_clock();
-        let sender_pid = process.pid();
-        if let Err(LocalSendError::ReplayMismatch(detail)) = facility.send_local(LocalSendRequest {
-            target_pid,
-            sender_pid,
-            message,
-            sender_clock,
-            replay_driver,
-        }) {
-            process.set_logical_clock(previous_sender_clock);
-            return Err(ExecError::ReplayMismatch(detail));
-        }
+        send_local_via_facility(process, facility, target_pid, message, replay_driver)?;
         #[cfg(feature = "telemetry")]
         crate::telemetry::metrics::record_message_sent();
     }
@@ -134,9 +122,40 @@ pub fn send(
     Ok(InstructionOutcome::Continue)
 }
 
+/// Deliver a cross-process local message through the [`LocalSendFacility`],
+/// ticking the sender clock and restoring it on a replay mismatch.
+///
+/// Shared by the interpreter's `Send` arm and the JIT runtime helper
+/// (`jit::runtime_message::jit_send_message`) so the clock/replay contract has
+/// exactly one home. The clock restore on error is load-bearing: the caller
+/// may retry or abort the slice, and a half-ticked clock would corrupt replay
+/// determinism either way.
+pub(crate) fn send_local_via_facility(
+    process: &mut Process,
+    facility: &dyn LocalSendFacility,
+    target_pid: u64,
+    message: Term,
+    replay_driver: Option<&Arc<Mutex<ReplayDriver>>>,
+) -> Result<(), ExecError> {
+    let previous_sender_clock = process.logical_clock();
+    let sender_clock = process.tick_logical_clock();
+    let sender_pid = process.pid();
+    if let Err(LocalSendError::ReplayMismatch(detail)) = facility.send_local(LocalSendRequest {
+        target_pid,
+        sender_pid,
+        message,
+        sender_clock,
+        replay_driver,
+    }) {
+        process.set_logical_clock(previous_sender_clock);
+        return Err(ExecError::ReplayMismatch(detail));
+    }
+    Ok(())
+}
+
 /// Deliver a message from a process to itself, performing the single-process
 /// clock observation and replay check on the in-hand process.
-fn send_to_self(
+pub(crate) fn send_to_self(
     process: &mut Process,
     message: Term,
     replay_driver: Option<&Arc<Mutex<ReplayDriver>>>,
@@ -186,7 +205,7 @@ fn send_to_self(
 }
 
 #[cfg(feature = "net")]
-fn distribution_send_error(error: DistributionSendError) -> ExecError {
+pub(crate) fn distribution_send_error(error: DistributionSendError) -> ExecError {
     match error {
         DistributionSendError::NoConnection => ExecError::NoConnection,
         DistributionSendError::Encode => ExecError::Badarg,

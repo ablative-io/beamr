@@ -178,6 +178,13 @@ pub struct Process {
     #[cfg(feature = "jit")]
     jit_runtime_context: Option<JitRuntimeContext>,
     jit_status: Option<JitStatus>,
+    /// Pending execution error raised by a JIT runtime helper. Rides the
+    /// process because compiled code has no `Result` channel: the helper parks
+    /// the error here and routes to the deopt return, and `call_native` checks
+    /// this field BEFORE treating the status as a restartable deopt — the error
+    /// aborts the slice exactly like the interpreter's own `Err(ExecError)`,
+    /// never re-executing the function.
+    jit_exec_error: Option<crate::error::ExecError>,
     #[cfg(feature = "telemetry")]
     receive_wait_started: Option<crate::telemetry::spans::ReceiveWaitStarted>,
     #[cfg(feature = "telemetry")]
@@ -226,6 +233,7 @@ impl Clone for Process {
             #[cfg(feature = "jit")]
             jit_runtime_context: self.jit_runtime_context,
             jit_status: self.jit_status,
+            jit_exec_error: self.jit_exec_error.clone(),
             #[cfg(feature = "telemetry")]
             receive_wait_started: self.receive_wait_started,
             #[cfg(feature = "telemetry")]
@@ -290,6 +298,7 @@ impl Process {
             #[cfg(feature = "jit")]
             jit_runtime_context: None,
             jit_status: None,
+            jit_exec_error: None,
             #[cfg(feature = "telemetry")]
             receive_wait_started: None,
             #[cfg(feature = "telemetry")]
@@ -1048,6 +1057,22 @@ impl Process {
     /// Take and clear the current JIT status.
     pub fn take_jit_status(&mut self) -> Option<JitStatus> {
         self.jit_status.take()
+    }
+
+    /// Park an execution error raised inside a JIT runtime helper.
+    ///
+    /// The helper that sets this must have mutated NOTHING observable first
+    /// (or restored it, e.g. the send clock on a replay mismatch): the seam
+    /// converts the pending error into the slice's `Err(ExecError)` without
+    /// re-executing the function, so the arm's own invariant is the only
+    /// thing standing between this channel and a double effect.
+    pub fn set_jit_exec_error(&mut self, error: crate::error::ExecError) {
+        self.jit_exec_error = Some(error);
+    }
+
+    /// Take and clear the pending JIT helper execution error.
+    pub fn take_jit_exec_error(&mut self) -> Option<crate::error::ExecError> {
+        self.jit_exec_error.take()
     }
 
     /// Linked process IDs.
