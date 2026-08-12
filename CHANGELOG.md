@@ -49,6 +49,57 @@ assurance exactly when a reader is deciding whether to upgrade. RF-006 is an
 ABI-level GC-rooting change. When it lands, the release carrying it will say
 so under "Fixed" and this paragraph is removed in the same commit.
 
+## 0.17.1 — 2026-08-12
+
+**Compiled code dropped almost every message it sent.** `jit_send_message`
+implemented only the self-send arm; every other destination — local
+cross-process, remote, non-pid — fell through the `if let` delivering nothing
+and returned `message`, the value a successful `!` produces. **The sender
+could not observe the loss.** No error, no crash, no log line: compiled code
+continued as though the send had happened.
+
+**This is a backport.** The fix is the same change released in `0.18.2`,
+applied to the `0.17.x` line so that consumers pinned at `^0.17` receive it —
+a `^0.17` requirement cannot resolve `0.18.2`, because each `0.x` minor is a
+semver major. **If you are on `0.17.0`, this is the version that carries the
+fix to you.**
+
+**Measured range of the defect.** The self-only shape is present
+byte-identically in **40 of 58 published versions** (`0.4.0` – `0.18.1`),
+measured from packaged bytes rather than from history. `0.17.0` is one of
+them.
+
+A second defect dies with it: the self-send arm pushed straight to the
+mailbox, skipping the logical-clock tick and the replay-driver check the
+interpreter performs on every delivery, so **compiled self-sends diverged
+under replay**.
+
+No arm may silently no-op. Destinations the helper cannot serve now park the
+interpreter's own `ExecError` on the process and abort the slice — an abort,
+never a restart, so a failed `Send` cannot re-execute the function prefix and
+send twice.
+
+### What this release does NOT contain
+
+- **The compiled-frame identity fix (`0.18.2`) is NOT backported here.** On
+  this line a compiled frame still takes its module name from the pinned
+  `Arc<Module>` rather than from the frame's own recorded mfa, so a crash
+  report can splice one module's name onto another module's function. That is
+  a **diagnostic** defect, not a delivery one. **Upgrade to `0.18.2` if you
+  are reading compiled stacktraces.**
+- **AR-1 remains OPEN and unnarrowed at this base**, exactly as disclosed for
+  `0.17.0`. Nothing here touches it.
+- **No production incident is explained by this fix.** It is a real
+  silent-wrong-answer defect and it is fixed; that is the whole claim.
+
+### Evidence
+
+The gate is two-armed and was measured **at this base**, not inherited from
+the `0.18.x` line: with the fix reverted and the gate retained, the compiled
+arm fails with *"receiver never got the cross-process message (silent drop
+under COMPILED execution)"* while the interpreted control stays green. **A
+gate that has not been shown to go red proves nothing**, so it was shown.
+
 ## 0.17.0 — 2026-08-07
 
 Minor release, cut from `main`. **The version is forced, not chosen:**
