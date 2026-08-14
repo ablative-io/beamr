@@ -1,0 +1,24 @@
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 26.57s
+     Running tests/spawn_process_scaffold_only.rs (target/debug/deps/spawn_process_scaffold_only-b3341ad7e0b9f723)
+
+running 1 test
+test spawn_process_on_a_real_module_dies_on_the_landing_pad_while_spawn_runs_it ... FAILED
+
+failures:
+
+---- spawn_process_on_a_real_module_dies_on_the_landing_pad_while_spawn_runs_it stdout ----
+
+thread 'spawn_process_on_a_real_module_dies_on_the_landing_pad_while_spawn_runs_it' (11431263) panicked at crates/beamr/tests/spawn_process_scaffold_only.rs:74:5:
+assertion `left == right` failed: ip-0 entry on a loader-produced module must die on the landing pad
+  left: Normal
+ right: Error
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    spawn_process_on_a_real_module_dies_on_the_landing_pad_while_spawn_runs_it
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p beamr --test spawn_process_scaffold_only`

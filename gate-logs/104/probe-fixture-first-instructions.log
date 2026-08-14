@@ -1,0 +1,44 @@
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 46.13s
+     Running tests/probe_104_tmp.rs (target/debug/deps/probe_104_tmp-26986068d4087300)
+
+running 1 test
+--- hello.beam ---
+ip 0: Label
+ip 1: Line
+ip 2: FuncInfo
+ip 3: Label
+ip 4: Move
+ip 5: Move
+--- proof.beam ---
+ip 0: Label
+ip 1: Line
+ip 2: FuncInfo
+ip 3: Label
+ip 4: Move
+ip 5: Return
+--- if_probe.beam ---
+ip 0: Label
+ip 1: Line
+ip 2: FuncInfo
+ip 3: Label
+ip 4: Return
+ip 5: Label
+--- jit_real_function.beam ---
+ip 0: Label
+ip 1: Line
+ip 2: FuncInfo
+ip 3: Label
+ip 4: Allocate
+ip 5: Move
+--- recv_after_timer.beam ---
+ip 0: Label
+ip 1: Line
+ip 2: FuncInfo
+ip 3: Label
+ip 4: Allocate
+ip 5: Label
+test probe_104_first_instructions_of_real_fixtures ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
