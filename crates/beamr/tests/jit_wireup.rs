@@ -1887,16 +1887,29 @@ fn no_fail_bif_badarith_deopts_to_interpreter_equal_exception() {
     assert_eq!(jit_error, Some(ExecError::Badarg));
 }
 
+/// D2 amendment pin (docs/design/beamr/design.json, decision D2):
+/// "always-on" means always-on wherever the backend can exist — the jit
+/// feature is the wasm32/cooperative exclusion mechanism and must stay in
+/// DEFAULT features so native default builds always carry the JIT. This
+/// binary runs in the default-features suite, so this assert goes red the
+/// day anyone drops jit from default features.
+///
+/// COMPILE WALL, measured at the #78 falsifier (gate-logs/78): today a
+/// no-jit default build fails at COMPILE (7 errors, `pub mod jit`
+/// configured out), so this assert has never been observed to fire — the
+/// wall stands in front of it. Whoever cfg-gates the remaining consumers
+/// so a no-jit tree compiles cleanly takes that wall down, and must
+/// red-prove this pin as part of that cleanup: without it, every gate
+/// would go green with default builds silently JIT-less.
 #[test]
 fn jit_stays_in_default_features_d2_always_on_native() {
-    // D2 amendment pin (docs/design/beamr/design.json, decision D2):
-    // "always-on" means always-on wherever the backend can exist — the jit
-    // feature is the wasm32/cooperative exclusion mechanism and must stay
-    // in DEFAULT features so native default builds always carry the JIT.
-    // This binary runs in the default-features suite, so this assert goes
-    // red the day anyone drops jit from default features.
-    assert!(
-        cfg!(feature = "jit"),
-        "jit must remain in beamr's default features (design record D2)"
-    );
+    // The assert is deliberately constant: cfg! resolves at compile time,
+    // and that constancy is exactly what is being pinned.
+    #[allow(clippy::assertions_on_constants)]
+    {
+        assert!(
+            cfg!(feature = "jit"),
+            "jit must remain in beamr's default features (design record D2)"
+        );
+    }
 }
