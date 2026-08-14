@@ -64,12 +64,26 @@ impl Scheduler {
         self.spawn_in(NamespaceId::DEFAULT, entry_module, entry_function, args)
     }
 
-    /// Spawn a process at the beginning of a module.
+    /// Spawn a process at raw instruction 0 of a module — scaffold-only.
+    ///
+    /// This enters the code stream verbatim, with no entry resolution. On a
+    /// loader-produced module instruction 0 is the first function's
+    /// `func_info` landing pad (erlc emits `Label`/`Line`/`FuncInfo` before
+    /// any body), so the process dies immediately with a catchable
+    /// `error:function_clause` — measured for every real fixture in the
+    /// tree (#104, composed with #98's behavioural arm). Use [`Self::spawn`]
+    /// or [`Self::spawn_in`] for real modules; they resolve an exported
+    /// entry label and start after the pad. This entry point exists for
+    /// hand-built scaffolds whose instruction 0 is executable code.
     pub fn spawn_process(&self, module: &Arc<Module>) -> u64 {
         self.enqueue_spawn(Arc::clone(module), 0, Vec::new(), Atom::NIL, 0)
     }
 
-    /// Spawn a process at the beginning of a module under the supplied OpenTelemetry context.
+    /// Spawn a process at raw instruction 0 of a module — scaffold-only —
+    /// under the supplied OpenTelemetry context.
+    ///
+    /// Shares [`Self::spawn_process`]'s entry semantics, including its
+    /// landing-pad death on loader-produced modules.
     #[cfg(feature = "telemetry")]
     pub fn spawn_process_with_trace_context(
         &self,
