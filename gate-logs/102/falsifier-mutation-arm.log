@@ -1,0 +1,24 @@
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.95s
+     Running tests/jit_wireup.rs (target/debug/deps/jit_wireup-3d2213781cbcb902)
+
+running 1 test
+test runtime_tier_up_never_moves_the_compilation_threshold ... FAILED
+
+failures:
+
+---- runtime_tier_up_never_moves_the_compilation_threshold stdout ----
+
+thread 'runtime_tier_up_never_moves_the_compilation_threshold' (11191953) panicked at crates/beamr/tests/jit_wireup.rs:652:5:
+assertion `left == right` failed: a completed production compile must not move the threshold: tune_threshold is embedder-driven only (B-138)
+  left: 750
+ right: 1000
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    runtime_tier_up_never_moves_the_compilation_threshold
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `-p beamr --test jit_wireup`
