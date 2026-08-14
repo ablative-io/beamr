@@ -115,8 +115,28 @@ DO notify (#106 coverage measurement).
 - PREDICTION-87.md (pre-registered before both discriminator arms)
 - Instrument: commit d38c926 (unpushed; landing shape NOTE below)
 
-Landing note: the instrument adds 5 #[ignore]d tests — first nonzero
-`ignored` axis in the battery if landed on main (result-lines +5,
-ignored 0→5 both test legs). New battery shape ⇒ flagged for Waffles'
-word rather than landed unilaterally; evidence and verdict do not depend
-on the landing.
+Landing note: the instrument was born as 5 #[ignore]d tests — first
+nonzero `ignored` axis in the battery if landed that way. Flagged to
+Waffles rather than landed unilaterally; RULED 2026-08-14 (~13:46Z):
+neither land-as-ignored nor local-only — an ignored axis that stays ZERO
+is itself a wall (the next illegitimate #[ignore] cannot hide among
+legitimate ones), and a local-only instrument dies with the checkout while
+being the evidence's provenance. Instrument RE-HOMED as an explicit
+non-test target: `crates/beamr/examples/continue_reentry_probe.rs`
+(`cargo run --example continue_reentry_probe`), body identical modulo the
+example scaffold (feature-gated main, mod wrap, clippy doc-indent fixes).
+Post-move confirmation run (87-probe-rehomed-confirmation.log) reproduced
+the shipped-arm distributions — episodic per-episode max p50 2131µs vs the
+test-shape's 2134µs, an additional independent shipped-bytes replicate.
+Battery shape unchanged: result-lines/passed/failed/ignored priors carry
+(75/2115/0/0 and 75/2125/0/0), ignored stays 0. The d38c926 test-shape
+commit remains in history as the provenance of the four measurement logs;
+the tip carries the example shape only.
+
+Cross-repo residue (Hermes, 2026-08-14): attribution narrowed at his seat
+with a reader census (his era record now carries this mechanism verbatim;
+Waffles' ledger row superseded; no liminal-main text carries the old
+attribution). Banked downstream: when a sleeper-aware-notify release
+reaches liminal via the haematite chain, liminal's starvation pins
+re-measure the band at consume — a field-side confirmation instrument
+nobody has to build.
