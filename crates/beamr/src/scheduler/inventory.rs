@@ -357,3 +357,78 @@ pub(super) fn build_service_policies(shared: &SharedState) -> Vec<ServicePolicyL
         },
     ]
 }
+
+/// Point-in-time census of the beamr VMs alive in this process (#106).
+///
+/// This is the process-global door the per-scheduler
+/// [`Scheduler::service_inventory`](super::Scheduler::service_inventory)
+/// cannot be: it answers "how many VMs does this process hold" without a
+/// handle to any of them, so the signed §3.8 idle bound becomes computable
+/// in-process — `IDLE_WAKES_PER_SEC_PER_WORKER × scheduler_worker_count` —
+/// instead of by decomposing per-index thread names from outside.
+///
+/// POPULATION HONESTY — read this before trusting the numbers: the census
+/// counts schedulers **constructed and not yet dropped**, not "running". A
+/// scheduler that has been `shutdown()` but not dropped still counts (its
+/// registration lives in the value until the `Scheduler` itself drops), and
+/// a leaked or `mem::forget`-ten scheduler counts forever. The number
+/// answers "how many VM structures exist", not "how many are executing".
+///
+/// The census reports NUMBERS and nothing else — no threshold, no warning
+/// level, no opinion about how many is too many. The §3.8 arithmetic belongs
+/// to the consumer doing the multiplying.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessVmCensus {
+    /// Constructed-and-not-yet-dropped schedulers in this process.
+    pub vm_count: usize,
+    /// Scheduler worker threads those VMs spawned at construction, summed
+    /// across the counted VMs. This is the §3.8 multiplier population: the
+    /// count each VM ACTUALLY spawned, not a config-claimed count.
+    pub scheduler_worker_count: usize,
+}
+
+/// Both census counters packed into ONE atomic — VM count in the high 32
+/// bits, worker count in the low 32 — so a reader can never observe a VM
+/// without its workers or vice versa, and there is no lock to poison: the
+/// "an unreadable census must raise rather than report zero VMs" failure
+/// mode is unrepresentable rather than handled.
+static LIVE_VMS_AND_WORKERS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+const CENSUS_VM_ONE: u64 = 1 << 32;
+
+/// Reads the process-global VM census. See [`ProcessVmCensus`] for what the
+/// numbers do and do not claim.
+#[must_use]
+pub fn process_vm_census() -> ProcessVmCensus {
+    let packed = LIVE_VMS_AND_WORKERS.load(std::sync::atomic::Ordering::Acquire);
+    ProcessVmCensus {
+        vm_count: usize::try_from(packed >> 32).unwrap_or(usize::MAX),
+        scheduler_worker_count: usize::try_from(packed & u64::from(u32::MAX)).unwrap_or(usize::MAX),
+    }
+}
+
+/// RAII registration one scheduler holds in the census. Constructed with the
+/// worker count the scheduler actually spawned; the paired decrement runs in
+/// `Drop`, which is what makes the census population "constructed and not
+/// yet dropped" by construction rather than by bookkeeping discipline.
+pub(super) struct VmCensusRegistration {
+    packed: u64,
+}
+
+impl VmCensusRegistration {
+    /// Registers one VM with its actually-spawned scheduler worker count.
+    /// The count is bounds-checked by the caller (the scheduler constructor
+    /// raises on a count that cannot fit the packing; it never saturates
+    /// silently).
+    pub(super) fn register(scheduler_workers: u32) -> Self {
+        let packed = CENSUS_VM_ONE | u64::from(scheduler_workers);
+        LIVE_VMS_AND_WORKERS.fetch_add(packed, std::sync::atomic::Ordering::AcqRel);
+        Self { packed }
+    }
+}
+
+impl Drop for VmCensusRegistration {
+    fn drop(&mut self) {
+        LIVE_VMS_AND_WORKERS.fetch_sub(self.packed, std::sync::atomic::Ordering::AcqRel);
+    }
+}

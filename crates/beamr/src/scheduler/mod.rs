@@ -143,7 +143,10 @@ pub use execution::IDLE_PARK_TIMEOUT;
 #[cfg(all(feature = "threads", any(test, feature = "test-support")))]
 pub use execution::IDLE_WAKES_PER_SEC_PER_WORKER;
 #[cfg(feature = "threads")]
-pub use inventory::{ServiceInventoryEntry, ServicePolicyLine, deduped_thread_aggregate};
+pub use inventory::{
+    ProcessVmCensus, ServiceInventoryEntry, ServicePolicyLine, deduped_thread_aggregate,
+    process_vm_census,
+};
 #[cfg(feature = "readiness")]
 pub use readiness::{
     Generation, Interest, ReadinessBuildError, ReadinessError, ReadinessToken, SharedReadiness,
@@ -992,6 +995,11 @@ pub struct Scheduler {
     threads: Mutex<Vec<JoinHandle<()>>>,
     inject_queues: Vec<Arc<SegQueue<SpawnRequest>>>,
     worker_names: Vec<String>,
+    /// Process-global census registration (#106). Held for the scheduler's
+    /// whole lifetime — its Drop is what removes this VM from
+    /// [`process_vm_census`], so the census population is "constructed and
+    /// not yet dropped" by construction.
+    _vm_census: inventory::VmCensusRegistration,
 }
 #[cfg(feature = "threads")]
 impl Scheduler {
@@ -1737,11 +1745,21 @@ impl Scheduler {
             *guard = Some(stealers);
         }
         barrier.wait();
+        // Census packing is u32-per-half; a worker count that cannot fit is
+        // raised from the constructor (fatal-loud precedent), never silently
+        // saturated into a corrupt census.
+        let census_workers = u32::try_from(threads.len()).map_err(|_| {
+            format!(
+                "scheduler worker count {} overflows the census",
+                threads.len()
+            )
+        })?;
         Ok(Self {
             shared,
             threads: Mutex::new(threads),
             inject_queues,
             worker_names,
+            _vm_census: inventory::VmCensusRegistration::register(census_workers),
         })
     }
     #[must_use]
