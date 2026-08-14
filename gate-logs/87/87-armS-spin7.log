@@ -1,0 +1,45 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running tests/continue_reentry_latency.rs (target/debug/deps/continue_reentry_latency-2f99502801a39c93)
+
+running 5 tests
+test measure_alone_single_worker_floor ... [alone: 1 worker, victim only] placement: victim cursor-slot 0, victim first slice on 0, parks during sampling 0
+== alone: 1 worker, victim only ==
+gaps=399 min=14us p50=15us p90=19us p99=58us max=172us
+histogram <100us:397 <1ms:2
+migrations=0 same-worker p50=15us (n=399) migrated p50=0us (n=0)
+slow gaps (>=1ms, first 0 of 0): 
+ok
+test measure_episodic_collision_resolution ... == episodic: 40 fresh collisions, victim + 2 bounded co-resident spinners ==
+gaps=480 min=11us p50=84us p90=7103us p99=7205us max=7257us
+histogram <100us:272 <1ms:41 1-3ms:3 3-5ms:3 5-7ms:6 7-9ms:155
+migrations=0 same-worker p50=0us (n=0) migrated p50=0us (n=0)
+slow gaps (>=1ms, first 60 of 167): 8:7088us 9:7107us 10:7103us 11:7120us 15:7093us 16:7128us 17:7055us 18:7044us 19:7050us 20:7044us 21:7152us 22:7056us 23:7050us 27:7164us 28:7052us 29:7054us 30:7045us 31:7113us 32:7164us 33:7060us 34:7210us 35:7108us 47:7074us 52:6368us 63:7188us 64:7087us 65:7047us 66:7051us 67:7112us 68:7070us 69:7124us 70:7111us 71:7144us 75:7062us 76:7069us 77:7124us 78:7064us 79:7057us 80:7118us 81:7074us 82:7040us 83:7257us 87:7112us 88:7076us 89:2625us 99:5780us 111:7079us 112:7112us 113:7051us 114:7121us 115:7053us 116:7048us 117:7048us 118:7067us 119:7042us 135:7078us 136:4536us 147:7104us 148:7073us 149:7132us
+first-gap p50=84us p90=116us max=177us | per-episode max p50=7091us p90=7209us max=7257us (episodes=40)
+ok
+test measure_pair_co_resident_unstealable ... [pair: 4 workers, victim + 1 co-resident spinner] placement: victim cursor-slot 1, victim first slice on 0, parks during sampling 58
+[pair: 4 workers, victim + 1 co-resident spinner] spinners: s0:w0->w2(x1)
+== pair: 4 workers, victim + 1 co-resident spinner ==
+gaps=399 min=14us p50=15us p90=20us p99=7139us max=7230us
+histogram <100us:383 <1ms:1 7-9ms:15
+migrations=0 same-worker p50=15us (n=399) migrated p50=0us (n=0)
+slow gaps (>=1ms, first 15 of 15): 0:7101us 1:7064us 2:7085us 3:7129us 4:7146us 5:7128us 6:7109us 7:7073us 8:7230us 9:7201us 10:7096us 11:7182us 12:7139us 13:7111us 14:7118us
+ok
+test measure_saturated_all_workers_busy ... [saturated: 4 workers, victim + 9 spinners] placement: victim cursor-slot 1, victim first slice on 1, parks during sampling 0
+[saturated: 4 workers, victim + 9 spinners] spinners: s0:w3->w3(x0) s1:w2->w2(x0) s2:w0->w0(x0) s3:w0->w0(x0) s4:w0->w1(x1) s5:w0->w0(x0) s6:w0->w0(x0) s7:w0->w0(x0) s8:w0->w0(x0)
+== saturated: 4 workers, victim + 9 spinners ==
+gaps=399 min=10us p50=11us p90=12us p99=48us max=114us
+histogram <100us:398 <1ms:1
+migrations=0 same-worker p50=11us (n=399) migrated p50=0us (n=0)
+slow gaps (>=1ms, first 0 of 0): 
+ok
+test measure_trio_co_resident_stealable ... [trio: 4 workers, victim + 2 co-resident spinners] placement: victim cursor-slot 1, victim first slice on 0, parks during sampling 155
+[trio: 4 workers, victim + 2 co-resident spinners] spinners: s0:w3->w3(x0) s1:w0->w2(x1)
+== trio: 4 workers, victim + 2 co-resident spinners ==
+gaps=399 min=15us p50=31us p90=7063us p99=7199us max=7290us
+histogram <100us:280 <1ms:55 1-3ms:1 3-5ms:1 7-9ms:62
+migrations=0 same-worker p50=31us (n=399) migrated p50=0us (n=0)
+slow gaps (>=1ms, first 60 of 64): 0:7104us 1:7084us 2:7074us 3:7290us 4:7068us 5:7068us 6:7063us 7:7056us 8:7054us 9:7089us 10:7114us 11:7104us 12:7069us 13:7061us 14:7091us 15:7184us 16:7059us 17:7063us 18:7084us 19:7061us 20:7039us 21:7045us 22:7095us 23:7055us 24:7054us 25:7153us 26:7092us 27:7058us 28:7050us 29:7066us 30:7064us 31:7059us 32:7144us 33:7189us 34:7143us 35:7126us 36:7083us 37:7086us 38:7071us 39:7051us 40:7051us 41:7202us 42:7076us 43:7066us 44:7124us 45:7158us 46:7236us 47:7230us 48:7072us 49:7110us 50:7063us 51:7061us 52:7068us 53:7061us 54:7096us 55:7056us 56:7056us 57:7047us 58:7088us 59:7103us
+ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.57s
+
