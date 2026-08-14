@@ -1,0 +1,24 @@
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.94s
+     Running tests/process_vm_census.rs (target/debug/deps/process_vm_census-7803f3f8982d9ac8)
+
+running 1 test
+test census_counts_constructed_not_yet_dropped_vms_with_their_spawned_workers ... FAILED
+
+failures:
+
+---- census_counts_constructed_not_yet_dropped_vms_with_their_spawned_workers stdout ----
+
+thread 'census_counts_constructed_not_yet_dropped_vms_with_their_spawned_workers' (11531585) panicked at crates/beamr/tests/process_vm_census.rs:49:5:
+assertion `left == right` failed: shutdown must not deregister: the census counts constructed-not-dropped
+  left: 1
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    census_counts_constructed_not_yet_dropped_vms_with_their_spawned_workers
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p beamr --test process_vm_census`
