@@ -1,0 +1,12 @@
+     |
+note: found an item that was configured out
+    --> crates/beamr/src/lib.rs:37:9
+     |
+  36 | #[cfg(feature = "jit")]
+     |       --------------- the item is gated behind the `jit` feature
+  37 | pub mod jit;
+     |         ^^^
+
+Some errors have detailed explanations: E0432, E0433.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `beamr` (lib) due to 7 previous errors
