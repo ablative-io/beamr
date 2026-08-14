@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use beamr::atom::{Atom, AtomTable};
 use beamr::error::ExecError;
-use beamr::jit::CompileOutcomeCounters;
+use beamr::jit::{CompileOutcomeCounters, DEFAULT_JIT_THRESHOLD};
 use beamr::loader::Instruction;
 use beamr::loader::decode::compact::Operand;
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
@@ -603,6 +603,57 @@ fn threshold_minus_one_calls_submit_nothing_and_the_crossing_call_submits_once()
             .submissions,
         1,
         "compiled state never re-submits within a generation"
+    );
+    scheduler.shutdown();
+}
+
+/// The shipped runtime never drives `tune_threshold` (#102; B-138 "SHALL NOT
+/// implement continuous re-tuning in production"): real tier-up through the
+/// wired scheduler — heat, submit, compile to success — moves the threshold
+/// not at all. Goes red the day production wiring starts tuning, forcing the
+/// docs and B-138's SHALL NOT to be revisited in the same change.
+#[test]
+fn runtime_tier_up_never_moves_the_compilation_threshold() {
+    let atoms = AtomTable::with_common_atoms();
+    let module_name = atoms.intern("jit_wireup_untuned");
+    let function = atoms.intern("f");
+
+    let registry = Arc::new(ModuleRegistry::new());
+    let calls = usize::try_from(DEFAULT_JIT_THRESHOLD).expect("threshold fits usize");
+    let module = registry.insert(local_hot_module(module_name, function, calls, 42));
+    // No jit_threshold override: this also pins the None -> DEFAULT_JIT_THRESHOLD
+    // mapping, so the constancy claim below is about the true default path.
+    let scheduler = Scheduler::new(
+        SchedulerConfig {
+            thread_count: Some(1),
+            dirty_cpu_threads: Some(1),
+            dirty_io_threads: Some(1),
+            ..SchedulerConfig::default()
+        },
+        Arc::clone(&registry),
+        NativeBifs::none(),
+    )
+    .expect("scheduler starts");
+    assert_eq!(
+        scheduler.jit_profiler().current_threshold(),
+        DEFAULT_JIT_THRESHOLD,
+        "an unconfigured scheduler starts at the default threshold"
+    );
+
+    assert_eq!(run_to_value(&scheduler, &module), Term::small_int(42));
+    assert!(
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes
+            == 1),
+        "compilation must land within the wait budget"
+    );
+    assert_eq!(
+        scheduler.jit_profiler().current_threshold(),
+        DEFAULT_JIT_THRESHOLD,
+        "a completed production compile must not move the threshold: \
+         tune_threshold is embedder-driven only (B-138)"
     );
     scheduler.shutdown();
 }

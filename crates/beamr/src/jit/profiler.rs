@@ -11,9 +11,11 @@ const STATE_UNSUPPORTED: u8 = 3;
 
 /// Default number of interpreted calls before a function becomes eligible for JIT compilation.
 ///
-/// The value is chosen to amortise Cranelift compilation cost for functions called in tight loops;
-/// [`JitProfiler::tune_threshold`] may adjust it at runtime when benchmark data shows a different
-/// compilation-cost/speedup trade-off for the current host.
+/// The value is chosen to amortise Cranelift compilation cost for functions called in tight loops.
+/// [`JitProfiler::tune_threshold`] can adjust it at runtime, but only when an embedder drives it
+/// through `Scheduler::jit_profiler` after offline benchmark analysis — the shipped runtime never
+/// calls it (B-138: no continuous re-tuning in production), so the threshold is constant unless an
+/// embedder intervenes.
 pub const DEFAULT_JIT_THRESHOLD: u32 = 1000;
 const MIN_TUNED_THRESHOLD: u32 = 100;
 const MAX_TUNED_THRESHOLD: u32 = 10_000;
@@ -200,6 +202,12 @@ impl JitProfiler {
     ///
     /// Fast compilation with a strong speedup compiles sooner; slow compilation or weak speedup
     /// compiles less eagerly. Tuned values are clamped to a production-safe envelope.
+    ///
+    /// The shipped runtime never calls this (B-138: tuning happens after benchmark analysis,
+    /// never continuously in production; JIT-001 left it deliberately unwired — nothing in the
+    /// tree measures compilation time or per-function speedup). It is an embedder-drivable
+    /// tuning point reachable through `Scheduler::jit_profiler`; unless an embedder drives it,
+    /// the threshold keeps its configured value for the scheduler's lifetime.
     pub fn tune_threshold(&self, compilation_time_us: u64, speedup_factor: f64) {
         let current = self.current_threshold();
         let tuned = if speedup_factor > 2.0 && compilation_time_us < 10_000 {
