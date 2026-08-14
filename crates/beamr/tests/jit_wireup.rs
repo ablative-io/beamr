@@ -1886,3 +1886,17 @@ fn no_fail_bif_badarith_deopts_to_interpreter_equal_exception() {
     );
     assert_eq!(jit_error, Some(ExecError::Badarg));
 }
+
+#[test]
+fn jit_stays_in_default_features_d2_always_on_native() {
+    // D2 amendment pin (docs/design/beamr/design.json, decision D2):
+    // "always-on" means always-on wherever the backend can exist — the jit
+    // feature is the wasm32/cooperative exclusion mechanism and must stay
+    // in DEFAULT features so native default builds always carry the JIT.
+    // This binary runs in the default-features suite, so this assert goes
+    // red the day anyone drops jit from default features.
+    assert!(
+        cfg!(feature = "jit"),
+        "jit must remain in beamr's default features (design record D2)"
+    );
+}
