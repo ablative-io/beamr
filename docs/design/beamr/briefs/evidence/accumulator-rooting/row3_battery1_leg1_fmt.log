@@ -1,0 +1,92 @@
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/src/native/ets_bifs.rs:2499:
+         let table_name = atom_table.intern("info_reserve_tab");
+         let mut process = Process::new(1, 4096);
+ 
+[31m-        let mut setup =
+(B[m[31m-            context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+(B[m[32m+        let mut setup = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+(B[m         let tab = new_table(&mut setup, &atom_table, table_name, &[public, named_table]);
+         drop(setup);
+ 
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/src/native/process_info_bifs.rs:647:
+             ProcessInfoItem::CurrentFunction,
+             ProcessInfoValue::CurrentFunction(Some((Atom::NORMAL, Atom::NORMAL, 2))),
+         );
+[31m-        facility.insert(queried_pid, ProcessInfoItem::HeapSize, ProcessInfoValue::HeapSize(64));
+(B[m         facility.insert(
+             queried_pid,
+[32m+            ProcessInfoItem::HeapSize,
+(B[m[32m+            ProcessInfoValue::HeapSize(64),
+(B[m[32m+        );
+(B[m[32m+        facility.insert(
+(B[m[32m+            queried_pid,
+(B[m             ProcessInfoItem::MessageQueueLen,
+             ProcessInfoValue::MessageQueueLen(0),
+         );
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/src/native/process_info_bifs.rs:663:
+             ProcessInfoItem::Status,
+             ProcessInfoValue::Status(ProcessInfoStatus::Waiting),
+         );
+[31m-        facility.insert(queried_pid, ProcessInfoItem::TrapExit, ProcessInfoValue::TrapExit(false));
+(B[m         facility.insert(
+             queried_pid,
+[32m+            ProcessInfoItem::TrapExit,
+(B[m[32m+            ProcessInfoValue::TrapExit(false),
+(B[m[32m+        );
+(B[m[32m+        facility.insert(
+(B[m[32m+            queried_pid,
+(B[m             ProcessInfoItem::Priority,
+             ProcessInfoValue::Priority(Priority::Normal),
+         );
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/src/native/process_info_bifs.rs:672:
+[31m-        facility.insert(queried_pid, ProcessInfoItem::Links, ProcessInfoValue::Links(vec![3, 4]));
+(B[m         facility.insert(
+             queried_pid,
+[32m+            ProcessInfoItem::Links,
+(B[m[32m+            ProcessInfoValue::Links(vec![3, 4]),
+(B[m[32m+        );
+(B[m[32m+        facility.insert(
+(B[m[32m+            queried_pid,
+(B[m             ProcessInfoItem::Monitors,
+             ProcessInfoValue::Monitors(vec![
+[31m-                ProcessMonitorInfo { watcher: queried_pid, target: 11 },
+(B[m[31m-                ProcessMonitorInfo { watcher: queried_pid, target: 12 },
+(B[m[31m-                ProcessMonitorInfo { watcher: 99, target: 13 },
+(B[m[32m+                ProcessMonitorInfo {
+(B[m[32m+                    watcher: queried_pid,
+(B[m[32m+                    target: 11,
+(B[m[32m+                },
+(B[m[32m+                ProcessMonitorInfo {
+(B[m[32m+                    watcher: queried_pid,
+(B[m[32m+                    target: 12,
+(B[m[32m+                },
+(B[m[32m+                ProcessMonitorInfo {
+(B[m[32m+                    watcher: 99,
+(B[m[32m+                    target: 13,
+(B[m[32m+                },
+(B[m             ]),
+         );
+ 
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/src/native/process_info_bifs.rs:685:
+         let reserved: usize = SUPPORTED_ITEMS
+             .iter()
+             .map(|item| {
+[31m-                let value = facility.process_info(queried_pid, *item).expect("value present");
+(B[m[32m+                let value = facility
+(B[m[32m+                    .process_info(queried_pid, *item)
+(B[m[32m+                    .expect("value present");
+(B[m                 3 + value_heap_words(queried_pid, &value) + 2
+             })
+             .sum();
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/src/native/process_info_bifs.rs:699:
+         drop(context);
+         let consumed = process.heap().young_used() - before;
+ 
+[31m-        assert!(Cons::new(proplist).is_some(), "process_info/1 returns a proplist");
+(B[m[32m+        assert!(
+(B[m[32m+            Cons::new(proplist).is_some(),
+(B[m[32m+            "process_info/1 returns a proplist"
+(B[m[32m+        );
+(B[m         assert_eq!(
+             consumed, reserved,
+             "the reserve must cover the collection sequence exactly \
