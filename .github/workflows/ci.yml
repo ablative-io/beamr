@@ -110,91 +110,18 @@ jobs:
             echo "::endgroup::"
           done
 
+      # The verdict logic lives in scripts/ci-verdict.sh — ONE copy, runnable
+      # and falsifiable locally, self-testing on every invocation (task #84).
+      # It keeps per-leg exit CONTRACTS instead of collapsing every nonzero:
+      # a leg may declare `cannot_measure_rcs` in gates.json and those codes
+      # red as CANNOT-MEASURE (a verdict on the instrument) rather than FAIL
+      # (a verdict on the tree); a malformed rc file is a red, not the silent
+      # pass it used to be. Do not re-inline this logic here: a workflow that
+      # restates its verdict is a second copy of the truth.
       - name: Verdict
         if: always()
         shell: bash
-        run: |
-          set -uo pipefail
-
-          # DENOMINATOR FIRST. A zero-failure count over a truncated set reads
-          # exactly like a clean run, so establish the population before
-          # believing any verdict drawn from it. If the previous step died
-          # mid-loop, declared and recorded disagree and that IS the finding.
-          if [ ! -f gate-rc/declared.count ]; then
-            echo "no declared-leg count: the canon step did not reach its first leg" >&2
-            exit 1
-          fi
-          declared=$(cat gate-rc/declared.count)
-          recorded=$(find gate-rc -name '*.rc' | wc -l | tr -d ' ')
-
-          echo "declared legs: ${declared}"
-          echo "recorded legs: ${recorded}"
-
-          if [ "$declared" -ne "$recorded" ]; then
-            echo "LEG COUNT MISMATCH: ${declared} declared, ${recorded} recorded — a leg is missing, so no verdict is available from this set" >&2
-            exit 1
-          fi
-          if [ "$recorded" -eq 0 ]; then
-            echo "zero legs recorded: nothing ran, which is not a pass" >&2
-            exit 1
-          fi
-
-          # SECOND DENOMINATOR: a test leg that RAN NOTHING exits 0.
-          #
-          # The leg count above proves every leg ran. It cannot see that a leg
-          # ran and did no work. `cargo test` exits 0 when a feature flag, a
-          # `#![cfg(...)]` or a harness change leaves it with zero tests to
-          # execute — a green run over an empty population, which is exactly
-          # what "the encode suite is not in the gate" looked like before it
-          # was found. So every leg DECLARED `kind: cargo-test` must show at
-          # least one `test result:` line and a nonzero passed total.
-          #
-          # Keyed on the leg's declared KIND, not on its name, so a cargo-test
-          # leg added to gates.json inherits this assertion with no edit here —
-          # the same reason the legs themselves are read rather than restated.
-          #
-          # ⚠️ Asserted on the leg TOTAL, never per line: a feature-gated test
-          # binary legitimately prints `ok. 0 passed`, and today's wasm leg has
-          # one. A per-line rule would fail an honest run.
-          for i in $(seq 0 $((declared - 1))); do
-            kind=$(jq -r ".legs[$i].kind // \"\"" gates.json)
-            [ "$kind" = "cargo-test" ] || continue
-            name=$(jq -r ".legs[$i].name" gates.json)
-            log="gate-rc/${name}.log"
-            if [ ! -f "$log" ]; then
-              echo "TEST-COUNT: ${name} declares kind cargo-test but produced no log" >&2
-              exit 1
-            fi
-            # `| wc -l`, not `grep -c`: grep -c exits 1 on zero matches, so the
-            # count and the failure share one channel. Here zero IS the finding
-            # and must reach the check, not abort it.
-            lines=$(grep '^test result:' "$log" | wc -l | tr -d ' ')
-            passed=$(awk '/^test result:/ {for (j=1;j<=NF;j++) if ($j=="passed;") p+=$(j-1)} END {print p+0}' "$log")
-            echo "  ${name}: ${lines} result line(s), ${passed} passed"
-            if [ "$lines" -eq 0 ]; then
-              echo "TEST-COUNT: ${name} emitted no 'test result:' line — it ran no test binary, which is not a pass" >&2
-              exit 1
-            fi
-            if [ "$passed" -eq 0 ]; then
-              echo "TEST-COUNT: ${name} passed 0 tests across ${lines} binaries — an empty population, which is not a pass" >&2
-              exit 1
-            fi
-          done
-
-          verdict=0
-          for rc_file in gate-rc/*.rc; do
-            leg=$(basename "$rc_file" .rc)
-            rc=$(cat "$rc_file")
-            echo "  ${leg}: rc=${rc}"
-            if [ "$rc" -ne 0 ]; then
-              verdict=1
-            fi
-          done
-
-          # `rc`/`verdict`, never `status`: in zsh `status` is a read-only
-          # alias for $? and assigning to it is fatal. This file runs under
-          # bash, but the name is a trap for anyone lifting the idiom.
-          exit "$verdict"
+        run: ./scripts/ci-verdict.sh gate-rc gates.json
 
       - name: Upload per-leg rc artifacts
         if: always()

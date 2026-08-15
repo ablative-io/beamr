@@ -1,0 +1,45 @@
+=== self-test + real-shaped green grade (expect rc 0) ===
+self-test: all-green -> gamma: rc=0 pass (expected)
+self-test: one-fail -> FAIL — measured red (expected)
+self-test: cannot-measure -> CANNOT-MEASURE (expected)
+self-test: uncontracted-2 -> alpha: rc=2 FAIL (expected)
+self-test: malformed-rc -> MALFORMED rc (expected)
+self-test: truncated-set -> LEG COUNT MISMATCH (expected)
+self-test: empty-tests -> TEST-COUNT (expected)
+declared legs: 8
+recorded legs: 8
+  wasm-tests: 2 result line(s), 80 passed
+  tests: 75 result line(s), 2120 passed
+  tests-all-features: 75 result line(s), 2130 passed
+  blocking-call-in-native-bif: rc=0 pass
+  clippy-all-features: rc=0 pass
+  clippy: rc=0 pass
+  fmt: rc=0 pass
+  tests-all-features: rc=0 pass
+  tests: rc=0 pass
+  wasm-tests: rc=0 pass
+  wasm32-check: rc=0 pass
+rc=0
+
+=== real-shaped with clippy rc=101 (expect rc 1, FAIL class) ===
+self-test: all-green -> gamma: rc=0 pass (expected)
+self-test: one-fail -> FAIL — measured red (expected)
+self-test: cannot-measure -> CANNOT-MEASURE (expected)
+self-test: uncontracted-2 -> alpha: rc=2 FAIL (expected)
+self-test: malformed-rc -> MALFORMED rc (expected)
+self-test: truncated-set -> LEG COUNT MISMATCH (expected)
+self-test: empty-tests -> TEST-COUNT (expected)
+declared legs: 8
+recorded legs: 8
+  wasm-tests: 2 result line(s), 80 passed
+  tests: 75 result line(s), 2120 passed
+  tests-all-features: 75 result line(s), 2130 passed
+  blocking-call-in-native-bif: rc=0 pass
+  clippy-all-features: rc=0 pass
+  clippy: rc=101 FAIL — measured red
+  fmt: rc=0 pass
+  tests-all-features: rc=0 pass
+  tests: rc=0 pass
+  wasm-tests: rc=0 pass
+  wasm32-check: rc=0 pass
+rc=1
