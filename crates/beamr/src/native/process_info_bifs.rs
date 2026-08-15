@@ -275,11 +275,13 @@ fn value_heap_words(queried_pid: u64, value: &ProcessInfoValue) -> usize {
         | ProcessInfoValue::TrapExit(_) => 0,
         ProcessInfoValue::Links(links) => links.len() * 2,
         ProcessInfoValue::Monitors(monitors) => {
+            // Each matching monitor becomes a `{process, Pid}` 2-tuple (header +
+            // 2 elements = 3 words) plus its cons cell (2 words): 5 words total.
             monitors
                 .iter()
                 .filter(|monitor| monitor.watcher == queried_pid)
                 .count()
-                * 4
+                * 5
         }
     }
 }
@@ -621,5 +623,87 @@ mod tests {
 
         assert_eq!(tuple[0], Term::atom(priority));
         assert_eq!(tuple[1], Term::atom(atom_table.intern("high")));
+    }
+
+    /// AR-1 gate row 3 — the reserve ahead of `bif_process_info_1`'s
+    /// collection sequence must cover EVERY word that sequence allocates,
+    /// measured rather than promised. The unrooted `tuples` and
+    /// `alloc_monitor_list::terms` accumulators below the reserve are safe
+    /// only because the inner `ensure_heap_space` calls can never collect,
+    /// and that holds only while reserved >= consumed. The assertion is
+    /// EXACT equality so that an under-count of a single word — in either
+    /// direction: a `value_heap_words` arm losing a word, or an allocation
+    /// added to the sequence without the arithmetic following — goes red.
+    /// The monitor population deliberately mixes matching and non-matching
+    /// watchers so the count's filter and the allocator's filter are held
+    /// to the same population.
+    #[test]
+    fn process_info_reserve_covers_every_allocation_exactly() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let facility = Arc::new(MockProcessInfoFacility::default());
+        let queried_pid = 7;
+        facility.insert(
+            queried_pid,
+            ProcessInfoItem::CurrentFunction,
+            ProcessInfoValue::CurrentFunction(Some((Atom::NORMAL, Atom::NORMAL, 2))),
+        );
+        facility.insert(queried_pid, ProcessInfoItem::HeapSize, ProcessInfoValue::HeapSize(64));
+        facility.insert(
+            queried_pid,
+            ProcessInfoItem::MessageQueueLen,
+            ProcessInfoValue::MessageQueueLen(0),
+        );
+        facility.insert(
+            queried_pid,
+            ProcessInfoItem::RegisteredName,
+            ProcessInfoValue::RegisteredName(None),
+        );
+        facility.insert(
+            queried_pid,
+            ProcessInfoItem::Status,
+            ProcessInfoValue::Status(ProcessInfoStatus::Waiting),
+        );
+        facility.insert(queried_pid, ProcessInfoItem::TrapExit, ProcessInfoValue::TrapExit(false));
+        facility.insert(
+            queried_pid,
+            ProcessInfoItem::Priority,
+            ProcessInfoValue::Priority(Priority::Normal),
+        );
+        facility.insert(queried_pid, ProcessInfoItem::Links, ProcessInfoValue::Links(vec![3, 4]));
+        facility.insert(
+            queried_pid,
+            ProcessInfoItem::Monitors,
+            ProcessInfoValue::Monitors(vec![
+                ProcessMonitorInfo { watcher: queried_pid, target: 11 },
+                ProcessMonitorInfo { watcher: queried_pid, target: 12 },
+                ProcessMonitorInfo { watcher: 99, target: 13 },
+            ]),
+        );
+
+        // The promise, recomputed from the SAME arithmetic the production
+        // reserve uses — so a mutated arm moves this side, not the measured one.
+        let reserved: usize = SUPPORTED_ITEMS
+            .iter()
+            .map(|item| {
+                let value = facility.process_info(queried_pid, *item).expect("value present");
+                3 + value_heap_words(queried_pid, &value) + 2
+            })
+            .sum();
+
+        let mut process = Process::new(1, 4096);
+        let before = process.heap().young_used();
+        let mut context =
+            context_with_facility(Arc::clone(&atom_table), Arc::clone(&facility), &mut process);
+        let proplist = bif_process_info_1(&[Term::pid(queried_pid)], &mut context)
+            .expect("process_info/1 succeeds");
+        drop(context);
+        let consumed = process.heap().young_used() - before;
+
+        assert!(Cons::new(proplist).is_some(), "process_info/1 returns a proplist");
+        assert_eq!(
+            consumed, reserved,
+            "the reserve must cover the collection sequence exactly \
+             (consumed {consumed} words, reserved {reserved})"
+        );
     }
 }

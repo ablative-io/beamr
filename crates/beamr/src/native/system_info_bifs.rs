@@ -654,4 +654,30 @@ mod tests {
             assert!(entry.dirty_kind.is_none());
         }
     }
+
+    /// AR-1 gate row 3 — `info_proplist_heap_words` must cover EVERY word
+    /// `bif_memory_0` allocates after its reserve, measured rather than
+    /// promised: the unrooted `entries` accumulator is safe only because the
+    /// inner `ensure_heap_space` calls can never collect, which holds only
+    /// while reserved >= consumed. Exact equality, whole-call delta: the
+    /// pre-reserve steps (atom interning, `memory_values`) must stay
+    /// heap-allocation-free for the reserve to be the whole story, so this
+    /// pins that too. Subtracting one word from the helper turns this red.
+    #[test]
+    fn memory_zero_reserve_covers_every_allocation_exactly() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let mut process = Process::new(1, 1024);
+        let before = process.heap().young_used();
+        let mut context = context(&mut process, Arc::clone(&atom_table));
+        let memory = bif_memory_0(&[], &mut context).expect("memory/0 succeeds");
+        drop(context);
+        let consumed = process.heap().young_used() - before;
+
+        assert!(Cons::new(memory).is_some(), "memory/0 returns a proplist");
+        assert_eq!(
+            consumed,
+            info_proplist_heap_words(MEMORY_ITEMS.len()),
+            "the reserve must cover the proplist sequence exactly (consumed {consumed} words)"
+        );
+    }
 }

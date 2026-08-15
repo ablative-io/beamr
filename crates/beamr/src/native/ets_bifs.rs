@@ -2479,4 +2479,42 @@ mod tests {
             );
         }
     }
+
+    /// AR-1 gate row 3 — `info_proplist_heap_words` must cover EVERY word
+    /// `bif_info_1` allocates after its reserve, measured rather than
+    /// promised: the unrooted `entries` accumulator is safe only because the
+    /// inner `ensure_heap_space` calls can never collect, which holds only
+    /// while reserved >= consumed. Exact equality, whole-call delta: the
+    /// pre-reserve steps (`resolve_table`, atom interning, `info_value` — all
+    /// immediates by construction) must stay heap-allocation-free for the
+    /// reserve to be the whole story, so this pins that too. Table creation
+    /// happens under a separate context BEFORE the measurement window.
+    /// Subtracting one word from the helper turns this red.
+    #[test]
+    fn info_one_reserve_covers_every_allocation_exactly() {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let registry = Arc::new(EtsRegistry::new(Arc::clone(&atom_table)));
+        let public = atom_table.intern("public");
+        let named_table = atom_table.intern("named_table");
+        let table_name = atom_table.intern("info_reserve_tab");
+        let mut process = Process::new(1, 4096);
+
+        let mut setup =
+            context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+        let tab = new_table(&mut setup, &atom_table, table_name, &[public, named_table]);
+        drop(setup);
+
+        let before = process.heap().young_used();
+        let mut context = context(&mut process, Arc::clone(&atom_table), registry);
+        let proplist = super::bif_info_1(&[tab], &mut context).expect("info/1 succeeds");
+        drop(context);
+        let consumed = process.heap().young_used() - before;
+
+        assert!(Cons::new(proplist).is_some(), "info/1 returns a proplist");
+        assert_eq!(
+            consumed,
+            super::info_proplist_heap_words(super::INFO_ITEMS.len()),
+            "the reserve must cover the proplist sequence exactly (consumed {consumed} words)"
+        );
+    }
 }
