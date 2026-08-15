@@ -29,6 +29,15 @@ pub struct ParsedModule {
     pub literals: Vec<Literal>,
     pub string_table: Vec<u8>,
     pub line_info: Vec<LineInfo>,
+    /// Raw `Type` chunk bytes, carried VERBATIM for re-emission (#95).
+    ///
+    /// Typed-register operands index into this chunk. beamr's runtime never
+    /// reads the table, but the encoder must re-emit it or every emitted
+    /// typed register dangles — readable by beamr, unreadable by every other
+    /// BEAM tool. The bytes are opaque here on purpose: interpreting them
+    /// would invite normalisation, and only the verbatim bytes are guaranteed
+    /// to keep the operands' indices valid.
+    pub type_chunk: Option<Vec<u8>>,
 }
 
 /// One unresolved import produced by loader import resolution.
@@ -348,6 +357,9 @@ pub fn load_beam_chunks(bytes: &[u8], atom_table: &AtomTable) -> Result<ParsedMo
         Some(bytes) => decode_line_chunk(bytes, &mut budget)?,
         None => Vec::new(),
     };
+    // Carried raw, never parsed: typed-register operands index into these
+    // bytes, and only the verbatim chunk keeps those indices valid (#95).
+    let type_chunk = find_chunk(&chunks, b"Type").map(<[u8]>::to_vec);
 
     Ok(ParsedModule {
         name,
@@ -359,6 +371,7 @@ pub fn load_beam_chunks(bytes: &[u8], atom_table: &AtomTable) -> Result<ParsedMo
         literals,
         string_table,
         line_info,
+        type_chunk,
     })
 }
 
@@ -830,6 +843,7 @@ mod tests {
             literals: Vec::new(),
             string_table: Vec::new(),
             line_info: Vec::new(),
+            type_chunk: None,
         }
     }
 

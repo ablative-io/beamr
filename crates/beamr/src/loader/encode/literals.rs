@@ -350,7 +350,7 @@ mod tests {
     fn litt_encode_matches_golden_bytes() {
         let table = AtomTable::with_common_atoms();
         let (atoms, literals) = representative_table(&table);
-        let encoder = AtomEncoder::new(&atoms, &table);
+        let encoder = AtomEncoder::new(&atoms, &table, false);
         let first = encode_literal_chunk(&literals, &encoder)
             .expect("representative table encodes")
             .expect("non-empty table emits a chunk");

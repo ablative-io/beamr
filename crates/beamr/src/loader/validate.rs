@@ -488,6 +488,7 @@ mod tests {
             literals: Vec::new(),
             string_table: Vec::new(),
             line_info: Vec::new(),
+            type_chunk: None,
         }
     }
 

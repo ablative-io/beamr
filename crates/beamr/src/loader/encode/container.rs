@@ -31,17 +31,17 @@ pub enum EncodeError {
     /// An instruction shape cannot be expressed (e.g. a `MakeFun` with an
     /// operand count matching neither `make_fun2` nor `make_fun3`).
     UnsupportedInstruction,
-    /// A typed-register operand was reached. OTP 26+ emits `#tr{}` operands
-    /// carrying an index into the module's `Type` chunk; beamr's decoder keeps
-    /// the index but drops the table, so re-emitting the operand would produce
-    /// a `Code` chunk pointing into a chunk this encoder never writes.
+    /// A typed-register operand was reached in a module that carries no
+    /// `Type` chunk. OTP 26+ emits `#tr{}` operands carrying an index into
+    /// that chunk; with no chunk to re-emit, writing the operand would
+    /// produce a `Code` chunk pointing into a table absent from the
+    /// container — readable by beamr (which ignores the table) and unreadable
+    /// by every other BEAM tool, a silent fallback wearing a success exit.
     ///
-    /// ⛔ Refusing is deliberate and is NOT the eventual fix. Until the `Type`
-    /// chunk is carried through `ParsedModule` and re-emitted verbatim, the
-    /// only honest options are "refuse loudly" and "emit a module whose
-    /// operands dangle". The second one wears a success exit code, which is
-    /// how it went unnoticed: every such module round-tripped perfectly
-    /// through beamr's own loader and was unreadable by every other tool.
+    /// Since #95's fix, `ParsedModule::type_chunk` carries the chunk bytes
+    /// verbatim and typed registers encode whenever it is present, so this
+    /// error is reachable only for modules CONSTRUCTED with typed registers
+    /// and `type_chunk: None` — a combination no decoded module produces.
     TypedRegisterWithoutTypeChunk {
         /// Position in the module's instruction stream, when the operand was
         /// reached through the `Code` chunk walk. `None` when an operand is
@@ -113,7 +113,7 @@ pub fn encode_module(
     module: &ParsedModule,
     atom_table: &AtomTable,
 ) -> Result<Vec<u8>, EncodeError> {
-    let encoder = AtomEncoder::new(&module.atoms, atom_table);
+    let encoder = AtomEncoder::new(&module.atoms, atom_table, module.type_chunk.is_some());
 
     // Canonical chunk order.
     //
@@ -150,6 +150,12 @@ pub fn encode_module(
     chunks.push((b"StrT", encode_string_chunk(&module.string_table)));
     if !module.line_info.is_empty() {
         chunks.push((b"Line", encode_line_chunk(&module.line_info)?));
+    }
+    // VERBATIM, never rebuilt: typed-register operands in the Code chunk index
+    // into these bytes, and only the identical bytes keep those indices valid
+    // (#95). The chunk is opaque to beamr's own loader on purpose.
+    if let Some(type_chunk) = &module.type_chunk {
+        chunks.push((b"Type", type_chunk.clone()));
     }
 
     Ok(frame_container(&chunks))

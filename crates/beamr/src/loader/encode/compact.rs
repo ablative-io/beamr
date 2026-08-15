@@ -26,10 +26,17 @@ use super::container::EncodeError;
 pub(crate) struct AtomEncoder<'a> {
     indices: HashMap<Atom, u32>,
     atom_table: &'a AtomTable,
+    /// Whether the module being encoded carries a `Type` chunk to re-emit.
+    ///
+    /// Threaded here — the per-module encode context every operand writer
+    /// already receives — so the typed-register arm can decide between
+    /// encoding (indices have a table to land in) and refusing (#95 guard)
+    /// without widening every writer signature.
+    type_chunk_present: bool,
 }
 
 impl<'a> AtomEncoder<'a> {
-    pub(crate) fn new(atoms: &[Atom], atom_table: &'a AtomTable) -> Self {
+    pub(crate) fn new(atoms: &[Atom], atom_table: &'a AtomTable, type_chunk_present: bool) -> Self {
         let mut indices = HashMap::with_capacity(atoms.len());
         for (position, atom) in atoms.iter().enumerate() {
             indices.entry(*atom).or_insert(position as u32 + 1);
@@ -37,6 +44,7 @@ impl<'a> AtomEncoder<'a> {
         Self {
             indices,
             atom_table,
+            type_chunk_present,
         }
     }
 
@@ -96,16 +104,19 @@ pub(crate) fn encode_operand(
             }
         }
         Operand::TypedRegister {
-            register: _,
+            register,
             type_index,
         } => {
-            // ⛔ REFUSE. Writing this operand emits a `#tr{}` whose type index
-            // points into a `Type` chunk `encode_module` never produces, so the
-            // result is a container OTP's tools cannot resolve — and beamr's own
-            // loader accepts it happily, because it reads the index and ignores
-            // the table. That combination is a silent fallback wearing a success
-            // exit: the encoder reports Ok, the round-trip ratchet goes green,
-            // and the bytes are wrong everywhere else.
+            // ⛔ REFUSE unless the module carries a `Type` chunk. Writing this
+            // operand emits a `#tr{}` whose type index points into that chunk;
+            // when `encode_module` has no chunk to emit, the result is a
+            // container OTP's tools cannot resolve — and beamr's own loader
+            // accepts it happily, because it reads the index and ignores the
+            // table. That combination is a silent fallback wearing a success
+            // exit. With the chunk carried verbatim through `ParsedModule`
+            // (#95's fix), the indices land in the same table they came from,
+            // so the operand encodes as the exact inverse of the decoder's
+            // extended-tag-5 read.
             //
             // The guard is deliberately here, in the single operand writer, and
             // not in a separate walk over `Instruction`'s 64 variants: every
@@ -113,10 +124,15 @@ pub(crate) fn encode_operand(
             // members, which recurse through this function — must pass through
             // this match arm. A hand-written walk would have to be kept in step
             // with the enum by someone remembering to.
-            return Err(EncodeError::TypedRegisterWithoutTypeChunk {
-                instruction_index: None,
-                type_index: *type_index,
-            });
+            if !atoms.type_chunk_present {
+                return Err(EncodeError::TypedRegisterWithoutTypeChunk {
+                    instruction_index: None,
+                    type_index: *type_index,
+                });
+            }
+            push_unsigned(out, 7, 5);
+            encode_operand(out, register, atoms)?;
+            push_unsigned(out, 0, *type_index);
         }
     }
     Ok(())
@@ -213,7 +229,18 @@ mod tests {
     /// Round-trips one operand through the real decoder against `atoms`. A pool
     /// of placeholder literals backs any `Operand::Literal` bounds check.
     fn round_trip(operand: &Operand, atoms: &[Atom], atom_table: &AtomTable) -> Operand {
-        let encoder = AtomEncoder::new(atoms, atom_table);
+        round_trip_in(operand, atoms, atom_table, false)
+    }
+
+    /// `round_trip` with the type-chunk-present flag chosen by the caller, for
+    /// exercising the typed-register arm's encode path.
+    fn round_trip_in(
+        operand: &Operand,
+        atoms: &[Atom],
+        atom_table: &AtomTable,
+        type_chunk_present: bool,
+    ) -> Operand {
+        let encoder = AtomEncoder::new(atoms, atom_table, type_chunk_present);
         let mut bytes = Vec::new();
         encode_operand(&mut bytes, operand, &encoder).expect("operand encodes");
         let literals = vec![Literal::Nil; 6000];
@@ -227,10 +254,11 @@ mod tests {
         AtomTable::with_common_atoms()
     }
 
-    /// Encodes one operand and returns the error, asserting the encoder refused.
+    /// Encodes one operand with NO `Type` chunk present and returns the error,
+    /// asserting the encoder refused.
     fn refusal(operand: &Operand) -> EncodeError {
         let atom_table = table();
-        let encoder = AtomEncoder::new(&[], &atom_table);
+        let encoder = AtomEncoder::new(&[], &atom_table, false);
         let mut bytes = Vec::new();
         encode_operand(&mut bytes, operand, &encoder).expect_err("encoder must refuse this operand")
     }
@@ -281,6 +309,28 @@ mod tests {
                 type_index: 7,
             }
         );
+    }
+
+    /// #95 fix: with a `Type` chunk present, a typed register encodes as the
+    /// exact inverse of the decoder's extended-tag-5 read — nested wrapping
+    /// included, through the same single-writer recursion the guard uses.
+    #[test]
+    fn typed_registers_round_trip_when_the_type_chunk_is_present() {
+        let atoms = table();
+        let typed = Operand::TypedRegister {
+            register: Box::new(Operand::X(4)),
+            type_index: 12,
+        };
+        assert_eq!(round_trip_in(&typed, &[], &atoms, true), typed);
+
+        let nested = Operand::List(vec![
+            Operand::X(1),
+            Operand::TypedRegister {
+                register: Box::new(Operand::Y(2)),
+                type_index: 7,
+            },
+        ]);
+        assert_eq!(round_trip_in(&nested, &[], &atoms, true), nested);
     }
 
     /// Positive control for both refusal tests: the surrounding shapes encode

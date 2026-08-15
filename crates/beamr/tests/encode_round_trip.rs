@@ -73,14 +73,14 @@ enum Outcome {
     /// Every one of these is an encoder bug to fix.
     Failed(String),
     /// The encoder REFUSED the module by name (#95): it contains typed-register
-    /// operands, whose `Type` chunk beamr's decoder drops, so the encoder cannot
-    /// represent it faithfully.
+    /// operands and no `Type` chunk for their indices to land in.
     ///
-    /// This is neither a pass nor an encoder bug — it is the guard working. It
-    /// gets its own variant so the count stays VISIBLE: absorbing refusals into
-    /// `Passed` would hide the open defect behind a green run, and classing them
-    /// `Failed` would hold the guard hostage to the fix it precedes. When #95's
-    /// fix lands and the `Type` chunk is carried, this tally drops to zero.
+    /// Since #95's fix carries the `Type` chunk verbatim through
+    /// `ParsedModule`, no DECODED module can reach this state — a source
+    /// module with typed registers necessarily has the chunk. The variant is
+    /// kept (and the committed-fixture ratchet asserts it stays at ZERO)
+    /// because a regression that re-drops the chunk would resurface exactly
+    /// here, and a tally that is merely printed is a tally nobody reads.
     Refused(String),
 }
 
@@ -281,6 +281,11 @@ fn first_mismatch(original: &ParsedModule, reloaded: &ParsedModule) -> Option<St
     if original.line_info != reloaded.line_info {
         return Some("line_info".to_string());
     }
+    if original.type_chunk != reloaded.type_chunk {
+        // Verbatim carry (#95): the bytes are opaque, so the only possible
+        // verdicts are "identical" and "not carried".
+        return Some("type_chunk".to_string());
+    }
     None
 }
 
@@ -337,6 +342,18 @@ fn every_fixture_round_trips_through_encode() {
     for line in &refused {
         println!("  REFUSED {line}");
     }
+
+    // #95's fix carries the `Type` chunk, so no committed fixture can refuse:
+    // a decoded module with typed registers necessarily has the chunk. This is
+    // a WALL, not a printout — before the fix the tally stood at 55, and a
+    // regression that re-drops the chunk must fail here, not fade into a
+    // captured println nobody reads.
+    assert!(
+        refused.is_empty(),
+        "{} committed fixtures refused after the #95 fix (the Type chunk stopped being carried):\n{}",
+        refused.len(),
+        refused.join("\n")
+    );
 
     assert!(
         failures.is_empty(),
@@ -507,6 +524,7 @@ fn hand_built_edge_cases_round_trip() {
         literals,
         string_table: Vec::new(),
         line_info: Vec::new(),
+        type_chunk: None,
     };
 
     let encoded = encode_module(&module, &table).expect("edge module encodes");
@@ -530,6 +548,7 @@ fn empty_optional_chunks_round_trip() {
         literals: Vec::new(),
         string_table: Vec::new(),
         line_info: Vec::new(),
+        type_chunk: None,
     };
 
     let encoded = encode_module(&module, &table).expect("bare module encodes");
@@ -561,6 +580,7 @@ fn required_chunks_are_emitted_even_when_empty() {
         literals: Vec::new(),
         string_table: Vec::new(),
         line_info: Vec::new(),
+        type_chunk: None,
     };
 
     let encoded = encode_module(&module, &table).expect("empty module encodes");
@@ -600,6 +620,7 @@ fn the_required_chunk_check_detects_an_absent_chunk() {
         literals: Vec::new(),
         string_table: Vec::new(),
         line_info: Vec::new(),
+        type_chunk: None,
     };
     let encoded = encode_module(&module, &table).expect("module encodes");
     assert_eq!(missing_required_chunks(&encoded), None, "control: intact");
@@ -625,5 +646,97 @@ fn the_required_chunk_check_detects_an_absent_chunk() {
     assert!(
         verdict.contains("StrT"),
         "the check must name the absent chunk, said: {verdict}"
+    );
+}
+
+/// #95's fix, end to end: a module carrying a `Type` chunk and a typed-register
+/// operand round-trips with the chunk re-emitted VERBATIM and the operand
+/// decoding back identically. The chunk bytes are deliberately arbitrary — the
+/// carry is content-agnostic, and interpreting them would invite the
+/// normalisation this fix exists to avoid.
+#[test]
+fn type_chunk_is_carried_verbatim_and_typed_registers_encode() {
+    let table = AtomTable::with_common_atoms();
+    let name = table.intern("typed_module");
+    let type_bytes = vec![0x00, 0x00, 0x00, 0x01, 0xDE, 0xAD, 0xBE, 0xEF, 0x2A];
+    let module = ParsedModule {
+        name,
+        atoms: vec![name],
+        instructions: vec![
+            Instruction::Label { label: 1 },
+            Instruction::Move {
+                source: Operand::TypedRegister {
+                    register: Box::new(Operand::X(4)),
+                    type_index: 1,
+                },
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+        imports: Vec::new(),
+        exports: Vec::new(),
+        lambdas: Vec::new(),
+        literals: Vec::new(),
+        string_table: Vec::new(),
+        line_info: Vec::new(),
+        type_chunk: Some(type_bytes.clone()),
+    };
+
+    let encoded = encode_module(&module, &table).expect("typed module encodes with its chunk");
+    let tags = container_chunk_tags(&encoded).expect("container walks");
+    assert!(
+        tags.iter().any(|tag| tag == b"Type"),
+        "the Type chunk must be emitted, got {:?}",
+        tags.iter()
+            .map(|tag| String::from_utf8_lossy(tag).into_owned())
+            .collect::<Vec<_>>()
+    );
+
+    let reloaded = load_beam_chunks(&encoded, &table).expect("typed module decodes");
+    assert_eq!(
+        reloaded.type_chunk.as_deref(),
+        Some(type_bytes.as_slice()),
+        "the chunk must survive byte-for-byte"
+    );
+    assert_eq!(module, reloaded);
+}
+
+/// The #95 guard survives the fix: typed registers in a module CONSTRUCTED
+/// without a `Type` chunk still refuse by name — the combination no decoded
+/// module produces, kept unrepresentable in the output.
+#[test]
+fn typed_registers_without_a_chunk_still_refuse() {
+    let table = AtomTable::with_common_atoms();
+    let name = table.intern("chunkless_typed_module");
+    let module = ParsedModule {
+        name,
+        atoms: vec![name],
+        instructions: vec![
+            Instruction::Label { label: 1 },
+            Instruction::Move {
+                source: Operand::TypedRegister {
+                    register: Box::new(Operand::X(4)),
+                    type_index: 3,
+                },
+                destination: Operand::X(0),
+            },
+            Instruction::Return,
+        ],
+        imports: Vec::new(),
+        exports: Vec::new(),
+        lambdas: Vec::new(),
+        literals: Vec::new(),
+        string_table: Vec::new(),
+        line_info: Vec::new(),
+        type_chunk: None,
+    };
+
+    let error = encode_module(&module, &table).expect_err("chunkless typed register must refuse");
+    assert_eq!(
+        error,
+        EncodeError::TypedRegisterWithoutTypeChunk {
+            instruction_index: Some(1),
+            type_index: 3,
+        }
     );
 }
