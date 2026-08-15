@@ -1,0 +1,5 @@
+    Checking beamr v0.18.2 (/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/probe-wt/crates/beamr)
+crates/beamr/src/etf/decode.rs:197:39: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/context/alloc.rs:231:35: error[E0277]: the trait bound `&[Term]: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&[Term]`
+crates/beamr/src/native/gate3_bifs/mod.rs:846:34: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+error: could not compile `beamr` (lib) due to 3 previous errors

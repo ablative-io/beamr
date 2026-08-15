@@ -1,0 +1,35 @@
+    Checking beamr v0.18.2 (/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/probe-wt/crates/beamr)
+crates/beamr/src/distribution/control.rs:517:35: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/distribution/control.rs:642:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/distribution/pg.rs:493:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/etf/decode.rs:175:29: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/ets/match_spec.rs:121:33: error[E0277]: the trait bound `&[Term]: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&[Term]`
+crates/beamr/src/native/dictionary_bifs.rs:116:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/dictionary_bifs.rs:132:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/etf_bifs.rs:142:28: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/ets_bifs.rs:372:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/ets_bifs.rs:392:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/ets_bifs.rs:419:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/ets_bifs.rs:566:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/ets_bifs.rs:902:42: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/ets_bifs.rs:967:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/ets_bifs.rs:1297:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/file_meta_bifs.rs:170:43: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/gate3_bifs/type_conversion.rs:108:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/gate3_bifs/type_conversion.rs:259:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/gate3_bifs/mod.rs:322:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/gate3_bifs/mod.rs:770:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/inet_bifs.rs:93:35: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/otp_stubs/erlang_stubs.rs:70:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/otp_stubs/erlang_stubs.rs:302:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/process_info_bifs.rs:206:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/process_info_bifs.rs:303:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/process_info_bifs.rs:319:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/stdlib_stubs/misc_bifs.rs:110:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/stdlib_stubs/string_bifs.rs:93:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/stdlib_stubs/string_bifs.rs:136:43: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/stdlib_stubs/type_conversion_bifs.rs:131:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/stdlib_stubs/type_conversion_bifs.rs:205:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/stdlib_stubs/uri_bifs.rs:136:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+crates/beamr/src/native/system_info_bifs.rs:191:24: error[E0277]: the trait bound `&Vec<Term>: TermSource` is not satisfied: the trait `TermSource` is not implemented for `&Vec<Term>`
+error: could not compile `beamr` (lib) due to 33 previous errors
