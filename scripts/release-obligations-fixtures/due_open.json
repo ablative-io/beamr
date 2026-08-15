@@ -1,0 +1,15 @@
+{
+  "repo": "fixture",
+  "schema": 1,
+  "_read_me": "CONTROL FIXTURE for release-obligations-gate.py: one open obligation due at any release. The gate must grade this 'refuse' on every run before it may grade the real file. Synthetic shape, never a live obligation (a control keyed on a live entry dies when that entry is resolved).",
+  "obligations": [
+    {
+      "id": "CTRL-DUE",
+      "title": "control: open and due at every cut",
+      "due": "next-release",
+      "status": "open",
+      "reason_unresolved": "This fixture exists so the gate demonstrably CAN refuse.",
+      "resolution": null
+    }
+  ]
+}

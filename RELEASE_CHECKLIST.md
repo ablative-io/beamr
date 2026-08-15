@@ -40,6 +40,7 @@ approved, publish it.
 
 ## Release constraints
 
+- [ ] The release-obligations gate passes: `scripts/release-obligations-gate.py` (also runs automatically inside `scripts/release.sh`, dry-run included). A red here means `RELEASE-OBLIGATIONS.json` holds an obligation due at this cut — resolve it in that file (state the resolution) or record a lead's ruling as its new reason. ⛔ Publishing by bare `cargo publish` without this gate bypasses the ruled path (`ablative/docs` `tracking/ruling-release-obligations-20260809.md`) — use `scripts/release.sh`.
 - [ ] Audit non-test production source for `eprintln!`, `dbg!`, `todo!(`, `unimplemented!(`, and unacceptable `panic!(`.
 - [ ] Confirm no known open memory-safety findings ship unfixed without a recorded project-lead ruling (`docs/REVIEW-23-07.md` is the standing open register).
 - [ ] Create local tag `vX.Y.Z` only after all validation gates pass.

@@ -1,0 +1,34 @@
+{
+  "repo": "beamr",
+  "schema": 1,
+  "_read_me": "Release-time obligations. Consulted by scripts/release-obligations-gate.py, which scripts/release.sh runs BEFORE any publish (dry-run included). Five ruled properties (ablative/docs tracking/ruling-release-obligations-20260809.md, commit 1369278): in the repo; on the path the act takes; the gate REFUSES rather than lists; reason_unresolved is REQUIRED while open; absence or malformed RAISES, never skips. due grammar: 'next-release' (due at any cut) or 'release:X.Y.Z' (due when the version being cut is >= X.Y.Z). An open obligation that is due REFUSES the release until it is resolved here, with the resolution stated.",
+  "obligations": [
+    {
+      "id": "OB-001",
+      "title": "EtsOrderedSet::new delete-vs-keep decision",
+      "origin": "The citable miss: board #65 recorded 're-open EtsOrderedSet::new delete-vs-keep at the next real release' and 0.18.0 WAS that release; nothing on the release path could consult a seat's board. Ruling: ablative/docs 1369278; evidence chain verification-beamr-0180-20260809.md (docs eb55587). Subject verified live at crates/beamr/src/ets/ordered_set.rs:52 when this entry was recorded.",
+      "due": "next-release",
+      "status": "open",
+      "reason_unresolved": "The delete-vs-keep decision has never been made — it was parked at 0.16.x, missed at 0.18.0, and re-parking it with a date again would re-arm the same miss. This entry makes the next cut refuse until someone either decides (record the decision and mark resolved) or a lead rules a further park (record the ruling here as the new reason).",
+      "resolution": null
+    },
+    {
+      "id": "OB-002",
+      "title": "Delete spawn_process raw-ip-0 scaffold entry",
+      "origin": "Task #104 ruled (c): spawn_process (crates/beamr/src/scheduler/spawning.rs:78) is documented as the raw-ip-0 scaffold entry with a landing-pad death pin, and its DELETE was parked to the 0.19.0 cutter's list (landed ffbf642). Parked-to-a-release lists are exactly the class the ruling covers, so the park lives here where the cut must read it.",
+      "due": "release:0.19.0",
+      "status": "open",
+      "reason_unresolved": "Deletion is a breaking API change parked by ruling to the 0.19.0 window; nothing is owed before that cut. When 0.19.0 (or later) is cut, this obligation is due: delete the entry (and its pin's scaffold caveat) or record a fresh ruling keeping it.",
+      "resolution": null
+    },
+    {
+      "id": "OB-003",
+      "title": "Remove spawn_link_dirty alias at the next breaking release",
+      "origin": "Task #38 (dirty-pool spawn-path close, main 65f499c + ladder fold d5a2709) parked the alias removal to the next breaking release. RESOLVED EXEMPLAR, recorded retroactively at pilot creation: the removal already happened at the 0.17.0 breaking window (tests/dirty_scheduler.rs:333 doc comment records it; no production spawn_link_dirty exists at the recording commit). Kept as the demonstration of the resolved shape.",
+      "due": "release:0.17.0",
+      "status": "resolved",
+      "reason_unresolved": null,
+      "resolution": "spawn_link_dirty removed at the 0.17.0 breaking window; spawn_link is the one linked MFA spawn path. Verified absent from crates/*/src at pilot-creation commit; the wall test spawn_link_dirty_dispatch_is_per_entry_on_the_linked_path pins the per-entry dispatch property the alias once carried."
+    }
+  ]
+}

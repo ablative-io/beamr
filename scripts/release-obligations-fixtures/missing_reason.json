@@ -1,0 +1,14 @@
+{
+  "repo": "fixture",
+  "schema": 1,
+  "_read_me": "CONTROL FIXTURE: an open obligation with NO reason_unresolved. The gate must grade this 'malformed' on every run -- ruled property 4 (the reason is a required field).",
+  "obligations": [
+    {
+      "id": "CTRL-NOREASON",
+      "title": "control: open with the reason field missing",
+      "due": "next-release",
+      "status": "open",
+      "resolution": null
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "repo": "fixture",
+  "schema": 1,
+  "_read_me": "CONTROL FIXTURE: everything resolved or not yet due. The gate must grade this 'pass' on every run -- so a stuck-red instrument cannot masquerade as diligence.",
+  "obligations": [
+    {
+      "id": "CTRL-RESOLVED",
+      "title": "control: resolved with a stated resolution",
+      "due": "next-release",
+      "status": "resolved",
+      "reason_unresolved": null,
+      "resolution": "Resolved in the fixture, with the resolution stated, as the real file must."
+    },
+    {
+      "id": "CTRL-FUTURE",
+      "title": "control: open but not due until far future",
+      "due": "release:99.0.0",
+      "status": "open",
+      "reason_unresolved": "Parked far beyond any cut the controls grade at (0.19.0).",
+      "resolution": null
+    }
+  ]
+}

@@ -44,6 +44,15 @@ case "${1:-}" in
     ;;
 esac
 
+# RELEASE-OBLIGATIONS GATE — before anything else, dry-run included. An
+# obligation parked "for the next release" lives in RELEASE-OBLIGATIONS.json,
+# and this is the path that makes the cut consult it (ruling: ablative/docs
+# tracking/ruling-release-obligations-20260809.md). The gate REFUSES with a
+# non-zero exit — set -e aborts this run — and a missing or malformed
+# obligations file also refuses: absence raises, never skips. Do not add a
+# bypass flag; a bypass is the miss this gate exists to close.
+"$REPO/scripts/release-obligations-gate.py" --repo "$REPO"
+
 # Publish order = dependency order. gleam-types has no intra-workspace deps;
 # beamr depends on gleam-types; beamr-cli and beamr-wasm depend on beamr.
 CRATES=(gleam-types beamr beamr-cli beamr-wasm)

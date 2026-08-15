@@ -1,0 +1,6 @@
+=== LIVE RUN (expect REFUSE rc 1 — OB-001 due next-release at the current version) ===
+release-obligations-gate: REFUSING release of 0.18.2: due and unresolved at this cut -- OB-001: EtsOrderedSet::new delete-vs-keep decision. Resolve the obligation in RELEASE-OBLIGATIONS.json (state the resolution) or record a lead's ruling as its new reason -- do not delete it.
+release-obligations-gate: control due_open.json -> refuse (expected)
+release-obligations-gate: control missing_reason.json -> malformed (expected)
+release-obligations-gate: control resolved_ok.json -> pass (expected)
+rc=1
