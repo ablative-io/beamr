@@ -1,0 +1,19 @@
+=== M0: unmutated baseline (stuck-red guard) ===
+ PASS  M0: rc=0 (want 0); found expected marker
+
+=== A: presence degradation (any root anywhere clears) ===
+ DIED  A: rc=2 (want 2); found expected marker
+
+=== B: flags-everything (clean verdict made a flag) ===
+ DIED  B: rc=2 (want 2); found expected marker
+
+=== C: marker loss (BAD fixture binding renamed) ===
+ DIED  C: rc=2 (want 2); found expected marker
+
+=== D: denominator (carrier row deleted from the ledger) ===
+ DIED  D: rc=4 (want 4); found expected marker
+
+=== M0 again: the tree came back whole ===
+ PASS  M0-post: rc=0 (want 0); found expected marker
+
+ALL ARMS DIED ONE-TO-ONE; baseline green before and after; restores sha-verified.

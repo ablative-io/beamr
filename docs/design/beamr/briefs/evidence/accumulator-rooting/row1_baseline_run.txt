@@ -1,0 +1,28 @@
+population: 17 ledger carriers + 2 controls
+
+ id  verdict               bind  coll  root  site
+  1  NO-ROOTING/FLAG        518   523  None  beamr/src/distribution/control.rs::alloc_spawn_request::mfa
+  2  COLLECT-FIRST/FLAG     486   491   493  beamr/src/distribution/pg.rs::members::terms
+  3  COLLECT-FIRST/FLAG     145   147   148  beamr/src/native/code_management_bifs.rs::all_loaded::list
+  4  COLLECT-FIRST/FLAG     128   130   132  beamr/src/native/dictionary_bifs.rs::entries_to_list::tuples
+  5  COLLECT-FIRST/FLAG     166   168   170  beamr/src/native/file_meta_bifs.rs::finish_list_dir::terms
+  6  COLLECT-FIRST/FLAG      66    68    70  beamr/src/native/otp_stubs/erlang_stubs.rs::bif_os_getenv_0::variables
+  7  COLLECT-FIRST/FLAG      61    64    93  beamr/src/native/stdlib_stubs/uri_bifs.rs::bif_uri_string_parse::values
+  8  COLLECT-FIRST/FLAG     127   129   136  beamr/src/native/stdlib_stubs/uri_bifs.rs::bif_uri_string_dissect_query::terms
+  9  COLLECT-FIRST/FLAG     129   131   134  beamr/src/native/stdlib_stubs/uri_bifs.rs::bif_uri_string_dissect_query::key
+ 10  COLLECT-FIRST/FLAG     245   247   248  beamr/src/native/udp_bifs.rs::finish_udp_recv::ip
+ 11  COLLECT-FIRST/FLAG     365   367   369  beamr/src/term/json.rs::array_to_list_term::tail
+ 12  COLLECT-FIRST/FLAG     137   139   141  beamr-wasm/src/convert.rs::json_value_to_term::tail
+ 13  COLLECT-FIRST/FLAG     182   184   186  beamr-wasm/src/convert.rs::array_to_term::tail
+ 14  COLLECT-FIRST/FLAG      89    91    93  beamr/src/native/stdlib_stubs/string_bifs.rs::bif_split::terms [OSIRIS -- accounted, not owned]
+ 15  NO-ROOTING/FLAG        379   382  None  beamr/src/term/json.rs::object_to_map_term::pairs
+ 16  NO-ROOTING/FLAG        147   150  None  beamr-wasm/src/convert.rs::json_value_to_term::pairs
+ 17  NO-ROOTING/FLAG        199   207  None  beamr-wasm/src/convert.rs::object_to_term::pairs
+
+summary: 17 FLAG · 0 CLEAN · 0 UNGRADEABLE
+
+=== CONTROLS ===
+  PASS  ORD-BAD  COLLECT-FIRST/FLAG as required
+  PASS  ORD-GOOD  ROOTED-FIRST/CLEAN as required
+
+BOTH CONTROLS PASS -- ordering sensitivity demonstrated THIS RUN in both directions.

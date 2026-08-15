@@ -1,0 +1,76 @@
+
+=== S3a: 10   (production 4 · cfg(test) 6) ===
+  [test] beamr/src/ar1_shape_control.rs:127  let s3a_mapped: Vec<_> = src.iter().map(|s| heap.alloc_cons(*s, NIL)).collect();
+  [test] beamr/src/ar1_shape_control.rs:181  let flat: Vec<FixtureTerm> = s3e_pairs.iter().map(|p| p.0).collect();
+  [test] beamr/src/jit/runtime_binary_match.rs:579  let raw: Vec<u8> = (0..100).map(|byte| byte as u8).collect();
+  [test] beamr/src/jit/runtime_binary_match.rs:627  let raw: Vec<u8> = (0..100).map(|byte| byte as u8).collect();
+  [test] beamr/src/jit/runtime_map.rs:221  let keys: Vec<Term> = (0..3i64).map(Term::small_int).collect();
+  [test] beamr/src/native/ets_bifs.rs:1360  let terms = atoms.iter().copied().map(Term::atom).collect::<Vec<_>>();
+  [prod] beamr/src/term/json.rs:387  let keys = pairs.iter().map(|(key, _)| *key).collect::<Vec<_>>();
+  [prod] beamr/src/term/json.rs:388  let values = pairs.iter().map(|(_, value)| *value).collect::<Vec<_>>();
+  [prod] beamr-wasm/src/convert.rs:220  let keys = pairs.iter().map(|(key, _)| *key).collect::<Vec<_>>();
+  [prod] beamr-wasm/src/convert.rs:221  let values = pairs.iter().map(|(_, value)| *value).collect::<Vec<_>>();
+
+=== S3b: 12   (production 11 · cfg(test) 1) ===
+  [test] beamr/src/ar1_shape_control.rs:140  let s3b_chosen = match arms {
+  [prod] beamr/src/distribution/control_link.rs:218  let control = match reason {
+  [prod] beamr/src/etf/decode.rs:453  let integer = if negative { -integer } else { integer };
+  [prod] beamr/src/native/etf_bifs.rs:133  let term = match segment {
+  [prod] beamr/src/native/stdlib_stubs/json_bifs.rs:251  let binary = match context.alloc_binary(sequence) {
+  [prod] beamr/src/native/stdlib_stubs/misc_bifs.rs:184  let value = match item_name {
+  [prod] beamr/src/native/stdlib_stubs/string_bifs.rs:133  let head = if codepoints.len() == 1 {
+  [prod] beamr/src/native/stdlib_stubs/string_bifs.rs:189  let out = match where_name {
+  [prod] beamr/src/native/stdlib_stubs/uri_bifs.rs:130  let value = match value {
+  [prod] beamr/src/native/tcp_bifs.rs:331  let fd = match completion.continuation {
+  [prod] beamr-wasm/src/capability.rs:568  let built = match &outcome {
+  [prod] beamr-wasm/src/capability.rs:590  let tag = if ok {
+
+=== S3c: 1   (production 0 · cfg(test) 1) ===
+  [test] beamr/src/ar1_shape_control.rs:152  let s3c_pair = [heap.alloc_cons(head, NIL), head];
+
+=== S3d: 6   (production 3 · cfg(test) 3) ===
+  [test] beamr/src/ar1_shape_control.rs:143  _ => heap.alloc_cons(held, NIL),
+  [test] beamr/src/ar1_shape_control.rs:162  s3d_acc = heap.alloc_cons(*item, s3d_acc);
+  [prod] beamr/src/distribution/control_link.rs:219  None => context.alloc_tuple(&[Term::small_int(op.opcode()), from, to]),
+  [prod] beamr/src/native/code_management_bifs.rs:148  list = context.alloc_cons(tuple, list)?;
+  [prod] beamr/src/native/gleam_ffi.rs:284  None => context.alloc_tuple(&[Term::atom(Atom::ERROR), GLEAM_NIL]),
+  [test] beamr/src/native/udp_bifs.rs:473  tail = context.alloc_cons(*term, tail).unwrap_or(Term::NIL);
+
+=== S3e: 10   (production 9 · cfg(test) 1) ===
+  [test] beamr/src/ar1_shape_control.rs:171  let mut s3e_pairs: Vec<(FixtureTerm, FixtureTerm)> = Vec::with_capacity(items.le
+  [prod] beamr/src/constant_pool/mod.rs:391  let mut pairs = Vec::with_capacity(entries.len());
+  [prod] beamr/src/interpreter/opcodes/closures.rs:423  let mut extracted = Vec::with_capacity(items.len() / 2);
+  [prod] beamr/src/interpreter/opcodes/closures.rs:482  let mut updates = Vec::with_capacity(items.len() / 2);
+  [prod] beamr/src/jit/ir_map.rs:101  let mut found = Vec::with_capacity(op.pairs.len() / 2);
+  [prod] beamr/src/loader/decode/etf.rs:120  let mut pairs = Vec::with_capacity(len);
+  [prod] beamr/src/native/stdlib_stubs/encoding_bifs.rs:34  let mut out = Vec::with_capacity(hex.len() / 2);
+  [prod] beamr/src/term/json.rs:379  let mut pairs = Vec::with_capacity(object.len());
+  [prod] beamr-wasm/src/convert.rs:147  let mut pairs = Vec::with_capacity(object.len());
+  [prod] beamr-wasm/src/convert.rs:199  let mut pairs = Vec::with_capacity(keys.length() as usize);
+
+=== TOTALS: 39 raw · 27 production · 12 cfg(test) ===
+cfg(test) hits are REAL matches of the shape in code that does not ship.
+They are NOT filtered out: the R10 fixture will land in this same class,
+and a hunt that hides its own control certifies nothing.
+  cfg(test): S3a  beamr/src/ar1_shape_control.rs:127
+  cfg(test): S3a  beamr/src/ar1_shape_control.rs:181
+  cfg(test): S3a  beamr/src/jit/runtime_binary_match.rs:579
+  cfg(test): S3a  beamr/src/jit/runtime_binary_match.rs:627
+  cfg(test): S3a  beamr/src/jit/runtime_map.rs:221
+  cfg(test): S3a  beamr/src/native/ets_bifs.rs:1360
+  cfg(test): S3b  beamr/src/ar1_shape_control.rs:140
+  cfg(test): S3c  beamr/src/ar1_shape_control.rs:152
+  cfg(test): S3d  beamr/src/ar1_shape_control.rs:143
+  cfg(test): S3d  beamr/src/ar1_shape_control.rs:162
+  cfg(test): S3d  beamr/src/native/udp_bifs.rs:473
+  cfg(test): S3e  beamr/src/ar1_shape_control.rs:171
+
+=== CONTROLS: fixture crates/beamr/src/ar1_shape_control.rs ===
+  population walked: 348 files
+  PASS  S3a  line(s) [127] [test]
+  PASS  S3b  line(s) [140] [test]
+  PASS  S3c  line(s) [152] [test]
+  PASS  S3d  line(s) [162] [test]
+  PASS  S3e  line(s) [171] [test]
+
+ALL 5 CLASS CONTROLS PASS -- every class has been shown, THIS RUN, to be able to produce a presence.

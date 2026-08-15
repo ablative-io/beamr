@@ -278,7 +278,8 @@
     {
       "id": 17,
       "file": "crates/beamr-wasm/src/convert.rs",
-      "function": "value_to_term",
+      "function": "object_to_term",
+      "function_erratum": "Registered as value_to_term; measured STALE AT THE LEDGER'S OWN COMMIT (1f7e675): bind_line 199 sits inside fn object_to_term at those very bytes, and the extraction commit (252a250) is an ancestor of the ledger. The name was inherited from the sweep-era ground without re-verification against the bytes the ledger was committed on. The defect, carrier, bind line, and the row-4 red-at-parent demonstration are unaffected -- the probe drives the JsValue path, which reaches this arm through value_to_term's dispatch. Found and corrected by the row-1 ordering detector's first baseline run, which REFUSED to grade the stale address rather than approximating; original value preserved here; the correction's time is its commit's.",
       "function_line": null,
       "carrier": "pairs",
       "bind_line": 199,
