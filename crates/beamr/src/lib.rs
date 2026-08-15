@@ -13,6 +13,10 @@ extern crate alloc;
 // NOT be renamed to anything ending `_tests.rs`, or the hunt stops walking it
 // and all five per-class controls silently disappear. See the module docs.
 mod ar1_shape_control;
+// AR-1 row 1: the ordering detector's control fixtures — one committed site
+// the detector must FLAG (rooting after the first collecting call) and one it
+// must CLEAR. Same residency rules as `ar1_shape_control` above.
+mod ar1_ordering_control;
 pub mod atom;
 pub mod capability;
 pub mod constant_pool;
