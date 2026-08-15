@@ -647,7 +647,11 @@ mod tests {
             ProcessInfoItem::CurrentFunction,
             ProcessInfoValue::CurrentFunction(Some((Atom::NORMAL, Atom::NORMAL, 2))),
         );
-        facility.insert(queried_pid, ProcessInfoItem::HeapSize, ProcessInfoValue::HeapSize(64));
+        facility.insert(
+            queried_pid,
+            ProcessInfoItem::HeapSize,
+            ProcessInfoValue::HeapSize(64),
+        );
         facility.insert(
             queried_pid,
             ProcessInfoItem::MessageQueueLen,
@@ -663,20 +667,37 @@ mod tests {
             ProcessInfoItem::Status,
             ProcessInfoValue::Status(ProcessInfoStatus::Waiting),
         );
-        facility.insert(queried_pid, ProcessInfoItem::TrapExit, ProcessInfoValue::TrapExit(false));
+        facility.insert(
+            queried_pid,
+            ProcessInfoItem::TrapExit,
+            ProcessInfoValue::TrapExit(false),
+        );
         facility.insert(
             queried_pid,
             ProcessInfoItem::Priority,
             ProcessInfoValue::Priority(Priority::Normal),
         );
-        facility.insert(queried_pid, ProcessInfoItem::Links, ProcessInfoValue::Links(vec![3, 4]));
+        facility.insert(
+            queried_pid,
+            ProcessInfoItem::Links,
+            ProcessInfoValue::Links(vec![3, 4]),
+        );
         facility.insert(
             queried_pid,
             ProcessInfoItem::Monitors,
             ProcessInfoValue::Monitors(vec![
-                ProcessMonitorInfo { watcher: queried_pid, target: 11 },
-                ProcessMonitorInfo { watcher: queried_pid, target: 12 },
-                ProcessMonitorInfo { watcher: 99, target: 13 },
+                ProcessMonitorInfo {
+                    watcher: queried_pid,
+                    target: 11,
+                },
+                ProcessMonitorInfo {
+                    watcher: queried_pid,
+                    target: 12,
+                },
+                ProcessMonitorInfo {
+                    watcher: 99,
+                    target: 13,
+                },
             ]),
         );
 
@@ -685,7 +706,9 @@ mod tests {
         let reserved: usize = SUPPORTED_ITEMS
             .iter()
             .map(|item| {
-                let value = facility.process_info(queried_pid, *item).expect("value present");
+                let value = facility
+                    .process_info(queried_pid, *item)
+                    .expect("value present");
                 3 + value_heap_words(queried_pid, &value) + 2
             })
             .sum();
@@ -699,7 +722,10 @@ mod tests {
         drop(context);
         let consumed = process.heap().young_used() - before;
 
-        assert!(Cons::new(proplist).is_some(), "process_info/1 returns a proplist");
+        assert!(
+            Cons::new(proplist).is_some(),
+            "process_info/1 returns a proplist"
+        );
         assert_eq!(
             consumed, reserved,
             "the reserve must cover the collection sequence exactly \

@@ -2499,8 +2499,7 @@ mod tests {
         let table_name = atom_table.intern("info_reserve_tab");
         let mut process = Process::new(1, 4096);
 
-        let mut setup =
-            context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
+        let mut setup = context(&mut process, Arc::clone(&atom_table), Arc::clone(&registry));
         let tab = new_table(&mut setup, &atom_table, table_name, &[public, named_table]);
         drop(setup);
 
