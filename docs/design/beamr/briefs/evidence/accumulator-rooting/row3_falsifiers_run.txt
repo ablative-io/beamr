@@ -1,0 +1,20 @@
+=== baseline: all three walls green at the fixed bytes ===
+PASS  baseline: rc=0
+
+=== F-ets: ets_bifs.rs 'item_count * 5' -> 'item_count * 5 - 1' ===
+DIED  F-ets: rc=101; victim FAILED; other walls ok
+       restore sha-verified 13e6412ee7e38557
+
+=== F-sys: system_info_bifs.rs 'item_count * 5' -> 'item_count * 5 - 1' ===
+DIED  F-sys: rc=101; victim FAILED; other walls ok
+       restore sha-verified acc0de18df0f9a19
+
+=== F-pi: process_info_bifs.rs '* 5' -> '* 4' ===
+DIED  F-pi: rc=101; victim FAILED; other walls ok
+       assertion `left == right` failed: the reserve must cover the collection sequence exactly (consumed 63 words, reserved 61)
+       restore sha-verified 083cd6234e28b392
+
+=== post: unmutated tree green again ===
+PASS  post: rc=0
+
+ALL THREE ARITHMETICS: wall red on subtract-one-word, restores sha-verified, tree green before and after.

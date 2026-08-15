@@ -1,0 +1,26 @@
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 32.87s
+     Running unittests src/lib.rs (target/debug/deps/beamr-1777431bd8b81eb2)
+
+running 3 tests
+test native::system_info_bifs::tests::memory_zero_reserve_covers_every_allocation_exactly ... ok
+test native::ets_bifs::tests::info_one_reserve_covers_every_allocation_exactly ... ok
+test native::process_info_bifs::tests::process_info_reserve_covers_every_allocation_exactly ... FAILED
+
+failures:
+
+---- native::process_info_bifs::tests::process_info_reserve_covers_every_allocation_exactly stdout ----
+
+thread 'native::process_info_bifs::tests::process_info_reserve_covers_every_allocation_exactly' (21452058) panicked at crates/beamr/src/native/process_info_bifs.rs:701:9:
+assertion `left == right` failed: the reserve must cover the collection sequence exactly (consumed 63 words, reserved 61)
+  left: 63
+ right: 61
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    native::process_info_bifs::tests::process_info_reserve_covers_every_allocation_exactly
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 1821 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p beamr --lib`

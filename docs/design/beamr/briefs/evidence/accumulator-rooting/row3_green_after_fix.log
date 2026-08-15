@@ -1,0 +1,389 @@
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.37s
+     Running unittests src/lib.rs (target/debug/deps/beamr-1777431bd8b81eb2)
+
+running 3 tests
+test native::system_info_bifs::tests::memory_zero_reserve_covers_every_allocation_exactly ... ok
+test native::process_info_bifs::tests::process_info_reserve_covers_every_allocation_exactly ... ok
+test native::ets_bifs::tests::info_one_reserve_covers_every_allocation_exactly ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1821 filtered out; finished in 0.01s
+
+     Running tests/bif_registry_replacement.rs (target/debug/deps/bif_registry_replacement-b76136f752f5bded)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/bignum_edges.rs (target/debug/deps/bignum_edges-b2806b9af099958d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/bs_create_bin.rs (target/debug/deps/bs_create_bin-c7741a6ce4266202)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/capability_policy.rs (target/debug/deps/capability_policy-f976d28ff922f386)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/caught_exception_exit.rs (target/debug/deps/caught_exception_exit-a5d31addd8765482)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/composition_report.rs (target/debug/deps/composition_report-a8590915895c92fe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/connection_events_e2e.rs (target/debug/deps/connection_events_e2e-190b05ac95bcf0d7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/differential.rs (target/debug/deps/differential-38c05b97cf32f405)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.00s
+
+     Running tests/dirty_scheduler.rs (target/debug/deps/dirty_scheduler-815e408cb8d4e6e3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/distribution_e2e.rs (target/debug/deps/distribution_e2e-99ba525dbc587f8a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/distribution_mesh_handshake.rs (target/debug/deps/distribution_mesh_handshake-a725605987e1bdd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/embedded_loading.rs (target/debug/deps/embedded_loading-5a76ab6a826e9e8a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/encode_round_trip.rs (target/debug/deps/encode_round_trip-229771cbf545839c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/function_clause_e2e.rs (target/debug/deps/function_clause_e2e-2a7f8dfee728fdca)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/gc_integration.rs (target/debug/deps/gc_integration-e0f539dd47002d3a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/gleam_gate_e2e.rs (target/debug/deps/gleam_gate_e2e-4833a1e3e6e5c114)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/gleam_otp_actor_spike.rs (target/debug/deps/gleam_otp_actor_spike-6e247db4346b4bf9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/guard_bif_unavailable.rs (target/debug/deps/guard_bif_unavailable-b1a51c19ce28d129)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/hot_code_loading.rs (target/debug/deps/hot_code_loading-22fd00044cec0b06)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/if_clause_e2e.rs (target/debug/deps/if_clause_e2e-3f9d72fe6bd2030d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/is_function2_guard.rs (target/debug/deps/is_function2_guard-ee1049144e2ac79b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/is_function_bif.rs (target/debug/deps/is_function_bif-f0b4a86eeff2c9d9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/jit_blocking_receive_e2e.rs (target/debug/deps/jit_blocking_receive_e2e-13f2bae22749ddb9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/jit_deopt_replay_probe.rs (target/debug/deps/jit_deopt_replay_probe-5414e22d8394c771)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/jit_nif_private_data.rs (target/debug/deps/jit_nif_private_data-0170326e938af8a1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/jit_send_delivery_gate.rs (target/debug/deps/jit_send_delivery_gate-086b29c7219a55e9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/jit_slicer_retention.rs (target/debug/deps/jit_slicer_retention-ebfaaa316a45c429)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/jit_wireup.rs (target/debug/deps/jit_wireup-bb5c43d4533e8e1e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s
+
+     Running tests/link_distribution_e2e.rs (target/debug/deps/link_distribution_e2e-dc30e838a27c879a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/local_send_gate.rs (target/debug/deps/local_send_gate-13a8801388d25fe5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/memory_stability.rs (target/debug/deps/memory_stability-15e6c6a0d6a0298f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/mfa_provenance_e2e.rs (target/debug/deps/mfa_provenance_e2e-eb5cde7216ce0077)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/monitor_down_e2e.rs (target/debug/deps/monitor_down_e2e-d431c99a9a168b96)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/namespace_isolation.rs (target/debug/deps/namespace_isolation-62a2890fd0835941)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/native_actor.rs (target/debug/deps/native_actor-9b74fc1b5ceb6353)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/native_process.rs (target/debug/deps/native_process-3b01764c1cae92be)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/native_supervision.rs (target/debug/deps/native_supervision-d9ec198ec97e37c2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/nif_private_data.rs (target/debug/deps/nif_private_data-1dc446e83e0c2aaa)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/no_box_leak.rs (target/debug/deps/no_box_leak-4b0a45670d46d2fc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/otp_integration.rs (target/debug/deps/otp_integration-f0fc92f3da8bac9b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/otp_loading.rs (target/debug/deps/otp_loading-f27cbeb0e21c283d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/otp_zero_unresolved.rs (target/debug/deps/otp_zero_unresolved-171a4bc802015906)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/pg_distribution_e2e.rs (target/debug/deps/pg_distribution_e2e-c5607662e42397a9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/process_vm_census.rs (target/debug/deps/process_vm_census-99beadcdd199530f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/proof_of_life.rs (target/debug/deps/proof_of_life-404a4d0dae9af15a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/readiness_facility.rs (target/debug/deps/readiness_facility-8b3ff0aac63ecffa)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/recv_after_timeout.rs (target/debug/deps/recv_after_timeout-f93bf9dc57957f4e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/recv_marker.rs (target/debug/deps/recv_marker-227309d7a0619b77)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/sample_workflow_e2e.rs (target/debug/deps/sample_workflow_e2e-5beecf5ee9d9bb11)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/sleep_forever_parks.rs (target/debug/deps/sleep_forever_parks-98761b356216e2ce)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/spawn_process_scaffold_only.rs (target/debug/deps/spawn_process_scaffold_only-fc55f567b6480cb2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/stdlib_loading.rs (target/debug/deps/stdlib_loading-ca31fc9f75926498)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/supervision_integration.rs (target/debug/deps/supervision_integration-53976fb212bb851f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/suspend_reexec.rs (target/debug/deps/suspend_reexec-95e6adb57f5cfa99)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/suspend_result_binary.rs (target/debug/deps/suspend_result_binary-58f1997beff6d2ab)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/suspend_wakeup.rs (target/debug/deps/suspend_wakeup-584b723ad8642d0e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/tagged_tuple_patterns.rs (target/debug/deps/tagged_tuple_patterns-25f4fa8ffc2fe5fd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/thread_inventory.rs (target/debug/deps/thread_inventory-69f3cfc492d81058)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/thread_inventory_disabled.rs (target/debug/deps/thread_inventory_disabled-00a3c24945bdff3a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/thread_inventory_distribution.rs (target/debug/deps/thread_inventory_distribution-316cb969cc1e3b21)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/thread_inventory_minimal.rs (target/debug/deps/thread_inventory_minimal-9cc2e858d7566233)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/timer_resident_cost.rs (target/debug/deps/timer_resident_cost-e384be331c5fc782)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/with_services.rs (target/debug/deps/with_services-6718bd5a78bb8950)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
