@@ -193,6 +193,30 @@ impl Module {
     /// prelude ip sits within its own function). `None` when `ip` precedes the
     /// first function entry — native/pre-entry positions carry no provenance,
     /// and callers must not invent one.
+    ///
+    /// One ip per function falls outside that construction (the F3 window,
+    /// #89/#91): a canonical BEAM prologue is `Label → Line → FuncInfo`, and a
+    /// function's recorded region starts at its `FuncInfo` ip while its head
+    /// line is recorded at the preceding `Line` ip — so a position at the
+    /// prologue `Line` ip is attributed to the PREVIOUS function here while
+    /// `line_at_ip` already reports the next function's head line. Measured
+    /// verdict (#91, gate-logs/91/RUN-RECORD-91.md, main 70f61f7): no
+    /// execution-recording path can durably hold the window ip — jump, yield,
+    /// and wait targets resolve through `label_index` to `Label` ips; frame
+    /// return ips are call_ip+1 (at most a prologue `Label` ip); raise-site
+    /// capture records the raising instruction's own ip and `Line` dispatches
+    /// as a pure `Continue` that cannot raise; the JIT records only canonical
+    /// entries and compiled frames carry an explicit MFA. The sole exposure is
+    /// display-grade: `ReplayDebugger` single-stepping exposes a raw position
+    /// that can park at the window ip (zero in-estate production callers).
+    /// Whoever (a) wires the `ReplayDebugger` into a surface that resolves the
+    /// current position through these tables, (b) adds a suspension point that
+    /// is not a jump target (e.g. per-instruction reduction charging), (c)
+    /// adds a concurrent reader of a running process's position, or (d) admits
+    /// non-loader modules with populated function_tables and non-canonical
+    /// prologues — must re-derive F3 reachability and, if reached, make the
+    /// honest fix (move the recorded region to start at the prologue) rather
+    /// than patch this observer.
     #[must_use]
     pub fn mfa_at_ip(&self, ip: usize) -> Option<(Atom, Atom, u8)> {
         let (function, arity) = self.function_at_ip(ip)?;
