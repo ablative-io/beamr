@@ -161,6 +161,45 @@ same commit. That is this commit — see the `0.18.1` entry.)*
 
 ## Unreleased
 
+### Fixed (feature `jit`) — a caught exception crossing a compiled function leaked one interpreter nesting per catch
+
+**With the JIT enabled, any in-VM `catch`/`try` whose protected region crossed a
+compiled function's body call leaked a nested interpreter run — every time it
+caught.** No error, no log line, and the catch appeared to work.
+
+**What happened.** A compiled function's body call is serviced by running a
+FULL nested interpreter on the same process. The exception-handler stack is
+process-level and had no nesting barrier, so a raise inside that nested run
+could pop a handler installed OUTSIDE it, truncate the stack, and jump to that
+outer handler's catch label **while still inside the nested run**. The compiled
+invocation and its native frames were never returned through. Each caught
+exception therefore leaked one native (Rust) nesting, unbounded, for the life of
+the process.
+
+**How it showed.** Two ways, one of them silent. The visible one: when the
+process eventually died, the fatal unwind exited the leaked runs in turn and
+each leaked trampoline recorded a compiled frame, so a death record that should
+name the compiled function ONCE named it **K+1 times**, where K is the number of
+exceptions caught earlier — a stack trace reporting a call chain that never
+happened. The silent one: unbounded native stack growth on a long-running
+process that catches routinely, which is the shape of a system that runs well
+for hours and then dies without a cause in its own logs.
+
+**Exposure.** Requires the `jit` feature plus one catch whose protected region
+crosses a compiled body call. It is reached only after a function tiers up, so
+it lands on hot paths, and only after the system has been running a while. A
+suite that passes under interpretation says nothing about it.
+
+**The fix has two halves, and both were needed.** A nesting floor on the handler
+stack stops the nested run consuming a handler it cannot return to; and the
+compiled-code exception return, previously an unconditional process exit,
+now re-offers the exception to the handlers at the level it reached. Without the
+second half the first would have converted every such caught exception into an
+uncatchable process kill — a worse defect than the one being fixed. Both halves
+are gated by `crates/beamr/tests/jit_nested_run_handler_leak.rs`, whose five
+arms were measured red at the unfixed bytes AND red against a first-half-only
+fix.
+
 ### Changed (breaking, feature `encode`) — the encoder now REFUSES modules containing typed registers
 
 ⛔ **`encode_module` returns an error instead of silently writing a broken
