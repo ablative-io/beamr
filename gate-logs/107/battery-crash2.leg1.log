@@ -1,0 +1,73 @@
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/jit_nested_run_handler_leak.rs:307:
+ /// depth-2 arm asserts that, because a compiled middle would collapse the two
+ /// nestings the arm exists to create.
+ fn mid_module(names: &Names) -> Module {
+[31m-    link_module(
+(B[m[31m-        names.wrapmid,
+(B[m[31m-        names.int_mid,
+(B[m[31m-        3,
+(B[m[31m-        wrap_import(names),
+(B[m[31m-        401,
+(B[m[31m-    )
+(B[m[32m+    link_module(names.wrapmid, names.int_mid, 3, wrap_import(names), 401)
+(B[m }
+ 
+ /// `wrapouter:int_outer/1` — the OUTER trampoline of the depth-2 chain, body
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/jit_nested_run_handler_leak.rs:379:
+ /// raises badarg inside the trampoline's nested run and is caught by a handler
+ /// registered OUTSIDE it — the leak's precondition), then one uncaught call that
+ /// kills the process and produces the death record under assertion.
+[31m-fn leak_driver_module(
+(B[m[31m-    atoms: &AtomTable,
+(B[m[31m-    names: &Names,
+(B[m[31m-    entry: ResolvedImport,
+(B[m[31m-    k: usize,
+(B[m[31m-) -> Module {
+(B[m[32m+fn leak_driver_module(atoms: &AtomTable, names: &Names, entry: ResolvedImport, k: usize) -> Module {
+(B[m     let name = atoms.intern("leakdrivermod");
+     let mut code = vec![
+         Instruction::Label { label: 1 },
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/jit_nested_run_handler_leak.rs:566:
+ /// say nothing about compiled trampolines.
+ fn assert_compiled(rig: &Rig, module: Atom, function: Atom) {
+     assert!(
+[31m-        wait_until(|| rig.scheduler.jit_profiler().is_compiled(module, function, 1)),
+(B[m[32m+        wait_until(|| rig
+(B[m[32m+            .scheduler
+(B[m[32m+            .jit_profiler()
+(B[m[32m+            .is_compiled(module, function, 1)),
+(B[m         "a trampoline this arm depends on never reached COMPILED within the wait budget"
+     );
+     assert!(
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/jit_nested_run_handler_leak.rs:582:
+ /// Run `calls` warming calls through `entry` with a VALID argument (so warming
+ /// never raises), then check the arm's compile expectations.
+ fn warm_through(rig: &Rig, entry: ResolvedImport, calls: usize, check: impl FnOnce(&Rig)) {
+[31m-    let module = rig
+(B[m[31m-        .registry
+(B[m[31m-        .insert(warm_module(&rig.atoms, entry, calls));
+(B[m[32m+    let module = rig.registry.insert(warm_module(&rig.atoms, entry, calls));
+(B[m     let pid = rig.scheduler.spawn_process(&module);
+     let (reason, _result) = rig.scheduler.run_until_exit(pid);
+     assert_eq!(
+Diff in /Users/tom/Developer/ablative/stack/beamr/crates/beamr/tests/jit_nested_run_handler_leak.rs:708:
+         // Warming through the outer entry heats the outer trampoline on the
+         // driver's call edge and the inner one on the middle's — the middle is
+         // only ever entered by `jit_call_interpreted`, which records no miss.
+[31m-        warm_through(&rig, outer_import(&rig.names), THRESHOLD as usize * 3, |rig| {
+(B[m[31m-            assert_compiled(rig, rig.names.wrapouter, rig.names.int_outer);
+(B[m[31m-            assert_compiled(rig, rig.names.wrapmod, rig.names.int_wrap);
+(B[m[31m-
+(B[m[31m-        });
+(B[m[32m+        warm_through(
+(B[m[32m+            &rig,
+(B[m[32m+            outer_import(&rig.names),
+(B[m[32m+            THRESHOLD as usize * 3,
+(B[m[32m+            |rig| {
+(B[m[32m+                assert_compiled(rig, rig.names.wrapouter, rig.names.int_outer);
+(B[m[32m+                assert_compiled(rig, rig.names.wrapmod, rig.names.int_wrap);
+(B[m[32m+            },
+(B[m[32m+        );
+(B[m         let tally = frame_tally(&rig, outer_import(&rig.names), k);
+         rig.scheduler.shutdown();
+         tallies.push((k, tally));

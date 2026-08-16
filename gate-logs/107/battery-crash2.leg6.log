@@ -1,0 +1,6 @@
+checking the checker: the next 'error(s) found' notice is the positive control firing, as required
+Error: 4 error(s) found in code.
+Help: Scan succeeded and found error level diagnostics in the codebase.
+
+checker verified: 4 control hits / 4 patterns; scanned 86 .rs files under crates/beamr/src/native/
+OK: 0 findings, and the zero is trustworthy
