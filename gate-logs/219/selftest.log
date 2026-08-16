@@ -1,0 +1,10 @@
+gate-nostd-ratchet self-test (ceiling 1039)
+  PASS  parser/real-rustc-wording -> 1039
+  PASS  parser/no-anchor -> empty
+  PASS  over-ceiling/must-FAIL (rc 1)
+  PASS  at-ceiling/must-PASS (rc 0)
+  PASS  under-ceiling/must-FAIL (rc 2)
+  PASS  no-tally/must-REFUSE (rc 3)
+  PASS  compiles-clean/must-PASS (rc 0)
+7/7
+✅ every arm fired

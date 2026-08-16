@@ -9,7 +9,17 @@ Gleam toolchain (Gleam → Erlang source → `erlc` → `.beam`) and executes it
 with preemptive scheduling, per-process isolation, supervision primitives, and
 a native function interface. Four workspace crates:
 
-- **`beamr`** — the VM (~100K lines). `no_std`-capable.
+- **`beamr`** — the VM (~100K lines). ⚠️ **NOT `no_std`-capable today** — this
+  line previously claimed it was, and the claim was false when written. The
+  `#![cfg_attr(..., no_std)]` attribute at `crates/beamr/src/lib.rs` is real but
+  its predicate is false in every configuration canon builds, and the
+  configuration does not compile: `cargo check -p beamr --no-default-features`
+  is red with **1039** errors (rustc's own tally at `d4a82e5`), against **1019**
+  at `ec5d7f8` in July 2026 — so it was already ~1000 errors red at the v0.12.0
+  this document snapshots. The redness is a deliberate, recorded waiver (see
+  CHANGELOG.md and `docs/DIST-CONTROL-WIRE-SPEC.md`); restoring `no_std` is
+  tracked as brief B-144. The count is now held by the `nostd-ratchet` gate leg,
+  which permits it to fall and never to rise.
 - **`beamr-cli`** — runner; also `record`/`replay`/`imports`/`compile` commands.
 - **`beamr-wasm`** — browser bindings over a single-threaded cooperative scheduler.
 - **`gleam-types`** — extracts Gleam type sidecars consumed by JIT specialization.

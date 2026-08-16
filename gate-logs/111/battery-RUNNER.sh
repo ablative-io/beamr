@@ -6,7 +6,14 @@
 # ── WHICH ARTEFACTS ARE KEPT, AND WHY (ruled #116, measured not preferred) ────
 #
 # COMMIT, every lane:  BATTERY.log · <pin>.tsv · <pin>.leg4/5/8.log
-# BIN at lane close:   <pin>.leg1/2/3/6/7.log
+# BIN at lane close:   <pin>.leg1/2/3/6/7/9.log
+#
+# ⚠️ THE RULE IS "COMMIT THE LEGS THAT CARRY AXES", NOT "COMMIT LEGS 4, 5 AND 8".
+# Leg numbers are POSITIONS IN gates.json and they move when a leg is added.
+# Legs 4/5/8 are the cargo-test legs; every other leg is a check whose only
+# verdict is its rc, and the rc is already in the .tsv. #219 added leg 9
+# (nostd-ratchet, a check) -- hence the 9 above. Re-derive this list from
+# `kind` when the leg set changes; do not transcribe it.
 #
 # The .tsv records the rc of ALL EIGHT legs, so binning five of the logs loses
 # no verdict -- only the transcript of legs that carry no axes. Verified before

@@ -1,0 +1,19 @@
+FALSIFIERS on the LIVE instrument (real cargo run each arm, tally=1039)
+Copies live in scripts/ so ROOT resolves; both deleted at the end.
+--- M1 ceiling BELOW truth -> must FAIL as breach (CEILING=CEILING=1038) ---
+no-std ratchet: cargo rc=101, rustc tally=1039, ceiling=1038
+FAIL: no-std errors 1039 EXCEEDS the ratchet ceiling 1038
+  (ceiling set at d4a82e5). New no-std breakage has been added.
+  The waiver permits the debt to STAND, not to GROW.
+    got rc=1, wanted 1 -> KILLED
+--- M2 ceiling ABOVE truth -> must FAIL as improvement (CEILING=CEILING=1040) ---
+no-std ratchet: cargo rc=101, rustc tally=1039, ceiling=1040
+FAIL: no-std errors 1039 is BELOW the ceiling 1040 -- this is
+  an IMPROVEMENT, and the ratchet must be tightened to record it.
+  Set CEILING=1039 in this script, in the same commit.
+  (Strict by design: slack in a ratchet is room to drift back up.)
+    got rc=2, wanted 2 -> KILLED
+--- unperturbed control: must be rc 0 ---
+no-std ratchet: cargo rc=101, rustc tally=1039, ceiling=1039
+PASS: no-std errors 1039, exactly at the ceiling 1039. Debt held.
+    control rc=0
