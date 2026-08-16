@@ -86,11 +86,16 @@ pub fn bif_split(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
         _ => return Err(badarg()),
     };
 
-    let mut terms = Vec::with_capacity(parts.len());
-    for part in parts {
-        terms.push(context.alloc_binary(part)?);
-    }
-    context.alloc_list(&terms)
+    // AR-1 site 14. The carrier used to be a bare `Vec<Term>` accumulating
+    // boxed binaries across further `alloc_binary` calls, any of which can
+    // collect. The accumulator holds them in the process root stack instead.
+    context.with_accumulator(|context, terms| {
+        for part in parts {
+            let binary = context.alloc_binary(part)?;
+            terms.push(context, binary)?;
+        }
+        terms.to_list(context)
+    })
 }
 
 pub fn bif_find(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -413,6 +418,13 @@ mod ar1_row4_site14_tests {
         let list = bif_split(&[input, pattern, Term::atom(all)], &mut context)
             .map_err(|_| "bif_split returned an error term".to_string())?;
 
+        read_back(list, parts)
+    }
+
+    /// The reader, shared by BOTH arms so neither can be graded by a softer
+    /// instrument than the other. Walks the list by contents and reports the
+    /// first thing that is not the part it should be.
+    fn read_back(list: Term, parts: usize) -> Result<(), String> {
         let mut seen = 0usize;
         let mut tail = list;
         // HARD CAP: a stale carrier can make the list cyclic, and a reader that
@@ -444,50 +456,100 @@ mod ar1_row4_site14_tests {
         Ok(())
     }
 
-    /// AR-1 row 4, site 14. Two-armed in both directions: hold the heap and grow
-    /// the input, then hold the input and grow the heap. A failure that survives
-    /// a roomy heap would be an allocator limit and would prove nothing.
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `bif_split`'s accumulation EXACTLY AS IT
+    /// WAS BEFORE THE FIX, and it must stay that way.
+    ///
+    /// A bare `Vec<Term>` collecting boxed binaries across further
+    /// `alloc_binary` calls, each of which can collect. It exists because
+    /// inverting this probe killed its own control: the red arm below used to
+    /// prove the cell applied real pressure, and post-fix nothing at the
+    /// production site can. ⛔ Do NOT migrate it onto the accumulator.
+    fn split_parts_unrooted_replica(
+        context: &mut ProcessContext,
+        parts: &[&[u8]],
+    ) -> Result<Term, Term> {
+        let mut terms = Vec::with_capacity(parts.len());
+        for part in parts {
+            terms.push(context.alloc_binary(part)?);
+        }
+        context.alloc_list(&terms)
+    }
+
+    /// The control arm's own round trip: same heap, same inputs, same reader as
+    /// [`split_round_trip`], but through the unrooted replica.
+    fn split_round_trip_unrooted(parts: usize, heap: usize) -> Result<(), String> {
+        let mut process = Process::new(7, heap);
+        let mut context = ProcessContext::new();
+        context.attach_process(&mut process, 0);
+
+        let owned: Vec<String> = (0..parts).map(part_of).collect();
+        let slices: Vec<&[u8]> = owned.iter().map(|part| part.as_bytes()).collect();
+        let list = split_parts_unrooted_replica(&mut context, &slices)
+            .map_err(|_| "replica returned an error term".to_string())?;
+        read_back(list, parts)
+    }
+
+    /// AR-1 row 4, site 14 — ✅ INVERTED. Two-armed in both directions: hold the
+    /// heap and grow the input, then hold the input and grow the heap.
     #[test]
     fn ar1_site14_bif_split_two_armed() {
-        // MEASURED, and THE BAND IS ONE CELL WIDE. At heap 1024: 250 parts is
-        // clean, 300 parts CORRUPTS, 350 parts is REFUSED by the terminal
-        // `alloc_list`. The refusal MASKS the defect rather than disproving it —
-        // instrumenting the production loop showed the collection still fires
-        // (at part 254, available 2 -> 1020); the loop then finishes with 440
-        // words and `alloc_list` needs 800 for the spine, so it refuses before
-        // the corrupted accumulator can be read back.
+        // PRE-FIX THIS BAND WAS ONE CELL WIDE, and the comment here recorded it:
+        // at heap 1024, 250 parts clean · 300 parts CORRUPTS · 350 parts REFUSED
+        // by the terminal `alloc_list`, the refusal MASKING the defect rather
+        // than disproving it (instrumenting the loop showed the collection still
+        // fired at part 254, available 2 -> 1020).
+        //
+        // ⚠️ THAT DESCRIPTION IS NOW FALSE OF THE SHIPPED BODY and is retained
+        // only as the record of what was measured at f993280. Post-fix EVERY
+        // cell in the surface sweep is clean, 350 parts INCLUDED — the cell that
+        // used to be refused now succeeds. That is a real behaviour change and
+        // it is stated rather than absorbed: rooting the elements changes what
+        // the collector can reclaim during the loop, so the refusal boundary
+        // moved. ⛔ The MECHANISM is NOT measured here and is not claimed; only
+        // the outcome is. It is recorded as an open observation, not explained.
         const HEAP: usize = 1024;
         const BIG: usize = 300;
 
-        let control = split_round_trip(250, HEAP);
+        // ⛔⛔ POSITIVE CONTROL FIRST, and it licenses everything below it.
+        let control_red = split_round_trip_unrooted(BIG, HEAP);
+        let control_corrupted =
+            matches!(&control_red, Err(reason) if !reason.contains("returned an error term"));
         assert!(
-            control.is_ok(),
-            "control arm: 250 parts on a {HEAP}-word heap must round-trip, got {control:?}. \
-             A failure here would be an allocator limit and the red arm would prove nothing."
+            control_corrupted,
+            "POSITIVE CONTROL DEAD: the unrooted replica no longer CORRUPTS at {BIG} parts on a \
+             {HEAP}-word heap (got {control_red:?}). The pressure regime is gone, so site 14's \
+             clean cells below mean nothing. ⛔ A refusal does NOT count — that is the exact \
+             ambiguity this arm exists to rule out, and it fooled this probe once already."
+        );
+        let control_clean = split_round_trip_unrooted(250, HEAP);
+        assert!(
+            control_clean.is_ok(),
+            "NEGATIVE CONTROL DEAD: the replica must round-trip 250 parts on a {HEAP}-word heap, \
+             got {control_clean:?}. A failure here indicts the READER, not the carrier."
         );
 
-        let red = split_round_trip(BIG, HEAP);
-        // ⛔ THE RED ARM MUST EXCLUDE THE REFUSAL CLASS EXPLICITLY. `is_err()`
-        // alone is satisfied by "bif_split returned an error term" — the
-        // allocator refusing, which is precisely the ambiguity this arm exists
-        // to rule out. An arm that accepts it passes for the wrong reason, and
-        // this one did until the refusal was investigated instead of excluded.
-        let corrupted = matches!(&red, Err(reason) if !reason.contains("returned an error term"));
+        // ✅ THE CLAIM. The same cell that corrupts the replica is clean through
+        // the rooted body, in the same run.
+        let fixed = split_round_trip(BIG, HEAP);
         assert!(
-            corrupted,
-            "site 14 red-at-parent: {BIG} parts on a {HEAP}-word heap must CORRUPT the \
-             accumulator (not merely be refused), got {red:?}"
+            fixed.is_ok(),
+            "site 14 is NOT rooted: {BIG} parts on a {HEAP}-word heap still lost the \
+             accumulator, got {fixed:?}"
         );
-
+        let small = split_round_trip(250, HEAP);
+        assert!(
+            small.is_ok(),
+            "site 14: 250 parts must round-trip, got {small:?}"
+        );
         let roomy = split_round_trip(BIG, 1536);
         assert!(
             roomy.is_ok(),
             "site 14 second direction: {BIG} parts on a 1536-word heap must be clean, got {roomy:?}"
         );
 
-        let reason = red.unwrap_err();
-        println!("site 14 RED: {reason}");
-        eprintln!("site 14 RED: {reason}");
+        let reason = control_red.unwrap_err();
+        println!("site 14 CONTROL still red: {reason}");
+        eprintln!("site 14 CONTROL still red: {reason}");
     }
 
     /// The surface the verdict is read off. Emitted per cell and to both streams.
