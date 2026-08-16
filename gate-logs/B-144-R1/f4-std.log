@@ -1,0 +1,278 @@
+    Checking beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+error[E0432]: unresolved import `crate::timer`
+  --> crates/beamr/src/interpreter/opcodes/core.rs:32:12
+   |
+32 | use crate::timer::TimerWheel;
+   |            ^^^^^ could not find `timer` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:61:9
+   |
+60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+61 | pub mod timer;
+   |         ^^^^^
+
+error[E0432]: unresolved import `crate::replay`
+  --> crates/beamr/src/interpreter/opcodes/messaging.rs:14:12
+   |
+14 | use crate::replay::{RecordedDeliveryKind, ReplayDriver};
+   |            ^^^^^^ could not find `replay` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:52:9
+   |
+51 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+52 | pub mod replay;
+   |         ^^^^^^
+
+error[E0432]: unresolved import `crate::timer`
+  --> crates/beamr/src/interpreter/opcodes/mod.rs:33:12
+   |
+33 | use crate::timer::TimerWheel;
+   |            ^^^^^ could not find `timer` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:61:9
+   |
+60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+61 | pub mod timer;
+   |         ^^^^^
+
+error[E0432]: unresolved import `crate::replay`
+  --> crates/beamr/src/interpreter/mod.rs:42:12
+   |
+42 | use crate::replay::ReplayDriver;
+   |            ^^^^^^ could not find `replay` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:52:9
+   |
+51 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+52 | pub mod replay;
+   |         ^^^^^^
+
+error[E0432]: unresolved import `crate::timer`
+  --> crates/beamr/src/interpreter/mod.rs:45:12
+   |
+45 | use crate::timer::TimerWheel;
+   |            ^^^^^ could not find `timer` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:61:9
+   |
+60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+61 | pub mod timer;
+   |         ^^^^^
+
+error[E0432]: unresolved import `crate::timer`
+  --> crates/beamr/src/native/bifs.rs:19:12
+   |
+19 | use crate::timer::TimerRef;
+   |            ^^^^^ could not find `timer` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:61:9
+   |
+60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+61 | pub mod timer;
+   |         ^^^^^
+
+error[E0432]: unresolved import `crate::replay`
+  --> crates/beamr/src/native/context/mod.rs:29:12
+   |
+29 | use crate::replay::ReplayDriver;
+   |            ^^^^^^ could not find `replay` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:52:9
+   |
+51 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+52 | pub mod replay;
+   |         ^^^^^^
+
+error[E0432]: unresolved import `crate::timer`
+  --> crates/beamr/src/native/context/mod.rs:32:12
+   |
+32 | use crate::timer::{TimerRef, TimerWheel};
+   |            ^^^^^ could not find `timer` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:61:9
+   |
+60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+61 | pub mod timer;
+   |         ^^^^^
+
+error[E0432]: unresolved import `crate::replay`
+  --> crates/beamr/src/native/local_send.rs:16:12
+   |
+16 | use crate::replay::ReplayDriver;
+   |            ^^^^^^ could not find `replay` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:52:9
+   |
+51 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+52 | pub mod replay;
+   |         ^^^^^^
+
+error[E0432]: unresolved import `crate::replay`
+  --> crates/beamr/src/native/native_process.rs:30:12
+   |
+30 | use crate::replay::ReplayDriver;
+   |            ^^^^^^ could not find `replay` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:52:9
+   |
+51 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+52 | pub mod replay;
+   |         ^^^^^^
+
+error[E0432]: unresolved import `crate::timer`
+  --> crates/beamr/src/native/native_process.rs:32:12
+   |
+32 | use crate::timer::{TimerKind, TimerRef, TimerWheel};
+   |            ^^^^^ could not find `timer` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:61:9
+   |
+60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+61 | pub mod timer;
+   |         ^^^^^
+
+error[E0432]: unresolved import `crate::timer`
+  --> crates/beamr/src/scheduler/wasm.rs:23:12
+   |
+23 | use crate::timer::TimerWheel;
+   |            ^^^^^ could not find `timer` in the crate root
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:61:9
+   |
+60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+   |          ---------------------------------------------- the item is gated here
+61 | pub mod timer;
+   |         ^^^^^
+
+error[E0432]: unresolved import `crossbeam_queue`
+  --> crates/beamr/src/mailbox/mod.rs:10:5
+   |
+10 | use crossbeam_queue::SegQueue;
+   |     ^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `crossbeam_queue`
+   |
+   = help: if you wanted to use a crate named `crossbeam_queue`, use `cargo add crossbeam_queue` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find `replay` in `crate`
+   --> crates/beamr/src/interpreter/opcodes/native_call.rs:181:20
+    |
+181 |             crate::replay::ReplayDriver::select_facility(Arc::clone(driver), process.pid())
+    |                    ^^^^^^ could not find `replay` in the crate root
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/lib.rs:52:9
+    |
+ 51 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+    |          ---------------------------------------------- the item is gated here
+ 52 | pub mod replay;
+    |         ^^^^^^
+
+error[E0433]: cannot find `replay` in `crate`
+   --> crates/beamr/src/interpreter/opcodes/native_call.rs:315:21
+    |
+315 |     outcome: crate::replay::NativeOutcome,
+    |                     ^^^^^^ could not find `replay` in the crate root
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/lib.rs:52:9
+    |
+ 51 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+    |          ---------------------------------------------- the item is gated here
+ 52 | pub mod replay;
+    |         ^^^^^^
+
+error[E0433]: cannot find `timer` in `crate`
+    --> crates/beamr/src/native/context/mod.rs:1072:62
+     |
+1072 |                 .schedule(delay, target_pid, message, crate::timer::TimerKind::Deliver),
+     |                                                              ^^^^^ could not find `timer` in the crate root
+     |
+note: found an item that was configured out
+    --> crates/beamr/src/lib.rs:61:9
+     |
+  60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+     |          ---------------------------------------------- the item is gated here
+  61 | pub mod timer;
+     |         ^^^^^
+
+error[E0433]: cannot find `timer` in `crate`
+    --> crates/beamr/src/native/context/mod.rs:1096:20
+     |
+1096 |             crate::timer::TimerKind::Deliver,
+     |                    ^^^^^ could not find `timer` in the crate root
+     |
+note: found an item that was configured out
+    --> crates/beamr/src/lib.rs:61:9
+     |
+  60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+     |          ---------------------------------------------- the item is gated here
+  61 | pub mod timer;
+     |         ^^^^^
+
+error[E0433]: cannot find `timer` in `crate`
+    --> crates/beamr/src/native/context/mod.rs:1132:24
+     |
+1132 |                 crate::timer::TimerKind::Deliver,
+     |                        ^^^^^ could not find `timer` in the crate root
+     |
+note: found an item that was configured out
+    --> crates/beamr/src/lib.rs:61:9
+     |
+  60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+     |          ---------------------------------------------- the item is gated here
+  61 | pub mod timer;
+     |         ^^^^^
+
+error[E0433]: cannot find `timer` in `crate`
+   --> crates/beamr/src/scheduler/wasm.rs:498:29
+    |
+498 |         expired: Vec<crate::timer::ExpiredTimer>,
+    |                             ^^^^^ could not find `timer` in the crate root
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/lib.rs:61:9
+    |
+ 60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+    |          ---------------------------------------------- the item is gated here
+ 61 | pub mod timer;
+    |         ^^^^^
+
+error[E0433]: cannot find `timer` in `crate`
+   --> crates/beamr/src/scheduler/wasm.rs:502:37
+    |
+502 |             if timer.kind != crate::timer::TimerKind::Deliver {
+    |                                     ^^^^^ could not find `timer` in the crate root
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/lib.rs:61:9
+    |
+ 60 | #[cfg(any(feature = "threads", feature = "cooperative"))]
+    |          ---------------------------------------------- the item is gated here
+ 61 | pub mod timer;
+    |         ^^^^^
+
+Some errors have detailed explanations: E0432, E0433.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `beamr` (lib) due to 20 previous errors
