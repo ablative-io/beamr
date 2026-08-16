@@ -177,15 +177,56 @@ fn json_value_to_term(
             }
         }
         Value::Object(object) => {
-            let mut pairs = Vec::with_capacity(object.len());
-            for (key, value) in object {
-                let key_term = context
-                    .alloc_binary(key.as_bytes())
-                    .map_err(|_| JsValue::from_str("failed to allocate map key binary"))?;
-                let value_term = json_value_to_term(value, context, depth + 1)?;
-                pairs.push((key_term, value_term));
+            // AR-1 site 16 — the S3e `Vec<(Term, Term)>` shape, the same carrier
+            // as site 15 in beamr's own `term::json`. Both halves were at risk:
+            // the key was held live across its own value's recursive call, and
+            // every pair already in the vector was held live across every later
+            // allocation.
+            //
+            // The pairs now accumulate as ONE ALTERNATING key/value run in the
+            // native root stack, with the key pushed BEFORE its value is built —
+            // that ordering is the whole point. `to_map_pairs` and
+            // `sort_pairs_by_key` both refuse `badarg` on an odd-length run, so
+            // a future edit that pushes a key without its value is caught rather
+            // than silently mis-pairing.
+            //
+            // ⚠️ `sort_pairs_by_key` sorts by RAW TERM VALUE exactly as
+            // `alloc_sorted_map` does — but on pointers that are live rather
+            // than possibly stale, so the resulting key ORDER can differ from
+            // the pre-fix order. This does NOT resolve the ordering-by-raw-value
+            // hazard; it inherits it, on valid pointers.
+            //
+            // ⛔ `alloc_sorted_map` STAYS: `object_to_term` (the JsValue path,
+            // a separate crossing) is still its caller.
+            let mut parked: Option<JsValue> = None;
+            let built = context.with_accumulator(|context, terms| {
+                for (key, value) in object {
+                    let key_term = match context.alloc_binary(key.as_bytes()) {
+                        Ok(term) => term,
+                        Err(_) => {
+                            parked = Some(JsValue::from_str("failed to allocate map key binary"));
+                            return Err(Term::NIL);
+                        }
+                    };
+                    terms.push(context, key_term)?;
+                    let value_term = match json_value_to_term(value, context, depth + 1) {
+                        Ok(term) => term,
+                        Err(error) => {
+                            parked = Some(error);
+                            return Err(Term::NIL);
+                        }
+                    };
+                    terms.push(context, value_term)?;
+                }
+                terms.sort_pairs_by_key(context)?;
+                terms.to_map_pairs(context)
+            });
+            match built {
+                Ok(term) => Ok(term),
+                Err(_) => {
+                    Err(parked.unwrap_or_else(|| JsValue::from_str("failed to allocate map term")))
+                }
             }
-            alloc_sorted_map(pairs, context)
         }
     }
 }
@@ -953,14 +994,14 @@ mod ar1_row4_sites_12_16_tests {
              replica corrupted 21 of the same cells in the same run\n{report}"
         );
 
-        // ⚠️ SITE 16 IS STILL UNFIXED IN PRODUCTION and this asserts it, so the
-        // green above cannot be read as covering the Object arm. When site 16
-        // lands, this pair flips to (0, 24) and the control band stays put.
+        // ✅ THE CLAIM — site 16. Same cells, same margins, same input. The
+        // control band above is unchanged by this, which is the point: the
+        // replica still carries the pre-fix Object arm.
         assert_eq!(
             (fix_map_red, fix_map_ok),
-            (16, 8),
-            "site 16's shipped band moved. It is UNFIXED at this commit and must still match \
-             the control exactly; a change here means something else moved.\n{report}"
+            (0, 24),
+            "site 16 is NOT rooted: the shipped body lost the carrier on some cell while the \
+             replica corrupted 16 of the same cells in the same run\n{report}"
         );
     }
 
