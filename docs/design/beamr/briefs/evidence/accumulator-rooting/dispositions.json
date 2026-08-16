@@ -157,11 +157,13 @@
       "use_line": 134,
       "sink": "alloc_binary",
       "reason": "boxed tuple accumulator; alloc_list roots them after they are stale",
-      "disposition": "PENDING",
-      "replacement_construct": null,
-      "replacement_site": null,
+      "disposition": "STRUCTURALLY-ELIMINATED",
+      "replacement_construct": "with_accumulator",
+      "replacement_site": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs:158",
       "verification_leg": "native",
-      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- test `ar1_sites_8_9_dissect_query_two_armed`, crates/beamr/src/native/stdlib_stubs/uri_bifs.rs. gate-logs/110/RESULTS.md."
+      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- test `ar1_sites_8_9_dissect_query_two_armed`, crates/beamr/src/native/stdlib_stubs/uri_bifs.rs. gate-logs/110/RESULTS.md.",
+      "fix": "FIX LANE (#111) phase 2, sixth site — and it shares ONE edit with id 9, disclosed rather than forced into per-site granularity: both carriers live in the SAME loop body, so one rooted rewrite removes both and splitting it into two commits would have meant landing a half-rooted loop in between. The bare `Vec<Term>` of pair tuples is GONE; the tuples accumulate in the process native root stack via TermAccumulator and reach the sink through `to_list`. ⚠️ Census delta on this row is ZERO by construction: this is a plain `Vec<Term>` push loop and shape_hunt.py has NO class that matches one (S3a is `.map().collect()`, S3e needs a tuple-literal push). The two-arm probe is the site's whole evidence. Per-carrier disposition, per-loop edit.",
+      "row4_inverted": "`ar1_sites_8_9_dissect_query_two_armed` now asserts CORRECTNESS, and it is FOUR-ARMED: two on input SIZE (200 must succeed, 400 must corrupt — so the pressure is a collection and not an allocator limit) and two on BODY. `dissect_unrooted_replica` carries the pre-fix accumulation VERBATIM and carries BOTH defects at once — the bare `Vec<Term>` (id 8) and the `key` held across the value's `alloc_binary` (id 9) — which is exactly why these two rows share one control. It is asserted FIRST, with an explicit refusal-is-not-corruption assert on the reason string, then the fixed arm is measured at both sizes. RED-AT-PARENT with ONLY the production hunk reverted: the shipped body failed on the CLAIM assert with the reason string `element 0: not a tuple — the accumulator went stale`, IDENTICAL to the replica's in the same run, and the 200-pair arm still passed under it. ⛔ The replica reproduces the ACCUMULATION, not the query DECODING: the form-decoding allocates nothing and cannot witness either defect."
     },
     {
       "id": 9,
@@ -174,11 +176,13 @@
       "use_line": 134,
       "sink": "alloc_binary",
       "reason": "boxed binary live across the value-arm alloc_binary. SECOND carrier in the SAME function as id 8 -- a per-function accounting would have collapsed these two into one row and lost a defect",
-      "disposition": "PENDING",
-      "replacement_construct": null,
-      "replacement_site": null,
+      "disposition": "STRUCTURALLY-ELIMINATED",
+      "replacement_construct": "with_rooted",
+      "replacement_site": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs:160",
       "verification_leg": "native",
-      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- same test as id 8 (`ar1_sites_8_9_dissect_query_two_armed`), SECOND carrier in the same function, demonstrated separately. This is the row that vindicates per-carrier rather than per-function accounting: a per-function ledger would have collapsed 8 and 9 into one row and lost a defect. gate-logs/110/RESULTS.md."
+      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- same test as id 8 (`ar1_sites_8_9_dissect_query_two_armed`), SECOND carrier in the same function, demonstrated separately. This is the row that vindicates per-carrier rather than per-function accounting: a per-function ledger would have collapsed 8 and 9 into one row and lost a defect. gate-logs/110/RESULTS.md.",
+      "fix": "FIX LANE (#111) phase 2, sixth site — SAME EDIT as id 8, see that row. This carrier does NOT go on the accumulator: `key` is a single term with a scope-shaped lifetime, not a run, and parking it in a list slot it does not belong in would be the wrong tool. It takes `with_rooted` DIRECTLY, opened INSIDE the accumulator's closure, with `rooted_push` and then a re-read via `rooted(roots, 0)` AFTER the value's `alloc_binary` — the re-read is the fix, because a collection at that allocation forwards the key and the pre-fix body used the stale copy. ⭐ THE NESTING IS VERIFIED AT THE BYTES, and it was the one premise of this edit that was NOT known in advance: `rooted_push` refuses unless its handle is innermost (`base + len == native_root_depth()`), and the inner scope IS innermost while it is open because the accumulator only pushes after it pops. That is reusable for any site mixing a run-carrier with a single-Term carrier.",
+      "row4_inverted": "`ar1_sites_8_9_dissect_query_two_armed` now asserts CORRECTNESS, and it is FOUR-ARMED: two on input SIZE (200 must succeed, 400 must corrupt — so the pressure is a collection and not an allocator limit) and two on BODY. `dissect_unrooted_replica` carries the pre-fix accumulation VERBATIM and carries BOTH defects at once — the bare `Vec<Term>` (id 8) and the `key` held across the value's `alloc_binary` (id 9) — which is exactly why these two rows share one control. It is asserted FIRST, with an explicit refusal-is-not-corruption assert on the reason string, then the fixed arm is measured at both sizes. RED-AT-PARENT with ONLY the production hunk reverted: the shipped body failed on the CLAIM assert with the reason string `element 0: not a tuple — the accumulator went stale`, IDENTICAL to the replica's in the same run, and the 200-pair arm still passed under it. ⛔ The replica reproduces the ACCUMULATION, not the query DECODING: the form-decoding allocates nothing and cannot witness either defect."
     },
     {
       "id": 10,

@@ -145,16 +145,35 @@ pub fn bif_uri_string_dissect_query(
         }
     }
 
-    let mut terms = Vec::with_capacity(pairs.len());
-    for (key, value) in pairs {
-        let key = context.alloc_binary(&key)?;
-        let value = match value {
-            Some(bytes) => context.alloc_binary(&bytes)?,
-            None => Term::atom(Atom::TRUE),
-        };
-        terms.push(context.alloc_tuple(&[key, value])?);
-    }
-    context.alloc_list(&terms)
+    // AR-1 sites 8 and 9, fixed together because they are the same loop.
+    //
+    // Site 8 was the bare `Vec<Term>` of pair tuples, held across further
+    // `alloc_binary` and `alloc_tuple` calls — that becomes the accumulator.
+    //
+    // Site 9 was `key`: ONE boxed binary held across the value's
+    // `alloc_binary`. It takes `with_rooted` DIRECTLY rather than the
+    // accumulator, because it is a single term with a scope-shaped lifetime
+    // and not a run — the accumulator would be the wrong tool and would leave
+    // the key in the list slot it does not belong in.
+    context.with_accumulator(|context, terms| {
+        for (key, value) in pairs {
+            let tuple = context.with_rooted(&[], |context, roots| {
+                let key = context.alloc_binary(&key)?;
+                context.rooted_push(roots, key)?;
+                let value = match value {
+                    Some(bytes) => context.alloc_binary(&bytes)?,
+                    None => Term::atom(Atom::TRUE),
+                };
+                // Re-read the key AFTER the value allocation: a collection
+                // there forwards it, and the pre-fix bug was using the stale
+                // copy from before.
+                let key = context.rooted(roots, 0)?;
+                context.alloc_tuple(&[key, value])
+            })?;
+            terms.push(context, tuple)?;
+        }
+        terms.to_list(context)
+    })
 }
 
 /// `maps:get/2` raising `{badkey, Key}` for missing keys, matching the BIF.
@@ -581,11 +600,45 @@ mod ar1_row4_tests {
     // INVERTS them to assert correctness rather than deleting them; the pinned
     // counts below are the surface the fix has to move.
 
-    use super::bif_uri_string_dissect_query;
+    use crate::atom::Atom;
     use crate::native::ProcessContext;
     use crate::process::Process;
+    use crate::term::Term;
     use crate::term::binary::Binary;
     use crate::term::boxed::{Cons, Tuple};
+
+    use super::bif_uri_string_dissect_query;
+
+    /// Which body the cell drives.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Arm {
+        Fixed,
+        UnrootedReplica,
+    }
+
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `bif_uri_string_dissect_query`'s
+    /// accumulation EXACTLY AS IT WAS BEFORE THE FIX, and it must stay that way.
+    ///
+    /// It carries BOTH defects at once, which is why sites 8 and 9 share it: the
+    /// bare `Vec<Term>` of tuples (site 8) and the single `key` held across the
+    /// value's `alloc_binary` (site 9). Only the accumulation is reproduced —
+    /// the form-decoding allocates nothing and cannot witness either defect.
+    /// ⛔ Do NOT migrate it onto the accumulator or onto `with_rooted`.
+    fn dissect_unrooted_replica(
+        context: &mut ProcessContext,
+        pairs: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+    ) -> Result<Term, Term> {
+        let mut terms = Vec::with_capacity(pairs.len());
+        for (key, value) in pairs {
+            let key = context.alloc_binary(&key)?;
+            let value = match value {
+                Some(bytes) => context.alloc_binary(&bytes)?,
+                None => Term::atom(Atom::TRUE),
+            };
+            terms.push(context.alloc_tuple(&[key, value])?);
+        }
+        context.alloc_list(&terms)
+    }
 
     fn context(process: &mut Process) -> ProcessContext<'_> {
         let mut context = ProcessContext::new();
@@ -597,7 +650,7 @@ mod ar1_row4_tests {
     /// key and value are both long enough to be heap-allocated, and read the
     /// result back BY CONTENTS. Returns Err with a reason when the result is
     /// not the list that was put in.
-    fn dissect(pairs: usize, heap: usize) -> Result<(), String> {
+    fn dissect(pairs: usize, heap: usize, arm: Arm) -> Result<(), String> {
         const WIDTH: usize = 12;
 
         let mut process = Process::new(1, heap);
@@ -611,8 +664,24 @@ mod ar1_row4_tests {
             .alloc_binary(query.as_bytes())
             .map_err(|_| "input binary".to_string())?;
 
-        let list = bif_uri_string_dissect_query(&[input], &mut context)
-            .map_err(|_| "dissect_query returned an error term".to_string())?;
+        let list = match arm {
+            Arm::Fixed => bif_uri_string_dissect_query(&[input], &mut context)
+                .map_err(|_| "dissect_query returned an error term".to_string())?,
+            Arm::UnrootedReplica => {
+                // The same decoded pairs the BIF would hand its accumulation
+                // loop, so the allocation sequence matches.
+                let decoded: Vec<(Vec<u8>, Option<Vec<u8>>)> = (0..pairs)
+                    .map(|i| {
+                        (
+                            format!("k{i:0WIDTH$}").into_bytes(),
+                            Some(format!("v{i:0WIDTH$}").into_bytes()),
+                        )
+                    })
+                    .collect();
+                dissect_unrooted_replica(&mut context, decoded)
+                    .map_err(|_| "replica returned an error term".to_string())?
+            }
+        };
 
         let mut seen = 0usize;
         let mut tail = list;
@@ -654,35 +723,56 @@ mod ar1_row4_tests {
         Ok(())
     }
 
-    /// AR-1 row 4, sites 8 (`terms`) and 9 (`key`).
+    /// AR-1 row 4, sites 8 (`terms`) and 9 (`key`) — ✅ INVERTED.
     ///
-    /// TWO-ARMED, per Amendment 6: the small arm must SUCCEED and the large arm
-    /// must FAIL. A failure that appears at both sizes is an allocator limit,
-    /// not this defect; a failure that appears only once the heap must collect
-    /// is attributable to the collection.
+    /// Still two-armed on INPUT SIZE per Amendment 6, and now two-armed on BODY
+    /// as well: the size arms establish that the pressure is a collection rather
+    /// than an allocator limit, and the body arms establish that the pressure is
+    /// still there after the fix.
     #[test]
     fn ar1_sites_8_9_dissect_query_two_armed() {
-        // The heap is held CONSTANT across both arms so the only variable is
+        // The heap is held CONSTANT across every cell so the only variable is
         // whether the accumulation outruns it. 4096 words was measured: at 200
         // pairs the call completes without collecting, at 400 it must collect.
         const HEAP: usize = 4096;
 
-        // CONTROL — same heap, input small enough that nothing collects.
-        let control = dissect(200, HEAP);
+        // ⛔⛔ POSITIVE CONTROL FIRST, and it licenses everything below it.
+        // Small input: must succeed, or the pressure below is an allocator
+        // limit and proves nothing.
+        let control_small = dissect(200, HEAP, Arm::UnrootedReplica);
         assert!(
-            control.is_ok(),
-            "control arm: 200 pairs on a {HEAP}-word heap must succeed, got {control:?}. \
-             A failure here would be an allocator limit, and the red arm below would \
-             prove nothing."
+            control_small.is_ok(),
+            "CONTROL ARM DEAD: 200 pairs on a {HEAP}-word heap must succeed under the replica, \
+             got {control_small:?}. A failure here would be an allocator limit."
         );
+        // Large input: must still corrupt.
+        let control_red = dissect(400, HEAP, Arm::UnrootedReplica);
+        assert!(
+            control_red.is_err(),
+            "POSITIVE CONTROL DEAD: the unrooted replica no longer corrupts at 400 pairs on a \
+             {HEAP}-word heap (got {control_red:?}). The pressure regime is gone, so the fixed \
+             arm's success below means nothing."
+        );
+        let reason = control_red.unwrap_err();
+        assert!(
+            !reason.contains("returned an error term"),
+            "POSITIVE CONTROL IS A REFUSAL, NOT CORRUPTION: {reason}. A refusal is evidence of \
+             nothing about rooting — it is the exact ambiguity this arm exists to rule out."
+        );
+        println!("sites 8/9 CONTROL still red: {reason}");
+        eprintln!("sites 8/9 CONTROL still red: {reason}");
 
-        // RED — same heap, input large enough that the accumulation collects.
-        let red = dissect(400, HEAP);
+        // ✅ THE CLAIM. Same heap, same inputs, through the rooted body.
+        let fixed_small = dissect(200, HEAP, Arm::Fixed);
         assert!(
-            red.is_err(),
-            "sites 8/9 red-at-parent: 400 pairs on a {HEAP}-word heap must corrupt the \
-             accumulator, got {red:?}"
+            fixed_small.is_ok(),
+            "sites 8/9: 200 pairs must round-trip, got {fixed_small:?}"
         );
-        println!("sites 8/9 RED at f993280: {}", red.unwrap_err());
+        let fixed_large = dissect(400, HEAP, Arm::Fixed);
+        assert!(
+            fixed_large.is_ok(),
+            "sites 8/9 are NOT rooted: 400 pairs on a {HEAP}-word heap still lost a carrier, got \
+             {fixed_large:?}, while the replica corrupted in the same run"
+        );
     }
 }
