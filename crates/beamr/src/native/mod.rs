@@ -99,7 +99,7 @@ pub(crate) use context::TeardownAdmissionFacility;
 pub use context::{
     AionTimeoutContinuation, ExceptionClass, NativeContinuation, ProcessContext, RemoteSpawnError,
     RemoteSpawnFacility, RemoteSpawnResult, RootedTerms, SuspendRequest, SuspensionRegistrar,
-    TrampolineRequest, WasmAsyncNifFacility,
+    TermAccumulator, TrampolineRequest, WasmAsyncNifFacility,
 };
 // The file/TCP completion-ring facilities are part of the host `io` subsystem
 // (FdInner / CompletionRing), which only compiles in the threaded build.

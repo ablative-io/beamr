@@ -1731,7 +1731,10 @@ impl<'process> ProcessContext<'process> {
     }
 }
 
+mod accumulator;
 mod alloc;
+
+pub use accumulator::TermAccumulator;
 
 #[cfg(test)]
 mod tests;
