@@ -163,11 +163,16 @@ fn finish_list_dir(
 
     match completion.completion.result {
         Ok(IoResult::DirList(entries)) => {
-            let mut terms = Vec::with_capacity(entries.len());
-            for entry in entries {
-                terms.push(context.alloc_binary(&entry)?);
-            }
-            let list = context.alloc_list(&terms)?;
+            // AR-1 site 5. The carrier used to be a bare `Vec<Term>` accumulating
+            // boxed binaries across further `alloc_binary` calls, any of which can
+            // collect. The accumulator holds them in the process root stack instead.
+            let list = context.with_accumulator(|context, terms| {
+                for entry in entries {
+                    let binary = context.alloc_binary(&entry)?;
+                    terms.push(context, binary)?;
+                }
+                terms.to_list(context)
+            })?;
             ok_tuple(context, list)
         }
         Ok(_) => error_tuple(context, Atom::UNKNOWN_ERROR),
@@ -342,11 +347,12 @@ mod ar1_row4_site5_tests {
     // INVERTS them to assert correctness rather than deleting them; the pinned
     // counts below are the surface the fix has to move.
 
-    use super::finish_list_dir;
+    use super::{finish_list_dir, ok_tuple};
     use crate::io::ring::{IoCompletion, IoResult};
     use crate::native::ProcessContext;
     use crate::native::context::{FileIoCompletion, FileIoContinuation};
     use crate::process::Process;
+    use crate::term::Term;
     use crate::term::binary::Binary;
     use crate::term::boxed::{Cons, Tuple};
 
@@ -356,10 +362,81 @@ mod ar1_row4_site5_tests {
         format!("f{index:0WIDTH$}")
     }
 
+    /// Which body the cell drives. ⛔ The two arms exist because inverting this
+    /// probe killed its own positive control: `corrupted.is_empty()` used to
+    /// prove the sweep applied real pressure, and post-fix nothing at the
+    /// production site can. The replica is the calibrated positive that keeps
+    /// the fixed arm's zeros meaningful.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Arm {
+        Fixed,
+        UnrootedReplica,
+    }
+
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `finish_list_dir`'s `DirList` arm EXACTLY
+    /// AS IT WAS BEFORE THE FIX, and it must stay that way.
+    ///
+    /// A bare `Vec<Term>` collecting boxed binaries across further
+    /// `alloc_binary` calls, each of which can collect.
+    /// ⛔ Do NOT migrate it onto the accumulator.
+    fn list_dir_unrooted_replica(
+        context: &mut ProcessContext,
+        entries: Vec<Vec<u8>>,
+    ) -> Result<Term, Term> {
+        let mut terms = Vec::with_capacity(entries.len());
+        for entry in entries {
+            terms.push(context.alloc_binary(&entry)?);
+        }
+        let list = context.alloc_list(&terms)?;
+        ok_tuple(context, list)
+    }
+
+    /// The reader, shared by BOTH arms so neither is graded by the softer
+    /// instrument. Unwraps `{ok, List}` and walks the list BY CONTENTS.
+    fn read_back(term: Term, entries: usize) -> Result<(), String> {
+        let tuple = Tuple::new(term).ok_or_else(|| "result is not a tuple".to_string())?;
+        if tuple.arity() != 2 {
+            return Err(format!("result arity {} not 2", tuple.arity()));
+        }
+        let list = tuple
+            .get(1)
+            .ok_or_else(|| "result has no list slot".to_string())?;
+
+        let mut seen = 0usize;
+        let mut tail = list;
+        let cap = entries * 2 + 16;
+        while !tail.is_nil() {
+            if seen > cap {
+                return Err(format!(
+                    "list did not terminate within {cap} cells — cyclic tail"
+                ));
+            }
+            let cons = Cons::new(tail)
+                .ok_or_else(|| format!("entry {seen}: tail is not a cons — carrier went stale"))?;
+            let binary = Binary::new(cons.head()).ok_or_else(|| {
+                format!("entry {seen}: head is not a binary — carrier went stale")
+            })?;
+            let want = entry_of(seen);
+            if binary.as_bytes() != want.as_bytes() {
+                return Err(format!(
+                    "entry {seen}: contents {:?} != {want:?}",
+                    String::from_utf8_lossy(binary.as_bytes())
+                ));
+            }
+            seen += 1;
+            tail = cons.tail();
+        }
+        if seen != entries {
+            return Err(format!("recovered {seen} entries, put {entries}"));
+        }
+        Ok(())
+    }
+
     fn list_dir_round_trip(
         entries: usize,
         heap: usize,
         margin: usize,
+        arm: Arm,
     ) -> (usize, Result<(), String>) {
         let mut process = Process::new(5, heap);
         let mut context = ProcessContext::new();
@@ -407,61 +484,66 @@ mod ar1_row4_site5_tests {
             let names: Vec<Vec<u8>> = (0..entries)
                 .map(|index| entry_of(index).into_bytes())
                 .collect();
-            let completion = FileIoCompletion {
-                op_id: 1,
-                continuation: FileIoContinuation::ListDir,
-                completion: IoCompletion {
-                    op_id: 1,
-                    result: Ok(IoResult::DirList(names)),
-                },
+
+            let term = match arm {
+                Arm::Fixed => {
+                    let completion = FileIoCompletion {
+                        op_id: 1,
+                        continuation: FileIoContinuation::ListDir,
+                        completion: IoCompletion {
+                            op_id: 1,
+                            result: Ok(IoResult::DirList(names)),
+                        },
+                    };
+                    finish_list_dir(completion, &mut context)
+                        .map_err(|_| "finish_list_dir returned an error term".to_string())?
+                }
+                Arm::UnrootedReplica => list_dir_unrooted_replica(&mut context, names)
+                    .map_err(|_| "replica returned an error term".to_string())?,
             };
 
-            let term = finish_list_dir(completion, &mut context)
-                .map_err(|_| "finish_list_dir returned an error term".to_string())?;
-
-            let tuple = Tuple::new(term).ok_or_else(|| "result is not a tuple".to_string())?;
-            if tuple.arity() != 2 {
-                return Err(format!("result arity {} not 2", tuple.arity()));
-            }
-            let list = tuple
-                .get(1)
-                .ok_or_else(|| "result has no list slot".to_string())?;
-
-            let mut seen = 0usize;
-            let mut tail = list;
-            let cap = entries * 2 + 16;
-            while !tail.is_nil() {
-                if seen > cap {
-                    return Err(format!(
-                        "list did not terminate within {cap} cells — cyclic tail"
-                    ));
-                }
-                let cons = Cons::new(tail).ok_or_else(|| {
-                    format!("entry {seen}: tail is not a cons — carrier went stale")
-                })?;
-                let binary = Binary::new(cons.head()).ok_or_else(|| {
-                    format!("entry {seen}: head is not a binary — carrier went stale")
-                })?;
-                let want = entry_of(seen);
-                if binary.as_bytes() != want.as_bytes() {
-                    return Err(format!(
-                        "entry {seen}: contents {:?} != {want:?}",
-                        String::from_utf8_lossy(binary.as_bytes())
-                    ));
-                }
-                seen += 1;
-                tail = cons.tail();
-            }
-            if seen != entries {
-                return Err(format!("recovered {seen} entries, put {entries}"));
-            }
-            Ok(())
+            read_back(term, entries)
         })();
         (achieved, outcome)
     }
 
+    /// AR-1 row 4, site 5 — ✅ INVERTED. Asserts CORRECTNESS of the shipped
+    /// body, against a live calibrated positive measured in the same run.
     #[test]
     fn ar1_site5_finish_list_dir_band() {
+        // ⛔⛔ POSITIVE CONTROL FIRST, and it licenses everything below it.
+        let (control_corrupt, control_clean, control_floor) = sweep(Arm::UnrootedReplica);
+        assert!(
+            control_corrupt > 0,
+            "POSITIVE CONTROL DEAD: the unrooted replica no longer corrupts anywhere in the \
+             sweep ({control_corrupt} corrupt / {control_clean} clean, floor {control_floor}). \
+             The pressure regime is gone, so the fixed arm's zeros below mean nothing. ⛔ A \
+             refusal does NOT count as corruption — that discrimination is in the counter."
+        );
+        assert!(
+            control_clean > 0,
+            "NEGATIVE CONTROL DEAD: no cell was clean under the replica, which indicts the \
+             READER or the pre-fill rather than the carrier."
+        );
+
+        // ✅ THE CLAIM. The same sweep, same heap, same pressure, through the
+        // rooted body: nothing corrupts.
+        let (fixed_corrupt, fixed_clean, _) = sweep(Arm::Fixed);
+        assert_eq!(
+            fixed_corrupt, 0,
+            "site 5 is NOT rooted: {fixed_corrupt} cells still lost the accumulator while the \
+             replica corrupted {control_corrupt} in the same run"
+        );
+        assert!(
+            fixed_clean > 0,
+            "site 5: the fixed arm produced no clean cell at all — every cell refused, so the \
+             zero above measures refusals and not safety"
+        );
+    }
+
+    /// Runs the full margin sweep for one arm and returns
+    /// `(corrupt, clean, resolution_floor)`. Emits every cell to both streams.
+    fn sweep(arm: Arm) -> (usize, usize, usize) {
         let mut cells = Vec::new();
         for entries in [50usize, 200] {
             // Margins 0/1/2 added to SEARCH FOR THE LOWER CLEAN EDGE. The first
@@ -471,7 +553,7 @@ mod ar1_row4_site5_tests {
             // live carrier to go stale. If 0/1/2 are also RED the band stays
             // one-sided and is REPORTED as one-sided.
             for margin in [0usize, 1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 4096] {
-                let (achieved, result) = list_dir_round_trip(entries, 4096, margin);
+                let (achieved, result) = list_dir_round_trip(entries, 4096, margin, arm);
                 let verdict = match result {
                     Ok(()) => "ok".to_string(),
                     Err(reason) => reason,
@@ -480,7 +562,8 @@ mod ar1_row4_site5_tests {
                 // is NOT evidence about the requested margin, and two cells with
                 // the same achieved margin are ONE measurement, not two.
                 let line = format!(
-                    "entries {entries:>4} margin req {margin:>5} got {achieved:>5} : {verdict}"
+                    "site 5 [{arm:?}] entries {entries:>4} margin req {margin:>5} got \
+                     {achieved:>5} : {verdict}"
                 );
                 println!("{line}");
                 eprintln!("{line}");
@@ -494,15 +577,15 @@ mod ar1_row4_site5_tests {
             .collect();
         let clean: Vec<_> = cells.iter().filter(|(_, _, v)| v == "ok").collect();
         let summary = format!(
-            "site 5: {} corruption cells, {} clean cells",
+            "site 5 [{arm:?}]: {} corruption cells, {} clean cells",
             corrupted.len(),
             clean.len()
         );
         println!("{summary}");
         eprintln!("{summary}");
         for (margin, achieved, verdict) in &corrupted {
-            println!("site 5 RED at margin req {margin} got {achieved}: {verdict}");
-            eprintln!("site 5 RED at margin req {margin} got {achieved}: {verdict}");
+            println!("site 5 [{arm:?}] RED at margin req {margin} got {achieved}: {verdict}");
+            eprintln!("site 5 [{arm:?}] RED at margin req {margin} got {achieved}: {verdict}");
         }
 
         // THE LOWER-EDGE QUESTION, ANSWERED BY THE INSTRUMENT RATHER THAN BY ME.
@@ -520,18 +603,13 @@ mod ar1_row4_site5_tests {
             .filter(|(_, achieved, _)| *achieved == floor)
             .count();
         let floor_note = format!(
-            "site 5 pre-fill resolution floor: smallest achieved margin {floor} words, \
+            "site 5 [{arm:?}] pre-fill resolution floor: smallest achieved margin {floor} words, \
              reached by {at_floor} of {} cells — requested margins below that were NOT measured",
             cells.len()
         );
         println!("{floor_note}");
         eprintln!("{floor_note}");
 
-        assert!(!clean.is_empty(), "control: some cell must be clean");
-        assert!(
-            !corrupted.is_empty(),
-            "site 5: no cell corrupted the carrier — every cell clean or refused. Under the \
-             site-14 law that is UNRESOLVED, not defended: the sweep failed to apply pressure."
-        );
+        (corrupted.len(), clean.len(), floor)
     }
 }

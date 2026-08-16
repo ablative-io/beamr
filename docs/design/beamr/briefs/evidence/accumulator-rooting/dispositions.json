@@ -100,11 +100,13 @@
       "use_line": 170,
       "sink": "alloc_binary",
       "reason": "boxed binary accumulator across further alloc_binary",
-      "disposition": "PENDING",
-      "replacement_construct": null,
-      "replacement_site": null,
+      "disposition": "STRUCTURALLY-ELIMINATED",
+      "replacement_construct": "with_accumulator",
+      "replacement_site": "crates/beamr/src/native/file_meta_bifs.rs:169",
       "verification_leg": "native",
-      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- test `ar1_site5_finish_list_dir_band`, crates/beamr/src/native/file_meta_bifs.rs. Band is ONE-SIDED, and the instrument rather than the author established why. WARNING, ADDED AFTER SITE 3: this site's knob is the heap MARGIN, so its CLEAN cells are a lower bound on reach and NOT a located edge. The RED is unaffected. gate-logs/110/RESULTS.md."
+      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- test `ar1_site5_finish_list_dir_band`, crates/beamr/src/native/file_meta_bifs.rs. Band is ONE-SIDED, and the instrument rather than the author established why. WARNING, ADDED AFTER SITE 3: this site's knob is the heap MARGIN, so its CLEAN cells are a lower bound on reach and NOT a located edge. The RED is unaffected. gate-logs/110/RESULTS.md.",
+      "fix": "FIX LANE (#111) phase 2, third site. The bare `Vec<Term>` carrier in the DirList arm is GONE: each entry's binary accumulates in the process native root stack via ProcessContext::with_accumulator and reaches alloc_list through TermAccumulator::to_list. `ok_tuple` stays OUTSIDE the accumulator scope and takes the finished list as an ARGUMENT, which alloc_tuple roots -- no carrier is live across it. ⚠️ CENSUS DELTA ZERO, PREDICTED IN ADVANCE AND CONFIRMED: 40/26/14 before and after. Same instrument fact as site 14 -- shape_hunt.py has no class for a plain `Vec<Term>` push loop, so neither this carrier nor its replica is visible to it. The prediction was recorded in gate-logs/111/RESULTS.md BEFORE this site was touched, and it held. The two-arm probe is this site's whole evidence. Per-site disposition; the shape stays writable until phase 4.",
+      "row4_inverted": "`ar1_site5_finish_list_dir_band` now asserts CORRECTNESS. The margin sweep was factored into `sweep(arm)` returning (corrupt, clean, resolution_floor) and is run TWICE in the same test: `list_dir_unrooted_replica` carries the pre-fix DirList arm VERBATIM and is asserted FIRST, measuring 14 corrupt / 14 clean; the FIXED arm then measures 0 corrupt / 28 clean. ⭐ THE REPLICA IS DEMONSTRABLY FAITHFUL, not merely asserted to be: red-at-parent -- reverting ONLY the production hunk -- makes the shipped body corrupt EXACTLY 14 cells, the same count the replica produces, and the pre-fill resolution floor reproduces the f993280 record exactly (smallest achieved margin 4 words, reached by 4 of 28 cells). Two independent quantities agree, so the control is calibrated against the real pre-fix behaviour rather than resembling it. The floor note and the achieved-vs-requested margin discipline are retained: a cell that could not reach its requested margin is still reported at the margin it actually got, and the no-pressure cells (achieved 4090 of a 4096-word heap) are still counted clean, so the clean count is NOT read as evidence of safety on its own."
     },
     {
       "id": 6,
