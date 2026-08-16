@@ -138,11 +138,13 @@
       "use_line": 68,
       "sink": "alloc_binary",
       "reason": "boxed alloc_binary accumulator across further alloc_binary",
-      "disposition": "PENDING",
-      "replacement_construct": null,
-      "replacement_site": null,
+      "disposition": "STRUCTURALLY-ELIMINATED",
+      "replacement_construct": "with_accumulator",
+      "replacement_site": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs:67",
       "verification_leg": "native",
-      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- test `ar1_site7_uri_parse_two_armed`, crates/beamr/src/native/stdlib_stubs/uri_bifs.rs. Band is TWO-SIDED. Its pre-registered knob was REFUTED at the bytes: the carrier is bounded at 7 elements so count cannot be the knob, and component LENGTH is not one either, because `alloc_binary` promotes anything over REFC_BINARY_THRESHOLD to a ProcBin costing a FLAT 3 words -- a kilobyte component applies LESS heap pressure than a 64-byte one. The knob is the heap, against components sized just under that threshold. gate-logs/110/RESULTS.md."
+      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- test `ar1_site7_uri_parse_two_armed`, crates/beamr/src/native/stdlib_stubs/uri_bifs.rs. Band is TWO-SIDED. Its pre-registered knob was REFUTED at the bytes: the carrier is bounded at 7 elements so count cannot be the knob, and component LENGTH is not one either, because `alloc_binary` promotes anything over REFC_BINARY_THRESHOLD to a ProcBin costing a FLAT 3 words -- a kilobyte component applies LESS heap pressure than a 64-byte one. The knob is the heap, against components sized just under that threshold. gate-logs/110/RESULTS.md.",
+      "fix": "FIX LANE (#111) phase 2, fifth site. The TWO parallel bare Vecs are GONE. Keys and values now accumulate as ONE alternating run in the process native root stack and reach alloc_map through TermAccumulator::to_map_pairs, which splits the run and roots both halves. ⭐ THE PAIRING IS NOW STRUCTURAL: the old shape could desynchronise -- two Vecs that must stay the same length, with nothing enforcing it -- and to_map_pairs REFUSES badarg on an odd-length run, so a future edit that pushes a key without a value is caught rather than silently mis-pairing. The keys are atoms and were never at risk; interleaving them buys the single-carrier invariant. ⚠️ Census delta ZERO (40/26/14): this is a two-Vec shape, and shape_hunt.py's TUPVEC binder does not reach it either. The two-arm probe is the site's whole evidence. Per-site disposition.",
+      "row4_inverted": "`ar1_site7_uri_parse_two_armed` now asserts CORRECTNESS. The heap x margin sweep was factored into `sweep(arm)`; `parse_map_unrooted_replica` carries the pre-fix ACCUMULATION verbatim -- two parallel bare Vecs terminating in alloc_map(&keys, &values) -- fed the same six binary-valued components in the same order, and is asserted FIRST at 12 corrupt / 6 clean. The FIXED arm then measures 0 corrupt / 18 clean. RED-AT-PARENT with only the production hunk reverted: the shipped body corrupted EXACTLY 12 cells, matching the replica's 12 in the same run. ⛔ THE REPLICA REPRODUCES THE ACCUMULATION, NOT THE PARSE, and that is deliberate and stated: the URI parsing allocates nothing and cannot witness this defect, so copying it would add bytes without adding evidence. The `port` component is likewise omitted -- it is a small int, an immediate, and the probe's reader already skipped it for that reason."
     },
     {
       "id": 8,

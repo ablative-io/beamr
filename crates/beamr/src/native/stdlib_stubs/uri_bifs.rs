@@ -57,40 +57,61 @@ pub fn bif_uri_string_parse(args: &[Term], context: &mut ProcessContext) -> Resu
         }
     }
 
-    let mut keys = Vec::new();
-    let mut values = Vec::new();
-    if let Some(scheme) = scheme {
-        keys.push(atom(context, "scheme")?);
-        values.push(context.alloc_binary(scheme.as_bytes())?);
-    }
-    if let Some(userinfo) = userinfo {
-        keys.push(atom(context, "userinfo")?);
-        values.push(context.alloc_binary(userinfo.as_bytes())?);
-    }
-    if let Some(host) = host {
-        keys.push(atom(context, "host")?);
-        values.push(context.alloc_binary(host.as_bytes())?);
-    }
-    if let Some(port) = port {
-        keys.push(atom(context, "port")?);
-        values.push(match port {
-            PortComponent::Number(value) => {
-                Term::try_small_int(i64::from(value)).ok_or_else(badarg)?
-            }
-            PortComponent::Undefined => atom(context, "undefined")?,
-        });
-    }
-    keys.push(atom(context, "path")?);
-    values.push(context.alloc_binary(path.as_bytes())?);
-    if let Some(query) = query {
-        keys.push(atom(context, "query")?);
-        values.push(context.alloc_binary(query.as_bytes())?);
-    }
-    if let Some(fragment) = fragment {
-        keys.push(atom(context, "fragment")?);
-        values.push(context.alloc_binary(fragment.as_bytes())?);
-    }
-    context.alloc_map(&keys, &values)
+    // AR-1 site 7. The carrier used to be a bare `Vec<Term>` of `values`
+    // holding boxed binaries across further `alloc_binary` calls, any of which
+    // can collect. Keys and values now accumulate as ONE alternating run in the
+    // process root stack and reach `alloc_map` through
+    // `TermAccumulator::to_map_pairs`, which splits the run and roots both
+    // halves. The keys are atoms and were never at risk; interleaving them
+    // keeps a single carrier rather than two that must stay the same length.
+    context.with_accumulator(|context, entries| {
+        if let Some(scheme) = scheme {
+            let key = atom(context, "scheme")?;
+            entries.push(context, key)?;
+            let value = context.alloc_binary(scheme.as_bytes())?;
+            entries.push(context, value)?;
+        }
+        if let Some(userinfo) = userinfo {
+            let key = atom(context, "userinfo")?;
+            entries.push(context, key)?;
+            let value = context.alloc_binary(userinfo.as_bytes())?;
+            entries.push(context, value)?;
+        }
+        if let Some(host) = host {
+            let key = atom(context, "host")?;
+            entries.push(context, key)?;
+            let value = context.alloc_binary(host.as_bytes())?;
+            entries.push(context, value)?;
+        }
+        if let Some(port) = port {
+            let key = atom(context, "port")?;
+            entries.push(context, key)?;
+            let value = match port {
+                PortComponent::Number(value) => {
+                    Term::try_small_int(i64::from(value)).ok_or_else(badarg)?
+                }
+                PortComponent::Undefined => atom(context, "undefined")?,
+            };
+            entries.push(context, value)?;
+        }
+        let key = atom(context, "path")?;
+        entries.push(context, key)?;
+        let value = context.alloc_binary(path.as_bytes())?;
+        entries.push(context, value)?;
+        if let Some(query) = query {
+            let key = atom(context, "query")?;
+            entries.push(context, key)?;
+            let value = context.alloc_binary(query.as_bytes())?;
+            entries.push(context, value)?;
+        }
+        if let Some(fragment) = fragment {
+            let key = atom(context, "fragment")?;
+            entries.push(context, key)?;
+            let value = context.alloc_binary(fragment.as_bytes())?;
+            entries.push(context, value)?;
+        }
+        entries.to_map_pairs(context)
+    })
 }
 
 /// `uri_string:dissect_query/1` decoding `application/x-www-form-urlencoded`.
@@ -295,10 +316,11 @@ mod ar1_row4_site7_tests {
 
     use std::sync::Arc;
 
-    use super::bif_uri_string_parse;
+    use super::{atom, bif_uri_string_parse};
     use crate::atom::AtomTable;
     use crate::native::ProcessContext;
     use crate::process::Process;
+    use crate::term::Term;
     use crate::term::binary::Binary;
     use crate::term::boxed::Map;
 
@@ -310,9 +332,41 @@ mod ar1_row4_site7_tests {
         std::iter::repeat_n(tag, COMPONENT).collect()
     }
 
+    /// Which body the cell drives. ⛔ The replica exists because inverting this
+    /// probe killed its own positive control: a non-empty corruption set used to
+    /// prove the sweep applied real pressure, and post-fix nothing at the
+    /// production site can.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Arm {
+        Fixed,
+        UnrootedReplica,
+    }
+
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `bif_uri_string_parse`'s ACCUMULATION
+    /// EXACTLY AS IT WAS BEFORE THE FIX, and it must stay that way.
+    ///
+    /// Two parallel bare `Vec<Term>`s, the `values` one holding boxed binaries
+    /// across further `alloc_binary` calls, terminating in
+    /// `alloc_map(&keys, &values)` — which roots both AFTER they have gone
+    /// stale. Only the accumulation is reproduced, not the URI parsing: the
+    /// parse allocates nothing and cannot witness this defect.
+    /// ⛔ Do NOT migrate it onto the accumulator.
+    fn parse_map_unrooted_replica(
+        context: &mut ProcessContext,
+        components: &[(&str, &[u8])],
+    ) -> Result<Term, Term> {
+        let mut keys = Vec::new();
+        let mut values = Vec::new();
+        for (name, bytes) in components {
+            keys.push(atom(context, name)?);
+            values.push(context.alloc_binary(bytes)?);
+        }
+        context.alloc_map(&keys, &values)
+    }
+
     /// Parse a URI with all seven components present on a heap of exactly
     /// `heap` words, and read the result map back BY CONTENTS.
-    fn parse_round_trip(heap: usize, margin: usize) -> Result<(), String> {
+    fn parse_round_trip(heap: usize, margin: usize, arm: Arm) -> Result<(), String> {
         let table = Arc::new(AtomTable::with_common_atoms());
         let mut process = Process::new(9, heap);
         let mut context = ProcessContext::new();
@@ -348,8 +402,25 @@ mod ar1_row4_site7_tests {
             }
         }
 
-        let term = bif_uri_string_parse(&[input], &mut context)
-            .map_err(|_| "bif_uri_string_parse returned an error term".to_string())?;
+        let term = match arm {
+            Arm::Fixed => bif_uri_string_parse(&[input], &mut context)
+                .map_err(|_| "bif_uri_string_parse returned an error term".to_string())?,
+            Arm::UnrootedReplica => {
+                // The same seven components the parse would produce, in the
+                // same order, so the allocation sequence matches.
+                let path_value = format!("/{path}");
+                let components: Vec<(&str, &[u8])> = vec![
+                    ("scheme", b"https".as_slice()),
+                    ("userinfo", user.as_bytes()),
+                    ("host", host.as_bytes()),
+                    ("path", path_value.as_bytes()),
+                    ("query", query.as_bytes()),
+                    ("fragment", fragment.as_bytes()),
+                ];
+                parse_map_unrooted_replica(&mut context, &components)
+                    .map_err(|_| "replica returned an error term".to_string())?
+            }
+        };
 
         let map =
             Map::new(term).ok_or_else(|| "result is not a map — carrier went stale".to_string())?;
@@ -409,6 +480,36 @@ mod ar1_row4_site7_tests {
     /// limit and neither would prove anything.
     #[test]
     fn ar1_site7_uri_parse_two_armed() {
+        // ⛔⛔ POSITIVE CONTROL FIRST, and it licenses everything below it.
+        let (control_corrupt, control_clean) = sweep(Arm::UnrootedReplica);
+        assert!(
+            control_corrupt > 0,
+            "POSITIVE CONTROL DEAD: the unrooted replica no longer corrupts anywhere in the sweep \
+             ({control_corrupt} corrupt / {control_clean} clean). The pressure regime is gone, so \
+             the fixed arm's zeros below mean nothing. ⛔ A refusal does not count as corruption."
+        );
+        assert!(
+            control_clean > 0,
+            "NEGATIVE CONTROL DEAD: no cell was clean under the replica, which indicts the reader \
+             or the pre-fill rather than the carrier."
+        );
+
+        // ✅ THE CLAIM.
+        let (fixed_corrupt, fixed_clean) = sweep(Arm::Fixed);
+        assert_eq!(
+            fixed_corrupt, 0,
+            "site 7 is NOT rooted: {fixed_corrupt} cells still lost the `values` carrier while \
+             the replica corrupted {control_corrupt} in the same run"
+        );
+        assert!(
+            fixed_clean > 0,
+            "site 7: the fixed arm produced no clean cell at all, so the zero above measures \
+             refusals rather than safety"
+        );
+    }
+
+    /// One arm's full sweep, returning `(corrupt, clean)`.
+    fn sweep(arm: Arm) -> (usize, usize) {
         let mut band = Vec::new();
         for (heap, margin) in [
             (256usize, 4usize),
@@ -430,11 +531,11 @@ mod ar1_row4_site7_tests {
             (4096, 64),
             (4096, 128),
         ] {
-            let verdict = match parse_round_trip(heap, margin) {
+            let verdict = match parse_round_trip(heap, margin, arm) {
                 Ok(()) => "ok".to_string(),
                 Err(reason) => reason,
             };
-            let line = format!("heap {heap:>5} margin {margin:>4} : {verdict}");
+            let line = format!("site 7 [{arm:?}] heap {heap:>5} margin {margin:>4} : {verdict}");
             println!("{line}");
             eprintln!("{line}");
             band.push((heap, verdict));
@@ -450,29 +551,21 @@ mod ar1_row4_site7_tests {
         let clean: Vec<_> = band.iter().filter(|(_, verdict)| verdict == "ok").collect();
 
         println!(
-            "site 7: {} corruption cells, {} clean cells",
+            "site 7 [{arm:?}]: {} corruption cells, {} clean cells",
             corrupted.len(),
             clean.len()
         );
         eprintln!(
-            "site 7: {} corruption cells, {} clean cells",
+            "site 7 [{arm:?}]: {} corruption cells, {} clean cells",
             corrupted.len(),
             clean.len()
         );
         for (heap, verdict) in &corrupted {
-            println!("site 7 RED at heap {heap}: {verdict}");
-            eprintln!("site 7 RED at heap {heap}: {verdict}");
+            println!("site 7 [{arm:?}] RED at heap {heap}: {verdict}");
+            eprintln!("site 7 [{arm:?}] RED at heap {heap}: {verdict}");
         }
 
-        assert!(
-            !clean.is_empty(),
-            "control: some heap size must parse cleanly, or the probe never worked at all"
-        );
-        assert!(
-            !corrupted.is_empty(),
-            "site 7 red-at-parent: no heap size corrupted the carrier — every cell was clean or \
-             refused. Per the site-14 law that is NOT a defended verdict, it is an unresolved one."
-        );
+        (corrupted.len(), clean.len())
     }
 }
 
