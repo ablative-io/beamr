@@ -65,14 +65,11 @@ pub fn bif_get_0(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
         return Err(badarg());
     }
 
-    let entry_count = context.dict_len()?;
-    // Reserve while the entries are still rooted by the process dictionary. If
-    // allocation triggered GC after copying boxed terms out of the dictionary,
-    // those local copies would not be rewritten by GC.
-    context.ensure_heap_space(entries_heap_words(entry_count))?;
-
-    let entries = context.dict_get_all()?;
-    entries_to_list(&entries, context)
+    // ⭐ AR-1 site 4: the reserve is no longer the CALLER'S to remember. It is
+    // fused into `dict_entries_to_list`, which reserves while the entries are
+    // still rooted by the dictionary and only then copies them out. The unrooted
+    // `Vec<Term>` never escapes, so the unreserved shape cannot be written here.
+    context.dict_entries_to_list()
 }
 
 /// erlang:erase/1 — removes `Key`, returning the old value or `undefined`.
@@ -90,14 +87,11 @@ pub fn bif_erase_0(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         return Err(badarg());
     }
 
-    let entry_count = context.dict_len()?;
-    // Preflight before draining so erased boxed keys/values remain rooted if GC
-    // runs to make result space available. Once this succeeds, allocation below
-    // cannot trigger GC and the returned Vec can safely hold copied terms.
-    context.ensure_heap_space(entries_heap_words(entry_count))?;
-
-    let entries = context.dict_erase_all()?;
-    entries_to_list(&entries, context)
+    // ⭐ AR-1 site 4, and the sharper half: after a drain the erased terms are
+    // rooted by NOTHING -- the dictionary no longer holds them. The reserve must
+    // therefore precede the drain, and `dict_erase_all_to_list` is what makes
+    // that ordering inseparable from the drain itself.
+    context.dict_erase_all_to_list()
 }
 
 /// erlang:get_keys/1 — returns all keys whose value exactly matches the argument.
@@ -106,30 +100,8 @@ pub fn bif_get_keys_1(args: &[Term], context: &mut ProcessContext) -> Result<Ter
         return Err(badarg());
     };
 
-    let matching_key_count = context.dict_count_keys_for_value(*value)?;
-    // Preflight while matching keys are still rooted by the dictionary. This
-    // prevents GC from relocating boxed keys after they have been copied into a
-    // temporary Vec that GC does not know how to rewrite.
-    context.ensure_heap_space(list_heap_words(matching_key_count))?;
-
-    let keys = context.dict_get_keys(*value)?;
-    context.alloc_list(&keys)
-}
-
-const fn entries_heap_words(entry_count: usize) -> usize {
-    entry_count * 5
-}
-
-const fn list_heap_words(element_count: usize) -> usize {
-    element_count * 2
-}
-
-fn entries_to_list(entries: &[(Term, Term)], context: &mut ProcessContext) -> Result<Term, Term> {
-    let mut tuples = Vec::with_capacity(entries.len());
-    for &(key, value) in entries {
-        tuples.push(context.alloc_tuple(&[key, value])?);
-    }
-    context.alloc_list(&tuples)
+    // Same fused shape as the two above; rides along per the lead's term 1.
+    context.dict_keys_for_value_to_list(*value)
 }
 
 fn badarg() -> Term {
@@ -165,30 +137,41 @@ mod tests {
         values
     }
 
-    /// AR-1 row 4, site 4 (`entries_to_list`) — arm A of the two-arm red probe.
+    /// AR-1 row 4, site 4 — arm A of the two-arm red probe.
     ///
-    /// The ledger flags this site: `tuples` is a bare `Vec<Term>` accumulating
-    /// across `alloc_tuple` calls, rooted only at the terminal `alloc_list`.
-    /// The shape is real. Whether the DEFECT fires is a separate question, and
-    /// this probe is what separates them.
+    /// The ledger flags this site: the list is built by accumulating into a bare
+    /// `Vec<Term>` across `alloc_tuple` calls, rooted only at the terminal
+    /// `alloc_list`. The shape is real. Whether the DEFECT fires is a separate
+    /// question, and this probe is what separates them.
     ///
-    /// Arm A (here, unmodified production bytes) must be **GREEN**.
-    /// Arm B — the `ensure_heap_space` prereserve in `bif_get_0` deleted — must
-    /// be **RED**. Arm B is the positive control: without it, a green here
-    /// cannot tell *"the prereserve saved the accumulator"* from *"no
-    /// collection ever happened"*, which is the exact trap the sibling test
+    /// ⚠️ **THE PROBE IS UNCHANGED; WHAT IT MEASURES HAS MOVED.** When it was
+    /// written the accumulation lived in a file-local `entries_to_list` here and
+    /// the reserve lived in `bif_get_0` — two separable halves, and arm B
+    /// deleted the caller's half. Both halves are now inside
+    /// `ProcessContext::dict_entries_to_list`, so **arm B is now the
+    /// `ensure_heap_space` INSIDE that method**. Same falsifier, one level down.
+    /// It is re-pointed rather than retired because the mechanism it tests —
+    /// reserve-before-accumulate — is exactly what the fusion preserved.
+    ///
+    /// Arm A (here, unmodified production bytes) must be **GREEN**. Arm B must
+    /// be **RED**: without it, a green here cannot tell *"the prereserve saved
+    /// the accumulator"* from *"no collection ever happened"*, which is the
+    /// exact trap the sibling test
     /// `get_0_returns_complete_dictionary_as_tuple_list` sits in — it drives
-    /// this same site with immediates and is structurally incapable of failing.
+    /// this same path with immediates and is structurally incapable of failing.
     ///
-    /// ⛔ **THE VERDICT IS TWO-TIER, AND THE NAME CARRIES IT: the flagged shape
-    /// IS present at this site, and what defends it is the CALLER'S prereserve,
-    /// not anything the site does.** `bif_get_0` reserves `entry_count * 5`
-    /// while the process dictionary still roots the entries, so the
-    /// accumulation loop cannot collect. Arm D (`entry_count * 2`) is RED,
-    /// which is what shows the 3N tuple component is the load-bearing part.
-    /// A green here therefore means *this caller reserves enough today* — it
-    /// does NOT mean `entries_to_list` is safe, and any new caller reaching it
-    /// without that reserve reopens the site.
+    /// ⛔ **THE VERDICT IS TWO-TIER, AND IT STILL IS: the flagged shape is
+    /// present, and what defends it is the RESERVE, not a rooting construct.**
+    /// The reserve of `entry_count * 5` is taken while the process dictionary
+    /// still roots the entries, so the accumulation loop cannot collect. Arm D
+    /// (`entry_count * 2`) is RED, which is what shows the 3N tuple component is
+    /// the load-bearing part.
+    ///
+    /// What the fusion changed is **who can omit it**. No in-crate caller can:
+    /// the raw copy/drain carriers are private, and the only public paths
+    /// reserve first. An **embedder** still can, until the deprecated
+    /// `dict_get_all` / `dict_erase_all` / `dict_get_keys` are deleted at
+    /// 0.19.0 — so the caveat is narrowed to that surface, not lifted.
     #[test]
     fn ar1_site4_defended_by_the_callers_prereserve_not_by_the_site() {
         use crate::term::binary::Binary;

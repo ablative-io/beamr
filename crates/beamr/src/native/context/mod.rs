@@ -1423,7 +1423,24 @@ impl<'process> ProcessContext<'process> {
     }
 
     /// Copy all attached process dictionary entries in current vector order.
+    ///
+    /// # Deprecated
+    ///
+    /// Hands out an **unrooted** `Vec<Term>` and trusts the caller to have
+    /// reserved heap space first. Use [`Self::dict_entries_to_list`], which
+    /// fuses the reserve to the copy so the unreserved shape cannot be written.
+    #[deprecated(
+        note = "unrooted carrier; use dict_entries_to_list -- fused replacement; deleted at 0.19.0 -- see gate-logs/114/SITE4-PARK.md"
+    )]
     pub fn dict_get_all(&self) -> Result<Vec<(Term, Term)>, Term> {
+        self.dict_entries_copy()
+    }
+
+    /// Copy the dictionary entries with no reserve — the raw carrier.
+    ///
+    /// Private on purpose: every in-crate path to it goes through a method that
+    /// has already reserved.
+    fn dict_entries_copy(&self) -> Result<Vec<(Term, Term)>, Term> {
         let Some(process) = self.process.as_ref() else {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         };
@@ -1447,7 +1464,21 @@ impl<'process> ProcessContext<'process> {
     }
 
     /// Remove and return all attached process dictionary entries.
+    ///
+    /// # Deprecated
+    ///
+    /// Hands out an **unrooted** `Vec<Term>` whose terms, after the drain, are
+    /// rooted by **nothing at all** — the dictionary no longer holds them. Use
+    /// [`Self::dict_erase_all_to_list`].
+    #[deprecated(
+        note = "unrooted carrier; use dict_erase_all_to_list -- fused replacement; deleted at 0.19.0 -- see gate-logs/114/SITE4-PARK.md"
+    )]
     pub fn dict_erase_all(&mut self) -> Result<Vec<(Term, Term)>, Term> {
+        self.dict_entries_drain()
+    }
+
+    /// Drain the dictionary with no reserve — the raw carrier. Private.
+    fn dict_entries_drain(&mut self) -> Result<Vec<(Term, Term)>, Term> {
         let Some(process) = self.process.as_deref_mut() else {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         };
@@ -1455,11 +1486,96 @@ impl<'process> ProcessContext<'process> {
     }
 
     /// Copy all dictionary keys whose values exactly match `value`.
+    ///
+    /// # Deprecated
+    ///
+    /// Same unrooted-carrier shape as [`Self::dict_get_all`]. Use
+    /// [`Self::dict_keys_for_value_to_list`].
+    #[deprecated(
+        note = "unrooted carrier; use dict_keys_for_value_to_list -- fused replacement; deleted at 0.19.0 -- see gate-logs/114/SITE4-PARK.md"
+    )]
     pub fn dict_get_keys(&self, value: Term) -> Result<Vec<Term>, Term> {
+        self.dict_keys_copy(value)
+    }
+
+    /// Copy the matching keys with no reserve — the raw carrier. Private.
+    fn dict_keys_copy(&self, value: Term) -> Result<Vec<Term>, Term> {
         let Some(process) = self.process.as_ref() else {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         };
         Ok(process.dict_get_keys(value))
+    }
+
+    // ⭐ THE FUSED DICTIONARY TERMINALS — AR-1 site 4.
+    //
+    // The defect these exist to cure is not in any one function body. It is that
+    // the raw accessors above hand out an unrooted `Vec<Term>` and TRUST every
+    // caller to have reserved heap space first. #110 measured that trust as
+    // load-bearing: with the caller's reserve deleted the site goes RED, and with
+    // it halved it goes RED. The invariant was real and correct — it was just
+    // separable, and a separable invariant is one a future caller can omit
+    // without writing anything that looks wrong.
+    //
+    // Fusing reserve -> copy -> build into one call makes "drain without
+    // reserving" unrepresentable rather than merely unwritten, which is the move
+    // #86, #94, #103 and #112 all made.
+    //
+    // ⚠️ WHAT CARRIES THE SAFETY HERE IS THE RESERVE, NOT A ROOTING CONSTRUCT,
+    // and that distinction is deliberate. The copied `Vec` is still an unrooted
+    // carrier; what makes it sound is that no allocation between the copy and the
+    // last build step can collect, because the space is already reserved. Wrapping
+    // the build in an accumulator as well would suggest the accumulator is what
+    // protects it, which would be a false story at the site.
+    //
+    // ⚠️ The reserve is taken BEFORE the copy/drain, while the dictionary still
+    // roots the entries, so a collection triggered by the reserve itself is safe.
+    // That ordering is the whole mechanism; it is not incidental.
+
+    /// Heap words a `{Key, Value}` list of `entry_count` entries needs.
+    ///
+    /// ⚠️ #110 arm C measured that one word short is ABSORBED at the terminal
+    /// `alloc_list`, so what is load-bearing is COVERAGE OF THE ACCUMULATION, not
+    /// exactness of the total. Sufficiency is the invariant; precision is not.
+    const fn entries_heap_words(entry_count: usize) -> usize {
+        entry_count * 5
+    }
+
+    /// Heap words a flat list of `element_count` elements needs.
+    const fn list_heap_words(element_count: usize) -> usize {
+        element_count * 2
+    }
+
+    /// Reserve, then copy every dictionary entry into a `{Key, Value}` list.
+    pub fn dict_entries_to_list(&mut self) -> Result<Term, Term> {
+        let count = self.dict_len()?;
+        self.ensure_heap_space(Self::entries_heap_words(count))?;
+        let entries = self.dict_entries_copy()?;
+        self.entries_to_list(&entries)
+    }
+
+    /// Reserve, then drain the dictionary into a `{Key, Value}` list.
+    pub fn dict_erase_all_to_list(&mut self) -> Result<Term, Term> {
+        let count = self.dict_len()?;
+        self.ensure_heap_space(Self::entries_heap_words(count))?;
+        let entries = self.dict_entries_drain()?;
+        self.entries_to_list(&entries)
+    }
+
+    /// Reserve, then copy the keys whose values exactly match `value`, as a list.
+    pub fn dict_keys_for_value_to_list(&mut self, value: Term) -> Result<Term, Term> {
+        let count = self.dict_count_keys_for_value(value)?;
+        self.ensure_heap_space(Self::list_heap_words(count))?;
+        let keys = self.dict_keys_copy(value)?;
+        self.alloc_list(&keys)
+    }
+
+    /// Build the `{Key, Value}` list. Callers reserve first; see the note above.
+    fn entries_to_list(&mut self, entries: &[(Term, Term)]) -> Result<Term, Term> {
+        let mut tuples = Vec::with_capacity(entries.len());
+        for &(key, value) in entries {
+            tuples.push(self.alloc_tuple(&[key, value])?);
+        }
+        self.alloc_list(&tuples)
     }
 
     /// Count dictionary keys whose values exactly match `value` without copying terms.

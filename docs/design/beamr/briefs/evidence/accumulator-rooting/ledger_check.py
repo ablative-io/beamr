@@ -160,6 +160,53 @@ def self_test(ledger, repo):
         mutate(m)
         cases.append((name, m, expect))
 
+    # ⭐ THE GUINEA PIG IS SYNTHETIC NOW, AND THAT IS THE WHOLE POINT.
+    #
+    # Three arms below used to borrow site 4, because site 4 was the last
+    # PENDING row in the ledger. #115 discharged it, and those three arms went
+    # quiet in the same commit -- a self-test CONSUMED BY ITS OWN LANE
+    # SUCCEEDING. It did not rot and it did not break; it ran out of defect to
+    # feed on, and reported 7/10 while the checker itself was perfectly fine.
+    #
+    # ⛔ A CONTROL THAT ONLY WORKS WHILE A DEFECT IS OUTSTANDING IS NOT A
+    # CONTROL. It reads as strongest exactly when there is least to prove, and
+    # falls silent at the moment its verdict starts to matter -- which is the
+    # moment someone signs off on a fully-dispositioned ledger. The rows below
+    # are MINTED HERE, so every arm stays falsifiable no matter what the real
+    # ledger says, today or after the next lane empties it further.
+    # The population check requires the crossing ids to be exactly 1..N, so the
+    # minted row takes the next id rather than a memorable sentinel.
+    SYNTHETIC_ID = 1 + max(s["id"] for s in ledger["sites"]
+                           if isinstance(s.get("id"), int))
+    ANCHOR_FILE = "crates/beamr/src/native/dictionary_bifs.rs"
+    ANCHOR_TOKEN = "dict_entries_to_list"
+
+    # The anchor line is FOUND, never counted to. The previous arm hard-coded
+    # line 128 and silently degraded to an empty string when the file reflowed,
+    # which is how a passing arm turns into a failing one without anybody
+    # touching the checker.
+    anchor_lines = (repo / ANCHOR_FILE).read_text().splitlines()
+    anchor_hits = [n for n, text in enumerate(anchor_lines, 1)
+                   if ANCHOR_TOKEN in text]
+    if not anchor_hits:
+        raise SystemExit(
+            f"SELF-TEST CANNOT RUN: anchor token {ANCHOR_TOKEN!r} is absent from "
+            f"{ANCHOR_FILE}. Re-point ANCHOR_FILE/ANCHOR_TOKEN at any line that "
+            f"really exists -- do NOT weaken the arms to make this pass.")
+    ANCHOR_LINE = anchor_hits[0]
+    print(f"  anchor: {ANCHOR_FILE}:{ANCHOR_LINE} carries {ANCHOR_TOKEN!r}")
+
+    def add_synthetic(m, **overrides):
+        """Append a minted crossing row, keeping the declared population honest."""
+        row = {"id": SYNTHETIC_ID, "file": ANCHOR_FILE,
+               "function": "self_test_guinea_pig", "carrier": "synthetic",
+               "reason": "minted by self_test; never a real crossing",
+               "disposition": "PENDING", "replacement_construct": None,
+               "replacement_site": None, "verification_leg": "native"}
+        row.update(overrides)
+        m["sites"].append(row)
+        m["population"]["count"] += 1
+
     def drop_a_crossing(m):
         m["sites"] = [s for s in m["sites"] if s.get("id") != 5]
     case("population/short", drop_a_crossing, "population")
@@ -194,34 +241,35 @@ def self_test(ledger, repo):
                 s["marker"] = "s3c_pair_renamed_by_a_refactor"
     case("fixture-markers", bad_marker, "absent from")
 
-    # The STRUCTURALLY-ELIMINATED arm has no live rows, so it is fired here in
-    # BOTH directions -- a claim that is true at the bytes must pass, and one
-    # that is false must be refused. One arm alone would be satisfied by a
-    # checker that always says yes, or always says no.
+    # The STRUCTURALLY-ELIMINATED arm is fired in BOTH directions -- a claim
+    # that is true at the bytes must pass, and one that is false must be
+    # refused. One arm alone would be satisfied by a checker that always says
+    # yes, or always says no.
     def elim_unevidenced(m):
-        for s in m["sites"]:
-            if s.get("id") == 4:
-                s["disposition"] = "STRUCTURALLY-ELIMINATED"
+        add_synthetic(m, disposition="STRUCTURALLY-ELIMINATED")
     case("structural/no-evidence", elim_unevidenced, "unfalsifiable claim")
 
     def elim_refuted(m):
-        for s in m["sites"]:
-            if s.get("id") == 4:
-                s["disposition"] = "STRUCTURALLY-ELIMINATED"
-                s["replacement_construct"] = "with_rooted_prereserved_NOT_PRESENT"
-                s["replacement_site"] = "crates/beamr/src/native/dictionary_bifs.rs:128"
-    case("structural/refuted-at-bytes", elim_refuted, "NOT\n present at".replace("\n ", " "))
+        add_synthetic(m, disposition="STRUCTURALLY-ELIMINATED",
+                      replacement_construct="with_rooted_prereserved_NOT_PRESENT",
+                      replacement_site=f"{ANCHOR_FILE}:{ANCHOR_LINE}")
+    case("structural/refuted-at-bytes", elim_refuted, "NOT present at")
 
     def elim_true(m):
-        for s in m["sites"]:
-            if s.get("id") == 4:
-                s["disposition"] = "STRUCTURALLY-ELIMINATED"
-                # A construct that IS present at that line, read from the file.
-                p = repo / "crates/beamr/src/native/dictionary_bifs.rs"
-                line = p.read_text().splitlines()[127]
-                s["replacement_construct"] = line.strip()[:20]
-                s["replacement_site"] = "crates/beamr/src/native/dictionary_bifs.rs:128"
+        # A construct that IS present at that line, read from the file.
+        add_synthetic(m, disposition="STRUCTURALLY-ELIMINATED",
+                      replacement_construct=ANCHOR_TOKEN,
+                      replacement_site=f"{ANCHOR_FILE}:{ANCHOR_LINE}")
     case("structural/true-must-PASS", elim_true, None)
+
+    # Sign-off's refusal is fired on a MINTED PENDING row too. Reading it off
+    # the live ledger meant the arm passed only while the ledger was still
+    # incomplete -- the same parasitism, in the one check whose whole purpose is
+    # to stand between an incomplete ledger and a signature.
+    def sign_off_silence(m):
+        add_synthetic(m, disposition="PENDING")
+    pending_case = copy.deepcopy(ledger)
+    sign_off_silence(pending_case)
 
     ok = True
     for name, m, expect in cases:
@@ -236,12 +284,20 @@ def self_test(ledger, repo):
                   f"{'refused: ' + expect if hit else 'DID NOT REFUSE -- ' + str(failures)}")
         ok &= hit
 
-    # sign-off silence, on the real ledger
-    failures, _ = check(ledger, repo, sign_off=True)
-    hit = any("still PENDING" in f for f in failures)
-    print(f"  {'PASS' if hit else 'FAIL'}  {'sign-off/silence':32s} "
-          f"{'refused 17 PENDING' if hit else 'DID NOT REFUSE'}")
-    return ok and hit
+    # sign-off silence, on a ledger carrying one minted PENDING row
+    failures, _ = check(pending_case, repo, sign_off=True)
+    refusal = next((f for f in failures if "still PENDING" in f), None)
+    print(f"  {'PASS' if refusal else 'FAIL'}  {'sign-off/silence':32s} "
+          f"{'refused: ' + refusal if refusal else 'DID NOT REFUSE'}")
+
+    # ⚠️ AND THE NEGATIVE HALF, which the borrowed-row version could never
+    # have: the SAME ledger without the minted row must NOT be refused. A
+    # sign-off check that refuses everything would satisfy the arm above.
+    clean, _ = check(copy.deepcopy(ledger), repo, sign_off=True)
+    silent = not any("still PENDING" in f for f in clean)
+    print(f"  {'PASS' if silent else 'FAIL'}  {'sign-off/not-over-eager':32s} "
+          f"{'accepted a fully-dispositioned ledger' if silent else clean}")
+    return ok and bool(refusal) and silent
 
 
 def main():

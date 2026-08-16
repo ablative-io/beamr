@@ -1,0 +1,54 @@
+# #115 -- falsifiers on the REPAIRED ledger self-test.
+# The self-test is what makes --sign-off's green mean anything, so the
+# repair needs its own positive controls. Both streams kept.
+
+pin: e74d9f23d12e51ee4e023acb4edbca0772fe93d1  (working tree, uncommitted)
+opened: 2026-08-16T19:42:43Z
+
+=== BASELINE: repaired self-test on production bytes -- must be 11/11 ===
+SELF-TEST -- every check must be shown to refuse, this run:
+  anchor: crates/beamr/src/native/dictionary_bifs.rs:69 carries 'dict_entries_to_list'
+  PASS  population/short                 refused: population
+  PASS  population/duplicate-id          refused: duplicate ids
+  PASS  schema/vocabulary                refused: is not one of
+  PASS  schema/missing-field             refused: missing fields
+  PASS  file-presence                    refused: does not exist
+  PASS  fixture-markers                  refused: absent from
+  PASS  structural/no-evidence           refused: unfalsifiable claim
+  PASS  structural/refuted-at-bytes      refused: NOT present at
+  PASS  structural/true-must-PASS        accepted a true claim
+  PASS  sign-off/silence                 refused: SIGN-OFF: 1 crossing(s) still PENDING: [18]. Silence about a site is the failure
+  PASS  sign-off/not-over-eager          accepted a fully-dispositioned ledger
+
+✅ every check fired
+rc=0
+
+=== S1: ANCHOR_TOKEN pointed at a string that is not in the file ===
+    must REFUSE TO RUN loudly, NOT silently degrade to an empty construct
+    (the exact way the old hard-coded line-128 arm rotted)
+SELF-TEST -- every check must be shown to refuse, this run:
+SELF-TEST CANNOT RUN: anchor token 'a_token_that_is_not_there' is absent from crates/beamr/src/native/dictionary_bifs.rs. Re-point ANCHOR_FILE/ANCHOR_TOKEN at any line that really exists -- do NOT weaken the arms to make this pass.
+S1 rc=1
+
+=== S2: the construct-presence check in section 5 gutted to 'if False' ===
+    structural/refuted-at-bytes must go RED
+SELF-TEST -- every check must be shown to refuse, this run:
+  anchor: crates/beamr/src/native/dictionary_bifs.rs:69 carries 'dict_entries_to_list'
+  PASS  population/short                 refused: population
+  PASS  population/duplicate-id          refused: duplicate ids
+  PASS  schema/vocabulary                refused: is not one of
+  PASS  schema/missing-field             refused: missing fields
+  PASS  file-presence                    refused: does not exist
+  PASS  fixture-markers                  refused: absent from
+  PASS  structural/no-evidence           refused: unfalsifiable claim
+  FAIL  structural/refuted-at-bytes      DID NOT REFUSE -- []
+  PASS  structural/true-must-PASS        accepted a true claim
+  PASS  sign-off/silence                 refused: SIGN-OFF: 1 crossing(s) still PENDING: [18]. Silence about a site is the failure
+  PASS  sign-off/not-over-eager          accepted a fully-dispositioned ledger
+
+🔴 a check could not be made to refuse
+S2 rc=2
+
+=== restored ===
+IDENTICAL to pre-falsifier bytes
+closed: 2026-08-16T19:42:43Z
