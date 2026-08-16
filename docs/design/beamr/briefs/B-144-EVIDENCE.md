@@ -88,6 +88,53 @@ disagreed with the number I already had by a factor of ~52.
 from code that is not equivalently gated; `crossbeam_queue` is the `cooperative`
 dependency referenced without its feature. Three fixes, not three hundred.
 
+⚠️ **TWO CORRECTIONS TO THE TABLE ABOVE, both measured at `a4e2328`.**
+
+**(a) Those three rows sum to 13, not 20** — they count the E0432 *imports* only.
+The seven E0433s were counted in the prose and never attributed. Whole-20
+attribution: `crate::timer` 12, `crate::replay` 7, `crossbeam_queue` 1.
+
+**(b) THERE IS A FOURTH ROOT CAUSE, and it was invisible here.** Clearing the
+import layer exposed 6× `E0277: ExecError: From<ReplayMismatch> is not satisfied`
+from a *separately gated* `From` impl at `error.rs:447` — masked while the import
+errors stood. The count went 20 → 7 → 0 over four edits.
+
+⭐ **ERRORS REVEAL IN LAYERS; AN ERROR COUNT IS A LOWER BOUND ON THE WORK, NEVER A
+DESCRIPTION OF IT.** A root-cause count is provisional until the build is green.
+It resolved cheaply here — the same reasoning could as easily have hidden 40.
+
+---
+
+## ⛔ AMENDMENT — R1's SPEC SENTENCE CARRIES A FALSE PREMISE. RULED BY WAFFLES, seq=42-ack.
+
+R1's spec in `B-144.json` reads:
+
+> ~~"Identify and **gate** std-dependent code behind feature flags."~~
+
+**Struck, not reworded.** That sentence was written when the crate was believed
+`no_std`-capable — the *same* false premise this arc already struck from
+`docs/stack-review/beamr-architecture.md` as **F6**. On `wasm32-unknown-unknown`,
+`lib.rs:6`'s `all(not(std), not(wasm32))` predicate is **FALSE**, so `no_std` is
+never applied and `std` is available. Gating std-dependent code is therefore not
+what makes R1's named build compile, and never was.
+
+**The true requirement**, as R1's own acceptance command always named it: *the
+`wasm32-unknown-unknown --no-default-features` build compiles, with module
+availability consistent across the configuration.*
+
+⭐ **THE RULING'S REASONING, WORTH KEEPING: honouring a spec sentence whose premise
+has already been refuted is not honouring the spec — it is obeying a fossil.**
+A requirement has two texts, its prose and its acceptance criterion, and when they
+disagree it is the *criterion* that survived contact with the compiler. This is
+the same law as GATE THE COMMAND THE REQUIREMENT ACTUALLY NAMES, arriving from the
+other direction: there, the prose under-described the work by ~52×; here, the
+prose points at the wrong work entirely.
+
+Consequence: the fix un-gates `timer` and `replay` rather than gating their 20
+reference sites. See `gate-logs/B-144-R1/` for the measured fork, the ratchet
+population change, and the spot-proof that bought the "revealed not created"
+reading.
+
 ---
 
 ## THE SWEEP'S FINDINGS (F1–F6)
@@ -118,10 +165,21 @@ those unify **into the host build**. Canon's host suite therefore runs a hybrid
 configuration nobody ships. Control: `-p beamr` alone yields the same feature
 list minus `cooperative`, so the workspace edge causes it, not the query.
 
-### F4 · `--features std` alone is red — 21 errors, same shape as R1
+### F4 · `--features std` alone is red — ~~21 errors~~ **20**, and it is the SAME FAILURE, not merely the same shape
 
-E0432 on `crate::timer` / `crate::replay`. Effectively the same three root
-causes as R1's twenty. Worth fixing together.
+~~"21 errors, effectively the same three root causes as R1's twenty."~~
+
+**Both corrections measured at `a4e2328`.** rustc's own tally is **20**; a naive
+`grep -c '^error'` on the same log returns 21, because the trailing
+`error: could not compile …` summary is itself an `error` line — the exact
+off-by-one the `nostd-ratchet` leg's counting rule exists to prevent, sitting in
+the document that states the rule. ⭐ **A COUNTING RULE DOES NOT RETROACTIVELY FIX
+THE NUMBERS ALREADY ON THE PAGE.**
+
+And "same shape" understated it. Comparing full `(code, message, file:line:col)`
+triples parsed from `--message-format=json`, the two commands' error sets are
+**IDENTICAL** — 20 == 20, zero unique to either. Fixing R1 fixes F4 by identity.
+No separate F4 work exists.
 
 ### F5 · the browser feature set IS target-portable at the LIBRARY level
 
