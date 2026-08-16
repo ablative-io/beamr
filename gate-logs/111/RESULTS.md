@@ -260,3 +260,95 @@ the `f993280` record and marked false of the shipped body.
   -D warnings` clean · `cargo test -p beamr --features encode --lib` **1838
   passed, 0 failed, 0 ignored** (unchanged — the probe was replaced, not added).
 - `ledger_check.py` rc 0, with the `structural-evidence` check shown to refuse.
+
+---
+
+## Sites 5, 2, 7, 8+9, 1 — and the replica-fidelity check
+
+Each site's probe was INVERTED, never deleted, and each inversion kills its own
+positive control — so every one carries a verbatim pre-fix replica driven
+through the real allocator under the same regime and asserted FIRST.
+
+**⭐ THE REPLICA-FIDELITY CHECK is the best thing this phase found.** A replica
+is only worth what its faithfulness is worth, and "I copied it carefully" is not
+a measurement. Red-at-parent supplies one: revert ONLY the production hunk, run,
+and the shipped body must corrupt the same way the replica does.
+
+| site | carrier | control | fixed | red-at-parent fidelity |
+|---|---|---|---|---|
+| 5 | `entries` | 14 red | 0 / 28 | 14 = 14 |
+| 2 | `terms` | 9 red, band (9,6,0,21) | 0 / 21 | 9 = 9, band exact |
+| 7 | `values`+`keys` | 12 red / 6 clean | 0 / 18 | 12 = 12 |
+| 8+9 | `terms` + `key` | red at 400, clean at 200 | ok at both | same reason string, verbatim |
+| 1 | `mfa` | 2 red ON, 0 OFF | 0 / 301 both arms | **cells 253+254, cell-identical** |
+
+Site 1 is the strongest of the five: fidelity is not a matching COUNT but the
+same two argument counts, at the same predicted-window headroom (2 and 0), with
+the same reason string. Site 8+9's is the weakest form — a matching reason
+string rather than a matching count — because that probe is size-armed rather
+than swept, and that is stated rather than dressed up.
+
+**Sites 8 and 9 share ONE commit**, departing from per-site granularity on
+purpose: both carriers live in the same loop, so one rewrite removes both and
+splitting it would have landed a half-rooted loop in between. Dispositions stay
+per-carrier, and they name different constructs — 8 `with_accumulator`, 9
+`with_rooted`.
+
+**⭐ `with_rooted` NESTED INSIDE `with_accumulator` WORKS, verified at the bytes.**
+`rooted_push` refuses unless its handle is innermost, and the inner scope IS
+innermost while open because the accumulator only pushes after it pops. That was
+the one premise of the 8+9 edit not known in advance. Reusable for any site
+mixing a run-carrier with a single-Term carrier.
+
+## ⚠️ A CENSUS PREDICTION I GOT WRONG, AND THE FORM FACT UNDER IT
+
+At sites 8+9 I predicted 40/26/14 and measured **41 raw / 26 production / 15
+cfg(test)**. Measured at the parent `3ec7cf1` rather than assumed: the parent IS
+40/26/14; the production S3b hit MOVED `:151 → :163` and **SURVIVES the fix**
+(the match-bind is still written, now inside a rooted scope); and the new
+cfg(test) hit at `:634` is **my own replica**.
+
+⭐ **AN INVERTED PROBE'S REPLICA CAN ITSELF CARRY A CLASSED SHAPE AND MOVE THE
+CENSUS. Predict the FIX's delta AND THE PROBE's.** I predicted only the fix's.
+First site where it bit — the replicas at 14/5/2/7 are push loops, which no
+class matches. Site 1's prediction (unchanged 41/26/15) was then exact.
+
+⭐ And the standing form fact: **the census counts SHAPE, not DEFECT.** A rooted
+site still scores. A census reduction is not this lane's success criterion in
+either direction.
+
+## 🔴 AN OPEN FINDING OUTSIDE THE RULED POPULATION — struct-field carriers
+
+Found while reading site 1's function, MEASURED, and NOT fixed: the tranche is
+ruled and **a finding does not authorize its own follow-up**.
+
+`alloc_spawn_request` reads `request.from` and `request.group_leader` at
+`:530-531`, AFTER three collecting calls. They are `Term`s in a CALLER-OWNED
+STRUCT, never bound to a local. The RF-006 sweep that produced this lane's
+population is **BINDING-derived** — it enumerates `let` bindings, and graded
+exactly five carriers here (`args` SAFE-A, `mfa` REAL, `opt_list` SAFE-A, `op`
+and `req_id` SAFE-C) — so a struct field is outside its population **by
+construction**, not by an oversight within it.
+
+**Measured** (probe kept at `gate-logs/111/struct_field_from_probe.rs.txt`, run
+against the shipped body with an EXTERNAL boxed pid in `from`, which an embedder
+can do because the function is public API):
+
+- **50 red / 251 clean / 0 refused**, first red at `args 251`.
+- **UNCHANGED at 50/251 after `mfa` was rooted** — in the SAME run where site
+  1's own band went from 2 red to 0 red / 301 clean on both arms.
+
+That second line is the whole attribution. The reader looks at slot 2 while site
+1's carrier is slot 4, so downstream damage was the live alternative; the
+instrument is demonstrably sensitive to a fix, and this carrier did not move.
+**`from` is an independent carrier, not collateral.**
+
+⛔ **WHAT THIS IS NOT.** It is ONE measured instance. Whether other struct-field
+carriers exist anywhere else is **UNMEASURED**, and I am not extrapolating from
+one site to a population claim — that is the exact move that produced this
+lane's earlier retraction. The claim is: this function, these fields, red.
+
+The probe is deliberately NOT committed as a test: it asserts nothing, and a
+test pinning a KNOWN-OPEN defect would have to be rewritten the moment the
+defect is ruled and fixed. Routed to the lead for a ruling on whether the
+struct-field shape enters the population.

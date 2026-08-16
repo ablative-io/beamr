@@ -1,0 +1,94 @@
+// AR-1 STRUCT-FIELD CARRIER PROBE — run at 8f6d878 + the site-1 fix, then REMOVED.
+// Measured: 50 red / 251 clean / 0 refused, first red at args 251, UNCHANGED
+// with `mfa` rooted (site 1 fixed) in the same run where site 1's own band
+// went 0 red / 301 clean on both arms. Independent carrier, not downstream damage.
+// NOT COMMITTED as a test: it asserts nothing, and a test pinning a KNOWN-OPEN
+// defect would have to be rewritten the moment the defect is ruled and fixed.
+
+    /// ⚠️ TEMPORARY MEASUREMENT, NOT FOR COMMIT AS-IS.
+    ///
+    /// Question: `request.from` and `request.group_leader` are boxed Terms in a
+    /// CALLER-OWNED STRUCT, read at :530-531 AFTER three collecting calls. The
+    /// RF-006 sweep that produced this lane's population is BINDING-derived --
+    /// it enumerates `let` bindings -- so a struct field never bound to a local
+    /// is outside its population BY CONSTRUCTION. Is that omission hiding a
+    /// real defect, or are these always immediates?
+    ///
+    /// This drives the SHIPPED body with an EXTERNAL (boxed) pid in `from`,
+    /// which an embedder can do: the function is public API.
+    #[test]
+    fn tmp_ar1_struct_field_from_carrier() {
+        use crate::term::boxed::ExternalPid;
+
+        const PROBE_HEAP: usize = 512;
+        let mut red = 0usize;
+        let mut clean = 0usize;
+        let mut refused = 0usize;
+        let mut first: Option<String> = None;
+
+        for args in 0..=300usize {
+            let table = Arc::new(AtomTable::with_common_atoms());
+            let module = table.intern("ar1_from_module");
+            let function = table.intern("ar1_from_function");
+            let node = table.intern("peer@probe");
+
+            let mut process = Process::new(1, PROBE_HEAP);
+            let mut context = ProcessContext::new();
+            context.set_atom_table(Some(Arc::clone(&table)));
+            context.attach_process(&mut process, 0);
+
+            // Boxed BEFORE the struct is built, exactly as an embedder holding a
+            // decoded remote pid would have it.
+            let from = match context.alloc_external_pid(node, 4242, 7) {
+                Ok(term) => term,
+                Err(_) => continue,
+            };
+
+            let arg_terms: Vec<Term> = (0..args)
+                .map(|i| Term::small_int(i64::try_from(i % 1000).unwrap_or(0)))
+                .collect();
+
+            let request = SpawnRequest {
+                request_id: 7,
+                from,
+                group_leader: Term::small_int(13),
+                mfa: RemoteMfa { module, function, args: arg_terms },
+                options: SpawnOptions { link: true, monitor: true, ..SpawnOptions::default() },
+            };
+
+            let term = match alloc_spawn_request(&mut context, &request) {
+                Ok(term) => term,
+                Err(_) => { refused += 1; continue }
+            };
+            let outer = match Tuple::new(term) {
+                Some(t) if t.arity() == 6 => t,
+                _ => { red += 1; first.get_or_insert(format!("args {args}: outer not a 6-tuple")); continue }
+            };
+            let slot = outer.get(2).expect("from slot");
+            match ExternalPid::new(slot) {
+                None => {
+                    red += 1;
+                    first.get_or_insert(format!(
+                        "args {args}: `from` slot is NOT an external pid -- struct field went stale"
+                    ));
+                }
+                Some(pid) => {
+                    if pid.node() != Some(node) || pid.pid_number() != 4242 || pid.serial() != 7 {
+                        red += 1;
+                        first.get_or_insert(format!(
+                            "args {args}: `from` recovered as node={:?} num={} ser={} -- struct field went stale",
+                            pid.node(), pid.pid_number(), pid.serial()
+                        ));
+                    } else {
+                        clean += 1;
+                    }
+                }
+            }
+        }
+
+        eprintln!("STRUCT-FIELD `from`: {red} red, {clean} clean, {refused} refused");
+        if let Some(reason) = first {
+            eprintln!("STRUCT-FIELD first red: {reason}");
+        }
+    }
+}

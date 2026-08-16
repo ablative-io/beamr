@@ -520,18 +520,27 @@ pub fn alloc_spawn_request(
         Term::atom(request.mfa.function),
         args,
     ])?;
-    let opt_list = spawn_options_to_list(context, request.options.clone())?;
-    let op = Term::try_small_int(SPAWN_REQUEST).ok_or_else(badarg)?;
-    let req_id = Term::try_small_int(i64::try_from(request.request_id).map_err(|_| badarg())?)
-        .ok_or_else(badarg)?;
-    context.alloc_tuple(&[
-        op,
-        req_id,
-        request.from,
-        request.group_leader,
-        mfa,
-        opt_list,
-    ])
+    // AR-1 site 1. `mfa` is a single boxed tuple with a scope-shaped lifetime,
+    // not a run, so it takes `with_rooted` directly rather than the accumulator.
+    // `args` above is NOT a crossing: it is an argument to the `alloc_tuple`
+    // that could collect, and the sinks root their arguments before reserving.
+    context.with_rooted(&[mfa], |context, roots| {
+        let opt_list = spawn_options_to_list(context, request.options.clone())?;
+        let op = Term::try_small_int(SPAWN_REQUEST).ok_or_else(badarg)?;
+        let req_id = Term::try_small_int(i64::try_from(request.request_id).map_err(|_| badarg())?)
+            .ok_or_else(badarg)?;
+        // Re-read AFTER spawn_options_to_list: it ends in alloc_list, which can
+        // collect and forward `mfa`, and the pre-fix body used the stale copy.
+        let mfa = context.rooted(roots, 0)?;
+        context.alloc_tuple(&[
+            op,
+            req_id,
+            request.from,
+            request.group_leader,
+            mfa,
+            opt_list,
+        ])
+    })
 }
 
 /// Allocate a SPAWN_REPLY control tuple on `context`'s process heap.
@@ -1244,9 +1253,53 @@ mod ar1_row4_site1_tests {
 
     const HEAP: usize = 512;
 
-    /// One cell. `options_on` selects the arm; everything else is identical.
-    /// Returns `(available_at_entry, outcome)`.
-    fn spawn_request_round_trip(args: usize, options_on: bool) -> (usize, Result<(), String>) {
+    /// Which body the cell drives.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Arm {
+        Fixed,
+        UnrootedReplica,
+    }
+
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `alloc_spawn_request`'s body EXACTLY AS IT
+    /// WAS BEFORE THE FIX, and it must stay that way.
+    ///
+    /// The shipped body now roots `mfa`, so it can no longer witness the defect
+    /// it was written to catch. This carries the pre-fix ordering verbatim: the
+    /// boxed `mfa` tuple bound BEFORE `spawn_options_to_list` and used AFTER it,
+    /// with nothing rooting it across the call.
+    /// ⛔ Do NOT migrate it onto `with_rooted`.
+    fn alloc_spawn_request_unrooted_replica(
+        context: &mut ProcessContext<'_>,
+        request: &SpawnRequest,
+    ) -> Result<Term, Term> {
+        let args = context.alloc_list(&request.mfa.args)?;
+        let mfa = context.alloc_tuple(&[
+            Term::atom(request.mfa.module),
+            Term::atom(request.mfa.function),
+            args,
+        ])?;
+        let opt_list = super::spawn_options_to_list(context, request.options.clone())?;
+        let op = Term::try_small_int(super::SPAWN_REQUEST).ok_or_else(super::badarg)?;
+        let req_id =
+            Term::try_small_int(i64::try_from(request.request_id).map_err(|_| super::badarg())?)
+                .ok_or_else(super::badarg)?;
+        context.alloc_tuple(&[
+            op,
+            req_id,
+            request.from,
+            request.group_leader,
+            mfa,
+            opt_list,
+        ])
+    }
+
+    /// One cell. `options_on` selects the window arm and `arm` selects the body;
+    /// everything else is identical. Returns `(available_at_entry, outcome)`.
+    fn spawn_request_round_trip(
+        args: usize,
+        options_on: bool,
+        arm: Arm,
+    ) -> (usize, Result<(), String>) {
         let table = Arc::new(AtomTable::with_common_atoms());
         let module = table.intern("ar1_site1_module");
         let function = table.intern("ar1_site1_function");
@@ -1283,8 +1336,13 @@ mod ar1_row4_site1_tests {
         };
 
         let outcome = (|| -> Result<(), String> {
-            let term = alloc_spawn_request(&mut context, &request)
-                .map_err(|_| "alloc_spawn_request returned an error term".to_string())?;
+            let term = match arm {
+                Arm::Fixed => alloc_spawn_request(&mut context, &request),
+                Arm::UnrootedReplica => {
+                    alloc_spawn_request_unrooted_replica(&mut context, &request)
+                }
+            }
+            .map_err(|_| "alloc_spawn_request returned an error term".to_string())?;
 
             let outer = Tuple::new(term).ok_or_else(|| "result is not a tuple".to_string())?;
             if outer.arity() != 6 {
@@ -1344,14 +1402,30 @@ mod ar1_row4_site1_tests {
         (available, outcome)
     }
 
-    #[test]
-    fn ar1_site1_alloc_spawn_request_band() {
+    /// One sweep of the whole argument range against one body. Returns the ON
+    /// and OFF red rows plus the clean/refused counts and the predicted-window
+    /// headroom range, so the arithmetic can be checked against the data.
+    #[allow(clippy::type_complexity)]
+    fn sweep(
+        arm: Arm,
+    ) -> (
+        Vec<String>,
+        usize,
+        usize,
+        Vec<String>,
+        usize,
+        usize,
+        i64,
+        i64,
+    ) {
         let mut on_red = Vec::new();
         let mut on_ok = 0usize;
         let mut on_refused = 0usize;
         let mut off_red = Vec::new();
         let mut off_ok = 0usize;
         let mut off_refused = 0usize;
+        let mut headroom_min = i64::MAX;
+        let mut headroom_max = i64::MIN;
 
         // ⛔ THE RANGE IS DERIVED FROM THE ARITHMETIC, NOT CHOSEN FOR ROUNDNESS,
         // AND THE FIRST VERSION OF THIS SWEEP GOT IT WRONG. It ran 0..=200,
@@ -1360,15 +1434,9 @@ mod ar1_row4_site1_tests {
         // meant NOTHING. To reach the band the ruler needs 2N in (504, 508], so
         // N must pass through 251..=254. Running to 300 clears it with margin
         // and then continues past it, which also demonstrates the far side.
-        let mut headroom_min = i64::MAX;
-        let mut headroom_max = i64::MIN;
-
         for args in 0..=300usize {
             for options_on in [true, false] {
-                let (available, result) = spawn_request_round_trip(args, options_on);
-                // The predicted window headroom, printed beside the outcome so a
-                // reader can check the arithmetic against the data rather than
-                // taking it on trust.
+                let (available, result) = spawn_request_round_trip(args, options_on, arm);
                 let predicted = (available as i64) - 2 * (args as i64) - 4;
                 if options_on {
                     headroom_min = headroom_min.min(predicted);
@@ -1395,7 +1463,7 @@ mod ar1_row4_site1_tests {
                              {predicted:>5} : {reason}"
                         );
                         eprintln!(
-                            "site 1 RED [options {}] {row}",
+                            "site 1 [{arm:?}] RED [options {}] {row}",
                             if options_on { "ON" } else { "OFF" }
                         );
                         if options_on {
@@ -1409,35 +1477,54 @@ mod ar1_row4_site1_tests {
         }
 
         eprintln!(
-            "site 1 arm ON : {} red, {on_ok} clean, {on_refused} refused",
+            "site 1 [{arm:?}] arm ON : {} red, {on_ok} clean, {on_refused} refused",
             on_red.len()
         );
         eprintln!(
-            "site 1 arm OFF: {} red, {off_ok} clean, {off_refused} refused",
+            "site 1 [{arm:?}] arm OFF: {} red, {off_ok} clean, {off_refused} refused",
             off_red.len()
         );
 
+        (
+            on_red,
+            on_ok,
+            on_refused,
+            off_red,
+            off_ok,
+            off_refused,
+            headroom_min,
+            headroom_max,
+        )
+    }
+
+    /// AR-1 row 4, site 1 (`mfa`) — ✅ INVERTED.
+    ///
+    /// The control arm is asserted FIRST and keeps every claim the pre-fix probe
+    /// made: the band is narrow (<=2 cells, because a <=4-word window stepped by
+    /// a 2-word ruler admits at most two), the OFF arm is a STRUCTURAL negative
+    /// control (both options false makes `spawn_options_to_list` request 0 words,
+    /// so it cannot collect), and some ON cell must be clean or the reader is
+    /// broken rather than the site defective. Only then is the fixed body
+    /// measured, over the identical range.
+    #[test]
+    fn ar1_site1_alloc_spawn_request_band() {
+        // ⛔⛔ POSITIVE CONTROL FIRST, and it licenses everything below it.
+        let (
+            on_red,
+            on_ok,
+            _on_refused,
+            off_red,
+            _off_ok,
+            _off_refused,
+            headroom_min,
+            headroom_max,
+        ) = sweep(Arm::UnrootedReplica);
+
         eprintln!(
-            "site 1 window headroom swept: {headroom_min} .. {headroom_max} (target band [0, 4))"
+            "site 1 predicted-window-headroom range over the ON sweep: \
+             [{headroom_min}, {headroom_max}]"
         );
 
-        // ⛔⛔ COVERAGE ASSERTION — THE ONE THIS PROBE WAS MISSING, AND ITS
-        // ABSENCE COST A WHOLE CLEAN SWEEP THAT MEANT NOTHING.
-        //
-        // A clean result is only evidence if the sweep is shown to have PASSED
-        // THROUGH the band where the defect can live. The first run returned 201
-        // clean ON cells while its headroom never descended below 108 — a green
-        // that carried exactly as much information as not running at all. This
-        // fires BEFORE the verdict assertions, so a mis-ranged sweep is reported
-        // as a broken instrument rather than as a defended site.
-        assert!(
-            headroom_min < 4 && headroom_max >= 4,
-            "INSTRUMENT NOT SHOWN AWAKE: window headroom swept {headroom_min}..{headroom_max}, \
-             which does not straddle the target band [0, 4). Any verdict from this sweep is void — \
-             widen the argument range until it does."
-        );
-
-        // Two-way control, per the site-10 law.
         assert!(
             on_ok > 0,
             "control: some ON cell must be clean, or the reader is broken rather than the site \
@@ -1459,16 +1546,14 @@ mod ar1_row4_site1_tests {
 
         assert!(
             !on_red.is_empty(),
-            "site 1: no ON cell corrupted the carrier across 201 argument counts. Under the \
-             site-14 law that is UNRESOLVED, not defended — the ruler never walked the window \
-             through [0, 4)."
+            "POSITIVE CONTROL DEAD: the unrooted replica no longer corrupts the carrier anywhere \
+             in the range. The pressure regime is gone, so the fixed arm's success below would \
+             mean nothing."
         );
 
         // ⭐ THE BAND'S NARROWNESS IS THE FINDING, so it is asserted rather than
-        // merely reported. The window demands at most 4 words and the ruler steps
-        // 2 words per argument, so at most two consecutive cells can land inside
-        // it. A wide band would mean the exposure is not the bounded allocation
-        // this probe claims it is.
+        // merely reported. A wide band would mean the exposure is not the bounded
+        // allocation this probe claims it is.
         assert!(
             on_red.len() <= 2,
             "site 1: {} red cells, but the window is a BOUNDED <=4-word allocation stepped by a \
@@ -1476,6 +1561,25 @@ mod ar1_row4_site1_tests {
              structural argument — re-derive it, do not widen this bound.\n{}",
             on_red.len(),
             on_red.join("\n")
+        );
+
+        // ✅ THE CLAIM. Same range, same regime, through the rooted body.
+        let (fixed_on_red, fixed_on_ok, _, fixed_off_red, _, _, _, _) = sweep(Arm::Fixed);
+
+        assert!(
+            fixed_on_red.is_empty() && fixed_off_red.is_empty(),
+            "site 1 is NOT rooted: {} ON and {} OFF cells still lost the carrier, while the \
+             replica corrupted {} in the same run.\n{}\n{}",
+            fixed_on_red.len(),
+            fixed_off_red.len(),
+            on_red.len(),
+            fixed_on_red.join("\n"),
+            fixed_off_red.join("\n")
+        );
+        assert!(
+            fixed_on_ok > 0,
+            "site 1: the fixed arm produced no clean ON cell at all — that is a dead reader, not \
+             a defended site"
         );
     }
 }
