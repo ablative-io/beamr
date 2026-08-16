@@ -17,6 +17,9 @@ use crate::{
 };
 
 pub(crate) fn collect(process: &mut Process) -> Result<GcStats, GcError> {
+    // Counted in the implementation, not the wrapper — see the note in
+    // `minor::collect`.
+    process.note_gc_attempt();
     let mut stats = new_stats(process);
     let mut forwarding = ForwardingMap::new();
     let mut work_queue = VecDeque::new();
@@ -58,6 +61,7 @@ pub(crate) fn collect(process: &mut Process) -> Result<GcStats, GcError> {
     process.heap_mut().replace_old(fresh);
     process.heap_mut().reset_young();
     finish_stats(&mut stats, process);
+    process.note_gc_completion();
     Ok(stats)
 }
 

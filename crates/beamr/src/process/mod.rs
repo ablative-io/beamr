@@ -179,6 +179,18 @@ pub struct Process {
     raw_stacktrace: Vec<RawStackEntry>,
     reduction_counter: u32,
     logical_clock: u64,
+    /// Collections ATTEMPTED on this process's heap, ever. Incremented on entry
+    /// to a collection, before it can fail.
+    gc_attempts: u64,
+    /// Collections that COMPLETED successfully. Incremented only on `Ok`.
+    ///
+    /// ⭐ TWO COUNTERS, DELIBERATELY. `attempts > completions` is the only way
+    /// to observe a collection that was attempted and FAILED, and that is the
+    /// exact case that made the previous instrument useless: a completion-only
+    /// counter reads zero delta on a failed collection and reports "nothing
+    /// happened", which is the same blindness as inferring collections from
+    /// heap resizes. See `docs/design/beamr/briefs/COLLECTION-OBSERVABLE-NOTE.md`.
+    gc_completions: u64,
     namespace_id: NamespaceId,
     code_position: Option<CodePosition>,
     current_module: Option<Arc<Module>>,
@@ -235,6 +247,13 @@ impl Clone for Process {
             raw_stacktrace: self.raw_stacktrace.clone(),
             reduction_counter: self.reduction_counter,
             logical_clock: self.logical_clock,
+            // A clone INHERITS both counts rather than resetting them. The
+            // counters exist to answer "did a collection happen across this
+            // region?", and a reset would make that delta read zero for a
+            // reason that has nothing to do with collection — the same class of
+            // spurious zero the resize proxy produced.
+            gc_attempts: self.gc_attempts,
+            gc_completions: self.gc_completions,
             namespace_id: self.namespace_id,
             code_position: self.code_position,
             current_module: self.current_module.clone(),
@@ -301,6 +320,8 @@ impl Process {
             raw_stacktrace: Vec::new(),
             reduction_counter: DEFAULT_REDUCTION_BUDGET,
             logical_clock: 0,
+            gc_attempts: 0,
+            gc_completions: 0,
             namespace_id: NamespaceId::DEFAULT,
             code_position: None,
             current_module: None,
@@ -987,6 +1008,39 @@ impl Process {
     /// Reset the reduction counter for a new scheduler time slice.
     pub const fn reset_reductions(&mut self, budget: u32) {
         self.reduction_counter = budget;
+    }
+
+    /// Collections attempted on this process's heap, ever.
+    ///
+    /// ⭐ THIS IS A COLLECTION OBSERVABLE, AND [`Heap::total_capacity`] IS NOT.
+    /// Capacity witnesses a heap RESIZE. The two come apart in both directions:
+    /// a collection can succeed without the heap ever resizing, and the heap can
+    /// resize with no collection at all. Anything asking "was this region under
+    /// collection pressure?" must bracket these counters, not the capacity.
+    ///
+    /// [`Heap::total_capacity`]: crate::process::heap::Heap::total_capacity
+    #[must_use]
+    pub const fn gc_attempts(&self) -> u64 {
+        self.gc_attempts
+    }
+
+    /// Collections that completed successfully on this process's heap, ever.
+    ///
+    /// `gc_attempts() - gc_completions()` is the number of collections that were
+    /// entered and did NOT finish — the case a single counter cannot express.
+    #[must_use]
+    pub const fn gc_completions(&self) -> u64 {
+        self.gc_completions
+    }
+
+    /// Record entry to a collection, before it can fail.
+    pub(crate) fn note_gc_attempt(&mut self) {
+        self.gc_attempts = self.gc_attempts.saturating_add(1);
+    }
+
+    /// Record a collection that completed successfully.
+    pub(crate) fn note_gc_completion(&mut self) {
+        self.gc_completions = self.gc_completions.saturating_add(1);
     }
 
     /// Current per-process logical clock used by deterministic replay.

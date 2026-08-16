@@ -17,6 +17,11 @@ use crate::{
 };
 
 pub(crate) fn collect(process: &mut Process, live_x: usize) -> Result<GcStats, GcError> {
+    // ⭐ Counted HERE, in the implementation, not in the `gc::collect_minor*`
+    // wrapper: the wrapper is the only path today but is `pub(crate)`-adjacent,
+    // so counting at the implementation makes a collection that does not count
+    // unrepresentable rather than merely unlikely.
+    process.note_gc_attempt();
     let mut stats = new_stats(process);
     let mut forwarding = ForwardingMap::new();
     let mut work_queue = VecDeque::new();
@@ -40,6 +45,7 @@ pub(crate) fn collect(process: &mut Process, live_x: usize) -> Result<GcStats, G
     // walks (major GC, conservative natives) stay sound.
     process.clear_dead_x_regs(live_x);
     finish_stats(&mut stats, process);
+    process.note_gc_completion();
     Ok(stats)
 }
 

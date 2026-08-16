@@ -780,3 +780,123 @@ proptest! {
         prop_assert_eq!(snapshot(process.mailbox().front_for_test().expect("mailbox root")), expected_mail);
     }
 }
+
+// ---------------------------------------------------------------------------
+// THE DISCRIMINATING PAIR — lane #112.
+//
+// ⭐ These two tests are the point of the collection observable, and neither is
+// worth anything without the other. A counter that incremented on BOTH events
+// would pass ARM A perfectly while being exactly as useless as the
+// `total_capacity()` proxy it replaces. ARM B is what pins the confusion.
+//
+// The defect they descend from: an AR-1 positive control asserted
+// `total_capacity()` grew, under a message claiming it witnessed collection
+// pressure. It witnesses a RESIZE. A pre-fix replica failed with the heap never
+// resizing, so a correctly-failing control was graded as an unpressed cell.
+// See docs/design/beamr/briefs/COLLECTION-OBSERVABLE-NOTE.md.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_fresh_process_has_collected_nothing() {
+    let process = Process::new(1, 64);
+    assert_eq!(process.gc_attempts(), 0);
+    assert_eq!(process.gc_completions(), 0);
+}
+
+/// ARM A — the observable MOVES on a collection.
+#[test]
+fn arm_a_collection_counter_moves_on_a_collection() {
+    let mut process = Process::new(1, 64);
+    let live = alloc_tuple(&mut process, &[Term::small_int(1)]);
+    process.set_x_reg(0, live);
+
+    let before_attempts = process.gc_attempts();
+    let before_completions = process.gc_completions();
+
+    collect_minor(&mut process).expect("minor GC succeeds");
+
+    assert_eq!(
+        process.gc_attempts(),
+        before_attempts + 1,
+        "a collection was entered, so the attempt counter must move"
+    );
+    assert_eq!(
+        process.gc_completions(),
+        before_completions + 1,
+        "the collection succeeded, so the completion counter must move"
+    );
+
+    // A major collection is counted by the same rule, on the same process, so
+    // the counters accumulate rather than latch at one.
+    collect_major(&mut process).expect("major GC succeeds");
+    assert_eq!(process.gc_attempts(), before_attempts + 2);
+    assert_eq!(process.gc_completions(), before_completions + 2);
+}
+
+/// ARM B — ⭐ the observable does NOT move on a resize.
+///
+/// This is the arm that exists because of the finding. It asserts the exact
+/// false positive the old guard produced, as a negative, forever: the heap grows
+/// — `total_capacity()` moves, which is precisely what the old control read as
+/// "a collection happened" — while no collection occurs and the counters stay
+/// flat.
+#[test]
+fn arm_b_collection_counter_does_not_move_on_a_pure_resize() {
+    let mut process = Process::new(1, 64);
+
+    let capacity_before = process.heap().total_capacity();
+    let attempts_before = process.gc_attempts();
+    let completions_before = process.gc_completions();
+
+    // A resize with no collection anywhere near it.
+    process.heap_mut().grow_to_next_capacity();
+
+    let capacity_after = process.heap().total_capacity();
+
+    // The precondition of this test is that a resize ACTUALLY HAPPENED. Without
+    // this the test would pass trivially on a heap that never grew, which is the
+    // asleep-instrument shape the whole lane is about.
+    assert!(
+        capacity_after > capacity_before,
+        "ARM B needs a real resize to be meaningful, got {capacity_before} -> {capacity_after}"
+    );
+
+    assert_eq!(
+        process.gc_attempts(),
+        attempts_before,
+        "the heap RESIZED and no collection ran -- the attempt counter must NOT move. \
+         If this fires, the observable has been wired to growth and is a proxy again"
+    );
+    assert_eq!(
+        process.gc_completions(),
+        completions_before,
+        "the heap RESIZED and no collection ran -- the completion counter must NOT move"
+    );
+}
+
+/// The two observables are independent in BOTH directions.
+///
+/// ARM B shows capacity can move while the counters do not. This shows the
+/// converse: a collection can be counted with capacity completely unchanged, so
+/// no future reader can rebuild the equivalence from either side.
+#[test]
+fn a_collection_can_happen_with_capacity_unchanged() {
+    let mut process = Process::new(1, 64);
+    let live = alloc_tuple(&mut process, &[Term::small_int(1)]);
+    process.set_x_reg(0, live);
+
+    let capacity_before = process.heap().total_capacity();
+    collect_minor(&mut process).expect("minor GC succeeds");
+    let capacity_after = process.heap().total_capacity();
+
+    assert_eq!(
+        capacity_after, capacity_before,
+        "this cell is only evidence while the collection does not resize the heap"
+    );
+    assert_eq!(
+        process.gc_completions(),
+        1,
+        "a collection ran and completed, and the observable saw it even though \
+         capacity never moved -- the case the old resize proxy scored as 'nothing happened'"
+    );
+}
