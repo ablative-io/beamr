@@ -500,3 +500,349 @@ mod tests {
         assert_eq!(js.as_string().as_deref(), Some("true"));
     }
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod ar1_row4_sites_12_16_tests {
+    // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
+    //
+    // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
+    // NOT assert correct behaviour, so a green here means "the defect is still
+    // present, exactly as measured" — never "this site is safe".
+    //
+    // ⇒ THEY GO RED WHEN AR-1 IS FIXED, AND THAT IS THE POINT. The fix lane
+    // INVERTS them to assert correctness rather than deleting them; the pinned
+    // counts below are the surface the fix has to move.
+
+    use super::*;
+    use beamr::process::Process;
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    /// ⛔ `println!` IS INERT UNDER THIS RUNNER — MEASURED, NOT ASSUMED. The
+    /// first run printed every cell and the log contained none of them; the
+    /// obvious explanation was wasm-bindgen-test capturing output for passing
+    /// tests, so I re-ran with `-- --nocapture` and the lines were STILL
+    /// absent, including the ones from the test that passed. That refutes the
+    /// capture hypothesis and leaves the channel itself dead.
+    ///
+    /// So the report goes out over `console.log`, reached through `js_sys`
+    /// (no new dependency — the crate already reaches host globals this way),
+    /// AND is carried in the assertion message, which is the one channel
+    /// already proven to survive.
+    fn emit(line: &str) {
+        let global = js_sys::global();
+        let Ok(console) = Reflect::get(&global, &JsValue::from_str("console")) else {
+            return;
+        };
+        let Ok(log) = Reflect::get(&console, &JsValue::from_str("log")) else {
+            return;
+        };
+        if let Ok(log) = log.dyn_into::<js_sys::Function>() {
+            let _ = log.call1(&console, &JsValue::from_str(line));
+        }
+    }
+
+    const KEY_WIDTH: usize = 12;
+
+    fn element(index: usize) -> String {
+        format!("e{index:0KEY_WIDTH$}")
+    }
+
+    /// Build the JSON array driving site 12 (`Value::Array` arm, carrier `tail`).
+    fn array_input(count: usize) -> Value {
+        Value::Array(
+            (0..count)
+                .map(|index| Value::String(element(index)))
+                .collect(),
+        )
+    }
+
+    /// Build the JSON object driving site 16 (`Value::Object` arm, carrier `pairs`).
+    fn object_input(count: usize) -> Value {
+        let mut map = serde_json::Map::new();
+        for index in 0..count {
+            map.insert(element(index), Value::String(element(index)));
+        }
+        Value::Object(map)
+    }
+
+    /// Read a cons list back BY CONTENTS, iteratively and hard-capped — a stale
+    /// pointer can alias an enclosing object and make the list a CYCLE, which
+    /// would abort the runner before it could report.
+    fn check_list(term: Term, count: usize) -> Result<(), String> {
+        let mut seen = 0usize;
+        let mut tail = term;
+        let cap = count * 2 + 16;
+        while !tail.is_nil() {
+            if seen > cap {
+                return Err(format!(
+                    "list did not terminate within {cap} cells — cyclic tail"
+                ));
+            }
+            let cons = Cons::new(tail).ok_or_else(|| {
+                format!("element {seen}: tail is not a cons — carrier `tail` went stale")
+            })?;
+            let binary = Binary::new(cons.head()).ok_or_else(|| {
+                format!("element {seen}: head is not a binary — carrier `tail` went stale")
+            })?;
+            let want = element(seen);
+            if binary.as_bytes() != want.as_bytes() {
+                return Err(format!(
+                    "element {seen}: contents differ — carrier `tail` went stale"
+                ));
+            }
+            seen += 1;
+            tail = cons.tail();
+        }
+        if seen != count {
+            return Err(format!("recovered {seen} elements, put {count}"));
+        }
+        Ok(())
+    }
+
+    /// Read the map back BY CONTENTS. Keys are compared as a SET, because this
+    /// site sorts by the raw `Term` bit pattern (recorded adjacent at site 15).
+    fn check_map(term: Term, count: usize) -> Result<(), String> {
+        let map = Map::new(term)
+            .ok_or_else(|| "result is not a map — carrier `pairs` went stale".to_string())?;
+        if map.len() != count {
+            return Err(format!("map has {} entries, put {count}", map.len()));
+        }
+        let mut names = Vec::with_capacity(count);
+        for index in 0..map.len() {
+            let key = map
+                .key(index)
+                .ok_or_else(|| format!("entry {index}: key slot absent"))?;
+            let key = Binary::new(key).ok_or_else(|| {
+                format!("entry {index}: key is not a binary — carrier `pairs` went stale")
+            })?;
+            let value = map
+                .value(index)
+                .ok_or_else(|| format!("entry {index}: value slot absent"))?;
+            let value = Binary::new(value).ok_or_else(|| {
+                format!("entry {index}: value is not a binary — carrier `pairs` went stale")
+            })?;
+            if key.as_bytes() != value.as_bytes() {
+                return Err(format!(
+                    "entry {index}: key and value differ — carrier `pairs` went stale"
+                ));
+            }
+            names.push(key.as_bytes().to_vec());
+        }
+        names.sort();
+        let mut want: Vec<Vec<u8>> = (0..count).map(|i| element(i).into_bytes()).collect();
+        want.sort();
+        if names != want {
+            return Err("recovered key set differs from the input key set".to_string());
+        }
+        Ok(())
+    }
+
+    /// ARM A — ATTACHED PROCESS. This is the POSITIVE CONTROL and the whole
+    /// probe rests on it: it proves these two arms are defective IN THEMSELVES
+    /// and that this instrument can see it. Without a RED here, arm B's clean
+    /// result is the asleep-instrument reading and proves nothing.
+    fn attached(
+        input: &Value,
+        heap: usize,
+        margin: usize,
+        count: usize,
+        is_map: bool,
+    ) -> (usize, Result<(), String>) {
+        let table = Arc::new(AtomTable::with_common_atoms());
+        let mut process = Process::new(12, heap);
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::clone(&table)));
+        context.attach_process(&mut process, 0);
+
+        // Unrooted pre-fill to a MEASURED margin. The loop must be able to give
+        // up: below one filler allocation (~6 words) the only thing that lands
+        // is a collection, which frees this unrooted filler and pushes
+        // `available` back up. The achieved margin is RETURNED so a cell that
+        // missed its request is reported at what it actually got.
+        let mut filler = Vec::new();
+        let mut last_available = usize::MAX;
+        // Loop-with-value so that EVERY exit carries its witness out. An
+        // allocator refusal is also a give-up, and a `break` that reported
+        // nothing would put this cell's margin back into the fabricated class
+        // — the exact regression the site-5 hang taught.
+        let achieved = loop {
+            let available = context.process_heap().map(|h| h.available()).unwrap_or(0);
+            if available <= margin || available >= last_available {
+                break available;
+            }
+            last_available = available;
+            match context.alloc_binary(&[0xA1; 32]) {
+                Ok(term) => filler.push(term),
+                Err(_) => break available,
+            }
+        };
+
+        let outcome = match json_value_to_term(input, &mut context, 0) {
+            Err(_) => Err("json_value_to_term returned an error term".to_string()),
+            Ok(term) => {
+                if is_map {
+                    check_map(term, count)
+                } else {
+                    check_list(term, count)
+                }
+            }
+        };
+        (achieved, outcome)
+    }
+
+    /// ARM B — DETACHED CONTEXT, which is the shape EVERY production caller
+    /// builds (`terms_from_json_array` makes a fresh `ProcessContext::new()`
+    /// per element and never attaches a process).
+    fn detached(input: &Value, count: usize, is_map: bool) -> Result<(), String> {
+        let table = Arc::new(AtomTable::with_common_atoms());
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::clone(&table)));
+        match json_value_to_term(input, &mut context, 0) {
+            Err(_) => Err("json_value_to_term returned an error term".to_string()),
+            Ok(term) => {
+                if is_map {
+                    check_map(term, count)
+                } else {
+                    check_list(term, count)
+                }
+            }
+        }
+    }
+
+    /// The report is both EMITTED per cell and RETURNED, so a passing run is as
+    /// legible as a failing one. A verdict that is only visible when the assert
+    /// fires cannot tell "no corruption" from "no pressure" — the same
+    /// collapsed pair as hung-vs-slow-compile.
+    fn sweep(label: &str, is_map: bool) -> (usize, usize, Vec<String>) {
+        let mut corrupted = 0usize;
+        let mut clean = 0usize;
+        let mut report = Vec::new();
+        // ⚠️ COUNTS ARE PER-ARM AND DERIVED FROM A MEASUREMENT, NOT SHARED.
+        // Measured at the bytes: `alloc_cons` ROOTS ITS OWN ARGUMENTS
+        // (`with_rooted(&[head, tail], ...)` before `ensure_heap_space(2)`), so
+        // site 12's carrier is re-rooted and forwarded on EVERY iteration and
+        // its only exposure window is the single `alloc_binary` for the next
+        // head. At heap 4096 with ~7 words per element, the one collection
+        // fires on the FIRST allocation — when `tail` is still `Term::NIL`, an
+        // immediate with nothing to go stale — and the remaining 200 elements
+        // then fit with no further collection. That is why the first sweep was
+        // clean at all 24 cells, and it is a property of the INPUT SIZE, not of
+        // the site. The list must be too long to fit in one post-collection
+        // nursery: 4096 words / ~7 per element ⇒ a mid-list collection needs
+        // more than ~580 elements.
+        //
+        // Site 16 needs no such correction: `pairs` accumulates unrooted across
+        // the WHOLE loop and the collection lands at `alloc_sorted_map`, which
+        // is why its reds name the LAST entries (48, 49).
+        let counts: &[usize] = if is_map {
+            &[50, 200]
+        } else {
+            &[50, 200, 1000, 2000]
+        };
+        for &count in counts {
+            let input = if is_map {
+                object_input(count)
+            } else {
+                array_input(count)
+            };
+            for margin in [0usize, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 4096] {
+                let (achieved, result) = attached(&input, 4096, margin, count, is_map);
+                let verdict = match result {
+                    Ok(()) => "ok".to_string(),
+                    Err(reason) => reason,
+                };
+                // BOTH margins printed: where achieved != requested the cell is
+                // not evidence about the requested margin, and cells sharing an
+                // achieved margin are ONE measurement, not two.
+                let line = format!(
+                    "{label} ATTACHED count {count:>4} margin req {margin:>5} got {achieved:>5} : {verdict}"
+                );
+                emit(&line);
+                report.push(line);
+                if verdict == "ok" {
+                    clean += 1;
+                } else if !verdict.contains("returned an error term") {
+                    corrupted += 1;
+                }
+            }
+        }
+        (corrupted, clean, report)
+    }
+
+    /// Sites 12 + 16, arm A — **tier 1 of the two-tier verdict: the code IS
+    /// defective.** MUST go RED, or the pair is UNRESOLVED, not defended.
+    #[wasm_bindgen_test]
+    fn ar1_sites_12_16_tier1_defective_red_with_a_process_attached() {
+        let (list_red, list_ok, list_report) = sweep("site 12 (tail)", false);
+        let (map_red, map_ok, map_report) = sweep("site 16 (pairs)", true);
+        emit(&format!(
+            "site 12: {list_red} corruption cells, {list_ok} clean cells"
+        ));
+        emit(&format!(
+            "site 16: {map_red} corruption cells, {map_ok} clean cells"
+        ));
+        let report = format!(
+            "site 12: {list_red} corruption cells, {list_ok} clean cells\n\
+             site 16: {map_red} corruption cells, {map_ok} clean cells\n{}\n{}",
+            list_report.join("\n"),
+            map_report.join("\n")
+        );
+
+        assert!(
+            list_ok > 0 && map_ok > 0,
+            "control: some cell must be clean, or the probe never worked at all\n{report}"
+        );
+        assert!(
+            list_red > 0,
+            "site 12: no cell corrupted `tail` with a process ATTACHED. Under the site-14 law \
+             that is UNRESOLVED, not defended — and it would void the detached arm, whose whole \
+             meaning is that it is clean FOR A DIFFERENT REASON.\n{report}"
+        );
+        assert!(
+            map_red > 0,
+            "site 16: no cell corrupted `pairs` with a process ATTACHED. Same reading as \
+             site 12.\n{report}"
+        );
+
+        // ⭐ PRE-REGISTERED EXACT COUNTS. The runner emits per-test output ONLY
+        // for failures — measured three ways: `println!` absent, `println!`
+        // under `-- --nocapture` still absent, `console.log` via js_sys also
+        // absent; only a panic payload survives. So a bare `> 0` assertion
+        // would PASS SILENTLY and the band would be invisible on every green
+        // run. Pinning the counts makes any drift print the whole surface.
+        assert_eq!(
+            (list_red, list_ok, map_red, map_ok),
+            (21, 27, 16, 8),
+            "band drifted from the measured surface\n{report}"
+        );
+    }
+
+    /// Sites 12 + 16, arm B — **tier 2 of the two-tier verdict: the production
+    /// path CANNOT REACH the defect.** Expected CLEAN, and clean for a named
+    /// structural reason rather than a lucky one: the sole caller of
+    /// `json_value_to_term` is `terms_from_json_array`, which builds a
+    /// `ProcessContext::new()` per element and never attaches a process; a
+    /// detached context pushes a fresh `Box<[u64]>` per allocation that is
+    /// never moved, never freed and never collected, and `ensure_heap_space`
+    /// is a no-op returning `Ok`. **The defence is the CALLER'S, not the
+    /// site's** — so this green may not be read as "site 12/16 is safe".
+    #[wasm_bindgen_test]
+    fn ar1_sites_12_16_tier2_production_path_unreachable_detached_context() {
+        for count in [50usize, 200, 2000] {
+            let list = detached(&array_input(count), count, false);
+            let map = detached(&object_input(count), count, true);
+            emit(&format!("site 12 DETACHED count {count} : {list:?}"));
+            emit(&format!("site 16 DETACHED count {count} : {map:?}"));
+            assert!(
+                list.is_ok(),
+                "site 12 detached arm failed at count {count}: {list:?} — if this is ever RED the \
+                 production path is live and the two-tier verdict is wrong"
+            );
+            assert!(
+                map.is_ok(),
+                "site 16 detached arm failed at count {count}: {map:?} — same reading as site 12"
+            );
+        }
+    }
+}

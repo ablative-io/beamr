@@ -1,0 +1,182 @@
+// AR-1 row 4 — probe for site 14 (`terms`),
+// `native/stdlib_stubs/string_bifs.rs::bif_split`.
+//
+// ⭐ THIS SITE IS ALREADY PARTIALLY HARDENED, AND THAT IS WHY IT NEEDED A PROBE
+// RATHER THAN A READING. `bif_split` carries:
+//
+//     // Own the input up front: the per-part allocation loop below may collect,
+//     // so every part must borrow this owned buffer, never the process heap.
+//
+// Someone saw that the loop can collect and protected the INPUT
+// (`binary_bytes(*input)?.to_vec()`) — and left the ACCUMULATOR `terms`
+// unrooted across `alloc_binary`. A site that has been thought about and
+// half-fixed is more dangerous than one nobody looked at: the comment reads as
+// "handled" to the next reader.
+//
+// ⛔ POLICY SUPERSEDED — THIS PROBE LANDS. The header formerly read "BANKED, NOT
+// LANDED (Cally's Amendment 6 precedent)": the landing form was to assert
+// CORRECTNESS and therefore be red at HEAD. Waffles RULED the other way — the
+// landed form asserts the MEASURED SURFACE, so it is green at f993280 and goes
+// RED when AR-1 is fixed. Inverting it to assert correctness is the FIX LANE'S
+// job, not a deletion.
+//
+// APPEND onto the end of `crates/beamr/src/native/stdlib_stubs/string_bifs.rs`.
+//
+// ⛔ DO NOT TRANSCRIBE AN OFFSET. DERIVE IT, AND CHECK IT:
+//
+//     N=$(grep -n '^#\[cfg(test)\]' <this file> | cut -d: -f1)
+//     tail -n +$((N - 1)) <this file> >> crates/beamr/src/native/stdlib_stubs/string_bifs.rs
+//
+// then confirm the first appended line is blank and the second is
+// `#[cfg(test)]`. `gate-logs/110/apply_probes.sh` does exactly this for
+// every probe in the set and refuses on any deviation.
+
+#[cfg(test)]
+mod ar1_row4_site14_tests {
+    // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
+    //
+    // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
+    // NOT assert correct behaviour, so a green here means "the defect is still
+    // present, exactly as measured" — never "this site is safe".
+    //
+    // ⇒ THEY GO RED WHEN AR-1 IS FIXED, AND THAT IS THE POINT. The fix lane
+    // INVERTS them to assert correctness rather than deleting them; the pinned
+    // counts below are the surface the fix has to move.
+
+    use std::sync::Arc;
+
+    use super::bif_split;
+    use crate::atom::AtomTable;
+    use crate::native::ProcessContext;
+    use crate::process::Process;
+    use crate::term::Term;
+    use crate::term::binary::Binary;
+    use crate::term::boxed::Cons;
+
+    const WIDTH: usize = 12;
+
+    fn part_of(index: usize) -> String {
+        format!("p{index:0WIDTH$}")
+    }
+
+    /// Split an input of `parts` heap-sized parts on a heap of exactly `heap`
+    /// words, and read the result back BY CONTENTS. Parts are 13 bytes so every
+    /// one is heap-allocated — never immediates, or the carrier would never be
+    /// live across an allocation and the probe could not fail.
+    fn split_round_trip(parts: usize, heap: usize) -> Result<(), String> {
+        let table = Arc::new(AtomTable::with_common_atoms());
+        let all = table.intern("all");
+
+        let mut process = Process::new(7, heap);
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::clone(&table)));
+        context.attach_process(&mut process, 0);
+
+        let joined = (0..parts).map(part_of).collect::<Vec<_>>().join("|");
+        let input = context
+            .alloc_binary(joined.as_bytes())
+            .map_err(|_| "input binary".to_string())?;
+        let pattern = context
+            .alloc_binary(b"|")
+            .map_err(|_| "pattern binary".to_string())?;
+
+        let list = bif_split(&[input, pattern, Term::atom(all)], &mut context)
+            .map_err(|_| "bif_split returned an error term".to_string())?;
+
+        let mut seen = 0usize;
+        let mut tail = list;
+        // HARD CAP: a stale carrier can make the list cyclic, and a reader that
+        // spins forever reports nothing at all.
+        let cap = parts * 2 + 16;
+        while !tail.is_nil() {
+            if seen > cap {
+                return Err(format!(
+                    "list did not terminate within {cap} cells — cyclic tail"
+                ));
+            }
+            let cons = Cons::new(tail)
+                .ok_or_else(|| format!("part {seen}: tail is not a cons — carrier went stale"))?;
+            let binary = Binary::new(cons.head())
+                .ok_or_else(|| format!("part {seen}: head is not a binary — carrier went stale"))?;
+            let want = part_of(seen);
+            if binary.as_bytes() != want.as_bytes() {
+                return Err(format!(
+                    "part {seen}: contents {:?} != {want:?}",
+                    String::from_utf8_lossy(binary.as_bytes())
+                ));
+            }
+            seen += 1;
+            tail = cons.tail();
+        }
+        if seen != parts {
+            return Err(format!("recovered {seen} parts, put {parts}"));
+        }
+        Ok(())
+    }
+
+    /// AR-1 row 4, site 14. Two-armed in both directions: hold the heap and grow
+    /// the input, then hold the input and grow the heap. A failure that survives
+    /// a roomy heap would be an allocator limit and would prove nothing.
+    #[test]
+    fn ar1_site14_bif_split_two_armed() {
+        // MEASURED, and THE BAND IS ONE CELL WIDE. At heap 1024: 250 parts is
+        // clean, 300 parts CORRUPTS, 350 parts is REFUSED by the terminal
+        // `alloc_list`. The refusal MASKS the defect rather than disproving it —
+        // instrumenting the production loop showed the collection still fires
+        // (at part 254, available 2 -> 1020); the loop then finishes with 440
+        // words and `alloc_list` needs 800 for the spine, so it refuses before
+        // the corrupted accumulator can be read back.
+        const HEAP: usize = 1024;
+        const BIG: usize = 300;
+
+        let control = split_round_trip(250, HEAP);
+        assert!(
+            control.is_ok(),
+            "control arm: 250 parts on a {HEAP}-word heap must round-trip, got {control:?}. \
+             A failure here would be an allocator limit and the red arm would prove nothing."
+        );
+
+        let red = split_round_trip(BIG, HEAP);
+        // ⛔ THE RED ARM MUST EXCLUDE THE REFUSAL CLASS EXPLICITLY. `is_err()`
+        // alone is satisfied by "bif_split returned an error term" — the
+        // allocator refusing, which is precisely the ambiguity this arm exists
+        // to rule out. An arm that accepts it passes for the wrong reason, and
+        // this one did until the refusal was investigated instead of excluded.
+        let corrupted = matches!(&red, Err(reason) if !reason.contains("returned an error term"));
+        assert!(
+            corrupted,
+            "site 14 red-at-parent: {BIG} parts on a {HEAP}-word heap must CORRUPT the \
+             accumulator (not merely be refused), got {red:?}"
+        );
+
+        let roomy = split_round_trip(BIG, 1536);
+        assert!(
+            roomy.is_ok(),
+            "site 14 second direction: {BIG} parts on a 1536-word heap must be clean, got {roomy:?}"
+        );
+
+        let reason = red.unwrap_err();
+        println!("site 14 RED: {reason}");
+        eprintln!("site 14 RED: {reason}");
+    }
+
+    /// The surface the verdict is read off. Emitted per cell and to both streams.
+    #[test]
+    fn ar1_site14_sweep_surface() {
+        // FINE-GRAINED DELIBERATELY. The first sweep here stepped 5/25/100/400
+        // over heaps 256..65536 and found NO corruption cell at all — a
+        // clean-then-refused surface that reads as DEFENDED. The corruption
+        // band is one cell wide and sat between the steps.
+        for heap in [1024usize, 1536, 2048] {
+            for parts in [150usize, 200, 250, 300, 350] {
+                let verdict = match split_round_trip(parts, heap) {
+                    Ok(()) => "ok".to_string(),
+                    Err(reason) => reason,
+                };
+                let line = format!("heap {heap:>6} x parts {parts:>4} : {verdict}");
+                println!("{line}");
+                eprintln!("{line}");
+            }
+        }
+    }
+}

@@ -1,0 +1,48 @@
+declared legs: 8
+=== leg 1/8  fmt
+    cargo fmt --all --check
+    rc=0
+=== leg 2/8  clippy
+    cargo clippy --workspace --all-targets --features beamr/encode --message-format=json --keep-going -- -D warnings
+    rc=0
+=== leg 3/8  wasm32-check
+    cargo check -p beamr-wasm --target wasm32-unknown-unknown --locked
+    rc=0
+=== leg 4/8  wasm-tests
+    wasm-bindgen-test-runner --version && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --manifest-path crates/beamr-wasm/Cargo.toml --target wasm32-unknown-unknown --locked
+    rc=0
+=== leg 5/8  tests
+    cargo test --workspace --features beamr/encode
+    rc=0
+=== leg 6/8  blocking-call-in-native-bif
+    ./scripts/gate-blocking-call.sh
+    rc=0
+=== leg 7/8  clippy-all-features
+    cargo clippy --workspace --all-targets --all-features --message-format=json --keep-going -- -D warnings
+    rc=0
+=== leg 8/8  tests-all-features
+    cargo test --workspace --all-features
+    rc=0
+
+=== VERDICT
+self-test: all-green -> gamma: rc=0 pass (expected)
+self-test: one-fail -> FAIL — measured red (expected)
+self-test: cannot-measure -> CANNOT-MEASURE (expected)
+self-test: uncontracted-2 -> alpha: rc=2 FAIL (expected)
+self-test: malformed-rc -> MALFORMED rc (expected)
+self-test: truncated-set -> LEG COUNT MISMATCH (expected)
+self-test: empty-tests -> TEST-COUNT (expected)
+declared legs: 8
+recorded legs: 8
+  wasm-tests: 2 result line(s), 82 passed
+  tests: 76 result line(s), 2141 passed
+  tests-all-features: 76 result line(s), 2151 passed
+  blocking-call-in-native-bif: rc=0 pass
+  clippy-all-features: rc=0 pass
+  clippy: rc=0 pass
+  fmt: rc=0 pass
+  tests-all-features: rc=0 pass
+  tests: rc=0 pass
+  wasm-tests: rc=0 pass
+  wasm32-check: rc=0 pass
+verdict rc=0

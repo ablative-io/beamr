@@ -1,0 +1,141 @@
+// AR-1 row 4 — probe for sites 8 (`terms`) and 9 (`key`),
+// `native/stdlib_stubs/uri_bifs.rs::bif_uri_string_dissect_query`.
+//
+// ⛔ POLICY SUPERSEDED — THIS PROBE LANDS. The header formerly read "BANKED, NOT
+// LANDED (Cally's Amendment 6 precedent)": the landing form was to assert
+// CORRECTNESS and therefore be red at HEAD. Waffles RULED the other way — the
+// landed form asserts the MEASURED SURFACE, so it is green at f993280 and goes
+// RED when AR-1 is fixed. Inverting it to assert correctness is the FIX LANE'S
+// job, not a deletion.
+//
+// This file is the source that produced the transcript in RESULTS.md, appended
+// to uri_bifs.rs at f993280.
+//
+// APPEND onto the end of `crates/beamr/src/native/stdlib_stubs/uri_bifs.rs`.
+//
+// ⛔ DO NOT TRANSCRIBE AN OFFSET. DERIVE IT, AND CHECK IT:
+//
+//     N=$(grep -n '^#\[cfg(test)\]' <this file> | cut -d: -f1)
+//     tail -n +$((N - 1)) <this file> >> crates/beamr/src/native/stdlib_stubs/uri_bifs.rs
+//
+// then confirm the first appended line is blank and the second is
+// `#[cfg(test)]`. `gate-logs/110/apply_probes.sh` does exactly this for
+// every probe in the set and refuses on any deviation.
+
+#[cfg(test)]
+mod ar1_row4_tests {
+    // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
+    //
+    // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
+    // NOT assert correct behaviour, so a green here means "the defect is still
+    // present, exactly as measured" — never "this site is safe".
+    //
+    // ⇒ THEY GO RED WHEN AR-1 IS FIXED, AND THAT IS THE POINT. The fix lane
+    // INVERTS them to assert correctness rather than deleting them; the pinned
+    // counts below are the surface the fix has to move.
+
+    use super::bif_uri_string_dissect_query;
+    use crate::native::ProcessContext;
+    use crate::process::Process;
+    use crate::term::binary::Binary;
+    use crate::term::boxed::{Cons, Tuple};
+
+    fn context(process: &mut Process) -> ProcessContext<'_> {
+        let mut context = ProcessContext::new();
+        context.attach_process(process, 0);
+        context
+    }
+
+    /// Drive `uri_string:dissect_query/1` with `pairs` key=value pairs whose
+    /// key and value are both long enough to be heap-allocated, and read the
+    /// result back BY CONTENTS. Returns Err with a reason when the result is
+    /// not the list that was put in.
+    fn dissect(pairs: usize, heap: usize) -> Result<(), String> {
+        const WIDTH: usize = 12;
+
+        let mut process = Process::new(1, heap);
+        let mut context = context(&mut process);
+
+        let query: String = (0..pairs)
+            .map(|i| format!("k{i:0WIDTH$}=v{i:0WIDTH$}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        let input = context
+            .alloc_binary(query.as_bytes())
+            .map_err(|_| "input binary".to_string())?;
+
+        let list = bif_uri_string_dissect_query(&[input], &mut context)
+            .map_err(|_| "dissect_query returned an error term".to_string())?;
+
+        let mut seen = 0usize;
+        let mut tail = list;
+        while !tail.is_nil() {
+            let cons = Cons::new(tail).ok_or_else(|| {
+                format!("element {seen}: result is not a proper list — the accumulator went stale")
+            })?;
+            let tuple = Tuple::new(cons.head()).ok_or_else(|| {
+                format!("element {seen}: not a tuple — the accumulator went stale")
+            })?;
+            if tuple.arity() != 2 {
+                return Err(format!("element {seen}: arity {} not 2", tuple.arity()));
+            }
+            let key = Binary::new(tuple.get(0).expect("key element")).ok_or_else(|| {
+                format!("element {seen}: key is not a binary — carrier `key` went stale")
+            })?;
+            let value = Binary::new(tuple.get(1).expect("value element"))
+                .ok_or_else(|| format!("element {seen}: value is not a binary"))?;
+            let want_key = format!("k{seen:0WIDTH$}");
+            let want_value = format!("v{seen:0WIDTH$}");
+            if key.as_bytes() != want_key.as_bytes() {
+                return Err(format!(
+                    "element {seen}: key contents {:?} != {want_key:?}",
+                    String::from_utf8_lossy(key.as_bytes())
+                ));
+            }
+            if value.as_bytes() != want_value.as_bytes() {
+                return Err(format!(
+                    "element {seen}: value contents {:?} != {want_value:?}",
+                    String::from_utf8_lossy(value.as_bytes())
+                ));
+            }
+            seen += 1;
+            tail = cons.tail();
+        }
+        if seen != pairs {
+            return Err(format!("recovered {seen} pairs, put {pairs}"));
+        }
+        Ok(())
+    }
+
+    /// AR-1 row 4, sites 8 (`terms`) and 9 (`key`).
+    ///
+    /// TWO-ARMED, per Amendment 6: the small arm must SUCCEED and the large arm
+    /// must FAIL. A failure that appears at both sizes is an allocator limit,
+    /// not this defect; a failure that appears only once the heap must collect
+    /// is attributable to the collection.
+    #[test]
+    fn ar1_sites_8_9_dissect_query_two_armed() {
+        // The heap is held CONSTANT across both arms so the only variable is
+        // whether the accumulation outruns it. 4096 words was measured: at 200
+        // pairs the call completes without collecting, at 400 it must collect.
+        const HEAP: usize = 4096;
+
+        // CONTROL — same heap, input small enough that nothing collects.
+        let control = dissect(200, HEAP);
+        assert!(
+            control.is_ok(),
+            "control arm: 200 pairs on a {HEAP}-word heap must succeed, got {control:?}. \
+             A failure here would be an allocator limit, and the red arm below would \
+             prove nothing."
+        );
+
+        // RED — same heap, input large enough that the accumulation collects.
+        let red = dissect(400, HEAP);
+        assert!(
+            red.is_err(),
+            "sites 8/9 red-at-parent: 400 pairs on a {HEAP}-word heap must corrupt the \
+             accumulator, got {red:?}"
+        );
+        println!("sites 8/9 RED at f993280: {}", red.unwrap_err());
+    }
+}

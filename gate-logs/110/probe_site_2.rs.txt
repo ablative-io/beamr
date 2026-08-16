@@ -1,0 +1,284 @@
+// AR-1 row 4 — probe for site 2 (`terms`),
+// `distribution/pg.rs::members`.
+//
+// APPEND onto the end of `crates/beamr/src/distribution/pg.rs` (498 prod lines
+// at f993280). It must go in **pg.rs itself**, not in the sibling
+// `pg_tests.rs`: `members` is PRIVATE, and `pg_tests` is a sibling module
+// (`mod pg_tests;` in `distribution/mod.rs`) doing `use super::pg::*`, so it can
+// only reach public items. A CHILD module of `pg.rs` can see its parent's
+// privates; that is why this probe lives where it does.
+//
+// ⛔ DO NOT TRANSCRIBE AN OFFSET. DERIVE IT, AND CHECK IT:
+//
+//     N=$(grep -n '^#\[cfg(test)\]' <this file> | cut -d: -f1)
+//     tail -n +$((N - 1)) <this file> >> <target>
+//
+// then confirm the first appended line is blank and the second is
+// `#[cfg(test)]`.
+//
+// ─────────────── THE HAZARD IS NOT THE KNOB. MEASURED, NOT ASSUMED ───────────
+//
+//     let mut terms = Vec::new();
+//     for pid in local_members {
+//         terms.push(Term::try_pid(pid).ok_or_else(badarg)?);       // IMMEDIATE
+//     }
+//     for remote in remote_members {
+//         terms.push(context.alloc_external_pid(..)?);              // 4 words
+//     }
+//     context.alloc_list(&terms)                                    // roots them
+//
+// The pre-registered trap for this site was "it needs REMOTE members" — true,
+// and it is a HAZARD, not the knob. `Term::try_pid` for a local member is an
+// IMMEDIATE and allocates nothing, so a local-only probe is structurally
+// incapable of failing. Satisfying that precondition is what makes the probe
+// CAPABLE of firing; it is not what makes it fire.
+//
+// The knob is the ordinary one for this shape: **remote-member COUNT against a
+// fixed heap.** `alloc_external_pid` is `alloc_words(4)`, so each iteration
+// costs 4 words and can collect, while every external pid already pushed into
+// `terms` sits there unrooted. At a 512-word heap the first collection must land
+// around 128 members.
+//
+// ⭐ ARM LOCAL IS A STRUCTURAL NEGATIVE CONTROL, NOT A TUNED ONE. Same heap,
+// same counts, same reader — the only difference is that the loop body allocates
+// nothing. If arm LOCAL ever reds, the exposure is not the external-pid
+// allocation and the attribution is wrong.
+//
+// ⛔ COVERAGE IS ASSERTED, after site 1's lesson: a sweep that never reaches the
+// heap's capacity proves nothing, and its clean cells would report the range of
+// the knob rather than the state of the site.
+
+#[cfg(test)]
+mod ar1_row4_site2_tests {
+    // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
+    //
+    // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
+    // NOT assert correct behaviour, so a green here means "the defect is still
+    // present, exactly as measured" — never "this site is safe".
+    //
+    // ⇒ THEY GO RED WHEN AR-1 IS FIXED, AND THAT IS THE POINT. The fix lane
+    // INVERTS them to assert correctness rather than deleting them; the pinned
+    // counts below are the surface the fix has to move.
+
+    use std::sync::Arc;
+
+    use super::{PgFacility, RemoteMember, members};
+    use crate::atom::{Atom, AtomTable};
+    use crate::native::ProcessContext;
+    use crate::process::Process;
+    use crate::term::Term;
+    use crate::term::boxed::{Cons, ExternalPid};
+
+    const HEAP: usize = 512;
+    const SERIAL: u64 = 5;
+
+    /// Facility stub returning a fixed roster. Only the two member accessors do
+    /// anything; the rest are inert, because this probe drives exactly one
+    /// function and a stub that answers unasked questions can drift silently.
+    struct RosterFacility {
+        scope: Atom,
+        local: Vec<u64>,
+        remote: Vec<RemoteMember>,
+    }
+
+    impl PgFacility for RosterFacility {
+        fn default_scope(&self) -> Atom {
+            self.scope
+        }
+        fn start_scope(&self, _scope: Atom) {}
+        fn join(&self, _scope: Atom, _group: Atom, _pid: u64) {}
+        fn leave(&self, _scope: Atom, _group: Atom, _pid: u64) {}
+        fn local_members(&self, _scope: Atom, _group: Atom) -> Vec<u64> {
+            self.local.clone()
+        }
+        fn remote_members(&self, _scope: Atom, _group: Atom) -> Vec<RemoteMember> {
+            self.remote.clone()
+        }
+    }
+
+    /// One cell. `remote` selects the arm: true = remote members (allocating),
+    /// false = local members (immediates, the structural control).
+    fn members_round_trip(count: usize, remote: bool) -> Result<(), String> {
+        let table = Arc::new(AtomTable::with_common_atoms());
+        let scope = table.intern("ar1_site2_scope");
+        let group_atom = table.intern("ar1_site2_group");
+        let node = table.intern("ar1_site2_node@host");
+
+        let facility = RosterFacility {
+            scope,
+            local: if remote {
+                Vec::new()
+            } else {
+                // Pid numbers start at 1: 0 may be reserved, and a probe whose
+                // control arm quietly refused would be indistinguishable from one
+                // that passed.
+                (1..=count as u64).collect()
+            },
+            remote: if remote {
+                (1..=count as u64)
+                    .map(|pid_number| RemoteMember {
+                        node,
+                        pid_number,
+                        serial: SERIAL,
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            },
+        };
+
+        let mut process = Process::new(2, HEAP);
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::clone(&table)));
+        context.attach_process(&mut process, 0);
+        context.set_pg_facility(Some(Arc::new(facility)));
+
+        let list = members(&mut context, scope, Term::atom(group_atom), true)
+            .map_err(|_| "members returned an error term".to_string())?;
+
+        // Iterative, hard-capped: a stale carrier can alias a cons into a cycle.
+        let cap = count * 2 + 16;
+        let mut seen = 0usize;
+        let mut tail = list;
+        while !tail.is_nil() {
+            if seen > cap {
+                return Err(format!(
+                    "list did not terminate within {cap} cells — cyclic tail, carrier `terms` went stale"
+                ));
+            }
+            let cons = Cons::new(tail).ok_or_else(|| {
+                format!("entry {seen}: tail is not a cons — carrier `terms` went stale")
+            })?;
+            let want = seen as u64 + 1;
+            if remote {
+                let external = ExternalPid::new(cons.head()).ok_or_else(|| {
+                    format!(
+                        "entry {seen}: head is not an external pid — carrier `terms` went stale"
+                    )
+                })?;
+                if external.node() != Some(node) {
+                    return Err(format!(
+                        "entry {seen}: node atom differs — carrier `terms` went stale"
+                    ));
+                }
+                if external.pid_number() != want {
+                    return Err(format!(
+                        "entry {seen}: pid_number {} != {want} — carrier `terms` went stale",
+                        external.pid_number()
+                    ));
+                }
+                if external.serial() != SERIAL {
+                    return Err(format!(
+                        "entry {seen}: serial {} != {SERIAL} — carrier `terms` went stale",
+                        external.serial()
+                    ));
+                }
+            } else {
+                let expected = Term::try_pid(want).ok_or_else(|| "pid does not fit".to_string())?;
+                if cons.head() != expected {
+                    return Err(format!(
+                        "entry {seen}: local pid differs — carrier `terms` went stale"
+                    ));
+                }
+            }
+            seen += 1;
+            tail = cons.tail();
+        }
+        if seen != count {
+            return Err(format!("recovered {seen} members, put {count}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ar1_site2_members_band() {
+        // Spans the ~128-member collection point (512 words / 4 per member) in
+        // both directions, and continues well past it.
+        //
+        // ⭐ THE DENSE RUN FROM 129 TO 199 IS DELIBERATE AND WAS ADDED AFTER A
+        // FIRST PASS. The coarse sweep found exactly ONE red cell, at 150,
+        // sitting between a clean region ending at 128 and a refusal region
+        // starting at 200 — so the site's entire OBSERVABLE band is the gap
+        // between "the heap must now collect" and "the allocator refuses
+        // outright". A single red cell is a demonstration but not a located
+        // edge, and the width of that gap is the interesting quantity here.
+        const COUNTS: &[usize] = &[
+            1, 10, 50, 100, 120, 128, // below: no collection needed
+            129, 130, 132, 135, 140, 145, 150, 160, 170, 180, 190, 199, // the live band
+            200, 300, 500, // above: allocator refuses, NOT evidence
+        ];
+
+        let mut remote_cells = Vec::new();
+        let mut local_cells = Vec::new();
+        for &count in COUNTS {
+            for arm_remote in [true, false] {
+                let verdict = match members_round_trip(count, arm_remote) {
+                    Ok(()) => "ok".to_string(),
+                    Err(reason) => reason,
+                };
+                eprintln!(
+                    "site 2 arm {} count {count:>4} : {verdict}",
+                    if arm_remote { "REMOTE" } else { "LOCAL " }
+                );
+                if arm_remote {
+                    remote_cells.push((count, verdict));
+                } else {
+                    local_cells.push((count, verdict));
+                }
+            }
+        }
+
+        let is_red = |v: &String| v != "ok" && !v.contains("returned an error term");
+        let remote_red = remote_cells.iter().filter(|(_, v)| is_red(v)).count();
+        let remote_ok = remote_cells.iter().filter(|(_, v)| v == "ok").count();
+        let local_red: Vec<_> = local_cells.iter().filter(|(_, v)| is_red(v)).collect();
+        let local_ok = local_cells.iter().filter(|(_, v)| v == "ok").count();
+
+        eprintln!("site 2 arm REMOTE: {remote_red} red, {remote_ok} clean");
+        eprintln!(
+            "site 2 arm LOCAL : {} red, {local_ok} clean",
+            local_red.len()
+        );
+
+        // ⛔ COVERAGE — site 1's lesson. The sweep must demand more heap than
+        // exists, or its clean cells describe the knob's range and not the site.
+        let largest = COUNTS.iter().copied().max().unwrap_or(0);
+        assert!(
+            largest * 4 > HEAP,
+            "INSTRUMENT NOT SHOWN AWAKE: the largest count {largest} demands {} words against a \
+             {HEAP}-word heap, so no collection is forced anywhere in this sweep and every cell \
+             is vacuous.",
+            largest * 4
+        );
+
+        assert!(
+            remote_ok > 0,
+            "control: some REMOTE cell must be clean, or the reader is broken rather than the \
+             site defective"
+        );
+
+        // ⛔ THE STRUCTURAL NEGATIVE CONTROL. Local members are immediates, so
+        // the accumulation loop allocates nothing and cannot collect.
+        assert!(
+            local_red.is_empty(),
+            "ATTRIBUTION BROKEN: arm LOCAL corrupted {} cells, but `Term::try_pid` is an immediate \
+             and that loop allocates nothing. The exposure is not `alloc_external_pid` — \
+             re-derive it.\n{local_red:#?}",
+            local_red.len()
+        );
+
+        assert!(
+            remote_red > 0,
+            "site 2: no REMOTE cell corrupted the carrier. Under the site-14 law that is \
+             UNRESOLVED, not defended.\n{remote_cells:#?}"
+        );
+
+        // Waffles' condition 3 — the whole surface pinned, so a passing run
+        // carries its evidence instead of only the absence of a failure.
+        assert_eq!(
+            (remote_red, remote_ok, local_red.len(), local_ok),
+            (9, 6, 0, 21),
+            "site 2 surface drifted from the measured band.\nREMOTE: {remote_cells:#?}\nLOCAL: {local_cells:#?}"
+        );
+    }
+}

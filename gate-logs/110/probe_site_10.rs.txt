@@ -1,0 +1,232 @@
+// AR-1 row 4 — probe for site 10 (`ip`),
+// `native/udp_bifs.rs::finish_udp_recv`.
+//
+// ⚠️ THE PRE-REGISTERED KNOB WAS WRONG AND IS CORRECTED HERE BEFORE THE RUN.
+// The plan said: "the carrier is a SINGLE term, so the knob is the datagram
+// SIZE — one large payload must force the collection". That repeats site 7's
+// mistake: `alloc_binary` promotes anything over the 64-byte threshold to a
+// ProcBin costing a FLAT 3 heap words, so a large datagram applies almost NO
+// nursery pressure — a datagram just UNDER the threshold applies more than one
+// a thousand times its size. The knob is the heap MARGIN.
+//
+// ⭐ This site is the cheapest demonstration in the set that the class does not
+// need a loop at all: `ip` is a SINGLE term, allocated by `ipv4_tuple`, live
+// across `alloc_binary(datagram)` and then used by `alloc_tuple`.
+//
+// ⛔ POLICY SUPERSEDED — THIS PROBE LANDS. The header formerly read "BANKED, NOT
+// LANDED (Cally's Amendment 6 precedent)": the landing form was to assert
+// CORRECTNESS and therefore be red at HEAD. Waffles RULED the other way — the
+// landed form asserts the MEASURED SURFACE, so it is green at f993280 and goes
+// RED when AR-1 is fixed. Inverting it to assert correctness is the FIX LANE'S
+// job, not a deletion.
+//
+// APPEND onto the end of `crates/beamr/src/native/udp_bifs.rs`.
+//
+// ⛔ DO NOT TRANSCRIBE AN OFFSET. DERIVE IT, AND CHECK IT:
+//
+//     N=$(grep -n '^#\[cfg(test)\]' <this file> | cut -d: -f1)
+//     tail -n +$((N - 1)) <this file> >> crates/beamr/src/native/udp_bifs.rs
+//
+// then confirm the first appended line is blank and the second is
+// `#[cfg(test)]`. `gate-logs/110/apply_probes.sh` does exactly this for
+// every probe in the set and refuses on any deviation.
+
+#[cfg(test)]
+mod ar1_row4_site10_tests {
+    // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
+    //
+    // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
+    // NOT assert correct behaviour, so a green here means "the defect is still
+    // present, exactly as measured" — never "this site is safe".
+    //
+    // ⇒ THEY GO RED WHEN AR-1 IS FIXED, AND THAT IS THE POINT. The fix lane
+    // INVERTS them to assert correctness rather than deleting them; the pinned
+    // counts below are the surface the fix has to move.
+
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+
+    use super::finish_udp_recv;
+    use crate::io::ring::{IoCompletion, IoResult};
+    use crate::native::ProcessContext;
+    use crate::native::context::{FileIoCompletion, FileIoContinuation};
+    use crate::process::Process;
+    // ⚠️ `BinaryRef`, NOT `Binary`. `Binary::new` accepts only BoxedTag::Binary
+    // — an INLINE heap binary — and returns None for a ProcBin. Since
+    // `alloc_binary` promotes anything over 64 bytes to a ProcBin, a `Binary`
+    // reader cannot see the payload of the 1024-byte datagram AT ALL, and
+    // reports it as missing at every cell including the no-pressure ones. That
+    // is the reader's limit, not the site's defect. `BinaryRef` handles both.
+    use crate::term::binary_ref::BinaryRef;
+    use crate::term::boxed::Tuple;
+
+    const OCTETS: [u8; 4] = [10, 20, 30, 40];
+    const PORT: u16 = 4242;
+
+    fn udp_round_trip(
+        datagram_len: usize,
+        heap: usize,
+        margin: usize,
+    ) -> (usize, Result<(), String>) {
+        let mut process = Process::new(10, heap);
+        let mut context = ProcessContext::new();
+        context.attach_process(&mut process, 0);
+
+        // ⛔ SAME PRE-FILL EXIT AS SITE 5, AND FOR THE SAME MEASURED REASON.
+        // The site-5 version of this loop had no give-up condition and SPUN
+        // FOREVER at margins 0/1/2: the descent step is one filler allocation
+        // (~6 words), so a finer margin is only reachable via a collection,
+        // which frees this unrooted filler and pushes `available` back up. The
+        // achieved margin is RETURNED so a cell that missed its request is
+        // reported at what it actually got.
+        let mut filler = Vec::new();
+        let mut last_available = usize::MAX;
+        let achieved = loop {
+            let available = context.process_heap().map(|h| h.available()).unwrap_or(0);
+            if available <= margin {
+                break available;
+            }
+            if available >= last_available {
+                break available;
+            }
+            last_available = available;
+            match context.alloc_binary(&[0xEF; 32]) {
+                Ok(term) => filler.push(term),
+                Err(_) => break available,
+            }
+        };
+
+        let outcome = (|| -> Result<(), String> {
+            let data: Vec<u8> = (0..datagram_len)
+                .map(|i| u8::try_from(i % 251).unwrap_or(0))
+                .collect();
+            let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from(OCTETS), PORT));
+            let completion = FileIoCompletion {
+                op_id: 2,
+                continuation: FileIoContinuation::UdpRecv,
+                completion: IoCompletion {
+                    op_id: 2,
+                    result: Ok(IoResult::DatagramReceived {
+                        bytes: datagram_len,
+                        data: data.clone(),
+                        addr,
+                    }),
+                },
+            };
+
+            let term = finish_udp_recv(completion, &mut context)
+                .map_err(|_| "finish_udp_recv returned an error term".to_string())?;
+
+            let outer = Tuple::new(term).ok_or_else(|| "result is not a tuple".to_string())?;
+            if outer.arity() != 2 {
+                return Err(format!("result arity {} not 2", outer.arity()));
+            }
+            let payload = outer.get(1).ok_or_else(|| "no payload slot".to_string())?;
+            let payload =
+                Tuple::new(payload).ok_or_else(|| "payload is not a tuple".to_string())?;
+            if payload.arity() != 3 {
+                return Err(format!("payload arity {} not 3", payload.arity()));
+            }
+
+            // THE CARRIER: `ip` was allocated BEFORE the datagram binary and is live
+            // across it. If it went stale this is where it shows.
+            let ip = payload.get(0).ok_or_else(|| "no ip slot".to_string())?;
+            let ip = Tuple::new(ip)
+                .ok_or_else(|| "ip is not a tuple — carrier `ip` went stale".to_string())?;
+            if ip.arity() != 4 {
+                return Err(format!(
+                    "ip arity {} not 4 — carrier `ip` went stale",
+                    ip.arity()
+                ));
+            }
+            for (index, want) in OCTETS.iter().enumerate() {
+                let octet = ip
+                    .get(index)
+                    .ok_or_else(|| format!("ip octet {index} absent — carrier `ip` went stale"))?;
+                let got = octet.as_small_int().ok_or_else(|| {
+                    format!("ip octet {index} is not an int — carrier `ip` went stale")
+                })?;
+                if got != i64::from(*want) {
+                    return Err(format!(
+                        "ip octet {index} is {got}, expected {want} — carrier `ip` went stale"
+                    ));
+                }
+            }
+
+            let binary = payload.get(2).ok_or_else(|| "no binary slot".to_string())?;
+            let binary =
+                BinaryRef::new(binary).ok_or_else(|| "payload binary missing".to_string())?;
+            if binary.as_bytes() != data.as_slice() {
+                return Err("datagram contents differ".to_string());
+            }
+            Ok(())
+        })();
+        (achieved, outcome)
+    }
+
+    #[test]
+    fn ar1_site10_finish_udp_recv_band() {
+        let mut cells = Vec::new();
+        // Datagram sizes chosen either side of REFC_BINARY_THRESHOLD (64), since
+        // that is where the heap cost stops scaling with the payload.
+        for datagram_len in [32usize, 64, 1024] {
+            for margin in [0usize, 1, 2, 4, 8, 12, 16, 24, 32, 64, 128, 512] {
+                let (achieved, result) = udp_round_trip(datagram_len, 2048, margin);
+                let verdict = match result {
+                    Ok(()) => "ok".to_string(),
+                    Err(reason) => reason,
+                };
+                let line = format!(
+                    "datagram {datagram_len:>5} margin req {margin:>4} got {achieved:>5} : {verdict}"
+                );
+                println!("{line}");
+                eprintln!("{line}");
+                cells.push((datagram_len, achieved, verdict));
+            }
+        }
+
+        let corrupted: Vec<_> = cells
+            .iter()
+            .filter(|(_, _, v)| v != "ok" && !v.contains("returned an error term"))
+            .collect();
+        let clean: Vec<_> = cells.iter().filter(|(_, _, v)| v == "ok").collect();
+        let summary = format!(
+            "site 10: {} corruption cells, {} clean cells",
+            corrupted.len(),
+            clean.len()
+        );
+        println!("{summary}");
+        eprintln!("{summary}");
+        for (len, achieved, verdict) in &corrupted {
+            println!("site 10 RED at datagram {len} achieved margin {achieved}: {verdict}");
+            eprintln!("site 10 RED at datagram {len} achieved margin {achieved}: {verdict}");
+        }
+
+        // Same floor report as site 5: a clean cell whose ACHIEVED margin is
+        // near the full heap had no pressure applied and is not evidence of
+        // anything about the site.
+        let floor = cells
+            .iter()
+            .map(|(_, achieved, _)| *achieved)
+            .min()
+            .unwrap_or(0);
+        let no_pressure = cells
+            .iter()
+            .filter(|(_, achieved, _)| *achieved > 2048 / 2)
+            .count();
+        let floor_note = format!(
+            "site 10 pre-fill floor: smallest achieved margin {floor} words; \
+             {no_pressure} of {} cells ended with more than half the heap free \
+             (pre-fill collected and reset — NO pressure applied, not evidence)",
+            cells.len()
+        );
+        println!("{floor_note}");
+        eprintln!("{floor_note}");
+
+        assert!(!clean.is_empty(), "control: some cell must be clean");
+        assert!(
+            !corrupted.is_empty(),
+            "site 10: no cell corrupted the carrier — every cell clean or refused. Under the \
+             site-14 law that is UNRESOLVED, not defended: the sweep failed to apply pressure."
+        );
+    }
+}

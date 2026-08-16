@@ -663,3 +663,268 @@ mod tests {
         assert_eq!(term_to_value(term, &table), Ok(Value::Null));
     }
 }
+
+#[cfg(test)]
+mod ar1_row4_json_tests {
+    // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
+    //
+    // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
+    // NOT assert correct behaviour, so a green here means "the defect is still
+    // present, exactly as measured" — never "this site is safe".
+    //
+    // ⇒ THEY GO RED WHEN AR-1 IS FIXED, AND THAT IS THE POINT. The fix lane
+    // INVERTS them to assert correctness rather than deleting them; the pinned
+    // counts below are the surface the fix has to move.
+
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use serde_json::{Map as JsonMap, Value};
+
+    use super::value_to_term;
+    use crate::atom::AtomTable;
+    use crate::native::ProcessContext;
+    use crate::process::Process;
+    use crate::term::Term;
+    use crate::term::binary::Binary;
+    use crate::term::boxed::{Cons, Map};
+
+    const WIDTH: usize = 12;
+
+    fn key_of(index: usize) -> String {
+        format!("k{index:0WIDTH$}")
+    }
+
+    fn value_of(index: usize) -> String {
+        format!("v{index:0WIDTH$}")
+    }
+
+    fn element_of(index: usize) -> String {
+        format!("e{index:0WIDTH$}")
+    }
+
+    /// An array of `count` heap-allocated string elements. Never immediates: an
+    /// immediate needs no allocation, so the carrier would never be live across
+    /// one and the probe would be structurally incapable of failing.
+    fn array_of(count: usize) -> Value {
+        Value::Array(
+            (0..count)
+                .map(|index| Value::String(element_of(index)))
+                .collect(),
+        )
+    }
+
+    /// An object of `count` string-keyed, string-valued entries — both halves
+    /// heap-allocated, which is what puts site 15's `(Term, Term)` carrier at
+    /// risk on both sides of the pair.
+    fn object_of(count: usize) -> Value {
+        let mut map = JsonMap::new();
+        for index in 0..count {
+            map.insert(key_of(index), Value::String(value_of(index)));
+        }
+        Value::Object(map)
+    }
+
+    fn attach<'process>(
+        table: &Arc<AtomTable>,
+        process: &'process mut Process,
+    ) -> ProcessContext<'process> {
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::clone(table)));
+        context.attach_process(process, 0);
+        context
+    }
+
+    /// Build the array on a heap of exactly `heap` words and read it back
+    /// iteratively. `Err` names the first position that is not what went in.
+    fn array_round_trip(count: usize, heap: usize) -> Result<(), String> {
+        let table = Arc::new(AtomTable::with_common_atoms());
+        let mut process = Process::new(42, heap);
+        let mut context = attach(&table, &mut process);
+
+        let term = value_to_term(&array_of(count), &mut context)
+            .map_err(|error| format!("construction refused: {error}"))?;
+
+        let mut seen = 0usize;
+        let mut tail = term;
+        // HARD CAP: a stale tail can make the list cyclic. Without this the
+        // reader spins forever instead of reporting.
+        let cap = count * 2 + 16;
+        while !tail.is_nil() {
+            if seen > cap {
+                return Err(format!(
+                    "list did not terminate within {cap} cells — cyclic tail"
+                ));
+            }
+            let cons = Cons::new(tail).ok_or_else(|| {
+                format!("element {seen}: tail is not a cons — carrier went stale")
+            })?;
+            let binary = Binary::new(cons.head()).ok_or_else(|| {
+                format!("element {seen}: head is not a binary — carrier went stale")
+            })?;
+            let want = element_of(seen);
+            if binary.as_bytes() != want.as_bytes() {
+                return Err(format!(
+                    "element {seen}: contents {:?} != {want:?}",
+                    String::from_utf8_lossy(binary.as_bytes())
+                ));
+            }
+            seen += 1;
+            tail = cons.tail();
+        }
+        if seen != count {
+            return Err(format!("recovered {seen} elements, put {count}"));
+        }
+        Ok(())
+    }
+
+    /// Build the object on a heap of exactly `heap` words and read it back as a
+    /// SET of key→value pairs (see the header note on sort-by-bit-pattern).
+    fn object_round_trip(count: usize, heap: usize) -> Result<(), String> {
+        let table = Arc::new(AtomTable::with_common_atoms());
+        let mut process = Process::new(42, heap);
+        let mut context = attach(&table, &mut process);
+
+        let term = value_to_term(&object_of(count), &mut context)
+            .map_err(|error| format!("construction refused: {error}"))?;
+
+        let map =
+            Map::new(term).ok_or_else(|| "result is not a map — carrier went stale".to_string())?;
+        if map.len() != count {
+            return Err(format!("map holds {} entries, put {count}", map.len()));
+        }
+
+        let mut recovered: BTreeMap<String, String> = BTreeMap::new();
+        for index in 0..map.len() {
+            let key = read_binary(map.key(index), index, "key")?;
+            let value = read_binary(map.value(index), index, "value")?;
+            recovered.insert(key, value);
+        }
+
+        for index in 0..count {
+            let want_key = key_of(index);
+            let want_value = value_of(index);
+            match recovered.get(&want_key) {
+                None => {
+                    return Err(format!(
+                        "entry {index}: key {want_key:?} absent from result"
+                    ));
+                }
+                Some(got) if got != &want_value => {
+                    return Err(format!(
+                        "entry {index} ({want_key:?}): {got:?} != {want_value:?}"
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn read_binary(term: Option<Term>, index: usize, half: &str) -> Result<String, String> {
+        let term = term.ok_or_else(|| format!("entry {index}: {half} slot absent"))?;
+        let binary = Binary::new(term)
+            .ok_or_else(|| format!("entry {index}: {half} is not a binary — carrier went stale"))?;
+        Ok(String::from_utf8_lossy(binary.as_bytes()).into_owned())
+    }
+
+    /// AR-1 row 4, site 11 (`tail` in `array_to_list_term`).
+    ///
+    /// TWO-ARMED IN BOTH DIRECTIONS, which is what makes the failure
+    /// attributable to the collection rather than to an allocator limit:
+    /// hold the heap and grow the input, then hold the input and grow the heap.
+    #[test]
+    fn ar1_site11_array_to_list_term_two_armed() {
+        const HEAP: usize = 4096;
+        const BIG: usize = 2000;
+
+        let control = array_round_trip(50, HEAP);
+        assert!(
+            control.is_ok(),
+            "control arm: 50 elements on a {HEAP}-word heap must round-trip, got {control:?}. \
+             A failure here would be an allocator limit and the red arm would prove nothing."
+        );
+
+        let red = array_round_trip(BIG, HEAP);
+        assert!(
+            red.is_err(),
+            "site 11 red-at-parent: {BIG} elements on a {HEAP}-word heap must corrupt the \
+             carrier, got {red:?}"
+        );
+
+        // SECOND DIRECTION: same input, a heap large enough that nothing has to
+        // collect. If this also failed, the input would simply be too big.
+        let roomy = array_round_trip(BIG, 1 << 20);
+        assert!(
+            roomy.is_ok(),
+            "site 11 second direction: {BIG} elements on a roomy heap must be clean, got {roomy:?}"
+        );
+
+        let reason = red.unwrap_err();
+        println!("site 11 RED: {reason}");
+        eprintln!("site 11 RED: {reason}");
+    }
+
+    /// AR-1 row 4, site 15 (`pairs` in `object_to_map_term`).
+    #[test]
+    fn ar1_site15_object_to_map_term_two_armed() {
+        // MEASURED, not guessed. At heap 4096 the 500-entry case is clean and
+        // the 2000-entry case is REFUSED by the allocator — refusal is
+        // ambiguous by construction and proves nothing (Cally's site-17
+        // warning). The admissible cell is the one where construction SUCCEEDS
+        // and the result is still wrong: heap 256, 100 entries.
+        const HEAP: usize = 256;
+        const BIG: usize = 100;
+
+        let control = object_round_trip(10, HEAP);
+        assert!(
+            control.is_ok(),
+            "control arm: 10 entries on a {HEAP}-word heap must round-trip, got {control:?}."
+        );
+
+        let red = object_round_trip(BIG, HEAP);
+        assert!(
+            red.is_err(),
+            "site 15 red-at-parent: {BIG} entries on a {HEAP}-word heap must corrupt the \
+             carrier, got {red:?}"
+        );
+
+        let roomy = object_round_trip(BIG, 1 << 20);
+        assert!(
+            roomy.is_ok(),
+            "site 15 second direction: {BIG} entries on a roomy heap must be clean, got {roomy:?}"
+        );
+
+        let reason = red.unwrap_err();
+        println!("site 15 RED: {reason}");
+        eprintln!("site 15 RED: {reason}");
+    }
+
+    /// The surface both verdicts are read off. Each cell is emitted AS IT RUNS
+    /// and to BOTH streams: if a cell kills the process, the last line printed
+    /// names the cell that did it, and a swallowed stdout cannot turn a measured
+    /// result into "exited with no output".
+    #[test]
+    fn ar1_sites_11_15_sweep_surface() {
+        let heaps = [256usize, 1024, 4096, 16384, 65536];
+        let sizes = [10usize, 100, 500, 2000];
+        for heap in heaps {
+            for count in sizes {
+                for shape in ["array", "object"] {
+                    let outcome = if shape == "array" {
+                        array_round_trip(count, heap)
+                    } else {
+                        object_round_trip(count, heap)
+                    };
+                    let verdict = match outcome {
+                        Ok(()) => "ok".to_string(),
+                        Err(reason) => reason,
+                    };
+                    let line = format!("heap {heap:>6} x {shape:<6} {count:>5} : {verdict}");
+                    println!("{line}");
+                    eprintln!("{line}");
+                }
+            }
+        }
+    }
+}

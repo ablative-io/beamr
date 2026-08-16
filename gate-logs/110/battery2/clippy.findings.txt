@@ -1,0 +1,8 @@
+# battery2/clippy — DISTILLED FINDINGS
+# The raw cargo --message-format=json log (234161 bytes, mostly
+# compiler-artifact records) was NOT landed. Every error/warning it
+# contained is reproduced below, extracted with the leg's own `extract`
+# jq filter from gates.json. Regenerate by re-running the leg.
+# rc: 0
+# findings: 0
+

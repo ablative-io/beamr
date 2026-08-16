@@ -165,6 +165,100 @@ mod tests {
         values
     }
 
+    /// AR-1 row 4, site 4 (`entries_to_list`) — arm A of the two-arm red probe.
+    ///
+    /// The ledger flags this site: `tuples` is a bare `Vec<Term>` accumulating
+    /// across `alloc_tuple` calls, rooted only at the terminal `alloc_list`.
+    /// The shape is real. Whether the DEFECT fires is a separate question, and
+    /// this probe is what separates them.
+    ///
+    /// Arm A (here, unmodified production bytes) must be **GREEN**.
+    /// Arm B — the `ensure_heap_space` prereserve in `bif_get_0` deleted — must
+    /// be **RED**. Arm B is the positive control: without it, a green here
+    /// cannot tell *"the prereserve saved the accumulator"* from *"no
+    /// collection ever happened"*, which is the exact trap the sibling test
+    /// `get_0_returns_complete_dictionary_as_tuple_list` sits in — it drives
+    /// this same site with immediates and is structurally incapable of failing.
+    ///
+    /// ⛔ **THE VERDICT IS TWO-TIER, AND THE NAME CARRIES IT: the flagged shape
+    /// IS present at this site, and what defends it is the CALLER'S prereserve,
+    /// not anything the site does.** `bif_get_0` reserves `entry_count * 5`
+    /// while the process dictionary still roots the entries, so the
+    /// accumulation loop cannot collect. Arm D (`entry_count * 2`) is RED,
+    /// which is what shows the 3N tuple component is the load-bearing part.
+    /// A green here therefore means *this caller reserves enough today* — it
+    /// does NOT mean `entries_to_list` is safe, and any new caller reaching it
+    /// without that reserve reopens the site.
+    #[test]
+    fn ar1_site4_defended_by_the_callers_prereserve_not_by_the_site() {
+        use crate::term::binary::Binary;
+
+        // Measured, not guessed: at 200 entries of 24 bytes the nursery holds 22
+        // words against the 1000 the result needs, so `bif_get_0`'s reserve is
+        // unambiguously the thing that makes room. (40/24 leaves 312 words free
+        // and CONTROL 1 correctly refuses it.)
+        const ENTRIES: usize = 200;
+        const PAYLOAD: usize = 24;
+
+        let mut process = Process::new(1, 512);
+        let mut context = context(&mut process);
+
+        // Values are BINARIES, never immediates: an immediate needs no
+        // allocation, so the accumulator would never be live across one.
+        for index in 0..ENTRIES {
+            let payload = vec![u8::try_from(index).expect("index fits a byte"); PAYLOAD];
+            let value = context.alloc_binary(&payload).expect("value binary");
+            bif_put(&[Term::small_int(index as i64), value], &mut context).expect("put");
+        }
+
+        // CONTROL 1 — the prereserve must be load-bearing. If the heap already
+        // has room for the whole result, nothing would collect and a green
+        // below would report the absence of pressure, not the presence of
+        // safety.
+        let available = context
+            .process_heap()
+            .expect("process attached")
+            .available();
+        // Emitted, not just asserted: the control reading is the evidence that
+        // the prereserve was load-bearing on this run, so it has to be legible
+        // under `--nocapture` rather than only on failure.
+        println!(
+            "CONTROL 1: {available} words available vs {} needed",
+            ENTRIES * 5
+        );
+        assert!(
+            available < ENTRIES * 5,
+            "control: {available} words already available covers the {} the result needs, \
+             so no collection can occur and this probe proves nothing",
+            ENTRIES * 5
+        );
+
+        let list = bif_get_0(&[], &mut context).expect("get/0");
+
+        // Compare by VALUE, never by Term identity: a Vec of Terms held by this
+        // test would go stale across a collection exactly as the production
+        // accumulator does. The payload bytes are the identity.
+        let mut seen: Vec<u8> = list_terms(list)
+            .into_iter()
+            .map(|entry| {
+                let (_key, value) = tuple_pair(entry);
+                let bytes = Binary::new(value)
+                    .expect("value survived as a binary")
+                    .as_bytes();
+                assert_eq!(bytes.len(), PAYLOAD, "value binary truncated");
+                assert!(
+                    bytes.iter().all(|byte| *byte == bytes[0]),
+                    "value binary contents are not uniform — the accumulator went stale"
+                );
+                bytes[0]
+            })
+            .collect();
+        seen.sort_unstable();
+
+        let expected: Vec<u8> = (0..ENTRIES).map(|i| u8::try_from(i).unwrap()).collect();
+        assert_eq!(seen, expected, "an entry was lost or corrupted");
+    }
+
     fn tuple_pair(term: Term) -> (Term, Term) {
         let tuple = Tuple::new(term).expect("dictionary entry tuple");
         assert_eq!(tuple.arity(), 2);

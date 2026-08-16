@@ -329,3 +329,209 @@ fn badarg() -> Term {
 #[cfg(test)]
 #[path = "file_meta_bifs_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod ar1_row4_site5_tests {
+    // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
+    //
+    // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
+    // NOT assert correct behaviour, so a green here means "the defect is still
+    // present, exactly as measured" — never "this site is safe".
+    //
+    // ⇒ THEY GO RED WHEN AR-1 IS FIXED, AND THAT IS THE POINT. The fix lane
+    // INVERTS them to assert correctness rather than deleting them; the pinned
+    // counts below are the surface the fix has to move.
+
+    use super::finish_list_dir;
+    use crate::io::ring::{IoCompletion, IoResult};
+    use crate::native::ProcessContext;
+    use crate::native::context::{FileIoCompletion, FileIoContinuation};
+    use crate::process::Process;
+    use crate::term::binary::Binary;
+    use crate::term::boxed::{Cons, Tuple};
+
+    const WIDTH: usize = 12;
+
+    fn entry_of(index: usize) -> String {
+        format!("f{index:0WIDTH$}")
+    }
+
+    fn list_dir_round_trip(
+        entries: usize,
+        heap: usize,
+        margin: usize,
+    ) -> (usize, Result<(), String>) {
+        let mut process = Process::new(5, heap);
+        let mut context = ProcessContext::new();
+        context.attach_process(&mut process, 0);
+
+        // PRE-FILL to a measured margin with UNROOTED filler, so a collection
+        // during the accumulation is forced rather than hoped for. Without a
+        // pressure step a clean result reports the absence of pressure, not the
+        // presence of safety.
+        //
+        // ⛔ THE LOOP MUST BE ABLE TO GIVE UP, AND THE CELL MUST SAY SO.
+        // The descent step is one filler allocation (~6 words for a 32-byte
+        // inline binary), so a requested margin FINER than that granularity
+        // cannot be reached by allocating: the only thing that lands below it
+        // is a collection, which frees this unrooted filler and pushes
+        // `available` straight back up. The first version of this loop had no
+        // such exit and SPUN FOREVER at margins 0/1/2 — it produced no output
+        // at all, which reads exactly like a slow compile.
+        //
+        // So the achieved margin is RETURNED, not assumed. A cell that could
+        // not reach its requested margin is reported at the margin it actually
+        // got, and duplicate achieved-margins are what prove the lower edge was
+        // unreachable rather than clean.
+        let mut filler = Vec::new();
+        let mut last_available = usize::MAX;
+        let achieved = loop {
+            let available = context.process_heap().map(|h| h.available()).unwrap_or(0);
+            if available <= margin {
+                break available;
+            }
+            // Non-decreasing `available` means a collection fired during the
+            // pre-fill itself. Stop; the requested margin is below this
+            // instrument's resolution.
+            if available >= last_available {
+                break available;
+            }
+            last_available = available;
+            match context.alloc_binary(&[0xCD; 32]) {
+                Ok(term) => filler.push(term),
+                Err(_) => break available,
+            }
+        };
+
+        let outcome = (|| -> Result<(), String> {
+            let names: Vec<Vec<u8>> = (0..entries)
+                .map(|index| entry_of(index).into_bytes())
+                .collect();
+            let completion = FileIoCompletion {
+                op_id: 1,
+                continuation: FileIoContinuation::ListDir,
+                completion: IoCompletion {
+                    op_id: 1,
+                    result: Ok(IoResult::DirList(names)),
+                },
+            };
+
+            let term = finish_list_dir(completion, &mut context)
+                .map_err(|_| "finish_list_dir returned an error term".to_string())?;
+
+            let tuple = Tuple::new(term).ok_or_else(|| "result is not a tuple".to_string())?;
+            if tuple.arity() != 2 {
+                return Err(format!("result arity {} not 2", tuple.arity()));
+            }
+            let list = tuple
+                .get(1)
+                .ok_or_else(|| "result has no list slot".to_string())?;
+
+            let mut seen = 0usize;
+            let mut tail = list;
+            let cap = entries * 2 + 16;
+            while !tail.is_nil() {
+                if seen > cap {
+                    return Err(format!(
+                        "list did not terminate within {cap} cells — cyclic tail"
+                    ));
+                }
+                let cons = Cons::new(tail).ok_or_else(|| {
+                    format!("entry {seen}: tail is not a cons — carrier went stale")
+                })?;
+                let binary = Binary::new(cons.head()).ok_or_else(|| {
+                    format!("entry {seen}: head is not a binary — carrier went stale")
+                })?;
+                let want = entry_of(seen);
+                if binary.as_bytes() != want.as_bytes() {
+                    return Err(format!(
+                        "entry {seen}: contents {:?} != {want:?}",
+                        String::from_utf8_lossy(binary.as_bytes())
+                    ));
+                }
+                seen += 1;
+                tail = cons.tail();
+            }
+            if seen != entries {
+                return Err(format!("recovered {seen} entries, put {entries}"));
+            }
+            Ok(())
+        })();
+        (achieved, outcome)
+    }
+
+    #[test]
+    fn ar1_site5_finish_list_dir_band() {
+        let mut cells = Vec::new();
+        for entries in [50usize, 200] {
+            // Margins 0/1/2 added to SEARCH FOR THE LOWER CLEAN EDGE. The first
+            // sweep started at 4 and found no clean cell below the band, so the
+            // band was one-sided. A lower clean cell is the control that proves
+            // the instrument was awake: with nothing yet accumulated there is no
+            // live carrier to go stale. If 0/1/2 are also RED the band stays
+            // one-sided and is REPORTED as one-sided.
+            for margin in [0usize, 1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 4096] {
+                let (achieved, result) = list_dir_round_trip(entries, 4096, margin);
+                let verdict = match result {
+                    Ok(()) => "ok".to_string(),
+                    Err(reason) => reason,
+                };
+                // BOTH margins are printed. Where achieved != requested the cell
+                // is NOT evidence about the requested margin, and two cells with
+                // the same achieved margin are ONE measurement, not two.
+                let line = format!(
+                    "entries {entries:>4} margin req {margin:>5} got {achieved:>5} : {verdict}"
+                );
+                println!("{line}");
+                eprintln!("{line}");
+                cells.push((margin, achieved, verdict));
+            }
+        }
+
+        let corrupted: Vec<_> = cells
+            .iter()
+            .filter(|(_, _, v)| v != "ok" && !v.contains("returned an error term"))
+            .collect();
+        let clean: Vec<_> = cells.iter().filter(|(_, _, v)| v == "ok").collect();
+        let summary = format!(
+            "site 5: {} corruption cells, {} clean cells",
+            corrupted.len(),
+            clean.len()
+        );
+        println!("{summary}");
+        eprintln!("{summary}");
+        for (margin, achieved, verdict) in &corrupted {
+            println!("site 5 RED at margin req {margin} got {achieved}: {verdict}");
+            eprintln!("site 5 RED at margin req {margin} got {achieved}: {verdict}");
+        }
+
+        // THE LOWER-EDGE QUESTION, ANSWERED BY THE INSTRUMENT RATHER THAN BY ME.
+        // If the smallest achieved margin is the same for several requested
+        // margins, the pre-fill hit its resolution floor and the cells below it
+        // were never actually measured — so an absent lower clean edge is a
+        // LIMIT OF THIS KNOB, not a property of the site.
+        let floor = cells
+            .iter()
+            .map(|(_, achieved, _)| *achieved)
+            .min()
+            .unwrap_or(0);
+        let at_floor = cells
+            .iter()
+            .filter(|(_, achieved, _)| *achieved == floor)
+            .count();
+        let floor_note = format!(
+            "site 5 pre-fill resolution floor: smallest achieved margin {floor} words, \
+             reached by {at_floor} of {} cells — requested margins below that were NOT measured",
+            cells.len()
+        );
+        println!("{floor_note}");
+        eprintln!("{floor_note}");
+
+        assert!(!clean.is_empty(), "control: some cell must be clean");
+        assert!(
+            !corrupted.is_empty(),
+            "site 5: no cell corrupted the carrier — every cell clean or refused. Under the \
+             site-14 law that is UNRESOLVED, not defended: the sweep failed to apply pressure."
+        );
+    }
+}

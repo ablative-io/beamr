@@ -1219,3 +1219,263 @@ mod tests {
         assert_eq!(tuple.get(2), Some(Term::pid(9)));
     }
 }
+
+#[cfg(test)]
+mod ar1_row4_site1_tests {
+    // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
+    //
+    // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
+    // NOT assert correct behaviour, so a green here means "the defect is still
+    // present, exactly as measured" — never "this site is safe".
+    //
+    // ⇒ THEY GO RED WHEN AR-1 IS FIXED, AND THAT IS THE POINT. The fix lane
+    // INVERTS them to assert correctness rather than deleting them; the pinned
+    // counts below are the surface the fix has to move.
+
+    use std::sync::Arc;
+
+    use super::{RemoteMfa, SpawnRequest, alloc_spawn_request};
+    use crate::atom::AtomTable;
+    use crate::native::ProcessContext;
+    use crate::native::spawn::SpawnOptions;
+    use crate::process::Process;
+    use crate::term::Term;
+    use crate::term::boxed::{Cons, Tuple};
+
+    const HEAP: usize = 512;
+
+    /// One cell. `options_on` selects the arm; everything else is identical.
+    /// Returns `(available_at_entry, outcome)`.
+    fn spawn_request_round_trip(args: usize, options_on: bool) -> (usize, Result<(), String>) {
+        let table = Arc::new(AtomTable::with_common_atoms());
+        let module = table.intern("ar1_site1_module");
+        let function = table.intern("ar1_site1_function");
+
+        let mut process = Process::new(1, HEAP);
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::clone(&table)));
+        context.attach_process(&mut process, 0);
+
+        // Arguments are SMALL INTS — immediates. Deliberate: an immediate
+        // argument cannot itself go stale, so any corruption observed below is
+        // attributable to the `mfa` carrier and to nothing the arguments did.
+        // Their only role here is as a RULER, two heap words apiece.
+        let arg_terms: Vec<Term> = (0..args)
+            .map(|index| Term::small_int(i64::try_from(index % 1000).unwrap_or(0)))
+            .collect();
+
+        let available = context.process_heap().map(|h| h.available()).unwrap_or(0);
+
+        let request = SpawnRequest {
+            request_id: 7,
+            from: Term::small_int(11),
+            group_leader: Term::small_int(13),
+            mfa: RemoteMfa {
+                module,
+                function,
+                args: arg_terms.clone(),
+            },
+            options: SpawnOptions {
+                link: options_on,
+                monitor: options_on,
+                ..SpawnOptions::default()
+            },
+        };
+
+        let outcome = (|| -> Result<(), String> {
+            let term = alloc_spawn_request(&mut context, &request)
+                .map_err(|_| "alloc_spawn_request returned an error term".to_string())?;
+
+            let outer = Tuple::new(term).ok_or_else(|| "result is not a tuple".to_string())?;
+            if outer.arity() != 6 {
+                return Err(format!("result arity {} not 6", outer.arity()));
+            }
+
+            // THE CARRIER: slot 4 is `mfa`, allocated BEFORE the window and used
+            // AFTER it. If it went stale, this is where it shows.
+            let mfa_slot = outer.get(4).ok_or_else(|| "no mfa slot".to_string())?;
+            let mfa = Tuple::new(mfa_slot)
+                .ok_or_else(|| "mfa is not a tuple — carrier `mfa` went stale".to_string())?;
+            if mfa.arity() != 3 {
+                return Err(format!(
+                    "mfa arity {} not 3 — carrier `mfa` went stale",
+                    mfa.arity()
+                ));
+            }
+            if mfa.get(0) != Some(Term::atom(module)) {
+                return Err("mfa module atom differs — carrier `mfa` went stale".to_string());
+            }
+            if mfa.get(1) != Some(Term::atom(function)) {
+                return Err("mfa function atom differs — carrier `mfa` went stale".to_string());
+            }
+
+            // The argument list hangs off the carrier, so walking it is a second,
+            // independent read of the same corruption. Iterative and hard-capped
+            // for the usual reason: a stale carrier can alias a cell into a cycle.
+            let mut seen = 0usize;
+            let mut tail = mfa.get(2).ok_or_else(|| "no args slot".to_string())?;
+            let cap = args * 2 + 16;
+            while !tail.is_nil() {
+                if seen > cap {
+                    return Err(format!(
+                        "args did not terminate within {cap} cells — cyclic tail, carrier `mfa` went stale"
+                    ));
+                }
+                let cons = Cons::new(tail).ok_or_else(|| {
+                    format!("arg {seen}: tail is not a cons — carrier `mfa` went stale")
+                })?;
+                let want = *arg_terms
+                    .get(seen)
+                    .ok_or_else(|| format!("arg {seen}: more args recovered than were put"))?;
+                if cons.head() != want {
+                    return Err(format!(
+                        "arg {seen}: value differs from the one put — carrier `mfa` went stale"
+                    ));
+                }
+                seen += 1;
+                tail = cons.tail();
+            }
+            if seen != args {
+                return Err(format!("recovered {seen} args, put {args}"));
+            }
+            Ok(())
+        })();
+
+        (available, outcome)
+    }
+
+    #[test]
+    fn ar1_site1_alloc_spawn_request_band() {
+        let mut on_red = Vec::new();
+        let mut on_ok = 0usize;
+        let mut on_refused = 0usize;
+        let mut off_red = Vec::new();
+        let mut off_ok = 0usize;
+        let mut off_refused = 0usize;
+
+        // ⛔ THE RANGE IS DERIVED FROM THE ARITHMETIC, NOT CHOSEN FOR ROUNDNESS,
+        // AND THE FIRST VERSION OF THIS SWEEP GOT IT WRONG. It ran 0..=200,
+        // which walks the window headroom down only to 512 - 400 - 4 = 108 —
+        // nowhere near the [0, 4) target — and returned 201 clean cells that
+        // meant NOTHING. To reach the band the ruler needs 2N in (504, 508], so
+        // N must pass through 251..=254. Running to 300 clears it with margin
+        // and then continues past it, which also demonstrates the far side.
+        let mut headroom_min = i64::MAX;
+        let mut headroom_max = i64::MIN;
+
+        for args in 0..=300usize {
+            for options_on in [true, false] {
+                let (available, result) = spawn_request_round_trip(args, options_on);
+                // The predicted window headroom, printed beside the outcome so a
+                // reader can check the arithmetic against the data rather than
+                // taking it on trust.
+                let predicted = (available as i64) - 2 * (args as i64) - 4;
+                if options_on {
+                    headroom_min = headroom_min.min(predicted);
+                    headroom_max = headroom_max.max(predicted);
+                }
+                match result {
+                    Ok(()) => {
+                        if options_on {
+                            on_ok += 1;
+                        } else {
+                            off_ok += 1;
+                        }
+                    }
+                    Err(reason) if reason.contains("returned an error term") => {
+                        if options_on {
+                            on_refused += 1;
+                        } else {
+                            off_refused += 1;
+                        }
+                    }
+                    Err(reason) => {
+                        let row = format!(
+                            "args {args:>4} available {available:>4} predicted-window-headroom \
+                             {predicted:>5} : {reason}"
+                        );
+                        eprintln!(
+                            "site 1 RED [options {}] {row}",
+                            if options_on { "ON" } else { "OFF" }
+                        );
+                        if options_on {
+                            on_red.push(row);
+                        } else {
+                            off_red.push(row);
+                        }
+                    }
+                }
+            }
+        }
+
+        eprintln!(
+            "site 1 arm ON : {} red, {on_ok} clean, {on_refused} refused",
+            on_red.len()
+        );
+        eprintln!(
+            "site 1 arm OFF: {} red, {off_ok} clean, {off_refused} refused",
+            off_red.len()
+        );
+
+        eprintln!(
+            "site 1 window headroom swept: {headroom_min} .. {headroom_max} (target band [0, 4))"
+        );
+
+        // ⛔⛔ COVERAGE ASSERTION — THE ONE THIS PROBE WAS MISSING, AND ITS
+        // ABSENCE COST A WHOLE CLEAN SWEEP THAT MEANT NOTHING.
+        //
+        // A clean result is only evidence if the sweep is shown to have PASSED
+        // THROUGH the band where the defect can live. The first run returned 201
+        // clean ON cells while its headroom never descended below 108 — a green
+        // that carried exactly as much information as not running at all. This
+        // fires BEFORE the verdict assertions, so a mis-ranged sweep is reported
+        // as a broken instrument rather than as a defended site.
+        assert!(
+            headroom_min < 4 && headroom_max >= 4,
+            "INSTRUMENT NOT SHOWN AWAKE: window headroom swept {headroom_min}..{headroom_max}, \
+             which does not straddle the target band [0, 4). Any verdict from this sweep is void — \
+             widen the argument range until it does."
+        );
+
+        // Two-way control, per the site-10 law.
+        assert!(
+            on_ok > 0,
+            "control: some ON cell must be clean, or the reader is broken rather than the site \
+             defective"
+        );
+
+        // ⛔ THE STRUCTURAL NEGATIVE CONTROL. Arm OFF differs from arm ON in
+        // exactly one respect: `spawn_options_to_list` requests 0 words instead
+        // of 4, so it cannot collect. If this fires, the exposure window is NOT
+        // `spawn_options_to_list` and the whole attribution above is wrong.
+        assert!(
+            off_red.is_empty(),
+            "ATTRIBUTION BROKEN: arm OFF corrupted {} cells, but with both options false \
+             `spawn_options_to_list` requests 0 words and cannot collect. The window is not where \
+             this probe says it is — re-derive it.\n{}",
+            off_red.len(),
+            off_red.join("\n")
+        );
+
+        assert!(
+            !on_red.is_empty(),
+            "site 1: no ON cell corrupted the carrier across 201 argument counts. Under the \
+             site-14 law that is UNRESOLVED, not defended — the ruler never walked the window \
+             through [0, 4)."
+        );
+
+        // ⭐ THE BAND'S NARROWNESS IS THE FINDING, so it is asserted rather than
+        // merely reported. The window demands at most 4 words and the ruler steps
+        // 2 words per argument, so at most two consecutive cells can land inside
+        // it. A wide band would mean the exposure is not the bounded allocation
+        // this probe claims it is.
+        assert!(
+            on_red.len() <= 2,
+            "site 1: {} red cells, but the window is a BOUNDED <=4-word allocation stepped by a \
+             2-word ruler, so at most 2 cells can land in it. A wider band refutes the \
+             structural argument — re-derive it, do not widen this bound.\n{}",
+            on_red.len(),
+            on_red.join("\n")
+        );
+    }
+}
