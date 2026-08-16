@@ -197,11 +197,13 @@
       "use_line": 248,
       "sink": "alloc_binary",
       "reason": "ipv4_tuple returns alloc_tuple so ip is BOXED; live across alloc_binary. NOTE: udp_bifs.rs:473 is a DIFFERENT line in this same file and is a #[cfg(test)] test helper, NOT this site -- see the gate's amendment 4, where grading that line as a row-6 defeat was retracted",
-      "disposition": "PENDING",
-      "replacement_construct": null,
-      "replacement_site": null,
+      "disposition": "STRUCTURALLY-ELIMINATED",
+      "replacement_construct": "with_rooted",
+      "replacement_site": "crates/beamr/src/native/udp_bifs.rs:251",
       "verification_leg": "native",
-      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- test `ar1_site10_finish_udp_recv_band`, crates/beamr/src/native/udp_bifs.rs. Band TWO-SIDED on both small-datagram rows. Its pre-registered knob (datagram SIZE) was REFUTED for the same ProcBin reason as site 7, and the refutation is carried by the row that stays CLEAN. WARNING, ADDED AFTER SITE 3: the knob is heap MARGIN, so the clean cells are a lower bound on reach, not a located edge. The RED is unaffected. gate-logs/110/RESULTS.md."
+      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- test `ar1_site10_finish_udp_recv_band`, crates/beamr/src/native/udp_bifs.rs. Band TWO-SIDED on both small-datagram rows. Its pre-registered knob (datagram SIZE) was REFUTED for the same ProcBin reason as site 7, and the refutation is carried by the row that stays CLEAN. WARNING, ADDED AFTER SITE 3: the knob is heap MARGIN, so the clean cells are a lower bound on reach, not a located edge. The RED is unaffected. gate-logs/110/RESULTS.md.",
+      "fix": "FIX LANE (#111) phase 2, eighth site. `ip` is a SINGLE boxed tuple — `ipv4_tuple` ends in `alloc_tuple` — held live across the datagram's `alloc_binary`, so it takes `with_rooted` directly rather than the accumulator, with a re-read via `rooted(roots, 0)` after the binary. `port` is a small int and cannot go stale, so it is left alone. ⚠️ Census delta ZERO (41/26/15, predicted): a single-Term carrier is no shape_hunt class, and the replica carries none either.",
+      "row4_inverted": "`ar1_site10_finish_udp_recv_band` now asserts CORRECTNESS. The size x margin grid was factored into `sweep(arm)`; `finish_udp_recv_unrooted_replica` carries the pre-fix DatagramReceived arm VERBATIM and is asserted FIRST at 5 corrupt / 31 clean, the fixed arm at 0 corrupt / 36 clean. Only that arm is replicated: the others allocate nothing past an error atom and cannot witness the defect. ⭐ THE NO-PRESSURE COUNT IS NOW ASSERTED ON BOTH ARMS, not merely printed — 6 of 36 cells end with more than half the heap free, so a fixed arm that was clean only because the sweep never pressed it would be caught rather than believed. RED-AT-PARENT with only the production hunk reverted: the shipped body corrupted 5 cells and left 31 clean, matching the replica's 5 / 31 exactly in the same run."
     },
     {
       "id": 11,

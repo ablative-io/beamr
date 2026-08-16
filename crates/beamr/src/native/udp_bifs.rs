@@ -244,8 +244,17 @@ fn finish_udp_recv(
             let datagram = data.get(..bytes).ok_or_else(badarg)?;
             let ip = ipv4_tuple(*v4.ip(), context)?;
             let port = Term::try_small_int(i64::from(v4.port())).ok_or_else(badarg)?;
-            let binary = context.alloc_binary(datagram)?;
-            let payload = context.alloc_tuple(&[ip, port, binary])?;
+            // AR-1 site 10. `ip` is a SINGLE boxed tuple — `ipv4_tuple` ends in
+            // `alloc_tuple` — held live across the datagram's `alloc_binary`, so
+            // it takes `with_rooted` directly rather than the accumulator. `port`
+            // is a small int and cannot go stale.
+            let payload = context.with_rooted(&[ip], |context, roots| {
+                let binary = context.alloc_binary(datagram)?;
+                // Re-read AFTER the binary: a collection there forwards `ip`, and
+                // the pre-fix body used the stale copy from before.
+                let ip = context.rooted(roots, 0)?;
+                context.alloc_tuple(&[ip, port, binary])
+            })?;
             ok_tuple(context, payload)
         }
         Ok(_) => error_tuple(context, Atom::UNKNOWN_ERROR),
@@ -593,10 +602,12 @@ mod ar1_row4_site10_tests {
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
     use super::finish_udp_recv;
+    use crate::atom::Atom;
     use crate::io::ring::{IoCompletion, IoResult};
     use crate::native::ProcessContext;
     use crate::native::context::{FileIoCompletion, FileIoContinuation};
     use crate::process::Process;
+    use crate::term::Term;
     // ⚠️ `BinaryRef`, NOT `Binary`. `Binary::new` accepts only BoxedTag::Binary
     // — an INLINE heap binary — and returns None for a ProcBin. Since
     // `alloc_binary` promotes anything over 64 bytes to a ProcBin, a `Binary`
@@ -609,10 +620,44 @@ mod ar1_row4_site10_tests {
     const OCTETS: [u8; 4] = [10, 20, 30, 40];
     const PORT: u16 = 4242;
 
+    /// Which body the cell drives.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Arm {
+        Fixed,
+        UnrootedReplica,
+    }
+
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `finish_udp_recv`'s DatagramReceived arm
+    /// EXACTLY AS IT WAS BEFORE THE FIX, and it must stay that way.
+    ///
+    /// Only that arm is reproduced: the other arms allocate nothing past an
+    /// error atom and cannot witness the defect, so copying them would add bytes
+    /// without adding evidence.
+    /// ⛔ Do NOT migrate it onto `with_rooted`.
+    fn finish_udp_recv_unrooted_replica(
+        completion: FileIoCompletion,
+        context: &mut ProcessContext,
+    ) -> Result<Term, Term> {
+        let Ok(IoResult::DatagramReceived { bytes, data, addr }) = completion.completion.result
+        else {
+            return Err(Term::atom(Atom::BADARG));
+        };
+        let SocketAddr::V4(v4) = addr else {
+            return Err(Term::atom(Atom::BADARG));
+        };
+        let datagram = data.get(..bytes).ok_or_else(super::badarg)?;
+        let ip = super::ipv4_tuple(*v4.ip(), context)?;
+        let port = Term::try_small_int(i64::from(v4.port())).ok_or_else(super::badarg)?;
+        let binary = context.alloc_binary(datagram)?;
+        let payload = context.alloc_tuple(&[ip, port, binary])?;
+        super::ok_tuple(context, payload)
+    }
+
     fn udp_round_trip(
         datagram_len: usize,
         heap: usize,
         margin: usize,
+        arm: Arm,
     ) -> (usize, Result<(), String>) {
         let mut process = Process::new(10, heap);
         let mut context = ProcessContext::new();
@@ -660,8 +705,11 @@ mod ar1_row4_site10_tests {
                 },
             };
 
-            let term = finish_udp_recv(completion, &mut context)
-                .map_err(|_| "finish_udp_recv returned an error term".to_string())?;
+            let term = match arm {
+                Arm::Fixed => finish_udp_recv(completion, &mut context),
+                Arm::UnrootedReplica => finish_udp_recv_unrooted_replica(completion, &mut context),
+            }
+            .map_err(|_| "finish_udp_recv returned an error term".to_string())?;
 
             let outer = Tuple::new(term).ok_or_else(|| "result is not a tuple".to_string())?;
             if outer.arity() != 2 {
@@ -710,70 +758,113 @@ mod ar1_row4_site10_tests {
         (achieved, outcome)
     }
 
-    #[test]
-    fn ar1_site10_finish_udp_recv_band() {
+    /// One sweep of the whole size x margin grid against one body. Returns the
+    /// corrupt rows, the clean count, the smallest achieved margin, and how many
+    /// cells ended with no pressure applied.
+    fn sweep(arm: Arm) -> (Vec<String>, usize, usize, usize, usize) {
         let mut cells = Vec::new();
         // Datagram sizes chosen either side of REFC_BINARY_THRESHOLD (64), since
         // that is where the heap cost stops scaling with the payload.
         for datagram_len in [32usize, 64, 1024] {
             for margin in [0usize, 1, 2, 4, 8, 12, 16, 24, 32, 64, 128, 512] {
-                let (achieved, result) = udp_round_trip(datagram_len, 2048, margin);
+                let (achieved, result) = udp_round_trip(datagram_len, 2048, margin, arm);
                 let verdict = match result {
                     Ok(()) => "ok".to_string(),
                     Err(reason) => reason,
                 };
                 let line = format!(
-                    "datagram {datagram_len:>5} margin req {margin:>4} got {achieved:>5} : {verdict}"
+                    "[{arm:?}] datagram {datagram_len:>5} margin req {margin:>4} got \
+                     {achieved:>5} : {verdict}"
                 );
-                println!("{line}");
                 eprintln!("{line}");
                 cells.push((datagram_len, achieved, verdict));
             }
         }
 
-        let corrupted: Vec<_> = cells
+        let corrupted: Vec<String> = cells
             .iter()
             .filter(|(_, _, v)| v != "ok" && !v.contains("returned an error term"))
+            .map(|(len, achieved, v)| format!("datagram {len} achieved margin {achieved}: {v}"))
             .collect();
-        let clean: Vec<_> = cells.iter().filter(|(_, _, v)| v == "ok").collect();
-        let summary = format!(
-            "site 10: {} corruption cells, {} clean cells",
-            corrupted.len(),
-            clean.len()
-        );
-        println!("{summary}");
-        eprintln!("{summary}");
-        for (len, achieved, verdict) in &corrupted {
-            println!("site 10 RED at datagram {len} achieved margin {achieved}: {verdict}");
-            eprintln!("site 10 RED at datagram {len} achieved margin {achieved}: {verdict}");
-        }
-
-        // Same floor report as site 5: a clean cell whose ACHIEVED margin is
-        // near the full heap had no pressure applied and is not evidence of
-        // anything about the site.
+        let clean = cells.iter().filter(|(_, _, v)| v == "ok").count();
         let floor = cells
             .iter()
             .map(|(_, achieved, _)| *achieved)
             .min()
             .unwrap_or(0);
+        // A clean cell whose ACHIEVED margin is near the full heap had no
+        // pressure applied and is not evidence of anything about the site.
         let no_pressure = cells
             .iter()
             .filter(|(_, achieved, _)| *achieved > 2048 / 2)
             .count();
-        let floor_note = format!(
-            "site 10 pre-fill floor: smallest achieved margin {floor} words; \
-             {no_pressure} of {} cells ended with more than half the heap free \
-             (pre-fill collected and reset — NO pressure applied, not evidence)",
+
+        eprintln!(
+            "site 10 [{arm:?}]: {} corrupt, {clean} clean; pre-fill floor {floor} words; \
+             {no_pressure} of {} cells ended with more than half the heap free (NO pressure \
+             applied, not evidence)",
+            corrupted.len(),
             cells.len()
         );
-        println!("{floor_note}");
-        eprintln!("{floor_note}");
+        for row in &corrupted {
+            eprintln!("site 10 [{arm:?}] RED {row}");
+        }
 
-        assert!(!clean.is_empty(), "control: some cell must be clean");
+        (corrupted, clean, floor, no_pressure, cells.len())
+    }
+
+    /// AR-1 row 4, site 10 (`ip`) — ✅ INVERTED.
+    ///
+    /// The control arm is asserted FIRST and keeps the pre-fix probe's claims:
+    /// some cell must be clean (or the reader is broken rather than the site
+    /// defective) and some cell must corrupt (or the sweep failed to apply
+    /// pressure, which is UNRESOLVED and not a defence). The pre-fill floor and
+    /// the no-pressure count are reported for BOTH arms so a reader can see the
+    /// fixed arm's cleanliness was measured under the same pressure, not under
+    /// none.
+    #[test]
+    fn ar1_site10_finish_udp_recv_band() {
+        // ⛔⛔ POSITIVE CONTROL FIRST, and it licenses everything below it.
+        let (control_red, control_clean, _, control_no_pressure, control_cells) =
+            sweep(Arm::UnrootedReplica);
+
         assert!(
-            !corrupted.is_empty(),
-            "site 10: no cell corrupted the carrier — every cell clean or refused. Under the \
-             site-14 law that is UNRESOLVED, not defended: the sweep failed to apply pressure."
+            control_clean > 0,
+            "control: some cell must be clean, or the reader is broken rather than the site \
+             defective"
+        );
+        assert!(
+            !control_red.is_empty(),
+            "POSITIVE CONTROL DEAD: the unrooted replica no longer corrupts the carrier at any \
+             cell. The pressure regime is gone, so the fixed arm's success below would mean \
+             nothing."
+        );
+        assert!(
+            control_no_pressure < control_cells,
+            "POSITIVE CONTROL IS VACUOUS: all {control_cells} cells ended with more than half \
+             the heap free, so the sweep never applied pressure to anything"
+        );
+
+        // ✅ THE CLAIM. Same grid, same heap, through the rooted body.
+        let (fixed_red, fixed_clean, _, fixed_no_pressure, fixed_cells) = sweep(Arm::Fixed);
+
+        assert!(
+            fixed_red.is_empty(),
+            "site 10 is NOT rooted: {} cells still lost the carrier, while the replica corrupted \
+             {} in the same run.\n{}",
+            fixed_red.len(),
+            control_red.len(),
+            fixed_red.join("\n")
+        );
+        assert!(
+            fixed_clean > 0,
+            "site 10: the fixed arm produced no clean cell at all — a dead reader, not a \
+             defended site"
+        );
+        assert!(
+            fixed_no_pressure < fixed_cells,
+            "site 10: every fixed-arm cell ended with more than half the heap free, so its \
+             cleanliness was measured under NO pressure and proves nothing"
         );
     }
 }
