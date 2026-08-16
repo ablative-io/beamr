@@ -196,8 +196,13 @@ fn json_value_to_term(
             // the pre-fix order. This does NOT resolve the ordering-by-raw-value
             // hazard; it inherits it, on valid pointers.
             //
-            // ⛔ `alloc_sorted_map` STAYS: `object_to_term` (the JsValue path,
-            // a separate crossing) is still its caller.
+            // ⛔ SUPERSEDED BY TRANCHE 3, and left here as a correction rather
+            // than quietly overwritten: this comment used to read
+            // "`alloc_sorted_map` STAYS: `object_to_term` (the JsValue path, a
+            // separate crossing) is still its caller." That was true when site
+            // 16 landed and stopped being true when site 17 was rooted. The
+            // helper's last PRODUCTION caller is gone and it now lives in the
+            // test module, serving only the pre-fix replica.
             let mut parked: Option<JsValue> = None;
             let built = context.with_accumulator(|context, terms| {
                 for (key, value) in object {
@@ -253,14 +258,37 @@ fn array_to_term(
     context: &mut ProcessContext<'_>,
     depth: usize,
 ) -> Result<Term, JsValue> {
-    let mut tail = Term::NIL;
-    for index in (0..array.length()).rev() {
-        let head = value_to_term(array.get(index), context, depth)?;
-        tail = context
-            .alloc_cons(head, tail)
-            .map_err(|_| JsValue::from_str("failed to allocate cons term"))?;
+    // AR-1 site 13 — the JsValue path's twin of site 12, and the reason
+    // tranche 2 alone left this file HALF-FIXED: `json_value_to_term`'s Array
+    // arm was rooted while this one — reachable from every embedder that enters
+    // through `JsValue` rather than `serde_json` — kept the boxed cons `tail`
+    // live across the recursive `value_to_term`, which allocates.
+    //
+    // Same remedy and the same direction flip as site 12: the old body walked
+    // `.rev()` and prepended, this one walks forward and appends. The resulting
+    // list is in the SAME ORDER; what changes is the order the elements are
+    // ALLOCATED in, a heap-layout difference and not a term one.
+    //
+    // `depth` is passed through unchanged, exactly as the pre-fix body did —
+    // the depth wall belongs to `value_to_term` and this remedy does not move it.
+    let mut parked: Option<JsValue> = None;
+    let built = context.with_accumulator(|context, terms| {
+        for index in 0..array.length() {
+            let element = match value_to_term(array.get(index), context, depth) {
+                Ok(element) => element,
+                Err(error) => {
+                    parked = Some(error);
+                    return Err(Term::NIL);
+                }
+            };
+            terms.push(context, element)?;
+        }
+        terms.to_list(context)
+    });
+    match built {
+        Ok(term) => Ok(term),
+        Err(_) => Err(parked.unwrap_or_else(|| JsValue::from_str("failed to allocate cons term"))),
     }
-    Ok(tail)
 }
 
 fn object_to_term(
@@ -268,34 +296,62 @@ fn object_to_term(
     context: &mut ProcessContext<'_>,
     depth: usize,
 ) -> Result<Term, JsValue> {
+    // AR-1 site 17 — the JsValue path's twin of site 16, and the site the
+    // landing gate's row 4 names explicitly. The `Vec<(Term, Term)>` of boxed
+    // key/value pairs was held live across BOTH `alloc_binary` and the
+    // recursive `value_to_term`, either of which can collect and move them.
+    //
+    // ⚠️ `sort_pairs_by_key` sorts by RAW TERM VALUE, exactly as the pre-fix
+    // `alloc_sorted_map` did — but on pointers that are LIVE rather than
+    // possibly stale. This inherits the ground pack's sibling
+    // ordering-by-raw-value hazard on valid pointers; it does not settle it.
+    //
+    // ⛔ `alloc_sorted_map` had its LAST PRODUCTION CALLER here. It survives only
+    // to serve the pre-fix replicas that keep this site's control pressed, and
+    // now sits at file scope behind a `#[cfg(test)]` gate — TWO sibling test
+    // modules need it (sites 13/17 and sites 12/16), and duplicating a
+    // control's helper is how two copies drift apart.
     let object = Object::from(value);
     let keys = Object::keys(&object);
-    let mut pairs = Vec::with_capacity(keys.length() as usize);
-    for index in 0..keys.length() {
-        let key_value = keys.get(index);
-        let key = key_value
-            .as_string()
-            .ok_or_else(|| JsValue::from_str("JavaScript object key was not a string"))?;
-        let property = Reflect::get(&object, &key_value)?;
-        let key_term = context
-            .alloc_binary(key.as_bytes())
-            .map_err(|_| JsValue::from_str("failed to allocate map key binary"))?;
-        let value_term = value_to_term(property, context, depth)?;
-        pairs.push((key_term, value_term));
+    let mut parked: Option<JsValue> = None;
+    let built = context.with_accumulator(|context, terms| {
+        for index in 0..keys.length() {
+            let key_value = keys.get(index);
+            let Some(key) = key_value.as_string() else {
+                parked = Some(JsValue::from_str("JavaScript object key was not a string"));
+                return Err(Term::NIL);
+            };
+            let property = match Reflect::get(&object, &key_value) {
+                Ok(property) => property,
+                Err(error) => {
+                    parked = Some(error);
+                    return Err(Term::NIL);
+                }
+            };
+            let key_term = match context.alloc_binary(key.as_bytes()) {
+                Ok(term) => term,
+                Err(_) => {
+                    parked = Some(JsValue::from_str("failed to allocate map key binary"));
+                    return Err(Term::NIL);
+                }
+            };
+            terms.push(context, key_term)?;
+            let value_term = match value_to_term(property, context, depth) {
+                Ok(term) => term,
+                Err(error) => {
+                    parked = Some(error);
+                    return Err(Term::NIL);
+                }
+            };
+            terms.push(context, value_term)?;
+        }
+        terms.sort_pairs_by_key(context)?;
+        terms.to_map_pairs(context)
+    });
+    match built {
+        Ok(term) => Ok(term),
+        Err(_) => Err(parked.unwrap_or_else(|| JsValue::from_str("failed to allocate map term"))),
     }
-    alloc_sorted_map(pairs, context)
-}
-
-fn alloc_sorted_map(
-    mut pairs: Vec<(Term, Term)>,
-    context: &mut ProcessContext<'_>,
-) -> Result<Term, JsValue> {
-    pairs.sort_by_key(|(key, _)| *key);
-    let keys = pairs.iter().map(|(key, _)| *key).collect::<Vec<_>>();
-    let values = pairs.iter().map(|(_, value)| *value).collect::<Vec<_>>();
-    context
-        .alloc_map(&keys, &values)
-        .map_err(|_| JsValue::from_str("failed to allocate map term"))
 }
 
 fn term_to_js_value_at_depth(
@@ -435,6 +491,28 @@ fn check_depth(depth: usize) -> Result<(), JsValue> {
     }
 }
 
+// RE-HOMED FROM PRODUCTION BY TRANCHE 3, byte-for-byte. Site 17's remedy removed
+// its LAST PRODUCTION CALLER; the only remaining callers are the pre-fix replicas
+// in the two test modules below, which must keep the unrooted shape verbatim for
+// their controls to stay pressed.
+//
+// It sits at file scope behind a `#[cfg(test)]` gate rather than inside either
+// test module because BOTH sibling test modules need it — `tests` for the site
+// 13/17 replicas and `ar1_row4_sites_12_16_tests` for the site 12/16 one — and
+// duplicating a control's helper is how two copies drift apart.
+#[cfg(all(test, target_arch = "wasm32"))]
+fn alloc_sorted_map(
+    mut pairs: Vec<(Term, Term)>,
+    context: &mut ProcessContext<'_>,
+) -> Result<Term, JsValue> {
+    pairs.sort_by_key(|(key, _)| *key);
+    let keys = pairs.iter().map(|(key, _)| *key).collect::<Vec<_>>();
+    let values = pairs.iter().map(|(_, value)| *value).collect::<Vec<_>>();
+    context
+        .alloc_map(&keys, &values)
+        .map_err(|_| JsValue::from_str("failed to allocate map term"))
+}
+
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::*;
@@ -459,6 +537,396 @@ mod tests {
             term = cons.tail();
         }
         values
+    }
+
+    // ================= AR-1 TRANCHE 3 — SITES 13 + 17, TWO-ARMED =================
+    //
+    // Cally Ray's row-4 probes established RED AT PARENT for these two sites at
+    // `308b448`. That red was re-established AT THE SHIP TREE `ae29d2c` before
+    // either site was touched — 83 passed / 2 failed, both probes failing, the
+    // 83 being exactly the pre-existing baseline so the failures were
+    // attributable to the probes and not to collateral breakage. Transcript:
+    // `gate-logs/111/tranche3/red-at-ae29d2c.log`.
+    //
+    // ⭐ The probes are INVERTED here rather than left as they were. Her probes
+    // drive PRODUCTION `value_to_term`, so the remedy that makes them pass also
+    // destroys them as evidence: a green from a single-armed probe cannot tell
+    // "the accumulator survived a move" from "no move happened" or "the input
+    // stopped pressing". The replicas below carry the PRE-FIX bodies verbatim so
+    // the control survives its own remedy.
+    //
+    // ⛔ `*_unrooted_replica` MUST NEVER BE FIXED. They are the positive control.
+
+    fn value_to_term_unrooted_replica(
+        value: JsValue,
+        context: &mut ProcessContext<'_>,
+        depth: usize,
+    ) -> Result<Term, JsValue> {
+        check_depth(depth)?;
+
+        if value.is_null() {
+            return Ok(Term::atom(Atom::NIL));
+        }
+        if value.is_undefined() {
+            return Err(JsValue::from_str(
+                "cannot convert JavaScript undefined to a BEAM term",
+            ));
+        }
+        if let Some(boolean) = value.as_bool() {
+            return Ok(Term::atom(if boolean { Atom::TRUE } else { Atom::FALSE }));
+        }
+        if let Some(number) = value.as_f64() {
+            return number_to_term(number, context);
+        }
+        if let Some(string) = value.as_string() {
+            return context
+                .alloc_binary(string.as_bytes())
+                .map_err(|_| JsValue::from_str("failed to allocate binary term"));
+        }
+        // ⭐ RECURSES INTO THE REPLICA, not into production. A replica that
+        // recursed into the fixed body would be pre-fix only at the top level
+        // and would quietly stop pressing at depth.
+        if Array::is_array(&value) {
+            return array_to_term_unrooted_replica(&Array::from(&value), context, depth + 1);
+        }
+        if value.is_object() {
+            return object_to_term_unrooted_replica(value, context, depth + 1);
+        }
+
+        Err(JsValue::from_str(
+            "unsupported JavaScript value for BEAM term conversion",
+        ))
+    }
+
+    // Site 13's PRE-FIX body, verbatim from `ae29d2c`.
+    fn array_to_term_unrooted_replica(
+        array: &Array,
+        context: &mut ProcessContext<'_>,
+        depth: usize,
+    ) -> Result<Term, JsValue> {
+        let mut tail = Term::NIL;
+        for index in (0..array.length()).rev() {
+            let head = value_to_term_unrooted_replica(array.get(index), context, depth)?;
+            tail = context
+                .alloc_cons(head, tail)
+                .map_err(|_| JsValue::from_str("failed to allocate cons term"))?;
+        }
+        Ok(tail)
+    }
+
+    // Site 17's PRE-FIX body, verbatim from `ae29d2c`, including its call to
+    // the re-homed `alloc_sorted_map`.
+    fn object_to_term_unrooted_replica(
+        value: JsValue,
+        context: &mut ProcessContext<'_>,
+        depth: usize,
+    ) -> Result<Term, JsValue> {
+        let object = Object::from(value);
+        let keys = Object::keys(&object);
+        let mut pairs = Vec::with_capacity(keys.length() as usize);
+        for index in 0..keys.length() {
+            let key_value = keys.get(index);
+            let key = key_value
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("JavaScript object key was not a string"))?;
+            let property = Reflect::get(&object, &key_value)?;
+            let key_term = context
+                .alloc_binary(key.as_bytes())
+                .map_err(|_| JsValue::from_str("failed to allocate map key binary"))?;
+            let value_term = value_to_term_unrooted_replica(property, context, depth)?;
+            pairs.push((key_term, value_term));
+        }
+        alloc_sorted_map(pairs, context)
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum JsArm {
+        Fixed,
+        UnrootedReplica,
+    }
+
+    fn convert_js(
+        value: JsValue,
+        context: &mut ProcessContext<'_>,
+        arm: JsArm,
+    ) -> Result<Term, JsValue> {
+        match arm {
+            JsArm::Fixed => value_to_term(value, context, 0),
+            JsArm::UnrootedReplica => value_to_term_unrooted_replica(value, context, 0),
+        }
+    }
+
+    fn arm_name(arm: JsArm) -> &'static str {
+        match arm {
+            JsArm::Fixed => "FIXED",
+            JsArm::UnrootedReplica => "CONTROL",
+        }
+    }
+
+    // A refusal is NOT corruption and is scored as its own named outcome — a
+    // broken rooting can produce either, and folding them together would let a
+    // refusal be read as a clean run.
+    #[derive(PartialEq, Eq, Debug)]
+    enum Outcome {
+        Clean,
+        Corrupt,
+        Refused,
+    }
+
+    fn list_to_vec_checked(mut term: Term) -> Option<Vec<Term>> {
+        let mut values = Vec::new();
+        while !term.is_nil() {
+            let cons = Cons::new(term)?;
+            values.push(cons.head());
+            term = cons.tail();
+            if values.len() > 10_000 {
+                return None;
+            }
+        }
+        Some(values)
+    }
+
+    fn array_round_trip(count: u32, pid: u64, arm: JsArm) -> Outcome {
+        let table = atom_table();
+        let mut process =
+            beamr::process::Process::new(pid, beamr::process::heap::DEFAULT_HEAP_SIZE);
+
+        // The elements MUST be strings, not numbers: a small integer is an
+        // IMMEDIATE, so `value_to_term` returns it without allocating and the
+        // carrier is never live across an allocation.
+        let array = Array::new();
+        for index in 0..count {
+            array.push(&JsValue::from_str(&format!("element-{index}")));
+        }
+
+        let before = process.heap().total_capacity();
+        let built = {
+            let mut context = ProcessContext::new();
+            context.set_atom_table(Some(Arc::clone(&table)));
+            context.attach_process(&mut process, 0);
+            convert_js(JsValue::from(array), &mut context, arm)
+        };
+        let after = process.heap().total_capacity();
+
+        let classify = || {
+            let Ok(term) = built else {
+                return Outcome::Refused;
+            };
+            let Some(values) = list_to_vec_checked(term) else {
+                return Outcome::Corrupt;
+            };
+            if values.len() != count as usize {
+                return Outcome::Corrupt;
+            }
+            for (index, value) in values.iter().enumerate() {
+                let js = term_to_js_value(*value, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+                if js.as_string().as_deref() != Some(format!("element-{index}").as_str()) {
+                    return Outcome::Corrupt;
+                }
+            }
+            Outcome::Clean
+        };
+        let outcome = classify();
+
+        assert_pressed(before, after, count, arm, &outcome);
+        outcome
+    }
+
+    // POSITIVE CONTROL, per cell — and it is deliberately conditioned on the
+    // outcome rather than demanded unconditionally.
+    //
+    // ⭐ `after > before` on `total_capacity()` witnesses a heap RESIZE, not a
+    // COLLECTION. There is no collection counter to ask: `total_capacity` is the
+    // heap's only observable. A pre-fix replica can REFUSE without the heap ever
+    // resizing, so an unconditional resize demand mis-scores the exact arm the
+    // control exists to grade — measured here as `466 -> 466, arm CONTROL,
+    // built_ok=false`, unchanged when the input was raised 40 -> 60, which is
+    // what identified it as structural rather than a threshold.
+    //
+    // What the control is FOR is preventing a FALSE CLEAN. A Refused or Corrupt
+    // outcome is self-evidently pressed — the body failed. So the witness is
+    // required exactly where a green could otherwise be bought by an input too
+    // small to press anything, and a Clean cell with no pressure still fails
+    // loudly on EITHER arm.
+    fn assert_pressed(before: usize, after: usize, count: u32, arm: JsArm, outcome: &Outcome) {
+        if *outcome != Outcome::Clean {
+            return;
+        }
+        assert!(
+            after > before,
+            "heap never grew ({before} -> {after}) at count {count} on the {} arm, \
+             yet the round trip came back Clean -- this cell applied NO memory \
+             pressure, so its Clean is not evidence",
+            arm_name(arm)
+        );
+    }
+
+    fn object_round_trip(count: u32, pid: u64, arm: JsArm) -> Outcome {
+        let table = atom_table();
+        let mut process =
+            beamr::process::Process::new(pid, beamr::process::heap::DEFAULT_HEAP_SIZE);
+
+        let object = Object::new();
+        for index in 0..count {
+            assert!(
+                Reflect::set(
+                    &object,
+                    &JsValue::from_str(&format!("key-{index:03}")),
+                    &JsValue::from_str(&format!("value-{index}")),
+                )
+                .is_ok()
+            );
+        }
+
+        let before = process.heap().total_capacity();
+        let built = {
+            let mut context = ProcessContext::new();
+            context.set_atom_table(Some(Arc::clone(&table)));
+            context.attach_process(&mut process, 0);
+            convert_js(JsValue::from(object), &mut context, arm)
+        };
+        let after = process.heap().total_capacity();
+
+        let classify = || {
+            let Ok(term) = built else {
+                return Outcome::Refused;
+            };
+            let js = term_to_js_value(term, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+            for index in 0..count {
+                let got = Reflect::get(&js, &JsValue::from_str(&format!("key-{index:03}")))
+                    .unwrap_or(JsValue::UNDEFINED);
+                if got.as_string().as_deref() != Some(format!("value-{index}").as_str()) {
+                    return Outcome::Corrupt;
+                }
+            }
+            Outcome::Clean
+        };
+        let outcome = classify();
+
+        assert_pressed(before, after, count, arm, &outcome);
+        outcome
+    }
+
+    // AR-1 SITE 13 — `array_to_term`, the JsValue path's threaded tail.
+    #[wasm_bindgen_test]
+    fn ar1_site13_array_to_term_two_armed() {
+        let mut pid = 100;
+        let mut control_pressed = 0;
+        for count in [200_u32, 400, 800] {
+            pid += 1;
+            let control = array_round_trip(count, pid, JsArm::UnrootedReplica);
+            if control != Outcome::Clean {
+                control_pressed += 1;
+            }
+            pid += 1;
+            let fixed = array_round_trip(count, pid, JsArm::Fixed);
+            assert_eq!(
+                fixed,
+                Outcome::Clean,
+                "SHIPPED site 13 must be clean at count {count}, got {fixed:?}"
+            );
+        }
+        assert!(
+            control_pressed > 0,
+            "the site-13 CONTROL was Clean on EVERY cell -- the pre-fix shape is \
+             not being pressed, so the shipped arm's green is worth nothing"
+        );
+    }
+
+    // AR-1 SITE 17 — `object_to_term`, the JsValue path's pair accumulator, and
+    // the site the landing gate's row 4 names explicitly.
+    #[wasm_bindgen_test]
+    fn ar1_site17_object_to_term_two_armed() {
+        let mut pid = 200;
+        let mut control_pressed = 0;
+        for count in [60_u32, 90, 120] {
+            pid += 1;
+            let control = object_round_trip(count, pid, JsArm::UnrootedReplica);
+            if control != Outcome::Clean {
+                control_pressed += 1;
+            }
+            pid += 1;
+            let fixed = object_round_trip(count, pid, JsArm::Fixed);
+            assert_eq!(
+                fixed,
+                Outcome::Clean,
+                "SHIPPED site 17 must be clean at count {count}, got {fixed:?}"
+            );
+        }
+        assert!(
+            control_pressed > 0,
+            "the site-17 CONTROL was Clean on EVERY cell -- the pre-fix shape is \
+             not being pressed, so the shipped arm's green is worth nothing"
+        );
+    }
+
+    // ⭐ NESTING, which neither flat sweep above can reach: both fixed arms
+    // recurse into themselves, so a nested array-of-objects opens an
+    // accumulator scope INSIDE an open one, and `rooted_push` refuses unless
+    // its handle is innermost. The flat sweeps use string leaves and never
+    // recurse, so this is the only cell that exercises the nesting.
+    #[wasm_bindgen_test]
+    fn ar1_sites_13_17_nested_scopes_open_inside_one_another() {
+        let table = atom_table();
+        let mut process =
+            beamr::process::Process::new(300, beamr::process::heap::DEFAULT_HEAP_SIZE);
+
+        let outer = Array::new();
+        for group in 0..40 {
+            let object = Object::new();
+            for entry in 0..6 {
+                assert!(
+                    Reflect::set(
+                        &object,
+                        &JsValue::from_str(&format!("k{entry}")),
+                        &JsValue::from_str(&format!("g{group}-e{entry}")),
+                    )
+                    .is_ok()
+                );
+            }
+            outer.push(&object);
+        }
+
+        let before = process.heap().total_capacity();
+        let built = {
+            let mut context = ProcessContext::new();
+            context.set_atom_table(Some(Arc::clone(&table)));
+            context.attach_process(&mut process, 0);
+            convert_js(JsValue::from(outer), &mut context, JsArm::Fixed)
+        };
+        let after = process.heap().total_capacity();
+
+        // Same ordering rule as `assert_pressed`, and it is the inversion of the
+        // flaw in the probe this test descends from: a refusal is graded on its
+        // own terms FIRST, because a resize guard placed ahead of it would panic
+        // about pressure while saying nothing about the hazard that actually
+        // fired. The pressure witness then guards the success path, which is the
+        // only place a false clean can hide.
+        let term = built.expect(
+            "nested array-of-objects converts -- a refusal here is the \
+             accumulator-inside-an-accumulator hazard, NOT an allocation limit",
+        );
+
+        assert!(
+            after > before,
+            "heap never grew ({before} -> {after}) -- the nested cell converted \
+             cleanly without applying any memory pressure, so it proves nothing \
+             about scope nesting"
+        );
+        let groups = list_to_vec_checked(term).expect("nested conversion is a proper list");
+        assert_eq!(groups.len(), 40, "outer list length after the collection");
+        for (group, value) in groups.iter().enumerate() {
+            let js = term_to_js_value(*value, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+            for entry in 0..6 {
+                let got = Reflect::get(&js, &JsValue::from_str(&format!("k{entry}")))
+                    .unwrap_or(JsValue::UNDEFINED);
+                assert_eq!(
+                    got.as_string().as_deref(),
+                    Some(format!("g{group}-e{entry}").as_str()),
+                    "group {group} entry {entry} survived nested scopes intact"
+                );
+            }
+        }
     }
 
     #[wasm_bindgen_test]

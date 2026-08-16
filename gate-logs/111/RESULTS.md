@@ -635,3 +635,226 @@ a low count is a measurement rather than a silence. `cfg(test)` hits are
 deliberately not filtered — a hunt that hides its own control certifies
 nothing — and production still carries `convert.rs:273`, which is site 17,
 correctly visible and correctly unfixed.
+
+# TRANCHE 3 — SITES 13 + 17, THE JsValue PATH
+
+Re-opened by the lead's ruling after this lane's own finding that `convert.rs`
+was left HALF-FIXED: tranche 2 rooted the `serde_json` path (sites 12, 16) while
+its twin the JsValue path (sites 13, 17) stayed red on both arms. Scope is
+exactly those two sites; nothing else rides.
+
+## ⛔ THE PRECONDITION, AND IT IS THE MOST IMPORTANT PART OF THIS TRANCHE
+
+The red-at-parent for these sites was demonstrated by Cally Ray at `308b448`.
+By the time the tranche re-opened that evidence was **sixteen commits and one
+landed tranche old**, and the file had grown 848 → 1167 lines in between.
+
+⭐ **A RED THAT PREDATES THE TREE YOU ARE FIXING IS NOT A RED AT THE TREE YOU ARE
+FIXING.** So her two probes were applied **verbatim** to the ship tree
+`ae29d2c` and re-run BEFORE either site was touched:
+
+```
+test result: FAILED. 83 passed; 2 failed; 0 ignored
+  site 17 probe: JsValue("failed to allocate map term")
+  site 13 probe: "converted JavaScript array is a proper list"
+```
+
+Transcript: `gate-logs/111/tranche3/red-at-ae29d2c.log`.
+
+**The 83 is exactly the pre-existing baseline**, so the two failures are
+attributable to the probes rather than to collateral breakage — the denominator
+is doing the attribution, not my reading of it. Both failure modes are
+stale-pointer shaped (a corrupt cons chain; a map allocation that cannot be
+built from moved keys) rather than allocation-exhaustion shaped.
+
+After the fix, at the same tree: **85 passed / 0 failed**, `wasm32-check` rc 0.
+Transcript: `gate-logs/111/tranche3/green-after-fix.log`.
+
+## The two remedies
+
+Both mirror their already-landed twins exactly.
+
+- **Site 13** `array_to_term` — the threaded tail, same carrier as sites 11 and
+  12. Same direction flip as site 12: the pre-fix body walked `.rev()` and
+  prepended, the remedy walks forward and appends. **Same list order**; what
+  changes is allocation order. `depth` is passed through unchanged — the depth
+  wall belongs to `value_to_term` and this remedy does not move it.
+- **Site 17** `object_to_term` — the `Vec<(Term, Term)>` of boxed pairs held
+  live across BOTH `alloc_binary` and the recursive `value_to_term`. Remedy is
+  site 16's: accumulate, `sort_pairs_by_key`, `to_map_pairs`.
+  ⚠️ That sorts by RAW TERM VALUE exactly as `alloc_sorted_map` did, but on
+  pointers that are LIVE rather than possibly stale — it **inherits** the ground
+  pack's ordering-by-raw-value hazard on valid pointers rather than settling it.
+
+## A comment that outlived its fact, corrected rather than overwritten
+
+Site 16's landed commit carries the line *"⛔ `alloc_sorted_map` STAYS:
+`object_to_term` (the JsValue path, a separate crossing) is still its caller."*
+**True when site 16 landed, false the moment site 17 was rooted.** It is left in
+place as an explicit correction rather than silently replaced, because the fact
+it asserted is exactly the kind a later reader would rely on.
+
+`alloc_sorted_map`'s last PRODUCTION caller is gone. It now sits at file scope
+behind a `#[cfg(test)]` gate, because **two sibling test modules need it** — the
+sites 13/17 replicas and the sites 12/16 one — and duplicating a control's
+helper is how two copies drift apart. My first attempt put it inside one test
+module and the compiler refused it from the other; the error was the useful part.
+
+## The inversion, and why the probes could not be left as they were
+
+Cally's probes drive PRODUCTION `value_to_term`. **The remedy that makes them
+pass also destroys them as evidence** — a single-armed green cannot separate
+"the accumulator survived a move" from "no move happened" or "the input stopped
+pressing". So they are INVERTED into two-armed tests carrying
+`value_to_term_unrooted_replica`, which holds sites 13's and 17's PRE-FIX bodies
+verbatim.
+
+⭐ **The replica recurses into ITSELF, not into production.** A replica that
+recursed into the fixed body would be pre-fix only at the top level and would
+quietly stop pressing at depth — a control that is unpressed everywhere except
+its first frame.
+
+Each test asserts the shipped arm Clean on every cell **and** that the control
+was non-Clean on at least one, so a control that stops pressing fails loudly
+instead of certifying by silence. A refusal is scored as its own named outcome,
+never folded into "clean" — a broken rooting can produce either.
+
+
+## ⭐⭐ THE CONTROL FAILED, AND IT WAS RIGHT TO — THE FINDING IS THE INSTRUMENT'S
+
+The first two-armed run went red on my own per-cell positive control, not on
+either arm's result:
+
+```
+heap never grew (466 -> 466) at count 40 -- this cell applied NO collection
+pressure, so neither arm's result is evidence
+```
+
+The obvious reading is "the input is too small", and I acted on it: the object
+cells were raised 40 → 60. **The rerun reported the identical `466 -> 466`.**
+That non-movement is the whole finding — a threshold problem moves when you move
+the threshold.
+
+A discriminating diagnostic (print the arm and whether the body returned Ok)
+settled it rather than leaving it to inference:
+
+```
+heap never grew (466 -> 466) at count 60 arm CONTROL built_ok=false
+```
+
+⭐⭐ **`after > before` ON `total_capacity()` WITNESSES A HEAP *RESIZE*, NOT A
+*COLLECTION*.** The pre-fix object replica REFUSES — `failed to allocate map
+term`, exactly the stale-key signature this tranche is about — and it refuses
+*earlier than the heap ever resizes*. So a resize-based pressure guard scores a
+correctly-failing control as an unpressed cell. **The guard was mis-grading the
+one arm it exists to grade, and it was doing so by being right about the wrong
+quantity.** There is no collection counter anywhere on the heap to ask instead:
+`total_capacity()` (`crates/beamr/src/process/heap.rs:384`) is the only
+observable.
+
+### The remedy, and why it is not a weakened guard
+
+A guard that fails an honest run is usually deleted. This one is **conditioned
+instead, on the outcome it is grading:**
+
+> A `Refused` or `Corrupt` outcome is **self-evidently pressed** — the body
+> failed. Only a `Clean` outcome can be bought by an input too small to press
+> anything. So the pressure witness is required exactly where a false clean is
+> possible: on `Clean`, **on either arm**.
+
+This is strictly stronger where it matters and honest where it did not apply. A
+shipped arm that comes back Clean without a witnessed resize still fails loudly
+— and because the leg is now green, every `Clean` the fixed arm returned has a
+measured resize standing behind it. That is not read off the log; it is what
+the passing assert *means*.
+
+⚠️ Stated plainly so no later reader over-claims it: these controls infer
+collection pressure from **resizes**, because the heap exposes nothing else.
+That limitation is inherited, not introduced here, and it is now load-bearing
+across probes this lane did not write. Recorded as a finding; **a finding does
+not authorise its own follow-up**, so it is routed rather than acted on.
+
+### ⛔ THE SAME FLAW, INVERTED, IN THE PROBE THIS TEST DESCENDS FROM
+
+Cally's original site-17 probe could never have surfaced any of this. Its
+`.expect()` sits **inside** the scope, so on a refusal it panics **before its own
+heap-grew assert ever runs**. The control was unreachable in precisely the case
+it was built to grade, and had looked green by never executing.
+
+The ordering rule adopted here is that inversion: **grade the refusal on its own
+terms first, then let the pressure witness guard the success path** — the only
+path where a false clean can hide. The nested-scopes test was re-ordered to
+match, so all three cells now obey one rule rather than two.
+
+**This is the asleep-instrument family caught twice in one tranche — once in an
+inherited probe, once in my own replacement for it. Both times a guard rather
+than a failure did the work.**
+
+## The expired blocker, in the words it earned
+
+The evidence that these sites were red was real, and it was **sixteen commits and
+one landed tranche stale** by the time the tranche re-opened. Left unexamined it
+would have done one of two things: blocked the fix as unproven, or licensed it on
+a red that no longer described the tree. **A blocker that outlives its own
+resolution holds ruled work while looking like diligence — re-measure the
+BLOCKER, not the work.** Re-measuring it took one leg and produced a red at the
+ship tree with the baseline intact as its denominator.
+
+## THE LEDGER, AND THE COUNT MOVEMENT STATED OUT LOUD
+
+Rows 13 and 17 move `PENDING` → `STRUCTURALLY-ELIMINATED`, each carrying a named
+replacement construct and a `file:line` that **`ledger_check.py` verifies at the
+bytes**. That is the whole difference between a disposition and an assertion:
+the script re-reads the file and refuses if the construct is not on that line.
+
+⭐ **THE REFUSAL COUNT MOVES, AND THE INSTRUMENT SAYS SO ITSELF:**
+
+```
+BEFORE   ⛔ SIGN-OFF: 4 crossing(s) still PENDING: [4, 6, 13, 17]
+AFTER    ⛔ SIGN-OFF: 2 crossing(s) still PENDING: [4, 6]
+```
+
+`--sign-off` still exits **rc 2**, and it should: row 2 does not discharge while
+any crossing is silent. What changed is the size of the silence, from four sites
+to two, and the two that remain are named. Sites 4 and 6 were already answered as
+outside this tranche — both `verification_leg: native`, neither citing the wasm
+leg — so nothing here is waiting on them by accident.
+
+`--self-test` passes **10/10 with the STRUCTURALLY-ELIMINATED arm firing in BOTH
+directions**: it refuses a claim that is false at the bytes, and accepts one that
+is true. Either arm alone would be satisfied by a checker that always says the
+same thing.
+
+### ⭐⭐ THE CHECKER CAUGHT A ROT I WAS NOT LOOKING FOR — IN ROW 16
+
+Running it turned up an unrelated refusal:
+
+```
+site 16: replacement construct 'with_accumulator' is NOT present at
+crates/beamr-wasm/src/convert.rs:202 -- the claim is refuted at the bytes
+```
+
+Traced rather than patched. Nothing about site 16's remedy changed. The five
+lines that moved it 202 → 207 were added **directly above it, by this tranche's
+in-place correction of site 16's own "`alloc_sorted_map` STAYS" comment** — the
+comment that stopped being true the moment site 17 was rooted.
+
+**A DOCUMENTATION EDIT MOVED A MACHINE-VERIFIED ADDRESS.** And the asymmetry is
+the part worth keeping:
+
+| field | checked at the bytes? | how its rot behaved |
+|---|---|---|
+| `replacement_site` | **yes** | announced itself as rc 2 the same run, naming row and line |
+| `function_line` / `bind_line` | no | rows 13/17 drifted **+74** in silence; a human had to notice |
+
+Same class of rot, same file, same lane, same day — **caught instantly where an
+instrument was watching, and only by luck where none was.** That is an argument
+for extending the check to the pre-fix addresses, which is a change to Cally's
+script and therefore hers to make; it is routed, not made here.
+
+⛔ The pre-fix addresses on rows 13/17 are **deliberately NOT re-pointed again**.
+This lane's own fix moved their enclosing functions once more (`array_to_term`
+251 → 256, `object_to_term` 266 → 294), but the shape those addresses name no
+longer exists. They are historical pins to `ae29d2c`, the tree where the pre-fix
+body was last measured red. **Re-pointing an address for a shape that is gone
+would be inventing one.** Rows 12 and 16 were left the same way.
