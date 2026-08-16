@@ -352,3 +352,169 @@ The probe is deliberately NOT committed as a test: it asserts nothing, and a
 test pinning a KNOWN-OPEN defect would have to be rewritten the moment the
 defect is ruled and fixed. Routed to the lead for a ruling on whether the
 struct-field shape enters the population.
+
+# TRANCHES 1 AND 2 COMPLETE — 13 sites rooted, probes inverted
+
+Pin `ea7211a`, 15 commits ahead of `origin/main` `8d64fd3`. Nothing pushed,
+nothing tagged. Phase 4 (the seal) NOT started — it is held on Cally's §8.2,
+per the remedy proposal's own clause *"until ruled: no sink signature changes"*,
+which binds phase 4 and nothing earlier.
+
+## The sites
+
+Tranche 1 (native): 3, 14, 5, 2, 7, 8, 9, 1, 10, 11, 15.
+Tranche 2 (`beamr-wasm/src/convert.rs`): 12, 16.
+⛔ Site 4 untouched, probe still green, never inverted. Site 6 open — no
+serialised leg fell out naturally; Waffles has ruled it to after the seal.
+
+One commit per site, except 8+9, where a single loop carries both defects and
+one edit fixes both — disclosed in that commit rather than quietly merged.
+
+## What the inversions are worth
+
+**Every probe was INVERTED, never deleted, and every one carries a synthetic
+positive that survives the fix.** Without that, a post-fix green is the
+asleep-instrument reading: the same value whether the site is safe or the sweep
+stopped applying pressure.
+
+**REPLICA FIDELITY, cell-identical at five sites and not merely count-matched:**
+
+| site | the control and the reverted production body agreed on |
+|---|---|
+| 1 | args 253 + 254, at headroom 2 and 0 |
+| 10 | 5 = 5 corrupt, 31 = 31 clean |
+| 11 | element 635, same reason string |
+| 15 | `entry 16: key is not a binary — carrier went stale`, same string |
+| 12 + 16 | the whole band `(21, 27, 16, 8)`, cell for cell |
+
+That is what makes each control *calibrated* rather than merely plausible: the
+replica is not a body that also fails, it is a body that fails in the same place
+for the same reason.
+
+## Two hazards tranche 2 had that the native sites did not
+
+Both **measured**, neither argued from the shape of the code.
+
+1. **Recursion into an open accumulator scope.** `json_value_to_term`'s Array
+   arm recurses into itself, so a nested array opens an accumulator scope inside
+   an open one — and `rooted_push` refuses unless its handle is innermost. The
+   existing sweep is structurally incapable of testing this: its array elements
+   are strings, so it never recurses.
+   `ar1_site12_nested_arrays_open_an_accumulator_inside_an_open_one` drives
+   arrays of arrays at 3 shapes × 4 margins through both arms. The replica goes
+   red on those cells — which is the part that matters, because it proves the
+   fixture applies real collection pressure rather than being quietly unpressed
+   — and the shipped body is clean on every one. A refusal is scored there as
+   its own named outcome, since a refusal is exactly what a broken nesting
+   produces and the flat sweep counts refusals as "not corruption".
+2. **Detachment.** Every production caller in that file is detached, and
+   `with_rooted` returns `badarg` with no process attached. Had
+   `with_accumulator` not fallen back to owned storage, this fix would have
+   turned the entire production path into a refusal — a behaviour change wearing
+   a fix's clothes. The tier-2 test now runs both arms detached and asserts the
+   shipped one clean, on every run, rather than inheriting the guarantee from
+   the accumulator's own unit test.
+
+## The instrument finding that outranks the site count
+
+`crates/beamr/src/term/json.rs` is behind the **non-default `json` feature**.
+`cargo ... --features encode` does not compile it. Every per-site `--lib` and
+clippy leg run before site 11 was **structurally blind to sites 11 and 15** —
+greens from legs that had never compiled the code. Denominator 1855 with the
+feature on against 1838 without.
+
+⭐ **Caught by the DENOMINATOR** — a filtered run that matched 0 tests where I
+expected 1 — **not by any failure.** Canon's two all-features legs do reach the
+file, so nothing shipped uncovered; the hole was in the per-site legs. Sites 11
+and 15 were re-run on `--features encode,json`.
+
+## Census predictions, and the two that missed
+
+Sites 11, 1, 10, 15 and 12 hit their pre-registered census predictions exactly.
+The two misses are worth more than the hits:
+
+- **Sites 8+9** — predicted 40/26/14, measured 41/26/15. Measured at the real
+  parent rather than assumed: the parent IS 40/26/14, the production S3b hit
+  MOVED `:151 → :163` and survives the fix, and the new cfg(test) hit at `:634`
+  is my own replica. ⭐ **An inverted probe's replica can itself carry a classed
+  shape.**
+- **Site 16** — predicted 42/23/19 → 41/22/19, measured unchanged. Production
+  S3e fell 8 → 7 exactly as predicted, and production S3b rose 11 → 12, because
+  **the remedy itself** introduces `let key_term = match
+  context.alloc_binary(...) {`, a let-bound match with an ALLOC call inside the
+  hunt's window — the literal S3b definition. ⭐ **The fix can add a classed
+  shape too. Predict the removal, the fix's own addition, and the probe's.**
+  And that hit has **zero exposure**: the key is pushed on the very next line.
+  The census counts SHAPE, NOT DEFECT, and the remedy manufactured a production
+  false positive by construction.
+
+## Disclosed, not resolved
+
+`sort_pairs_by_key` (sites 15, 16) sorts by RAW TERM VALUE exactly as the
+pre-fix `sort_by_key` and `alloc_sorted_map` did — but on pointers that are live
+rather than possibly stale, so key ORDER can differ from pre-fix. This does not
+settle the ground pack's sibling ordering-by-raw-value hazard; it **inherits**
+it, on valid pointers.
+
+`alloc_sorted_map` stays in the wasm crate: `object_to_term`, the JsValue path
+(id 17), is a separate crossing outside these tranches and is still its caller.
+
+# PHASE 3 — THE FULL CANON BATTERY, PRE-REGISTERED AND RECONCILED
+
+Pin `ea7211a`. Prediction written and committed to
+`gate-logs/111/BATTERY-PREDICTION.md` **before the runner was launched**, with
+its own stop-conditions stated up front. Raw logs and per-leg rc at
+`gate-logs/111/battery/battery-ea7211a.{tsv,legN.log}`.
+
+## The reconciliation — three predicted legs, three exact hits
+
+⭐ **AXES NAMED, per the rider:** result-lines · passed · failed · ignored.
+
+| leg | predicted | measured | |
+|---|---|---|---|
+| `wasm-tests` | 2 / 83 / 0 / 0 | 2 / 83 / 0 / 0 | ✅ |
+| `tests` | 76 / 2144 / 0 / 0 | 76 / 2144 / 0 / 0 | ✅ |
+| `tests-all-features` | 76 / 2154 / 0 / 0 | 76 / 2154 / 0 / 0 | ✅ |
+
+All 8 legs rc 0. `SCORED == DECLARED == 8`. Runner marker **COMPLETE**, derived
+from the count and a stable pin rather than from an exit code — the exit code is
+not the verdict.
+
+Pin identical at open and close: `ea7211a390c1869d06297d98b4cdd46386086033`.
+
+The `+3 / +3 / +1` deltas were derived at the bytes with `git grep -c` against
+both refs rather than read off a diff, because this repo renders diffs
+side-by-side and a `^+`-anchored grep silently returns zero — which would have
+made the whole delta look like nothing at all. The `+3` is `accumulator.rs`'s own
+unit tests (phase 1, a file that did not exist at the base); the `+1` is site
+12's nested-scope test. **Thirteen sites, zero other new test functions: every
+other probe was INVERTED IN PLACE. The arms changed, the count did not.**
+
+## ⚠️ TWO READINGS I ALMOST GOT WRONG, BOTH CAUGHT BY MEASURING
+
+1. **A 7-row TSV is not a failed battery.** I first read the `.tsv` at 7 rows
+   against 8 declared legs — literally one of my own pre-registered stop
+   conditions (`SCORED != DECLARED`). It was not an abort: leg 8 was still
+   running, and `ps` showed `cargo test --workspace --all-features` live with its
+   log written one second earlier. ⭐ **A partial artefact and an aborted one look
+   identical on disk. The process table is what tells them apart** — and the
+   difference between "in flight" and "aborted" is the difference between waiting
+   and raising an alarm.
+2. **The runner's `tree pre: 2 → tree post: 3`** is a real delta and I did not
+   pre-register it. Itemised rather than explained away: the census is
+   `git status --porcelain -- . ':!.claude' | wc -l`, and the third entry is
+   `gate-logs/111/battery/` going from an empty directory (which git does not
+   list) to a populated one — the battery's own outputs. `git status
+   --untracked-files=no` is **EMPTY**: zero tracked files moved during the run.
+   The bytes that ran are the bytes that ship.
+
+## ⚠️ THE DISCLOSED BLIND SPOT, restated because a green must be read for what it covers
+
+Leg 5 (`tests`) runs `--features beamr/encode`, which does **not** compile
+`crates/beamr/src/term/json.rs` — that file sits behind the non-default `json`
+feature. **Sites 11 and 15 are invisible to leg 5 and always were.** Only leg 8
+(`tests-all-features`) reaches them. This was stated in the prediction before the
+run, not discovered in it, and it does not touch the `+3`: `accumulator.rs` is
+not feature-gated. Canon as a whole does reach every site; the hole was in the
+per-site legs I ran mid-lane, and it was caught by a DENOMINATOR — a filtered run
+matching 0 tests where I expected 1 — not by any failure.

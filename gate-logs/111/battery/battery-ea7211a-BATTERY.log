@@ -1,0 +1,34 @@
+# Runner stdout for the #111 canon battery at pin ea7211a, VERBATIM.
+# Provenance: the runner writes its marker to stdout only — it creates no
+# marker file. This is the harness-captured stdout of the launching command
+# (background task bzr1h6npi), copied unaltered. 27 lines through a tail -30
+# window, and the launcher's own first line is present, so nothing was cut.
+#
+pin ea7211a
+pin:      ea7211a390c1869d06297d98b4cdd46386086033
+tree pre: 2 modified
+opened:   2026-08-16T17:51:36Z
+legs declared: 8
+=== leg 1/8 : fmt ===
+    rc=0
+=== leg 2/8 : clippy ===
+    rc=0
+=== leg 3/8 : wasm32-check ===
+    rc=0
+=== leg 4/8 : wasm-tests ===
+    rc=0
+=== leg 5/8 : tests ===
+    rc=0
+=== leg 6/8 : blocking-call-in-native-bif ===
+    rc=0
+=== leg 7/8 : clippy-all-features ===
+    rc=0
+=== leg 8/8 : tests-all-features ===
+    rc=0
+--- scored: 8 / declared: 8 ---
+--- tree post: 3 ---
+--- pin post:  ea7211a390c1869d06297d98b4cdd46386086033 ---
+COMPLETE (derived: 8/8, pin stable)
+CLOSE 2026-08-16T17:56:54Z
+
+[exited with code 0]
