@@ -518,3 +518,120 @@ run, not discovered in it, and it does not touch the `+3`: `accumulator.rs` is
 not feature-gated. Canon as a whole does reach every site; the hole was in the
 per-site legs I ran mid-lane, and it was caught by a DENOMINATOR — a filtered run
 matching 0 tests where I expected 1 — not by any failure.
+
+# PHASE 5 — ROW-2 ACCOUNTING, AND WHAT IT REFUSES
+
+## Row 2, by name — 17/17 NAMED, ZERO SILENCES, and it does NOT discharge
+
+Row 2 as amended requires each of the seventeen to be exactly one of
+`SAFE-ROOTED` / `STRUCTURALLY-ELIMINATED` / `FIXED-UNVERIFIED`, with silence
+about a site being the failure. At this tip:
+
+| disposition | count | sites |
+|---|---|---|
+| `STRUCTURALLY-ELIMINATED` | 13 | 1, 2, 3, 5, 7, 8, 9, 10, 11, 12, 14, 15, 16 |
+| `PENDING` | 4 | 4, 6, 13, 17 |
+
+**Zero silences — and `PENDING` is not one of row 2's three permitted
+dispositions.** So the honest statement is that row 2 is **NOT dischargeable at
+this tip**, and the instrument says so at its own hands rather than at mine:
+
+```
+$ ledger_check.py --sign-off
+  checks fired: population, schema, file-presence, fixture-markers,
+                structural-evidence, sign-off-silence
+⛔ REFUSED:
+  SIGN-OFF: 4 crossing(s) still PENDING: [4, 6, 13, 17].
+            Silence about a site is the failure
+rc=2
+```
+
+`ledger_check.py` in default mode is rc 0 and consistent; `--sign-off` is rc 2.
+Both run, both reported. A pass in the mode that permits `PENDING` is not a
+row-2 discharge and is not offered as one.
+
+## ⛔⛔ SITES 13 AND 17 — THE FILE THIS LANE EDITED IS HALF-FIXED
+
+Sites 13 and 17 live in `crates/beamr-wasm/src/convert.rs` — **the same file
+tranche 2 just rooted sites 12 and 16 in** — and both already have
+**RED-AT-PARENT DEMONSTRATED** (by Cally Ray at `308b448`, unchanged by this
+lane). They were not in the dispatched tranche and I did not touch them.
+
+Read at the bytes at this tip, both shapes are fully present and unrepaired:
+
+- **site 13**, `array_to_term:251` — `let mut tail = Term::NIL` reassigned
+  across `value_to_term(...)`, which allocates; sink `alloc_cons`.
+- **site 17**, `object_to_term:266` — `pairs.push(...)` accumulating across
+  `value_to_term(property, ...)`; feeds `alloc_sorted_map`.
+
+⇒ **`convert.rs` now has one path rooted and its twin red.** `json_value_to_term`
+(the `serde_json` path, sites 12 + 16) is safe on both arms;
+`value_to_term`/`array_to_term`/`object_to_term` (the JsValue path, sites 13 +
+17) is red on both arms. **An embedder entering through JsValue gets nothing
+from tranche 2.** This is stated plainly so that "the wasm sites are done" can
+never be read off this lane.
+
+⭐ **AND THE REASON THEY WERE PARKED HAS ALREADY EXPIRED.** The gate's row 4
+deferred site 17 because a red-at-parent test needs "a wasm32 +
+`wasm-bindgen-test` + node leg nobody has costed." That leg was **PRICED at
+`308b448` at setup cost ZERO** — it was already installed, pinned in
+`rust-toolchain.toml`, and wired as `wasm-tests` in `gates.json:7` plus CI, and
+it ran green in this lane's own battery at 83 passed. **The blocker was
+discharged; the sites stayed parked behind it.** That is
+[[phantom-gate-law]] — a blocker that outlives its own resolution — and naming
+it is not the same as acting on it: **the tranche was dispatched, so re-opening
+it is the lead's call, not a follow-up my own finding authorises.**
+
+## ⚠️ AN ADDRESS ROT THIS LANE CAUSED, MEASURED AND REPAIRED
+
+The ledger recorded site 13 at `function_line 177` and site 17 at
+`bind_line 199`. Measured at this tip they are at **251** and **273**.
+
+Attributed rather than assumed, by reading both ancestors:
+
+- At the ledger's own registering commit `1f7e675`: `array_to_term` at 177,
+  `object_to_term` at 192.
+- At this lane's base `8d64fd3`: **identical, 177 and 192.**
+
+⇒ The addresses were correct until this lane, and **the drift is entirely
+mine.** `convert.rs` grew 848 → 1167 lines because tranche 2 rooted sites 12
+and 16 *elsewhere in the file*, so **two sites the lane deliberately did not
+touch had their addresses invalidated by the lane anyway.** Their bodies are
+**BYTE-IDENTICAL** between `8d64fd3` and this commit, verified by direct
+comparison, so nothing about the sites themselves changed.
+
+Shift measured, not inferred: `177 → 251` and `192 → 266`, **both exactly +74**,
+and corroborated by a second instrument — `shape_hunt.py` flags site 17's
+carrier at `:273`, which is `266 + 7`, the same offset the original
+`199 = 192 + 7` carried.
+
+**REPAIRED** by re-pointing the five affected line fields, preserving the
+originals in an `address_erratum` on each row, following the precedent the
+ledger's own `function_erratum` already set. **No disposition and no count was
+touched** — `--sign-off` refuses the same four sites, before and after.
+
+⭐ **THE INSTRUMENT GAP UNDER IT.** `ledger_check.py` machine-verifies the
+replacement site of a `STRUCTURALLY-ELIMINATED` row — that is the
+`structural-evidence` check, and it is exactly right. **Nothing verifies the
+address of a `PENDING` row.** `file-presence` passed identically before and
+after the repair, because it checks the file, not the line. So **the rows most
+likely to rot are the only rows with no check on them**, and this lane just
+demonstrated the rot by causing it. Recommending the check be added; not adding
+it, because the script is a committed shared instrument other people's numbers
+cite.
+
+## Shape-hunt re-run, WITH CONTROLS
+
+```
+=== TOTALS: 42 raw · 23 production · 19 cfg(test) ===
+population walked: 349 files
+PASS S3a · PASS S3b · PASS S3c · PASS S3d · PASS S3e
+ALL 5 CLASS CONTROLS PASS
+```
+
+Unchanged from the site-16 measurement. The controls matter more than the
+totals: every class was shown **this run** to be able to produce a presence, so
+a low count is a measurement rather than a silence. `cfg(test)` hits are
+deliberately not filtered — a hunt that hides its own control certifies
+nothing — and production still carries `convert.rs:273`, which is site 17,
+correctly visible and correctly unfixed.
