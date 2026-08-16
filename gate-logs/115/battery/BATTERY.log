@@ -1,0 +1,25 @@
+pin:      d6c82ae453ef4603b0557c77b9c7d11715d8c75d
+tree pre: 26 modified
+opened:   2026-08-16T19:45:12Z
+legs declared: 8
+=== leg 1/8 : fmt ===
+    rc=0
+=== leg 2/8 : clippy ===
+    rc=0
+=== leg 3/8 : wasm32-check ===
+    rc=0
+=== leg 4/8 : wasm-tests ===
+    rc=0
+=== leg 5/8 : tests ===
+    rc=0
+=== leg 6/8 : blocking-call-in-native-bif ===
+    rc=0
+=== leg 7/8 : clippy-all-features ===
+    rc=0
+=== leg 8/8 : tests-all-features ===
+    rc=0
+--- scored: 8 / declared: 8 ---
+--- tree post: 26 ---
+--- pin post:  d6c82ae453ef4603b0557c77b9c7d11715d8c75d ---
+COMPLETE (derived: 8/8, pin stable)
+CLOSE 2026-08-16T19:50:35Z
