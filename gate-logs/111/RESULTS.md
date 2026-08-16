@@ -133,3 +133,130 @@ cannot police the remedy's own bytes. Recorded, not repaired.
   ignored** (1835 + 3 new).
 
 Full canon battery is owed at the phase's landing, not per commit.
+
+---
+
+# PHASE 2 — PER-SITE MIGRATION
+
+Per-site commits, probes INVERTED not deleted, ledger disposition moving with
+the inversion commit as receipt. Clippy before tests, every time.
+
+| site | function | commit | disposition | census delta |
+|---|---|---|---|---|
+| 3 | `all_loaded` | `b2b0dbc` | STRUCTURALLY-ELIMINATED | production S3d 3 → 2 |
+| 14 | `bif_split` | `43be80e` | STRUCTURALLY-ELIMINATED | **ZERO — see below** |
+
+Both reproduce the same shape: the carrier is gone, not rooted-in-place, and
+the replacement construct is named in the ledger at a `file:line` the checker
+verifies at the bytes. ⭐ The checker has teeth — pointing site 14's
+`replacement_site` at a wrong line was REFUSED, rc 2, *"the claim is refuted at
+the bytes."* A checker that has never been shown to refuse is not a checker.
+
+## ⛔ THE CENSUS CANNOT WITNESS THIS LANE'S COMMONEST SITE
+
+Site 14's shape-hunt delta is **zero in both directions**: 40 raw / 26
+production / 14 cfg(test) at the parent `b2b0dbc` AND at `43be80e`. Not a null
+result — an instrument fact.
+
+**`shape_hunt.py` has no class for a plain `Vec<Term>` push loop.** Its five
+classes are `.map(..).collect()` (S3a), `match`/`if` bind (S3b), literal (S3c),
+reassignment (S3d), and `Vec`-of-**tuples** push (S3e — its guard requires a
+tuple-literal `var.push((`). The single most canonical AR-1 carrier —
+
+```rust
+let mut terms = Vec::with_capacity(n);
+for part in parts { terms.push(context.alloc_binary(part)?); }
+context.alloc_list(&terms)
+```
+
+— matches none of them. Site 14 was invisible before the fix and its replica is
+invisible after.
+
+**Established by positive control on the real instrument, not by reading the
+regex.** A throwaway file carrying BOTH a plain push loop and an S3d
+reassignment, dropped into a scratch worktree at the parent: total 40 → 41,
+the added hit being the S3d meta-control at `:15`, and **zero** for the push
+loop. The file was therefore demonstrably walked. ⭐ Reading a regex tells you
+what you think it matches; running it against a known positive tells you what
+it does.
+
+⇒ **Sites fixed in this class have no machine-checkable census half.** The
+two-arm probe is the whole of their evidence, and that is written into each
+ledger row rather than left for a reader to infer from a zero. Sites 2 and 5
+are the same shape and will behave the same way — *predicted here, before they
+are done.*
+
+⚠️ The hunt's 5 class controls PASS on every run, so it looks healthy while
+being blind to this. A green control set certifies the classes it has, not the
+classes it lacks.
+
+## 🔴 AND THE ALARM I RAISED OFF IT DID NOT SURVIVE — RETRACTED
+
+The blind spot led me somewhere much bigger, and wrongly. A syntactic probe for
+the uncovered class returned **29 raw / 25 production** candidates, ~16 of them
+in files the ledger never names (`process_info_bifs`, `json_bifs`, `ets_bifs`,
+`system_info_bifs`, `inet_bifs`, `etf/decode`). Read one way that is *"the AR-1
+population is undercounted, and 17 shipped in a security advisory."*
+
+⛔ **THE COUNTERWEIGHT APPLIED: a claim large enough to alarm gets re-measured
+with a different instrument BEFORE it is sent.** It was not sent. It was
+measured, and it died:
+
+1. **`ordering_detector.py:264` grades the LEDGER** — `population: {len(sites)}
+   ledger carriers + controls`. It never discovered anything; it cannot be the
+   source of the 17.
+2. **`sink_census.py` is the discovery instrument, and it is SINK-DERIVED, not
+   carrier-derived.** It walks every call to the collecting sinks and
+   classifies the argument literal-vs-variable. A push loop still ends at
+   `context.alloc_list(&terms)`, so it is caught there however the carrier is
+   spelled. **75 variable-shaped production sink rows → 17 crossings**, and
+   every file I flagged is in its 250 rows.
+3. **The funnel is documented and adversarial.** `AR-1-GROUND-PACK.md` carries
+   *"Ruled NOT crossings (checked, not assumed)"* — including
+   `encoding_bifs.rs:34` **"not Terms"**, which is precisely the false positive
+   I had predicted from the `Vec<u8>` byte buffer, and `closures.rs:423,482`
+   **"no allocating call in the loop."**
+
+⇒ **The population is not undercounted by my mechanism, and I retract the
+suggestion that it is.** What survives is the narrow, true version: *the CENSUS
+cannot witness push-loop sites*, which bears on row-2 accounting for this lane
+and on nothing else.
+
+⭐ The population's real blind spot is already declared and is NOT mine: only
+*direct* calls to the 37 named collecting primitives are recognised, so a
+crossing whose only collecting call is one level of indirection is invisible
+(`AR-1-GROUND-PACK.md` §6). Already recorded by the ground pack's author; I add
+nothing to it and do not re-raise it as new.
+
+⭐⭐ **THE GENERAL FORM, and it is the one worth keeping: A BLIND SPOT IN ONE
+INSTRUMENT IS NOT EVIDENCE OF A GAP IN THE FINDING THAT INSTRUMENT DID NOT
+PRODUCE.** I found a real hole in the census and reflexively read it as a hole
+in the population — but the census never sized the population. Before inheriting
+an instrument's defect into a conclusion, check that the conclusion was ever
+drawn from that instrument.
+
+## Site 14 — the two-arm evidence
+
+- **Positive control asserted FIRST**, and it corrupts:
+  `part 0: contents "p000000000256" != "p000000000000"`. A **contents
+  mismatch, not a refusal** — the exact ambiguity that fooled the phase-1
+  control, now discriminated by construction.
+- **Negative control** at 250 parts pins the reader.
+- **One shared `read_back`** across both arms, so neither is graded by the
+  softer instrument. (Extracting it is what the phase-1 hand-off left undone;
+  the tree did not compile until it was.)
+- **Red-at-parent by running**, production hunk reverted alone: failed at the
+  CLAIM (`string_bifs.rs:529`, *head is not a binary — carrier went stale*)
+  with both controls green above it. The failure landed on the right line.
+
+⚠️ **DISCLOSED, MECHANISM NOT CLAIMED:** 350 parts @ heap 1024 was REFUSED
+pre-fix and is clean post-fix. Real behaviour change, stated rather than
+absorbed. The probe's old comment describing the refusal is retained solely as
+the `f993280` record and marked false of the shipped body.
+
+## Legs — site 14
+
+- `cargo fmt --all` · `cargo clippy -p beamr --all-targets --features encode --
+  -D warnings` clean · `cargo test -p beamr --features encode --lib` **1838
+  passed, 0 failed, 0 ignored** (unchanged — the probe was replaced, not added).
+- `ledger_check.py` rc 0, with the `structural-evidence` check shown to refuse.
