@@ -5,8 +5,20 @@ landed lanes. Ruled by Waffles at seq=40-ack: one authoring pass covering F1–F
 the (a) result with both corrections, and the portability finding with its
 worklist.*
 
-**This document does not change `B-144.json`.** It records what is measured and
-routes the status decisions; editing the brief's requirements is a separate act.
+**As authored, this document deliberately did not change `B-144.json`.** Waffles
+then ruled at seq=41-ack that R2 and R3 be marked satisfied citing this file as
+the evidence, and that edit has been made — see *Status of the routed items*
+below. Everything measured here still stands on its own; the brief now agrees
+with it.
+
+⚠️ **THIS FILE WAS RENAMED, AND THE OLD NAME WAS A HAZARD.** It was first
+committed as `B-144.md`, which is the **render target** of
+`.meridian/design-system/scripts/render-brief.py B-144.json B-144.md` — the
+generated companion every other `B-NNN.md` in this directory is. Rendering B-144
+would have silently overwritten this evidence document, including the citation
+the brief now depends on. Renamed to `B-144-EVIDENCE.md`, matching the existing
+`WPORT-1-EVIDENCE.md` / `B-029-SUMMARY.md` precedent. ⭐ **A FILENAME CAN BE A
+GENERATED-OUTPUT PATH; WRITING TO ONE IS A DELETION WITH A DELAY ON IT.**
 
 ---
 
@@ -15,11 +27,36 @@ routes the status decisions; editing the brief's requirements is a separate act.
 | req | claim | status at `dfbfc2a` |
 |---|---|---|
 | **R1** no_std compatibility audit | gate std-dependent code behind features | ⚠️ **OUTSTANDING — but 20 errors, not 1039** |
-| **R2** single-threaded scheduler for WASM | create `crates/beamr/src/scheduler/wasm.rs` | ✅ **SATISFIED** — file exists |
-| **R3** WASM host bindings | create beamr-wasm, export 4 fns | ✅ **SATISFIED** — crate exists, all four of `create_vm` / `load_module` / `spawn` / `run_step` present |
+| **R2** single-threaded scheduler for WASM | create `crates/beamr/src/scheduler/wasm.rs` | ✅ **SATISFIED** — verified against acceptance text |
+| **R3** WASM host bindings | create beamr-wasm, export 4 fns | ✅ **SATISFIED** — verified against acceptance text |
 
-R2 and R3 were discharged by the WPORT arc; the brief was never updated. **Routed:
-someone with brief authority should mark them satisfied.** Not done here.
+R2 and R3 were discharged by the WPORT arc; the brief was never updated.
+**Marked satisfied in `B-144.json` on Waffles' seq=41-ack ruling.**
+
+### ⚠️ AND THE SAME LAW APPLIED AGAIN, TO MY OWN CLAIM
+
+This table first read “**SATISFIED** — file exists” for R2 and “crate exists,
+all four present” for R3. **File existence is not the acceptance criterion.** R2
+names five things and R3 names four exports plus a serialization form, so before
+writing SATISFIED into the durable brief record I checked those, not the paths:
+
+| req | acceptance names | measured at `4b68e74` |
+|---|---|---|
+| R2 | `WasmScheduler` type | `scheduler/wasm.rs:119` |
+| R2 | `run_until_idle()` one scheduling round | `:517`, returns `WasmRunSummary` |
+| R2 | yield via reduction counting | reduction-bounded slices, `MAX_SLICES_PER_DRAIN` |
+| R2 | host calls it from its own event loop | `beamr-wasm/src/lib.rs:792` |
+| R2 | test executes a function to completion | `scheduler/wasm_tests.rs` |
+| R3 | `#[wasm_bindgen]` exports | `beamr-wasm/src/lib.rs:49` and following |
+| R3 | `create_vm()` | `:50` |
+| R3 | `load_module(bytes)` | `:208` |
+| R3 | `spawn(m, f, a)` | `:293`, args carried as JSON |
+| R3 | `run_step()` | `:309` |
+
+Standing witness for both: canon gate legs `wasm32-check` and `wasm-tests`, green
+in every battery this arc. The verdict did not change — but it was resting on a
+weaker check than the one the requirement asked for, which is exactly the trap
+this document opens by describing.
 
 ### ⛔ THE TRAP THAT WOULD HAVE MIS-SIZED R1 BY FIFTY TIMES
 
@@ -216,11 +253,14 @@ different questions. Routes through Tom's docket alongside F3.
 
 ---
 
-## ROUTED, NOT ACTED ON
+## STATUS OF THE ROUTED ITEMS
 
-1. Mark **R2 and R3 satisfied** in `B-144.json` (discharged by the WPORT arc).
-2. **Re-size R1** against its own named command: 20 errors, three root causes —
-   `crate::timer`, `crate::replay`, `crossbeam_queue`. Fold F4's 21 in; same shape.
+1. ✅ **DONE** — R2 and R3 marked `"status": "satisfied"` in `B-144.json`, each
+   citing this file, on Waffles' seq=41-ack ruling.
+2. ✅ **DONE** — R1 marked `"status": "outstanding"` and re-sized in place against
+   its own named command: 20 errors, three root causes (`crate::timer`,
+   `crate::replay`, `crossbeam_queue`). **R1 is now the brief's only open
+   requirement.** F4's 21 fold in; same shape. GO given as the next lane.
 3. **F3** — canon's host suite runs a cooperative+threads hybrid nobody ships.
    Tom's docket.
 4. **Test-suite portability** — the seven targets above. Tom's docket, design
@@ -229,7 +269,20 @@ different questions. Routes through Tom's docket alongside F3.
    R1, and nothing in this document proposes taking it on. The ratchet holds the
    number; it does not commit anyone to driving it to zero.
 
+## ⚠️ DISCLOSURE — THE MARKING IS INVISIBLE TO THE RENDERER
+
+`status` is read by **neither** `render-brief.py` nor `render-cluster.py`. A
+rendered `B-144.md` would therefore still show three requirements with no
+satisfaction marking at all. The JSON is the record; the rendered view is not.
+Fifteen briefs already carry a top-level `status` (all `"approved"`, a
+brief-lifecycle field) and it is equally unrendered, so this is a pre-existing
+estate-wide gap, not one this lane introduced — **and per-requirement `status`
+is a field no brief in the corpus carried before now.** Teaching the shared
+renderer to show it would change output for every cluster, so it is disclosed
+and routed rather than taken here.
+
 ## Provenance
 
 Lanes: `726607b` (ratchet + doc) · `a2ffe61` (evidence) · `9c3be75` (manifest) ·
-`dfbfc2a` (evidence). Full detail in `gate-logs/219/` and `gate-logs/219-a/`.
+`dfbfc2a` (evidence) · `4b68e74` (this document) · this commit (brief marking +
+rename). Full detail in `gate-logs/219/` and `gate-logs/219-a/`.

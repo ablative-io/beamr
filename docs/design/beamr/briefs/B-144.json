@@ -15,6 +15,8 @@
       "id": "R1",
       "title": "no_std compatibility audit",
       "spec": "Identify and gate std-dependent code behind feature flags.",
+      "status": "outstanding",
+      "evidence": "OUTSTANDING at 4b68e74, and RE-SIZED. This requirement's own acceptance names `cargo check --target wasm32-unknown-unknown -p beamr --no-default-features`, and THAT command is 20 errors (13x E0432, 7x E0433) from three root causes: `crate::timer` (7), `crate::replay` (5), `crossbeam_queue` (1). It is NOT the 1039-error host `cargo check -p beamr --no-default-features`, which is a separate and much larger question held by the `nostd-ratchet` gate leg and commits nobody to driving it to zero. Quoting the host number here would mis-size this requirement by ~52x. Measured 2026-08-17; see B-144-EVIDENCE.md.",
       "acceptance": [
         "All std::thread usage gated behind a 'threads' feature (enabled by default)",
         "All std::net usage gated behind a 'net' feature",
@@ -37,6 +39,8 @@
       "id": "R2",
       "title": "Single-threaded scheduler for WASM",
       "spec": "A scheduler variant that runs on a single thread for WASM targets.",
+      "status": "satisfied",
+      "evidence": "SATISFIED by the WPORT arc. Ruled by Waffles 2026-08-17, and verified against THIS requirement's acceptance text rather than file existence: `crates/beamr/src/scheduler/wasm.rs` defines `WasmScheduler` with `run_until_idle()` returning `WasmRunSummary` over reduction-bounded slices (MAX_SLICES_PER_DRAIN); the host owns the event loop and beamr-wasm calls it at `crates/beamr-wasm/src/lib.rs:792`; `crates/beamr/src/scheduler/wasm_tests.rs` covers execution to completion. Standing witness: canon gate legs `wasm32-check` and `wasm-tests`. See B-144-EVIDENCE.md.",
       "acceptance": [
         "WasmScheduler runs the event loop cooperatively (no OS threads)",
         "Processes yield via reduction counting (same as normal)",
@@ -58,6 +62,8 @@
       "id": "R3",
       "title": "WASM host bindings",
       "spec": "Define the FFI surface for JavaScript interop.",
+      "status": "satisfied",
+      "evidence": "SATISFIED by the WPORT arc. Ruled by Waffles 2026-08-17, and verified against acceptance text: `crates/beamr-wasm/src/lib.rs` exports all four named functions under `#[wasm_bindgen]` -- `create_vm()` (:50), `load_module(bytes)` (:208), `spawn(module, function, args_json)` (:293), `run_step()` (:309) -- with JSON-carried arguments and JsValue results. Standing witness: canon gate leg `wasm-tests` runs the beamr-wasm suite under wasm-bindgen-test-runner on wasm32-unknown-unknown. See B-144-EVIDENCE.md.",
       "acceptance": [
         "#[wasm_bindgen] exports: create_vm(), load_module(bytes), spawn(m, f, a), run_step()",
         "JavaScript can create a VM, load .beam modules, and step execution",
