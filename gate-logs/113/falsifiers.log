@@ -1,0 +1,57 @@
+=== #113 FALSIFIERS — predictions in gate-logs/113/FALSIFIERS-PREREGISTERED.md, written first ===
+
+M0 rebound guard run UNCONDITIONAL (demanded on every cell, both arms, every outcome)
+   -> 86 passed; 0 failed  == every cell really does collect, refusals included
+   == the outcome-condition's only reason is measured dead -> condition LIFTED
+
+M1 remove note_gc_attempt() from minor::collect ONLY
+   PREDICTED: all three re-pointed controls RED
+   MEASURED:  85 passed; 1 failed -- ONE of three
+     site17  FAIL  NO COLLECTION (0 -> 0 attempts, 0 -> 1 completions) at count 60
+                   on the CONTROL arm. Capacity 466 -> 466.
+     site13  ok    <- NOT red
+     nested  ok    <- NOT red
+   == PREDICTION MISSED. The miss was named in advance: the wasm path was assumed
+      minor-only. It is not. site13 and nested reach MAJOR collection, whose
+      note_gc_attempt was still intact, so attempts still moved for them.
+      Recorded as a miss and re-aimed, NOT scored as a pass.
+
+M1b remove note_gc_attempt() from BOTH minor::collect AND major::collect
+   PREDICTED (re-aimed): all three RED
+   MEASURED:  83 passed; 3 failed -- ALL THREE
+     site13  FAIL  NO COLLECTION (0 -> 0 attempts, 0 -> 5 completions) at count 200
+                   on the CONTROL arm. Capacity 466 -> 697.
+     site17  FAIL  NO COLLECTION (0 -> 0 attempts, 0 -> 1 completions) at count 60
+                   on the CONTROL arm. Capacity 466 -> 466.
+     nested  FAIL  NO COLLECTION (0 -> 0 attempts, 0 -> 9 completions).
+                   Capacity 466 -> 2233.
+   == every re-pointed control REFUSES when the observable is broken.
+
+M2 shrink the site-13 cell to count = 1 (an input genuinely too small to press)
+   PREDICTED: site13 RED with the NO COLLECTION message
+   MEASURED:  85 passed; 1 failed
+     site13  FAIL  NO COLLECTION (0 -> 0 attempts, 0 -> 0 completions) at count 1
+                   on the CONTROL arm. Capacity 466 -> 466.
+     site17  ok    (not mutated)
+     nested  ok    (not mutated)
+   == the guard DISCRIMINATES. It is not satisfied by any conversion whatsoever;
+      a real conversion can fail to collect and the guard says so.
+
+=== clean re-run, all mutations reverted, at the shipped bytes ===
+test convert::tests::ar1_sites_13_17_nested_scopes_open_inside_one_another ... ok
+test convert::tests::ar1_site17_object_to_term_two_armed ... ok
+test convert::tests::ar1_site13_array_to_term_two_armed ... ok
+test result: ok. 86 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.88s
+tracked census after revert: ` M crates/beamr-wasm/src/convert.rs` only -- both gc
+files byte-identical to HEAD (git diff --numstat empty).
+
+=== THE DATUM THAT FELL OUT, and it is the best one here ===
+
+site17, CONTROL arm, count 60:  0 -> 1 completions  with capacity  466 -> 466.
+
+That is the #112 mechanism caught in the act on the exact cell that produced the
+finding. A collection COMPLETED and the heap never resized -- because
+`ensure_space` collects first and grows only if the collection was not enough
+(gc/mod.rs:154 then :162). The cell was under collection pressure the whole time.
+The retired proxy read `466 -> 466` and called it unpressed. It was never a
+threshold problem, and no amount of raising the input would have fixed it.

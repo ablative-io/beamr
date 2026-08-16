@@ -673,6 +673,26 @@ mod tests {
         Refused,
     }
 
+    // The bracketed collection witness. Reads all three observables at once so a
+    // failure message can show what the retired proxy would have said beside what
+    // the real observable says.
+    #[derive(Clone, Copy)]
+    struct Pressure {
+        attempts: u64,
+        completions: u64,
+        capacity: usize,
+    }
+
+    impl Pressure {
+        fn read(process: &beamr::process::Process) -> Self {
+            Self {
+                attempts: process.gc_attempts(),
+                completions: process.gc_completions(),
+                capacity: process.heap().total_capacity(),
+            }
+        }
+    }
+
     fn list_to_vec_checked(mut term: Term) -> Option<Vec<Term>> {
         let mut values = Vec::new();
         while !term.is_nil() {
@@ -699,14 +719,14 @@ mod tests {
             array.push(&JsValue::from_str(&format!("element-{index}")));
         }
 
-        let before = process.heap().total_capacity();
+        let before = Pressure::read(&process);
         let built = {
             let mut context = ProcessContext::new();
             context.set_atom_table(Some(Arc::clone(&table)));
             context.attach_process(&mut process, 0);
             convert_js(JsValue::from(array), &mut context, arm)
         };
-        let after = process.heap().total_capacity();
+        let after = Pressure::read(&process);
 
         let classify = || {
             let Ok(term) = built else {
@@ -728,36 +748,47 @@ mod tests {
         };
         let outcome = classify();
 
-        assert_pressed(before, after, count, arm, &outcome);
+        assert_pressed(before, after, count, arm);
         outcome
     }
 
-    // POSITIVE CONTROL, per cell — and it is deliberately conditioned on the
-    // outcome rather than demanded unconditionally.
+    // POSITIVE CONTROL, per cell. ⭐ REBOUND onto the collection observable
+    // (#112) from the `total_capacity()` proxy it used to read.
     //
-    // ⭐ `after > before` on `total_capacity()` witnesses a heap RESIZE, not a
-    // COLLECTION. There is no collection counter to ask: `total_capacity` is the
-    // heap's only observable. A pre-fix replica can REFUSE without the heap ever
-    // resizing, so an unconditional resize demand mis-scores the exact arm the
-    // control exists to grade — measured here as `466 -> 466, arm CONTROL,
-    // built_ok=false`, unchanged when the input was raised 40 -> 60, which is
-    // what identified it as structural rather than a threshold.
+    // The proxy witnessed a heap RESIZE and was being read as a COLLECTION. It
+    // mis-scored the exact arm the control exists to grade: a pre-fix replica
+    // REFUSED with the heap never resizing — measured as `466 -> 466, arm
+    // CONTROL, built_ok=false`, unchanged when the input was raised 40 -> 60,
+    // which is what identified it as structural rather than a threshold. The
+    // resize never happened because the collection FREED enough and `ensure_space`
+    // grows only when a collection was not enough (`gc/mod.rs:162`). The cell was
+    // pressed the whole time; the instrument could not see it.
     //
-    // What the control is FOR is preventing a FALSE CLEAN. A Refused or Corrupt
-    // outcome is self-evidently pressed — the body failed. So the witness is
-    // required exactly where a green could otherwise be bought by an input too
-    // small to press anything, and a Clean cell with no pressure still fails
-    // loudly on EITHER arm.
-    fn assert_pressed(before: usize, after: usize, count: u32, arm: JsArm, outcome: &Outcome) {
-        if *outcome != Outcome::Clean {
-            return;
-        }
+    // `gc_attempts` is the right axis, not `gc_completions`: what breaks an
+    // unrooted carrier is a collection ENTERED and moving objects, and one that
+    // fails partway has still moved them. Completions is reported in the message
+    // so an attempted-and-failed collection reads off the failure directly.
+    //
+    // ⛔ THE OUTCOME CONDITION IS GONE, AND ITS REMOVAL IS THE POINT. The old
+    // guard fired only on `Outcome::Clean` because the proxy mis-scored refusals.
+    // Measured under the real observable, EVERY cell collects — refusals
+    // included — so the condition's only reason is dead and the guard now grades
+    // every cell. A weakening whose reason has died is not kept "just in case".
+    fn assert_pressed(before: Pressure, after: Pressure, count: u32, arm: JsArm) {
         assert!(
-            after > before,
-            "heap never grew ({before} -> {after}) at count {count} on the {} arm, \
-             yet the round trip came back Clean -- this cell applied NO memory \
-             pressure, so its Clean is not evidence",
-            arm_name(arm)
+            after.attempts > before.attempts,
+            "NO COLLECTION ({} -> {} attempts, {} -> {} completions) at count \
+             {count} on the {} arm -- this cell never put the heap under \
+             collection pressure, so whatever it returned is not evidence about \
+             rooting. Capacity went {} -> {}, which is NOT the witness and is \
+             printed only to show what the retired proxy would have said.",
+            before.attempts,
+            after.attempts,
+            before.completions,
+            after.completions,
+            arm_name(arm),
+            before.capacity,
+            after.capacity
         );
     }
 
@@ -778,14 +809,14 @@ mod tests {
             );
         }
 
-        let before = process.heap().total_capacity();
+        let before = Pressure::read(&process);
         let built = {
             let mut context = ProcessContext::new();
             context.set_atom_table(Some(Arc::clone(&table)));
             context.attach_process(&mut process, 0);
             convert_js(JsValue::from(object), &mut context, arm)
         };
-        let after = process.heap().total_capacity();
+        let after = Pressure::read(&process);
 
         let classify = || {
             let Ok(term) = built else {
@@ -803,7 +834,7 @@ mod tests {
         };
         let outcome = classify();
 
-        assert_pressed(before, after, count, arm, &outcome);
+        assert_pressed(before, after, count, arm);
         outcome
     }
 
@@ -887,14 +918,14 @@ mod tests {
             outer.push(&object);
         }
 
-        let before = process.heap().total_capacity();
+        let before = Pressure::read(&process);
         let built = {
             let mut context = ProcessContext::new();
             context.set_atom_table(Some(Arc::clone(&table)));
             context.attach_process(&mut process, 0);
             convert_js(JsValue::from(outer), &mut context, JsArm::Fixed)
         };
-        let after = process.heap().total_capacity();
+        let after = Pressure::read(&process);
 
         // Same ordering rule as `assert_pressed`, and it is the inversion of the
         // flaw in the probe this test descends from: a refusal is graded on its
@@ -908,10 +939,17 @@ mod tests {
         );
 
         assert!(
-            after > before,
-            "heap never grew ({before} -> {after}) -- the nested cell converted \
-             cleanly without applying any memory pressure, so it proves nothing \
-             about scope nesting"
+            after.attempts > before.attempts,
+            "NO COLLECTION ({} -> {} attempts, {} -> {} completions) -- the \
+             nested cell converted without ever putting the heap under collection \
+             pressure, so it proves nothing about scope nesting. Capacity went {} \
+             -> {}, which is NOT the witness.",
+            before.attempts,
+            after.attempts,
+            before.completions,
+            after.completions,
+            before.capacity,
+            after.capacity
         );
         let groups = list_to_vec_checked(term).expect("nested conversion is a proper list");
         assert_eq!(groups.len(), 40, "outer list length after the collection");
