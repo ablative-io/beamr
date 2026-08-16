@@ -74,14 +74,37 @@ and the API docs told me that the design ahead of them did not.
 
 ## 2. SCOPE OF THE CLAIM — the accumulator is the vehicle, not the wall
 
-A site migrated to `TermAccumulator` is **`SAFE-ROOTED`**. It is **not**
-`STRUCTURALLY-ELIMINATED`: the bare form is still writable, so the gate's
-criterion (*the shape CANNOT BE WRITTEN*) is **not** met by phases 1–3. It is
-met only when the sinks stop accepting a bare `&[Term]` (phase 4).
+The gate's criterion (*the shape CANNOT BE WRITTEN*) is **not** met by phases
+1–3. It is met only when the sinks stop accepting a bare `&[Term]` (phase 4).
 
 ⛔ Stated here so no per-site commit message can imply otherwise, and so that
 Waffles' constraint — **no remedy is ratified just because a probe inverts** —
 has a written counterpart at my own seat.
+
+### 🔴 ERRATUM, corrected at site 3 — original retained above and below
+
+**This section originally read: "A site migrated to `TermAccumulator` is
+`SAFE-ROOTED`. It is *not* `STRUCTURALLY-ELIMINATED`: the bare form is still
+writable."** That conflated two different questions and the first site refuted
+it at the bytes.
+
+A **disposition is a statement about ONE SITE**; the criterion is a statement
+about **the whole tree**. Site 3's `list` carrier does not survive in any form —
+there is no carrier, no bind, nothing for a re-derivation to recognise, and
+`shape_hunt.py`'s **production** S3d count falls 3 → 2 at that commit. By the
+ledger's own definition (*"the shape is gone, AND the replacement construct is
+NAMED and SHOWN PRESENT at that site"*) it is **`STRUCTURALLY-ELIMINATED`**, and
+the checker verifies the claim at the bytes rather than accepting it.
+
+That the shape remains *writable elsewhere* is true and unchanged — and it is
+**not what a per-site disposition records.** ⇒ each site takes the disposition
+its own bytes earn: `STRUCTURALLY-ELIMINATED` where the carrier is gone,
+`SAFE-ROOTED` where it survives in rooted form. **No per-site disposition can
+discharge the global criterion, and phase 4 is still owed.**
+
+⭐ The gate's Amendment 2 said this a month ago — *"a remedy that satisfies the
+criterion necessarily makes those sites stop matching"* — and I wrote the
+opposite into my own design doc anyway.
 
 ## 3. ⭐⭐ THE CENTRAL HAZARD OF THIS LANE: INVERTING A PROBE KILLS ITS OWN CONTROL
 

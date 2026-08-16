@@ -142,12 +142,18 @@ pub fn all_loaded(args: &[Term], context: &mut ProcessContext) -> Result<Term, T
         })
         .collect();
 
-    let mut list = Term::NIL;
-    for (module, source) in loaded_terms.into_iter().rev() {
-        let tuple = context.alloc_tuple(&[module, source])?;
-        list = context.alloc_cons(tuple, list)?;
-    }
-    Ok(list)
+    // AR-1 site 3. The carrier used to be a threaded `list` tail consed up in
+    // reverse — a boxed cons held across `alloc_tuple`, which collects. The
+    // accumulator holds every entry in the process root stack instead, so a
+    // collection mid-loop forwards them; `to_list` then hands the whole run to
+    // `alloc_list`, which roots its own arguments.
+    context.with_accumulator(|context, entries| {
+        for (module, source) in loaded_terms {
+            let tuple = context.alloc_tuple(&[module, source])?;
+            entries.push(context, tuple)?;
+        }
+        entries.to_list(context)
+    })
 }
 
 fn bool_term(value: bool) -> Term {
@@ -160,15 +166,26 @@ fn badarg() -> Term {
 
 #[cfg(test)]
 mod ar1_row4_site3_tests {
-    // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
+    // ✅ INVERTED — these now assert CORRECT BEHAVIOUR. AR-1 site 3 is FIXED.
     //
-    // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
-    // NOT assert correct behaviour, so a green here means "the defect is still
-    // present, exactly as measured" — never "this site is safe".
+    // Until the fix lane these were DEFECT-ASSERTING: they pinned the measured
+    // corrupt surface at f993280 (sweep A 3 red / 5 clean, sweep B 2 red / 7
+    // clean) and were green because the defect was still present. The fix moved
+    // that surface to ZERO on both axes, so the assertions are inverted rather
+    // than deleted — the same cells, the opposite expectation.
     //
-    // ⇒ THEY GO RED WHEN AR-1 IS FIXED, AND THAT IS THE POINT. The fix lane
-    // INVERTS them to assert correctness rather than deleting them; the pinned
-    // counts below are the surface the fix has to move.
+    // ⛔⛔ AND THAT INVERSION KILLED THE PROBE'S OWN POSITIVE CONTROL. The old
+    // `a_red > 0` was what proved the sweep applied heap pressure at all. Post
+    // fix it cannot hold, and a bare "0 corruption" is indistinguishable from a
+    // sweep that has quietly stopped applying pressure — the two produce
+    // identical output and mean opposite things.
+    //
+    // ⇒ `all_loaded_unrooted_replica` below is the replacement control: the
+    // PRE-FIX BODY, kept verbatim, driven through the REAL allocator under the
+    // SAME pressure regime, and asserted STILL TO CORRUPT. If it ever goes
+    // quiet, the regime is gone and every green in this module is worthless.
+    // Same law as the R10 control fixtures one level down — a control keyed on
+    // a live defect is destroyed by the repair it exists to survive.
 
     use std::sync::Arc;
 
@@ -220,6 +237,48 @@ mod ar1_row4_site3_tests {
         }
     }
 
+    /// Which body a cell drives.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Arm {
+        /// The shipped `all_loaded`, rooted through `TermAccumulator`.
+        Fixed,
+        /// The pre-fix body, kept verbatim as this probe's positive control.
+        UnrootedReplica,
+    }
+
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `all_loaded`'s body EXACTLY AS IT WAS
+    /// BEFORE THE FIX, and it must stay that way.
+    ///
+    /// `list` is a threaded cons tail held in an ordinary local across
+    /// `alloc_tuple`, which collects. This is AR-1 site 3 verbatim: it was
+    /// `shape_hunt.py`'s original known-positive control, which is precisely
+    /// why that control had to be re-sited to `ar1_shape_control.rs` before
+    /// this lane could repair it.
+    ///
+    /// It is here so the inverted assertions above have something that still
+    /// goes red. ⛔ Do NOT "tidy" it onto the accumulator — that deletes the
+    /// control and leaves the greens next to it meaning nothing.
+    fn all_loaded_unrooted_replica(context: &mut ProcessContext) -> Result<Term, Term> {
+        let badarg = || Term::atom(Atom::BADARG);
+        let facility = context.code_management_facility().ok_or_else(badarg)?;
+        let loaded = facility.all_loaded_modules();
+        let atom_table = context.atom_table().ok_or_else(badarg)?;
+        let loaded_terms: Vec<(Term, Term)> = loaded
+            .into_iter()
+            .map(|(module, origin)| {
+                let source = atom_table.intern(origin.source_atom_name());
+                (Term::atom(module), Term::atom(source))
+            })
+            .collect();
+
+        let mut list = Term::NIL;
+        for (module, source) in loaded_terms.into_iter().rev() {
+            let tuple = context.alloc_tuple(&[module, source])?;
+            list = context.alloc_cons(tuple, list)?;
+        }
+        Ok(list)
+    }
+
     /// One cell. Returns `(achieved_margin, outcome)`.
     ///
     /// `margin == None` means "no pre-fill at all" — the pure LENGTH axis. That
@@ -231,6 +290,7 @@ mod ar1_row4_site3_tests {
         modules: usize,
         heap: usize,
         margin: Option<usize>,
+        arm: Arm,
     ) -> (usize, Result<(), String>) {
         let table = Arc::new(AtomTable::with_common_atoms());
 
@@ -279,8 +339,11 @@ mod ar1_row4_site3_tests {
         };
 
         let outcome = (|| -> Result<(), String> {
-            let list = all_loaded(&[], &mut context)
-                .map_err(|_| "all_loaded returned an error term".to_string())?;
+            let list = match arm {
+                Arm::Fixed => all_loaded(&[], &mut context),
+                Arm::UnrootedReplica => all_loaded_unrooted_replica(&mut context),
+            }
+            .map_err(|_| "all_loaded returned an error term".to_string())?;
 
             // The reader is ITERATIVE and HARD-CAPPED. A stale carrier can make a
             // cons tail alias an enclosing cell, turning the list into a CYCLE; a
@@ -354,76 +417,104 @@ mod ar1_row4_site3_tests {
     fn ar1_site3_all_loaded_band() {
         const HEAP: usize = 4096;
 
-        // SWEEP A — LENGTH axis, no pre-fill. Spans the predicted ~819 flip.
-        let mut sweep_a = Vec::new();
-        for modules in [10usize, 50, 200, 500, 800, 1000, 1500, 2000] {
-            let (achieved, result) = all_loaded_round_trip(modules, HEAP, None);
-            let verdict = match result {
-                Ok(()) => "ok".to_string(),
-                Err(reason) => reason,
-            };
-            sweep_a.push((format!("modules {modules:>5}"), achieved, verdict));
-        }
-
+        // SWEEP A — LENGTH axis, no pre-fill. Spans the ~819 flip the pre-fix
+        // arithmetic predicted, kept because that is where the defect used to
+        // appear: the sweep must still visit the cells that once broke.
+        const LENGTHS: [usize; 8] = [10, 50, 200, 500, 800, 1000, 1500, 2000];
         // SWEEP B — MARGIN axis, input pinned at 200 modules (1000 words needed,
         // which the empty 4096-word heap covers outright).
-        let mut sweep_b = Vec::new();
-        for margin in [2048usize, 1024, 512, 256, 128, 64, 32, 16, 8] {
-            let (achieved, result) = all_loaded_round_trip(200, HEAP, Some(margin));
-            let verdict = match result {
-                Ok(()) => "ok".to_string(),
-                Err(reason) => reason,
-            };
-            sweep_b.push((format!("margin req {margin:>5}"), achieved, verdict));
-        }
+        const MARGINS: [usize; 9] = [2048, 1024, 512, 256, 128, 64, 32, 16, 8];
 
-        let (a_red, a_ok) = classify(&sweep_a, "sweep A (length)", HEAP);
-        let (b_red, b_ok) = classify(&sweep_b, "sweep B (margin)", HEAP);
+        let sweep = |arm: Arm| {
+            let mut a = Vec::new();
+            for modules in LENGTHS {
+                let (achieved, result) = all_loaded_round_trip(modules, HEAP, None, arm);
+                let verdict = match result {
+                    Ok(()) => "ok".to_string(),
+                    Err(reason) => reason,
+                };
+                a.push((format!("modules {modules:>5}"), achieved, verdict));
+            }
+            let mut b = Vec::new();
+            for margin in MARGINS {
+                let (achieved, result) = all_loaded_round_trip(200, HEAP, Some(margin), arm);
+                let verdict = match result {
+                    Ok(()) => "ok".to_string(),
+                    Err(reason) => reason,
+                };
+                b.push((format!("margin req {margin:>5}"), achieved, verdict));
+            }
+            (a, b)
+        };
+
+        let (sweep_a, sweep_b) = sweep(Arm::Fixed);
+        let (control_a, control_b) = sweep(Arm::UnrootedReplica);
+
+        let (a_red, a_ok) = classify(&sweep_a, "FIXED sweep A (length)", HEAP);
+        let (b_red, b_ok) = classify(&sweep_b, "FIXED sweep B (margin)", HEAP);
+        let (ca_red, ca_ok) = classify(&control_a, "CONTROL sweep A (length)", HEAP);
+        let (cb_red, cb_ok) = classify(&control_b, "CONTROL sweep B (margin)", HEAP);
 
         // Two-way controls, both required, per the site-10 law.
+        // ⛔⛔ THE POSITIVE CONTROL COMES FIRST, and it is asserted BEFORE the
+        // claim it licenses. The pre-fix body, same heap, same cells, must
+        // still corrupt. If it does not, this sweep applies no usable pressure
+        // and everything below is a green about nothing.
         assert!(
-            a_ok > 0,
-            "control: some LENGTH cell must be clean, or the reader is broken rather than the site defective\n\
-             sweep A: {sweep_a:#?}"
+            ca_red > 0 && cb_red > 0,
+            "POSITIVE CONTROL DEAD: the unrooted replica survived every cell on at least one \
+             axis (A {ca_red} red / {ca_ok} clean, B {cb_red} red / {cb_ok} clean). The pressure \
+             regime is gone, so site 3's zeros below mean nothing. Repair the regime — do NOT \
+             weaken this assertion, and do NOT root the replica.\n\
+             control A: {control_a:#?}\ncontrol B: {control_b:#?}"
         );
         assert!(
-            a_red > 0,
-            "site 3: no LENGTH cell corrupted the carrier. Under the site-14 law that is UNRESOLVED, \
-             not defended — the sweep failed to apply pressure.\nsweep A: {sweep_a:#?}"
+            ca_ok > 0,
+            "NEGATIVE CONTROL DEAD: no replica LENGTH cell was clean, so the READER may be \
+             broken rather than the carrier stale.\ncontrol A: {control_a:#?}"
         );
 
-        // ⭐ THE WHOLE MEASURED SURFACE IS PINNED, both axes, exact counts —
-        // Waffles' condition 3, and the reason is site 12's dead output channel:
-        // a bare `red > 0` passes while printing nothing, so green would mean
-        // only "the assertion did not fire". These four numbers ARE the verdict.
+        // ⭐ THE CONTROL'S SURFACE IS THE ONE THAT WAS PINNED PRE-FIX, and it is
+        // pinned UNCHANGED at (3, 5) and (2, 7) — the exact band measured at
+        // f993280 against the shipped body. The replica reproduces it because it
+        // IS that body. A drift here is a change in the allocator or the
+        // collector, not in this lane.
         //
-        // The sweep-B figure is NOT a target. It is the measured count of cells
-        // in which the corruption happened to be VISIBLE — 2 of 9, against at
-        // least 6 in which a collection fires mid-accumulation with a live
-        // carrier. It is pinned to catch drift, not because 2 is correct in any
-        // deeper sense. Re-measured five times, bit-identical including the
-        // failing entry indices, so a change here is a real change.
+        // The sweep-B figure is NOT a target. It is the count of cells in which
+        // the corruption happened to be VISIBLE — 2 of 9, against at least 6 in
+        // which a collection fires mid-accumulation with a live carrier.
         assert_eq!(
-            (a_red, a_ok, b_red, b_ok),
+            (ca_red, ca_ok, cb_red, cb_ok),
             (3, 5, 2, 7),
-            "site 3 surface drifted from the measured band.\n\
-             sweep A (LENGTH, monotone, the real detector): {sweep_a:#?}\n\
-             sweep B (MARGIN, deterministic but NON-MONOTONE — clean cells here are \
-             NOT evidence of safety): {sweep_b:#?}"
+            "the unrooted replica's surface drifted from the band measured at f993280 against \
+             the shipped body. The replica is supposed to BE that body.\n\
+             control A (LENGTH, monotone, the real detector): {control_a:#?}\n\
+             control B (MARGIN, deterministic but NON-MONOTONE): {control_b:#?}"
         );
 
-        // ⛔ THE INTERPOLATION TRAP, ASSERTED SO IT CANNOT BE FORGOTTEN. If the
-        // margin axis ever becomes monotone, someone has changed the allocator
-        // or the collector and the "clean cells under-report" reasoning above
-        // must be re-derived rather than inherited.
-        let first_red_b = sweep_b.iter().position(|(_, _, v)| v != "ok");
-        let last_clean_b = sweep_b.iter().rposition(|(_, _, v)| v == "ok");
+        // ⛔ THE INTERPOLATION TRAP, ASSERTED SO IT CANNOT BE FORGOTTEN — and it
+        // now lives on the CONTROL sweep, because non-monotonicity is a property
+        // of the DEFECT's visibility and the fixed arm has no reds to be
+        // non-monotone about. Moving it was forced by the inversion; dropping it
+        // would have retired a finding rather than re-homing it.
+        let first_red_b = control_b.iter().position(|(_, _, v)| v != "ok");
+        let last_clean_b = control_b.iter().rposition(|(_, _, v)| v == "ok");
         assert!(
             matches!((first_red_b, last_clean_b), (Some(first), Some(last)) if last > first),
             "the MARGIN axis has become monotone (first red {first_red_b:?}, last clean \
-             {last_clean_b:?}). The header's 'a clean margin cell is not evidence of safety' \
-             finding was derived from NON-monotonicity — re-derive it, do not assume it.\n\
-             sweep B: {sweep_b:#?}"
+             {last_clean_b:?}). The 'a clean margin cell is not evidence of safety' finding was \
+             derived from NON-monotonicity — re-derive it, do not assume it.\n\
+             control B: {control_b:#?}"
+        );
+
+        // ✅ THE CLAIM. Site 3 is rooted: ZERO corruption on either axis, every
+        // cell clean, none refused — measured against a control that corrupted
+        // five of the same cells in the same run.
+        assert_eq!(
+            (a_red, a_ok, b_red, b_ok),
+            (0, LENGTHS.len(), 0, MARGINS.len()),
+            "site 3 is NOT fully rooted: the accumulator arm still lost entries.\n\
+             sweep A: {sweep_a:#?}\nsweep B: {sweep_b:#?}"
         );
     }
 }
