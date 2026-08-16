@@ -216,11 +216,13 @@
       "use_line": 372,
       "sink": "alloc_cons",
       "reason": "boxed cons accumulator live across value_to_term, which allocates",
-      "disposition": "PENDING",
-      "replacement_construct": null,
-      "replacement_site": null,
+      "disposition": "STRUCTURALLY-ELIMINATED",
+      "replacement_construct": "with_accumulator",
+      "replacement_site": "crates/beamr/src/term/json.rs:380",
       "verification_leg": "native",
-      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- tests `ar1_site11_array_to_list_term_two_armed` and `ar1_sites_11_15_sweep_surface`, crates/beamr/src/term/json.rs. gate-logs/110/RESULTS.md."
+      "row4_red_at_parent": "RED-DEMONSTRATED at f993280 -- tests `ar1_site11_array_to_list_term_two_armed` and `ar1_sites_11_15_sweep_surface`, crates/beamr/src/term/json.rs. gate-logs/110/RESULTS.md.",
+      "fix": "FIX LANE (#111) phase 2, ninth site — the THREADED-TAIL variant, the third of the family's three shapes. The boxed cons `tail` was held live across `value_to_term`, which allocates; the accumulator holds the elements in the root stack and builds the list once, at the end. ⚠️ THE ITERATION DIRECTION FLIPS — the old body walked `.rev()` and prepended, this one walks forward and appends. The resulting list is in the SAME ORDER; what changes is the order the elements are ALLOCATED in, which is a heap-layout difference and not a term difference. Stated because it is a real behaviour change under the hood, not because it is known to matter. ⚠️ `with_accumulator`'s error channel is `Term` while this module's is `JsonTermError`, so a `value_to_term` failure is parked and re-raised after the closure rather than being flattened into a generic allocation failure that would name the wrong thing. ⚠️ Census delta ZERO (41/26/15): a threaded tail matches no shape_hunt class either.",
+      "row4_inverted": "`ar1_site11_array_to_list_term_two_armed` now asserts CORRECTNESS. `array_to_list_term_unrooted_replica` carries the pre-fix threading VERBATIM and is asserted FIRST, keeping BOTH original directions — hold the heap and grow the input, then hold the input and grow the heap — plus an explicit refusal-is-not-corruption assert on the reason string. Control red at 2000 elements / 4096 words, clean at 50, clean at 2000 on a roomy heap; the fixed arm is clean at all three. RED-AT-PARENT with only the production hunk reverted: the shipped body failed at `element 635: head is not a binary`, the SAME element index and reason string as the replica. The shared `ar1_sites_11_15_sweep_surface` reporter now runs arrays on BOTH arms so the surface is readable side by side. ⛔⛔ INSTRUMENT FACT: `term::json` is behind the NON-DEFAULT `json` feature, so `--features encode` does NOT compile this file and every per-site leg run before this one was STRUCTURALLY BLIND to sites 11 and 15. Verified with `--features encode,json`: 1855 tests versus 1838. Caught by the DENOMINATOR — a filtered run that matched 0 tests — not by a failure."
     },
     {
       "id": 12,

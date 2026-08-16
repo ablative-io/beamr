@@ -362,14 +362,38 @@ fn array_to_list_term(
     elements: &[Value],
     context: &mut ProcessContext,
 ) -> Result<Term, JsonTermError> {
-    let mut tail = Term::NIL;
-    for value in elements.iter().rev() {
-        let head = value_to_term(value, context)?;
-        tail = context
-            .alloc_cons(head, tail)
-            .map_err(|_| JsonTermError::AllocationFailed("cons"))?;
+    // AR-1 site 11. The threaded `tail` was a boxed cons held live across
+    // `value_to_term`, which allocates. The accumulator holds the elements in
+    // the process native root stack instead and builds the list once, at the
+    // end, so nothing is carried across an allocating call.
+    //
+    // ⚠️ The iteration direction FLIPS — the old body walked `.rev()` and
+    // prepended, this one walks forward and appends. The resulting list is in
+    // the same order; what changes is the order the elements are ALLOCATED in.
+    // That is a heap-layout difference, not a term difference.
+    //
+    // `with_accumulator`'s error channel is `Term`, but this module's is
+    // `JsonTermError`, so a failure from `value_to_term` is parked here and
+    // re-raised after the closure rather than being flattened into a generic
+    // allocation failure that would name the wrong thing.
+    let mut parked: Option<JsonTermError> = None;
+    let built = context.with_accumulator(|context, terms| {
+        for value in elements {
+            let head = match value_to_term(value, context) {
+                Ok(head) => head,
+                Err(error) => {
+                    parked = Some(error);
+                    return Err(Term::NIL);
+                }
+            };
+            terms.push(context, head)?;
+        }
+        terms.to_list(context)
+    });
+    match built {
+        Ok(term) => Ok(term),
+        Err(_) => Err(parked.unwrap_or(JsonTermError::AllocationFailed("cons"))),
     }
-    Ok(tail)
 }
 
 fn object_to_map_term(
@@ -691,6 +715,31 @@ mod ar1_row4_json_tests {
 
     const WIDTH: usize = 12;
 
+    /// Which body the cell drives.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Arm {
+        Fixed,
+        UnrootedReplica,
+    }
+
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `array_to_list_term`'s body EXACTLY AS IT
+    /// WAS BEFORE THE FIX, and it must stay that way: the threaded `tail` held
+    /// live across `value_to_term`, which allocates.
+    /// ⛔ Do NOT migrate it onto the accumulator.
+    fn array_to_list_term_unrooted_replica(
+        elements: &[Value],
+        context: &mut ProcessContext,
+    ) -> Result<Term, super::JsonTermError> {
+        let mut tail = Term::NIL;
+        for value in elements.iter().rev() {
+            let head = value_to_term(value, context)?;
+            tail = context
+                .alloc_cons(head, tail)
+                .map_err(|_| super::JsonTermError::AllocationFailed("cons"))?;
+        }
+        Ok(tail)
+    }
+
     fn key_of(index: usize) -> String {
         format!("k{index:0WIDTH$}")
     }
@@ -737,13 +786,24 @@ mod ar1_row4_json_tests {
 
     /// Build the array on a heap of exactly `heap` words and read it back
     /// iteratively. `Err` names the first position that is not what went in.
-    fn array_round_trip(count: usize, heap: usize) -> Result<(), String> {
+    fn array_round_trip(count: usize, heap: usize, arm: Arm) -> Result<(), String> {
         let table = Arc::new(AtomTable::with_common_atoms());
         let mut process = Process::new(42, heap);
         let mut context = attach(&table, &mut process);
 
-        let term = value_to_term(&array_of(count), &mut context)
-            .map_err(|error| format!("construction refused: {error}"))?;
+        let value = array_of(count);
+        let term = match arm {
+            Arm::Fixed => value_to_term(&value, &mut context),
+            Arm::UnrootedReplica => {
+                // Drive the replica with the SAME elements the BIF would hand
+                // its own loop, so the allocation sequence matches.
+                let Value::Array(elements) = &value else {
+                    unreachable!("array_of builds an array")
+                };
+                array_to_list_term_unrooted_replica(elements, &mut context)
+            }
+        }
+        .map_err(|error| format!("construction refused: {error}"))?;
 
         let mut seen = 0usize;
         let mut tail = term;
@@ -828,41 +888,57 @@ mod ar1_row4_json_tests {
         Ok(String::from_utf8_lossy(binary.as_bytes()).into_owned())
     }
 
-    /// AR-1 row 4, site 11 (`tail` in `array_to_list_term`).
+    /// AR-1 row 4, site 11 (`tail` in `array_to_list_term`) — ✅ INVERTED.
     ///
-    /// TWO-ARMED IN BOTH DIRECTIONS, which is what makes the failure
-    /// attributable to the collection rather than to an allocator limit:
+    /// TWO-ARMED IN BOTH DIRECTIONS on the control, which is what makes a
+    /// failure attributable to the collection rather than to an allocator limit:
     /// hold the heap and grow the input, then hold the input and grow the heap.
+    /// The fixed body is then measured over the same three cells.
     #[test]
     fn ar1_site11_array_to_list_term_two_armed() {
         const HEAP: usize = 4096;
         const BIG: usize = 2000;
 
-        let control = array_round_trip(50, HEAP);
+        // ⛔⛔ POSITIVE CONTROL FIRST, and it licenses everything below it.
+        let control = array_round_trip(50, HEAP, Arm::UnrootedReplica);
         assert!(
             control.is_ok(),
             "control arm: 50 elements on a {HEAP}-word heap must round-trip, got {control:?}. \
              A failure here would be an allocator limit and the red arm would prove nothing."
         );
 
-        let red = array_round_trip(BIG, HEAP);
+        let red = array_round_trip(BIG, HEAP, Arm::UnrootedReplica);
         assert!(
             red.is_err(),
-            "site 11 red-at-parent: {BIG} elements on a {HEAP}-word heap must corrupt the \
-             carrier, got {red:?}"
+            "POSITIVE CONTROL DEAD: the unrooted replica no longer corrupts at {BIG} elements on \
+             a {HEAP}-word heap (got {red:?}). The pressure regime is gone, so the fixed arm's \
+             success below would mean nothing."
+        );
+        let reason = red.unwrap_err();
+        assert!(
+            !reason.contains("construction refused"),
+            "POSITIVE CONTROL IS A REFUSAL, NOT CORRUPTION: {reason}. A refusal is evidence of \
+             nothing about rooting — it is the exact ambiguity this arm exists to rule out."
         );
 
         // SECOND DIRECTION: same input, a heap large enough that nothing has to
         // collect. If this also failed, the input would simply be too big.
-        let roomy = array_round_trip(BIG, 1 << 20);
+        let roomy = array_round_trip(BIG, 1 << 20, Arm::UnrootedReplica);
         assert!(
             roomy.is_ok(),
-            "site 11 second direction: {BIG} elements on a roomy heap must be clean, got {roomy:?}"
+            "control second direction: {BIG} elements on a roomy heap must be clean, got {roomy:?}"
         );
+        eprintln!("site 11 CONTROL still red: {reason}");
 
-        let reason = red.unwrap_err();
-        println!("site 11 RED: {reason}");
-        eprintln!("site 11 RED: {reason}");
+        // ✅ THE CLAIM. Same cells, same heaps, through the rooted body.
+        for (count, heap) in [(50usize, HEAP), (BIG, HEAP), (BIG, 1usize << 20)] {
+            let fixed = array_round_trip(count, heap, Arm::Fixed);
+            assert!(
+                fixed.is_ok(),
+                "site 11 is NOT rooted: {count} elements on a {heap}-word heap lost the carrier, \
+                 got {fixed:?}, while the replica corrupted in the same run"
+            );
+        }
     }
 
     /// AR-1 row 4, site 15 (`pairs` in `object_to_map_term`).
@@ -910,17 +986,20 @@ mod ar1_row4_json_tests {
         let sizes = [10usize, 100, 500, 2000];
         for heap in heaps {
             for count in sizes {
-                for shape in ["array", "object"] {
-                    let outcome = if shape == "array" {
-                        array_round_trip(count, heap)
-                    } else {
-                        object_round_trip(count, heap)
+                // Arrays are reported on BOTH arms now that site 11 is rooted:
+                // the surface is only readable if the control's shape is beside
+                // the fixed one. Objects stay single-armed until site 15 lands.
+                for shape in ["array-control", "array-fixed", "object"] {
+                    let outcome = match shape {
+                        "array-control" => array_round_trip(count, heap, Arm::UnrootedReplica),
+                        "array-fixed" => array_round_trip(count, heap, Arm::Fixed),
+                        _ => object_round_trip(count, heap),
                     };
                     let verdict = match outcome {
                         Ok(()) => "ok".to_string(),
                         Err(reason) => reason,
                     };
-                    let line = format!("heap {heap:>6} x {shape:<6} {count:>5} : {verdict}");
+                    let line = format!("heap {heap:>6} x {shape:<13} {count:>5} : {verdict}");
                     println!("{line}");
                     eprintln!("{line}");
                 }
