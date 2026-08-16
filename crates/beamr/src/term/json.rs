@@ -400,19 +400,50 @@ fn object_to_map_term(
     object: &JsonObject<String, Value>,
     context: &mut ProcessContext,
 ) -> Result<Term, JsonTermError> {
-    let mut pairs = Vec::with_capacity(object.len());
-    for (key, value) in object {
-        let key_term = string_to_binary_term(key, context)?;
-        let value_term = value_to_term(value, context)?;
-        pairs.push((key_term, value_term));
+    // AR-1 site 15 — the S3e shape, a `Vec<(Term, Term)>`. Both halves were at
+    // risk: the key was held live across the value's `value_to_term`, and every
+    // pair already in the vector was held live across every later allocation.
+    //
+    // The pairs now accumulate as ONE ALTERNATING key/value run in the process
+    // native root stack. Pushing the key BEFORE allocating its value is the
+    // whole point — the key is rooted across the call that could move it.
+    //
+    // ⭐ THE PAIRING IS STRUCTURAL: `to_map_pairs` and `sort_pairs_by_key` both
+    // REFUSE badarg on an odd-length run, so a future edit that pushes a key
+    // without its value is caught rather than silently mis-pairing.
+    //
+    // ⚠️ `sort_pairs_by_key` sorts by RAW TERM VALUE, exactly as the old
+    // `sort_by_key` did — but on pointers that are live rather than possibly
+    // stale, so the resulting key ORDER can differ from the pre-fix order. This
+    // does NOT resolve the ordering-by-raw-value hazard the ground pack flags as
+    // a sibling class; it inherits it, on valid pointers.
+    let mut parked: Option<JsonTermError> = None;
+    let built = context.with_accumulator(|context, terms| {
+        for (key, value) in object {
+            let key_term = match string_to_binary_term(key, context) {
+                Ok(term) => term,
+                Err(error) => {
+                    parked = Some(error);
+                    return Err(Term::NIL);
+                }
+            };
+            terms.push(context, key_term)?;
+            let value_term = match value_to_term(value, context) {
+                Ok(term) => term,
+                Err(error) => {
+                    parked = Some(error);
+                    return Err(Term::NIL);
+                }
+            };
+            terms.push(context, value_term)?;
+        }
+        terms.sort_pairs_by_key(context)?;
+        terms.to_map_pairs(context)
+    });
+    match built {
+        Ok(term) => Ok(term),
+        Err(_) => Err(parked.unwrap_or(JsonTermError::AllocationFailed("map"))),
     }
-    pairs.sort_by_key(|(key, _)| *key);
-
-    let keys = pairs.iter().map(|(key, _)| *key).collect::<Vec<_>>();
-    let values = pairs.iter().map(|(_, value)| *value).collect::<Vec<_>>();
-    context
-        .alloc_map(&keys, &values)
-        .map_err(|_| JsonTermError::AllocationFailed("map"))
 }
 
 #[cfg(test)]
@@ -740,6 +771,29 @@ mod ar1_row4_json_tests {
         Ok(tail)
     }
 
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `object_to_map_term`'s body EXACTLY AS IT
+    /// WAS BEFORE THE FIX, and it must stay that way: the `Vec<(Term, Term)>`
+    /// holding both halves of every pair across every later allocation.
+    /// ⛔ Do NOT migrate it onto the accumulator.
+    fn object_to_map_term_unrooted_replica(
+        object: &JsonMap<String, Value>,
+        context: &mut ProcessContext,
+    ) -> Result<Term, super::JsonTermError> {
+        let mut pairs = Vec::with_capacity(object.len());
+        for (key, value) in object {
+            let key_term = super::string_to_binary_term(key, context)?;
+            let value_term = value_to_term(value, context)?;
+            pairs.push((key_term, value_term));
+        }
+        pairs.sort_by_key(|(key, _)| *key);
+
+        let keys = pairs.iter().map(|(key, _)| *key).collect::<Vec<_>>();
+        let values = pairs.iter().map(|(_, value)| *value).collect::<Vec<_>>();
+        context
+            .alloc_map(&keys, &values)
+            .map_err(|_| super::JsonTermError::AllocationFailed("map"))
+    }
+
     fn key_of(index: usize) -> String {
         format!("k{index:0WIDTH$}")
     }
@@ -840,13 +894,24 @@ mod ar1_row4_json_tests {
 
     /// Build the object on a heap of exactly `heap` words and read it back as a
     /// SET of key→value pairs (see the header note on sort-by-bit-pattern).
-    fn object_round_trip(count: usize, heap: usize) -> Result<(), String> {
+    fn object_round_trip(count: usize, heap: usize, arm: Arm) -> Result<(), String> {
         let table = Arc::new(AtomTable::with_common_atoms());
         let mut process = Process::new(42, heap);
         let mut context = attach(&table, &mut process);
 
-        let term = value_to_term(&object_of(count), &mut context)
-            .map_err(|error| format!("construction refused: {error}"))?;
+        let value = object_of(count);
+        let term = match arm {
+            Arm::Fixed => value_to_term(&value, &mut context),
+            Arm::UnrootedReplica => {
+                // Drive the replica with the SAME object the BIF would hand its
+                // own loop, so the allocation sequence matches.
+                let Value::Object(object) = &value else {
+                    unreachable!("object_of builds an object")
+                };
+                object_to_map_term_unrooted_replica(object, &mut context)
+            }
+        }
+        .map_err(|error| format!("construction refused: {error}"))?;
 
         let map =
             Map::new(term).ok_or_else(|| "result is not a map — carrier went stale".to_string())?;
@@ -941,7 +1006,11 @@ mod ar1_row4_json_tests {
         }
     }
 
-    /// AR-1 row 4, site 15 (`pairs` in `object_to_map_term`).
+    /// AR-1 row 4, site 15 (`pairs` in `object_to_map_term`) — ✅ INVERTED.
+    ///
+    /// Same two-directional control as site 11: hold the heap and grow the
+    /// input, then hold the input and grow the heap. The fixed body is measured
+    /// over the same three cells the replica was measured on.
     #[test]
     fn ar1_site15_object_to_map_term_two_armed() {
         // MEASURED, not guessed. At heap 4096 the 500-entry case is clean and
@@ -952,28 +1021,46 @@ mod ar1_row4_json_tests {
         const HEAP: usize = 256;
         const BIG: usize = 100;
 
-        let control = object_round_trip(10, HEAP);
+        // ⛔⛔ POSITIVE CONTROL FIRST, and it licenses everything below it.
+        let control = object_round_trip(10, HEAP, Arm::UnrootedReplica);
         assert!(
             control.is_ok(),
-            "control arm: 10 entries on a {HEAP}-word heap must round-trip, got {control:?}."
+            "control arm: 10 entries on a {HEAP}-word heap must round-trip, got {control:?}. \
+             A failure here would be an allocator limit and the red arm would prove nothing."
         );
 
-        let red = object_round_trip(BIG, HEAP);
+        let red = object_round_trip(BIG, HEAP, Arm::UnrootedReplica);
         assert!(
             red.is_err(),
-            "site 15 red-at-parent: {BIG} entries on a {HEAP}-word heap must corrupt the \
-             carrier, got {red:?}"
+            "POSITIVE CONTROL DEAD: the unrooted replica no longer corrupts at {BIG} entries on \
+             a {HEAP}-word heap (got {red:?}). The pressure regime is gone, so the fixed arm's \
+             success below would mean nothing."
+        );
+        let reason = red.unwrap_err();
+        assert!(
+            !reason.contains("construction refused"),
+            "POSITIVE CONTROL IS A REFUSAL, NOT CORRUPTION: {reason}. A refusal is evidence of \
+             nothing about rooting — it is the exact ambiguity this arm exists to rule out."
         );
 
-        let roomy = object_round_trip(BIG, 1 << 20);
+        // SECOND DIRECTION: same input, a heap large enough that nothing has to
+        // collect. If this also failed, the input would simply be too big.
+        let roomy = object_round_trip(BIG, 1 << 20, Arm::UnrootedReplica);
         assert!(
             roomy.is_ok(),
-            "site 15 second direction: {BIG} entries on a roomy heap must be clean, got {roomy:?}"
+            "control second direction: {BIG} entries on a roomy heap must be clean, got {roomy:?}"
         );
+        eprintln!("site 15 CONTROL still red: {reason}");
 
-        let reason = red.unwrap_err();
-        println!("site 15 RED: {reason}");
-        eprintln!("site 15 RED: {reason}");
+        // ✅ THE CLAIM. Same cells, same heaps, through the rooted body.
+        for (count, heap) in [(10usize, HEAP), (BIG, HEAP), (BIG, 1usize << 20)] {
+            let fixed = object_round_trip(count, heap, Arm::Fixed);
+            assert!(
+                fixed.is_ok(),
+                "site 15 is NOT rooted: {count} entries on a {heap}-word heap lost the carrier, \
+                 got {fixed:?}, while the replica corrupted in the same run"
+            );
+        }
     }
 
     /// The surface both verdicts are read off. Each cell is emitted AS IT RUNS
@@ -986,14 +1073,20 @@ mod ar1_row4_json_tests {
         let sizes = [10usize, 100, 500, 2000];
         for heap in heaps {
             for count in sizes {
-                // Arrays are reported on BOTH arms now that site 11 is rooted:
-                // the surface is only readable if the control's shape is beside
-                // the fixed one. Objects stay single-armed until site 15 lands.
-                for shape in ["array-control", "array-fixed", "object"] {
+                // Both shapes are reported on BOTH arms now that sites 11 and 15
+                // are rooted: the surface is only readable if the control's
+                // shape is beside the fixed one, cell for cell.
+                for shape in [
+                    "array-control",
+                    "array-fixed",
+                    "object-control",
+                    "object-fixed",
+                ] {
                     let outcome = match shape {
                         "array-control" => array_round_trip(count, heap, Arm::UnrootedReplica),
                         "array-fixed" => array_round_trip(count, heap, Arm::Fixed),
-                        _ => object_round_trip(count, heap),
+                        "object-control" => object_round_trip(count, heap, Arm::UnrootedReplica),
+                        _ => object_round_trip(count, heap, Arm::Fixed),
                     };
                     let verdict = match outcome {
                         Ok(()) => "ok".to_string(),
