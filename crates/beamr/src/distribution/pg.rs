@@ -483,14 +483,23 @@ fn members(
         };
         (facility.local_members(scope, group), remote_members)
     };
-    let mut terms = Vec::new();
-    for pid in local_members {
-        terms.push(Term::try_pid(pid).ok_or_else(badarg)?);
-    }
-    for remote in remote_members {
-        terms.push(context.alloc_external_pid(remote.node, remote.pid_number, remote.serial)?);
-    }
-    context.alloc_list(&terms)
+    // AR-1 site 2. The carrier used to be a bare `Vec<Term>` holding boxed
+    // external pids across further `alloc_external_pid` calls, any of which can
+    // collect. The accumulator holds them in the process root stack instead.
+    // Local pids are immediates and were never at risk; they go through the
+    // same accumulator so the loop has one shape rather than two.
+    context.with_accumulator(|context, terms| {
+        for pid in local_members {
+            let local = Term::try_pid(pid).ok_or_else(badarg)?;
+            terms.push(context, local)?;
+        }
+        for remote in remote_members {
+            let external =
+                context.alloc_external_pid(remote.node, remote.pid_number, remote.serial)?;
+            terms.push(context, external)?;
+        }
+        terms.to_list(context)
+    })
 }
 
 fn badarg() -> Term {
@@ -511,7 +520,7 @@ mod ar1_row4_site2_tests {
 
     use std::sync::Arc;
 
-    use super::{PgFacility, RemoteMember, members};
+    use super::{PgFacility, RemoteMember, badarg, members};
     use crate::atom::{Atom, AtomTable};
     use crate::native::ProcessContext;
     use crate::process::Process;
@@ -545,9 +554,58 @@ mod ar1_row4_site2_tests {
         }
     }
 
-    /// One cell. `remote` selects the arm: true = remote members (allocating),
-    /// false = local members (immediates, the structural control).
-    fn members_round_trip(count: usize, remote: bool) -> Result<(), String> {
+    /// Which body the cell drives. ⛔ The replica exists because inverting this
+    /// probe killed its own positive control: `remote_red > 0` used to prove the
+    /// sweep applied real pressure, and post-fix nothing at the production site
+    /// can.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Arm {
+        Fixed,
+        UnrootedReplica,
+    }
+
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `members` EXACTLY AS IT WAS BEFORE THE FIX,
+    /// and it must stay that way.
+    ///
+    /// A bare `Vec<Term>` holding boxed external pids across further
+    /// `alloc_external_pid` calls, each of which can collect. The facility read
+    /// and both loops are kept in their original order so the allocation
+    /// sequence is the same one that was measured at `f993280`.
+    /// ⛔ Do NOT migrate it onto the accumulator.
+    fn members_unrooted_replica(
+        context: &mut ProcessContext,
+        scope: Atom,
+        group: Term,
+        include_remote: bool,
+    ) -> Result<Term, Term> {
+        let group = group.as_atom().ok_or_else(badarg)?;
+        let (local_members, remote_members) = {
+            let facility = context.pg_facility().ok_or_else(badarg)?;
+            let remote_members = if include_remote {
+                facility.remote_members(scope, group)
+            } else {
+                Vec::new()
+            };
+            (facility.local_members(scope, group), remote_members)
+        };
+        let mut terms = Vec::new();
+        for pid in local_members {
+            terms.push(Term::try_pid(pid).ok_or_else(badarg)?);
+        }
+        for remote in remote_members {
+            terms.push(context.alloc_external_pid(
+                remote.node,
+                remote.pid_number,
+                remote.serial,
+            )?);
+        }
+        context.alloc_list(&terms)
+    }
+
+    /// One cell. `remote` selects the roster: true = remote members
+    /// (allocating), false = local members (immediates, the structural
+    /// control). `arm` selects which body reads that roster.
+    fn members_round_trip(count: usize, remote: bool, arm: Arm) -> Result<(), String> {
         let table = Arc::new(AtomTable::with_common_atoms());
         let scope = table.intern("ar1_site2_scope");
         let group_atom = table.intern("ar1_site2_group");
@@ -582,8 +640,14 @@ mod ar1_row4_site2_tests {
         context.attach_process(&mut process, 0);
         context.set_pg_facility(Some(Arc::new(facility)));
 
-        let list = members(&mut context, scope, Term::atom(group_atom), true)
-            .map_err(|_| "members returned an error term".to_string())?;
+        let list = match arm {
+            Arm::Fixed => members(&mut context, scope, Term::atom(group_atom), true)
+                .map_err(|_| "members returned an error term".to_string())?,
+            Arm::UnrootedReplica => {
+                members_unrooted_replica(&mut context, scope, Term::atom(group_atom), true)
+                    .map_err(|_| "replica returned an error term".to_string())?
+            }
+        };
 
         // Iterative, hard-capped: a stale carrier can alias a cons into a cycle.
         let cap = count * 2 + 16;
@@ -657,38 +721,6 @@ mod ar1_row4_site2_tests {
             200, 300, 500, // above: allocator refuses, NOT evidence
         ];
 
-        let mut remote_cells = Vec::new();
-        let mut local_cells = Vec::new();
-        for &count in COUNTS {
-            for arm_remote in [true, false] {
-                let verdict = match members_round_trip(count, arm_remote) {
-                    Ok(()) => "ok".to_string(),
-                    Err(reason) => reason,
-                };
-                eprintln!(
-                    "site 2 arm {} count {count:>4} : {verdict}",
-                    if arm_remote { "REMOTE" } else { "LOCAL " }
-                );
-                if arm_remote {
-                    remote_cells.push((count, verdict));
-                } else {
-                    local_cells.push((count, verdict));
-                }
-            }
-        }
-
-        let is_red = |v: &String| v != "ok" && !v.contains("returned an error term");
-        let remote_red = remote_cells.iter().filter(|(_, v)| is_red(v)).count();
-        let remote_ok = remote_cells.iter().filter(|(_, v)| v == "ok").count();
-        let local_red: Vec<_> = local_cells.iter().filter(|(_, v)| is_red(v)).collect();
-        let local_ok = local_cells.iter().filter(|(_, v)| v == "ok").count();
-
-        eprintln!("site 2 arm REMOTE: {remote_red} red, {remote_ok} clean");
-        eprintln!(
-            "site 2 arm LOCAL : {} red, {local_ok} clean",
-            local_red.len()
-        );
-
         // ⛔ COVERAGE — site 1's lesson. The sweep must demand more heap than
         // exists, or its clean cells describe the knob's range and not the site.
         let largest = COUNTS.iter().copied().max().unwrap_or(0);
@@ -700,34 +732,113 @@ mod ar1_row4_site2_tests {
             largest * 4
         );
 
-        assert!(
-            remote_ok > 0,
-            "control: some REMOTE cell must be clean, or the reader is broken rather than the \
-             site defective"
+        // ⛔⛔ POSITIVE CONTROL FIRST, and it licenses everything below it. The
+        // replica's surface is PINNED to the band measured at f993280 — so this
+        // arm proves not merely that pressure exists but that it is the SAME
+        // pressure the pre-fix body met, cell for cell.
+        let control = sweep(COUNTS, Arm::UnrootedReplica);
+        assert_eq!(
+            (
+                control.remote_red,
+                control.remote_ok,
+                control.local_red.len(),
+                control.local_ok
+            ),
+            (9, 6, 0, 21),
+            "POSITIVE CONTROL DRIFTED from the f993280 band. The replica no longer reproduces the \
+             pre-fix surface, so it is not a calibrated control and the fixed arm's zeros below \
+             are ungraded.\nREMOTE: {:#?}\nLOCAL: {:#?}",
+            control.remote_cells,
+            control.local_cells
         );
 
-        // ⛔ THE STRUCTURAL NEGATIVE CONTROL. Local members are immediates, so
-        // the accumulation loop allocates nothing and cannot collect.
+        // ✅ THE CLAIM. Same sweep, same rosters, same heap, through the rooted
+        // body: nothing corrupts.
+        let fixed = sweep(COUNTS, Arm::Fixed);
+        assert_eq!(
+            fixed.remote_red, 0,
+            "site 2 is NOT rooted: {} REMOTE cells still lost the carrier while the replica \
+             corrupted {} in the same run.\n{:#?}",
+            fixed.remote_red, control.remote_red, fixed.remote_cells
+        );
         assert!(
-            local_red.is_empty(),
-            "ATTRIBUTION BROKEN: arm LOCAL corrupted {} cells, but `Term::try_pid` is an immediate \
-             and that loop allocates nothing. The exposure is not `alloc_external_pid` — \
-             re-derive it.\n{local_red:#?}",
+            fixed.remote_ok > 0,
+            "site 2: the fixed arm produced no clean REMOTE cell at all, so the zero above \
+             measures refusals rather than safety.\n{:#?}",
+            fixed.remote_cells
+        );
+
+        // ⛔ THE STRUCTURAL NEGATIVE CONTROL, kept on BOTH arms. Local members
+        // are immediates, so that loop allocates nothing and cannot collect. If
+        // it ever reddens, the exposure was never `alloc_external_pid`.
+        for (label, red) in [("replica", &control.local_red), ("fixed", &fixed.local_red)] {
+            assert!(
+                red.is_empty(),
+                "ATTRIBUTION BROKEN on the {label} arm: LOCAL corrupted {} cells, but \
+                 `Term::try_pid` is an immediate and that loop allocates nothing. The exposure is \
+                 not `alloc_external_pid` — re-derive it.\n{red:#?}",
+                red.len()
+            );
+        }
+    }
+
+    /// One arm's full sweep. Cells are emitted per count; the counts are
+    /// returned rather than asserted here so the caller can compare arms.
+    struct Surface {
+        remote_red: usize,
+        remote_ok: usize,
+        local_red: Vec<(usize, String)>,
+        local_ok: usize,
+        remote_cells: Vec<(usize, String)>,
+        local_cells: Vec<(usize, String)>,
+    }
+
+    fn sweep(counts: &[usize], arm: Arm) -> Surface {
+        let mut remote_cells = Vec::new();
+        let mut local_cells = Vec::new();
+        for &count in counts {
+            for arm_remote in [true, false] {
+                let verdict = match members_round_trip(count, arm_remote, arm) {
+                    Ok(()) => "ok".to_string(),
+                    Err(reason) => reason,
+                };
+                eprintln!(
+                    "site 2 [{arm:?}] roster {} count {count:>4} : {verdict}",
+                    if arm_remote { "REMOTE" } else { "LOCAL " }
+                );
+                if arm_remote {
+                    remote_cells.push((count, verdict));
+                } else {
+                    local_cells.push((count, verdict));
+                }
+            }
+        }
+
+        // ⛔ A REFUSAL IS NOT CORRUPTION. Kept as the discriminator on both
+        // arms; merging the two states is the error that fooled this lane once.
+        let is_red = |v: &String| v != "ok" && !v.contains("returned an error term");
+        let remote_red = remote_cells.iter().filter(|(_, v)| is_red(v)).count();
+        let remote_ok = remote_cells.iter().filter(|(_, v)| v == "ok").count();
+        let local_red: Vec<_> = local_cells
+            .iter()
+            .filter(|(_, v)| is_red(v))
+            .cloned()
+            .collect();
+        let local_ok = local_cells.iter().filter(|(_, v)| v == "ok").count();
+
+        eprintln!(
+            "site 2 [{arm:?}] REMOTE: {remote_red} red, {remote_ok} clean · LOCAL: {} red, \
+             {local_ok} clean",
             local_red.len()
         );
 
-        assert!(
-            remote_red > 0,
-            "site 2: no REMOTE cell corrupted the carrier. Under the site-14 law that is \
-             UNRESOLVED, not defended.\n{remote_cells:#?}"
-        );
-
-        // Waffles' condition 3 — the whole surface pinned, so a passing run
-        // carries its evidence instead of only the absence of a failure.
-        assert_eq!(
-            (remote_red, remote_ok, local_red.len(), local_ok),
-            (9, 6, 0, 21),
-            "site 2 surface drifted from the measured band.\nREMOTE: {remote_cells:#?}\nLOCAL: {local_cells:#?}"
-        );
+        Surface {
+            remote_red,
+            remote_ok,
+            local_red,
+            local_ok,
+            remote_cells,
+            local_cells,
+        }
     }
 }
