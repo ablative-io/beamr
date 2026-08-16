@@ -134,14 +134,47 @@ fn json_value_to_term(
             .alloc_binary(string.as_bytes())
             .map_err(|_| JsValue::from_str("failed to allocate binary term")),
         Value::Array(elements) => {
-            let mut tail = Term::NIL;
-            for value in elements.iter().rev() {
-                let head = json_value_to_term(value, context, depth + 1)?;
-                tail = context
-                    .alloc_cons(head, tail)
-                    .map_err(|_| JsValue::from_str("failed to allocate cons term"))?;
+            // AR-1 site 12 — the threaded-tail shape, the same carrier as site
+            // 11 in beamr's own `term::json`. The boxed cons `tail` was held
+            // live across the recursive call, which allocates; the accumulator
+            // holds the elements in the process native root stack and builds
+            // the list once, at the end.
+            //
+            // ⚠️ THE ITERATION DIRECTION FLIPS — the old body walked `.rev()`
+            // and prepended, this one walks forward and appends. The resulting
+            // list is in the SAME ORDER; what changes is the order the elements
+            // are ALLOCATED in, a heap-layout difference and not a term one.
+            //
+            // ⭐ THIS ARM RECURSES INTO ITSELF, so a nested array opens an
+            // accumulator scope INSIDE an open one. That is sound for the same
+            // reason the `with_rooted`-inside-`with_accumulator` nesting at the
+            // URI sites is: the inner scope is innermost while it is open, and
+            // the outer only pushes after the inner has popped.
+            //
+            // `with_accumulator`'s error channel is `Term` while this module's
+            // is `JsValue`, so a failure from the recursive call is parked here
+            // and re-raised after the closure rather than being flattened into
+            // a generic cons-allocation message that would name the wrong thing.
+            let mut parked: Option<JsValue> = None;
+            let built = context.with_accumulator(|context, terms| {
+                for value in elements {
+                    let head = match json_value_to_term(value, context, depth + 1) {
+                        Ok(head) => head,
+                        Err(error) => {
+                            parked = Some(error);
+                            return Err(Term::NIL);
+                        }
+                    };
+                    terms.push(context, head)?;
+                }
+                terms.to_list(context)
+            });
+            match built {
+                Ok(term) => Ok(term),
+                Err(_) => {
+                    Err(parked.unwrap_or_else(|| JsValue::from_str("failed to allocate cons term")))
+                }
             }
-            Ok(tail)
         }
         Value::Object(object) => {
             let mut pairs = Vec::with_capacity(object.len());
@@ -542,6 +575,71 @@ mod ar1_row4_sites_12_16_tests {
         }
     }
 
+    /// Which body a cell drives. `Fixed` is the shipped `json_value_to_term`;
+    /// `UnrootedReplica` is the pre-fix body kept alive as the positive control.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Arm {
+        Fixed,
+        UnrootedReplica,
+    }
+
+    /// ⛔⛔ THE SYNTHETIC POSITIVE — `json_value_to_term`'s body EXACTLY AS IT
+    /// WAS BEFORE THE FIX, and it must stay that way. It is RECURSIVE and
+    /// carries BOTH defects at once: the threaded `tail` of site 12's Array arm
+    /// and the `Vec<(Term, Term)>` of site 16's Object arm. That is why the two
+    /// sites share one control — a replica of either arm alone would recurse
+    /// back into the fixed body and stop being a replica.
+    /// ⛔ Do NOT migrate it onto the accumulator, and do NOT fix its Object arm
+    /// when site 16 is fixed in production: this function is the control.
+    fn json_value_to_term_unrooted_replica(
+        value: &Value,
+        context: &mut ProcessContext<'_>,
+        depth: usize,
+    ) -> Result<Term, JsValue> {
+        check_depth(depth)?;
+        match value {
+            Value::Null => Ok(Term::atom(Atom::NIL)),
+            Value::Bool(true) => Ok(Term::atom(Atom::TRUE)),
+            Value::Bool(false) => Ok(Term::atom(Atom::FALSE)),
+            Value::Number(number) => number
+                .as_f64()
+                .ok_or_else(|| JsValue::from_str("unsupported JSON number"))
+                .and_then(|value| number_to_term(value, context)),
+            Value::String(string) => context
+                .alloc_binary(string.as_bytes())
+                .map_err(|_| JsValue::from_str("failed to allocate binary term")),
+            Value::Array(elements) => {
+                let mut tail = Term::NIL;
+                for value in elements.iter().rev() {
+                    let head = json_value_to_term_unrooted_replica(value, context, depth + 1)?;
+                    tail = context
+                        .alloc_cons(head, tail)
+                        .map_err(|_| JsValue::from_str("failed to allocate cons term"))?;
+                }
+                Ok(tail)
+            }
+            Value::Object(object) => {
+                let mut pairs = Vec::with_capacity(object.len());
+                for (key, value) in object {
+                    let key_term = context
+                        .alloc_binary(key.as_bytes())
+                        .map_err(|_| JsValue::from_str("failed to allocate map key binary"))?;
+                    let value_term =
+                        json_value_to_term_unrooted_replica(value, context, depth + 1)?;
+                    pairs.push((key_term, value_term));
+                }
+                alloc_sorted_map(pairs, context)
+            }
+        }
+    }
+
+    fn convert(value: &Value, context: &mut ProcessContext<'_>, arm: Arm) -> Result<Term, JsValue> {
+        match arm {
+            Arm::Fixed => json_value_to_term(value, context, 0),
+            Arm::UnrootedReplica => json_value_to_term_unrooted_replica(value, context, 0),
+        }
+    }
+
     const KEY_WIDTH: usize = 12;
 
     fn element(index: usize) -> String {
@@ -553,6 +651,23 @@ mod ar1_row4_sites_12_16_tests {
         Value::Array(
             (0..count)
                 .map(|index| Value::String(element(index)))
+                .collect(),
+        )
+    }
+
+    /// An array OF ARRAYS — `outer` inner arrays of `inner` string elements
+    /// each. This is the only fixture that makes the Array arm recurse into
+    /// ITSELF, which is what opens an accumulator scope inside an open one.
+    fn nested_input(outer: usize, inner: usize) -> Value {
+        Value::Array(
+            (0..outer)
+                .map(|_| {
+                    Value::Array(
+                        (0..inner)
+                            .map(|index| Value::String(element(index)))
+                            .collect(),
+                    )
+                })
                 .collect(),
         )
     }
@@ -648,6 +763,7 @@ mod ar1_row4_sites_12_16_tests {
         margin: usize,
         count: usize,
         is_map: bool,
+        arm: Arm,
     ) -> (usize, Result<(), String>) {
         let table = Arc::new(AtomTable::with_common_atoms());
         let mut process = Process::new(12, heap);
@@ -678,7 +794,7 @@ mod ar1_row4_sites_12_16_tests {
             }
         };
 
-        let outcome = match json_value_to_term(input, &mut context, 0) {
+        let outcome = match convert(input, &mut context, arm) {
             Err(_) => Err("json_value_to_term returned an error term".to_string()),
             Ok(term) => {
                 if is_map {
@@ -694,11 +810,11 @@ mod ar1_row4_sites_12_16_tests {
     /// ARM B — DETACHED CONTEXT, which is the shape EVERY production caller
     /// builds (`terms_from_json_array` makes a fresh `ProcessContext::new()`
     /// per element and never attaches a process).
-    fn detached(input: &Value, count: usize, is_map: bool) -> Result<(), String> {
+    fn detached(input: &Value, count: usize, is_map: bool, arm: Arm) -> Result<(), String> {
         let table = Arc::new(AtomTable::with_common_atoms());
         let mut context = ProcessContext::new();
         context.set_atom_table(Some(Arc::clone(&table)));
-        match json_value_to_term(input, &mut context, 0) {
+        match convert(input, &mut context, arm) {
             Err(_) => Err("json_value_to_term returned an error term".to_string()),
             Ok(term) => {
                 if is_map {
@@ -714,7 +830,7 @@ mod ar1_row4_sites_12_16_tests {
     /// legible as a failing one. A verdict that is only visible when the assert
     /// fires cannot tell "no corruption" from "no pressure" — the same
     /// collapsed pair as hung-vs-slow-compile.
-    fn sweep(label: &str, is_map: bool) -> (usize, usize, Vec<String>) {
+    fn sweep(label: &str, is_map: bool, arm: Arm) -> (usize, usize, Vec<String>) {
         let mut corrupted = 0usize;
         let mut clean = 0usize;
         let mut report = Vec::new();
@@ -747,7 +863,7 @@ mod ar1_row4_sites_12_16_tests {
                 array_input(count)
             };
             for margin in [0usize, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 4096] {
-                let (achieved, result) = attached(&input, 4096, margin, count, is_map);
+                let (achieved, result) = attached(&input, 4096, margin, count, is_map, arm);
                 let verdict = match result {
                     Ok(()) => "ok".to_string(),
                     Err(reason) => reason,
@@ -774,35 +890,42 @@ mod ar1_row4_sites_12_16_tests {
     /// defective.** MUST go RED, or the pair is UNRESOLVED, not defended.
     #[wasm_bindgen_test]
     fn ar1_sites_12_16_tier1_defective_red_with_a_process_attached() {
-        let (list_red, list_ok, list_report) = sweep("site 12 (tail)", false);
-        let (map_red, map_ok, map_report) = sweep("site 16 (pairs)", true);
-        emit(&format!(
-            "site 12: {list_red} corruption cells, {list_ok} clean cells"
-        ));
-        emit(&format!(
-            "site 16: {map_red} corruption cells, {map_ok} clean cells"
-        ));
+        // ⛔⛔ CONTROL FIRST, and it licenses everything below it. The replica
+        // carries BOTH pre-fix arms, so it is still the live positive control
+        // for site 16 as well as the retired one for site 12.
+        let (ctl_list_red, ctl_list_ok, ctl_list_report) =
+            sweep("CONTROL site 12 (tail)", false, Arm::UnrootedReplica);
+        let (ctl_map_red, ctl_map_ok, ctl_map_report) =
+            sweep("CONTROL site 16 (pairs)", true, Arm::UnrootedReplica);
+        let (fix_list_red, fix_list_ok, fix_list_report) =
+            sweep("SHIPPED site 12 (tail)", false, Arm::Fixed);
+        let (fix_map_red, fix_map_ok, fix_map_report) =
+            sweep("SHIPPED site 16 (pairs)", true, Arm::Fixed);
         let report = format!(
-            "site 12: {list_red} corruption cells, {list_ok} clean cells\n\
-             site 16: {map_red} corruption cells, {map_ok} clean cells\n{}\n{}",
-            list_report.join("\n"),
-            map_report.join("\n")
+            "CONTROL site 12: {ctl_list_red} corrupt, {ctl_list_ok} clean\n\
+             CONTROL site 16: {ctl_map_red} corrupt, {ctl_map_ok} clean\n\
+             SHIPPED site 12: {fix_list_red} corrupt, {fix_list_ok} clean\n\
+             SHIPPED site 16: {fix_map_red} corrupt, {fix_map_ok} clean\n{}\n{}\n{}\n{}",
+            ctl_list_report.join("\n"),
+            ctl_map_report.join("\n"),
+            fix_list_report.join("\n"),
+            fix_map_report.join("\n")
         );
+        emit(&report);
 
         assert!(
-            list_ok > 0 && map_ok > 0,
+            ctl_list_ok > 0 && ctl_map_ok > 0,
             "control: some cell must be clean, or the probe never worked at all\n{report}"
         );
         assert!(
-            list_red > 0,
-            "site 12: no cell corrupted `tail` with a process ATTACHED. Under the site-14 law \
-             that is UNRESOLVED, not defended — and it would void the detached arm, whose whole \
-             meaning is that it is clean FOR A DIFFERENT REASON.\n{report}"
+            ctl_list_red > 0,
+            "POSITIVE CONTROL DEAD at site 12: the unrooted replica no longer corrupts `tail` \
+             with a process ATTACHED, so the pressure regime is gone and the shipped arm's \
+             success below would mean nothing.\n{report}"
         );
         assert!(
-            map_red > 0,
-            "site 16: no cell corrupted `pairs` with a process ATTACHED. Same reading as \
-             site 12.\n{report}"
+            ctl_map_red > 0,
+            "POSITIVE CONTROL DEAD at site 16: same reading as site 12.\n{report}"
         );
 
         // ⭐ PRE-REGISTERED EXACT COUNTS. The runner emits per-test output ONLY
@@ -811,10 +934,149 @@ mod ar1_row4_sites_12_16_tests {
         // absent; only a panic payload survives. So a bare `> 0` assertion
         // would PASS SILENTLY and the band would be invisible on every green
         // run. Pinning the counts makes any drift print the whole surface.
+        //
+        // ⭐ THE CONTROL BAND IS THE REPLICA-FIDELITY CHECK: (21, 27, 16, 8) is
+        // the band the PRODUCTION body measured before the fix, so a replica
+        // that reproduces it cell for cell is calibrated rather than merely
+        // plausible.
         assert_eq!(
-            (list_red, list_ok, map_red, map_ok),
+            (ctl_list_red, ctl_list_ok, ctl_map_red, ctl_map_ok),
             (21, 27, 16, 8),
-            "band drifted from the measured surface\n{report}"
+            "control band drifted from the pre-fix production surface\n{report}"
+        );
+
+        // ✅ THE CLAIM — site 12 only. Same cells, same margins, same input.
+        assert_eq!(
+            (fix_list_red, fix_list_ok),
+            (0, 48),
+            "site 12 is NOT rooted: the shipped body lost the carrier on some cell while the \
+             replica corrupted 21 of the same cells in the same run\n{report}"
+        );
+
+        // ⚠️ SITE 16 IS STILL UNFIXED IN PRODUCTION and this asserts it, so the
+        // green above cannot be read as covering the Object arm. When site 16
+        // lands, this pair flips to (0, 24) and the control band stays put.
+        assert_eq!(
+            (fix_map_red, fix_map_ok),
+            (16, 8),
+            "site 16's shipped band moved. It is UNFIXED at this commit and must still match \
+             the control exactly; a change here means something else moved.\n{report}"
+        );
+    }
+
+    /// Site 12's fix rests on a claim the sweep above CANNOT TEST, because its
+    /// arrays are flat: that an accumulator scope opened INSIDE an open one is
+    /// accepted. `rooted_push` refuses unless its handle is innermost, so if the
+    /// nesting were wrong the recursive arm would return a refusal rather than a
+    /// wrong value — and a refusal is exactly the outcome the sweep scores as
+    /// "not corruption". ⭐ NAMING THE HAZARD IN A COMMENT IS NOT MEASURING IT.
+    ///
+    /// The replica runs the SAME cells, for two reasons at once: a red there
+    /// proves this fixture actually applies collection pressure at the nesting
+    /// depth (so a clean fixed arm is not merely an unpressed one), and it
+    /// proves the reader below can report a failure at all.
+    fn nested_round_trip(outer: usize, inner: usize, margin: usize, arm: Arm) -> (usize, String) {
+        let input = nested_input(outer, inner);
+        let table = Arc::new(AtomTable::with_common_atoms());
+        let mut process = Process::new(12, 4096);
+        let mut context = ProcessContext::new();
+        context.set_atom_table(Some(Arc::clone(&table)));
+        context.attach_process(&mut process, 0);
+
+        let mut filler = Vec::new();
+        let mut last_available = usize::MAX;
+        let achieved = loop {
+            let available = context.process_heap().map(|h| h.available()).unwrap_or(0);
+            if available <= margin || available >= last_available {
+                break available;
+            }
+            last_available = available;
+            match context.alloc_binary(&[0xA1; 32]) {
+                Ok(term) => filler.push(term),
+                Err(_) => break available,
+            }
+        };
+
+        let outcome = match convert(&input, &mut context, arm) {
+            // ⛔ A REFUSAL IS THE FAILURE MODE THIS TEST EXISTS FOR, so it is
+            // named as one rather than folded into "not clean".
+            Err(_) => Err("REFUSED — the nested scope was rejected".to_string()),
+            Ok(term) => {
+                let mut seen = 0usize;
+                let mut tail = term;
+                let cap = outer * 2 + 16;
+                let mut stale = None;
+                while !tail.is_nil() && seen <= cap {
+                    match Cons::new(tail) {
+                        None => {
+                            stale = Some(format!("outer cell {seen} is not a cons"));
+                            break;
+                        }
+                        Some(cons) => {
+                            if let Err(reason) = check_list(cons.head(), inner) {
+                                stale = Some(format!("outer cell {seen}: {reason}"));
+                                break;
+                            }
+                            seen += 1;
+                            tail = cons.tail();
+                        }
+                    }
+                }
+                match stale {
+                    Some(reason) => Err(reason),
+                    None if seen == outer => Ok(()),
+                    None => Err(format!("recovered {seen} inner lists, put {outer}")),
+                }
+            }
+        };
+        let verdict = match outcome {
+            Ok(()) => "ok".to_string(),
+            Err(reason) => reason,
+        };
+        (achieved, verdict)
+    }
+
+    #[wasm_bindgen_test]
+    fn ar1_site12_nested_arrays_open_an_accumulator_inside_an_open_one() {
+        let mut report = Vec::new();
+        let mut control_red = 0usize;
+        let mut control_refused = 0usize;
+        let mut fixed_bad = Vec::new();
+        for (outer, inner) in [(2usize, 4usize), (20, 8), (100, 12)] {
+            for margin in [0usize, 8, 64, 512] {
+                let (ctl_margin, ctl) =
+                    nested_round_trip(outer, inner, margin, Arm::UnrootedReplica);
+                let (fix_margin, fix) = nested_round_trip(outer, inner, margin, Arm::Fixed);
+                let line = format!(
+                    "nested {outer}x{inner} margin req {margin:>4} | CONTROL got {ctl_margin:>5} : \
+                     {ctl} | SHIPPED got {fix_margin:>5} : {fix}"
+                );
+                emit(&line);
+                report.push(line);
+                if ctl != "ok" {
+                    if ctl.starts_with("REFUSED") {
+                        control_refused += 1;
+                    } else {
+                        control_red += 1;
+                    }
+                }
+                if fix != "ok" {
+                    fixed_bad.push(format!("{outer}x{inner} margin {margin}: {fix}"));
+                }
+            }
+        }
+        let report = report.join("\n");
+
+        assert!(
+            control_red > 0,
+            "NO PRESSURE: the unrooted replica round-tripped every nested cell cleanly, so the \
+             shipped arm's success proves nothing about the nested scope. {control_refused} cells \
+             were refusals, which are not evidence either.\n{report}"
+        );
+        assert!(
+            fixed_bad.is_empty(),
+            "the shipped body failed on nested arrays — an accumulator scope inside an open one \
+             was rejected or lost its carrier: {fixed_bad:?}\n{report}"
         );
     }
 
@@ -829,20 +1091,36 @@ mod ar1_row4_sites_12_16_tests {
     /// site's** — so this green may not be read as "site 12/16 is safe".
     #[wasm_bindgen_test]
     fn ar1_sites_12_16_tier2_production_path_unreachable_detached_context() {
+        // ⛔⛔ THE HAZARD THIS ARM NOW ALSO GUARDS: `with_rooted` REFUSES with
+        // `badarg` when no process is attached, and every production caller here
+        // is detached. If `with_accumulator` did not fall back to owned storage
+        // on a detached context, the fix would have turned the whole production
+        // path into a refusal — a behaviour change dressed as a repair. The
+        // shipped arm below is what proves it did not.
         for count in [50usize, 200, 2000] {
-            let list = detached(&array_input(count), count, false);
-            let map = detached(&object_input(count), count, true);
-            emit(&format!("site 12 DETACHED count {count} : {list:?}"));
-            emit(&format!("site 16 DETACHED count {count} : {map:?}"));
-            assert!(
-                list.is_ok(),
-                "site 12 detached arm failed at count {count}: {list:?} — if this is ever RED the \
-                 production path is live and the two-tier verdict is wrong"
-            );
-            assert!(
-                map.is_ok(),
-                "site 16 detached arm failed at count {count}: {map:?} — same reading as site 12"
-            );
+            for arm in [Arm::UnrootedReplica, Arm::Fixed] {
+                let which = if arm == Arm::Fixed {
+                    "SHIPPED"
+                } else {
+                    "CONTROL"
+                };
+                let list = detached(&array_input(count), count, false, arm);
+                let map = detached(&object_input(count), count, true, arm);
+                emit(&format!(
+                    "{which} site 12 DETACHED count {count} : {list:?}"
+                ));
+                emit(&format!("{which} site 16 DETACHED count {count} : {map:?}"));
+                assert!(
+                    list.is_ok(),
+                    "{which} site 12 detached arm failed at count {count}: {list:?} — if this is \
+                     ever RED the production path is live and the two-tier verdict is wrong"
+                );
+                assert!(
+                    map.is_ok(),
+                    "{which} site 16 detached arm failed at count {count}: {map:?} — same reading \
+                     as site 12"
+                );
+            }
         }
     }
 }
