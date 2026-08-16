@@ -46,7 +46,26 @@ zstd = { version = "0.13.3", optional = true }
 # Self-dependency so integration tests (which compile the lib WITHOUT
 # cfg(test)) see the `test-support` instrumentation: the OS thread probe and
 # the idle-park counter behind the signed §3.8 bound.
-beamr = { path = ".", features = ["test-support"] }
+#
+# ⛔ `default-features = false` IS LOAD-BEARING AND MUST STAY (#219). Without it
+# this edge asks for `default = true`, and because cargo unifies features across
+# graph edges, `--no-default-features` on the command line was SILENTLY
+# OVERRIDDEN for every `cargo test`: the flag binds the package named on the
+# command line, while this edge kept re-enabling threads/net/fs/jit/embedded/
+# readiness behind it. MEASURED, not argued -- `cargo test -p beamr
+# --no-default-features --features cooperative,json` compiled cranelift, tokio,
+# mio, num_cpus and zstd, every one of them excluded on the command line.
+#
+# That is why nobody noticed the no-std error count drifting 1019 -> 1039: no
+# test-shaped gate could select the configuration that would show it. The
+# `nostd-ratchet` leg now watches the count; this line is what makes the
+# configuration reachable from `cargo test` at all.
+#
+# ⚠️ This does NOT reduce what canon builds. beamr's defaults still arrive by two
+# other paths -- beamr-cli depends on beamr with defaults, and beamr is itself a
+# workspace member so `--workspace` enables its defaults directly. Only an
+# explicit `--no-default-features` run changes behaviour, which is the point.
+beamr = { path = ".", default-features = false, features = ["test-support"] }
 criterion = "0.8.2"
 # The in-memory exporters (`InMemory{Span,Metric,Log}Exporter`) used by the
 # telemetry tests live behind opentelemetry_sdk's own `testing` feature; the
