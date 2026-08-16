@@ -858,3 +858,69 @@ This lane's own fix moved their enclosing functions once more (`array_to_term`
 longer exists. They are historical pins to `ae29d2c`, the tree where the pre-fix
 body was last measured red. **Re-pointing an address for a shape that is gone
 would be inventing one.** Rows 12 and 16 were left the same way.
+
+# TRANCHE 3 — THE FULL CANON BATTERY
+
+Pin `8e6943c`. Prediction at `gate-logs/111/BATTERY-PREDICTION-tranche3.md`,
+**committed before the runner was launched** — stronger than the previous
+battery, whose prediction was written first but rode the evidence commit.
+
+## Reconciliation — three predicted legs, three exact hits
+
+⭐ **AXES NAMED, per the rider:** result-lines · passed · failed · ignored.
+
+| leg | predicted | measured | |
+|---|---|---|---|
+| 4 `wasm-tests` | 2 / 86 / 0 / 0 | 2 / 86 / 0 / 0 | ✅ |
+| 5 `tests` | 76 / 2144 / 0 / 0 | 76 / 2144 / 0 / 0 | ✅ |
+| 8 `tests-all-features` | 76 / 2154 / 0 / 0 | 76 / 2154 / 0 / 0 | ✅ |
+
+All 8 legs **rc 0**. `SCORED == DECLARED == 8`. Marker **COMPLETE**, derived from
+the count and a stable pin — the exit code is not the verdict. Pin identical at
+open and close: `8e6943c856d14402f74a4497d67e6a9f0f74a608`.
+
+`git status --untracked-files=no` **EMPTY**: zero tracked files moved during the
+run. The bytes that ran are the bytes that ship.
+
+The `+3` on leg 4 was derived at the bytes (`#[wasm_bindgen_test]` 6 → 9 in
+`convert.rs`, all three named in the prediction), and legs 5 and 8 were predicted
+**unchanged** because the only Rust file touched is behind
+`#[cfg(all(test, target_arch = "wasm32"))]` and a native `--workspace` run does
+not compile it. `--all-features` does not turn on a different target
+architecture.
+
+## ⚠️ THE PIN SUBTLETY, STATED RATHER THAN PAPERED OVER
+
+The prediction file names pin `2f0f3d9`; the battery ran at `8e6943c`.
+**Committing the prediction before the run necessarily moved HEAD** — that is the
+cost of the stronger form, and it is self-referential rather than sinister. The
+two differ by exactly one commit whose only file is the prediction itself:
+
+```
+git diff --numstat 2f0f3d9 8e6943c
+59  0  gate-logs/111/BATTERY-PREDICTION-tranche3.md
+```
+
+**Zero Rust between them.** Recorded here because quietly re-pointing the
+prediction's pin afterwards would have made a real discrepancy invisible, and the
+whole value of a pre-registration is that it cannot be edited to fit.
+
+## The census, itemised
+
+`tree pre: 6` → `tree post: 15`, **+9, every one untracked**:
+
+- **pre 6** = the five deliberately-untracked `battery-ea7211a.leg{1,2,3,6,7}.log`
+  from the previous battery, **plus** `battery-8e6943c-BATTERY.log`, which my
+  output redirect created the instant the runner started.
+- **+9** = the battery's own outputs: 8 leg logs + the `.tsv`.
+
+The census that matters is the tracked one, and it is empty.
+
+⭐ **The runner writes its marker to STDOUT ONLY** and creates no marker file —
+so the redirect is not cosmetic, it is what makes the marker survive at all. A
+battery whose only witness is a transcript is the gap this lane already banked.
+
+**Which leg logs are committed is a SELECTION, declared not silent:** the `.tsv`
+(every leg's rc), the runner's `BATTERY.log`, and the three test legs. Legs 2 and
+7 are ~230 KB clippy JSON dumps and legs 1/3/6 are near-empty; every verdict of
+theirs is in the `.tsv`, which is the artefact the reconciliation reads.
