@@ -1,0 +1,27 @@
+pin:      9c3be75711c088052dde7f34848351945c26cff5
+tree pre: 1 modified
+opened:   2026-08-16T20:38:17Z
+legs declared: 9
+=== leg 1/9 : fmt ===
+    rc=0
+=== leg 2/9 : clippy ===
+    rc=0
+=== leg 3/9 : wasm32-check ===
+    rc=0
+=== leg 4/9 : wasm-tests ===
+    rc=0
+=== leg 5/9 : tests ===
+    rc=0
+=== leg 6/9 : blocking-call-in-native-bif ===
+    rc=0
+=== leg 7/9 : clippy-all-features ===
+    rc=0
+=== leg 8/9 : tests-all-features ===
+    rc=0
+=== leg 9/9 : nostd-ratchet ===
+    rc=0
+--- scored: 9 / declared: 9 ---
+--- tree post: 1 ---
+--- pin post:  9c3be75711c088052dde7f34848351945c26cff5 ---
+COMPLETE (derived: 9/9, pin stable)
+CLOSE 2026-08-16T20:39:48Z

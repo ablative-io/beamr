@@ -1,0 +1,362 @@
+PIN: 9c3be75711c088052dde7f34848351945c26cff5
+--- contamination OPEN 20:40:26Z ---
+ 4242 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+27630 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+55729 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+58990 /Users/tom/.cargo/bin/aion worker agent /Users/tom/.aion/authoring/fleet_dev.awl --task-queue ...
+60895 /Users/tom/.cargo/bin/aion worker agent /Users/tom/.aion/authoring/fleet_dev.awl --task-queue ...
+66409 /Users/tom/.cargo/bin/aion server
+68080 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+74470 /Users/tom/.cargo/bin/aion worker agent /Users/tom/.aion/norn_dev.awl --liminal-address 127.0....
+97670 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+--- end OPEN ---
+CMD: cargo test -p beamr --no-default-features --features cooperative,json
+   Compiling rustix v1.1.4
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling smallvec v1.15.1
+   Compiling tokio v1.52.3
+   Compiling parking_lot_core v0.9.12
+   Compiling dashmap v6.2.1
+   Compiling opentelemetry_sdk v0.32.1
+   Compiling tempfile v3.27.0
+   Compiling rusty-fork v0.3.1
+   Compiling proptest v1.11.0
+   Compiling zstd-safe v7.2.4
+   Compiling zstd v0.13.3
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+error[E0432]: unresolved import `beamr::native::gate3_bifs`
+  --> crates/beamr/tests/gleam_gate_e2e.rs:28:20
+   |
+28 | use beamr::native::gate3_bifs::register_gate3_bifs;
+   |                    ^^^^^^^^^^ could not find `gate3_bifs` in `native`
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/native/mod.rs:55:9
+   |
+54 | #[cfg(feature = "threads")]
+   |       ------------------- the item is gated behind the `threads` feature
+55 | pub mod gate3_bifs;
+   |         ^^^^^^^^^^
+
+error[E0432]: unresolved import `beamr::native::gleam_ffi`
+  --> crates/beamr/tests/gleam_gate_e2e.rs:29:20
+   |
+29 | use beamr::native::gleam_ffi::register_gleam_ffi_bifs;
+   |                    ^^^^^^^^^ could not find `gleam_ffi` in `native`
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/native/mod.rs:57:9
+   |
+56 | #[cfg(feature = "threads")]
+   |       ------------------- the item is gated behind the `threads` feature
+57 | pub mod gleam_ffi;
+   |         ^^^^^^^^^
+
+error[E0432]: unresolved import `beamr::native::meridian_ffi`
+  --> crates/beamr/tests/gleam_gate_e2e.rs:30:20
+   |
+30 | use beamr::native::meridian_ffi::register_meridian_ffi;
+   |                    ^^^^^^^^^^^^ could not find `meridian_ffi` in `native`
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/native/mod.rs:65:9
+   |
+64 | #[cfg(feature = "fs")]
+   |       -------------- the item is gated behind the `fs` feature
+65 | pub mod meridian_ffi;
+   |         ^^^^^^^^^^^^
+
+error[E0432]: unresolved import `beamr::native::gate3_bifs`
+  --> crates/beamr/tests/suspend_result_binary.rs:26:20
+   |
+26 | use beamr::native::gate3_bifs::register_gate3_bifs;
+   |                    ^^^^^^^^^^ could not find `gate3_bifs` in `native`
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/native/mod.rs:55:9
+   |
+54 | #[cfg(feature = "threads")]
+   |       ------------------- the item is gated behind the `threads` feature
+55 | pub mod gate3_bifs;
+   |         ^^^^^^^^^^
+
+error[E0432]: unresolved import `beamr::native::gate3_bifs`
+  --> crates/beamr/tests/is_function_bif.rs:20:49
+   |
+20 |     BifRegistryImpl, bifs::register_gate1_bifs, gate3_bifs::register_gate3_bifs,
+   |                                                 ^^^^^^^^^^ could not find `gate3_bifs` in `native`
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/native/mod.rs:55:9
+   |
+54 | #[cfg(feature = "threads")]
+   |       ------------------- the item is gated behind the `threads` feature
+55 | pub mod gate3_bifs;
+   |         ^^^^^^^^^^
+
+error[E0432]: unresolved imports `beamr::scheduler::Scheduler`, `beamr::scheduler::SchedulerConfig`
+   --> crates/beamr/tests/suspend_result_binary.rs:30:24
+    |
+ 30 | use beamr::scheduler::{Scheduler, SchedulerConfig};
+    |                        ^^^^^^^^^  ^^^^^^^^^^^^^^^ no `SchedulerConfig` in `scheduler`
+    |                        |
+    |                        no `Scheduler` in `scheduler`
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:993:12
+    |
+992 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+993 | pub struct Scheduler {
+    |            ^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:288:12
+    |
+286 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+287 | #[derive(Clone, Default)]
+288 | pub struct SchedulerConfig {
+    |            ^^^^^^^^^^^^^^^
+
+error[E0432]: unresolved imports `beamr::scheduler::Scheduler`, `beamr::scheduler::SchedulerConfig`
+   --> crates/beamr/tests/is_function_bif.rs:24:24
+    |
+ 24 | use beamr::scheduler::{Scheduler, SchedulerConfig};
+    |                        ^^^^^^^^^  ^^^^^^^^^^^^^^^ no `SchedulerConfig` in `scheduler`
+    |                        |
+    |                        no `Scheduler` in `scheduler`
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:993:12
+    |
+992 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+993 | pub struct Scheduler {
+    |            ^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:288:12
+    |
+286 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+287 | #[derive(Clone, Default)]
+288 | pub struct SchedulerConfig {
+    |            ^^^^^^^^^^^^^^^
+
+error[E0432]: unresolved import `beamr::scheduler::dirty`
+   --> crates/beamr/tests/dirty_scheduler.rs:13:23
+    |
+ 13 | use beamr::scheduler::dirty::DirtySchedulerKind;
+    |                       ^^^^^ could not find `dirty` in `scheduler`
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:113:9
+    |
+112 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+113 | pub mod dirty;
+    |         ^^^^^
+
+error[E0432]: unresolved imports `beamr::scheduler::NativeBifs`, `beamr::scheduler::Scheduler`, `beamr::scheduler::SchedulerConfig`
+   --> crates/beamr/tests/dirty_scheduler.rs:14:24
+    |
+ 14 | use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
+    |                        ^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^ no `SchedulerConfig` in `scheduler`
+    |                        |           |
+    |                        |           no `Scheduler` in `scheduler`
+    |                        no `NativeBifs` in `scheduler`
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:159:20
+    |
+158 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+159 | pub use services::{NativeBifs, SchedulerServices, SharedIoRing, WithServicesError};
+    |                    ^^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:993:12
+    |
+992 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+993 | pub struct Scheduler {
+    |            ^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:288:12
+    |
+286 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+287 | #[derive(Clone, Default)]
+288 | pub struct SchedulerConfig {
+    |            ^^^^^^^^^^^^^^^
+
+error[E0432]: unresolved imports `beamr::scheduler::Scheduler`, `beamr::scheduler::SchedulerConfig`
+   --> crates/beamr/tests/gleam_gate_e2e.rs:35:24
+    |
+ 35 | use beamr::scheduler::{Scheduler, SchedulerConfig};
+    |                        ^^^^^^^^^  ^^^^^^^^^^^^^^^ no `SchedulerConfig` in `scheduler`
+    |                        |
+    |                        no `Scheduler` in `scheduler`
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:993:12
+    |
+992 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+993 | pub struct Scheduler {
+    |            ^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:288:12
+    |
+286 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+287 | #[derive(Clone, Default)]
+288 | pub struct SchedulerConfig {
+    |            ^^^^^^^^^^^^^^^
+
+error[E0432]: unresolved imports `beamr::scheduler::NativeBifs`, `beamr::scheduler::Scheduler`, `beamr::scheduler::SchedulerConfig`
+   --> crates/beamr/tests/mfa_provenance_e2e.rs:24:24
+    |
+ 24 | use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
+    |                        ^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^ no `SchedulerConfig` in `scheduler`
+    |                        |           |
+    |                        |           no `Scheduler` in `scheduler`
+    |                        no `NativeBifs` in `scheduler`
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:159:20
+    |
+158 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+159 | pub use services::{NativeBifs, SchedulerServices, SharedIoRing, WithServicesError};
+    |                    ^^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:993:12
+    |
+992 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+993 | pub struct Scheduler {
+    |            ^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:288:12
+    |
+286 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+287 | #[derive(Clone, Default)]
+288 | pub struct SchedulerConfig {
+    |            ^^^^^^^^^^^^^^^
+
+error[E0432]: unresolved imports `beamr::scheduler::NativeBifs`, `beamr::scheduler::Scheduler`, `beamr::scheduler::SchedulerConfig`
+   --> crates/beamr/tests/supervision_integration.rs:15:24
+    |
+ 15 | use beamr::scheduler::{NativeBifs, Scheduler, SchedulerConfig};
+    |                        ^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^ no `SchedulerConfig` in `scheduler`
+    |                        |           |
+    |                        |           no `Scheduler` in `scheduler`
+    |                        no `NativeBifs` in `scheduler`
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:159:20
+    |
+158 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+159 | pub use services::{NativeBifs, SchedulerServices, SharedIoRing, WithServicesError};
+    |                    ^^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:993:12
+    |
+992 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+993 | pub struct Scheduler {
+    |            ^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:288:12
+    |
+286 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+287 | #[derive(Clone, Default)]
+288 | pub struct SchedulerConfig {
+    |            ^^^^^^^^^^^^^^^
+
+error[E0433]: cannot find `Scheduler` in `scheduler`
+   --> crates/beamr/tests/dirty_scheduler.rs:356:39
+    |
+356 |     let scheduler = beamr::scheduler::Scheduler::with_code_server(
+    |                                       ^^^^^^^^^ could not find `Scheduler` in `scheduler`
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:993:12
+    |
+992 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+993 | pub struct Scheduler {
+    |            ^^^^^^^^^
+
+error[E0433]: cannot find `io` in `beamr`
+  --> crates/beamr/tests/gleam_gate_e2e.rs:47:13
+   |
+47 | impl beamr::io::IoSink for RecordingSink {
+   |             ^^ could not find `io` in `beamr`
+   |
+note: found an item that was configured out
+  --> crates/beamr/src/lib.rs:34:9
+   |
+32 | #[cfg(feature = "threads")]
+   |       ------------------- the item is gated behind the `threads` feature
+33 | #[path = "io/mod.rs"]
+34 | pub mod io;
+   |         ^^
+
+For more information about this error, try `rustc --explain E0432`.
+Some errors have detailed explanations: E0432, E0433.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `beamr` (test "mfa_provenance_e2e") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `beamr` (test "gleam_gate_e2e") due to 5 previous errors
+error: could not compile `beamr` (test "is_function_bif") due to 2 previous errors
+error[E0432]: unresolved imports `beamr::scheduler::Scheduler`, `beamr::scheduler::SchedulerConfig`, `beamr::scheduler::SchedulerServices`
+   --> crates/beamr/tests/composition_report.rs:27:39
+    |
+ 27 | use beamr::scheduler::{HotLoadResult, Scheduler, SchedulerConfig, SchedulerServices};
+    |                                       ^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^ no `SchedulerServices` in `scheduler`
+    |                                       |          |
+    |                                       |          no `SchedulerConfig` in `scheduler`
+    |                                       no `Scheduler` in `scheduler`
+    |
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:993:12
+    |
+992 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+993 | pub struct Scheduler {
+    |            ^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:288:12
+    |
+286 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+287 | #[derive(Clone, Default)]
+288 | pub struct SchedulerConfig {
+    |            ^^^^^^^^^^^^^^^
+note: found an item that was configured out
+   --> crates/beamr/src/scheduler/mod.rs:159:32
+    |
+158 | #[cfg(feature = "threads")]
+    |       ------------------- the item is gated behind the `threads` feature
+159 | pub use services::{NativeBifs, SchedulerServices, SharedIoRing, WithServicesError};
+    |                                ^^^^^^^^^^^^^^^^^
+
+error: could not compile `beamr` (test "suspend_result_binary") due to 2 previous errors
+error: could not compile `beamr` (test "composition_report") due to 1 previous error
+error: could not compile `beamr` (test "dirty_scheduler") due to 3 previous errors
+error: could not compile `beamr` (test "supervision_integration") due to 1 previous error
+=== PROBE rc=101 ===
+--- contamination CLOSE 20:40:36Z ---
+ 4242 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+27630 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+55729 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+58990 /Users/tom/.cargo/bin/aion worker agent /Users/tom/.aion/authoring/fleet_dev.awl --task-queue ...
+60895 /Users/tom/.cargo/bin/aion worker agent /Users/tom/.aion/authoring/fleet_dev.awl --task-queue ...
+66409 /Users/tom/.cargo/bin/aion server
+68080 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+74470 /Users/tom/.cargo/bin/aion worker agent /Users/tom/.aion/norn_dev.awl --liminal-address 127.0....
+97670 /Users/tom/.cargo/bin/aion worker awl /Users/tom/Developer/ablative/prototyping/market-mirror/...
+--- end CLOSE ---
