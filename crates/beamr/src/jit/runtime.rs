@@ -164,7 +164,19 @@ pub(crate) extern "C" fn jit_call_interpreted(
         return JitReturn::yield_(JIT_YIELD_SENTINEL as u64);
     }
 
+    // The nested run shares the process's handler stack with the code that
+    // entered it, but not its Rust frames: a raise that jumped to an outer
+    // handler from in here would resume outer bytecode without ever returning
+    // through `invoke_jit`/this helper, leaking one native nesting per caught
+    // exception. Floor the handler stack at its current depth so a raise with
+    // no in-nest handler leaves through the exception return below instead —
+    // the caller re-offers it to the outer handlers at the correct depth.
+    // Saved and restored on every exit from the region, exactly as the module
+    // and code position are; the only exits are the four `result` arms below.
+    let saved_handler_floor = process.nested_handler_floor();
+    process.set_nested_handler_floor(process.exception_handler_count());
     let result = run_with_native_services(process, current_module, registry, services);
+    process.set_nested_handler_floor(saved_handler_floor);
     if let Some(module) = saved_module {
         process.set_current_module(module);
     }

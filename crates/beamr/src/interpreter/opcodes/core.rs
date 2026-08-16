@@ -894,7 +894,22 @@ fn call_native(
     }
     match returned.status {
         JIT_STATUS_EXCEPTION => {
-            return Ok(Some(InstructionOutcome::Exit(ExitReason::Error)));
+            // Compiled code propagated an exception out. It may still be
+            // catchable HERE: a raise inside a nested run refuses handlers
+            // installed outside its nesting (see `Process::nested_handler_floor`)
+            // and leaves through this return precisely so the handler is found
+            // at the depth that installed it, with the compiled frame already
+            // appended to the trace. Re-offer it without recapturing; treating
+            // this as an unconditional exit would make a caught exception kill
+            // the process the moment its protected region crossed a trampoline.
+            return match process.current_exception() {
+                Some(exception) => {
+                    super::exceptions::dispatch_captured_exception(process, exception).map(Some)
+                }
+                // The exception return is only produced with an exception on
+                // the process; without one there is nothing to offer a handler.
+                None => Ok(Some(InstructionOutcome::Exit(ExitReason::Error))),
+            };
         }
         JIT_STATUS_DEOPT => return Ok(None),
         JIT_STATUS_YIELD => return Ok(Some(InstructionOutcome::Yield)),

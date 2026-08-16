@@ -157,6 +157,13 @@ pub struct Process {
     stack: Stack,
     mailbox: Mailbox,
     handlers: Vec<ExceptionHandler>,
+    /// Lowest `handlers` index a raise may consume in the current interpreter
+    /// nesting. Zero at the outermost run; a nested run (a compiled body-call
+    /// serviced by `jit_call_interpreted`) raises it to the handler count at
+    /// entry, so a raise inside that run cannot pop a handler installed by the
+    /// code that entered it — that handler's catch label lives on the far side
+    /// of native frames the nested run has no way to return through.
+    nested_handler_floor: usize,
     current_exception: Option<Exception>,
     dictionary: Vec<(Term, Term)>,
     receive_timeout: Option<ReceiveTimeout>,
@@ -214,6 +221,7 @@ impl Clone for Process {
             stack: self.stack.clone(),
             mailbox: self.mailbox.clone(),
             handlers: self.handlers.clone(),
+            nested_handler_floor: self.nested_handler_floor,
             current_exception: self.current_exception,
             dictionary: self.dictionary.clone(),
             receive_timeout: self.receive_timeout,
@@ -279,6 +287,7 @@ impl Process {
             stack: Stack::new(),
             mailbox: Mailbox::new(),
             handlers: Vec::new(),
+            nested_handler_floor: 0,
             current_exception: None,
             dictionary: Vec::new(),
             receive_timeout: None,
@@ -674,8 +683,43 @@ impl Process {
     }
 
     /// Remove the most recently installed exception handler.
+    ///
+    /// Unconditional: this is the paired counterpart of `push_exception_handler`
+    /// for the `try_end`/`catch_end` opcodes, which retire the handler their own
+    /// `try`/`catch` installed. A raise must use
+    /// [`Self::pop_exception_handler_in_nest`] instead, which refuses to reach
+    /// past the current nesting.
     pub fn pop_exception_handler(&mut self) -> Option<ExceptionHandler> {
         self.handlers.pop()
+    }
+
+    /// Remove the most recently installed exception handler, but only when it
+    /// was installed inside the current interpreter nesting.
+    ///
+    /// Returns `None` when the handler stack has been drained down to
+    /// [`Self::nested_handler_floor`] — every remaining handler belongs to an
+    /// outer run, and jumping to one from here would resume outer code without
+    /// ever returning through the native frames that entered this run.
+    pub fn pop_exception_handler_in_nest(&mut self) -> Option<ExceptionHandler> {
+        if self.handlers.len() <= self.nested_handler_floor {
+            return None;
+        }
+        self.handlers.pop()
+    }
+
+    /// Lowest handler-stack index a raise may consume in the current nesting.
+    #[must_use]
+    pub const fn nested_handler_floor(&self) -> usize {
+        self.nested_handler_floor
+    }
+
+    /// Install the handler floor for a nested interpreter run.
+    ///
+    /// Callers save the previous value and restore it on every exit from the
+    /// nested region — the floor is scoped to that region exactly as
+    /// `current_module`/`code_position` are.
+    pub const fn set_nested_handler_floor(&mut self, floor: usize) {
+        self.nested_handler_floor = floor;
     }
 
     /// Number of installed exception handlers.
@@ -1188,6 +1232,7 @@ impl Process {
         self.stack = Stack::new();
         self.mailbox = Mailbox::new();
         self.handlers.clear();
+        self.nested_handler_floor = 0;
         self.current_exception = None;
         self.dictionary.clear();
         self.receive_timeout = None;

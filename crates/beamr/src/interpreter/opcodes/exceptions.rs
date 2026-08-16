@@ -178,27 +178,48 @@ pub fn raise_exception(
     exception: Exception,
 ) -> Result<InstructionOutcome, ExecError> {
     capture_raw_stacktrace(process);
+    dispatch_captured_exception(process, exception)
+}
 
-    if let Some(handler) = process.pop_exception_handler() {
-        process.stack_mut().truncate(handler.stack_depth);
-        // Continuations whose trampoline return frames were just discarded
-        // belong to aborted closure calls and must never resume.
-        process.prune_native_continuations(handler.stack_depth);
+/// Transfer control to the innermost exception handler, for an exception whose
+/// stacktrace has ALREADY been captured.
+///
+/// The `captured` in the name is the contract: this function must never call
+/// `capture_raw_stacktrace`, which REPLACES the process's raw stacktrace
+/// wholesale. Entries appended after the original raise would be lost — in
+/// particular the single frame a compiled trampoline's exception arm records on
+/// its way out, which is the only evidence that the propagation crossed
+/// compiled code. First-raise callers capture and then call this; callers
+/// re-entering with an exception already in flight call it alone.
+///
+/// Returns `Exit(Error)` when no handler is available at or above the current
+/// nesting floor. That is a real death at the outermost run, and at a nested
+/// run it is the exception's way OUT: `jit_call_interpreted` turns it into an
+/// exception return, and `call_native` re-offers the exception to this level's
+/// handlers.
+pub(super) fn dispatch_captured_exception(
+    process: &mut Process,
+    exception: Exception,
+) -> Result<InstructionOutcome, ExecError> {
+    let Some(handler) = process.pop_exception_handler_in_nest() else {
         process.set_current_exception(Some(exception));
-        match handler.kind {
-            HandlerKind::Try => {
-                write_register(process, handler.destination, exception.reason)?;
-            }
-            HandlerKind::Catch => {
-                let caught = catch_value(process, exception)?;
-                process.set_x_reg(0, caught);
-            }
+        return Ok(InstructionOutcome::Exit(ExitReason::Error));
+    };
+    process.stack_mut().truncate(handler.stack_depth);
+    // Continuations whose trampoline return frames were just discarded
+    // belong to aborted closure calls and must never resume.
+    process.prune_native_continuations(handler.stack_depth);
+    process.set_current_exception(Some(exception));
+    match handler.kind {
+        HandlerKind::Try => {
+            write_register(process, handler.destination, exception.reason)?;
         }
-        Ok(InstructionOutcome::Jump(handler.catch_position))
-    } else {
-        process.set_current_exception(Some(exception));
-        Ok(InstructionOutcome::Exit(ExitReason::Error))
+        HandlerKind::Catch => {
+            let caught = catch_value(process, exception)?;
+            process.set_x_reg(0, caught);
+        }
     }
+    Ok(InstructionOutcome::Jump(handler.catch_position))
 }
 
 pub fn build_stacktrace(process: &mut Process) -> Result<InstructionOutcome, ExecError> {
