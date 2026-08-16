@@ -1,0 +1,29 @@
+   Compiling beamr v0.18.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.39s
+     Running unittests src/lib.rs (target/debug/deps/beamr-0b2a72eef2a28bb6)
+
+running 1 test
+heap=1024 n=200 ok=true collections=1 intact=true
+heap=1024 n=400 ok=false collections=2 intact=false
+heap=1024 n=800 ok=false collections=4 intact=false
+heap=1024 n=1600 ok=false collections=8 intact=false
+heap=1024 n=3200 ok=false collections=16 intact=false
+heap=1536 n=200 ok=true collections=0 intact=true
+heap=1536 n=400 ok=true collections=1 intact=false
+heap=1536 n=800 ok=false collections=3 intact=false
+heap=1536 n=1600 ok=false collections=6 intact=false
+heap=1536 n=3200 ok=false collections=11 intact=false
+heap=2048 n=200 ok=true collections=0 intact=true
+heap=2048 n=400 ok=true collections=1 intact=true
+heap=2048 n=800 ok=false collections=2 intact=false
+heap=2048 n=1600 ok=false collections=4 intact=false
+heap=2048 n=3200 ok=false collections=8 intact=false
+heap=4096 n=200 ok=true collections=0 intact=true
+heap=4096 n=400 ok=true collections=0 intact=true
+heap=4096 n=800 ok=true collections=1 intact=true
+heap=4096 n=1600 ok=false collections=2 intact=false
+heap=4096 n=3200 ok=false collections=4 intact=false
+test native::otp_stubs::tests::zz_temp_sweep2_site6 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1833 filtered out; finished in 0.03s
+

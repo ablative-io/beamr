@@ -63,11 +63,28 @@ pub fn bif_os_getenv_0(args: &[Term], context: &mut ProcessContext) -> Result<Te
     if !args.is_empty() {
         return Err(badarg());
     }
-    let mut variables = Vec::new();
-    for (key, value) in std::env::vars() {
-        variables.push(context.alloc_binary(format!("{key}={value}").as_bytes())?);
-    }
-    context.alloc_list(&variables)
+    env_pairs_to_list(std::env::vars(), context)
+}
+
+/// Build the `KEY=VALUE` binary list from any source of pairs.
+///
+/// Split out of [`bif_os_getenv_0`] so the accumulation can be exercised
+/// without touching the process environment. `std::env::vars()` is
+/// process-global state shared with every test running in parallel, so a probe
+/// that controlled the population by setting variables would be mutating state
+/// other tests read. Taking the pairs as a parameter makes the population a
+/// local fact instead of an ambient one.
+pub(super) fn env_pairs_to_list(
+    pairs: impl Iterator<Item = (String, String)>,
+    context: &mut ProcessContext,
+) -> Result<Term, Term> {
+    context.with_accumulator(|context, variables| {
+        for (key, value) in pairs {
+            let variable = context.alloc_binary(format!("{key}={value}").as_bytes())?;
+            variables.push(context, variable)?;
+        }
+        variables.to_list(context)
+    })
 }
 
 /// `os:getenv/1` -- reads a host environment variable.

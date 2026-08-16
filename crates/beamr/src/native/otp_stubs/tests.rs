@@ -444,3 +444,65 @@ fn unique_test_dir(prefix: &str) -> std::path::PathBuf {
             .as_nanos()
     ))
 }
+
+// AR-1 SITE 6 — `bif_os_getenv_0`'s accumulation, probed through the extracted
+// `env_pairs_to_list` so the population is a parameter rather than the ambient
+// process environment. Row 6 was deferred on exactly that mechanism: controlling
+// the size of `std::env::vars()` means mutating state other parallel tests read.
+//
+// The heap is deliberately small and the population deliberately large, so the
+// loop MUST collect partway through. A pre-fix `Vec<Term>` carrier holds raw
+// pointers the collector cannot rewrite, so the surviving list is corrupt.
+#[test]
+fn ar1_site6_env_pairs_survive_a_collection_during_accumulation() {
+    let mut process = Process::new(1, 1536);
+    let mut context = ProcessContext::new();
+    context.attach_process(&mut process, 0);
+
+    let pairs: Vec<(String, String)> = (0..400)
+        .map(|index| (format!("KEY_{index:04}"), format!("value_{index:04}")))
+        .collect();
+
+    let list = erlang_stubs::env_pairs_to_list(pairs.into_iter(), &mut context)
+        .expect("environment pair list builds");
+
+    let variables = list_terms(list);
+    assert_eq!(variables.len(), 400, "every pair reached the list");
+    for (index, variable) in variables.iter().enumerate() {
+        let bytes = BinaryRef::new(*variable)
+            .unwrap_or_else(|| panic!("element {index} is still a binary after collection"))
+            .as_bytes()
+            .to_vec();
+        let expected = format!("KEY_{index:04}=value_{index:04}").into_bytes();
+        assert_eq!(
+            bytes, expected,
+            "element {index} survived the collection intact"
+        );
+    }
+}
+
+// POSITIVE CONTROL for the probe above, per #113: a green is worth nothing
+// unless the cell was actually put under collection pressure. Asserted on
+// `gc_attempts`, the real collection observable -- NOT on heap capacity, which
+// witnesses a resize and comes apart from collection in both directions.
+#[test]
+fn ar1_site6_probe_population_really_collects() {
+    let mut process = Process::new(1, 1536);
+    let before = process.gc_attempts();
+    {
+        let mut context = ProcessContext::new();
+        context.attach_process(&mut process, 0);
+        let pairs: Vec<(String, String)> = (0..400)
+            .map(|index| (format!("KEY_{index:04}"), format!("value_{index:04}")))
+            .collect();
+        erlang_stubs::env_pairs_to_list(pairs.into_iter(), &mut context)
+            .expect("environment pair list builds");
+    }
+    let after = process.gc_attempts();
+
+    assert!(
+        after > before,
+        "NO COLLECTION ({before} -> {after} attempts) -- the site-6 probe's \
+         population never forced one, so its green says nothing about rooting"
+    );
+}

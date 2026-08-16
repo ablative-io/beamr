@@ -123,11 +123,13 @@
       "use_line": 70,
       "sink": "alloc_binary",
       "reason": "boxed binary accumulator across further alloc_binary",
-      "disposition": "PENDING",
-      "replacement_construct": null,
-      "replacement_site": null,
+      "disposition": "STRUCTURALLY-ELIMINATED",
+      "replacement_construct": "with_accumulator",
+      "replacement_site": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs:81",
       "verification_leg": "native",
-      "row4_red_at_parent": "NOT DEMONSTRATED -- DEFERRED ON A NAMED MECHANISM, not on difficulty, and NOT probed. `bif_os_getenv_0` is driven by `std::env::vars()`, which is process-global state shared with every test running in parallel: controlling the population size means mutating an environment other tests read. The site's shape is unprotected and it remains a live candidate for RED. It needs a probe that does not touch the environment, or a serialised leg. Recorded so it can never later read as 'looked at and found clean'. gate-logs/110/RESULTS.md."
+      "row4_red_at_parent": "RED DEMONSTRATED at the shipped bytes, replacing the earlier NOT DEMONSTRATED. Probe `ar1_site6_env_pairs_survive_a_collection_during_accumulation` in crates/beamr/src/native/otp_stubs/tests.rs. Cell CHOSEN BY MEASUREMENT, not by guess -- gate-logs/114/site6-cell-sweep.log sweeps heap x population and shows the failure modes are NOT interchangeable: at every other corrupting cell the call also REFUSES (ok=false), and a red there would be a red for the wrong reason. heap=1536 n=400 is the one measured cell where the call SUCCEEDS and returns silently wrong data, which is the AR-1 hazard itself. Pre-fix reading: element 0 came back as KEY_0307=value_0307 instead of KEY_0000=value_0000 -- the stale Vec pointer aliasing a LATER binary written over the reset nursery. Post-fix: green. Positive control `ar1_site6_probe_population_really_collects` asserts on `gc_attempts` (the #112 collection observable, NOT heap capacity) and passed in BOTH runs, so the red was under real collection pressure and the green is not bought by an unpressed cell. gate-logs/114/site6-red-at-parent.log.",
+      "fix": "The accumulation was EXTRACTED out of `bif_os_getenv_0` into `env_pairs_to_list(pairs, context)` and then rooted with `with_accumulator`. The extraction is not cosmetic: it is what DISSOLVES this row's own deferral reason. Row 6 was deferred because `std::env::vars()` is process-global, so sizing the population meant mutating an environment other parallel tests read. Taking the pairs as a parameter makes the population a local fact, so the probe needs no environment access, no serialised leg, and no test-ordering coordination. The deferral's named mechanism is REMOVED, not worked around.",
+      "address_erratum": "ADDR_NOTE: `function_line` 62 still resolves. `bind_line` 66 is a HISTORICAL PIN to the pre-fix inline loop and is deliberately NOT re-pointed -- the `Vec` it named no longer exists, which is the point of the fix. Only `replacement_site` is machine-verified; `function_line` and `bind_line` are not, and are read as the addresses AS REGISTERED."
     },
     {
       "id": 7,

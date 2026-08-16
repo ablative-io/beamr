@@ -1,0 +1,22 @@
+=== SITE 6 — RED AT THE UNFIXED SHAPE (extracted, still a plain Vec<Term>) ===
+Cell chosen by measurement, not by guess: gate-logs/114/site6-cell-sweep.log
+heap=1536 n=400 -> ok=true collections=1 intact=FALSE
+
+WHY THIS CELL AND NOT ANOTHER: at every other corrupting cell the call also
+REFUSES (ok=false). A refusal is a loud failure and a red there would be a red
+for the wrong reason. This is the only measured cell where the call SUCCEEDS
+and returns silently wrong data -- which is the AR-1 hazard itself.
+
+test native::otp_stubs::tests::ar1_site6_probe_population_really_collects ... ok
+test native::otp_stubs::tests::ar1_site6_env_pairs_survive_a_collection_during_accumulation ... FAILED
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 1831 filtered out; finished in 0.00s
+thread 'native::otp_stubs::tests::ar1_site6_env_pairs_survive_a_collection_during_accumulation' (43282470) panicked at crates/beamr/src/native/otp_stubs/tests.rs:477:9:
+assertion `left == right` failed: element 0 survived the collection intact
+  left: [75, 69, 89, 95, 48, 51, 48, 55, 61, 118, 97, 108, 117, 101, 95, 48, 51, 48, 55]
+ right: [75, 69, 89, 95, 48, 48, 48, 48, 61, 118, 97, 108, 117, 101, 95, 48, 48, 48, 48]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+READING: element 0 came back as KEY_0307=value_0307, not KEY_0000=value_0000.
+The stale Vec pointer now aliases a LATER binary written over the reset
+nursery. Positive control PASSED in the same run, so the collection really
+happened and the red is for the right reason.
