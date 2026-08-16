@@ -48,7 +48,12 @@ pub mod process;
 // The replay driver is a passive, in-memory event-log consumer (no threads, no
 // tokio); it is reused by the cooperative runtime for deterministic delivery.
 // Only its on-disk log format (`replay::file`) needs net/fs and stays gated.
-#[cfg(any(feature = "threads", feature = "cooperative"))]
+//
+// ⛔ UNGATED ON PURPOSE (B-144 R1). This module names NO optional dependency --
+// `replay::file`'s zstd is already gated separately at replay/mod.rs. The old
+// `any(threads, cooperative)` gate was not required by any dependency, and it
+// made `crate::replay` vanish under `--no-default-features` while 7 sites in
+// ungated modules still named it. Re-gating it re-breaks that build.
 pub mod replay;
 pub mod scheduler;
 pub mod supervision;
@@ -57,7 +62,10 @@ pub mod telemetry;
 pub mod term;
 // The passive timer wheel is polled (no thread, no tokio::sleep), so it is
 // usable by the cooperative single-threaded runtime as well as the threaded one.
-#[cfg(any(feature = "threads", feature = "cooperative"))]
+//
+// ⛔ UNGATED ON PURPOSE (B-144 R1). `timer.rs` imports only std, `web_time` and
+// `crate::term` -- no optional dependency at all. Same reasoning as `replay`
+// above: the gate bought nothing and cost 12 of R1's 20 errors.
 pub mod timer;
 
 // Ergonomic native-actor surface (NATIVE-003), re-exported at the crate root so

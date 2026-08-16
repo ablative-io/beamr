@@ -20,7 +20,11 @@ cranelift-module = { version = "0.131.2", optional = true }
 cranelift-native = { version = "0.131.2", optional = true }
 crossbeam-channel = { version = "0.5.15", optional = true }
 crossbeam-deque = { version = "0.8.6", optional = true }
-crossbeam-queue = { version = "0.3.12", optional = true }
+# Hard dependency (B-144 R1): `mailbox/mod.rs` is ungated and uses SegQueue for
+# the lock-free arrival queue, so under `--no-default-features` the optional
+# form left an unresolvable import. Both `threads` and `cooperative` already
+# pulled it in, so no shipped configuration gains a dependency here.
+crossbeam-queue = "0.3.12"
 dashmap = "6.1.0"
 mio = { version = "1", features = ["os-poll", "net", "os-ext"], optional = true }
 flate2 = "1.1.9"
@@ -90,8 +94,8 @@ std = []
 # Cooperative single-threaded runtime (WR-0 spike). Brings in only the
 # lock-free SegQueue mailbox dependency; no tokio/crossbeam-channel/-deque,
 # no io-uring, no num_cpus. Intended for wasm32 where OS threads are absent.
-cooperative = ["std", "dep:crossbeam-queue"]
-threads = ["std", "dep:crossbeam-channel", "dep:crossbeam-deque", "dep:crossbeam-queue", "dep:io-uring", "dep:num_cpus", "dep:tokio"]
+cooperative = ["std"]
+threads = ["std", "dep:crossbeam-channel", "dep:crossbeam-deque", "dep:io-uring", "dep:num_cpus", "dep:tokio"]
 readiness = ["threads", "dep:mio"]
 net = ["std", "dep:libc", "dep:rustix", "dep:tokio"]
 fs = ["std", "dep:libc", "dep:rustix"]

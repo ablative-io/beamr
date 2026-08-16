@@ -46,11 +46,42 @@
 # is free to drift back up to it silently, which is precisely the failure this
 # gate exists to prevent.
 #
+# ⛔⛔ THE ONE TIME THIS CEILING WAS RAISED, AND WHY THAT IS NOT DRIFT
+#
+#     1019  ec5d7f8  (2026-07-07)
+#     1039  d4a82e5  (2026-08-16)   +20 drift -- the reason this gate exists
+#     1075  B-144 R1 (2026-08-17)   +36 POPULATION CHANGE -- ruled, not drift
+#
+# B-144 R1 removed `#[cfg(any(threads, cooperative))]` from `pub mod timer` and
+# `pub mod replay`. Those gates had been keeping both modules OUT OF THE COMPILE
+# UNIT entirely under `--no-default-features`, so their std dependencies were
+# never counted by this gate. Removing the gates did not add a single std
+# dependency; it made ~56 existing ones VISIBLE, while the same change fixed 20
+# others. GROSS UP +56, GROSS DOWN -20, NET +36.
+#
+# ⭐ A CFG GATE IS A HOLE IN EVERY MEASUREMENT TAKEN THROUGH IT. The 1039 was
+# never a count of beamr's no_std debt -- it was a count of the part the gates
+# let the compiler see.
+#
+# PROVEN, NOT ASSERTED (gate-logs/B-144-R1/SPOT-PROOF.md, ruled term 3): every
+# one of the +56 lives in timer.rs or replay/, files the fix does not touch and
+# which are therefore byte-identical across it; three sampled errors are plain
+# `use std::...` lines recovered from the committed git object at the pre-fix
+# pin; and at that pin 12 errors named the modules NONEXISTENT while ZERO errors
+# were located inside them, because the compiler never looked.
+#
+# ⚠️ THE NEVER-RAISE RULE BENDS ONLY FOR A MEASURED POPULATION CHANGE, AND ONLY
+# WITH THE REASON WRITTEN WHERE THE NUMBER LIVES. A raise justified by anything
+# less -- "it got harder", "that code is new" -- is the drift this gate exists to
+# catch, wearing a better excuse.
+#
 # Run `./scripts/gate-nostd-ratchet.sh --self-test` to prove the arms fire.
 set -uo pipefail
 
-CEILING=1039           # rustc's own tally at d4a82e5. LOWER THIS, NEVER RAISE IT.
-CEILING_PIN="d4a82e5"
+CEILING=1075           # rustc's own tally. LOWER THIS, NEVER RAISE IT --
+                       # except for a MEASURED POPULATION CHANGE, of which
+                       # this is the first and only instance. See below.
+CEILING_PIN="B-144 R1"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 99

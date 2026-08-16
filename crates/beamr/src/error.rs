@@ -444,7 +444,9 @@ impl ExecError {
 
 impl Error for ExecError {}
 
-#[cfg(any(feature = "threads", feature = "cooperative"))]
+// Ungated with `crate::replay` itself (B-144 R1). While this carried the old
+// `any(threads, cooperative)` gate it produced 6x E0277 the moment the module
+// resolved -- a root cause INVISIBLE until the import errors above it cleared.
 impl From<crate::replay::ReplayMismatch> for ExecError {
     fn from(error: crate::replay::ReplayMismatch) -> Self {
         Self::ReplayMismatch(error.to_string())
