@@ -410,6 +410,19 @@ nothing", and `ok. 0 passed` is the same green as any other. Only the passed
 count moved: **2094 → 2107**, of which just 2 tests are newly written and 11 are
 pre-existing tests running for the first time.
 
+## beamr-wasm 0.9.0 — 2026-08-18
+
+- Rides beamr 0.18.2 (dependency spec `^0.17.0` → `^0.18.2` relative to the
+  published 0.8.0) so downstream wasm consumers resolve ONE beamr per lock on
+  the 0.18 line. No API changes of its own. Closes the wasm-rung prerequisite
+  for haematite releases admitting beamr 0.18.x (board row #227b): published
+  beamr-wasm 0.8.0 carries `^0.17.0`, which cannot unify with a 0.18.x native
+  pin in the same tree.
+- Spec-history note, so the published sequence stays reconstructible: the
+  in-tree manifest briefly carried `0.18.0` (commit `83bd74d`, never published
+  under that spec). The published sequence is `0.8.0 = ^0.17.0` →
+  `0.9.0 = ^0.18.2`.
+
 ## 0.18.2 — 2026-08-12
 
 Patch release, cut from `main`. Two fixes, both in the JIT's runtime helpers,

@@ -124,7 +124,7 @@ dependencies = [
 
 [[package]]
 name = "beamr-wasm"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "beamr",
  "js-sys",
