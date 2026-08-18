@@ -159,6 +159,20 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
+## Unreleased
+
+### Fixed
+- **`==` returned `false` for arithmetically-equal bignum/float pairs**
+  (#15, fixed by PR #20 — Matthew Bright). `numeric_eq` lacked the
+  `BigInt↔Float` match arms and fell through to exact equality, so a bignum
+  and a float of equal value compared unequal under `==` while comparing
+  equal under `=<`/`>=` — an internal contradiction with the ordering path.
+  The fix adds the missing arms and unifies `==` and ordering on one shared
+  numeric conversion. Note: bignum↔float comparison converts through `f64`
+  and rounds, matching the pre-existing ordering behavior; the
+  exact-comparison gap beyond 2^53 (OTP compares losslessly) is tracked
+  as #25.
+
 ## 0.19.2 — 2026-08-18
 
 ### Fixed
