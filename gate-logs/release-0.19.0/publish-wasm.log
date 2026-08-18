@@ -1,0 +1,13 @@
+    Updating crates.io index
+   Packaging beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+    Updating crates.io index
+    Packaged 33 files, 536.1KiB (130.2KiB compressed)
+   Verifying beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+   Compiling beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/target/package/beamr-wasm-0.9.0)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 33.23s
+   Uploading beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+    Uploaded beamr-wasm v0.9.0 to registry `crates-io`
+note: waiting for beamr-wasm v0.9.0 to be available at registry `crates-io`
+help: you may press ctrl-c to skip waiting; the crate should be available shortly
+   Published beamr-wasm v0.9.0 at registry `crates-io`
+publish wasm rc=0

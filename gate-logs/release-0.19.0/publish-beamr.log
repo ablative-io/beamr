@@ -1,0 +1,13 @@
+    Updating crates.io index
+   Packaging beamr v0.19.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Updating crates.io index
+    Packaged 514 files, 6.7MiB (1.8MiB compressed)
+   Verifying beamr v0.19.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+   Compiling beamr v0.19.0 (/Users/tom/Developer/ablative/stack/beamr/target/package/beamr-0.19.0)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 49.71s
+   Uploading beamr v0.19.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Uploaded beamr v0.19.0 to registry `crates-io`
+note: waiting for beamr v0.19.0 to be available at registry `crates-io`
+help: you may press ctrl-c to skip waiting; the crate should be available shortly
+   Published beamr v0.19.0 at registry `crates-io`
+publish beamr rc=0

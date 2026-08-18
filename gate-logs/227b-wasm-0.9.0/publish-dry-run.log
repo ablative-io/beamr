@@ -1,0 +1,50 @@
+    Updating crates.io index
+   Packaging beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+    Updating crates.io index
+    Packaged 33 files, 536.1KiB (130.2KiB compressed)
+   Verifying beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+   Compiling serde_core v1.0.228
+   Compiling futures-core v0.3.32
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.150
+   Compiling smallvec v1.15.1
+   Compiling gleam-types v0.4.3
+   Compiling futures-util v0.3.32
+   Compiling parking_lot_core v0.9.12
+   Compiling dashmap v6.2.1
+   Compiling js-sys v0.3.100
+   Compiling zstd-safe v7.2.4
+   Compiling zstd v0.13.3
+   Compiling beamr v0.18.2
+   Compiling beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/target/package/beamr-wasm-0.9.0)
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling wasm-bindgen-futures v0.4.73
+error[E0599]: no method named `with_accumulator` found for mutable reference `&mut ProcessContext<'_>` in the current scope
+   --> src/convert.rs:159:33
+    |
+159 |             let built = context.with_accumulator(|context, terms| {
+    |                         --------^^^^^^^^^^^^^^^^ method not found in `&mut ProcessContext<'_>`
+
+error[E0599]: no method named `with_accumulator` found for mutable reference `&mut ProcessContext<'_>` in the current scope
+   --> src/convert.rs:207:33
+    |
+207 |             let built = context.with_accumulator(|context, terms| {
+    |                         --------^^^^^^^^^^^^^^^^ method not found in `&mut ProcessContext<'_>`
+
+error[E0599]: no method named `with_accumulator` found for mutable reference `&mut ProcessContext<'_>` in the current scope
+   --> src/convert.rs:275:25
+    |
+275 |     let built = context.with_accumulator(|context, terms| {
+    |                 --------^^^^^^^^^^^^^^^^ method not found in `&mut ProcessContext<'_>`
+
+error[E0599]: no method named `with_accumulator` found for mutable reference `&mut ProcessContext<'_>` in the current scope
+   --> src/convert.rs:317:25
+    |
+317 |     let built = context.with_accumulator(|context, terms| {
+    |                 --------^^^^^^^^^^^^^^^^ method not found in `&mut ProcessContext<'_>`
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `beamr-wasm` (lib) due to 4 previous errors
+error: failed to verify package tarball
+dry-run rc=101

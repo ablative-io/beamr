@@ -1,0 +1,2 @@
+no-std ratchet: cargo rc=101, rustc tally=1075, ceiling=1075
+PASS: no-std errors 1075, exactly at the ceiling 1075. Debt held.

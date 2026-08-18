@@ -1,0 +1,5 @@
+no-std ratchet: cargo rc=101, rustc tally=1072, ceiling=1075
+FAIL: no-std errors 1072 is BELOW the ceiling 1075 -- this is
+  an IMPROVEMENT, and the ratchet must be tightened to record it.
+  Set CEILING=1072 in this script, in the same commit.
+  (Strict by design: slack in a ratchet is room to drift back up.)

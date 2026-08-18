@@ -1,0 +1,13 @@
+    Updating crates.io index
+   Packaging beamr-cli v0.6.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-cli)
+    Updating crates.io index
+    Packaged 11 files, 91.1KiB (24.4KiB compressed)
+   Verifying beamr-cli v0.6.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-cli)
+   Compiling beamr-cli v0.6.0 (/Users/tom/Developer/ablative/stack/beamr/target/package/beamr-cli-0.6.0)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.98s
+   Uploading beamr-cli v0.6.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-cli)
+    Uploaded beamr-cli v0.6.0 to registry `crates-io`
+note: waiting for beamr-cli v0.6.0 to be available at registry `crates-io`
+help: you may press ctrl-c to skip waiting; the crate should be available shortly
+   Published beamr-cli v0.6.0 at registry `crates-io`
+publish cli rc=0

@@ -1,0 +1,11 @@
+    Updating crates.io index
+   Packaging beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+    Updating crates.io index
+    Packaged 33 files, 536.1KiB (130.2KiB compressed)
+   Verifying beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+   Compiling beamr v0.19.0
+   Compiling beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/target/package/beamr-wasm-0.9.0)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 44.12s
+   Uploading beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+warning: aborting upload due to dry run
+wasm dry-run rc=0
