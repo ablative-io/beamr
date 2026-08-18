@@ -159,7 +159,7 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
-## Unreleased
+## 0.19.2 — 2026-08-18
 
 ### Fixed
 - **Validator false-red on legal OTP-27 emission** (aion#64). The frame-size
