@@ -1,0 +1,3 @@
+   Compiling beamr v0.19.2 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Checking beamr-wasm v0.9.0 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr-wasm)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.20s
