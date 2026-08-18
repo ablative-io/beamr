@@ -227,6 +227,45 @@ fn update_frame_size(
             })?);
         }
         Instruction::Deallocate { .. } => *current_frame_size = None,
+        // Trim shrinks the live frame to its `remaining` operand (and renumbers
+        // the survivors down to Y0..remaining-1). Tracked so straight-line code
+        // after a trim is still checked against the true, smaller frame. When
+        // the model is already unknown it stays unknown: trim states a delta,
+        // not an absolute, and inventing a frame here could false-red.
+        Instruction::Trim { remaining, .. } => {
+            if current_frame_size.is_some() {
+                *current_frame_size = operand_to_u32(remaining);
+            }
+        }
+        // Frame knowledge is CONTROL-FLOW state, and this scan is linear. The
+        // position after an instruction that never falls through (returns,
+        // tail calls, unconditional jumps, raising terminators) is reachable
+        // only via a label — from jump sites whose frames this scan cannot
+        // know. Compilers place shared failure islands (badmatch/case_end
+        // blocks) exactly there, ordered after OTHER functions' tails, so
+        // checking them against the linear predecessor's frame false-reds
+        // legal emission. Measured, not hypothetical: OTP 27's erlc puts
+        // `index/5`'s badmatch island in gleam_stdlib's gleam@dynamic@decode
+        // after a frame-1 tail, and the island names Y5 — valid under its
+        // real jump-source frame of 7 (aion#64). Unknown is the only honest
+        // model at these boundaries; Y checks resume at the next allocate.
+        Instruction::Return
+        | Instruction::CallLast { .. }
+        | Instruction::CallExtLast { .. }
+        | Instruction::ApplyLast { .. }
+        | Instruction::Jump { .. }
+        | Instruction::RawRaise
+        | Instruction::Raise { .. }
+        | Instruction::Badmatch { .. }
+        | Instruction::Badrecord { .. }
+        | Instruction::CaseEnd { .. }
+        | Instruction::IfEnd
+        | Instruction::TryCaseEnd { .. }
+        | Instruction::LoopRecEnd { .. }
+        | Instruction::Wait { .. }
+        // A function boundary always invalidates the previous frame, whatever
+        // the preceding shape was.
+        | Instruction::FuncInfo { .. } => *current_frame_size = None,
         _ => {}
     }
     Ok(())
@@ -534,6 +573,107 @@ mod tests {
 
         assert!(message.contains("instruction 1"));
         assert!(message.contains("999"));
+    }
+
+    /// The aion#64 shape, minimized: a shared failure island (label +
+    /// badmatch) placed after a DIFFERENT function's tail call. The island is
+    /// reachable only by jump from a frame-7 region, so its Y5 is legal; the
+    /// linear predecessor's frame-1 must not be held against it. OTP 27's
+    /// erlc emits exactly this in gleam_stdlib's gleam@dynamic@decode.
+    #[test]
+    fn shared_failure_island_after_foreign_tail_is_not_checked_against_stale_frame() {
+        let module = parsed(vec![
+            Instruction::Label { label: 1 },
+            Instruction::Allocate {
+                stack_need: Operand::Integer(1),
+                live: Operand::Integer(0),
+            },
+            Instruction::Move {
+                source: Operand::X(0),
+                destination: Operand::Y(0),
+            },
+            Instruction::CallLast {
+                arity: Operand::Integer(1),
+                label: Operand::Label(1),
+                deallocate: Operand::Integer(1),
+            },
+            Instruction::Label { label: 2 },
+            Instruction::Badmatch {
+                value: Operand::Y(5),
+            },
+        ]);
+
+        assert!(validate_module(&module, &[]).is_ok());
+    }
+
+    /// The reset is a control-flow boundary, not a blanket waiver: inside a
+    /// straight-line allocate region an out-of-frame Y stays a red.
+    #[test]
+    fn y_register_beyond_frame_in_straight_line_code_stays_red() {
+        let module = parsed(vec![
+            Instruction::Label { label: 1 },
+            Instruction::Allocate {
+                stack_need: Operand::Integer(1),
+                live: Operand::Integer(0),
+            },
+            Instruction::Move {
+                source: Operand::X(0),
+                destination: Operand::Y(5),
+            },
+        ]);
+
+        let message = validate_module(&module, &[])
+            .expect_err("straight-line Y5 under frame 1")
+            .to_string();
+
+        assert!(message.contains("outside frame size 1"));
+    }
+
+    /// Trim shrinks the checked frame: survivors stay valid, the trimmed
+    /// range reds.
+    #[test]
+    fn trim_shrinks_the_checked_frame() {
+        let base = |tail: Instruction| {
+            parsed(vec![
+                Instruction::Label { label: 1 },
+                Instruction::Allocate {
+                    stack_need: Operand::Integer(7),
+                    live: Operand::Integer(0),
+                },
+                Instruction::Move {
+                    source: Operand::X(0),
+                    destination: Operand::Y(6),
+                },
+                Instruction::Trim {
+                    words: Operand::Integer(4),
+                    remaining: Operand::Integer(3),
+                },
+                tail,
+            ])
+        };
+
+        assert!(
+            validate_module(
+                &base(Instruction::Move {
+                    source: Operand::X(0),
+                    destination: Operand::Y(2),
+                }),
+                &[]
+            )
+            .is_ok(),
+            "Y2 survives a trim to 3"
+        );
+
+        let message = validate_module(
+            &base(Instruction::Move {
+                source: Operand::X(0),
+                destination: Operand::Y(3),
+            }),
+            &[],
+        )
+        .expect_err("Y3 after trim to 3")
+        .to_string();
+        assert!(message.contains("outside frame size 3"));
     }
 
     #[test]

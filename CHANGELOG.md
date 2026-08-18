@@ -159,6 +159,30 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
+## Unreleased
+
+### Fixed
+- **Validator false-red on legal OTP-27 emission** (aion#64). The frame-size
+  check in `loader/validate.rs` tracked the current stack frame *linearly*
+  through the instruction stream, while frame knowledge is control-flow state.
+  A shared failure island (a label followed by e.g. `badmatch {y,N}`, reachable
+  only by jump from a region whose frame is large enough) that erlc places
+  after *another* function's tail was checked against that tail's stale frame —
+  so a legal module was rejected with "y register outside frame size". OTP-27
+  erlc places such islands after foreign tails more aggressively than OTP-29,
+  which is why the failure tracked toolchain, not machine. The fix makes the
+  tracker honest about what it knows: every no-fall-through instruction
+  (`return`, tail calls, `jump`, raises, the `*_end` family, `wait`,
+  `func_info`) now resets the tracked frame to unknown, so code reachable only
+  by jump is no longer judged against a frame it never had; straight-line
+  frame checking is unchanged and still red on genuine violations. `trim` is
+  now tracked (shrinks the checked frame), tightening a previously unchecked
+  window. Downstream symptom fixed: aion's `runtime_codecs` harness hung
+  15 minutes silent because the rejected module was best-effort-skipped and
+  the test process crashed undef with no monitor — with this fix the module
+  loads. Three regression tests pin the island, straight-line-red, and trim
+  shapes.
+
 ## 0.19.1 — 2026-08-18
 
 Dependency currency release under the estate-wide everything-on-latest word
