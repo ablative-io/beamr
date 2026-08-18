@@ -167,11 +167,11 @@ mod tests {
     /// (`entry_count * 2`) is RED, which is what shows the 3N tuple component is
     /// the load-bearing part.
     ///
-    /// What the fusion changed is **who can omit it**. No in-crate caller can:
-    /// the raw copy/drain carriers are private, and the only public paths
-    /// reserve first. An **embedder** still can, until the deprecated
-    /// `dict_get_all` / `dict_erase_all` / `dict_get_keys` are deleted at
-    /// 0.19.0 — so the caveat is narrowed to that surface, not lifted.
+    /// What the fusion changed is **who can omit it**. Nobody can, as of
+    /// 0.19.0: the raw copy/drain carriers are private, the only public paths
+    /// reserve first, and the deprecated `dict_get_all` / `dict_erase_all` /
+    /// `dict_get_keys` embedder surface was deleted at that release — the
+    /// caveat this test defends is now closed on every side.
     #[test]
     fn ar1_site4_defended_by_the_callers_prereserve_not_by_the_site() {
         use crate::term::binary::Binary;

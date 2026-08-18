@@ -75,6 +75,11 @@ impl Scheduler {
     /// or [`Self::spawn_in`] for real modules; they resolve an exported
     /// entry label and start after the pad. This entry point exists for
     /// hand-built scaffolds whose instruction 0 is executable code.
+    ///
+    /// Demoted out of the default public surface at 0.19.0 (#104 ruling:
+    /// scaffold-only, zero production callers). Visible to the scaffold
+    /// tests via `test-support`, which beamr's dev self-edge enables.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn spawn_process(&self, module: &Arc<Module>) -> u64 {
         self.enqueue_spawn(Arc::clone(module), 0, Vec::new(), Atom::NIL, 0)
     }
@@ -83,8 +88,9 @@ impl Scheduler {
     /// under the supplied OpenTelemetry context.
     ///
     /// Shares [`Self::spawn_process`]'s entry semantics, including its
-    /// landing-pad death on loader-produced modules.
-    #[cfg(feature = "telemetry")]
+    /// landing-pad death on loader-produced modules. Demoted with its twin
+    /// at 0.19.0 (#104); zero callers existed anywhere at the demotion.
+    #[cfg(all(feature = "telemetry", any(test, feature = "test-support")))]
     pub fn spawn_process_with_trace_context(
         &self,
         module: &Arc<Module>,
@@ -375,6 +381,7 @@ impl Scheduler {
         facility.spawn_closure_linked(parent_pid, closure_term)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     fn enqueue_spawn(
         &self,
         module_version: Arc<Module>,
@@ -397,7 +404,7 @@ impl Scheduler {
         })
     }
 
-    #[cfg(feature = "telemetry")]
+    #[cfg(all(feature = "telemetry", any(test, feature = "test-support")))]
     fn enqueue_spawn_with_context(
         &self,
         module_version: Arc<Module>,

@@ -1422,20 +1422,6 @@ impl<'process> ProcessContext<'process> {
         Ok(process.dict_get(key))
     }
 
-    /// Copy all attached process dictionary entries in current vector order.
-    ///
-    /// # Deprecated
-    ///
-    /// Hands out an **unrooted** `Vec<Term>` and trusts the caller to have
-    /// reserved heap space first. Use [`Self::dict_entries_to_list`], which
-    /// fuses the reserve to the copy so the unreserved shape cannot be written.
-    #[deprecated(
-        note = "unrooted carrier; use dict_entries_to_list -- fused replacement; deleted at 0.19.0 -- see gate-logs/114/SITE4-PARK.md"
-    )]
-    pub fn dict_get_all(&self) -> Result<Vec<(Term, Term)>, Term> {
-        self.dict_entries_copy()
-    }
-
     /// Copy the dictionary entries with no reserve — the raw carrier.
     ///
     /// Private on purpose: every in-crate path to it goes through a method that
@@ -1463,39 +1449,12 @@ impl<'process> ProcessContext<'process> {
         Ok(process.dict_erase(key))
     }
 
-    /// Remove and return all attached process dictionary entries.
-    ///
-    /// # Deprecated
-    ///
-    /// Hands out an **unrooted** `Vec<Term>` whose terms, after the drain, are
-    /// rooted by **nothing at all** — the dictionary no longer holds them. Use
-    /// [`Self::dict_erase_all_to_list`].
-    #[deprecated(
-        note = "unrooted carrier; use dict_erase_all_to_list -- fused replacement; deleted at 0.19.0 -- see gate-logs/114/SITE4-PARK.md"
-    )]
-    pub fn dict_erase_all(&mut self) -> Result<Vec<(Term, Term)>, Term> {
-        self.dict_entries_drain()
-    }
-
     /// Drain the dictionary with no reserve — the raw carrier. Private.
     fn dict_entries_drain(&mut self) -> Result<Vec<(Term, Term)>, Term> {
         let Some(process) = self.process.as_deref_mut() else {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         };
         Ok(process.dict_erase_all())
-    }
-
-    /// Copy all dictionary keys whose values exactly match `value`.
-    ///
-    /// # Deprecated
-    ///
-    /// Same unrooted-carrier shape as [`Self::dict_get_all`]. Use
-    /// [`Self::dict_keys_for_value_to_list`].
-    #[deprecated(
-        note = "unrooted carrier; use dict_keys_for_value_to_list -- fused replacement; deleted at 0.19.0 -- see gate-logs/114/SITE4-PARK.md"
-    )]
-    pub fn dict_get_keys(&self, value: Term) -> Result<Vec<Term>, Term> {
-        self.dict_keys_copy(value)
     }
 
     /// Copy the matching keys with no reserve — the raw carrier. Private.
