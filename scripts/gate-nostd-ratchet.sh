@@ -78,10 +78,17 @@
 # Run `./scripts/gate-nostd-ratchet.sh --self-test` to prove the arms fire.
 set -uo pipefail
 
-CEILING=1075           # rustc's own tally. LOWER THIS, NEVER RAISE IT --
+CEILING=1072           # rustc's own tally. LOWER THIS, NEVER RAISE IT --
                        # except for a MEASURED POPULATION CHANGE, of which
-                       # this is the first and only instance. See below.
-CEILING_PIN="B-144 R1"
+                       # B-144 R1 (1039 -> 1075) is the first and only
+                       # instance. See below. 1075 -> 1072 at the 0.19.0 cut:
+                       # commit 4e8ccf6 (site-4 trio deletion + #104 scaffold
+                       # demotion) removed three errors from the no_std tally.
+                       # Which of its two changes carried which error is NOT
+                       # attributed -- the delta is commit-level, measured by
+                       # this gate itself. A tightening, exactly the direction
+                       # this ratchet exists to bank.
+CEILING_PIN="0.19.0 cut (site-4 trio deletion)"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 99
