@@ -1,0 +1,19 @@
+    Updating crates.io index
+   Packaging beamr v0.19.1 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+    Updating crates.io index
+    Packaged 514 files, 6.7MiB (1.8MiB compressed)
+   Verifying beamr v0.19.1 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+ Downloading crates ...
+  Downloaded gleam-types v0.4.4
+   Compiling gimli v0.33.0
+   Compiling beamr v0.19.1 (/Users/tom/Developer/ablative/stack/beamr/target/package/beamr-0.19.1)
+   Compiling tokio v1.53.1
+   Compiling gleam-types v0.4.4
+   Compiling cranelift-codegen v0.134.3
+   Compiling cranelift-module v0.134.3
+   Compiling cranelift-native v0.134.3
+   Compiling cranelift-frontend v0.134.3
+   Compiling cranelift-jit v0.134.3
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 52.78s
+   Uploading beamr v0.19.1 (/Users/tom/Developer/ablative/stack/beamr/crates/beamr)
+warning: aborting upload due to dry run
