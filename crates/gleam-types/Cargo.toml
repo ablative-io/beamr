@@ -1,6 +1,6 @@
 [package]
 name = "gleam-types"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2024"
 description = "Gleam type sidecar extractor for beamr"
 readme = "README.md"
@@ -10,7 +10,6 @@ authors.workspace = true
 
 [dependencies]
 camino = "1.2.1"
-ecow.workspace = true
 
 [[bin]]
 name = "gleam-types"

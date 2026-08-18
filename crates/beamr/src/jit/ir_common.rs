@@ -3,7 +3,7 @@
 use crate::loader::decode::Operand;
 use crate::term::Term;
 use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{FuncRef, InstBuilder, MemFlags, Value, types};
+use cranelift_codegen::ir::{FuncRef, InstBuilder, MemFlagsData, Value, types};
 use cranelift_frontend::FunctionBuilder;
 use std::collections::HashMap;
 
@@ -77,7 +77,7 @@ pub(crate) fn read_register_term(
             let offset = x_register_offset(index);
             builder
                 .ins()
-                .load(types::I64, MemFlags::trusted(), registers.file, offset)
+                .load(types::I64, MemFlagsData::trusted(), registers.file, offset)
         }
         Register::Y(index) => {
             let index_value = builder.ins().iconst(types::I64, i64::from(index));
@@ -100,7 +100,7 @@ pub(crate) fn write_register_term(
             let offset = x_register_offset(index);
             builder
                 .ins()
-                .store(MemFlags::trusted(), value, registers.file, offset);
+                .store(MemFlagsData::trusted(), value, registers.file, offset);
         }
         Register::Y(index) => {
             let index_value = builder.ins().iconst(types::I64, i64::from(index));
@@ -162,10 +162,10 @@ pub(crate) fn checked_small_int_payload(
     value: Value,
     fail: cranelift_codegen::ir::Block,
 ) -> Value {
-    let tag = builder.ins().band_imm(value, SMALL_INT_TAG_MASK);
-    let not_small_int = builder.ins().icmp_imm(IntCC::NotEqual, tag, 0);
+    let tag = builder.ins().band_imm_s(value, SMALL_INT_TAG_MASK);
+    let not_small_int = builder.ins().icmp_imm_s(IntCC::NotEqual, tag, 0);
     branch_to_fail_if(builder, not_small_int, fail);
-    builder.ins().sshr_imm(value, SMALL_INT_SHIFT)
+    builder.ins().sshr_imm_s(value, SMALL_INT_SHIFT)
 }
 
 pub(crate) fn branch_to_fail_if(

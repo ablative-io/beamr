@@ -2,7 +2,7 @@
 
 use crate::loader::decode::Operand;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
-use cranelift_codegen::ir::{Block, FuncRef, InstBuilder, MemFlags, Value, types};
+use cranelift_codegen::ir::{Block, FuncRef, InstBuilder, MemFlagsData, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
@@ -158,8 +158,8 @@ pub(crate) fn float_boxing_roots(dest: &Operand) -> Result<Vec<Operand>, JitErro
 }
 
 fn translate_term_to_float(builder: &mut FunctionBuilder<'_>, term: Value, fail: Block) -> Value {
-    let tag = builder.ins().band_imm(term, SMALL_INT_TAG_MASK);
-    let is_small = builder.ins().icmp_imm(IntCC::Equal, tag, 0);
+    let tag = builder.ins().band_imm_s(term, SMALL_INT_TAG_MASK);
+    let is_small = builder.ins().icmp_imm_s(IntCC::Equal, tag, 0);
     let small_block = builder.create_block();
     let boxed_block = builder.create_block();
     let done = builder.create_block();
@@ -169,7 +169,7 @@ fn translate_term_to_float(builder: &mut FunctionBuilder<'_>, term: Value, fail:
         .brif(is_small, small_block, &[], boxed_block, &[]);
 
     builder.switch_to_block(small_block);
-    let payload = builder.ins().sshr_imm(term, SMALL_INT_SHIFT);
+    let payload = builder.ins().sshr_imm_s(term, SMALL_INT_SHIFT);
     let value = builder.ins().fcvt_from_sint(types::F64, payload);
     builder.ins().jump(done, &[value.into()]);
 
@@ -186,28 +186,32 @@ fn translate_boxed_float_to_float(
     term: Value,
     fail: Block,
 ) -> Value {
-    let tag = builder.ins().band_imm(term, TERM_TAG_MASK);
-    let not_boxed = builder.ins().icmp_imm(IntCC::NotEqual, tag, BOXED_TAG);
+    let tag = builder.ins().band_imm_s(term, TERM_TAG_MASK);
+    let not_boxed = builder.ins().icmp_imm_s(IntCC::NotEqual, tag, BOXED_TAG);
     branch_to_fail_if(builder, not_boxed, fail);
-    let heap = builder.ins().band_imm(term, !TERM_TAG_MASK);
-    let header = builder.ins().load(types::I64, MemFlags::trusted(), heap, 0);
-    let header_tag = builder.ins().band_imm(header, 0xff);
+    let heap = builder.ins().band_imm_s(term, !TERM_TAG_MASK);
+    let header = builder
+        .ins()
+        .load(types::I64, MemFlagsData::trusted(), heap, 0);
+    let header_tag = builder.ins().band_imm_s(header, 0xff);
     let not_float = builder
         .ins()
-        .icmp_imm(IntCC::NotEqual, header_tag, BOXED_FLOAT_HEADER_TAG);
+        .icmp_imm_s(IntCC::NotEqual, header_tag, BOXED_FLOAT_HEADER_TAG);
     branch_to_fail_if(builder, not_float, fail);
     builder.ins().load(
         types::F64,
-        MemFlags::trusted(),
+        MemFlagsData::trusted(),
         heap,
         BOXED_FLOAT_PAYLOAD_OFFSET,
     )
 }
 
 fn branch_to_fail_if_float_zero(builder: &mut FunctionBuilder<'_>, value: Value, fail: Block) {
-    let bits = builder.ins().bitcast(types::I64, MemFlags::new(), value);
-    let magnitude = builder.ins().band_imm(bits, 0x7fff_ffff_ffff_ffff_i64);
-    let is_zero = builder.ins().icmp_imm(IntCC::Equal, magnitude, 0);
+    let bits = builder
+        .ins()
+        .bitcast(types::I64, MemFlagsData::new(), value);
+    let magnitude = builder.ins().band_imm_s(bits, 0x7fff_ffff_ffff_ffff_i64);
+    let is_zero = builder.ins().icmp_imm_s(IntCC::Equal, magnitude, 0);
     branch_to_fail_if(builder, is_zero, fail);
 }
 
@@ -215,11 +219,13 @@ fn branch_to_fail_if_nan_or_inf(builder: &mut FunctionBuilder<'_>, value: Value,
     let unordered = builder.ins().fcmp(FloatCC::Unordered, value, value);
     branch_to_fail_if(builder, unordered, fail);
 
-    let bits = builder.ins().bitcast(types::I64, MemFlags::new(), value);
-    let exponent = builder.ins().band_imm(bits, F64_EXPONENT_MASK);
+    let bits = builder
+        .ins()
+        .bitcast(types::I64, MemFlagsData::new(), value);
+    let exponent = builder.ins().band_imm_s(bits, F64_EXPONENT_MASK);
     let exponent_all_ones = builder
         .ins()
-        .icmp_imm(IntCC::Equal, exponent, F64_EXPONENT_MASK);
+        .icmp_imm_s(IntCC::Equal, exponent, F64_EXPONENT_MASK);
     branch_to_fail_if(builder, exponent_all_ones, fail);
 }
 
@@ -228,7 +234,7 @@ fn branch_to_deopt_if_zero(
     value: Value,
     deopt: cranelift_codegen::ir::Block,
 ) {
-    let is_zero = builder.ins().icmp_imm(IntCC::Equal, value, 0);
+    let is_zero = builder.ins().icmp_imm_s(IntCC::Equal, value, 0);
     let continuation = builder.create_block();
     builder.ins().brif(is_zero, deopt, &[], continuation, &[]);
     builder.switch_to_block(continuation);

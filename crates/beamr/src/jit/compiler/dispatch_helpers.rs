@@ -21,7 +21,7 @@ pub(super) fn branch_to_yield_if_exhausted(
     yield_block: cranelift_codegen::ir::Block,
     continuation: cranelift_codegen::ir::Block,
 ) {
-    let should_yield = builder.ins().icmp_imm(IntCC::NotEqual, exhausted, 0);
+    let should_yield = builder.ins().icmp_imm_s(IntCC::NotEqual, exhausted, 0);
     builder
         .ins()
         .brif(should_yield, yield_block, &[], continuation, &[]);
@@ -49,7 +49,7 @@ fn branch_to_status_blocks(
 ) {
     let is_deopt = builder
         .ins()
-        .icmp_imm(IntCC::Equal, status, i64::from(JIT_STATUS_DEOPT));
+        .icmp_imm_s(IntCC::Equal, status, i64::from(JIT_STATUS_DEOPT));
     let check_yield = builder.create_block();
     builder
         .ins()
@@ -57,7 +57,7 @@ fn branch_to_status_blocks(
     builder.switch_to_block(check_yield);
     let is_yield = builder
         .ins()
-        .icmp_imm(IntCC::Equal, status, i64::from(JIT_STATUS_YIELD));
+        .icmp_imm_s(IntCC::Equal, status, i64::from(JIT_STATUS_YIELD));
     builder
         .ins()
         .brif(is_yield, yield_block, &[], continuation, &[]);

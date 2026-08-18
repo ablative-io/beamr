@@ -364,7 +364,7 @@ impl JitCompiler {
             builder.switch_to_block(blocks.yield_block);
             return_status_raw(&mut builder, JIT_STATUS_YIELD, JIT_YIELD_SENTINEL);
             builder.seal_all_blocks();
-            builder.finalize();
+            builder.finalize(jit_module.isa().frontend_config());
         }
 
         let func_id = jit_module

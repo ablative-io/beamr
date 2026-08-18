@@ -3,7 +3,7 @@
 use crate::loader::decode::{Operand, TypeTestOp};
 use crate::term::Term;
 use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{Block, InstBuilder, MemFlags, Value, types};
+use cranelift_codegen::ir::{Block, InstBuilder, MemFlagsData, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
@@ -39,7 +39,7 @@ pub(crate) fn lower_type_test(
             let cons = primary_tag_matches(builder, value, LIST_TAG);
             let nil = builder
                 .ins()
-                .icmp_imm(IntCC::Equal, value, Term::NIL.raw() as i64);
+                .icmp_imm_s(IntCC::Equal, value, Term::NIL.raw() as i64);
             builder.ins().bor(cons, nil)
         }
         TypeTestOp::IsPid => {
@@ -90,10 +90,10 @@ pub(crate) fn lower_test_arity(
     let expected = immediate_usize(arity, "test_arity arity")?;
     let tuple = read_operand_term(builder, register_file, tuple)?;
     let header = checked_tuple_header(builder, tuple, fail);
-    let actual = builder.ins().ushr_imm(header, HEADER_SIZE_SHIFT);
+    let actual = builder.ins().ushr_imm_s(header, HEADER_SIZE_SHIFT);
     let passed = builder
         .ins()
-        .icmp_imm(IntCC::Equal, actual, expected as i64);
+        .icmp_imm_s(IntCC::Equal, actual, expected as i64);
     builder.ins().brif(passed, success, &[], fail, &[]);
     Ok(())
 }
@@ -115,17 +115,19 @@ pub(crate) fn lower_is_tagged_tuple(
     let expected_tag = atom_term(tag)?;
     let value = read_operand_term(builder, register_file, value)?;
     let header = checked_tuple_header(builder, value, fail);
-    let actual_arity = builder.ins().ushr_imm(header, HEADER_SIZE_SHIFT);
+    let actual_arity = builder.ins().ushr_imm_s(header, HEADER_SIZE_SHIFT);
     let arity_mismatch =
         builder
             .ins()
-            .icmp_imm(IntCC::NotEqual, actual_arity, expected_arity as i64);
+            .icmp_imm_s(IntCC::NotEqual, actual_arity, expected_arity as i64);
     branch_to_fail_if(builder, arity_mismatch, fail);
     let ptr = untagged_ptr(builder, value);
-    let first = builder.ins().load(types::I64, MemFlags::trusted(), ptr, 8);
+    let first = builder
+        .ins()
+        .load(types::I64, MemFlagsData::trusted(), ptr, 8);
     let passed = builder
         .ins()
-        .icmp_imm(IntCC::Equal, first, expected_tag.raw() as i64);
+        .icmp_imm_s(IntCC::Equal, first, expected_tag.raw() as i64);
     builder.ins().brif(passed, success, &[], fail, &[]);
     Ok(())
 }
@@ -229,7 +231,7 @@ fn lower_select_binary_search(
     let right = &pairs[mid + 1..];
     let matched = builder
         .ins()
-        .icmp_imm(IntCC::Equal, value, pivot.candidate_raw as i64);
+        .icmp_imm_s(IntCC::Equal, value, pivot.candidate_raw as i64);
     let compare_block = if rest.is_empty() {
         fail
     } else {
@@ -243,7 +245,7 @@ fn lower_select_binary_search(
         let less =
             builder
                 .ins()
-                .icmp_imm(IntCC::UnsignedLessThan, value, pivot.candidate_raw as i64);
+                .icmp_imm_s(IntCC::UnsignedLessThan, value, pivot.candidate_raw as i64);
         let left_block = builder.create_block();
         let right_block = builder.create_block();
         builder.ins().brif(less, left_block, &[], right_block, &[]);
@@ -256,13 +258,13 @@ fn lower_select_binary_search(
 }
 
 fn primary_tag_matches(builder: &mut FunctionBuilder<'_>, value: Value, tag: i64) -> Value {
-    let term_tag = builder.ins().band_imm(value, TERM_TAG_MASK);
-    builder.ins().icmp_imm(IntCC::Equal, term_tag, tag)
+    let term_tag = builder.ins().band_imm_s(value, TERM_TAG_MASK);
+    builder.ins().icmp_imm_s(IntCC::Equal, term_tag, tag)
 }
 
 fn primary_tag_mismatches(builder: &mut FunctionBuilder<'_>, value: Value, tag: i64) -> Value {
-    let term_tag = builder.ins().band_imm(value, TERM_TAG_MASK);
-    builder.ins().icmp_imm(IntCC::NotEqual, term_tag, tag)
+    let term_tag = builder.ins().band_imm_s(value, TERM_TAG_MASK);
+    builder.ins().icmp_imm_s(IntCC::NotEqual, term_tag, tag)
 }
 
 fn lower_pid_type_test(
@@ -288,11 +290,13 @@ fn lower_boxed_header_type_test(
     let not_boxed = primary_tag_mismatches(builder, value, BOXED_TAG);
     branch_to_fail_if(builder, not_boxed, fail);
     let ptr = untagged_ptr(builder, value);
-    let header = builder.ins().load(types::I64, MemFlags::trusted(), ptr, 0);
-    let header_tag = builder.ins().band_imm(header, HEADER_TAG_MASK);
-    let mut matched = builder.ins().icmp_imm(IntCC::Equal, header_tag, tags[0]);
+    let header = builder
+        .ins()
+        .load(types::I64, MemFlagsData::trusted(), ptr, 0);
+    let header_tag = builder.ins().band_imm_s(header, HEADER_TAG_MASK);
+    let mut matched = builder.ins().icmp_imm_s(IntCC::Equal, header_tag, tags[0]);
     for tag in &tags[1..] {
-        let next = builder.ins().icmp_imm(IntCC::Equal, header_tag, *tag);
+        let next = builder.ins().icmp_imm_s(IntCC::Equal, header_tag, *tag);
         matched = builder.ins().bor(matched, next);
     }
     builder.ins().brif(matched, success, &[], fail, &[]);
@@ -302,17 +306,19 @@ fn checked_tuple_header(builder: &mut FunctionBuilder<'_>, value: Value, fail: B
     let not_boxed = primary_tag_mismatches(builder, value, BOXED_TAG);
     branch_to_fail_if(builder, not_boxed, fail);
     let ptr = untagged_ptr(builder, value);
-    let header = builder.ins().load(types::I64, MemFlags::trusted(), ptr, 0);
-    let header_tag = builder.ins().band_imm(header, HEADER_TAG_MASK);
+    let header = builder
+        .ins()
+        .load(types::I64, MemFlagsData::trusted(), ptr, 0);
+    let header_tag = builder.ins().band_imm_s(header, HEADER_TAG_MASK);
     let not_tuple = builder
         .ins()
-        .icmp_imm(IntCC::NotEqual, header_tag, TUPLE_HEADER_TAG);
+        .icmp_imm_s(IntCC::NotEqual, header_tag, TUPLE_HEADER_TAG);
     branch_to_fail_if(builder, not_tuple, fail);
     header
 }
 
 fn untagged_ptr(builder: &mut FunctionBuilder<'_>, value: Value) -> Value {
-    builder.ins().band_imm(value, !TERM_TAG_MASK)
+    builder.ins().band_imm_s(value, !TERM_TAG_MASK)
 }
 
 fn atom_term(operand: &Operand) -> Result<Term, JitError> {

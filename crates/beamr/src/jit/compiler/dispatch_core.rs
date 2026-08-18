@@ -476,7 +476,7 @@ pub(super) fn frame_guard(
 ) {
     let call = builder.ins().call(helper, args);
     let status = builder.inst_results(call)[0];
-    let failed = builder.ins().icmp_imm(IntCC::NotEqual, status, 0);
+    let failed = builder.ins().icmp_imm_s(IntCC::NotEqual, status, 0);
     branch_to_fail_if(builder, failed, deopt);
 }
 

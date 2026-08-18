@@ -131,10 +131,12 @@ pub(crate) fn lower_arithmetic_bif(
             value
         }
         ArithmeticOp::Div | ArithmeticOp::Rem => {
-            let zero = builder.ins().icmp_imm(IntCC::Equal, right_payload, 0);
+            let zero = builder.ins().icmp_imm_s(IntCC::Equal, right_payload, 0);
             branch_to_fail_if(builder, zero, lowering.fail);
-            let min_divisor = builder.ins().icmp_imm(IntCC::Equal, right_payload, -1);
-            let min_dividend = builder.ins().icmp_imm(IntCC::Equal, left_payload, i64::MIN);
+            let min_divisor = builder.ins().icmp_imm_s(IntCC::Equal, right_payload, -1);
+            let min_dividend = builder
+                .ins()
+                .icmp_imm_s(IntCC::Equal, left_payload, i64::MIN);
             let division_overflow = builder.ins().band(min_dividend, min_divisor);
             branch_to_fail_if(builder, division_overflow, lowering.fail);
             if matches!(lowering.op, ArithmeticOp::Div) {
@@ -147,13 +149,13 @@ pub(crate) fn lower_arithmetic_bif(
 
     let min_check = builder
         .ins()
-        .icmp_imm(IntCC::SignedLessThan, result, Term::SMALL_INT_MIN);
+        .icmp_imm_s(IntCC::SignedLessThan, result, Term::SMALL_INT_MIN);
     let max_check = builder
         .ins()
-        .icmp_imm(IntCC::SignedGreaterThan, result, Term::SMALL_INT_MAX);
+        .icmp_imm_s(IntCC::SignedGreaterThan, result, Term::SMALL_INT_MAX);
     let out_of_range = builder.ins().bor(min_check, max_check);
     branch_to_fail_if(builder, out_of_range, lowering.fail);
-    let tagged = builder.ins().ishl_imm(result, SMALL_INT_SHIFT);
+    let tagged = builder.ins().ishl_imm_s(result, SMALL_INT_SHIFT);
     write_operand_term(builder, register_file, lowering.destination, tagged)?;
     builder.ins().jump(lowering.success, &[]);
     Ok(())
@@ -201,7 +203,7 @@ fn signed_add_overflow(
     let both_changed_sign = builder.ins().band(left_xor_result, right_xor_result);
     builder
         .ins()
-        .icmp_imm(IntCC::SignedLessThan, both_changed_sign, 0)
+        .icmp_imm_s(IntCC::SignedLessThan, both_changed_sign, 0)
 }
 
 fn signed_sub_overflow(
@@ -215,5 +217,5 @@ fn signed_sub_overflow(
     let both_changed_sign = builder.ins().band(left_xor_right, left_xor_result);
     builder
         .ins()
-        .icmp_imm(IntCC::SignedLessThan, both_changed_sign, 0)
+        .icmp_imm_s(IntCC::SignedLessThan, both_changed_sign, 0)
 }

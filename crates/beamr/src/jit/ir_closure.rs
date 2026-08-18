@@ -3,7 +3,7 @@
 use crate::atom::Atom;
 use crate::loader::decode::Operand;
 use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{FuncRef, InstBuilder, MemFlags, Value, types};
+use cranelift_codegen::ir::{FuncRef, InstBuilder, MemFlagsData, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
@@ -64,7 +64,9 @@ pub(crate) fn lower_make_fun2(
 
     let header = ((CLOSURE_FIXED_PAYLOAD_WORDS + num_free) << HEADER_TAG_BITS) | CLOSURE_HEADER_TAG;
     let header = builder.ins().iconst(types::I64, header);
-    builder.ins().store(MemFlags::trusted(), header, heap, 0);
+    builder
+        .ins()
+        .store(MemFlagsData::trusted(), header, heap, 0);
 
     let module = builder.ins().iconst(
         types::I64,
@@ -72,14 +74,14 @@ pub(crate) fn lower_make_fun2(
     );
     builder
         .ins()
-        .store(MemFlags::trusted(), module, heap, CLOSURE_MODULE_OFFSET);
+        .store(MemFlagsData::trusted(), module, heap, CLOSURE_MODULE_OFFSET);
     let function_index =
         i64::try_from(metadata.function_index).map_err(|_| JitError::UnsupportedOperand {
             operand: format!("closure function index {}", metadata.function_index),
         })?;
     let function_index = builder.ins().iconst(types::I64, function_index);
     builder.ins().store(
-        MemFlags::trusted(),
+        MemFlagsData::trusted(),
         function_index,
         heap,
         CLOSURE_FUNCTION_INDEX_OFFSET,
@@ -87,9 +89,9 @@ pub(crate) fn lower_make_fun2(
     let arity = builder.ins().iconst(types::I64, i64::from(metadata.arity));
     builder
         .ins()
-        .store(MemFlags::trusted(), arity, heap, CLOSURE_ARITY_OFFSET);
+        .store(MemFlagsData::trusted(), arity, heap, CLOSURE_ARITY_OFFSET);
     builder.ins().store(
-        MemFlags::trusted(),
+        MemFlagsData::trusted(),
         num_free_value,
         heap,
         CLOSURE_NUM_FREE_OFFSET,
@@ -100,7 +102,7 @@ pub(crate) fn lower_make_fun2(
         })?;
     let generation = builder.ins().iconst(types::I64, generation);
     builder.ins().store(
-        MemFlags::trusted(),
+        MemFlagsData::trusted(),
         generation,
         heap,
         CLOSURE_GENERATION_OFFSET,
@@ -111,7 +113,7 @@ pub(crate) fn lower_make_fun2(
         })?;
     let unique_id = builder.ins().iconst(types::I64, unique_id);
     builder.ins().store(
-        MemFlags::trusted(),
+        MemFlagsData::trusted(),
         unique_id,
         heap,
         CLOSURE_UNIQUE_ID_OFFSET,
@@ -122,10 +124,10 @@ pub(crate) fn lower_make_fun2(
         let offset = closure_free_var_offset(index)?;
         builder
             .ins()
-            .store(MemFlags::trusted(), value, heap, offset);
+            .store(MemFlagsData::trusted(), value, heap, offset);
     }
 
-    let term = builder.ins().bor_imm(heap, BOXED_TAG);
+    let term = builder.ins().bor_imm_s(heap, BOXED_TAG);
     write_operand_term(builder, context.register_file, destination, term)
 }
 
@@ -183,17 +185,17 @@ fn validate_closure_or_deopt(
     term: Value,
     deopt: cranelift_codegen::ir::Block,
 ) -> Value {
-    let tag = builder.ins().band_imm(term, TERM_TAG_MASK);
-    let is_boxed = builder.ins().icmp_imm(IntCC::Equal, tag, BOXED_TAG);
+    let tag = builder.ins().band_imm_s(term, TERM_TAG_MASK);
+    let is_boxed = builder.ins().icmp_imm_s(IntCC::Equal, tag, BOXED_TAG);
     branch_to_deopt_if_false(builder, is_boxed, deopt);
-    let pointer = builder.ins().band_imm(term, !TERM_TAG_MASK);
+    let pointer = builder.ins().band_imm_s(term, !TERM_TAG_MASK);
     let header = builder
         .ins()
-        .load(types::I64, MemFlags::trusted(), pointer, 0);
-    let header_tag = builder.ins().band_imm(header, HEADER_TAG_MASK);
+        .load(types::I64, MemFlagsData::trusted(), pointer, 0);
+    let header_tag = builder.ins().band_imm_s(header, HEADER_TAG_MASK);
     let is_closure = builder
         .ins()
-        .icmp_imm(IntCC::Equal, header_tag, CLOSURE_HEADER_TAG);
+        .icmp_imm_s(IntCC::Equal, header_tag, CLOSURE_HEADER_TAG);
     branch_to_deopt_if_false(builder, is_closure, deopt);
     pointer
 }
@@ -213,7 +215,7 @@ fn branch_to_deopt_if_null(
     pointer: Value,
     deopt: cranelift_codegen::ir::Block,
 ) {
-    let is_null = builder.ins().icmp_imm(IntCC::Equal, pointer, 0);
+    let is_null = builder.ins().icmp_imm_s(IntCC::Equal, pointer, 0);
     let continuation = builder.create_block();
     builder.ins().brif(is_null, deopt, &[], continuation, &[]);
     builder.switch_to_block(continuation);

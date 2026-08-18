@@ -3,7 +3,7 @@
 use crate::loader::decode::{MapOp, Operand};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
-    Block, FuncRef, InstBuilder, MemFlags, StackSlotData, StackSlotKind, Value, types,
+    Block, FuncRef, InstBuilder, MemFlagsData, StackSlotData, StackSlotKind, Value, types,
 };
 use cranelift_frontend::FunctionBuilder;
 
@@ -103,7 +103,7 @@ pub(crate) fn translate_get_map_elements(
         let key = read_operand_term(builder, context.register_file, &pair[0])?;
         let call = builder.ins().call(helpers.get, &[map, key]);
         let results = builder.inst_results(call).to_vec();
-        let missing = builder.ins().icmp_imm(IntCC::Equal, results[0], 0);
+        let missing = builder.ins().icmp_imm_s(IntCC::Equal, results[0], 0);
         branch_to_fail_if(builder, missing, fail);
         found.push((&pair[1], results[1]));
     }
@@ -126,7 +126,7 @@ pub(crate) fn translate_has_map_fields(
         let key = read_operand_term(builder, context.register_file, key)?;
         let call = builder.ins().call(helpers.has_key, &[map, key]);
         let present = builder.inst_results(call)[0];
-        let missing = builder.ins().icmp_imm(IntCC::Equal, present, 0);
+        let missing = builder.ins().icmp_imm_s(IntCC::Equal, present, 0);
         branch_to_fail_if(builder, missing, fail);
     }
     Ok(())
@@ -237,7 +237,7 @@ fn stage_pairs(
             })?;
         builder
             .ins()
-            .store(MemFlags::trusted(), value, slot_addr, offset);
+            .store(MemFlagsData::trusted(), value, slot_addr, offset);
     }
     let pair_count = i64::try_from(pairs.len() / 2).map_err(|_| JitError::UnsupportedOperand {
         operand: format!("map pair count {}", pairs.len() / 2),
@@ -246,6 +246,6 @@ fn stage_pairs(
 }
 
 fn branch_to_fail_if_null(builder: &mut FunctionBuilder<'_>, value: Value, fail: Block) {
-    let is_null = builder.ins().icmp_imm(IntCC::Equal, value, 0);
+    let is_null = builder.ins().icmp_imm_s(IntCC::Equal, value, 0);
     branch_to_fail_if(builder, is_null, fail);
 }

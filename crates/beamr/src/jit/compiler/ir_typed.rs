@@ -47,10 +47,10 @@ pub(super) fn lower_typed_int_arithmetic(
             value
         }
         ArithmeticOp::Div | ArithmeticOp::Rem => {
-            let zero = builder.ins().icmp_imm(IntCC::Equal, right, 0);
+            let zero = builder.ins().icmp_imm_s(IntCC::Equal, right, 0);
             branch_to_block_if(builder, zero, lowering.fail);
-            let min_divisor = builder.ins().icmp_imm(IntCC::Equal, right, -1);
-            let min_dividend = builder.ins().icmp_imm(IntCC::Equal, left, i64::MIN);
+            let min_divisor = builder.ins().icmp_imm_s(IntCC::Equal, right, -1);
+            let min_dividend = builder.ins().icmp_imm_s(IntCC::Equal, left, i64::MIN);
             let division_overflow = builder.ins().band(min_dividend, min_divisor);
             branch_to_block_if(builder, division_overflow, deopt);
             if matches!(lowering.op, ArithmeticOp::Div) {
@@ -163,7 +163,7 @@ fn signed_add_overflow(
     let both_changed_sign = builder.ins().band(left_xor_result, right_xor_result);
     builder
         .ins()
-        .icmp_imm(IntCC::SignedLessThan, both_changed_sign, 0)
+        .icmp_imm_s(IntCC::SignedLessThan, both_changed_sign, 0)
 }
 
 fn signed_sub_overflow(
@@ -177,7 +177,7 @@ fn signed_sub_overflow(
     let both_changed_sign = builder.ins().band(left_xor_right, left_xor_result);
     builder
         .ins()
-        .icmp_imm(IntCC::SignedLessThan, both_changed_sign, 0)
+        .icmp_imm_s(IntCC::SignedLessThan, both_changed_sign, 0)
 }
 
 fn branch_to_deopt_if_not_small_int(
@@ -187,11 +187,11 @@ fn branch_to_deopt_if_not_small_int(
 ) {
     let below_min = builder
         .ins()
-        .icmp_imm(IntCC::SignedLessThan, value, Term::SMALL_INT_MIN);
+        .icmp_imm_s(IntCC::SignedLessThan, value, Term::SMALL_INT_MIN);
     branch_to_block_if(builder, below_min, deopt);
     let above_max = builder
         .ins()
-        .icmp_imm(IntCC::SignedGreaterThan, value, Term::SMALL_INT_MAX);
+        .icmp_imm_s(IntCC::SignedGreaterThan, value, Term::SMALL_INT_MAX);
     branch_to_block_if(builder, above_max, deopt);
 }
 
@@ -247,7 +247,7 @@ impl TypedRegisterState {
         for (register, type_) in &self.registers {
             if matches!(type_, TypeDescriptor::Int) {
                 let tagged = read_register_term(builder, register_file, *register);
-                let payload = builder.ins().sshr_imm(tagged, SMALL_INT_SHIFT);
+                let payload = builder.ins().sshr_imm_s(tagged, SMALL_INT_SHIFT);
                 write_register_term(builder, register_file, *register, payload);
             }
         }
@@ -263,7 +263,7 @@ impl TypedRegisterState {
             self.registers.get(&Register::X(0)),
             Some(TypeDescriptor::Int)
         ) {
-            builder.ins().ishl_imm(value, SMALL_INT_SHIFT)
+            builder.ins().ishl_imm_s(value, SMALL_INT_SHIFT)
         } else {
             value
         }
@@ -319,7 +319,7 @@ impl TypedRegisterState {
         for register in registers {
             if matches!(self.registers.remove(&register), Some(TypeDescriptor::Int)) {
                 let payload = read_register_term(builder, register_file, register);
-                let tagged = builder.ins().ishl_imm(payload, SMALL_INT_SHIFT);
+                let tagged = builder.ins().ishl_imm_s(payload, SMALL_INT_SHIFT);
                 write_register_term(builder, register_file, register, tagged);
             }
         }
@@ -483,7 +483,7 @@ impl TypedRegisterState {
         };
         if matches!(type_, TypeDescriptor::Int) {
             let tagged = read_register_term(builder, register_file, register);
-            let payload = builder.ins().sshr_imm(tagged, SMALL_INT_SHIFT);
+            let payload = builder.ins().sshr_imm_s(tagged, SMALL_INT_SHIFT);
             write_register_term(builder, register_file, register, payload);
         }
         self.registers.insert(register, type_);

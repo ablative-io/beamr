@@ -159,6 +159,37 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
+## 0.19.1 — 2026-08-18
+
+Dependency currency release under the estate-wide everything-on-latest word
+(2026-08-18). No public API change: the dep-major moves below are all
+internal — measured, not asserted (no cranelift, base64, or ecow type is
+nameable from beamr's public surface; the two `JITModule` occurrences inside
+public structs are private fields).
+
+### Changed
+- cranelift `0.131.2` → `0.134.3` (all five crates). Mechanical adaptation to
+  the interned-`MemFlags` API (`MemFlags::trusted()/new()` →
+  `MemFlagsData::trusted()/new()`), `FunctionBuilder::finalize` now taking the
+  target frontend config, and the deprecated `*_imm` instruction-builder
+  methods replaced by their `_s` variants — the sign-extending forms, chosen
+  because they reproduce the old `Imm64` semantics byte-for-byte; no call
+  site's behaviour changed.
+- base64 `0.22.1` → `0.23.1` (internal to term JSON encoding).
+- In-range lock refresh across the workspace (tokio 1.53.1, serde_json
+  1.0.151, wasm-bindgen 0.2.127 line, crossbeam set, libc, mio, and the rest
+  of the census's 16 in-range rows).
+- `gleam-types` requirement `0.4.3` → `0.4.4` (see below).
+
+### gleam-types 0.4.4
+- Removed the `ecow =0.2.6` dependency: dead edge. Every `EcoString` use was
+  removed from the crate's source in earlier work but the manifest edge (and
+  its exact pin, minted 2026-06-09 to track upstream gleam-core's lockfile)
+  survived. Zero references in the tree; compiles clean without it. Consumers
+  no longer inherit a stale exact-pinned ecow from this crate. The workspace
+  pin is deleted with it — a pin guarding an edge no code uses was a shield,
+  not a constraint.
+
 ## 0.19.0 — 2026-08-18
 
 The version is forced: this release carries two breaking changes (the encoder's

@@ -54,9 +54,10 @@ pub(crate) fn translate_send(
     // process; the deopt return ends the slice at `call_native`'s pending-error
     // check — it is an abort, never a restart, which is why `Send` stays out of
     // `is_runtime_deopt_capable`.
-    let aborted = builder
-        .ins()
-        .icmp_imm(IntCC::NotEqual, results[0], i64::from(SEND_STATUS_SENT));
+    let aborted =
+        builder
+            .ins()
+            .icmp_imm_s(IntCC::NotEqual, results[0], i64::from(SEND_STATUS_SENT));
     let continuation = builder.create_block();
     builder
         .ins()
@@ -77,7 +78,7 @@ pub(crate) fn translate_loop_rec(
     branch_to_deopt_on_status(builder, results[0], context.deopt);
     let exhausted = builder
         .ins()
-        .icmp_imm(IntCC::Equal, results[0], RECEIVE_STATUS_EMPTY);
+        .icmp_imm_s(IntCC::Equal, results[0], RECEIVE_STATUS_EMPTY);
     let continuation = builder.create_block();
     builder
         .ins()
@@ -165,12 +166,12 @@ pub(crate) fn translate_timeout(
 fn branch_to_deopt_on_status(builder: &mut FunctionBuilder<'_>, status: Value, deopt: Block) {
     let is_message = builder
         .ins()
-        .icmp_imm(IntCC::Equal, status, RECEIVE_STATUS_MESSAGE);
+        .icmp_imm_s(IntCC::Equal, status, RECEIVE_STATUS_MESSAGE);
     let is_empty = builder
         .ins()
-        .icmp_imm(IntCC::Equal, status, RECEIVE_STATUS_EMPTY);
+        .icmp_imm_s(IntCC::Equal, status, RECEIVE_STATUS_EMPTY);
     let known = builder.ins().bor(is_message, is_empty);
-    let unknown = builder.ins().icmp_imm(IntCC::Equal, known, 0);
+    let unknown = builder.ins().icmp_imm_s(IntCC::Equal, known, 0);
     let continuation = builder.create_block();
     builder.ins().brif(unknown, deopt, &[], continuation, &[]);
     builder.switch_to_block(continuation);
@@ -186,7 +187,7 @@ fn branch_wait_status(
 ) {
     let is_new_message = builder
         .ins()
-        .icmp_imm(IntCC::Equal, status, WAIT_STATUS_NEW_MESSAGE);
+        .icmp_imm_s(IntCC::Equal, status, WAIT_STATUS_NEW_MESSAGE);
     let check_timeout = builder.create_block();
     builder
         .ins()
@@ -196,7 +197,7 @@ fn branch_wait_status(
     if let Some(timeout_label) = timeout_label {
         let is_timeout = builder
             .ins()
-            .icmp_imm(IntCC::Equal, status, WAIT_STATUS_TIMEOUT);
+            .icmp_imm_s(IntCC::Equal, status, WAIT_STATUS_TIMEOUT);
         let check_waiting = builder.create_block();
         builder
             .ins()
@@ -206,7 +207,7 @@ fn branch_wait_status(
 
     let is_waiting = builder
         .ins()
-        .icmp_imm(IntCC::Equal, status, WAIT_STATUS_WAITING);
+        .icmp_imm_s(IntCC::Equal, status, WAIT_STATUS_WAITING);
     builder.ins().brif(is_waiting, yield_block, &[], deopt, &[]);
 }
 
@@ -218,7 +219,7 @@ fn charge_reduction_or_yield(
 ) {
     let exhausted = builder.ins().call(charge_helper, &[process]);
     let exhausted = builder.inst_results(exhausted)[0];
-    let should_yield = builder.ins().icmp_imm(IntCC::NotEqual, exhausted, 0);
+    let should_yield = builder.ins().icmp_imm_s(IntCC::NotEqual, exhausted, 0);
     let continuation = builder.create_block();
     builder
         .ins()

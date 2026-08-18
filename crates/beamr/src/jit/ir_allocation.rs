@@ -2,7 +2,7 @@
 
 use crate::loader::decode::Operand;
 use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{FuncRef, InstBuilder, MemFlags, Value, types};
+use cranelift_codegen::ir::{FuncRef, InstBuilder, MemFlagsData, Value, types};
 use cranelift_frontend::FunctionBuilder;
 
 use super::compiler::JitError;
@@ -42,11 +42,11 @@ pub(crate) fn lower_put_list(
     let tail_value = read_operand_term(builder, context.register_file, tail)?;
     builder
         .ins()
-        .store(MemFlags::trusted(), head_value, heap, 0);
+        .store(MemFlagsData::trusted(), head_value, heap, 0);
     builder
         .ins()
-        .store(MemFlags::trusted(), tail_value, heap, WORD_BYTES as i32);
-    let term = builder.ins().bor_imm(heap, LIST_TAG);
+        .store(MemFlagsData::trusted(), tail_value, heap, WORD_BYTES as i32);
+    let term = builder.ins().bor_imm_s(heap, LIST_TAG);
     write_operand_term(builder, context.register_file, destination, term)
 }
 
@@ -72,7 +72,9 @@ pub(crate) fn lower_put_tuple2(
 
     let header = (arity << HEADER_TAG_BITS) | TUPLE_HEADER_TAG;
     let header = builder.ins().iconst(types::I64, header);
-    builder.ins().store(MemFlags::trusted(), header, heap, 0);
+    builder
+        .ins()
+        .store(MemFlagsData::trusted(), header, heap, 0);
     for (index, element) in elements.iter().enumerate() {
         let value = read_operand_term(builder, context.register_file, element)?;
         let offset =
@@ -81,10 +83,10 @@ pub(crate) fn lower_put_tuple2(
             })?;
         builder
             .ins()
-            .store(MemFlags::trusted(), value, heap, offset);
+            .store(MemFlagsData::trusted(), value, heap, offset);
     }
 
-    let term = builder.ins().bor_imm(heap, BOXED_TAG);
+    let term = builder.ins().bor_imm_s(heap, BOXED_TAG);
     write_operand_term(builder, context.register_file, destination, term)
 }
 
@@ -96,10 +98,13 @@ pub(crate) fn lower_get_list(
     tail: &Operand,
 ) -> Result<(), JitError> {
     let cons = read_cons_pointer(builder, register_file, source)?;
-    let head_value = builder.ins().load(types::I64, MemFlags::trusted(), cons, 0);
-    let tail_value = builder
+    let head_value = builder
         .ins()
-        .load(types::I64, MemFlags::trusted(), cons, WORD_BYTES as i32);
+        .load(types::I64, MemFlagsData::trusted(), cons, 0);
+    let tail_value =
+        builder
+            .ins()
+            .load(types::I64, MemFlagsData::trusted(), cons, WORD_BYTES as i32);
     write_operand_term(builder, register_file, head, head_value)?;
     write_operand_term(builder, register_file, tail, tail_value)
 }
@@ -111,7 +116,9 @@ pub(crate) fn lower_get_hd(
     destination: &Operand,
 ) -> Result<(), JitError> {
     let cons = read_cons_pointer(builder, register_file, source)?;
-    let head = builder.ins().load(types::I64, MemFlags::trusted(), cons, 0);
+    let head = builder
+        .ins()
+        .load(types::I64, MemFlagsData::trusted(), cons, 0);
     write_operand_term(builder, register_file, destination, head)
 }
 
@@ -124,7 +131,7 @@ pub(crate) fn lower_get_tl(
     let cons = read_cons_pointer(builder, register_file, source)?;
     let tail = builder
         .ins()
-        .load(types::I64, MemFlags::trusted(), cons, WORD_BYTES as i32);
+        .load(types::I64, MemFlagsData::trusted(), cons, WORD_BYTES as i32);
     write_operand_term(builder, register_file, destination, tail)
 }
 
@@ -139,7 +146,7 @@ pub(crate) fn lower_get_tuple_element(
     let offset = element_offset(index)?;
     let element = builder
         .ins()
-        .load(types::I64, MemFlags::trusted(), tuple, offset);
+        .load(types::I64, MemFlagsData::trusted(), tuple, offset);
     write_operand_term(builder, register_file, destination, element)
 }
 
@@ -161,7 +168,7 @@ fn branch_to_deopt_if_null(
     pointer: Value,
     deopt: cranelift_codegen::ir::Block,
 ) {
-    let is_null = builder.ins().icmp_imm(IntCC::Equal, pointer, 0);
+    let is_null = builder.ins().icmp_imm_s(IntCC::Equal, pointer, 0);
     let continuation = builder.create_block();
     builder.ins().brif(is_null, deopt, &[], continuation, &[]);
     builder.switch_to_block(continuation);
@@ -179,7 +186,7 @@ fn read_cons_pointer(
     source: &Operand,
 ) -> Result<Value, JitError> {
     let term = read_operand_term(builder, register_file, source)?;
-    Ok(builder.ins().band_imm(term, !TERM_TAG_MASK))
+    Ok(builder.ins().band_imm_s(term, !TERM_TAG_MASK))
 }
 
 fn read_boxed_pointer(
@@ -188,7 +195,7 @@ fn read_boxed_pointer(
     source: &Operand,
 ) -> Result<Value, JitError> {
     let term = read_operand_term(builder, register_file, source)?;
-    Ok(builder.ins().band_imm(term, !TERM_TAG_MASK))
+    Ok(builder.ins().band_imm_s(term, !TERM_TAG_MASK))
 }
 
 fn element_offset(index: usize) -> Result<i32, JitError> {

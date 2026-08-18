@@ -99,7 +99,7 @@ pub(super) fn lower_test(
     let expected = iconst_u64(builder, expected);
     let call = builder.ins().call(helper, &[match_context, expected]);
     let ok = builder.inst_results(call)[0];
-    let failed = builder.ins().icmp_imm(IntCC::Equal, ok, 0);
+    let failed = builder.ins().icmp_imm_s(IntCC::Equal, ok, 0);
     branch_to_fail_if(builder, failed, fail);
     Ok(())
 }
@@ -344,7 +344,7 @@ fn dispatch_helper_status(
     call: cranelift_codegen::ir::Inst,
 ) {
     let status = builder.inst_results(call)[0];
-    let ok = builder.ins().icmp_imm(IntCC::Equal, status, 0);
+    let ok = builder.ins().icmp_imm_s(IntCC::Equal, status, 0);
     let continuation = builder.create_block();
     builder
         .ins()
@@ -357,14 +357,14 @@ fn branch_to_fail_if_invalid_binary_result(
     value: Value,
     fail: Block,
 ) {
-    let is_null = builder.ins().icmp_imm(IntCC::Equal, value, 0);
+    let is_null = builder.ins().icmp_imm_s(IntCC::Equal, value, 0);
     branch_to_fail_if(builder, is_null, fail);
-    let is_failure = builder.ins().icmp_imm(IntCC::Equal, value, -1);
+    let is_failure = builder.ins().icmp_imm_s(IntCC::Equal, value, -1);
     branch_to_fail_if(builder, is_failure, fail);
 }
 
 fn branch_to_deopt_if_null(builder: &mut FunctionBuilder<'_>, value: Value, deopt: Block) {
-    let is_null = builder.ins().icmp_imm(IntCC::Equal, value, 0);
+    let is_null = builder.ins().icmp_imm_s(IntCC::Equal, value, 0);
     branch_to_fail_if(builder, is_null, deopt);
 }
 

@@ -224,7 +224,7 @@ pub(crate) fn dispatch_exception_status(
     builder: &mut FunctionBuilder<'_>,
     dispatch: ExceptionDispatch,
 ) {
-    let is_exception = builder.ins().icmp_imm(
+    let is_exception = builder.ins().icmp_imm_s(
         IntCC::Equal,
         dispatch.status,
         i64::from(JIT_STATUS_EXCEPTION),

@@ -11,4 +11,3 @@ authors = [
 ]
 
 [workspace.dependencies]
-ecow = "=0.2.6"
