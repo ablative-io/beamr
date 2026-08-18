@@ -159,7 +159,50 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
-## Unreleased
+## 0.19.0 — 2026-08-18
+
+The version is forced: this release carries two breaking changes (the encoder's
+typed-register refusal and `resolve_imports`' return type, both below), so it
+cannot ship as a `0.18.x` patch. Everything landed on `main` since `0.18.2`
+rides — the AR-1 rooting arc, the `TermAccumulator` window, the B-144 `no_std`
+ungating, and the two cutter's-list items ruled due at this cut.
+
+### Added — `ProcessContext::with_accumulator`, the rooted accumulation window
+
+`TermAccumulator` gives native code a window in which every term built is
+rooted by the accumulator itself until the window closes — the shape the AR-1
+rooting arc converged on after per-site reserves proved unable to defend
+multi-term construction. Additive; no existing API changed. The fused
+dictionary terminals (`dict_entries_to_list`, `dict_erase_all_to_list`,
+`dict_keys_for_value_to_list`) landed on the same arc and reserve before they
+copy, so the unreserved shape is unrepresentable at those sites.
+
+### Removed (breaking) — the site-4 unrooted-carrier trio
+
+`dict_get_all`, `dict_erase_all` and `dict_get_keys` are deleted, exactly as
+their `0.18.x` deprecation notes announced. Each handed out an unrooted
+`Vec<Term>` and trusted the caller to have reserved first; the fused terminals
+above are the replacements. Zero internal callers survived to the deletion —
+the act-time compile check the deprecation was designed to arm.
+
+### Removed (breaking) — `Scheduler::spawn_process` demoted to `test-support`
+
+`spawn_process` (and its telemetry twin `spawn_process_with_trace_context`)
+enter a module at raw instruction 0, which on every loader-produced module is
+the `func_info` landing pad — the process dies `error:function_clause`
+immediately, a documented death-trap that had zero production callers. Both
+now sit behind `cfg(any(test, feature = "test-support"))`: scaffold tests keep
+them, the default public surface loses them. Use `spawn` / `spawn_in`, which
+resolve an exported entry and start after the pad.
+
+### Changed — `no_std` builds see `timer` and `replay` unconditionally (B-144)
+
+The `timer` and `replay` modules are no longer gated on the `threads` /
+`cooperative` features, so `--no-default-features` builds (including
+`wasm32`) compile them; `crossbeam-queue` became a non-optional dependency in
+the same motion. The `no_std` error-count ratchet moved 1039 → 1075 with the
+gate's removal — a measured population change (the gate was a hole in the
+count), recorded in the ratchet instrument itself.
 
 ### Fixed (feature `jit`) — a caught exception crossing a compiled function leaked one interpreter nesting per catch
 
@@ -412,16 +455,26 @@ pre-existing tests running for the first time.
 
 ## beamr-wasm 0.9.0 — 2026-08-18
 
-- Rides beamr 0.18.2 (dependency spec `^0.17.0` → `^0.18.2` relative to the
+- Rides beamr 0.19.0 (dependency spec `^0.17.0` → `^0.19.0` relative to the
   published 0.8.0) so downstream wasm consumers resolve ONE beamr per lock on
-  the 0.18 line. No API changes of its own. Closes the wasm-rung prerequisite
-  for haematite releases admitting beamr 0.18.x (board row #227b): published
-  beamr-wasm 0.8.0 carries `^0.17.0`, which cannot unify with a 0.18.x native
-  pin in the same tree.
+  the current line. No API changes of its own. Closes the wasm-rung
+  prerequisite tracked as board row #227b: published beamr-wasm 0.8.0 carries
+  `^0.17.0`, which cannot unify with any newer beamr native pin in the same
+  tree.
+- The wasm bindings' conversion path is built on `ProcessContext::
+  with_accumulator`, which first ships in beamr 0.19.0 — the publish dry-run
+  against registry 0.18.2 failed with four E0599s, which is how the floor was
+  measured rather than assumed.
 - Spec-history note, so the published sequence stays reconstructible: the
-  in-tree manifest briefly carried `0.18.0` (commit `83bd74d`, never published
-  under that spec). The published sequence is `0.8.0 = ^0.17.0` →
-  `0.9.0 = ^0.18.2`.
+  in-tree manifest carried `0.18.0` (commit `83bd74d`) and briefly `0.18.2`,
+  neither published. The published sequence is `0.8.0 = ^0.17.0` →
+  `0.9.0 = ^0.19.0`.
+
+## beamr-cli 0.6.0 — 2026-08-18
+
+- Rides beamr 0.19.0 (dependency spec `^0.17.0` → `^0.19.0` relative to the
+  published 0.5.0; the in-tree `0.18.0` spec was never published). No CLI
+  changes of its own.
 
 ## 0.18.2 — 2026-08-12
 
