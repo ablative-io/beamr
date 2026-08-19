@@ -29,7 +29,7 @@
 //!    exiting unconditionally. Without it, half 1 turns every exception whose
 //!    protected region crosses a trampoline into an uncatchable process kill.
 //!
-//! Five arms:
+//! Seven arms:
 //! * `compiled_trampoline_records_one_frame_after_caught_exceptions` — K=6
 //!   in-VM-caught badargs through the COMPILED trampoline, then one fatal. The
 //!   record must name the trampoline ONCE.
@@ -48,6 +48,12 @@
 //! * `interpreted_catches_record_no_compiled_frames_control` — the identical
 //!   program with the JIT threshold at `u32::MAX` (nothing ever compiles).
 //!   Proves the harness and pins the divergence to compiled execution.
+//! * `interpreted_closure_raise_does_not_leak_compiled_call_fun_nesting` — a
+//!   compiled `CallFun` enters an interpreted raising lambda. Six outer catches
+//!   must not add six compiled caller frames; the no-JIT arm is the cross-control.
+//! * `interpreted_closure_raise_still_reaches_outer_catch` — the closure-path
+//!   floor must not make the exception uncatchable. The compiled and no-JIT arms
+//!   must both return the same caught `badarg` value.
 //!
 //! Measured discrimination (both directions, at my hands):
 //! * At the unfixed bytes the three count arms are RED — 7 vs 1 at K=6, 3 vs 7
@@ -69,7 +75,7 @@ use std::time::{Duration, Instant};
 
 use beamr::atom::{Atom, AtomTable};
 use beamr::loader::decode::compact::Operand;
-use beamr::loader::{Instruction, LineInfo};
+use beamr::loader::{Instruction, LambdaEntry, LineInfo};
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use beamr::native::BifRegistryImpl;
 use beamr::native::bifs::register_gate1_bifs;
@@ -162,6 +168,12 @@ struct Names {
     int_mid: Atom,
     wrapouter: Atom,
     int_outer: Atom,
+    funmod: Atom,
+    invoke_fun: Atom,
+    safe_factory: Atom,
+    raise_factory: Atom,
+    safe_lambda: Atom,
+    raise_lambda: Atom,
     bad: Atom,
 }
 
@@ -204,6 +216,129 @@ fn ffi_module(atoms: &AtomTable, bifs: &BifRegistryImpl, names: &Names) -> Modul
             LineInfo { file: 0, line: 102 },
         ],
     )
+}
+
+/// Closure path under test. `invoke_fun/1` is heated to compiled code, then its
+/// `CallFun` dispatch enters `raise_lambda/0` through `call_interpreted_closure`.
+/// The lambda itself has no normal call edge and therefore remains interpreted.
+fn closure_module(atoms: &AtomTable, bifs: &BifRegistryImpl, names: &Names) -> Module {
+    let erlang = atoms.intern("erlang");
+    let i2b = atoms.intern("integer_to_binary");
+    let entry = bifs
+        .lookup(erlang, i2b, 1)
+        .expect("erlang:integer_to_binary/1 registered");
+    let code = vec![
+        Instruction::FuncInfo {
+            module: Operand::Atom(Some(names.funmod)),
+            function: Operand::Atom(Some(names.invoke_fun)),
+            arity: Operand::Unsigned(1),
+        },
+        Instruction::Label { label: 2 },
+        Instruction::CallFun {
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::Return,
+        Instruction::FuncInfo {
+            module: Operand::Atom(Some(names.funmod)),
+            function: Operand::Atom(Some(names.safe_factory)),
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::Label { label: 3 },
+        Instruction::MakeFun {
+            operands: vec![Operand::Unsigned(0)],
+        },
+        Instruction::Return,
+        Instruction::FuncInfo {
+            module: Operand::Atom(Some(names.funmod)),
+            function: Operand::Atom(Some(names.raise_factory)),
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::Label { label: 4 },
+        Instruction::MakeFun {
+            operands: vec![Operand::Unsigned(1)],
+        },
+        Instruction::Return,
+        Instruction::FuncInfo {
+            module: Operand::Atom(Some(names.funmod)),
+            function: Operand::Atom(Some(names.safe_lambda)),
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::Label { label: 5 },
+        Instruction::Move {
+            source: Operand::Integer(5),
+            destination: Operand::X(0),
+        },
+        Instruction::Return,
+        Instruction::FuncInfo {
+            module: Operand::Atom(Some(names.funmod)),
+            function: Operand::Atom(Some(names.raise_lambda)),
+            arity: Operand::Unsigned(0),
+        },
+        Instruction::Label { label: 6 },
+        Instruction::Move {
+            source: Operand::Atom(Some(names.bad)),
+            destination: Operand::X(0),
+        },
+        Instruction::CallExtOnly {
+            arity: Operand::Unsigned(1),
+            import: Operand::Unsigned(0),
+        },
+    ];
+    let mut exports = HashMap::new();
+    exports.insert((names.invoke_fun, 1), 2);
+    exports.insert((names.safe_factory, 0), 3);
+    exports.insert((names.raise_factory, 0), 4);
+    let mut module = finish_module(
+        names.funmod,
+        code,
+        exports,
+        vec![ResolvedImport {
+            module: erlang,
+            function: i2b,
+            arity: 1,
+            target: ResolvedImportTarget::Native(entry),
+        }],
+        vec![(1, 0), (5, 1), (9, 2), (13, 3), (17, 4), (19, 5)],
+        vec![
+            LineInfo { file: 0, line: 801 },
+            LineInfo { file: 0, line: 811 },
+            LineInfo { file: 0, line: 821 },
+            LineInfo { file: 0, line: 831 },
+            LineInfo { file: 0, line: 841 },
+            LineInfo { file: 0, line: 842 },
+        ],
+    );
+    module.lambdas = vec![
+        LambdaEntry {
+            function: names.safe_lambda,
+            arity: 0,
+            label: 5,
+            num_free: 0,
+            unique_id: beamr::loader::lambda_unique_id(
+                atoms,
+                names.funmod,
+                names.safe_lambda,
+                0,
+                0,
+            )
+            .expect("safe lambda id"),
+        },
+        LambdaEntry {
+            function: names.raise_lambda,
+            arity: 0,
+            label: 6,
+            num_free: 0,
+            unique_id: beamr::loader::lambda_unique_id(
+                atoms,
+                names.funmod,
+                names.raise_lambda,
+                0,
+                0,
+            )
+            .expect("raise lambda id"),
+        },
+    ];
+    module
 }
 
 /// `wrapmod:int_wrap/1` — the trampoline under test: a tail body call
@@ -487,6 +622,100 @@ fn catch_value_driver_module(atoms: &AtomTable, names: &Names, entry: ResolvedIm
     )
 }
 
+fn closure_import(names: &Names, function: Atom, arity: u8, label: u32) -> ResolvedImport {
+    ResolvedImport {
+        module: names.funmod,
+        function,
+        arity,
+        target: ResolvedImportTarget::Code {
+            module: names.funmod,
+            label,
+        },
+    }
+}
+
+fn closure_warm_module(atoms: &AtomTable, names: &Names) -> Module {
+    let name = atoms.intern("closurewarmmod");
+    let mut code = vec![Instruction::Label { label: 1 }];
+    for _ in 0..THRESHOLD {
+        code.push(Instruction::CallExt {
+            arity: Operand::Unsigned(0),
+            import: Operand::Unsigned(0),
+        });
+        code.push(Instruction::CallExt {
+            arity: Operand::Unsigned(1),
+            import: Operand::Unsigned(1),
+        });
+    }
+    code.push(Instruction::Return);
+    finish_module(
+        name,
+        code,
+        HashMap::new(),
+        vec![
+            closure_import(names, names.safe_factory, 0, 3),
+            closure_import(names, names.invoke_fun, 1, 2),
+        ],
+        vec![(0, 0)],
+        vec![LineInfo { file: 0, line: 851 }],
+    )
+}
+
+fn closure_driver_module(atoms: &AtomTable, names: &Names, caught: usize, fatal: bool) -> Module {
+    let name = atoms.intern("closuredrivermod");
+    let mut code = vec![
+        Instruction::Label { label: 1 },
+        Instruction::Allocate {
+            stack_need: Operand::Unsigned(1),
+            live: Operand::Unsigned(0),
+        },
+    ];
+    for index in 0..caught {
+        let handler = u32::try_from(20 + index).expect("handler label fits");
+        code.push(Instruction::Catch {
+            destination: Operand::Y(0),
+            label: Operand::Label(handler),
+        });
+        code.push(Instruction::CallExt {
+            arity: Operand::Unsigned(0),
+            import: Operand::Unsigned(0),
+        });
+        code.push(Instruction::CallExt {
+            arity: Operand::Unsigned(1),
+            import: Operand::Unsigned(1),
+        });
+        code.push(Instruction::Label { label: handler });
+        code.push(Instruction::CatchEnd {
+            source: Operand::Y(0),
+        });
+    }
+    if fatal {
+        code.push(Instruction::CallExt {
+            arity: Operand::Unsigned(0),
+            import: Operand::Unsigned(0),
+        });
+        code.push(Instruction::CallExt {
+            arity: Operand::Unsigned(1),
+            import: Operand::Unsigned(1),
+        });
+    }
+    code.push(Instruction::Deallocate {
+        words: Operand::Unsigned(1),
+    });
+    code.push(Instruction::Return);
+    finish_module(
+        name,
+        code,
+        HashMap::new(),
+        vec![
+            closure_import(names, names.raise_factory, 0, 4),
+            closure_import(names, names.invoke_fun, 1, 2),
+        ],
+        vec![(0, 0)],
+        vec![LineInfo { file: 0, line: 861 }],
+    )
+}
+
 struct Rig {
     scheduler: Scheduler,
     atoms: Arc<AtomTable>,
@@ -508,6 +737,12 @@ fn build_rig(threshold: u32) -> Rig {
         int_mid: atoms.intern("int_mid"),
         wrapouter: atoms.intern("wrapouter"),
         int_outer: atoms.intern("int_outer"),
+        funmod: atoms.intern("funmod"),
+        invoke_fun: atoms.intern("invoke_fun"),
+        safe_factory: atoms.intern("safe_factory"),
+        raise_factory: atoms.intern("raise_factory"),
+        safe_lambda: atoms.intern("safe_lambda"),
+        raise_lambda: atoms.intern("raise_lambda"),
         bad: atoms.intern("not_an_integer"),
     };
     let registry = Arc::new(ModuleRegistry::new());
@@ -515,6 +750,7 @@ fn build_rig(threshold: u32) -> Rig {
     registry.insert(wrap_module(&names));
     registry.insert(mid_module(&names));
     registry.insert(outer_module(&names));
+    registry.insert(closure_module(&atoms, &bifs, &names));
     let scheduler = Scheduler::with_code_server(
         config(threshold),
         Arc::clone(&registry),
@@ -838,4 +1074,108 @@ fn interpreted_catches_record_no_compiled_frames_control() {
          frame; {compiled_frames} would mean the counter matches something else"
     );
     rig.scheduler.shutdown();
+}
+
+fn warm_closure_caller(rig: &Rig, expect_compiled: bool) {
+    let module = rig
+        .registry
+        .insert(closure_warm_module(&rig.atoms, &rig.names));
+    let pid = rig.scheduler.spawn_process(&module);
+    let (reason, _result) = rig.scheduler.run_until_exit(pid);
+    assert_eq!(reason, ExitReason::Normal, "closure warming must succeed");
+    if expect_compiled {
+        assert_compiled(rig, rig.names.funmod, rig.names.invoke_fun);
+    } else {
+        assert_eq!(
+            rig.scheduler
+                .jit_profiler()
+                .compile_outcome_counters()
+                .submissions,
+            0,
+            "interpreted closure control must submit no compile jobs"
+        );
+    }
+    assert!(
+        !rig.scheduler
+            .jit_profiler()
+            .is_compiled(rig.names.funmod, rig.names.raise_lambda, 0),
+        "the raising closure target must remain interpreted"
+    );
+}
+
+fn closure_death_observation(threshold: u32) -> (usize, bool) {
+    let rig = build_rig(threshold);
+    warm_closure_caller(&rig, threshold != NEVER_COMPILE);
+    let module = rig
+        .registry
+        .insert(closure_driver_module(&rig.atoms, &rig.names, 6, true));
+    let pid = rig.scheduler.spawn_process(&module);
+    let (reason, _result) = rig.scheduler.run_until_exit(pid);
+    assert_eq!(reason, ExitReason::Error, "the final raise must be fatal");
+    let exception = rig
+        .scheduler
+        .take_exit_exception(pid)
+        .expect("fatal closure raise must leave an exception record");
+    let mut compiled_caller_frames = 0;
+    let mut interpreted_target_frame = false;
+    for frame in exception.frames() {
+        let identity = format!("{}:{}/{}", frame.module, frame.function, frame.arity);
+        if identity == "funmod:invoke_fun/1" && frame.line.is_none() {
+            compiled_caller_frames += 1;
+        }
+        if identity == "funmod:raise_lambda/0" && frame.line.is_some() {
+            interpreted_target_frame = true;
+        }
+    }
+    rig.scheduler.shutdown();
+    (compiled_caller_frames, interpreted_target_frame)
+}
+
+#[test]
+fn interpreted_closure_raise_does_not_leak_compiled_call_fun_nesting() {
+    let (compiled_frames, target_was_interpreted) = closure_death_observation(THRESHOLD);
+    let (control_frames, control_target_was_interpreted) = closure_death_observation(NEVER_COMPILE);
+    assert_eq!(
+        compiled_frames, 1,
+        "six caught closure raises must not leak compiled CallFun frames into the fatal unwind"
+    );
+    assert_eq!(
+        control_frames, 0,
+        "the interpreted control must contain no compiled caller frame"
+    );
+    assert!(
+        target_was_interpreted && control_target_was_interpreted,
+        "both arms must record a line-bearing interpreted raising-lambda frame"
+    );
+}
+
+#[test]
+fn interpreted_closure_raise_still_reaches_outer_catch() {
+    fn caught_shape(threshold: u32) -> (ExitReason, String) {
+        let rig = build_rig(threshold);
+        warm_closure_caller(&rig, threshold != NEVER_COMPILE);
+        let module = rig
+            .registry
+            .insert(closure_driver_module(&rig.atoms, &rig.names, 1, false));
+        let pid = rig.scheduler.spawn_process(&module);
+        let (reason, result) = rig.scheduler.run_until_exit(pid);
+        let shape = describe_caught(&rig.atoms, result.root());
+        rig.scheduler.shutdown();
+        (reason, shape)
+    }
+
+    let (compiled_reason, compiled_shape) = caught_shape(THRESHOLD);
+    let (control_reason, control_shape) = caught_shape(NEVER_COMPILE);
+    assert_eq!(
+        compiled_reason,
+        ExitReason::Normal,
+        "the outer catch must survive"
+    );
+    assert_eq!(
+        control_reason,
+        ExitReason::Normal,
+        "interpreted control must survive"
+    );
+    assert_eq!(compiled_shape, "{'EXIT', {badarg, _}}");
+    assert_eq!(compiled_shape, control_shape);
 }

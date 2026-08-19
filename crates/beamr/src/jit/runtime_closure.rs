@@ -201,7 +201,22 @@ fn call_interpreted_closure(
         return JitReturn::yield_(JIT_YIELD_SENTINEL as u64);
     }
 
+    // Match `jit_call_interpreted`: the nested interpreter shares the outer
+    // handler stack, but an outer catch must not bypass this native frame and
+    // leak one compiled CallFun nesting. Re-offer the exception after return.
+    //
+    // The restore sits IMMEDIATELY after the run and BEFORE the transfer match
+    // below, exactly as `runtime.rs` orders the same pair — the transfer arms
+    // return early, so a restore placed after them would be skipped on every
+    // transfer and yield, leaving the floor elevated. That is this bug in
+    // mirror image, and it would be silent. `runtime.rs` states why restoring
+    // on a transfer is correct: once this helper returns there is no Rust
+    // nesting left to protect, so the transferred-out code resumes as ordinary
+    // interpreted bytecode and must see the outer handlers at their real depth.
+    let saved_handler_floor = process.nested_handler_floor();
+    process.set_nested_handler_floor(process.exception_handler_count());
     let result = run_with_native_services(process, current_module, registry, services);
+    process.set_nested_handler_floor(saved_handler_floor);
 
     // Same contract as `jit_call_interpreted`: once the nested run has begun, no
     // outcome may leave through deopt. `CallFun`/`CallFun2` are tail-only like
