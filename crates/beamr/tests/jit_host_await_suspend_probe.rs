@@ -292,6 +292,23 @@ enum OuterEdge {
     Closure,
 }
 
+/// `outer/N`'s arity depends on the edge.
+///
+/// On the closure edge the closure is minted by `driver` and PASSED IN, rather
+/// than built inside `outer`. That is forced, not stylistic: a function
+/// containing `make_fun` can never be JIT-compiled at runtime, because the
+/// lambda table is never plumbed past `ModuleCompileMetadata::EMPTY` (filed as
+/// beamr#28). An `outer` that minted its own closure was refused by the tier
+/// with `UnsupportedOperand { operand: "make_fun lambda index 0" }` and could
+/// never satisfy this arm's compiled-caller witness. `driver` stays interpreted
+/// and is free to be refused, so the `make_fun` lives there.
+const fn outer_arity(edge: OuterEdge) -> u8 {
+    match edge {
+        OuterEdge::External => 1,
+        OuterEdge::Closure => 2,
+    }
+}
+
 fn probe_module(
     names: &Names,
     atoms: &AtomTable,
@@ -304,7 +321,7 @@ fn probe_module(
         ResolvedImport {
             module: names.module,
             function: names.outer,
-            arity: 1,
+            arity: outer_arity(edge),
             target: ResolvedImportTarget::Code {
                 module: names.module,
                 label: 2,
@@ -335,7 +352,7 @@ fn probe_module(
     ];
     let mut exports = HashMap::new();
     exports.insert((names.driver, 1), 1);
-    exports.insert((names.outer, 1), 2);
+    exports.insert((names.outer, outer_arity(edge)), 2);
     exports.insert((names.inner, 1), 3);
     // The JIT-unsupported representative (`SelectTupleArity` with an empty
     // candidate list, the same one jit_wireup.rs uses): interpreted it jumps
@@ -356,25 +373,12 @@ fn probe_module(
             arity: Operand::Unsigned(1),
             import: Operand::Unsigned(1),
         }),
-        OuterEdge::Closure => {
-            // x0 = tag on entry. `MakeFun` writes the closure to x0, so park the
-            // tag in x1 first and swap them back: `CallFun{arity:1}` wants the
-            // argument in x0 and the fun in x1.
-            outer_body.push(Instruction::Move {
-                source: Operand::X(0),
-                destination: Operand::X(1),
-            });
-            outer_body.push(Instruction::MakeFun {
-                operands: vec![Operand::Unsigned(0)],
-            });
-            outer_body.push(Instruction::Swap {
-                left: Operand::X(0),
-                right: Operand::X(1),
-            });
-            outer_body.push(Instruction::CallFun {
-                arity: Operand::Unsigned(1),
-            });
-        }
+        // outer/2 receives (tag, fun) already laid out the way `CallFun` wants
+        // them: argument in x0, closure in x(arity) = x1. No `make_fun` here --
+        // see `outer_arity`.
+        OuterEdge::Closure => outer_body.push(Instruction::CallFun {
+            arity: Operand::Unsigned(1),
+        }),
     }
     outer_body.push(Instruction::Return);
 
@@ -386,15 +390,36 @@ fn probe_module(
             arity: Operand::Unsigned(1),
         },
         Instruction::Label { label: 1 },
+    ];
+    // On the closure edge `driver` mints the closure and hands it over as
+    // outer/2's second argument, laid out for `CallFun`: tag in x0, fun in x1.
+    if edge == OuterEdge::Closure {
+        code.push(Instruction::Move {
+            source: Operand::X(0),
+            destination: Operand::X(2),
+        });
+        code.push(Instruction::MakeFun {
+            operands: vec![Operand::Unsigned(0)],
+        });
+        code.push(Instruction::Move {
+            source: Operand::X(0),
+            destination: Operand::X(1),
+        });
+        code.push(Instruction::Move {
+            source: Operand::X(2),
+            destination: Operand::X(0),
+        });
+    }
+    code.extend([
         Instruction::CallExtOnly {
-            arity: Operand::Unsigned(1),
+            arity: Operand::Unsigned(u64::from(outer_arity(edge))),
             import: Operand::Unsigned(0),
         },
-        // outer/1 (x0 = tag) — THE COMPILED FUNCTION.
+        // outer/N — THE COMPILED FUNCTION.
         Instruction::FuncInfo {
             module: Operand::Atom(Some(names.module)),
             function: Operand::Atom(Some(names.outer)),
-            arity: Operand::Unsigned(1),
+            arity: Operand::Unsigned(u64::from(outer_arity(edge))),
         },
         Instruction::Label { label: 2 },
         // inner/1 (x0 = tag) — interpreted; calls the parking native.
@@ -409,9 +434,13 @@ fn probe_module(
             import: Operand::Unsigned(2),
         },
         Instruction::Return,
-    ];
-    // Splice outer/1's body in after its Label 2 (index 4).
-    let inner_tail = code.split_off(5);
+    ]);
+    // Splice outer/N's body in after its `Label 2`, wherever that landed.
+    let outer_label = code
+        .iter()
+        .position(|instruction| matches!(instruction, Instruction::Label { label: 2 }))
+        .expect("outer's entry label is in the slice");
+    let inner_tail = code.split_off(outer_label + 1);
     code.extend(outer_body);
     code.extend(inner_tail);
     // Lambda 0 closes over nothing and points at `inner/1`'s entry label. Always
@@ -435,6 +464,9 @@ struct ArmOutcome {
     outer_compiled: bool,
     inner_compiled: bool,
     compile_successes: u64,
+    compile_submissions: u64,
+    compile_unsupported: u64,
+    compile_transient_failures: u64,
     /// Non-parking re-invocations of the native (probe 2).
     reentries: usize,
     /// One entry per suspending native invocation on the drive process.
@@ -513,18 +545,19 @@ fn run_arm_with(
     let _reached = wait_until(|| {
         scheduler
             .jit_cache()
-            .lookup(names.module, names.outer, 1, generation)
+            .lookup(names.module, names.outer, outer_arity(edge), generation)
             .is_some()
     });
     let outer_compiled = scheduler
         .jit_cache()
-        .lookup(names.module, names.outer, 1, generation)
+        .lookup(names.module, names.outer, outer_arity(edge), generation)
         .is_some();
     let inner_compiled = scheduler
         .jit_cache()
         .lookup(names.module, names.inner, 1, generation)
         .is_some();
-    let compile_successes = scheduler.jit_profiler().compile_outcome_counters().successes;
+    let counters = scheduler.jit_profiler().compile_outcome_counters();
+    let compile_successes = counters.successes;
 
     // ── the drive ──
     let pid = scheduler
@@ -589,6 +622,9 @@ fn run_arm_with(
         outer_compiled,
         inner_compiled,
         compile_successes,
+        compile_submissions: counters.submissions,
+        compile_unsupported: counters.unsupported,
+        compile_transient_failures: counters.transient_failures,
         reentries: log_for(tag).reentries,
         call_ids,
         published_for_first_call_id,
@@ -603,6 +639,10 @@ fn report(label: &str, outcome: &ArmOutcome) {
     println!("  outer/1 in JitCache        : {}", outcome.outer_compiled);
     println!("  inner/1 in JitCache        : {}", outcome.inner_compiled);
     println!("  compile successes          : {}", outcome.compile_successes);
+    println!(
+        "  submissions/unsup/transient: {}/{}/{}",
+        outcome.compile_submissions, outcome.compile_unsupported, outcome.compile_transient_failures
+    );
     println!(
         "  host-await parks           : {} (call ids {:?})",
         outcome.call_ids.len(),
