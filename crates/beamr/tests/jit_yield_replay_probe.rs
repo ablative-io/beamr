@@ -70,7 +70,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use beamr::atom::{Atom, AtomTable};
-use beamr::loader::Instruction;
+use beamr::loader::{Instruction, LambdaEntry, lambda_unique_id};
 use beamr::loader::decode::compact::Operand;
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use beamr::native::{Capability, NativeEntry, ProcessContext};
@@ -182,12 +182,41 @@ fn names(atoms: &AtomTable) -> Names {
     }
 }
 
-fn probe_module(names: &Names) -> Module {
+/// Which helper the compiled caller's only edge goes through.
+///
+/// `CallExt` lowers to `jit_call_interpreted` (`jit/runtime.rs`); `CallFun`
+/// lowers to `jit_dispatch_closure` (`jit/runtime_closure.rs`). Both helpers
+/// carried the same unconditional module/position restore, so a probe that
+/// only drives `CallExt` reports GREEN over a still-broken closure path.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum OuterEdge {
+    /// `outer/1` tail-calls `inner/1` directly.
+    External,
+    /// `outer/2` receives a closure over `inner/1` and tail-calls it.
+    Closure,
+}
+
+/// `outer/N`'s arity depends on the edge.
+///
+/// On the closure edge the closure is minted by `driver` and PASSED IN rather
+/// than built inside `outer`. That is forced, not stylistic: a function
+/// containing `make_fun` can never be JIT-compiled at runtime, because the
+/// lambda table is never plumbed past `ModuleCompileMetadata::EMPTY`
+/// (beamr#28). An `outer` that minted its own closure is refused by the tier
+/// and can never satisfy this arm's compiled-caller witness.
+const fn outer_arity(edge: OuterEdge) -> u8 {
+    match edge {
+        OuterEdge::External => 1,
+        OuterEdge::Closure => 2,
+    }
+}
+
+fn probe_module(names: &Names, atoms: &AtomTable, edge: OuterEdge) -> Module {
     let imports = vec![
         ResolvedImport {
             module: names.module,
             function: names.outer,
-            arity: 1,
+            arity: outer_arity(edge),
             target: ResolvedImportTarget::Code {
                 module: names.module,
                 label: 2,
@@ -225,7 +254,7 @@ fn probe_module(names: &Names) -> Module {
     ];
     let mut exports = HashMap::new();
     exports.insert((names.driver, 1), 1);
-    exports.insert((names.outer, 1), 2);
+    exports.insert((names.outer, outer_arity(edge)), 2);
     exports.insert((names.inner, 1), 3);
 
     let mut code = vec![
@@ -236,22 +265,50 @@ fn probe_module(names: &Names) -> Module {
             arity: Operand::Unsigned(1),
         },
         Instruction::Label { label: 1 },
-        Instruction::CallExtOnly {
-            arity: Operand::Unsigned(1),
-            import: Operand::Unsigned(0),
-        },
-        // outer/1 — THE COMPILED FUNCTION. Its only edge is the tail external
-        // call into the interpreted callee.
+    ];
+    // On the closure edge `driver` mints the closure and hands it over as
+    // outer/2's second argument, laid out for `CallFun`: tag in x0, fun in x1.
+    if edge == OuterEdge::Closure {
+        code.push(Instruction::Move {
+            source: Operand::X(0),
+            destination: Operand::X(2),
+        });
+        code.push(Instruction::MakeFun {
+            operands: vec![Operand::Unsigned(0)],
+        });
+        code.push(Instruction::Move {
+            source: Operand::X(0),
+            destination: Operand::X(1),
+        });
+        code.push(Instruction::Move {
+            source: Operand::X(2),
+            destination: Operand::X(0),
+        });
+    }
+    code.push(Instruction::CallExtOnly {
+        arity: Operand::Unsigned(u64::from(outer_arity(edge))),
+        import: Operand::Unsigned(0),
+    });
+    code.extend([
+        // outer/N — THE COMPILED FUNCTION. Its only edge is a tail call into
+        // the interpreted callee, through whichever helper `edge` selects.
         Instruction::FuncInfo {
             module: Operand::Atom(Some(names.module)),
             function: Operand::Atom(Some(names.outer)),
-            arity: Operand::Unsigned(1),
+            arity: Operand::Unsigned(u64::from(outer_arity(edge))),
         },
         Instruction::Label { label: 2 },
-        Instruction::CallExt {
+    ]);
+    code.push(match edge {
+        OuterEdge::External => Instruction::CallExt {
             arity: Operand::Unsigned(1),
             import: Operand::Unsigned(1),
         },
+        OuterEdge::Closure => Instruction::CallFun {
+            arity: Operand::Unsigned(1),
+        },
+    });
+    code.extend([
         Instruction::Return,
         // inner/1 — interpreted (poisoned against the tier), performs the
         // effect and THEN burns the rest of the slice.
@@ -273,7 +330,7 @@ fn probe_module(names: &Names) -> Module {
             arity: Operand::Unsigned(1),
             import: Operand::Unsigned(2),
         },
-    ];
+    ]);
     // The burn chain: each `CallOnly` is a local tail call, and a local call
     // charges a reduction, so the chain exhausts the slice partway through and
     // yields AFTER the effect above.
@@ -326,7 +383,16 @@ fn probe_module(names: &Names) -> Module {
         literals: Vec::new(),
         constant_pool: Default::default(),
         resolved_imports: imports,
-        lambdas: Vec::new(),
+        // Lambda 0 closes over nothing and points at `inner/1`'s entry label.
+        // Always present: an unused entry is inert on the `External` edge.
+        lambdas: vec![LambdaEntry {
+            function: names.inner,
+            arity: 1,
+            label: 3,
+            num_free: 0,
+            unique_id: lambda_unique_id(atoms, names.module, names.inner, 1, 0)
+                .expect("inner/1 lambda id"),
+        }],
         string_table: Vec::new(),
         line_info: Vec::new(),
     }
@@ -358,12 +424,16 @@ fn wait_until(mut predicate: impl FnMut() -> bool) -> bool {
 }
 
 fn run_arm(tag: i64, threshold: u32, heat_drives: usize) -> ArmOutcome {
+    run_arm_with(tag, threshold, heat_drives, OuterEdge::External)
+}
+
+fn run_arm_with(tag: i64, threshold: u32, heat_drives: usize, edge: OuterEdge) -> ArmOutcome {
     assert_ne!(tag, HEAT_TAG, "the drive tag must not collide with heating");
     let atoms = AtomTable::with_common_atoms();
     let names = names(&atoms);
 
     let registry = Arc::new(ModuleRegistry::new());
-    let module = registry.insert(probe_module(&names));
+    let module = registry.insert(probe_module(&names, &atoms, edge));
     let generation = module.generation();
 
     let scheduler = Scheduler::new(config(threshold), Arc::clone(&registry), NativeBifs::none())
@@ -385,12 +455,12 @@ fn run_arm(tag: i64, threshold: u32, heat_drives: usize) -> ArmOutcome {
     let _reached = wait_until(|| {
         scheduler
             .jit_cache()
-            .lookup(names.module, names.outer, 1, generation)
+            .lookup(names.module, names.outer, outer_arity(edge), generation)
             .is_some()
     });
     let outer_compiled = scheduler
         .jit_cache()
-        .lookup(names.module, names.outer, 1, generation)
+        .lookup(names.module, names.outer, outer_arity(edge), generation)
         .is_some();
     let inner_compiled = scheduler
         .jit_cache()
@@ -536,6 +606,58 @@ fn jit_mid_body_yield_does_not_replay_the_compiled_prefix() {
         jit.exit, control.exit,
         "a mid-body yield under the JIT must be observably equal to the \
          interpreted one (exit error: {:?})",
+        jit.exit_error
+    );
+}
+
+/// THE SAME QUESTION AT THE OTHER HELPER.
+///
+/// `CallFun` lowers to `jit_dispatch_closure`, a second nested-run site that
+/// carried the identical unconditional restore. It took the identical fix. An
+/// arm that only drives `CallExt` would report GREEN over a still-broken
+/// closure path — which is exactly the mistake this file exists to prevent, so
+/// the closure edge gets its own arm rather than an argument from symmetry.
+///
+/// This is also the path a fork/join workload reaches, which is why it is the
+/// cell that matters most outside these tests.
+#[test]
+fn jit_closure_mid_body_yield_does_not_replay_the_compiled_prefix() {
+    let control = run_arm_with(801, 1_000_000, 3, OuterEdge::Closure);
+    report("CONTROL (interpreter only, closure edge)", &control);
+    assert_yield_witnessed("CONTROL closure", &control);
+    assert_eq!(
+        control.effects, 1,
+        "the control must be sound before the JIT arm is admissible"
+    );
+
+    let jit = run_arm_with(802, 2, 3, OuterEdge::Closure);
+    report("JIT ARM (outer/2 compiled, closure edge)", &jit);
+    assert_yield_witnessed("JIT ARM closure", &jit);
+    assert!(
+        jit.outer_compiled,
+        "UNWITNESSED JIT ARM: outer/2 never entered the JitCache, so this arm \
+         ran interpreted and any green below is a FALSE GREEN. If the tier \
+         refused it, check that no `make_fun` reached the compiled function \
+         (beamr#28) — `driver` mints the closure precisely so `outer/2` does not."
+    );
+    assert!(
+        !jit.inner_compiled,
+        "inner/1 must stay interpreted, or the nested run is not the \
+         interpreted run this probe is about"
+    );
+
+    assert_eq!(
+        jit.effects, control.effects,
+        "MID-BODY YIELD REPLAYED THE COMPILED PREFIX ON THE CLOSURE PATH: the \
+         effect ran {} time(s) under the JIT and {} time(s) interpreted. \
+         `jit_dispatch_closure` restores the caller's saved position over the \
+         position the nested run set just before yielding.",
+        jit.effects, control.effects
+    );
+    assert_eq!(
+        jit.exit, control.exit,
+        "a mid-body yield under a compiled closure caller must be observably \
+         equal to the interpreted one (exit error: {:?})",
         jit.exit_error
     );
 }
