@@ -202,6 +202,22 @@ fn call_interpreted_closure(
     }
 
     let result = run_with_native_services(process, current_module, registry, services);
+
+    // Same contract as `jit_call_interpreted`: once the nested run has begun, no
+    // outcome may leave through deopt. `CallFun`/`CallFun2` are tail-only like
+    // every other external call in this tier (`require_tail_position`), so a
+    // transfer costs no state to propagate — while restoring `saved_position`
+    // over the nested run's resume position would send the deopt back through
+    // this whole closure call again. See the long note at the matching site in
+    // `runtime.rs`; the pre-run deopts above are untouched and remain correct.
+    let result = match result {
+        Ok(transfer @ (ExecutionResult::Waiting | ExecutionResult::DirtyCall { .. })) => {
+            process.set_jit_transfer(transfer);
+            return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
+        }
+        other => other,
+    };
+
     if let Some(module) = saved_module {
         process.set_current_module(module);
     }
@@ -216,9 +232,13 @@ fn call_interpreted_closure(
                 .map_or(Term::NIL.raw(), |exception| exception.reason.raw());
             JitReturn::exception(reason)
         }
-        Ok(ExecutionResult::Exited(_))
-        | Ok(ExecutionResult::Waiting)
-        | Ok(ExecutionResult::DirtyCall { .. }) => JitReturn::deopt(JIT_DEOPT_SENTINEL as u64),
+        // Abnormal exit with no exception: still a restart-from-entry deopt,
+        // still owed an arm — see the matching arm in `runtime.rs`.
+        Ok(ExecutionResult::Exited(_)) => JitReturn::deopt(JIT_DEOPT_SENTINEL as u64),
+        // Unreachable: taken by the transfer arm above, before the restore.
+        Ok(ExecutionResult::Waiting) | Ok(ExecutionResult::DirtyCall { .. }) => {
+            JitReturn::deopt(JIT_DEOPT_SENTINEL as u64)
+        }
         Ok(ExecutionResult::Yielded) => {
             process.set_jit_status(Some(JitStatus::Yield));
             JitReturn::yield_(JIT_YIELD_SENTINEL as u64)

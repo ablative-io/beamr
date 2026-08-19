@@ -171,12 +171,47 @@ pub(crate) extern "C" fn jit_call_interpreted(
     // exception. Floor the handler stack at its current depth so a raise with
     // no in-nest handler leaves through the exception return below instead —
     // the caller re-offers it to the outer handlers at the correct depth.
-    // Saved and restored on every exit from the region, exactly as the module
-    // and code position are; the only exits are the four `result` arms below.
+    // Saved and restored on every exit from the region — including a transfer,
+    // where it is still correct: once this helper returns there is no Rust
+    // nesting left to protect, so the transferred-out code resumes as ordinary
+    // interpreted bytecode and must see the outer handlers at their real depth.
     let saved_handler_floor = process.nested_handler_floor();
     process.set_nested_handler_floor(process.exception_handler_count());
     let result = run_with_native_services(process, current_module, registry, services);
     process.set_nested_handler_floor(saved_handler_floor);
+
+    // ONCE THE NESTED RUN HAS BEGUN, NO OUTCOME MAY LEAVE THROUGH DEOPT.
+    //
+    // A scheduler-level TRANSFER is not a value: the nested run has already
+    // written the position it must resume at. `invoke_jit`'s callers set the
+    // process's code position to the compiled function's ENTRY before entering
+    // compiled code, so `saved_position` IS that entry — restoring it here
+    // would overwrite the resume position, and the deopt return would then
+    // re-execute the whole compiled function, replaying the tail external call
+    // that produced the transfer. For `Waiting` it would also run a process
+    // that is parked with a live suspension, which is aion#85: the park is
+    // superseded by a second one and the publish for the handed-out call id is
+    // refused, or the replayed call's return value goes nowhere.
+    //
+    // So a transfer parks itself on the process and leaves module and position
+    // untouched; `call_native` takes it before it reads the deopt status, and
+    // the deopt word this returns is inert. Every deopt ABOVE returns before
+    // `run_with_native_services` is ever called, with nothing committed and the
+    // caller's position never disturbed — restart-from-entry is exactly right
+    // for those, and they are deliberately left alone.
+    //
+    // `Exited(_)`-without-exception and `Yielded` are reached after the nested
+    // run too and still take the paths below. They are under separate
+    // measurement, each with its own discriminator arm; neither moves here on
+    // suspicion alone.
+    let result = match result {
+        Ok(transfer @ (ExecutionResult::Waiting | ExecutionResult::DirtyCall { .. })) => {
+            process.set_jit_transfer(transfer);
+            return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
+        }
+        other => other,
+    };
+
     if let Some(module) = saved_module {
         process.set_current_module(module);
     }
@@ -191,9 +226,15 @@ pub(crate) extern "C" fn jit_call_interpreted(
                 .map_or(Term::NIL.raw(), |exception| exception.reason.raw());
             JitReturn::exception(reason)
         }
-        Ok(ExecutionResult::Exited(_))
-        | Ok(ExecutionResult::Waiting)
-        | Ok(ExecutionResult::DirtyCall { .. }) => JitReturn::deopt(JIT_DEOPT_SENTINEL as u64),
+        // Abnormal exit with no exception recorded. Still a restart-from-entry
+        // deopt, and still under measurement (an arm is owed): the replay
+        // re-runs the callee interpreted and exits with the same reason, so the
+        // outcome is right whenever the replayed prefix is effect-free.
+        Ok(ExecutionResult::Exited(_)) => JitReturn::deopt(JIT_DEOPT_SENTINEL as u64),
+        // Unreachable: taken by the transfer arm above, before the restore.
+        Ok(ExecutionResult::Waiting) | Ok(ExecutionResult::DirtyCall { .. }) => {
+            JitReturn::deopt(JIT_DEOPT_SENTINEL as u64)
+        }
         Ok(ExecutionResult::Yielded) => {
             process.set_jit_status(Some(JitStatus::Yield));
             JitReturn::yield_(JIT_YIELD_SENTINEL as u64)
