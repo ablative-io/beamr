@@ -661,12 +661,21 @@ pub(super) fn build_native_services(
                 shared: Arc::clone(shared),
             }) as Arc<dyn crate::native::TcpIoFacility>
         }),
-        jit_cache: Some(Arc::clone(&shared.jit_cache)),
+        // Withheld when the operator switch is off, which is what stops
+        // ALREADY-COMPILED code being entered: the cache itself survives
+        // untouched and goes live again if the switch is turned back on.
+        jit_cache: shared.jit_enabled().then(|| Arc::clone(&shared.jit_cache)),
         // The profiling handle composes AWAY under replay (reduction counts
-        // are validated there and JIT charges differ, commit-5 precedent) and
-        // wherever the dirty-CPU service is Disabled: absence at the call
-        // edges is the disable mechanism, never a runtime flag check.
-        jit_profiling: (!shared.replay_mode && shared.dirty_cpu.service().is_some()).then(|| {
+        // are validated there and JIT charges differ, commit-5 precedent),
+        // wherever the dirty-CPU service is Disabled, and when the operator
+        // switch is off: absence at the call edges is the disable mechanism,
+        // never a runtime flag check AT the edges. The switch is read once
+        // here, per slice, and turns into that same absence — it does not add
+        // a flag test to any call edge.
+        jit_profiling: (!shared.replay_mode
+            && shared.dirty_cpu.service().is_some()
+            && shared.jit_enabled())
+        .then(|| {
             Arc::new(crate::jit::JitProfilingServices {
                 profiler: Arc::clone(&shared.jit_profiler),
                 submitter: Arc::new(SchedulerJitSubmissionFacility {
