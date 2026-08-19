@@ -159,7 +159,7 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
-## Unreleased
+## 0.19.3 — 2026-08-19
 
 ### Added
 - **`Scheduler::set_jit_enabled` / `Scheduler::jit_enabled` — a runtime
@@ -235,6 +235,27 @@ same commit. That is this commit — see the `0.18.1` entry.)*
   and rounds, matching the pre-existing ordering behavior; the
   exact-comparison gap beyond 2^53 (OTP compares losslessly) is tracked
   as #25.
+- **An exception raised inside a closure called from JIT-compiled code could
+  bypass the compiled frame and leak one `CallFun` nesting** (#27).
+  `call_interpreted_closure` ran the nested interpreter without raising the
+  nested handler floor, so an outer `catch` could unwind straight past the
+  native frame that was still on the stack. `jit_call_interpreted` had guarded
+  the identical region since it was written; the closure path had not. There
+  are exactly two sites in the engine that begin a nested interpreted run from
+  inside compiled code, and both now guard it. The ordering is load-bearing and
+  not merely the presence of the calls: the floor is restored immediately after
+  the nested run and *before* the transfer match, because the transfer and
+  yield arms return early — a restore placed after them would be skipped on
+  every transfer, leaving the floor elevated, which is the same defect in
+  mirror image. Restoring on a transfer is correct: once the helper returns
+  there is no Rust nesting left to protect, so the transferred-out code resumes
+  as ordinary interpreted bytecode and must see the outer handlers at their
+  real depth.
+- **`--no-default-features` builds gained two unresolved-`Box` errors.**
+  `jit_transfer` boxes its payload, and `Box` comes from std's prelude, which
+  is absent under `no_std`. The sites are made resolvable with a guarded
+  `alloc::boxed::Box` import rather than left to stand, since `lib.rs`'s
+  `extern crate alloc` is itself conditional.
 
 ## 0.19.2 — 2026-08-18
 
