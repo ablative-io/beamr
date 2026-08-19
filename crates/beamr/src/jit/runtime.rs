@@ -200,14 +200,27 @@ pub(crate) extern "C" fn jit_call_interpreted(
     // caller's position never disturbed — restart-from-entry is exactly right
     // for those, and they are deliberately left alone.
     //
-    // `Exited(_)`-without-exception and `Yielded` are reached after the nested
-    // run too and still take the paths below. They are under separate
-    // measurement, each with its own discriminator arm; neither moves here on
-    // suspicion alone.
+    // `Yielded` is a TRANSFER for exactly the same reason, MEASURED not assumed
+    // (`tests/jit_yield_replay_probe.rs`): the interpreter writes the resume
+    // position immediately before yielding, so restoring `saved_position` over
+    // it re-enters the compiled function from its entry on the next slice. The
+    // probe put a native effect before a slice-exhausting chain in the callee
+    // and saw it run TWICE compiled against ONCE interpreted. It does not leave
+    // through deopt — it has its own `JitStatus::Yield` channel, already used by
+    // the pre-run yield above — so what has to change is the RESTORE, not the
+    // return word.
+    //
+    // `Exited(_)`-without-exception is reached after the nested run too and
+    // still takes the path below; its discriminator arm is still owed and it
+    // does not move here on suspicion alone.
     let result = match result {
         Ok(transfer @ (ExecutionResult::Waiting | ExecutionResult::DirtyCall { .. })) => {
             process.set_jit_transfer(transfer);
             return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
+        }
+        Ok(ExecutionResult::Yielded) => {
+            process.set_jit_status(Some(JitStatus::Yield));
+            return JitReturn::yield_(JIT_YIELD_SENTINEL as u64);
         }
         other => other,
     };
@@ -235,7 +248,9 @@ pub(crate) extern "C" fn jit_call_interpreted(
         Ok(ExecutionResult::Waiting) | Ok(ExecutionResult::DirtyCall { .. }) => {
             JitReturn::deopt(JIT_DEOPT_SENTINEL as u64)
         }
+        // Unreachable: taken by the transfer arm above, before the restore.
         Ok(ExecutionResult::Yielded) => {
+            debug_assert!(false, "a post-run yield must leave through the transfer arm");
             process.set_jit_status(Some(JitStatus::Yield));
             JitReturn::yield_(JIT_YIELD_SENTINEL as u64)
         }

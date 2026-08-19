@@ -215,6 +215,12 @@ fn call_interpreted_closure(
             process.set_jit_transfer(transfer);
             return JitReturn::deopt(JIT_DEOPT_SENTINEL as u64);
         }
+        // A post-run yield is a transfer too, measured on the `CallExt` helper
+        // and moved here on the same tail-only reasoning — see `runtime.rs`.
+        Ok(ExecutionResult::Yielded) => {
+            process.set_jit_status(Some(JitStatus::Yield));
+            return JitReturn::yield_(JIT_YIELD_SENTINEL as u64);
+        }
         other => other,
     };
 
@@ -239,7 +245,9 @@ fn call_interpreted_closure(
         Ok(ExecutionResult::Waiting) | Ok(ExecutionResult::DirtyCall { .. }) => {
             JitReturn::deopt(JIT_DEOPT_SENTINEL as u64)
         }
+        // Unreachable: taken by the transfer arm above, before the restore.
         Ok(ExecutionResult::Yielded) => {
+            debug_assert!(false, "a post-run yield must leave through the transfer arm");
             process.set_jit_status(Some(JitStatus::Yield));
             JitReturn::yield_(JIT_YIELD_SENTINEL as u64)
         }
