@@ -219,7 +219,11 @@ fn code_compiled_before_the_switch_is_not_entered_after_it_and_the_cache_survive
     // Heat it with the switch ON until compiled code is genuinely in the cache.
     assert_eq!(run_to_value(&scheduler, &module), Term::small_int(7));
     assert!(
-        wait_until(|| scheduler.jit_profiler().compile_outcome_counters().successes == 1),
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes
+            == 1),
         "CONTROL FAILED: the function must actually compile before the switch \
          is thrown, or there is no cached code to withhold"
     );
@@ -310,7 +314,11 @@ fn raising_the_threshold_delays_compilation_but_never_prevents_it() {
     // operator needs `set_jit_enabled`, not a bigger number.
     assert_eq!(run_to_value(&scheduler, &module), Term::small_int(1));
     assert!(
-        wait_until(|| scheduler.jit_profiler().compile_outcome_counters().successes == 1),
+        wait_until(|| scheduler
+            .jit_profiler()
+            .compile_outcome_counters()
+            .successes
+            == 1),
         "accumulated heat must cross the raised threshold and compile"
     );
     scheduler.shutdown();

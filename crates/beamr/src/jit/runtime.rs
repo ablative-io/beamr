@@ -250,7 +250,10 @@ pub(crate) extern "C" fn jit_call_interpreted(
         }
         // Unreachable: taken by the transfer arm above, before the restore.
         Ok(ExecutionResult::Yielded) => {
-            debug_assert!(false, "a post-run yield must leave through the transfer arm");
+            debug_assert!(
+                false,
+                "a post-run yield must leave through the transfer arm"
+            );
             process.set_jit_status(Some(JitStatus::Yield));
             JitReturn::yield_(JIT_YIELD_SENTINEL as u64)
         }

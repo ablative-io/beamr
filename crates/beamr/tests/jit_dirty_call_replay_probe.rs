@@ -437,7 +437,9 @@ fn run_arm_with(tag: i64, threshold: u32, heat_drives: usize, edge: OuterEdge) -
         .spawn(names.module, names.driver, vec![Term::small_int(tag)])
         .expect("spawn drive");
     let (reason, value) = scheduler.run_until_exit(pid);
-    let exit_error = scheduler.take_exit_error(pid).map(|error| error.to_string());
+    let exit_error = scheduler
+        .take_exit_error(pid)
+        .map(|error| error.to_string());
     let observed = observed_for(tag);
     scheduler.shutdown();
 
@@ -479,10 +481,9 @@ fn report(label: &str, outcome: &ArmOutcome) {
 /// Without this, a green is equally consistent with "the dirty dispatch never
 /// happened", and the arm would be measuring nothing while looking healthy.
 fn assert_dirty_dispatch_witnessed(label: &str, outcome: &ArmOutcome) {
-    let mark_thread = outcome
-        .observed
-        .mark_thread
-        .unwrap_or_else(|| panic!("{label}: mark/1 never ran, so the arm never reached the callee"));
+    let mark_thread = outcome.observed.mark_thread.unwrap_or_else(|| {
+        panic!("{label}: mark/1 never ran, so the arm never reached the callee")
+    });
     let work_thread = outcome
         .observed
         .work_thread

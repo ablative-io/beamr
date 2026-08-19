@@ -62,8 +62,8 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use beamr::atom::{Atom, AtomTable};
@@ -118,7 +118,12 @@ fn phases() -> &'static Mutex<HashMap<i64, u64>> {
 }
 
 fn phase(tag: i64) -> u64 {
-    phases().lock().expect("phases").get(&tag).copied().unwrap_or(0)
+    phases()
+        .lock()
+        .expect("phases")
+        .get(&tag)
+        .copied()
+        .unwrap_or(0)
 }
 
 fn set_phase(tag: i64, value: u64) {
@@ -638,10 +643,15 @@ fn report(label: &str, outcome: &ArmOutcome) {
     println!("--- {label} ---");
     println!("  outer/1 in JitCache        : {}", outcome.outer_compiled);
     println!("  inner/1 in JitCache        : {}", outcome.inner_compiled);
-    println!("  compile successes          : {}", outcome.compile_successes);
+    println!(
+        "  compile successes          : {}",
+        outcome.compile_successes
+    );
     println!(
         "  submissions/unsup/transient: {}/{}/{}",
-        outcome.compile_submissions, outcome.compile_unsupported, outcome.compile_transient_failures
+        outcome.compile_submissions,
+        outcome.compile_unsupported,
+        outcome.compile_transient_failures
     );
     println!(
         "  host-await parks           : {} (call ids {:?})",
@@ -653,9 +663,14 @@ fn report(label: &str, outcome: &ArmOutcome) {
         "  published for FIRST call id: {}",
         outcome.published_for_first_call_id
     );
-    println!("  rescue publish (current)   : {:?}", outcome.rescue_published);
+    println!(
+        "  rescue publish (current)   : {:?}",
+        outcome.rescue_published
+    );
     match &outcome.exit {
-        Some((reason, value)) => println!("  exit                       : {reason:?} value={value:?}"),
+        Some((reason, value)) => {
+            println!("  exit                       : {reason:?} value={value:?}")
+        }
         None => println!("  exit                       : TIMED OUT (process never exited)"),
     }
     println!("  exit error                 : {:?}", outcome.exit_error);
@@ -756,13 +771,24 @@ fn jit_host_await_suspension_matches_the_interpreter() {
 /// same call id, and must exit with the awaited value.
 #[test]
 fn jit_host_await_published_result_lands_where_the_interpreter_puts_it() {
-    let control = run_arm_with(301, 1_000_000, 4, host_await_reentrant, true, false, OuterEdge::External);
+    let control = run_arm_with(
+        301,
+        1_000_000,
+        4,
+        host_await_reentrant,
+        true,
+        false,
+        OuterEdge::External,
+    );
     report("CONTROL (interpreter only, re-entrant native)", &control);
     assert!(
         !control.outer_compiled,
         "control arm must never compile outer/1"
     );
-    assert_eq!(control.reentries, 0, "control arm must not re-invoke the native");
+    assert_eq!(
+        control.reentries, 0,
+        "control arm must not re-invoke the native"
+    );
     assert!(
         control.published_for_first_call_id,
         "control arm: publishing against the handed-out call id must succeed"
@@ -774,7 +800,15 @@ fn jit_host_await_published_result_lands_where_the_interpreter_puts_it() {
         control.exit_error
     );
 
-    let jit = run_arm_with(302, 2, 4, host_await_reentrant, true, false, OuterEdge::External);
+    let jit = run_arm_with(
+        302,
+        2,
+        4,
+        host_await_reentrant,
+        true,
+        false,
+        OuterEdge::External,
+    );
     report("JIT ARM (outer/1 compiled, re-entrant native)", &jit);
     assert!(
         jit.outer_compiled,
@@ -782,13 +816,11 @@ fn jit_host_await_published_result_lands_where_the_interpreter_puts_it() {
     );
 
     assert_eq!(
-        jit.exit,
-        control.exit,
+        jit.exit, control.exit,
         "PUBLISHED HOST RESULT WENT NOWHERE: the embedder's answer published \
          successfully against the live suspension ({}), yet the JIT arm exited with a \
          different value than the interpreted arm. jit exit error: {:?}",
-        jit.published_for_first_call_id,
-        jit.exit_error
+        jit.published_for_first_call_id, jit.exit_error
     );
     assert_eq!(
         jit.reentries, control.reentries,
@@ -810,7 +842,15 @@ fn jit_host_await_published_result_lands_where_the_interpreter_puts_it() {
 /// nested interpreted run and not to JIT dispatch in general.
 #[test]
 fn defect_requires_the_compiled_caller_not_merely_a_live_jit() {
-    let arm = run_arm_with(401, 2, 4, host_await_reentrant, true, true, OuterEdge::External);
+    let arm = run_arm_with(
+        401,
+        2,
+        4,
+        host_await_reentrant,
+        true,
+        true,
+        OuterEdge::External,
+    );
     report("DISCRIMINATOR (outer/1 refused, inner/1 compiled)", &arm);
 
     assert!(

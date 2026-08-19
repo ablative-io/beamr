@@ -70,8 +70,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use beamr::atom::{Atom, AtomTable};
-use beamr::loader::{Instruction, LambdaEntry, lambda_unique_id};
 use beamr::loader::decode::compact::Operand;
+use beamr::loader::{Instruction, LambdaEntry, lambda_unique_id};
 use beamr::module::{Module, ModuleOrigin, ModuleRegistry, ResolvedImport, ResolvedImportTarget};
 use beamr::native::{Capability, NativeEntry, ProcessContext};
 use beamr::process::ExitReason;
@@ -106,11 +106,21 @@ fn budgets() -> &'static Mutex<HashMap<i64, (u32, u32)>> {
 }
 
 fn count_for(tag: i64) -> usize {
-    counts().lock().expect("counts").get(&tag).copied().unwrap_or(0)
+    counts()
+        .lock()
+        .expect("counts")
+        .get(&tag)
+        .copied()
+        .unwrap_or(0)
 }
 
 fn budget_for(tag: i64) -> (u32, u32) {
-    budgets().lock().expect("budgets").get(&tag).copied().unwrap_or((0, 0))
+    budgets()
+        .lock()
+        .expect("budgets")
+        .get(&tag)
+        .copied()
+        .unwrap_or((0, 0))
 }
 
 /// `jit_yield_probe:count/1` — the observable effect. Never parks.
@@ -127,7 +137,12 @@ fn count(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let remaining = context
         .process_mut()
         .map_or(0, |process| process.reduction_counter());
-    budgets().lock().expect("budgets").entry(tag).or_insert((0, 0)).0 = remaining;
+    budgets()
+        .lock()
+        .expect("budgets")
+        .entry(tag)
+        .or_insert((0, 0))
+        .0 = remaining;
     Ok(Term::small_int(tag))
 }
 
@@ -148,7 +163,12 @@ fn slice(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let remaining = context
         .process_mut()
         .map_or(0, |process| process.reduction_counter());
-    budgets().lock().expect("budgets").entry(tag).or_insert((0, 0)).1 = remaining;
+    budgets()
+        .lock()
+        .expect("budgets")
+        .entry(tag)
+        .or_insert((0, 0))
+        .1 = remaining;
     Ok(Term::small_int(RESULT))
 }
 
@@ -471,7 +491,9 @@ fn run_arm_with(tag: i64, threshold: u32, heat_drives: usize, edge: OuterEdge) -
         .spawn(names.module, names.driver, vec![Term::small_int(tag)])
         .expect("spawn drive");
     let (reason, value) = scheduler.run_until_exit(pid);
-    let exit_error = scheduler.take_exit_error(pid).map(|error| error.to_string());
+    let exit_error = scheduler
+        .take_exit_error(pid)
+        .map(|error| error.to_string());
     let effects = count_for(tag);
     let (reductions_at_effect, reductions_at_end) = budget_for(tag);
     scheduler.shutdown();
