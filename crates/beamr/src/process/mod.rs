@@ -12,6 +12,16 @@ mod types;
 
 pub use types::*;
 
+// `Box` comes from std's prelude, which is absent under
+// `--no-default-features` — and `jit_transfer` boxes its payload, which added
+// two errors to the no_std tally (1072 -> 1074). The ratchet's waiver permits
+// that debt to STAND, not to GROW, so the sites are made resolvable instead.
+// Guarded exactly as `ar1_shape_control.rs` guards its own `alloc` import,
+// because lib.rs's `extern crate alloc` is itself conditional — an unguarded
+// `use alloc::…` does not resolve in a std build.
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
