@@ -162,6 +162,45 @@ same commit. That is this commit — see the `0.18.1` entry.)*
 ## Unreleased
 
 ### Fixed
+- **A process that suspended inside JIT-compiled code kept running, and its
+  host call was replayed.** When compiled code called out to interpreted code
+  and that nested run suspended — a `receive`, or a host await from an embedder
+  — the helper restored the *caller's* code position over the position the
+  nested run had just parked at, then reported the suspension as a deopt. A
+  deopt means "restart this function interpreted from its entry", so the
+  compiled function's prefix ran again while the process was already parked
+  with a live suspension: the external call in that prefix was re-executed,
+  producing a duplicate host request, and the second park superseded the first
+  so the embedder's answer to the call id it had been handed was refused. Where
+  the native was re-entrant instead, the answer published successfully and the
+  process exited carrying the *replayed* call's value, so the awaited result
+  went nowhere. Both faces reproduced; the mechanism is pinned to the compiled
+  *caller* by an arm in which the callee still compiles and the caller does
+  not.
+
+  **The same replay happened on an ordinary yield, with no suspension
+  involved.** A process whose nested interpreted run simply used up its time
+  slice mid-body had that resume position overwritten too, and re-entered the
+  compiled function from its entry on its next slice — so any work the compiled
+  prefix had already done was done again. This needs no `receive` and no
+  embedder: a callee long enough to exhaust a slice is sufficient, which makes
+  it the face most likely to be met by ordinary hot code. It was found by a
+  probe that asserts an observable effect performed before the yield happens
+  exactly once, and it is fixed.
+
+  The contract is now explicit: **once the nested run has begun, no outcome
+  that is a transfer rather than a value may have the caller's position
+  restored over it.** A scheduler-level transfer — a suspension, a dirty call,
+  a yield — keeps the resume position the nested run established and is handed
+  to the run loop as the outcome it already is, exactly what the interpreted
+  path does with the identical outcome. Every deopt taken *before* the nested
+  run starts is unchanged and remains correct: nothing has been committed at
+  that point and restart-from-entry is the right answer.
+
+  This affected **both** nested-run helpers — the external-call path and the
+  closure-call path (`CallFun`/`CallFun2`), which carried the same defect
+  independently — and both are fixed on all three outcomes. Reported against
+  aion as aion#85.
 - **`==` returned `false` for arithmetically-equal bignum/float pairs**
   (#15, fixed by PR #20 — Matthew Bright). `numeric_eq` lacked the
   `BigInt↔Float` match arms and fell through to exact equality, so a bignum
