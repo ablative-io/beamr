@@ -170,8 +170,16 @@ impl JitProfiler {
         self.transient_failures.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// Test-support probe: the recorded interpreted-call count for an MFA.
-    #[cfg(any(test, feature = "test-support"))]
+    /// The recorded interpreted-call count for an MFA, or `None` when the
+    /// function has no live profile entry.
+    ///
+    /// Deliberately NOT test-gated. This is the per-MFA half of what
+    /// [`Self::compile_outcome_counters`] already reports in aggregate, read
+    /// off the same map [`Self::is_compiled`] reads — and both of those are
+    /// unconditionally public. An embedder asking *which* function crossed
+    /// the threshold needs the count, and a release build is where that
+    /// question gets asked; gating it made the tier-up counter unobservable
+    /// in exactly the configuration that ships.
     #[must_use]
     pub fn recorded_call_count(&self, module: Atom, function: Atom, arity: u8) -> Option<u32> {
         self.profiles
@@ -179,8 +187,12 @@ impl JitProfiler {
             .map(|profile| profile.counter.load(Ordering::Acquire))
     }
 
-    /// Test-support probe: the number of live profile entries.
-    #[cfg(any(test, feature = "test-support"))]
+    /// The number of live profile entries.
+    ///
+    /// Not test-gated, for the same reason as [`Self::recorded_call_count`]:
+    /// it bounds the profiler's own growth (one slot per distinct MFA ever
+    /// recorded at a live call edge), which an operator may legitimately want
+    /// to watch in a shipped build.
     #[must_use]
     pub fn profile_entry_count(&self) -> usize {
         self.profiles.len()
@@ -289,6 +301,13 @@ impl JitProfiler {
     /// Production submissions receive the epoch inside
     /// [`RecordResult::CompileNow`], read under the deciding entry guard —
     /// this accessor exists only for tests that stage stale completions.
+    ///
+    /// This one STAYS gated, and the line is deliberate: its siblings
+    /// [`Self::recorded_call_count`] and [`Self::profile_entry_count`] report
+    /// state a diagnostic reader wants, whereas this reads a value production
+    /// already receives by a safer route and exists to let tests construct an
+    /// otherwise unreachable ordering. Ungating it would widen the API for a
+    /// caller that should not exist.
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
     pub fn profile_epoch(&self, module: Atom, function: Atom, arity: u8) -> Option<u64> {
