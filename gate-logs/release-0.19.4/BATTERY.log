@@ -1,0 +1,40 @@
+pin:      eb473293ecc5847986f30af5d3b773fdbb1dcab6
+version:  version = "0.19.4"
+tree pre: 0 modified
+opened:   2026-08-20T12:39:48Z
+venue:    MacBookPro / Darwin 25.3.0 arm64
+wasm-bindgen CLI: wasm-bindgen 0.2.123
+legs declared: 9
+=== leg 1/9 : fmt ===
+    started 12:39:48Z
+    rc=0   finished 12:39:50Z   log=/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/battery-0194-logs/fmt.log
+=== leg 2/9 : clippy ===
+    started 12:39:50Z
+    rc=0   finished 12:40:21Z   log=/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/battery-0194-logs/clippy.log
+=== leg 3/9 : wasm32-check ===
+    started 12:40:21Z
+    rc=0   finished 12:40:42Z   log=/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/battery-0194-logs/wasm32-check.log
+=== leg 4/9 : wasm-tests ===
+    started 12:40:42Z
+    rc=0   finished 12:41:08Z   log=/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/battery-0194-logs/wasm-tests.log
+=== leg 5/9 : tests ===
+    started 12:41:08Z
+    rc=0   finished 12:44:53Z   log=/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/battery-0194-logs/tests.log
+=== leg 6/9 : blocking-call-in-native-bif ===
+    started 12:44:53Z
+    rc=0   finished 12:44:55Z   log=/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/battery-0194-logs/blocking-call-in-native-bif.log
+=== leg 7/9 : clippy-all-features ===
+    started 12:44:55Z
+    rc=0   finished 12:45:16Z   log=/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/battery-0194-logs/clippy-all-features.log
+=== leg 8/9 : tests-all-features ===
+    started 12:45:16Z
+    rc=0   finished 12:49:00Z   log=/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/battery-0194-logs/tests-all-features.log
+=== leg 9/9 : nostd-ratchet ===
+    started 12:49:00Z
+    rc=0   finished 12:49:13Z   log=/private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/battery-0194-logs/nostd-ratchet.log
+--- scored: 9 / declared: 9 ---
+--- tree post: 0 ---
+--- pin post:  eb473293ecc5847986f30af5d3b773fdbb1dcab6 ---
+RED LEGS: none
+COMPLETE (derived: 9/9, pin stable)
+CLOSE 2026-08-20T12:49:13Z
