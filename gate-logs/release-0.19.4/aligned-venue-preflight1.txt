@@ -1,0 +1,51 @@
+=== INSTRUMENT: preflight-rocketfish.sh ===
+host_self_reported : omarchy
+whoami             : rocketfish
+utc_now            : 2026-08-20T21:06:02Z
+uname              : Linux 6.19.9-arch1-1 x86_64
+uptime_raw         : 283.16 3781.55
+
+=== THE ONE REAL DATUM: SWAP ===
+MemTotal:       32785848 kB
+MemAvailable:   26701328 kB
+SwapTotal:       8388604 kB
+SwapFree:        7420012 kB
+Dirty:              1132 kB
+Writeback:           232 kB
+swap_free_pct      : 88.45%
+swap_free_MiB      : 7246
+mem_avail_MiB      : 26075
+
+=== KNOWN DISPLAY ARTEFACT (banked: do-not-re-raise) — reported, NOT a blocker ===
+loadavg            : 0.93 1.58 0.81 2/1060 5297
+runnable/total     : 1/1060
+nproc              : 16
+D_state_count      : 0
+--- D-state processes (comm only) ---
+
+=== PSI — the instrument that separates work from wedge ===
+--- /proc/pressure/cpu ---
+some avg10=0.00 avg60=0.01 avg300=0.04 total=731424
+full avg10=0.00 avg60=0.00 avg300=0.00 total=0
+--- /proc/pressure/io ---
+some avg10=61.30 avg60=40.12 avg300=17.45 total=77137880
+full avg10=60.50 avg60=39.54 avg300=16.89 total=74247668
+--- /proc/pressure/memory ---
+some avg10=0.00 avg60=0.14 avg300=0.29 total=1999241
+full avg10=0.00 avg60=0.13 avg300=0.28 total=1914804
+
+=== RESIDENT VOICE STACK — presence only, LEAVE STRICTLY ALONE ===
+tts-cuda         : not-active-per-systemctl (inactive)
+stt-cuda         : not-active-per-systemctl (inactive)
+meridian-voice   : not-active-per-systemctl (inactive)
+
+=== GPU (voice stack depends on it; report only) ===
+NVIDIA GeForce RTX 2080 Ti, 1544 MiB, 11264 MiB, 30 %
+
+=== BEAMR CHECKOUT — first-pass identity (full manifest only if we fire) ===
+checkout_found     : /home/rocketfish/Developer/ablative/stack/beamr
+  HEAD             : ba5c5fa5995feaaf7ee9537ef7f89c66fea08dac
+  branch           : main
+  dirty_entries    : 0
+
+=== END preflight ===

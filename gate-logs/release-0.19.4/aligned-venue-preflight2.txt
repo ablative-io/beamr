@@ -1,0 +1,52 @@
+=== INSTRUMENT: preflight2-rocketfish.sh ===
+host  : omarchy   utc: 2026-08-20T21:06:26Z
+
+=== DISK — the metric that actually bounds a battery ===
+Filesystem        Size  Used Avail Use% Mounted on
+/dev/mapper/root  930G  453G  477G  49% /
+/dev/mapper/root  930G  453G  477G  49% /home
+tmpfs              16G   12K   16G   1% /tmp
+--- inodes ---
+Filesystem       Inodes IUsed IFree IUse% Mounted on
+/dev/mapper/root      0     0     0     - /
+/dev/mapper/root      0     0     0     - /home
+
+=== BEAMR CHECKOUT ===
+path        : /home/rocketfish/Developer/ablative/stack/beamr
+HEAD        : ba5c5fa5995feaaf7ee9537ef7f89c66fea08dac
+branch      : main
+dirty       : 0
+--- fetching origin so ancestry is judged against a fresh ref ---
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+origin/main : ba5c5fa5995feaaf7ee9537ef7f89c66fea08dac
+HEAD_vs_origin_main : HEAD IS ANCESTOR (behind by 0)
+--- does the lane's named tree 32073ab exist here? ---
+32073ab     : ABSENT — fatal: Not a valid object name 32073ab
+--- target/ size (the disk term) ---
+2.0G	/home/rocketfish/Developer/ablative/stack/beamr/target
+
+=== GPU WEDGE CHARACTERISATION — report only, NOT MINE TO FIX ===
+--- nvidia modules loaded? (single-file read of /proc/modules) ---
+nvidia_drm 147456 24 - Live 0x0000000000000000 (OE)
+nvidia_uvm 2568192 12 - Live 0x0000000000000000 (OE)
+nvidia_modeset 2121728 9 nvidia_drm, Live 0x0000000000000000 (OE)
+nvidia 16306176 212 nvidia_uvm,nvidia_modeset, Live 0x0000000000000000 (OE)
+--- pci device present? ---
+01:00.0 VGA compatible controller [0300]: NVIDIA Corporation TU102 [GeForce RTX 2080 Ti Rev. A] [10de:1e07] (rev a1)
+01:00.1 Audio device [0403]: NVIDIA Corporation TU102 High Definition Audio Controller [10de:10f7] (rev a1)
+01:00.2 USB controller [0c03]: NVIDIA Corporation TU102 USB 3.1 Host Controller [10de:1ad6] (rev a1)
+01:00.3 Serial bus controller [0c80]: NVIDIA Corporation TU102 USB Type-C UCSI Controller [10de:1ad7] (rev a1)
+
+=== SWAP (re-read, single file) ===
+MemAvailable:   26648600 kB
+SwapTotal:       8388604 kB
+SwapFree:        7420120 kB
+--- swap devices ---
+Filename				Type		Size		Used		Priority
+/swap/swapfile                          file		8388604		968484		10
+
+=== END preflight2 ===
