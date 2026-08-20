@@ -159,6 +159,40 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
+## 0.19.4 — 2026-08-20
+
+### Added
+- **`JitProfiler::recorded_call_count` and `JitProfiler::profile_entry_count`
+  are now reachable from a release build.** Both already existed, but sat
+  behind `#[cfg(any(test, feature = "test-support"))]` under the label
+  "Test-support probe", so no shipped binary could call either.
+
+  **The gate was not a boundary anyone drew.** `is_compiled`,
+  `is_unsupported`, `current_threshold` and `compile_outcome_counters` are all
+  already unconditionally public — and `recorded_call_count` reads the *same
+  map* `is_compiled` reads, while `compile_outcome_counters` reports its
+  *aggregate*. There is no policy under which those land on different sides of
+  a cfg. The split was an accident of when each accessor happened to be
+  written, preserved by the label sitting above it.
+
+  The prompt was an embedder diagnosing a JIT tier-up defect: the open
+  question was *which* function crosses the compile threshold — the compiled
+  caller, or the awaiting callee — and that is per-MFA call-count data. It
+  could not be answered from any shipped binary. The alternative, an embedder
+  enabling `beamr/test-support` in its production dependencies, was rightly
+  refused: that feature also gates test hooks across the scheduler,
+  distribution, spawning and suspension, and pulling those into a shipped
+  binary to buy one counter is the worse trade.
+
+  Both are plain reads — one map lookup plus an atomic load, and a `len()` —
+  so they cost a release build nothing unless called.
+
+  **`profile_epoch` deliberately stays gated**, and the reason is now written
+  at the accessor rather than left as residue: production already receives the
+  epoch inside `RecordResult::CompileNow`, read under the deciding entry
+  guard, and the accessor exists only so tests can stage stale completions.
+  Ungating it would widen the API for a caller that should not exist.
+
 ## 0.19.3 — 2026-08-19
 
 ### Added
