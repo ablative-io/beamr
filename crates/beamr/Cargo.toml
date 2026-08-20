@@ -91,9 +91,17 @@ required-features = ["jit", "threads"]
 [features]
 default = ["std", "threads", "net", "fs", "jit", "embedded", "readiness"]
 std = []
-# Cooperative single-threaded runtime (WR-0 spike). Brings in only the
-# lock-free SegQueue mailbox dependency; no tokio/crossbeam-channel/-deque,
-# no io-uring, no num_cpus. Intended for wasm32 where OS threads are absent.
+# The cooperative (single-threaded) actor + scheduler surface: `WasmScheduler`,
+# `spawn_actor_cooperative`, `CoopSenderHandle::call_async`. A SUBSTITUTE for
+# `threads`, not a companion — all 15 cfg sites are `any(threads, cooperative)`,
+# so this feature is what keeps that surface compiling when `threads` is OFF
+# (the wasm32 build, where OS threads are absent). It pulls NO dependencies of
+# its own; the dependency slimming comes from NOT enabling `threads`, and
+# `crossbeam-queue` (the SegQueue mailbox) is a hard dep in every build either
+# way. Native consumers may select it deliberately: the surface is also built
+# under `threads` so the native suite exercises the same scheduler the wasm
+# host drives (see `native/actor.rs`), and declaring it states the dependency
+# rather than relying on `threads`' OR-arm to supply it.
 cooperative = ["std"]
 threads = ["std", "dep:crossbeam-channel", "dep:crossbeam-deque", "dep:io-uring", "dep:num_cpus", "dep:tokio"]
 readiness = ["threads", "dep:mio"]
