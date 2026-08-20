@@ -29,6 +29,24 @@
       "status": "resolved",
       "reason_unresolved": null,
       "resolution": "spawn_link_dirty removed at the 0.17.0 breaking window; spawn_link is the one linked MFA spawn path. Verified absent from crates/*/src at pilot-creation commit; the wall test spawn_link_dirty_dispatch_is_per_entry_on_the_linked_path pins the per-entry dispatch property the alias once carried."
+    },
+    {
+      "id": "OB-004",
+      "title": "Re-run the wasm-tests leg at the aligned wasm-bindgen venue for the 0.19.4 cut",
+      "origin": "The 0.19.4 gate of record (battery 9/9 at eb47329, evidence d4cd50e, gate-logs/release-0.19.4) ran on a Mac venue whose wasm-bindgen CLI is 0.2.123 against a Cargo.lock requiring 0.2.127. Project-lead ruling (Waffles, 2026-08-20 12:35Z) ACCEPTED the skewed venue for that cut only, explicitly scoped as not a precedent, on three grounds: the 0.19.4 delta is two cfg-attribute removals and a doc comment, nowhere near wasm codegen, so the leg's evidential weight for that specific change is low; the skew produced a determinate green (86 passed, rc=0), not an instrument's silence; and the leg prints its runner version as line one of battery.leg4.log, so the receipt carries its own caveat instead of laundering it. The aligned venue (host omarchy, user rocketfish, wasm-bindgen 0.2.127) was unavailable at the time: a GPU wedge with 71 uninterruptible-sleep processes, reboot held for the project lead's morning word.",
+      "due": "next-release",
+      "status": "open",
+      "reason_unresolved": "The aligned re-run has not happened because the aligned venue has not returned. Resolution is one action: run the wasm-tests leg ONCE at the 0.2.127 venue and note the result here against the 0.19.4 evidence commit d4cd50e. An aligned GREEN retires the caveat and this obligation resolves with that note. An aligned RED reopens exactly one leg, not the release — 0.19.4 is published and tagged and this does not retroactively unmake it; it tells the estate the skew mattered after all, and what to do about the next cut.",
+      "resolution": null
+    },
+    {
+      "id": "OB-005",
+      "title": "beamr-wasm declares no readme metadata",
+      "origin": "Measured at the 0.19.4 cut with `cargo metadata --no-deps --format-version 1`: beamr, gleam-types and beamr-cli each declare license, description, repository and readme; beamr-wasm 0.9.0 declares no readme. RELEASE_CHECKLIST.md:27 requires all four on published crates. It did not block the 0.19.4 cut because beamr-wasm was already published at 0.9.0 and scripts/release.sh skips any crate whose current version is already published — so the gap rode through unpublished rather than being waived. It was deliberately NOT fixed in the 0.19.4 release commit: an unrelated manifest change inside a release commit is how a release commit stops being reviewable.",
+      "due": "next-release",
+      "status": "open",
+      "reason_unresolved": "The readme key is still absent from crates/beamr-wasm/Cargo.toml. Resolve either by adding it (and confirming the referenced file exists and ships in the package), or by a recorded project-lead ruling that it waits until beamr-wasm is next actually published — that ruling is a legitimate resolution and should be stated here rather than left as a deferral. Filed as an obligation rather than remembered so it cannot silently reach the beamr-wasm bump that will refuse on it.",
+      "resolution": null
     }
   ]
 }
