@@ -19,3 +19,6 @@ erl_crash.dump
 
 # CI leg-verdict artifacts, written by the gates.json canon loop
 gate-rc/
+
+# aion fleet runtime marker (norn/agent spawn guard) — defeats the fanin clean-tree gate; see aion#128
+.aion-held-execution.json
