@@ -10,6 +10,7 @@ use crate::atom::Atom;
 use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
+use crate::term::heap_borrow::HeapBorrow;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub fn bif_length(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -17,7 +18,9 @@ pub fn bif_length(args: &[Term], context: &mut ProcessContext) -> Result<Term, T
     let [input] = args else {
         return Err(badarg());
     };
-    let len = utf8_str(*input)?.graphemes(true).count();
+    let len = utf8_str(*input, context.borrow_terms())?
+        .graphemes(true)
+        .count();
     i64::try_from(len)
         .ok()
         .and_then(Term::try_small_int)
@@ -28,7 +31,7 @@ pub fn bif_reverse(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
     let [input] = args else {
         return Err(badarg());
     };
-    let text = utf8_str(*input)?;
+    let text = utf8_str(*input, context.borrow_terms())?;
     let reversed: String = text.graphemes(true).rev().collect();
     context.alloc_binary(reversed.as_bytes())
 }
@@ -37,7 +40,7 @@ pub fn bif_lowercase(args: &[Term], context: &mut ProcessContext) -> Result<Term
     let [input] = args else {
         return Err(badarg());
     };
-    let lowered = utf8_str(*input)?.to_lowercase();
+    let lowered = utf8_str(*input, context.borrow_terms())?.to_lowercase();
     context.alloc_binary(lowered.as_bytes())
 }
 
@@ -45,7 +48,7 @@ pub fn bif_uppercase(args: &[Term], context: &mut ProcessContext) -> Result<Term
     let [input] = args else {
         return Err(badarg());
     };
-    let raised = utf8_str(*input)?.to_uppercase();
+    let raised = utf8_str(*input, context.borrow_terms())?.to_uppercase();
     context.alloc_binary(raised.as_bytes())
 }
 
@@ -53,7 +56,7 @@ pub fn bif_trim(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
     let [input, direction] = args else {
         return Err(badarg());
     };
-    let text = utf8_str(*input)?;
+    let text = utf8_str(*input, context.borrow_terms())?;
     let direction = atom_name(*direction, context)?;
     let trimmed = match direction {
         "leading" => text.trim_start(),
@@ -72,9 +75,9 @@ pub fn bif_split(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     };
     // Own the input up front: the per-part allocation loop below may collect,
     // so every part must borrow this owned buffer, never the process heap.
-    let input = binary_bytes(*input)?.to_vec();
+    let input = binary_bytes(*input, context.borrow_terms())?.to_vec();
     let input = input.as_slice();
-    let pattern = binary_bytes(*pattern)?;
+    let pattern = binary_bytes(*pattern, context.borrow_terms())?;
     if pattern.is_empty() {
         return Err(badarg());
     }
@@ -102,8 +105,8 @@ pub fn bif_find(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
     let [input, pattern] = args else {
         return Err(badarg());
     };
-    let input = binary_bytes(*input)?;
-    let pattern = binary_bytes(*pattern)?;
+    let input = binary_bytes(*input, context.borrow_terms())?;
+    let pattern = binary_bytes(*pattern, context.borrow_terms())?;
     if let Some(index) = find_bytes(input, pattern) {
         // Own the bytes: alloc_binary may collect and move an inline source.
         let tail = input[index..].to_vec();
@@ -123,7 +126,7 @@ pub fn bif_next_grapheme(args: &[Term], context: &mut ProcessContext) -> Result<
     let [input] = args else {
         return Err(badarg());
     };
-    let text = utf8_str(*input)?;
+    let text = utf8_str(*input, context.borrow_terms())?;
     let Some(grapheme) = text.graphemes(true).next() else {
         return Ok(Term::NIL);
     };
@@ -151,10 +154,10 @@ pub fn bif_pad(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term
     let [input, length, direction, pad] = args else {
         return Err(badarg());
     };
-    let text = utf8_str(*input)?;
+    let text = utf8_str(*input, context.borrow_terms())?;
     let target_len = non_negative_usize(*length)?;
     let direction = atom_name(*direction, context)?;
-    let pad = binary_bytes(*pad)?;
+    let pad = binary_bytes(*pad, context.borrow_terms())?;
     if pad.is_empty() {
         return Err(badarg());
     }
@@ -184,9 +187,9 @@ pub fn bif_replace(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
     let [input, pattern, replacement, where_atom] = args else {
         return Err(badarg());
     };
-    let input = binary_bytes(*input)?;
-    let pattern = binary_bytes(*pattern)?;
-    let replacement = binary_bytes(*replacement)?;
+    let input = binary_bytes(*input, context.borrow_terms())?;
+    let pattern = binary_bytes(*pattern, context.borrow_terms())?;
+    let replacement = binary_bytes(*replacement, context.borrow_terms())?;
     if pattern.is_empty() {
         return Err(badarg());
     }
@@ -208,7 +211,7 @@ pub fn bif_slice(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     let [input, offset, length] = args else {
         return Err(badarg());
     };
-    let text = utf8_str(*input)?;
+    let text = utf8_str(*input, context.borrow_terms())?;
     let offset = non_negative_usize(*offset)?;
     let length = non_negative_usize(*length)?;
     if length == 0 {
@@ -229,7 +232,10 @@ pub fn bif_equal(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     let [left, right] = args else {
         return Err(badarg());
     };
-    Ok(bool_term(binary_bytes(*left)? == binary_bytes(*right)?))
+    Ok(bool_term(
+        binary_bytes(*left, context.borrow_terms())?
+            == binary_bytes(*right, context.borrow_terms())?,
+    ))
 }
 
 pub fn bif_is_empty(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -237,7 +243,9 @@ pub fn bif_is_empty(args: &[Term], context: &mut ProcessContext) -> Result<Term,
     let [input] = args else {
         return Err(badarg());
     };
-    Ok(bool_term(binary_bytes(*input)?.is_empty()))
+    Ok(bool_term(
+        binary_bytes(*input, context.borrow_terms())?.is_empty(),
+    ))
 }
 
 fn split_all<'a>(input: &'a [u8], pattern: &[u8]) -> Vec<&'a [u8]> {
@@ -348,13 +356,13 @@ fn atom_name<'a>(term: Term, context: &'a ProcessContext<'_>) -> Result<&'a str,
     }
 }
 
-fn utf8_str(term: Term) -> Result<&'static str, Term> {
-    std::str::from_utf8(binary_bytes(term)?).map_err(|_| badarg())
+fn utf8_str<'heap>(term: Term, heap: HeapBorrow<'heap>) -> Result<&'heap str, Term> {
+    std::str::from_utf8(binary_bytes(term, heap)?).map_err(|_| badarg())
 }
 
-fn binary_bytes(term: Term) -> Result<&'static [u8], Term> {
+fn binary_bytes<'heap>(term: Term, heap: HeapBorrow<'heap>) -> Result<&'heap [u8], Term> {
     BinaryRef::new(term)
-        .map(|binary| binary.as_bytes())
+        .map(|binary| binary.as_bytes(heap))
         .ok_or_else(badarg)
 }
 
@@ -368,6 +376,7 @@ fn badarg() -> Term {
 
 #[cfg(test)]
 mod ar1_row4_site14_tests {
+    use crate::term::heap_borrow::HeapBorrow;
     // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
     //
     // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
@@ -418,13 +427,13 @@ mod ar1_row4_site14_tests {
         let list = bif_split(&[input, pattern, Term::atom(all)], &mut context)
             .map_err(|_| "bif_split returned an error term".to_string())?;
 
-        read_back(list, parts)
+        read_back(list, parts, context.borrow_terms())
     }
 
     /// The reader, shared by BOTH arms so neither can be graded by a softer
     /// instrument than the other. Walks the list by contents and reports the
     /// first thing that is not the part it should be.
-    fn read_back(list: Term, parts: usize) -> Result<(), String> {
+    fn read_back(list: Term, parts: usize, heap: HeapBorrow<'_>) -> Result<(), String> {
         let mut seen = 0usize;
         let mut tail = list;
         // HARD CAP: a stale carrier can make the list cyclic, and a reader that
@@ -441,10 +450,10 @@ mod ar1_row4_site14_tests {
             let binary = Binary::new(cons.head())
                 .ok_or_else(|| format!("part {seen}: head is not a binary — carrier went stale"))?;
             let want = part_of(seen);
-            if binary.as_bytes() != want.as_bytes() {
+            if binary.as_bytes(heap) != want.as_bytes() {
                 return Err(format!(
                     "part {seen}: contents {:?} != {want:?}",
-                    String::from_utf8_lossy(binary.as_bytes())
+                    String::from_utf8_lossy(binary.as_bytes(heap))
                 ));
             }
             seen += 1;
@@ -486,7 +495,7 @@ mod ar1_row4_site14_tests {
         let slices: Vec<&[u8]> = owned.iter().map(|part| part.as_bytes()).collect();
         let list = split_parts_unrooted_replica(&mut context, &slices)
             .map_err(|_| "replica returned an error term".to_string())?;
-        read_back(list, parts)
+        read_back(list, parts, context.borrow_terms())
     }
 
     /// AR-1 row 4, site 14 — ✅ INVERTED. Two-armed in both directions: hold the

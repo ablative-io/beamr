@@ -10,6 +10,7 @@ use crate::native::{NativeContinuation, ProcessContext};
 use crate::process::Process;
 use crate::term::Term;
 use crate::term::boxed::{Cons, Float, Tuple};
+use crate::term::heap_borrow::HeapBorrow;
 
 use super::lists_bifs::list_from_vec;
 use super::lists_hof_bifs::ListsHofState;
@@ -208,10 +209,10 @@ fn live_context<'p>(
     context
 }
 
-fn result_bytes(term: Term) -> Vec<u8> {
+fn result_bytes(term: Term, heap: HeapBorrow<'_>) -> Vec<u8> {
     BinaryRef::new(term)
         .expect("binary result")
-        .as_bytes()
+        .as_bytes(heap)
         .to_vec()
 }
 
@@ -229,7 +230,10 @@ fn list_append_binary_arm_survives_forced_collection() {
         process.heap().old_used() > 0,
         "geometry must have collected"
     );
-    assert_eq!(result_bytes(result), b"append-me \xE2\x80\x94 exact");
+    assert_eq!(
+        result_bytes(result, process.borrow_terms()),
+        b"append-me \xE2\x80\x94 exact"
+    );
 }
 
 #[test]
@@ -251,7 +255,7 @@ fn binary_part_survives_forced_collection() {
         "geometry must have collected"
     );
     let expected: Vec<u8> = (11..=30).collect();
-    assert_eq!(result_bytes(result), expected);
+    assert_eq!(result_bytes(result, process.borrow_terms()), expected);
 }
 
 #[test]
@@ -269,7 +273,7 @@ fn string_trim_survives_forced_collection() {
         "geometry must have collected"
     );
     assert_eq!(
-        result_bytes(result),
+        result_bytes(result, process.borrow_terms()),
         b"\xE2\x80\x94 trim exact \xE2\x80\x94"
     );
 }
@@ -298,7 +302,7 @@ fn string_split_survives_forced_collection() {
     let mut parts = Vec::new();
     let mut current = result;
     while let Some(cons) = crate::term::boxed::Cons::new(current) {
-        parts.push(result_bytes(cons.head()));
+        parts.push(result_bytes(cons.head(), process.borrow_terms()));
         current = cons.tail();
     }
     assert_eq!(parts, vec![b"aa".to_vec(), b"bb".to_vec(), b"cc".to_vec()]);
@@ -324,7 +328,10 @@ fn string_find_survives_forced_collection() {
         process.heap().old_used() > 0,
         "geometry must have collected"
     );
-    assert_eq!(result_bytes(result), b"\xE2\x80\x94def");
+    assert_eq!(
+        result_bytes(result, process.borrow_terms()),
+        b"\xE2\x80\x94def"
+    );
 }
 
 #[test]
@@ -349,7 +356,10 @@ fn string_pad_early_return_survives_forced_collection() {
         process.heap().old_used() > 0,
         "geometry must have collected"
     );
-    assert_eq!(result_bytes(result), b"already long enough \xE2\x80\x94");
+    assert_eq!(
+        result_bytes(result, process.borrow_terms()),
+        b"already long enough \xE2\x80\x94"
+    );
 }
 
 #[test]
@@ -367,7 +377,10 @@ fn string_slice_survives_forced_collection() {
         process.heap().old_used() > 0,
         "geometry must have collected"
     );
-    assert_eq!(result_bytes(result), b"23\xE2\x80\x94a");
+    assert_eq!(
+        result_bytes(result, process.borrow_terms()),
+        b"23\xE2\x80\x94a"
+    );
 }
 
 #[test]
@@ -396,7 +409,7 @@ fn gate3_binary_part_owned_copy_survives_forced_collection() {
         "geometry must have collected"
     );
     let expected: Vec<u8> = (11..=30).collect();
-    assert_eq!(result_bytes(result), expected);
+    assert_eq!(result_bytes(result, process.borrow_terms()), expected);
 }
 
 /// ETF payload for `[<<"aaaa">>, <<"bbbb">>]` — 25 bytes, inline (≤ 64 B),
@@ -415,11 +428,11 @@ fn etf_two_binaries_payload() -> Vec<u8> {
     payload
 }
 
-fn cons_list_bytes(list: Term) -> Vec<Vec<u8>> {
+fn cons_list_bytes(list: Term, heap: HeapBorrow<'_>) -> Vec<Vec<u8>> {
     let mut parts = Vec::new();
     let mut current = list;
     while let Some(cons) = crate::term::boxed::Cons::new(current) {
-        parts.push(result_bytes(cons.head()));
+        parts.push(result_bytes(cons.head(), heap));
         current = cons.tail();
     }
     parts
@@ -441,7 +454,7 @@ fn binary_to_term_survives_forced_collection() {
         "geometry must have collected"
     );
     assert_eq!(
-        cons_list_bytes(result),
+        cons_list_bytes(result, process.borrow_terms()),
         vec![b"aaaa".to_vec(), b"bbbb".to_vec()]
     );
 }
@@ -477,17 +490,22 @@ fn binary_to_term_2_used_survives_forced_collection() {
     );
     let decoded = tuple.get(0).expect("decoded term");
     assert_eq!(
-        cons_list_bytes(decoded),
+        cons_list_bytes(decoded, process.borrow_terms()),
         vec![b"aaaa".to_vec(), b"bbbb".to_vec()]
     );
 }
 
 // `uri_string:parse` map keys are ATOMS interned in the BIF context's table;
 // look values up by atom term, which only works with the shared table above.
-fn map_atom_value_bytes(map_term: Term, atoms: &AtomTable, name: &str) -> Option<Vec<u8>> {
+fn map_atom_value_bytes(
+    map_term: Term,
+    atoms: &AtomTable,
+    name: &str,
+    heap: HeapBorrow<'_>,
+) -> Option<Vec<u8>> {
     let key = Term::atom(atoms.intern(name));
     let map = crate::term::boxed::Map::new(map_term)?;
-    map.get(key).map(result_bytes)
+    map.get(key).map(|value| result_bytes(value, heap))
 }
 
 #[test]
@@ -504,23 +522,23 @@ fn uri_parse_components_survive_forced_collection() {
         "geometry must have collected"
     );
     assert_eq!(
-        map_atom_value_bytes(result, &atoms, "scheme").as_deref(),
+        map_atom_value_bytes(result, &atoms, "scheme", process.borrow_terms()).as_deref(),
         Some(&b"http"[..])
     );
     assert_eq!(
-        map_atom_value_bytes(result, &atoms, "host").as_deref(),
+        map_atom_value_bytes(result, &atoms, "host", process.borrow_terms()).as_deref(),
         Some(&b"hh"[..])
     );
     assert_eq!(
-        map_atom_value_bytes(result, &atoms, "path").as_deref(),
+        map_atom_value_bytes(result, &atoms, "path", process.borrow_terms()).as_deref(),
         Some(&b"/pp"[..])
     );
     assert_eq!(
-        map_atom_value_bytes(result, &atoms, "query").as_deref(),
+        map_atom_value_bytes(result, &atoms, "query", process.borrow_terms()).as_deref(),
         Some(&b"q=1"[..])
     );
     assert_eq!(
-        map_atom_value_bytes(result, &atoms, "fragment").as_deref(),
+        map_atom_value_bytes(result, &atoms, "fragment", process.borrow_terms()).as_deref(),
         Some(&b"frag"[..])
     );
 }
@@ -548,5 +566,8 @@ fn uri_dissect_query_error_detail_survives_forced_collection() {
         Some(Term::atom(atoms.intern("invalid_query")))
     );
     let detail = tuple.get(2).expect("detail element");
-    assert_eq!(result_bytes(detail), b"bad=%ZZ\xE2\x80\x94tail");
+    assert_eq!(
+        result_bytes(detail, process.borrow_terms()),
+        b"bad=%ZZ\xE2\x80\x94tail"
+    );
 }

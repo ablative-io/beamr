@@ -9,6 +9,7 @@
 use std::fmt;
 
 use crate::term::boxed::{BoxedHeader, BoxedTag};
+use crate::term::heap_borrow::HeapBorrow;
 
 /// Default per-process heap capacity, in machine words.
 pub const DEFAULT_HEAP_SIZE: usize = 233;
@@ -107,6 +108,10 @@ impl HeapRegion {
             used: 0,
             high_water_mark: 0,
         }
+    }
+
+    fn words_for_borrow(&self) -> &[u64] {
+        self.words.as_slice()
     }
 
     fn alloc(&mut self, words: usize) -> Result<*mut u64, HeapFull> {
@@ -279,6 +284,21 @@ impl Heap {
         let mut heap = Self::new(capacity);
         heap.max_capacity = max_capacity.max(heap.young_capacity());
         heap
+    }
+
+    /// A witness that this heap's term storage is shared-borrowed.
+    ///
+    /// Every path that can move, reclaim or release heap storage — [`alloc`],
+    /// the collectors, the refcounted-resource release walk — needs `&mut Heap`
+    /// or `&mut Process`. Holding the returned [`HeapBorrow`], or any slice
+    /// derived from it, keeps this shared borrow live and so makes that `&mut`
+    /// unobtainable. That is what stops a borrowed binary or bignum slice from
+    /// outliving the object it points into.
+    ///
+    /// [`alloc`]: Heap::alloc
+    #[must_use]
+    pub fn borrow_terms(&self) -> HeapBorrow<'_> {
+        HeapBorrow::of_words(self.young.words_for_borrow())
     }
 
     /// Allocate `words` contiguous machine words from the young generation.

@@ -6,6 +6,7 @@ use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::Cons;
+use crate::term::heap_borrow::HeapBorrow;
 use rand::RngExt;
 
 /// logger:warning/2 — writes format string and args to the configured I/O sink, returns `ok`.
@@ -17,7 +18,7 @@ pub fn bif_logger_warning(args: &[Term], context: &mut ProcessContext) -> Result
     };
 
     let message = if let Some(binary) = BinaryRef::new(*format_term) {
-        let format_str = String::from_utf8_lossy(binary.as_bytes());
+        let format_str = String::from_utf8_lossy(binary.as_bytes(context.borrow_terms()));
         format!("[warning] {format_str} {args_term:?}\n")
     } else {
         format!("[warning] {format_term:?} {args_term:?}\n")
@@ -52,7 +53,7 @@ pub fn bif_characters_to_binary(args: &[Term], context: &mut ProcessContext) -> 
     // binary. Collect it depth-first.
     if input.is_list() {
         let mut bytes = Vec::new();
-        collect_chardata(*input, &mut bytes)?;
+        collect_chardata(*input, &mut bytes, context.borrow_terms())?;
         return context.alloc_binary(&bytes);
     }
 
@@ -64,7 +65,7 @@ pub fn bif_characters_to_binary(args: &[Term], context: &mut ProcessContext) -> 
 /// Heads may be codepoint integers, binaries, or nested chardata lists; tails
 /// may be further chardata or an improper binary tail, matching
 /// `unicode:chardata()`.
-fn collect_chardata(term: Term, bytes: &mut Vec<u8>) -> Result<(), Term> {
+fn collect_chardata(term: Term, bytes: &mut Vec<u8>, heap: HeapBorrow<'_>) -> Result<(), Term> {
     if term.is_nil() {
         return Ok(());
     }
@@ -76,12 +77,12 @@ fn collect_chardata(term: Term, bytes: &mut Vec<u8>) -> Result<(), Term> {
         return Ok(());
     }
     if let Some(binary) = BinaryRef::new(term) {
-        bytes.extend_from_slice(binary.as_bytes());
+        bytes.extend_from_slice(binary.as_bytes(heap));
         return Ok(());
     }
     let cons = Cons::new(term).ok_or_else(badarg)?;
-    collect_chardata(cons.head(), bytes)?;
-    collect_chardata(cons.tail(), bytes)
+    collect_chardata(cons.head(), bytes, heap)?;
+    collect_chardata(cons.tail(), bytes, heap)
 }
 
 /// unicode:characters_to_list/1 — converts a binary to a list of code points.
@@ -94,9 +95,9 @@ pub fn bif_characters_to_list(args: &[Term], context: &mut ProcessContext) -> Re
 
     let mut bytes = Vec::new();
     if let Some(binary) = BinaryRef::new(*input) {
-        bytes.extend_from_slice(binary.as_bytes());
+        bytes.extend_from_slice(binary.as_bytes(context.borrow_terms()));
     } else if input.is_nil() || input.is_list() {
-        collect_chardata(*input, &mut bytes)?;
+        collect_chardata(*input, &mut bytes, context.borrow_terms())?;
     } else {
         return Err(badarg());
     }
@@ -125,7 +126,7 @@ pub fn bif_binary_part(args: &[Term], context: &mut ProcessContext) -> Result<Te
         .and_then(|value| usize::try_from(value).ok())
         .ok_or_else(badarg)?;
     let end = offset.checked_add(length).ok_or_else(badarg)?;
-    let bytes = binary.as_bytes();
+    let bytes = binary.as_bytes(context.borrow_terms());
     if end > bytes.len() {
         return Err(badarg());
     }

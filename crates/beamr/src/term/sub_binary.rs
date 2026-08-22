@@ -37,6 +37,7 @@ mod tests {
     use super::*;
     use crate::term::binary::write_binary;
     use crate::term::boxed::{ProcBin, SubBinary};
+    use crate::term::heap_borrow::HeapBorrow;
     use crate::term::shared_binary::{SharedBinary, write_proc_bin};
 
     #[test]
@@ -61,7 +62,10 @@ mod tests {
         let sub_binary = SubBinary::new(term).expect("sub binary accessor");
         assert_eq!(sub_binary.parent(), parent);
         assert_eq!(sub_binary.len(), 10);
-        assert_eq!(sub_binary.as_bytes(), &shared.as_bytes()[10..20]);
+        assert_eq!(
+            sub_binary.as_bytes(HeapBorrow::of_words(&heap)),
+            &shared.as_bytes()[10..20]
+        );
         assert_eq!(shared.ref_count(), 2);
     }
 
@@ -76,7 +80,7 @@ mod tests {
         let sub_binary = SubBinary::new(term).expect("sub binary accessor");
         assert_eq!(sub_binary.parent(), parent);
         assert_eq!(sub_binary.len(), 6);
-        assert_eq!(sub_binary.as_bytes(), b"456789");
+        assert_eq!(sub_binary.as_bytes(HeapBorrow::of_words(&heap)), b"456789");
     }
 
     #[test]

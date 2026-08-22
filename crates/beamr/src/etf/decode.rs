@@ -702,7 +702,7 @@ mod tests {
         let decoded = decode_term(&bytes, &mut ctx, &atoms).expect("decode bigint");
         let bigint = BigInt::new(decoded).expect("decoded term should be BigInt");
         assert!(!bigint.is_negative());
-        assert_eq!(bigint.limbs(), &[(i64::MAX as u64) + 1]);
+        assert_eq!(bigint.limbs(ctx.borrow_terms()), &[(i64::MAX as u64) + 1]);
     }
 
     #[test]
@@ -816,7 +816,9 @@ mod tests {
         .expect("decode");
         assert_eq!(decoded.used, bytes.len() - 1);
         assert_eq!(
-            Binary::new(decoded.term).expect("binary").as_bytes(),
+            Binary::new(decoded.term)
+                .expect("binary")
+                .as_bytes(ctx.borrow_terms()),
             &[1, 2, 3]
         );
     }

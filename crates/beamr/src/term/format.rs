@@ -9,6 +9,7 @@ use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{
     BigInt, Closure, Cons, ExternalPid, ExternalReference, Float, Map, Reference, Tuple,
 };
+use crate::term::heap_borrow::HeapBorrow;
 use crate::term::{Tag, Term};
 
 const MAX_DEPTH: usize = 64;
@@ -181,10 +182,18 @@ fn format_tuple(tuple: Tuple, atom_table: &AtomTable, depth: usize) -> String {
 }
 
 fn format_binary(binary: BinaryRef) -> String {
-    let bytes = binary.as_bytes();
+    // SAFETY: `format_term` is a `Term`-only debug formatter with no heap
+    // handle anywhere in its call chain. `with_frame`'s witness is
+    // higher-ranked, so `bytes` cannot escape the closure; the closure builds
+    // an owned `String` and performs no allocation on, collection of, or drop
+    // of a process heap.
+    unsafe { HeapBorrow::with_frame(|heap| format_bytes(binary.as_bytes(heap))) }
+}
+
+fn format_bytes(bytes: &[u8]) -> String {
     match std::str::from_utf8(bytes) {
         Ok(text) => format!("<<\"{}\">>", escape_string(text)),
-        Err(_) => format!("<<{} bytes>>", binary.len()),
+        Err(_) => format!("<<{} bytes>>", bytes.len()),
     }
 }
 
@@ -231,7 +240,15 @@ fn format_map(map: Map, atom_table: &AtomTable, depth: usize) -> String {
 }
 
 fn bigint_to_decimal_string(bigint: BigInt) -> String {
-    let value = crate::term::bigint_math::BigIntValue::from_bigint(bigint);
+    // SAFETY: as `format_binary` — no heap handle exists in this call chain.
+    // `from_bigint` copies the limbs into owned storage inside the closure, so
+    // nothing borrowed from heap words outlives it, and no process-heap
+    // allocation, collection or drop happens while it runs.
+    let value = unsafe {
+        HeapBorrow::with_frame(|heap| {
+            crate::term::bigint_math::BigIntValue::from_bigint(bigint, heap)
+        })
+    };
     // Radix 10 is always valid, so the conversion cannot return `None`.
     crate::term::bigint_convert::to_string_radix(&value, 10).unwrap_or_else(|| "0".to_owned())
 }

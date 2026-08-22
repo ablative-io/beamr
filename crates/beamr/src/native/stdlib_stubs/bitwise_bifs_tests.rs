@@ -3,6 +3,7 @@ use crate::native::ProcessContext;
 use crate::process::Process;
 use crate::term::Term;
 use crate::term::boxed::BigInt;
+use crate::term::heap_borrow::HeapBorrow;
 
 use super::bitwise_bifs::*;
 
@@ -16,9 +17,9 @@ fn badarg() -> Term {
     Term::atom(Atom::BADARG)
 }
 
-fn bigint_limb(term: Term) -> u64 {
+fn bigint_limb(term: Term, heap: HeapBorrow<'_>) -> u64 {
     let bigint = BigInt::new(term).expect("expected BigInt term");
-    bigint.limbs()[0]
+    bigint.limbs(heap)[0]
 }
 
 #[test]
@@ -58,7 +59,7 @@ fn bitwise_bigint_values_use_twos_complement_and_demote() {
 
     let large = bif_bsl(&[Term::small_int(1), Term::small_int(70)], &mut context)
         .expect("large shift should allocate BigInt");
-    assert_eq!(bigint_limb(large), 0);
+    assert_eq!(bigint_limb(large, context.borrow_terms()), 0);
 
     let masked = bif_band(&[large, large], &mut context).expect("BigInt band should work");
     assert!(BigInt::new(masked).is_some());

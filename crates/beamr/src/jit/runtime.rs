@@ -567,7 +567,7 @@ mod rooting_tests {
         assert_eq!(
             BinaryRef::new(forwarded)
                 .expect("forwarded root must still be a binary")
-                .as_bytes(),
+                .as_bytes(process.borrow_terms()),
             raw.as_slice(),
             "forwarding must preserve the bytes"
         );
@@ -615,7 +615,7 @@ mod rooting_tests {
         assert_eq!(
             BinaryRef::new(roots[0])
                 .expect("forwarded term must still be a binary")
-                .as_bytes(),
+                .as_bytes(process.borrow_terms()),
             raw.as_slice(),
             "the forwarded term must resolve to the same bytes"
         );

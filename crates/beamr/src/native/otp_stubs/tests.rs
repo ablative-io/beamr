@@ -7,6 +7,7 @@ use crate::native::code_management_bifs::CodeManagementFacility;
 use crate::process::Process;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, Tuple};
+use crate::term::heap_borrow::HeapBorrow;
 use crate::{
     error::LoadError,
     module::{ModuleOrigin, PurgeError},
@@ -136,7 +137,7 @@ fn os_putenv_and_unsetenv_round_trip() {
     );
     let lookup_key = context.alloc_binary(key_name).expect("lookup key binary");
     let lookup = erlang_stubs::bif_os_getenv_1(&[lookup_key], &mut context).expect("lookup");
-    assert_eq!(binary_bytes(lookup), b"hello");
+    assert_eq!(binary_bytes(lookup, context.borrow_terms()), b"hello");
 
     let unset_key = context.alloc_binary(key_name).expect("unset key binary");
     assert_eq!(
@@ -228,7 +229,10 @@ fn code_priv_dir_resolves_sibling_priv_for_loaded_filesystem_module() {
 
     let result =
         erlang_stubs::bif_code_priv_dir(&[Term::atom(app)], &mut context).expect("code:priv_dir");
-    assert_eq!(binary_bytes(result), priv_dir.to_string_lossy().as_bytes());
+    assert_eq!(
+        binary_bytes(result, context.borrow_terms()),
+        priv_dir.to_string_lossy().as_bytes()
+    );
     assert!(erlang_stubs::bif_code_priv_dir(&[Term::small_int(1)], &mut context).is_err());
 
     std::fs::remove_dir_all(app_dir).expect("remove temp app dir");
@@ -266,8 +270,8 @@ fn string_split_preserves_binary_and_list_representations() {
     let result = erlang_stubs::bif_string_split(&[input, pattern], &mut context).expect("split");
     let parts = list_terms(result);
     assert_eq!(parts.len(), 2);
-    assert_eq!(binary_bytes(parts[0]), b"a");
-    assert_eq!(binary_bytes(parts[1]), b"b.c");
+    assert_eq!(binary_bytes(parts[0], context.borrow_terms()), b"a");
+    assert_eq!(binary_bytes(parts[1], context.borrow_terms()), b"b.c");
 
     let no_match_input = context.alloc_binary(b"hello").expect("no match input");
     let no_match_pattern = context.alloc_binary(b".").expect("no match pattern");
@@ -404,8 +408,11 @@ impl CodeManagementFacility for MockCodeFacility {
     }
 }
 
-fn binary_bytes(term: Term) -> &'static [u8] {
-    BinaryRef::new(term).expect("binary term").as_bytes()
+fn binary_bytes(term: Term, heap: HeapBorrow<'_>) -> Vec<u8> {
+    BinaryRef::new(term)
+        .expect("binary term")
+        .as_bytes(heap)
+        .to_vec()
 }
 
 fn byte_list(context: &mut ProcessContext, bytes: &[u8]) -> Term {
@@ -471,7 +478,7 @@ fn ar1_site6_env_pairs_survive_a_collection_during_accumulation() {
     for (index, variable) in variables.iter().enumerate() {
         let bytes = BinaryRef::new(*variable)
             .unwrap_or_else(|| panic!("element {index} is still a binary after collection"))
-            .as_bytes()
+            .as_bytes(context.borrow_terms())
             .to_vec();
         let expected = format!("KEY_{index:04}=value_{index:04}").into_bytes();
         assert_eq!(

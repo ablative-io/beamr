@@ -4,6 +4,7 @@
 //! into `Uint8Array` instances and JavaScript objects are traversed into BEAM
 //! maps rather than wrapped as opaque host references.
 
+use beamr::term::heap_borrow::HeapBorrow;
 use std::sync::Arc;
 
 use beamr::atom::{Atom, AtomTable};
@@ -65,17 +66,25 @@ pub fn terms_from_json_array(
 }
 
 /// Convert BEAM terms to a JavaScript array of direct host values.
-pub fn terms_to_js_array(args: &[Term], atom_table: &AtomTable) -> Result<JsValue, JsValue> {
+pub fn terms_to_js_array(
+    args: &[Term],
+    atom_table: &AtomTable,
+    heap: HeapBorrow<'_>,
+) -> Result<JsValue, JsValue> {
     let array = Array::new();
     for term in args {
-        array.push(&term_to_js_value(*term, atom_table)?);
+        array.push(&term_to_js_value(*term, atom_table, heap)?);
     }
     Ok(array.into())
 }
 
 /// Convert a BEAM term into a JavaScript value.
-pub fn term_to_js_value(term: Term, atom_table: &AtomTable) -> Result<JsValue, JsValue> {
-    term_to_js_value_at_depth(term, atom_table, 0)
+pub fn term_to_js_value(
+    term: Term,
+    atom_table: &AtomTable,
+    heap: HeapBorrow<'_>,
+) -> Result<JsValue, JsValue> {
+    term_to_js_value_at_depth(term, atom_table, 0, heap)
 }
 
 fn value_to_term(
@@ -358,6 +367,7 @@ fn term_to_js_value_at_depth(
     term: Term,
     atom_table: &AtomTable,
     depth: usize,
+    heap: HeapBorrow<'_>,
 ) -> Result<JsValue, JsValue> {
     check_depth(depth)?;
     match term.tag() {
@@ -367,8 +377,8 @@ fn term_to_js_value_at_depth(
             .ok_or_else(|| JsValue::from_str("invalid small integer term")),
         Tag::Atom => atom_to_js_value(term, atom_table),
         Tag::Nil => Ok(Array::new().into()),
-        Tag::List => list_to_js_value(term, atom_table, depth + 1),
-        Tag::Boxed => boxed_to_js_value(term, atom_table, depth + 1),
+        Tag::List => list_to_js_value(term, atom_table, depth + 1, heap),
+        Tag::Boxed => boxed_to_js_value(term, atom_table, depth + 1, heap),
         Tag::Pid => Err(JsValue::from_str(
             "cannot convert pid term to JavaScript value",
         )),
@@ -385,7 +395,12 @@ fn atom_to_js_value(term: Term, atom_table: &AtomTable) -> Result<JsValue, JsVal
     Ok(JsValue::from_str(name))
 }
 
-fn list_to_js_value(term: Term, atom_table: &AtomTable, depth: usize) -> Result<JsValue, JsValue> {
+fn list_to_js_value(
+    term: Term,
+    atom_table: &AtomTable,
+    depth: usize,
+    heap: HeapBorrow<'_>,
+) -> Result<JsValue, JsValue> {
     let array = Array::new();
     let mut tail = term;
     loop {
@@ -394,20 +409,30 @@ fn list_to_js_value(term: Term, atom_table: &AtomTable, depth: usize) -> Result<
         }
         let cons = Cons::new(tail)
             .ok_or_else(|| JsValue::from_str("cannot convert improper list to JavaScript array"))?;
-        array.push(&term_to_js_value_at_depth(cons.head(), atom_table, depth)?);
+        array.push(&term_to_js_value_at_depth(
+            cons.head(),
+            atom_table,
+            depth,
+            heap,
+        )?);
         tail = cons.tail();
     }
 }
 
-fn boxed_to_js_value(term: Term, atom_table: &AtomTable, depth: usize) -> Result<JsValue, JsValue> {
+fn boxed_to_js_value(
+    term: Term,
+    atom_table: &AtomTable,
+    depth: usize,
+    heap: HeapBorrow<'_>,
+) -> Result<JsValue, JsValue> {
     if let Some(binary) = Binary::new(term) {
-        return binary_to_js_value(binary);
+        return binary_to_js_value(binary, heap);
     }
     if let Some(tuple) = Tuple::new(term) {
-        return tuple_to_js_value(tuple, atom_table, depth);
+        return tuple_to_js_value(tuple, atom_table, depth, heap);
     }
     if let Some(map) = Map::new(term) {
-        return map_to_js_value(map, atom_table, depth);
+        return map_to_js_value(map, atom_table, depth, heap);
     }
     if let Some(float) = Float::new(term) {
         return Ok(JsValue::from_f64(float.value()));
@@ -417,14 +442,18 @@ fn boxed_to_js_value(term: Term, atom_table: &AtomTable, depth: usize) -> Result
     ))
 }
 
-fn binary_to_js_value(binary: Binary) -> Result<JsValue, JsValue> {
-    match std::str::from_utf8(binary.as_bytes()) {
+fn binary_to_js_value(binary: Binary, heap: HeapBorrow<'_>) -> Result<JsValue, JsValue> {
+    binary_bytes_to_js_value(binary.as_bytes(heap))
+}
+
+fn binary_bytes_to_js_value(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    match std::str::from_utf8(bytes) {
         Ok(text) => Ok(JsValue::from_str(text)),
         Err(_) => {
-            let length = u32::try_from(binary.len())
+            let length = u32::try_from(bytes.len())
                 .map_err(|_| JsValue::from_str("binary is too large for Uint8Array"))?;
             let array = Uint8Array::new_with_length(length);
-            array.copy_from(binary.as_bytes());
+            array.copy_from(bytes);
             Ok(array.into())
         }
     }
@@ -434,37 +463,49 @@ fn tuple_to_js_value(
     tuple: Tuple,
     atom_table: &AtomTable,
     depth: usize,
+    heap: HeapBorrow<'_>,
 ) -> Result<JsValue, JsValue> {
     let array = Array::new();
     for index in 0..tuple.arity() {
         let element = tuple
             .get(index)
             .ok_or_else(|| JsValue::from_str("invalid tuple element"))?;
-        array.push(&term_to_js_value_at_depth(element, atom_table, depth)?);
+        array.push(&term_to_js_value_at_depth(
+            element, atom_table, depth, heap,
+        )?);
     }
     Ok(array.into())
 }
 
-fn map_to_js_value(map: Map, atom_table: &AtomTable, depth: usize) -> Result<JsValue, JsValue> {
+fn map_to_js_value(
+    map: Map,
+    atom_table: &AtomTable,
+    depth: usize,
+    heap: HeapBorrow<'_>,
+) -> Result<JsValue, JsValue> {
     let object = Object::new();
     for index in 0..map.len() {
         let key = map
             .key(index)
             .ok_or_else(|| JsValue::from_str("invalid map key"))?;
-        let key_name = map_key_to_string(key, atom_table)?;
+        let key_name = map_key_to_string(key, atom_table, heap)?;
         let value = map
             .value(index)
             .ok_or_else(|| JsValue::from_str("invalid map value"))?;
         Reflect::set(
             &object,
             &JsValue::from_str(&key_name),
-            &term_to_js_value_at_depth(value, atom_table, depth)?,
+            &term_to_js_value_at_depth(value, atom_table, depth, heap)?,
         )?;
     }
     Ok(object.into())
 }
 
-fn map_key_to_string(term: Term, atom_table: &AtomTable) -> Result<String, JsValue> {
+fn map_key_to_string(
+    term: Term,
+    atom_table: &AtomTable,
+    heap: HeapBorrow<'_>,
+) -> Result<String, JsValue> {
     if let Some(atom) = term.as_atom() {
         return atom_table
             .resolve(atom)
@@ -472,7 +513,7 @@ fn map_key_to_string(term: Term, atom_table: &AtomTable) -> Result<String, JsVal
             .ok_or_else(|| JsValue::from_str("map atom key is not present in the atom table"));
     }
     if let Some(binary) = Binary::new(term) {
-        return std::str::from_utf8(binary.as_bytes())
+        return std::str::from_utf8(binary.as_bytes(heap))
             .map(str::to_owned)
             .map_err(|_| JsValue::from_str("map binary key is not valid UTF-8"));
     }
@@ -739,7 +780,8 @@ mod tests {
                 return Outcome::Corrupt;
             }
             for (index, value) in values.iter().enumerate() {
-                let js = term_to_js_value(*value, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+                let js = term_to_js_value(*value, table.as_ref(), process.borrow_terms())
+                    .unwrap_or(JsValue::UNDEFINED);
                 if js.as_string().as_deref() != Some(format!("element-{index}").as_str()) {
                     return Outcome::Corrupt;
                 }
@@ -822,7 +864,8 @@ mod tests {
             let Ok(term) = built else {
                 return Outcome::Refused;
             };
-            let js = term_to_js_value(term, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+            let js = term_to_js_value(term, table.as_ref(), process.borrow_terms())
+                .unwrap_or(JsValue::UNDEFINED);
             for index in 0..count {
                 let got = Reflect::get(&js, &JsValue::from_str(&format!("key-{index:03}")))
                     .unwrap_or(JsValue::UNDEFINED);
@@ -954,7 +997,8 @@ mod tests {
         let groups = list_to_vec_checked(term).expect("nested conversion is a proper list");
         assert_eq!(groups.len(), 40, "outer list length after the collection");
         for (group, value) in groups.iter().enumerate() {
-            let js = term_to_js_value(*value, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+            let js = term_to_js_value(*value, table.as_ref(), process.borrow_terms())
+                .unwrap_or(JsValue::UNDEFINED);
             for entry in 0..6 {
                 let got = Reflect::get(&js, &JsValue::from_str(&format!("k{entry}")))
                     .unwrap_or(JsValue::UNDEFINED);
@@ -998,7 +1042,7 @@ mod tests {
             .get(binary_context_key(&mut key_context, "name"))
             .expect("name key is present");
         let name_binary = Binary::new(name).expect("string value converts to binary");
-        assert_eq!(name_binary.as_bytes(), b"beamr");
+        assert_eq!(name_binary.as_bytes(owned.borrow_terms()), b"beamr");
 
         let nested = map
             .get(binary_context_key(&mut key_context, "nested"))
@@ -1039,31 +1083,36 @@ mod tests {
             .unwrap_or(Term::NIL);
         let map = context.alloc_map(&[key], &[tuple]).unwrap_or(Term::NIL);
 
-        let utf8_js = term_to_js_value(utf8, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let utf8_js = term_to_js_value(utf8, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert_eq!(utf8_js.as_string().as_deref(), Some("hello"));
 
-        let bytes_js = term_to_js_value(bytes, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let bytes_js = term_to_js_value(bytes, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert!(bytes_js.is_instance_of::<Uint8Array>());
         let bytes_array = Uint8Array::from(bytes_js);
         assert_eq!(bytes_array.length(), 2);
         assert_eq!(bytes_array.get_index(0), 0xff);
         assert_eq!(bytes_array.get_index(1), 0x00);
 
-        let list_js = term_to_js_value(list, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let list_js = term_to_js_value(list, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert!(Array::is_array(&list_js));
         let list_array = Array::from(&list_js);
         assert_eq!(list_array.length(), 2);
         assert_eq!(list_array.get(0).as_f64(), Some(7.0));
         assert_eq!(list_array.get(1).as_string().as_deref(), Some("true"));
 
-        let tuple_js = term_to_js_value(tuple, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let tuple_js = term_to_js_value(tuple, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert!(Array::is_array(&tuple_js));
         let tuple_array = Array::from(&tuple_js);
         assert_eq!(tuple_array.length(), 2);
         assert_eq!(tuple_array.get(0).as_string().as_deref(), Some("hello"));
         assert_eq!(tuple_array.get(1).as_f64(), Some(9.0));
 
-        let map_js = term_to_js_value(map, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let map_js = term_to_js_value(map, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         let nested_tuple_js =
             Reflect::get(&map_js, &JsValue::from_str("tuple")).unwrap_or(JsValue::UNDEFINED);
         assert!(Array::is_array(&nested_tuple_js));
@@ -1076,7 +1125,8 @@ mod tests {
             .expect("boolean converts to an owned atom term");
         let term = owned.root();
         assert_eq!(term, Term::atom(Atom::TRUE));
-        let js = term_to_js_value(term, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let js = term_to_js_value(term, table.as_ref(), owned.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert_eq!(js.as_string().as_deref(), Some("true"));
     }
 }
@@ -1231,7 +1281,7 @@ mod ar1_row4_sites_12_16_tests {
     /// Read a cons list back BY CONTENTS, iteratively and hard-capped — a stale
     /// pointer can alias an enclosing object and make the list a CYCLE, which
     /// would abort the runner before it could report.
-    fn check_list(term: Term, count: usize) -> Result<(), String> {
+    fn check_list(term: Term, count: usize, heap: HeapBorrow<'_>) -> Result<(), String> {
         let mut seen = 0usize;
         let mut tail = term;
         let cap = count * 2 + 16;
@@ -1248,7 +1298,7 @@ mod ar1_row4_sites_12_16_tests {
                 format!("element {seen}: head is not a binary — carrier `tail` went stale")
             })?;
             let want = element(seen);
-            if binary.as_bytes() != want.as_bytes() {
+            if binary.as_bytes(heap) != want.as_bytes() {
                 return Err(format!(
                     "element {seen}: contents differ — carrier `tail` went stale"
                 ));
@@ -1264,7 +1314,7 @@ mod ar1_row4_sites_12_16_tests {
 
     /// Read the map back BY CONTENTS. Keys are compared as a SET, because this
     /// site sorts by the raw `Term` bit pattern (recorded adjacent at site 15).
-    fn check_map(term: Term, count: usize) -> Result<(), String> {
+    fn check_map(term: Term, count: usize, heap: HeapBorrow<'_>) -> Result<(), String> {
         let map = Map::new(term)
             .ok_or_else(|| "result is not a map — carrier `pairs` went stale".to_string())?;
         if map.len() != count {
@@ -1284,12 +1334,12 @@ mod ar1_row4_sites_12_16_tests {
             let value = Binary::new(value).ok_or_else(|| {
                 format!("entry {index}: value is not a binary — carrier `pairs` went stale")
             })?;
-            if key.as_bytes() != value.as_bytes() {
+            if key.as_bytes(heap) != value.as_bytes(heap) {
                 return Err(format!(
                     "entry {index}: key and value differ — carrier `pairs` went stale"
                 ));
             }
-            names.push(key.as_bytes().to_vec());
+            names.push(key.as_bytes(heap).to_vec());
         }
         names.sort();
         let mut want: Vec<Vec<u8>> = (0..count).map(|i| element(i).into_bytes()).collect();
@@ -1345,9 +1395,9 @@ mod ar1_row4_sites_12_16_tests {
             Err(_) => Err("json_value_to_term returned an error term".to_string()),
             Ok(term) => {
                 if is_map {
-                    check_map(term, count)
+                    check_map(term, count, context.borrow_terms())
                 } else {
-                    check_list(term, count)
+                    check_list(term, count, context.borrow_terms())
                 }
             }
         };
@@ -1365,9 +1415,9 @@ mod ar1_row4_sites_12_16_tests {
             Err(_) => Err("json_value_to_term returned an error term".to_string()),
             Ok(term) => {
                 if is_map {
-                    check_map(term, count)
+                    check_map(term, count, context.borrow_terms())
                 } else {
-                    check_list(term, count)
+                    check_list(term, count, context.borrow_terms())
                 }
             }
         }
@@ -1560,7 +1610,9 @@ mod ar1_row4_sites_12_16_tests {
                             break;
                         }
                         Some(cons) => {
-                            if let Err(reason) = check_list(cons.head(), inner) {
+                            if let Err(reason) =
+                                check_list(cons.head(), inner, process.borrow_terms())
+                            {
                                 stale = Some(format!("outer cell {seen}: {reason}"));
                                 break;
                             }

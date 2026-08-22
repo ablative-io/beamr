@@ -56,7 +56,7 @@ fn write_print_args(
 
 fn print_bytes(value: Term, context: &ProcessContext) -> Vec<u8> {
     BinaryRef::new(value)
-        .map(|binary| binary.as_bytes().to_vec())
+        .map(|binary| binary.as_bytes(context.borrow_terms()).to_vec())
         .unwrap_or_else(|| render_term(value, context).into_bytes())
 }
 

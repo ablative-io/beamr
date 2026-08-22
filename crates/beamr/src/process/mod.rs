@@ -36,6 +36,7 @@ use crate::process::heap::Heap;
 use crate::process::stack::Stack;
 #[cfg(feature = "threads")]
 use crate::term::boxed::BoxedTag;
+use crate::term::heap_borrow::HeapBorrow;
 use crate::term::{Term, compare};
 
 /// Default number of reductions assigned to a fresh process time slice.
@@ -444,6 +445,14 @@ impl Process {
     /// Mutable access to this process heap.
     pub fn heap_mut(&mut self) -> &mut Heap {
         &mut self.heap
+    }
+
+    /// A witness that this process's term storage is shared-borrowed.
+    ///
+    /// See [`Heap::borrow_terms`] for the mechanism.
+    #[must_use]
+    pub fn borrow_terms(&self) -> HeapBorrow<'_> {
+        self.heap.borrow_terms()
     }
 
     /// Bytes of off-heap binary data currently referenced by ProcBins on this heap.

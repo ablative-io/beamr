@@ -5,6 +5,7 @@
 //! interpretation do not allocate and do not leak process-independent heap
 //! blocks.
 
+use crate::term::heap_borrow::HeapBorrow;
 use std::fmt;
 
 use crate::atom::AtomTable;
@@ -46,6 +47,19 @@ pub struct ConstantPool {
 }
 
 impl ConstantPool {
+    /// A witness that this pool's term storage is shared-borrowed.
+    ///
+    /// Literal terms live in `blocks`, which this pool owns; every path that
+    /// could free them needs `&mut self` or ownership, so a live witness makes
+    /// them unobtainable — the same argument as `Heap::borrow_terms`.
+    #[must_use]
+    pub fn borrow_terms(&self) -> HeapBorrow<'_> {
+        match self.blocks.first() {
+            Some(block) => HeapBorrow::of_words(block),
+            None => HeapBorrow::of_words(&[]),
+        }
+    }
+
     /// Creates an empty pool.
     #[must_use]
     pub const fn new() -> Self {

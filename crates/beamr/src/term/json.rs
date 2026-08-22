@@ -11,6 +11,7 @@ use crate::term::{
     Tag, Term,
     binary_ref::BinaryRef,
     boxed::{BigInt, Cons, Float, Map, Tuple},
+    heap_borrow::HeapBorrow,
 };
 
 /// Error raised while converting between BEAM terms and JSON values.
@@ -158,9 +159,18 @@ fn boxed_to_value(term: Term, atom_table: &AtomTable) -> Result<Value, JsonTermE
 }
 
 fn binary_to_value(binary: BinaryRef) -> Result<Value, JsonTermError> {
-    match std::str::from_utf8(binary.as_bytes()) {
+    // SAFETY: `term_to_value` is a `Term`-and-`AtomTable` reader; neither it nor
+    // any of its callers (including `beamr-wasm`) holds a heap handle to build a
+    // witness from. `with_frame`'s witness is higher-ranked, so `bytes` cannot
+    // escape the closure, and the closure only copies them into an owned
+    // `String`: no allocation on, collection of, or drop of a process heap.
+    unsafe { HeapBorrow::with_frame(|heap| binary_bytes_to_value(binary.as_bytes(heap))) }
+}
+
+fn binary_bytes_to_value(bytes: &[u8]) -> Result<Value, JsonTermError> {
+    match std::str::from_utf8(bytes) {
         Ok(text) => Ok(Value::String(text.to_owned())),
-        Err(_) => Ok(Value::String(BASE64_STANDARD.encode(binary.as_bytes()))),
+        Err(_) => Ok(Value::String(BASE64_STANDARD.encode(bytes))),
     }
 }
 
@@ -216,7 +226,15 @@ fn bigint_to_value(bigint: BigInt) -> Result<Value, JsonTermError> {
         return Ok(Value::Number(Number::from(0)));
     }
 
-    if let Some(value) = bigint_to_i128(bigint) {
+    // SAFETY: as `binary_to_value` — no caller of `term_to_value` holds a heap
+    // handle. The witness is higher-ranked so no limb slice escapes; both
+    // helpers copy what they need into owned `u128`/`Vec<u64>` storage, and
+    // neither allocates on, collects, nor drops a process heap.
+    unsafe { HeapBorrow::with_frame(|heap| bigint_to_value_with(bigint, heap)) }
+}
+
+fn bigint_to_value_with(bigint: BigInt, heap: HeapBorrow<'_>) -> Result<Value, JsonTermError> {
+    if let Some(value) = bigint_to_i128(bigint, heap) {
         if let Ok(signed) = i64::try_from(value) {
             return Ok(Value::Number(Number::from(signed)));
         }
@@ -226,12 +244,12 @@ fn bigint_to_value(bigint: BigInt) -> Result<Value, JsonTermError> {
         return Ok(Value::String(value.to_string()));
     }
 
-    Ok(Value::String(bigint_to_decimal_string(bigint)))
+    Ok(Value::String(bigint_to_decimal_string(bigint, heap)))
 }
 
-fn bigint_to_i128(bigint: BigInt) -> Option<i128> {
+fn bigint_to_i128(bigint: BigInt, heap: HeapBorrow<'_>) -> Option<i128> {
     let mut magnitude = 0_u128;
-    for (index, limb) in bigint.limbs().iter().copied().enumerate() {
+    for (index, limb) in bigint.limbs(heap).iter().copied().enumerate() {
         let shift = index.checked_mul(u64::BITS as usize)?;
         let shifted = u128::from(limb).checked_shl(shift as u32)?;
         magnitude = magnitude.checked_add(shifted)?;
@@ -248,8 +266,8 @@ fn bigint_to_i128(bigint: BigInt) -> Option<i128> {
     }
 }
 
-fn bigint_to_decimal_string(bigint: BigInt) -> String {
-    let mut limbs = bigint.limbs().to_vec();
+fn bigint_to_decimal_string(bigint: BigInt, heap: HeapBorrow<'_>) -> String {
+    let mut limbs = bigint.limbs(heap).to_vec();
     while limbs.last().copied() == Some(0) {
         limbs.pop();
     }
@@ -644,7 +662,7 @@ mod tests {
         let map = Map::new(term).expect("map accessor");
         let key = map.key(0).expect("first key");
         let key_binary = crate::term::binary::Binary::new(key).expect("key is a binary");
-        assert_eq!(key_binary.as_bytes(), b"key");
+        assert_eq!(key_binary.as_bytes(context.borrow_terms()), b"key");
     }
 
     #[test]
@@ -721,6 +739,7 @@ mod tests {
 
 #[cfg(test)]
 mod ar1_row4_json_tests {
+    use crate::term::heap_borrow::HeapBorrow;
     // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
     //
     // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
@@ -877,10 +896,10 @@ mod ar1_row4_json_tests {
                 format!("element {seen}: head is not a binary — carrier went stale")
             })?;
             let want = element_of(seen);
-            if binary.as_bytes() != want.as_bytes() {
+            if binary.as_bytes(context.borrow_terms()) != want.as_bytes() {
                 return Err(format!(
                     "element {seen}: contents {:?} != {want:?}",
-                    String::from_utf8_lossy(binary.as_bytes())
+                    String::from_utf8_lossy(binary.as_bytes(context.borrow_terms()))
                 ));
             }
             seen += 1;
@@ -921,8 +940,8 @@ mod ar1_row4_json_tests {
 
         let mut recovered: BTreeMap<String, String> = BTreeMap::new();
         for index in 0..map.len() {
-            let key = read_binary(map.key(index), index, "key")?;
-            let value = read_binary(map.value(index), index, "value")?;
+            let key = read_binary(map.key(index), index, "key", context.borrow_terms())?;
+            let value = read_binary(map.value(index), index, "value", context.borrow_terms())?;
             recovered.insert(key, value);
         }
 
@@ -946,11 +965,16 @@ mod ar1_row4_json_tests {
         Ok(())
     }
 
-    fn read_binary(term: Option<Term>, index: usize, half: &str) -> Result<String, String> {
+    fn read_binary(
+        term: Option<Term>,
+        index: usize,
+        half: &str,
+        heap: HeapBorrow<'_>,
+    ) -> Result<String, String> {
         let term = term.ok_or_else(|| format!("entry {index}: {half} slot absent"))?;
         let binary = Binary::new(term)
             .ok_or_else(|| format!("entry {index}: {half} is not a binary — carrier went stale"))?;
-        Ok(String::from_utf8_lossy(binary.as_bytes()).into_owned())
+        Ok(String::from_utf8_lossy(binary.as_bytes(heap)).into_owned())
     }
 
     /// AR-1 row 4, site 11 (`tail` in `array_to_list_term`) — ✅ INVERTED.

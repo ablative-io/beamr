@@ -5,6 +5,7 @@
 //!
 //! Fixture source: `tests/fixtures/bignum.erl`.
 
+use beamr::term::heap_borrow::HeapBorrow;
 use std::sync::Arc;
 
 use beamr::atom::AtomTable;
@@ -66,10 +67,10 @@ fn call(scheduler: &Scheduler, atoms: &AtomTable, function: &str) -> OwnedTerm {
     result
 }
 
-fn assert_is_repro_bigint(term: Term, negative: bool, context: &str) {
+fn assert_is_repro_bigint(term: Term, negative: bool, context: &str, heap: HeapBorrow<'_>) {
     let bigint = BigInt::new(term).unwrap_or_else(|| panic!("{context}: expected bignum box"));
     assert_eq!(bigint.is_negative(), negative, "{context}: sign");
-    assert_eq!(bigint.limbs(), repro_limbs(), "{context}: limbs");
+    assert_eq!(bigint.limbs(heap), repro_limbs(), "{context}: limbs");
 }
 
 #[test]
@@ -80,7 +81,10 @@ fn bignum_fixture_runs_all_edge_functions_correctly() {
     // tostr() -> integer_to_binary(10^18 * 100)
     let tostr = call(&scheduler, &atoms, "tostr");
     let binary = BinaryRef::new(tostr.root()).expect("binary result");
-    assert_eq!(binary.as_bytes(), b"100000000000000000000");
+    assert_eq!(
+        binary.as_bytes(tostr.borrow_terms()),
+        b"100000000000000000000"
+    );
 
     // cmp() -> 10^18 * 100 =:= 10^20
     let cmp = call(&scheduler, &atoms, "cmp");
@@ -89,13 +93,13 @@ fn bignum_fixture_runs_all_edge_functions_correctly() {
 
     // lit() -> the 10^20 literal itself (oversized compact operand).
     let lit = call(&scheduler, &atoms, "lit");
-    assert_is_repro_bigint(lit.root(), false, "lit");
+    assert_is_repro_bigint(lit.root(), false, "lit", lit.borrow_terms());
 
     // neg() -> -(10^18 * 100), abs1() -> abs(neg()).
     let neg = call(&scheduler, &atoms, "neg");
-    assert_is_repro_bigint(neg.root(), true, "neg");
+    assert_is_repro_bigint(neg.root(), true, "neg", neg.borrow_terms());
     let abs1 = call(&scheduler, &atoms, "abs1");
-    assert_is_repro_bigint(abs1.root(), false, "abs1");
+    assert_is_repro_bigint(abs1.root(), false, "abs1", abs1.borrow_terms());
 
     // Literal and computed bignums must compare equal and order correctly.
     assert!(compare::cmp(lit.root(), abs1.root(), &atoms).is_eq());

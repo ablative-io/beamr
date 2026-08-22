@@ -1,3 +1,4 @@
+use crate::term::heap_borrow::HeapBorrow;
 use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
@@ -41,9 +42,9 @@ fn list(values: &[Term]) -> Term {
     tail
 }
 
-fn assert_binary(term: Term, expected: &[u8]) {
+fn assert_binary(term: Term, expected: &[u8], heap: HeapBorrow<'_>) {
     let binary = Binary::new(term).expect("binary term");
-    assert_eq!(binary.as_bytes(), expected);
+    assert_eq!(binary.as_bytes(heap), expected);
 }
 
 fn list_to_vec(term: Term) -> Vec<Term> {
@@ -62,7 +63,7 @@ fn atom_to_binary_converts_common_atom() {
     let mut process = Process::new(1, 128);
     let mut context = atom_context(&mut process);
     let result = bif_atom_to_binary(&[Term::atom(Atom::OK)], &mut context).expect("ok");
-    assert_binary(result, b"ok");
+    assert_binary(result, b"ok", context.borrow_terms());
 }
 
 #[test]
@@ -110,7 +111,7 @@ fn integer_to_binary_formats_decimal() {
     let mut process = Process::new(1, 128);
     let mut context = context(&mut process);
     let result = bif_integer_to_binary(&[Term::small_int(42)], &mut context).expect("binary");
-    assert_binary(result, b"42");
+    assert_binary(result, b"42", context.borrow_terms());
 }
 
 #[test]
@@ -120,7 +121,7 @@ fn integer_to_binary_formats_radix() {
     let result =
         bif_integer_to_binary_radix(&[Term::small_int(255), Term::small_int(16)], &mut context)
             .expect("binary");
-    assert_binary(result, b"FF");
+    assert_binary(result, b"FF", context.borrow_terms());
 }
 
 const REPRO_DECIMAL: &[u8] = b"100000000000000000000"; // 10^20
@@ -136,11 +137,11 @@ fn integer_to_binary_formats_bignums() {
     let mut context = context(&mut process);
     let positive = context.alloc_bigint(false, &repro_limbs()).expect("bignum");
     let result = bif_integer_to_binary(&[positive], &mut context).expect("binary");
-    assert_binary(result, REPRO_DECIMAL);
+    assert_binary(result, REPRO_DECIMAL, context.borrow_terms());
 
     let negative = context.alloc_bigint(true, &repro_limbs()).expect("bignum");
     let result = bif_integer_to_binary(&[negative], &mut context).expect("binary");
-    assert_binary(result, b"-100000000000000000000");
+    assert_binary(result, b"-100000000000000000000", context.borrow_terms());
 }
 
 #[test]
@@ -150,7 +151,7 @@ fn integer_to_binary_formats_bignum_radix() {
     let positive = context.alloc_bigint(false, &repro_limbs()).expect("bignum");
     let result = bif_integer_to_binary_radix(&[positive, Term::small_int(16)], &mut context)
         .expect("binary");
-    assert_binary(result, b"56BC75E2D63100000");
+    assert_binary(result, b"56BC75E2D63100000", context.borrow_terms());
 }
 
 #[test]
@@ -161,16 +162,20 @@ fn binary_to_integer_round_trips_bignums() {
         bif_binary_to_integer(&[binary(REPRO_DECIMAL)], &mut context).expect("parses bignum");
     let bigint = BigInt::new(parsed).expect("bignum box");
     assert!(!bigint.is_negative());
-    assert_eq!(bigint.limbs(), repro_limbs());
+    assert_eq!(bigint.limbs(context.borrow_terms()), repro_limbs());
 
     let parsed = bif_binary_to_integer(&[binary(b"-100000000000000000000")], &mut context)
         .expect("parses negative bignum");
     let bigint = BigInt::new(parsed).expect("bignum box");
     assert!(bigint.is_negative());
-    assert_eq!(bigint.limbs(), repro_limbs());
+    assert_eq!(bigint.limbs(context.borrow_terms()), repro_limbs());
 
     let round_tripped = bif_integer_to_binary(&[parsed], &mut context).expect("binary");
-    assert_binary(round_tripped, b"-100000000000000000000");
+    assert_binary(
+        round_tripped,
+        b"-100000000000000000000",
+        context.borrow_terms(),
+    );
 }
 
 #[test]
@@ -263,7 +268,7 @@ fn iolist_to_binary_flattens_byte_list_and_binary_chunks() {
     let mut context = context(&mut process);
     let iolist = list(&[Term::small_int(65), binary(b"BC"), Term::small_int(68)]);
     let result = bif_iolist_to_binary(&[iolist], &mut context).expect("binary");
-    assert_binary(result, b"ABCD");
+    assert_binary(result, b"ABCD", context.borrow_terms());
 }
 
 #[test]
@@ -275,7 +280,7 @@ fn list_to_bitstring_returns_binary() {
         &mut context,
     )
     .expect("binary");
-    assert_binary(result, &[1, 2]);
+    assert_binary(result, &[1, 2], context.borrow_terms());
 }
 
 #[test]

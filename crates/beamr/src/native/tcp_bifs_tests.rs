@@ -720,7 +720,7 @@ fn tcp_recv_exact_length_accumulates_multiple_reads() {
     let tuple = Tuple::new(second).expect("ok tuple");
     assert_eq!(tuple.get(0), Some(Term::atom(Atom::OK)));
     let binary = Binary::new(tuple.get(1).expect("binary")).expect("binary");
-    assert_eq!(binary.as_bytes(), b"hello");
+    assert_eq!(binary.as_bytes(context.borrow_terms()), b"hello");
 }
 
 #[test]

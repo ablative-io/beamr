@@ -7,6 +7,7 @@ use crate::term::Term;
 use crate::term::bigint_convert;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, Float, Tuple};
+use crate::term::heap_borrow::HeapBorrow;
 
 pub fn bif_atom_to_binary(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [atom_term] = args else {
@@ -23,7 +24,8 @@ pub fn bif_binary_to_float(args: &[Term], context: &mut ProcessContext) -> Resul
         return Err(badarg());
     };
     let binary = BinaryRef::new(*binary_term).ok_or_else(badarg)?;
-    let text = std::str::from_utf8(binary.as_bytes()).map_err(|_| badarg())?;
+    let text =
+        std::str::from_utf8(binary.as_bytes(context.borrow_terms())).map_err(|_| badarg())?;
     let value = text.parse::<f64>().map_err(|_| badarg())?;
     make_float(context, value)
 }
@@ -63,7 +65,7 @@ pub fn bif_integer_to_binary(args: &[Term], context: &mut ProcessContext) -> Res
     let [integer_term] = args else {
         return Err(badarg());
     };
-    let text = format_integer_term(*integer_term, 10)?;
+    let text = format_integer_term(*integer_term, 10, context.borrow_terms())?;
     context.alloc_binary(text.as_bytes())
 }
 
@@ -75,7 +77,7 @@ pub fn bif_integer_to_binary_radix(
         return Err(badarg());
     };
     let radix = parse_radix(*radix_term)?;
-    let text = format_integer_term(*integer_term, radix)?;
+    let text = format_integer_term(*integer_term, radix, context.borrow_terms())?;
     context.alloc_binary(text.as_bytes())
 }
 
@@ -83,7 +85,7 @@ pub fn bif_integer_to_list(args: &[Term], context: &mut ProcessContext) -> Resul
     let [integer_term] = args else {
         return Err(badarg());
     };
-    let text = format_integer_term(*integer_term, 10)?;
+    let text = format_integer_term(*integer_term, 10, context.borrow_terms())?;
     make_list(context, text.bytes().map(i64::from))
 }
 
@@ -95,7 +97,7 @@ pub fn bif_integer_to_list_radix(
         return Err(badarg());
     };
     let radix = parse_radix(*radix_term)?;
-    let text = format_integer_term(*integer_term, radix)?;
+    let text = format_integer_term(*integer_term, radix, context.borrow_terms())?;
     make_list(context, text.bytes().map(i64::from))
 }
 
@@ -104,7 +106,7 @@ pub fn bif_iolist_to_binary(args: &[Term], context: &mut ProcessContext) -> Resu
         return Err(badarg());
     };
     let mut bytes = Vec::new();
-    collect_iodata(*iodata, &mut bytes)?;
+    collect_iodata(*iodata, &mut bytes, context.borrow_terms())?;
     context.alloc_binary(&bytes)
 }
 
@@ -139,14 +141,21 @@ fn binary_to_integer(
     context: &mut ProcessContext,
 ) -> Result<Term, Term> {
     let binary = BinaryRef::new(binary_term).ok_or_else(badarg)?;
-    let text = std::str::from_utf8(binary.as_bytes()).map_err(|_| badarg())?;
+    let text = std::str::from_utf8(binary.as_bytes(context.borrow_terms()))
+        .map_err(|_| badarg())?
+        .to_owned();
+    let text = text.as_str();
     let integer = bigint_convert::from_str_radix(text, radix).ok_or_else(badarg)?;
     integer_result(integer, context)
 }
 
 /// Formats a small or bignum integer term in the given radix.
-fn format_integer_term(integer_term: Term, radix: u32) -> Result<String, Term> {
-    bigint_convert::integer_term_to_string_radix(integer_term, radix).ok_or_else(badarg)
+fn format_integer_term(
+    integer_term: Term,
+    radix: u32,
+    heap: HeapBorrow<'_>,
+) -> Result<String, Term> {
+    bigint_convert::integer_term_to_string_radix(integer_term, radix, heap).ok_or_else(badarg)
 }
 
 fn parse_radix(radix_term: Term) -> Result<u32, Term> {
@@ -157,7 +166,7 @@ fn parse_radix(radix_term: Term) -> Result<u32, Term> {
         .ok_or_else(badarg)
 }
 
-fn collect_iodata(term: Term, bytes: &mut Vec<u8>) -> Result<(), Term> {
+fn collect_iodata(term: Term, bytes: &mut Vec<u8>, heap: HeapBorrow<'_>) -> Result<(), Term> {
     if term.is_nil() {
         return Ok(());
     }
@@ -167,12 +176,12 @@ fn collect_iodata(term: Term, bytes: &mut Vec<u8>) -> Result<(), Term> {
         return Ok(());
     }
     if let Some(binary) = BinaryRef::new(term) {
-        bytes.extend_from_slice(binary.as_bytes());
+        bytes.extend_from_slice(binary.as_bytes(heap));
         return Ok(());
     }
     let cons = Cons::new(term).ok_or_else(badarg)?;
-    collect_iodata(cons.head(), bytes)?;
-    collect_iodata(cons.tail(), bytes)
+    collect_iodata(cons.head(), bytes, heap)?;
+    collect_iodata(cons.tail(), bytes, heap)
 }
 
 fn list_to_vec(term: Term) -> Result<Vec<Term>, Term> {

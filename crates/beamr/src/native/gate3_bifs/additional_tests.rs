@@ -145,7 +145,9 @@ fn binary_part_and_bit_size_operate_on_binaries() {
     )
     .expect("part");
     assert_eq!(
-        binary::Binary::new(result).expect("binary").as_bytes(),
+        binary::Binary::new(result)
+            .expect("binary")
+            .as_bytes(ctx.borrow_terms()),
         b"cde"
     );
     assert_eq!(
@@ -174,7 +176,10 @@ fn unary_minus_promotes_small_overflow_to_bignum() {
         bif_unary_minus(&[Term::small_int(Term::SMALL_INT_MIN)], &mut ctx).expect("promotes");
     let bigint = BigInt::new(result).expect("bignum box");
     assert!(!bigint.is_negative());
-    assert_eq!(bigint.limbs(), [Term::SMALL_INT_MIN.unsigned_abs()]);
+    assert_eq!(
+        bigint.limbs(ctx.borrow_terms()),
+        [Term::SMALL_INT_MIN.unsigned_abs()]
+    );
 }
 
 #[test]
@@ -189,7 +194,7 @@ fn unary_minus_negates_bignum_arguments_and_demotes_small_results() {
     let negated = bif_unary_minus(&[big], &mut ctx).expect("negates");
     let bigint = BigInt::new(negated).expect("bignum box");
     assert!(bigint.is_negative());
-    assert_eq!(bigint.limbs(), limbs);
+    assert_eq!(bigint.limbs(ctx.borrow_terms()), limbs);
 
     // A non-canonical bignum holding -5 negates to the small immediate 5.
     let small_magnitude = ctx.alloc_bigint(true, &[5]).expect("bignum");

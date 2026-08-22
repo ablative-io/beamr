@@ -29,6 +29,7 @@ use crate::process::{Priority, Process};
 use crate::replay::ReplayDriver;
 use crate::term::Term;
 use crate::term::compare;
+use crate::term::heap_borrow::HeapBorrow;
 use crate::timer::{TimerRef, TimerWheel};
 
 #[cfg(feature = "net")]
@@ -763,6 +764,20 @@ impl<'process> ProcessContext<'process> {
     #[must_use]
     pub fn process_heap(&self) -> Option<&crate::process::heap::Heap> {
         self.process.as_ref().map(|process| process.heap())
+    }
+
+    /// A witness that the term storage this context reads is shared-borrowed.
+    ///
+    /// Heap-backed contexts borrow the attached process's heap; a detached
+    /// context's terms live in its own `detached_allocations`. Either way this
+    /// is a borrow of `*self`, and every allocating entry point takes
+    /// `&mut self`. See `Heap::borrow_terms`.
+    #[must_use]
+    pub fn borrow_terms(&self) -> HeapBorrow<'_> {
+        match self.process.as_deref() {
+            Some(process) => process.borrow_terms(),
+            None => HeapBorrow::of_words(&[]),
+        }
     }
 
     /// Return the attached calling process for native operations that must use process APIs.

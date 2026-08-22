@@ -1,6 +1,7 @@
 //! Tests for `Scheduler::spawn_link_closure` — the linked thunk-child spawn
 //! with a deep-copied environment.
 
+use crate::term::heap_borrow::HeapBorrow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -139,9 +140,9 @@ fn host_closure(host: &mut Process, module: &Module, unique_id: u64, free_vars: 
     .unwrap_or_else(|| panic!("write_closure"))
 }
 
-fn binary_bytes(term: Term) -> Vec<u8> {
+fn binary_bytes(term: Term, heap: HeapBorrow<'_>) -> Vec<u8> {
     BinaryRef::new(term)
-        .map(|binary| binary.as_bytes().to_vec())
+        .map(|binary| binary.as_bytes(heap).to_vec())
         .unwrap_or_else(|| panic!("exit result should be a binary, got {term:?}"))
 }
 
@@ -164,7 +165,10 @@ fn spawn_link_closure_runs_thunk_with_deep_copied_env() {
 
     let (reason, result) = fixture.scheduler.run_until_exit(child);
     assert_eq!(reason, ExitReason::Normal);
-    assert_eq!(binary_bytes(result.root()), payload.to_vec());
+    assert_eq!(
+        binary_bytes(result.root(), result.borrow_terms()),
+        payload.to_vec()
+    );
     fixture.scheduler.shutdown();
 }
 
@@ -186,7 +190,7 @@ fn environment_larger_than_the_default_heap_forces_doubling_and_survives() {
 
     let (reason, result) = fixture.scheduler.run_until_exit(child);
     assert_eq!(reason, ExitReason::Normal);
-    assert_eq!(binary_bytes(result.root()), payload);
+    assert_eq!(binary_bytes(result.root(), result.borrow_terms()), payload);
     fixture.scheduler.shutdown();
 }
 
@@ -210,7 +214,10 @@ fn stale_generation_closure_resolves_through_unique_id_fallback() {
         .unwrap_or_else(|error| panic!("spawn_link_closure: {error}"));
     let (reason, result) = fixture.scheduler.run_until_exit(child);
     assert_eq!(reason, ExitReason::Normal);
-    assert_eq!(binary_bytes(result.root()), b"stale-gen".to_vec());
+    assert_eq!(
+        binary_bytes(result.root(), result.borrow_terms()),
+        b"stale-gen".to_vec()
+    );
     fixture.scheduler.shutdown();
 }
 

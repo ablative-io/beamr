@@ -56,7 +56,7 @@ fn atom_to_binary_1_converts_ok_to_binary() {
     let mut ctx = ctx_with_atoms(&mut process);
     let result = bif_atom_to_binary_1(&[Term::atom(Atom::OK)], &mut ctx).unwrap();
     let binary = crate::term::binary::Binary::new(result).expect("should be binary");
-    assert_eq!(binary.as_bytes(), b"ok");
+    assert_eq!(binary.as_bytes(ctx.borrow_terms()), b"ok");
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn atom_to_binary_converts_ok_to_binary() {
     let result =
         bif_atom_to_binary(&[Term::atom(Atom::OK), Term::atom(Atom::UTF8)], &mut ctx).unwrap();
     let binary = crate::term::binary::Binary::new(result).expect("should be binary");
-    assert_eq!(binary.as_bytes(), b"ok");
+    assert_eq!(binary.as_bytes(ctx.borrow_terms()), b"ok");
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn atom_to_binary_latin1_encoding_works() {
     )
     .unwrap();
     let binary = crate::term::binary::Binary::new(result).expect("should be binary");
-    assert_eq!(binary.as_bytes(), b"error");
+    assert_eq!(binary.as_bytes(ctx.borrow_terms()), b"error");
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn atom_to_binary_resolves_encoding_by_name() {
 
     let result = bif_atom_to_binary(&[Term::atom(ok), Term::atom(utf8)], &mut ctx).unwrap();
     let binary = crate::term::binary::Binary::new(result).expect("should be binary");
-    assert_eq!(binary.as_bytes(), b"ok");
+    assert_eq!(binary.as_bytes(ctx.borrow_terms()), b"ok");
 }
 
 #[test]
@@ -352,7 +352,7 @@ fn list_to_binary_converts_byte_list() {
     let list = write_cons(&mut c1, Term::small_int(104), tail).unwrap();
     let result = bif_list_to_binary(&[list], &mut ctx).unwrap();
     let binary = crate::term::binary::Binary::new(result).expect("binary");
-    assert_eq!(binary.as_bytes(), b"hi");
+    assert_eq!(binary.as_bytes(ctx.borrow_terms()), b"hi");
 }
 
 #[test]
@@ -420,7 +420,10 @@ fn list_to_integer_parses_bignum_character_list() {
     let bigint = crate::term::boxed::BigInt::new(parsed).expect("bignum box");
     assert!(bigint.is_negative());
     let magnitude = 100_000_000_000_000_000_000_u128;
-    assert_eq!(bigint.limbs(), [magnitude as u64, (magnitude >> 64) as u64]);
+    assert_eq!(
+        bigint.limbs(ctx.borrow_terms()),
+        [magnitude as u64, (magnitude >> 64) as u64]
+    );
 }
 
 #[test]
@@ -487,7 +490,7 @@ fn float_to_binary_formats_with_decimals_option() {
     let float = write_float(&mut float_heap, 3.25).expect("float");
     let result = bif_float_to_binary_2(&[float, options], &mut ctx).unwrap();
     let binary = crate::term::binary::Binary::new(result).expect("binary");
-    assert_eq!(binary.as_bytes(), b"3.25");
+    assert_eq!(binary.as_bytes(ctx.borrow_terms()), b"3.25");
 }
 
 #[test]

@@ -1,3 +1,4 @@
+use crate::term::heap_borrow::HeapBorrow;
 use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
@@ -30,9 +31,9 @@ fn binary(bytes: &[u8]) -> Term {
     binary::write_binary(heap, bytes).expect("binary")
 }
 
-fn assert_binary(term: Term, expected: &[u8]) {
+fn assert_binary(term: Term, expected: &[u8], heap: HeapBorrow<'_>) {
     let binary = Binary::new(term).expect("binary term");
-    assert_eq!(binary.as_bytes(), expected);
+    assert_eq!(binary.as_bytes(heap), expected);
 }
 
 #[test]
@@ -48,14 +49,20 @@ fn uri_parse_extracts_all_components_with_integer_port() {
     .expect("uri map");
     let map = Map::new(parsed).expect("map");
 
-    assert_binary(map.get(atom(&context, "scheme")).expect("scheme"), b"https");
+    assert_binary(
+        map.get(atom(&context, "scheme")).expect("scheme"),
+        b"https",
+        context.borrow_terms(),
+    );
     assert_binary(
         map.get(atom(&context, "userinfo")).expect("userinfo"),
         b"user",
+        context.borrow_terms(),
     );
     assert_binary(
         map.get(atom(&context, "host")).expect("host"),
         b"example.com",
+        context.borrow_terms(),
     );
     assert_eq!(
         map.get(atom(&context, "port")).expect("port"),
@@ -64,14 +71,17 @@ fn uri_parse_extracts_all_components_with_integer_port() {
     assert_binary(
         map.get(atom(&context, "path")).expect("path"),
         b"/over/there",
+        context.borrow_terms(),
     );
     assert_binary(
         map.get(atom(&context, "query")).expect("query"),
         b"name=ferret",
+        context.borrow_terms(),
     );
     assert_binary(
         map.get(atom(&context, "fragment")).expect("fragment"),
         b"nose",
+        context.borrow_terms(),
     );
 }
 
@@ -85,6 +95,7 @@ fn uri_parse_omits_absent_components() {
     assert_binary(
         map.get(atom(&context, "path")).expect("path"),
         b"/relative/path",
+        context.borrow_terms(),
     );
     assert_eq!(map.get(atom(&context, "scheme")), None);
     assert_eq!(map.get(atom(&context, "host")), None);
@@ -103,8 +114,13 @@ fn uri_parse_strips_ipv6_brackets() {
     assert_binary(
         map.get(atom(&context, "host")).expect("host"),
         b"2001:db8::7",
+        context.borrow_terms(),
     );
-    assert_binary(map.get(atom(&context, "path")).expect("path"), b"/c=GB");
+    assert_binary(
+        map.get(atom(&context, "path")).expect("path"),
+        b"/c=GB",
+        context.borrow_terms(),
+    );
 }
 
 #[test]
@@ -128,23 +144,27 @@ fn dissect_query_returns_pairs_with_form_decoding() {
 
     let first = Cons::new(result).expect("first");
     let pair = Tuple::new(first.head()).expect("pair");
-    assert_binary(pair.get(0).expect("key"), b"a");
-    assert_binary(pair.get(1).expect("value"), b"1");
+    assert_binary(pair.get(0).expect("key"), b"a", context.borrow_terms());
+    assert_binary(pair.get(1).expect("value"), b"1", context.borrow_terms());
 
     let second = Cons::new(first.tail()).expect("second");
     let pair = Tuple::new(second.head()).expect("pair");
-    assert_binary(pair.get(0).expect("key"), b"b");
-    assert_binary(pair.get(1).expect("value"), b"two words");
+    assert_binary(pair.get(0).expect("key"), b"b", context.borrow_terms());
+    assert_binary(
+        pair.get(1).expect("value"),
+        b"two words",
+        context.borrow_terms(),
+    );
 
     let third = Cons::new(second.tail()).expect("third");
     let pair = Tuple::new(third.head()).expect("pair");
-    assert_binary(pair.get(0).expect("key"), b"flag");
+    assert_binary(pair.get(0).expect("key"), b"flag", context.borrow_terms());
     assert_eq!(pair.get(1), Some(Term::atom(Atom::TRUE)));
 
     let fourth = Cons::new(third.tail()).expect("fourth");
     let pair = Tuple::new(fourth.head()).expect("pair");
-    assert_binary(pair.get(0).expect("key"), b"x");
-    assert_binary(pair.get(1).expect("value"), b"/enc");
+    assert_binary(pair.get(0).expect("key"), b"x", context.borrow_terms());
+    assert_binary(pair.get(1).expect("value"), b"/enc", context.borrow_terms());
     assert_eq!(fourth.tail(), Term::NIL);
 }
 

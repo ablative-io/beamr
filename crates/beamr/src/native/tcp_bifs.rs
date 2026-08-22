@@ -16,6 +16,7 @@ use crate::native::{
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, Tuple};
+use crate::term::heap_borrow::HeapBorrow;
 
 const DEFAULT_BACKLOG: i32 = 128;
 const DEFAULT_RECV_BUF_LEN: usize = 64 * 1024;
@@ -68,7 +69,7 @@ pub fn tcp_connect(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         return Err(badarg());
     };
     let atom_table = context.atom_table().ok_or_else(badarg)?;
-    let host = parse_host(*host_term)?;
+    let host = parse_host(*host_term, context.borrow_terms())?;
     let port = parse_port(*port_term)?;
     let options = ConnectOptions::parse(*options_term, atom_table)?;
     if let Some(0) = options.timeout_ms {
@@ -114,7 +115,7 @@ pub fn tcp_send(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
     if resource.state() != FdState::Open {
         return error_tuple(context, Atom::CLOSED);
     }
-    let data = binary_bytes(*data_term)?;
+    let data = binary_bytes(*data_term, context.borrow_terms())?;
     if data.is_empty() {
         return Ok(Term::atom(Atom::OK));
     }
@@ -675,12 +676,15 @@ fn parse_count(term: Term) -> Result<usize, Term> {
         .ok_or_else(badarg)
 }
 
-fn parse_host(term: Term) -> Result<String, Term> {
-    String::from_utf8(binary_bytes(term)?).map_err(|_| badarg())
+fn parse_host(term: Term, heap: HeapBorrow<'_>) -> Result<String, Term> {
+    String::from_utf8(binary_bytes(term, heap)?).map_err(|_| badarg())
 }
 
-fn binary_bytes(term: Term) -> Result<Vec<u8>, Term> {
-    Ok(BinaryRef::new(term).ok_or_else(badarg)?.as_bytes().to_vec())
+fn binary_bytes(term: Term, heap: HeapBorrow<'_>) -> Result<Vec<u8>, Term> {
+    Ok(BinaryRef::new(term)
+        .ok_or_else(badarg)?
+        .as_bytes(heap)
+        .to_vec())
 }
 
 fn recv_buf_len(requested_len: usize) -> usize {

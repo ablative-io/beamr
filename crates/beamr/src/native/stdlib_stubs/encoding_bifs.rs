@@ -4,6 +4,7 @@ use crate::atom::Atom;
 use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
+use crate::term::heap_borrow::HeapBorrow;
 
 const BASE64_ALPHABET: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -14,7 +15,7 @@ pub fn bif_binary_encode_hex(args: &[Term], context: &mut ProcessContext) -> Res
     let [input] = args else {
         return Err(badarg());
     };
-    let bytes = binary_bytes(*input)?;
+    let bytes = binary_bytes(*input, context.borrow_terms())?;
     let mut out = Vec::with_capacity(bytes.len() * 2);
     for byte in bytes {
         out.push(nibble_to_hex(byte >> 4));
@@ -27,7 +28,7 @@ pub fn bif_binary_decode_hex(args: &[Term], context: &mut ProcessContext) -> Res
     let [input] = args else {
         return Err(badarg());
     };
-    let hex = binary_bytes(*input)?;
+    let hex = binary_bytes(*input, context.borrow_terms())?;
     if hex.len() % 2 != 0 {
         return Err(badarg());
     }
@@ -45,7 +46,11 @@ pub fn bif_base64_encode(args: &[Term], context: &mut ProcessContext) -> Result<
         return Err(badarg());
     };
     let (alphabet, padding) = base64_options(*options, context)?;
-    let encoded = encode_base64(binary_bytes(*input)?, alphabet, padding);
+    let encoded = encode_base64(
+        binary_bytes(*input, context.borrow_terms())?,
+        alphabet,
+        padding,
+    );
     context.alloc_binary(encoded.as_bytes())
 }
 
@@ -92,7 +97,7 @@ pub fn bif_base64_decode(args: &[Term], context: &mut ProcessContext) -> Result<
     let [input] = args else {
         return Err(badarg());
     };
-    let decoded = decode_base64(binary_bytes(*input)?)?;
+    let decoded = decode_base64(binary_bytes(*input, context.borrow_terms())?)?;
     context.alloc_binary(&decoded)
 }
 
@@ -200,9 +205,9 @@ fn atom_name<'a>(term: Term, context: &'a ProcessContext<'_>) -> Result<&'a str,
     }
 }
 
-fn binary_bytes(term: Term) -> Result<&'static [u8], Term> {
+fn binary_bytes<'heap>(term: Term, heap: HeapBorrow<'heap>) -> Result<&'heap [u8], Term> {
     BinaryRef::new(term)
-        .map(|binary| binary.as_bytes())
+        .map(|binary| binary.as_bytes(heap))
         .ok_or_else(badarg)
 }
 

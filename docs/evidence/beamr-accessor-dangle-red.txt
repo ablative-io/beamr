@@ -1,0 +1,558 @@
+================================================================================
+RED — the &'static accessor exposure, demonstrated
+================================================================================
+
+Tree      : leg/accessor @ 43eb6ce6b313bd55e3da894f477b486a225e0f72 (R1 design artifact committed; NO signature
+            has moved yet — the four families still return &'static)
+Venue     : rocketfish, Linux 6.19.9-arch1-1
+Toolchain : rustc 1.97.1 (8bab26f4f 2026-07-14)  (pinned by rust-toolchain.toml)
+
+INSTRUMENT — SAY WHICH:
+  PRIMARY   : miri.  miri 0.1.0 (8925ea358a 2026-08-20)
+              reached only after: export PATH="$HOME/.cargo/bin:$PATH"
+  SECONDARY : the ordinary test harness, as a read-back assertion that the
+              bytes are no longer the bytes.
+
+COMMANDS
+  export PATH="$HOME/.cargo/bin:$PATH"
+  cargo test -p beamr --no-default-features --features std --test accessor_dangle_red
+  MIRIFLAGS=-Zmiri-disable-isolation \
+    cargo +nightly miri test -p beamr --no-default-features --features std \
+      --test accessor_dangle_red -- --exact <TEST>
+
+WHAT EACH CASE DOES
+  obtain a slice from one of the four accessor families -> force a
+  GC-triggering allocation while holding it -> read through it.
+  All four compile today. That is the defect.
+
+SUMMARY OF VERDICTS
+  ProcBin::as_bytes    miri: USE AFTER FREE   ("alloc44661 has been freed, so
+                                                this pointer is dangling")
+  Binary::as_bytes     miri: STACKED BORROWS  (tag created at as_bytes(),
+                                                invalidated by a Unique retag
+                                                in process/heap.rs:192)
+  BigInt::limbs        miri: STACKED BORROWS  (same shape)
+  SubBinary::as_bytes  native: STALE READ b"456789" -> [0,0,0,0,0,0]
+                       miri: UB one step EARLIER, inside SubBinary::new ->
+                       parent_bytes (accessors.rs:358) -> Binary::new — the
+                       parent term's exposed tag is already invalidated by the
+                       second heap allocation. Same defect class, diagnosed
+                       before the slice even escapes. Reported, not chased.
+
+================================================================================
+THE PROGRAM (crates/beamr/tests/accessor_dangle_red.rs, verbatim)
+================================================================================
+//! RED: the `&'static` accessor exposure, demonstrated.
+//!
+//! Each test obtains a slice from one of the four accessor families, forces a
+//! GC-triggering allocation while holding it, and reads through it afterwards.
+//! Every one of these compiles today because the accessors return `&'static`.
+//!
+//! Instrument: `cargo +nightly miri test`. Miri reports the ProcBin case as a
+//! hard use-after-free; the heap-resident cases are read-back assertions that
+//! show the bytes are no longer the bytes.
+
+use beamr::gc;
+use beamr::process::Process;
+use beamr::term::binary::{Binary, write_binary};
+use beamr::term::boxed::{BigInt, ProcBin};
+use beamr::term::shared_binary::{SharedBinary, write_proc_bin};
+
+/// ProcBin::as_bytes — the off-heap buffer is released by the collector while
+/// the `&'static [u8]` still points at it. Read-after-free.
+#[test]
+fn procbin_as_bytes_survives_the_arc_it_points_at() {
+    let mut process = Process::new(1, 96);
+    let shared = SharedBinary::new(vec![0xAB_u8; 128]);
+
+    let words = process
+        .heap_mut()
+        .alloc_slice_maybe_refcounted(3)
+        .expect("proc bin words");
+    let term = write_proc_bin(words, &shared).expect("proc bin");
+
+    let bytes: &'static [u8] = ProcBin::new(term).expect("proc bin accessor").as_bytes();
+    assert_eq!(bytes[0], 0xAB);
+
+    // The heap word now owns the only strong reference.
+    drop(shared);
+
+    // `term` is not a GC root, so the collector releases the Arc under `bytes`.
+    gc::collect_minor(&mut process).expect("minor collect");
+
+    // READ AFTER FREE. Miri stops here.
+    println!("procbin byte after collect: {:#x}", bytes[0]);
+}
+
+/// Binary::as_bytes — inline binary bytes live in heap words. A collection that
+/// grows the nursery drops the backing `Vec<u64>` under the `&'static [u8]`.
+#[test]
+fn inline_binary_as_bytes_survives_the_heap_words_it_points_at() {
+    let mut process = Process::new(2, 96);
+
+    let words = process.heap_mut().alloc_slice(3).expect("binary words");
+    let term = write_binary(words, b"hello").expect("inline binary");
+
+    let bytes: &'static [u8] = Binary::new(term).expect("binary accessor").as_bytes();
+    assert_eq!(bytes, b"hello");
+
+    // Allocation pressure past the nursery: `gc::alloc` collects, then grows,
+    // and `Heap::grow_young_to` replaces the backing region outright.
+    for _ in 0..64 {
+        let _ = gc::alloc(&mut process, 8);
+    }
+
+    // READ AFTER FREE / STALE READ.
+    println!("inline binary after collect+grow: {:?}", bytes);
+    assert_eq!(bytes, b"hello", "the bytes are no longer the bytes");
+}
+
+/// BigInt::limbs — the limbs live in heap words, same story.
+#[test]
+fn bigint_limbs_survive_the_heap_words_they_point_at() {
+    let mut process = Process::new(3, 96);
+
+    let words = process.heap_mut().alloc_slice(5).expect("bigint words");
+    let term = beamr::term::boxed::write_bigint(words, false, &[0x1122_3344_5566_7788, 0x99])
+        .expect("bigint");
+
+    let limbs: &'static [u64] = BigInt::new(term).expect("bigint accessor").limbs();
+    assert_eq!(limbs, &[0x1122_3344_5566_7788_u64, 0x99]);
+
+    for _ in 0..64 {
+        let _ = gc::alloc(&mut process, 8);
+    }
+
+    // READ AFTER FREE / STALE READ.
+    println!("bigint limbs after collect+grow: {limbs:?}");
+    assert_eq!(
+        limbs,
+        &[0x1122_3344_5566_7788_u64, 0x99],
+        "the limbs are no longer the limbs"
+    );
+}
+
+/// SubBinary::as_bytes — and with it the private `parent_bytes` helper it calls
+/// (`accessors.rs:357`), which is `&'static` for the same reason.
+#[test]
+fn sub_binary_as_bytes_survives_the_parent_it_views() {
+    let mut process = Process::new(4, 96);
+
+    let parent_words = process.heap_mut().alloc_slice(4).expect("parent words");
+    let parent = write_binary(parent_words, b"0123456789abcdef").expect("parent binary");
+    let sub_words = process.heap_mut().alloc_slice(5).expect("sub words");
+    let term = beamr::term::sub_binary::write_sub_binary(sub_words, parent, 4, 6)
+        .expect("sub binary");
+
+    let bytes: &'static [u8] = beamr::term::boxed::SubBinary::new(term)
+        .expect("sub binary accessor")
+        .as_bytes();
+    assert_eq!(bytes, b"456789");
+
+    for _ in 0..64 {
+        let _ = gc::alloc(&mut process, 8);
+    }
+
+    // READ AFTER FREE / STALE READ.
+    println!("sub binary after collect+grow: {bytes:?}");
+    assert_eq!(bytes, b"456789", "the sub-binary view is no longer the view");
+}
+
+================================================================================
+1. ORDINARY TEST HARNESS — the bytes are no longer the bytes
+================================================================================
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running tests/accessor_dangle_red.rs (target/debug/deps/accessor_dangle_red-c3b867969a100aad)
+
+running 4 tests
+test procbin_as_bytes_survives_the_arc_it_points_at ... ok
+test sub_binary_as_bytes_survives_the_parent_it_views ... FAILED
+test bigint_limbs_survive_the_heap_words_they_point_at ... FAILED
+test inline_binary_as_bytes_survives_the_heap_words_it_points_at ... FAILED
+
+failures:
+
+---- sub_binary_as_bytes_survives_the_parent_it_views stdout ----
+sub binary after collect+grow: [0, 0, 0, 0, 0, 0]
+
+thread 'sub_binary_as_bytes_survives_the_parent_it_views' (557394) panicked at crates/beamr/tests/accessor_dangle_red.rs:114:5:
+assertion `left == right` failed: the sub-binary view is no longer the view
+  left: [0, 0, 0, 0, 0, 0]
+ right: [52, 53, 54, 55, 56, 57]
+
+---- bigint_limbs_survive_the_heap_words_they_point_at stdout ----
+bigint limbs after collect+grow: [0, 0]
+
+thread 'bigint_limbs_survive_the_heap_words_they_point_at' (557391) panicked at crates/beamr/tests/accessor_dangle_red.rs:84:5:
+assertion `left == right` failed: the limbs are no longer the limbs
+  left: [0, 0]
+ right: [1234605616436508552, 153]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- inline_binary_as_bytes_survives_the_heap_words_it_points_at stdout ----
+inline binary after collect+grow: [0, 0, 0, 0, 0]
+
+thread 'inline_binary_as_bytes_survives_the_heap_words_it_points_at' (557392) panicked at crates/beamr/tests/accessor_dangle_red.rs:63:5:
+assertion `left == right` failed: the bytes are no longer the bytes
+  left: [0, 0, 0, 0, 0]
+ right: [104, 101, 108, 108, 111]
+
+
+failures:
+    bigint_limbs_survive_the_heap_words_they_point_at
+    inline_binary_as_bytes_survives_the_heap_words_it_points_at
+    sub_binary_as_bytes_survives_the_parent_it_views
+
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p beamr --test accessor_dangle_red`
+
+================================================================================
+2. MIRI — ProcBin::as_bytes : USE AFTER FREE
+================================================================================
+########## procbin_as_bytes_survives_the_arc_it_points_at
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/accessor_dangle_red.rs (target/miri/x86_64-unknown-linux-gnu/debug/build/beamr/4fe2e523f4322522/out/accessor_dangle_red-4fe2e523f4322522)
+
+running 1 test
+test procbin_as_bytes_survives_the_arc_it_points_at ... warning: integer-to-pointer cast
+ --> crates/beamr/src/term/mod.rs:235:17
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `procbin_as_byte`
+  = note: stack backtrace:
+          0: beamr::term::Term::heap_ptr
+              at crates/beamr/src/term/mod.rs:235:18: 235:52
+          1: beamr::term::boxed::accessors::header_ptr
+              at crates/beamr/src/term/boxed/accessors.rs:464:15: 464:30
+          2: beamr::term::boxed::ProcBin::new
+              at crates/beamr/src/term/boxed/accessors.rs:266:19: 266:54
+          3: procbin_as_bytes_survives_the_arc_it_points_at
+              at crates/beamr/tests/accessor_dangle_red.rs:30:32: 30:50
+          4: procbin_as_bytes_survives_the_arc_it_points_at::{closure#0}
+              at crates/beamr/tests/accessor_dangle_red.rs:20:52: 20:52
+
+warning: integer-to-pointer cast
+ --> crates/beamr/src/term/shared_binary.rs:80:18
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `procbin_as_byte`
+  = note: stack backtrace:
+          0: beamr::term::shared_binary::SharedBinary::bytes_from_raw_word
+              at crates/beamr/src/term/shared_binary.rs:80:19: 80:40
+          1: beamr::term::boxed::ProcBin::as_bytes
+              at crates/beamr/src/term/boxed/accessors.rs:282:9: 282:63
+          2: procbin_as_bytes_survives_the_arc_it_points_at
+              at crates/beamr/tests/accessor_dangle_red.rs:30:32: 30:89
+          3: procbin_as_bytes_survives_the_arc_it_points_at::{closure#0}
+              at crates/beamr/tests/accessor_dangle_red.rs:20:52: 20:52
+
+warning: integer-to-pointer cast
+ --> crates/beamr/src/gc/mod.rs:382:18
+  |
+  = note: integer-to-pointer cast
+  |
+  = note: this is on thread `procbin_as_byte`
+  = note: stack backtrace:
+          0: beamr::gc::release_proc_bin_arc
+              at crates/beamr/src/gc/mod.rs:382:19: 382:40
+          1: beamr::gc::release_refcounted_resources_in_young::<{closure@beamr::gc::minor::collect::{closure#1}}>::{closure#0}
+              at crates/beamr/src/gc/mod.rs:291:29: 291:54
+          2: beamr::process::heap::HeapRegion::visit_allocated_boxed_objects::<{closure@beamr::gc::release_refcounted_resources_in_young<{closure@beamr::gc::minor::collect::{closure#1}}>::{closure#0}}>
+              at crates/beamr/src/process/heap.rs:221:21: 221:50
+          3: beamr::process::heap::Heap::visit_young_boxed_objects::<{closure@beamr::gc::release_refcounted_resources_in_young<{closure@beamr::gc::minor::collect::{closure#1}}>::{closure#0}}>
+              at crates/beamr/src/process/heap.rs:449:9: 449:56
+          4: beamr::gc::release_refcounted_resources_in_young::<{closure@beamr::gc::minor::collect::{closure#1}}>
+              at crates/beamr/src/gc/mod.rs:287:5: 299:11
+          5: beamr::gc::minor::collect
+              at crates/beamr/src/gc/minor.rs:41:5: 41:90
+          6: beamr::gc::collect_minor_with_live
+              at crates/beamr/src/gc/mod.rs:109:18: 109:49
+          7: beamr::gc::collect_minor
+              at crates/beamr/src/gc/mod.rs:102:5: 102:42
+          8: procbin_as_bytes_survives_the_arc_it_points_at
+              at crates/beamr/tests/accessor_dangle_red.rs:37:5: 37:36
+          9: procbin_as_bytes_survives_the_arc_it_points_at::{closure#0}
+              at crates/beamr/tests/accessor_dangle_red.rs:20:52: 20:52
+
+error: Undefined Behavior: reference not dereferenceable: alloc44661 has been freed, so this pointer is dangling
+  --> crates/beamr/tests/accessor_dangle_red.rs:40:51
+   |
+40 |     println!("procbin byte after collect: {:#x}", bytes[0]);
+   |                                                   ^^^^^^^^ Undefined Behavior occurred here
+   |
+   = help: this indicates a bug in the program: it performed an invalid operation, and caused Undefined Behavior
+   = help: see https://doc.rust-lang.org/nightly/reference/behavior-considered-undefined.html for further information
+help: alloc44661 was allocated here:
+  --> crates/beamr/tests/accessor_dangle_red.rs:22:36
+   |
+22 |     let shared = SharedBinary::new(vec![0xAB_u8; 128]);
+   |                                    ^^^^^^^^^^^^^^^^^^
+help: alloc44661 was deallocated here:
+  --> crates/beamr/src/gc/mod.rs:391:0
+   = note: this is on thread `procbin_as_byte`
+   = note: stack backtrace:
+           0: procbin_as_bytes_survives_the_arc_it_points_at
+               at crates/beamr/tests/accessor_dangle_red.rs:40:51: 40:59
+           1: procbin_as_bytes_survives_the_arc_it_points_at::{closure#0}
+               at crates/beamr/tests/accessor_dangle_red.rs:20:52: 20:52
+
+note: some details are omitted, run with `MIRIFLAGS=-Zmiri-backtrace=full` for a verbose backtrace
+
+error: aborting due to 1 previous error; 3 warnings emitted
+
+error: test failed, to rerun pass `-p beamr --test accessor_dangle_red`
+
+Caused by:
+  process didn't exit successfully: `/home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner /home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/legs/accessor/target/miri/x86_64-unknown-linux-gnu/debug/build/beamr/4fe2e523f4322522/out/accessor_dangle_red-4fe2e523f4322522 --exact procbin_as_bytes_survives_the_arc_it_points_at` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.
+########## rc=1
+
+================================================================================
+3. MIRI — Binary::as_bytes (inline heap binary) : STACKED BORROWS VIOLATION
+================================================================================
+########## inline_binary_as_bytes_survives_the_heap_words_it_points_at
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/accessor_dangle_red.rs (target/miri/x86_64-unknown-linux-gnu/debug/build/beamr/4fe2e523f4322522/out/accessor_dangle_red-4fe2e523f4322522)
+
+running 1 test
+test inline_binary_as_bytes_survives_the_heap_words_it_points_at ... warning: integer-to-pointer cast
+ --> crates/beamr/src/term/mod.rs:235:17
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `inline_binary_a`
+  = note: stack backtrace:
+          0: beamr::term::Term::heap_ptr
+              at crates/beamr/src/term/mod.rs:235:18: 235:52
+          1: beamr::term::binary::Binary::new
+              at crates/beamr/src/term/binary.rs:51:19: 51:34
+          2: inline_binary_as_bytes_survives_the_heap_words_it_points_at
+              at crates/beamr/tests/accessor_dangle_red.rs:52:32: 52:49
+          3: inline_binary_as_bytes_survives_the_heap_words_it_points_at::{closure#0}
+              at crates/beamr/tests/accessor_dangle_red.rs:46:65: 46:65
+
+error: Undefined Behavior: trying to retag from <137103> for SharedReadOnly permission at alloc44180[0x10], but that tag does not exist in the borrow stack for this location
+    --> /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/fmt/mod.rs:2887:71
+     |
+2887 |             fn fmt(&self, f: &mut Formatter<'_>) -> Result { $tr::fmt(&**self, f) }
+     |                                                                       ^^^^^^^ this error occurs as part of retag at alloc44180[0x10..0x15]
+...
+2897 | fmt_refs! { Debug, Display, Octal, Binary, LowerHex, UpperHex, LowerExp, UpperExp }
+     | ----------------------------------------------------------------------------------- in this macro invocation
+     |
+     = help: this indicates a potential bug in the program: it performed an invalid operation, but the Stacked Borrows rules it violated are still experimental
+     = help: see https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md for further information
+help: <137103> was created by a SharedReadOnly retag at offsets [0x10..0x15]
+    --> crates/beamr/tests/accessor_dangle_red.rs:52:32
+     |
+  52 |     let bytes: &'static [u8] = Binary::new(term).expect("binary accessor").as_bytes();
+     |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: <137103> was later invalidated at offsets [0x0..0x300] by a Unique retag
+    --> crates/beamr/src/process/heap.rs:192:18
+     = note: this is on thread `inline_binary_a`
+     = note: stack backtrace:
+             0: <&[u8] as std::fmt::Debug>::fmt
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/fmt/mod.rs:2887:71: 2887:78
+             1: core::fmt::rt::Argument::<'_>::fmt
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/fmt/rt.rs:152:76: 152:95
+             2: std::fmt::write
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/fmt/mod.rs:1685:17: 1687:80
+             3: core::io::write::default_write_fmt::<std::vec::Vec<u8>>
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/io/write.rs:402:11: 402:40
+             4: <std::vec::Vec<u8> as std::io::Write>::write_fmt
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/io/write.rs:335:13: 335:42
+             5: std::io::stdio::print_to_buffer_if_capture_used::{closure#0}::{closure#0}
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1179:25: 1179:84
+             6: std::option::Option::<std::sync::Arc<std::sync::Mutex<std::vec::Vec<u8>>>>::map::<(), {closure@std::io::stdio::print_to_buffer_if_capture_used::{closure#0}::{closure#0}}>
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1163:29: 1163:33
+             7: std::io::stdio::print_to_buffer_if_capture_used::{closure#0}
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1178:13: 1181:15
+             8: std::thread::LocalKey::<std::cell::Cell<std::option::Option<std::sync::Arc<std::sync::Mutex<std::vec::Vec<u8>>>>>>::try_with::<{closure@std::io::stdio::print_to_buffer_if_capture_used::{closure#0}}, std::option::Option<()>>
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:464:12: 464:27
+             9: std::io::stdio::print_to_buffer_if_capture_used
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1174:12: 1182:11
+             10: std::io::stdio::print_to::<std::io::Stdout>
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1162:8: 1162:45
+             11: std::io::_print
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1275:5: 1275:37
+             12: inline_binary_as_bytes_survives_the_heap_words_it_points_at
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/macros.rs:148:9: 148:62
+             13: inline_binary_as_bytes_survives_the_heap_words_it_points_at::{closure#0}
+                 at crates/beamr/tests/accessor_dangle_red.rs:46:65: 46:65
+     = note: this error originates in the macro `fmt_refs` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: some details are omitted, run with `MIRIFLAGS=-Zmiri-backtrace=full` for a verbose backtrace
+
+error: aborting due to 1 previous error; 1 warning emitted
+
+error: test failed, to rerun pass `-p beamr --test accessor_dangle_red`
+
+Caused by:
+  process didn't exit successfully: `/home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner /home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/legs/accessor/target/miri/x86_64-unknown-linux-gnu/debug/build/beamr/4fe2e523f4322522/out/accessor_dangle_red-4fe2e523f4322522 --exact inline_binary_as_bytes_survives_the_heap_words_it_points_at` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.
+########## rc=1
+
+================================================================================
+4. MIRI — BigInt::limbs : STACKED BORROWS VIOLATION
+================================================================================
+########## bigint_limbs_survive_the_heap_words_they_point_at
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/accessor_dangle_red.rs (target/miri/x86_64-unknown-linux-gnu/debug/build/beamr/4fe2e523f4322522/out/accessor_dangle_red-4fe2e523f4322522)
+
+running 1 test
+test bigint_limbs_survive_the_heap_words_they_point_at ... warning: integer-to-pointer cast
+ --> crates/beamr/src/term/mod.rs:235:17
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `bigint_limbs_su`
+  = note: stack backtrace:
+          0: beamr::term::Term::heap_ptr
+              at crates/beamr/src/term/mod.rs:235:18: 235:52
+          1: beamr::term::boxed::accessors::header_ptr
+              at crates/beamr/src/term/boxed/accessors.rs:464:15: 464:30
+          2: beamr::term::boxed::BigInt::new
+              at crates/beamr/src/term/boxed/accessors.rs:101:19: 101:53
+          3: bigint_limbs_survive_the_heap_words_they_point_at
+              at crates/beamr/tests/accessor_dangle_red.rs:75:33: 75:50
+          4: bigint_limbs_survive_the_heap_words_they_point_at::{closure#0}
+              at crates/beamr/tests/accessor_dangle_red.rs:68:55: 68:55
+
+error: Undefined Behavior: trying to retag from <137099> for SharedReadOnly permission at alloc44266[0x18], but that tag does not exist in the borrow stack for this location
+    --> /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/fmt/mod.rs:2887:71
+     |
+2887 |             fn fmt(&self, f: &mut Formatter<'_>) -> Result { $tr::fmt(&**self, f) }
+     |                                                                       ^^^^^^^ this error occurs as part of retag at alloc44266[0x18..0x28]
+...
+2897 | fmt_refs! { Debug, Display, Octal, Binary, LowerHex, UpperHex, LowerExp, UpperExp }
+     | ----------------------------------------------------------------------------------- in this macro invocation
+     |
+     = help: this indicates a potential bug in the program: it performed an invalid operation, but the Stacked Borrows rules it violated are still experimental
+     = help: see https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md for further information
+help: <137099> was created by a SharedReadOnly retag at offsets [0x18..0x28]
+    --> crates/beamr/tests/accessor_dangle_red.rs:75:33
+     |
+  75 |     let limbs: &'static [u64] = BigInt::new(term).expect("bigint accessor").limbs();
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: <137099> was later invalidated at offsets [0x0..0x300] by a Unique retag
+    --> crates/beamr/src/process/heap.rs:192:18
+     = note: this is on thread `bigint_limbs_su`
+     = note: stack backtrace:
+             0: <&[u64] as std::fmt::Debug>::fmt
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/fmt/mod.rs:2887:71: 2887:78
+             1: core::fmt::rt::Argument::<'_>::fmt
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/fmt/rt.rs:152:76: 152:95
+             2: std::fmt::write
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/fmt/mod.rs:1685:17: 1687:80
+             3: core::io::write::default_write_fmt::<std::vec::Vec<u8>>
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/io/write.rs:402:11: 402:40
+             4: <std::vec::Vec<u8> as std::io::Write>::write_fmt
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/io/write.rs:335:13: 335:42
+             5: std::io::stdio::print_to_buffer_if_capture_used::{closure#0}::{closure#0}
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1179:25: 1179:84
+             6: std::option::Option::<std::sync::Arc<std::sync::Mutex<std::vec::Vec<u8>>>>::map::<(), {closure@std::io::stdio::print_to_buffer_if_capture_used::{closure#0}::{closure#0}}>
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:1163:29: 1163:33
+             7: std::io::stdio::print_to_buffer_if_capture_used::{closure#0}
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1178:13: 1181:15
+             8: std::thread::LocalKey::<std::cell::Cell<std::option::Option<std::sync::Arc<std::sync::Mutex<std::vec::Vec<u8>>>>>>::try_with::<{closure@std::io::stdio::print_to_buffer_if_capture_used::{closure#0}}, std::option::Option<()>>
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:464:12: 464:27
+             9: std::io::stdio::print_to_buffer_if_capture_used
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1174:12: 1182:11
+             10: std::io::stdio::print_to::<std::io::Stdout>
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1162:8: 1162:45
+             11: std::io::_print
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/io/stdio.rs:1275:5: 1275:37
+             12: bigint_limbs_survive_the_heap_words_they_point_at
+                 at /home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/macros.rs:148:9: 148:62
+             13: bigint_limbs_survive_the_heap_words_they_point_at::{closure#0}
+                 at crates/beamr/tests/accessor_dangle_red.rs:68:55: 68:55
+     = note: this error originates in the macro `fmt_refs` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+note: some details are omitted, run with `MIRIFLAGS=-Zmiri-backtrace=full` for a verbose backtrace
+
+error: aborting due to 1 previous error; 1 warning emitted
+
+error: test failed, to rerun pass `-p beamr --test accessor_dangle_red`
+
+Caused by:
+  process didn't exit successfully: `/home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner /home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/legs/accessor/target/miri/x86_64-unknown-linux-gnu/debug/build/beamr/4fe2e523f4322522/out/accessor_dangle_red-4fe2e523f4322522 --exact bigint_limbs_survive_the_heap_words_they_point_at` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.
+########## rc=1
+
+================================================================================
+5. MIRI — SubBinary::as_bytes / parent_bytes : UB AT CONSTRUCTION
+================================================================================
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/accessor_dangle_red.rs (target/miri/x86_64-unknown-linux-gnu/debug/build/beamr/4fe2e523f4322522/out/accessor_dangle_red-4fe2e523f4322522)
+
+running 1 test
+test sub_binary_as_bytes_survives_the_parent_it_views ... warning: integer-to-pointer cast
+ --> crates/beamr/src/term/mod.rs:235:17
+  |
+  = note: integer-to-pointer cast
+  |
+  = help: this program is using integer-to-pointer casts or (equivalently) `ptr::with_exposed_provenance`, which means that Miri might miss pointer bugs in this program
+  = help: see https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html for more details on that operation
+  = help: to ensure that Miri does not miss bugs in your program, use Strict Provenance APIs (https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance, https://crates.io/crates/sptr) instead
+  = help: you can then set `MIRIFLAGS=-Zmiri-strict-provenance` to ensure you are not relying on `with_exposed_provenance` semantics
+  = help: alternatively, `MIRIFLAGS=-Zmiri-permissive-provenance` disables this warning
+  = note: this is on thread `sub_binary_as_b`
+  = note: stack backtrace:
+          0: beamr::term::Term::heap_ptr
+              at crates/beamr/src/term/mod.rs:235:18: 235:52
+          1: beamr::term::boxed::accessors::header_ptr
+              at crates/beamr/src/term/boxed/accessors.rs:464:15: 464:30
+          2: beamr::term::boxed::SubBinary::new
+              at crates/beamr/src/term/boxed/accessors.rs:311:19: 311:56
+          3: sub_binary_as_bytes_survives_the_parent_it_views
+              at crates/beamr/tests/accessor_dangle_red.rs:103:32: 103:72
+          4: sub_binary_as_bytes_survives_the_parent_it_views::{closure#0}
+              at crates/beamr/tests/accessor_dangle_red.rs:94:54: 94:54
+
+error: Undefined Behavior: attempting a read access using <wildcard> at alloc44222[0x0], but no exposed tags have suitable permission in the borrow stack for this location
+ --> crates/beamr/src/term/binary.rs:53:30
+  |
+  = note: this error occurs as part of an access at alloc44222[0x0..0x8]
+  |
+  = help: this indicates a potential bug in the program: it performed an invalid operation, but the Stacked Borrows rules it violated are still experimental
+  = help: see https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md for further information
+  = note: this is on thread `sub_binary_as_b`
+  = note: stack backtrace:
+          0: beamr::term::binary::Binary::new
+              at crates/beamr/src/term/binary.rs:53:31: 53:35
+          1: beamr::term::boxed::accessors::parent_bytes
+              at crates/beamr/src/term/boxed/accessors.rs:358:27: 358:46
+          2: beamr::term::boxed::SubBinary::new
+              at crates/beamr/src/term/boxed/accessors.rs:319:28: 319:61
+          3: sub_binary_as_bytes_survives_the_parent_it_views
+              at crates/beamr/tests/accessor_dangle_red.rs:103:32: 103:72
+          4: sub_binary_as_bytes_survives_the_parent_it_views::{closure#0}
+              at crates/beamr/tests/accessor_dangle_red.rs:94:54: 94:54
+
+note: some details are omitted, run with `MIRIFLAGS=-Zmiri-backtrace=full` for a verbose backtrace
+
+error: aborting due to 1 previous error; 1 warning emitted
+
+error: test failed, to rerun pass `-p beamr --test accessor_dangle_red`
+
+Caused by:
+  process didn't exit successfully: `/home/rocketfish/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/cargo-miri runner /home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/legs/accessor/target/miri/x86_64-unknown-linux-gnu/debug/build/beamr/4fe2e523f4322522/out/accessor_dangle_red-4fe2e523f4322522 --exact sub_binary_as_bytes_survives_the_parent_it_views` (exit status: 1)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.

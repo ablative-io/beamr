@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 
+use super::heap_borrow::HeapBorrow;
 use super::{Term, boxed::BigInt};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -40,16 +41,20 @@ impl BigIntValue {
     }
 
     #[must_use]
-    pub fn from_bigint(bigint: BigInt) -> Self {
-        Self::new(bigint.is_negative(), bigint.limbs().to_vec())
+    /// Copies a heap bignum into owned storage.
+    ///
+    /// Takes the witness rather than manufacturing one: the limbs are read out
+    /// of heap words, and this is the boundary where they stop being borrowed.
+    pub fn from_bigint(bigint: BigInt, heap: HeapBorrow<'_>) -> Self {
+        Self::new(bigint.is_negative(), bigint.limbs(heap).to_vec())
     }
 
     #[must_use]
-    pub fn from_term(term: Term) -> Option<Self> {
+    pub fn from_term(term: Term, heap: HeapBorrow<'_>) -> Option<Self> {
         if let Some(value) = term.as_small_int() {
             Some(Self::from_i64(value))
         } else {
-            BigInt::new(term).map(Self::from_bigint)
+            BigInt::new(term).map(|bigint| Self::from_bigint(bigint, heap))
         }
     }
 

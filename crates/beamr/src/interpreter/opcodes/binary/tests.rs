@@ -134,7 +134,9 @@ fn interpreter_binary_builder_appends_integer_and_binary_segments() {
     assert_eq!(builder_state.write_position_bits(), 24);
     let result = finalize_builder(&mut process, builder).expect("final binary");
     assert_eq!(
-        Binary::new(result).expect("binary").as_bytes(),
+        Binary::new(result)
+            .expect("binary")
+            .as_bytes(process.borrow_terms()),
         &[65, 66, 67]
     );
 }
@@ -168,7 +170,9 @@ fn interpreter_binary_builder_promotes_large_result_to_proc_bin() {
     let result = finalize_builder(&mut process, builder).expect("final binary");
     let expected: Vec<u8> = (0..100).collect();
     assert_eq!(
-        BinaryRef::new(result).expect("binary ref").as_bytes(),
+        BinaryRef::new(result)
+            .expect("binary ref")
+            .as_bytes(process.borrow_terms()),
         expected.as_slice()
     );
     assert!(ProcBin::new(result).is_some());
@@ -280,11 +284,15 @@ fn interpreter_binary_match_extracts_fields_and_tail() {
     assert_eq!(process.x_reg(2).as_small_int(), Some(65));
     assert_eq!(process.x_reg(3).as_small_int(), Some(66));
     assert_eq!(
-        Binary::new(process.x_reg(4)).expect("rest").as_bytes(),
+        Binary::new(process.x_reg(4))
+            .expect("rest")
+            .as_bytes(process.borrow_terms()),
         &[67, 68]
     );
     assert_eq!(
-        Binary::new(process.x_reg(0)).expect("source").as_bytes(),
+        Binary::new(process.x_reg(0))
+            .expect("source")
+            .as_bytes(process.borrow_terms()),
         &[65, 66, 67, 68]
     );
     assert_eq!(
@@ -353,7 +361,7 @@ fn interpreter_binary_match_extracts_sub_binary_from_proc_bin_without_copying() 
     assert_eq!(
         BinaryRef::new(process.x_reg(2))
             .expect("binary ref")
-            .as_bytes(),
+            .as_bytes(process.borrow_terms()),
         &shared.as_bytes()[10..20]
     );
     assert_eq!(shared.ref_count(), 2);
@@ -665,7 +673,9 @@ fn bs_get_tail_returns_remaining_or_empty_binary() {
     )
     .expect("tail");
     assert_eq!(
-        Binary::new(process.x_reg(2)).expect("tail").as_bytes(),
+        Binary::new(process.x_reg(2))
+            .expect("tail")
+            .as_bytes(process.borrow_terms()),
         b"efgh"
     );
 
@@ -676,7 +686,12 @@ fn bs_get_tail_returns_remaining_or_empty_binary() {
         &[Operand::X(1), Operand::X(3), Operand::Unsigned(0)],
     )
     .expect("empty tail");
-    assert_eq!(Binary::new(process.x_reg(3)).expect("tail").as_bytes(), b"");
+    assert_eq!(
+        Binary::new(process.x_reg(3))
+            .expect("tail")
+            .as_bytes(process.borrow_terms()),
+        b""
+    );
 }
 
 #[test]
@@ -896,7 +911,9 @@ fn bs_match_runs_commands_and_rolls_back_position_on_failure() {
     .expect("bs_match");
     assert_eq!(process.x_reg(2).as_small_int(), Some(1));
     assert_eq!(
-        Binary::new(process.x_reg(3)).expect("binary").as_bytes(),
+        Binary::new(process.x_reg(3))
+            .expect("binary")
+            .as_bytes(process.borrow_terms()),
         &[3, 4]
     );
     assert_eq!(MatchContext::new(ctx).expect("context").position_bits(), 32);

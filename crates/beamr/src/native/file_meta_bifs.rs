@@ -12,6 +12,7 @@ use crate::native::{
 };
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
+use crate::term::heap_borrow::HeapBorrow;
 
 /// Registers Erlang file metadata BIFs.
 pub fn register_file_meta_bifs(
@@ -47,7 +48,7 @@ pub fn file_info(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     let [filename] = args else {
         return Err(badarg());
     };
-    let path = filename_path(*filename)?;
+    let path = filename_path(*filename, context.borrow_terms())?;
     context.submit_file_io(
         IoOp::Statx {
             dir_fd: libc::AT_FDCWD,
@@ -71,7 +72,7 @@ pub fn list_dir(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
     };
     context.submit_file_io(
         IoOp::ListDir {
-            path: filename_path(*dirname)?,
+            path: filename_path(*dirname, context.borrow_terms())?,
         },
         FileIoContinuation::ListDir,
     )?;
@@ -110,8 +111,8 @@ pub fn rename(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term>
     };
     context.submit_file_io(
         IoOp::Rename {
-            source: filename_path(*source)?,
-            destination: filename_path(*destination)?,
+            source: filename_path(*source, context.borrow_terms())?,
+            destination: filename_path(*destination, context.borrow_terms())?,
         },
         FileIoContinuation::Rename,
     )?;
@@ -134,7 +135,8 @@ where
     let [filename] = args else {
         return Err(badarg());
     };
-    context.submit_file_io(op(filename_path(*filename)?), continuation)?;
+    let path = filename_path(*filename, context.borrow_terms())?;
+    context.submit_file_io(op(path), continuation)?;
     Ok(Term::atom(Atom::OK))
 }
 
@@ -283,8 +285,8 @@ fn signed_term(value: i64) -> Result<Term, Term> {
     Term::try_small_int(value).ok_or_else(badarg)
 }
 
-fn filename_path(term: Term) -> Result<PathBuf, Term> {
-    let bytes = BinaryRef::new(term).ok_or_else(badarg)?.as_bytes();
+fn filename_path(term: Term, heap: HeapBorrow<'_>) -> Result<PathBuf, Term> {
+    let bytes = BinaryRef::new(term).ok_or_else(badarg)?.as_bytes(heap);
     let filename = std::str::from_utf8(bytes).map_err(|_| badarg())?;
     Ok(PathBuf::from(filename))
 }
@@ -337,6 +339,7 @@ mod tests;
 
 #[cfg(test)]
 mod ar1_row4_site5_tests {
+    use crate::term::heap_borrow::HeapBorrow;
     // ⛔ DEFECT-ASSERTING TESTS — READ THIS BEFORE TRUSTING A GREEN.
     //
     // These pin the MEASURED CORRUPT SURFACE of AR-1 row 4 at f993280. They do
@@ -393,7 +396,7 @@ mod ar1_row4_site5_tests {
 
     /// The reader, shared by BOTH arms so neither is graded by the softer
     /// instrument. Unwraps `{ok, List}` and walks the list BY CONTENTS.
-    fn read_back(term: Term, entries: usize) -> Result<(), String> {
+    fn read_back(term: Term, entries: usize, heap: HeapBorrow<'_>) -> Result<(), String> {
         let tuple = Tuple::new(term).ok_or_else(|| "result is not a tuple".to_string())?;
         if tuple.arity() != 2 {
             return Err(format!("result arity {} not 2", tuple.arity()));
@@ -417,10 +420,10 @@ mod ar1_row4_site5_tests {
                 format!("entry {seen}: head is not a binary — carrier went stale")
             })?;
             let want = entry_of(seen);
-            if binary.as_bytes() != want.as_bytes() {
+            if binary.as_bytes(heap) != want.as_bytes() {
                 return Err(format!(
                     "entry {seen}: contents {:?} != {want:?}",
-                    String::from_utf8_lossy(binary.as_bytes())
+                    String::from_utf8_lossy(binary.as_bytes(heap))
                 ));
             }
             seen += 1;
@@ -502,7 +505,7 @@ mod ar1_row4_site5_tests {
                     .map_err(|_| "replica returned an error term".to_string())?,
             };
 
-            read_back(term, entries)
+            read_back(term, entries, context.borrow_terms())
         })();
         (achieved, outcome)
     }

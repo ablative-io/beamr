@@ -103,7 +103,7 @@ fn create_bin(
 fn result_bytes(process: &Process) -> Vec<u8> {
     BinaryRef::new(process.x_reg(0))
         .expect("binary result")
-        .as_bytes()
+        .as_bytes(process.borrow_terms())
         .to_vec()
 }
 

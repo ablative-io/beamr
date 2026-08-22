@@ -33,6 +33,7 @@ use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{BigInt, Float};
+use crate::term::heap_borrow::HeapBorrow;
 use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
 
 use crate::interpreter::opcodes::core;
@@ -82,7 +83,13 @@ fn construct(process: &Process, module: &Module, fields: &[Operand]) -> Result<V
     }
     let mut writer = BitWriter::default();
     for segment in fields.chunks_exact(SEGMENT_FIELDS) {
-        append_segment(process, module, &mut writer, segment)?;
+        append_segment(
+            process,
+            module,
+            &mut writer,
+            segment,
+            process.borrow_terms(),
+        )?;
     }
     writer.into_bytes()
 }
@@ -92,6 +99,7 @@ fn append_segment(
     module: &Module,
     writer: &mut BitWriter,
     segment: &[Operand],
+    heap: HeapBorrow<'_>,
 ) -> Result<(), ExecError> {
     let [type_atom, _seg, unit, flags, source, size] = segment else {
         return Err(ExecError::InvalidOperand("bs_create_bin segment"));
@@ -109,7 +117,7 @@ fn append_segment(
         }
         // Any other atom size is `all`: copy the entire source binary.
         Operand::Atom(Some(_)) => {
-            push_whole_binary(writer, core::read_term(process, module, source)?)
+            push_whole_binary(writer, core::read_term(process, module, source)?, heap)
         }
         _ => {
             let bits = segment_bits(process, module, size, unit)?;
@@ -128,7 +136,7 @@ fn append_segment(
                 }
                 _ => {
                     let term = core::read_term(process, module, source)?;
-                    push_term(writer, term, bits, endian)
+                    push_term(writer, term, bits, endian, heap)
                 }
             }
         }
@@ -142,19 +150,20 @@ fn push_term(
     term: Term,
     bits: usize,
     endian: Endian,
+    heap: HeapBorrow<'_>,
 ) -> Result<(), ExecError> {
     if let Some(float) = Float::new(term) {
         return push_float(writer, float.value(), bits, endian);
     }
     if let Some(binary) = BinaryRef::new(term) {
-        let bytes = binary.as_bytes();
+        let bytes = binary.as_bytes(heap);
         if bits > bytes.len() * u8::BITS as usize {
             return Err(ExecError::Badarg);
         }
         writer.push_bits(bytes, bits);
         return Ok(());
     }
-    push_integer(writer, term, bits, endian)
+    push_integer(writer, term, bits, endian, heap)
 }
 
 fn push_literal_bytes(
@@ -168,9 +177,13 @@ fn push_literal_bytes(
     Ok(())
 }
 
-fn push_whole_binary(writer: &mut BitWriter, term: Term) -> Result<(), ExecError> {
+fn push_whole_binary(
+    writer: &mut BitWriter,
+    term: Term,
+    heap: HeapBorrow<'_>,
+) -> Result<(), ExecError> {
     let binary = BinaryRef::new(term).ok_or(ExecError::Badarg)?;
-    let bytes = binary.as_bytes();
+    let bytes = binary.as_bytes(heap);
     writer.push_bits(bytes, bytes.len() * u8::BITS as usize);
     Ok(())
 }
@@ -190,13 +203,14 @@ fn push_integer(
     term: Term,
     bits: usize,
     endian: Endian,
+    heap: HeapBorrow<'_>,
 ) -> Result<(), ExecError> {
     if bits == 0 {
         // Still badarg if the source is not an integer at all.
-        return integer_le_bytes(term, 1).map(|_| ());
+        return integer_le_bytes(term, 1, heap).map(|_| ());
     }
     let len = bits.div_ceil(u8::BITS as usize);
-    let le = integer_le_bytes(term, len)?;
+    let le = integer_le_bytes(term, len, heap)?;
     match endian {
         Endian::Little => {
             let full = bits / u8::BITS as usize;
@@ -219,7 +233,7 @@ fn push_integer(
 /// Two's-complement little-endian bytes of an integer term, truncated or
 /// sign-extended to `len` bytes (matching BEAM construction semantics,
 /// where oversized values wrap instead of failing).
-fn integer_le_bytes(term: Term, len: usize) -> Result<Vec<u8>, ExecError> {
+fn integer_le_bytes(term: Term, len: usize, heap: HeapBorrow<'_>) -> Result<Vec<u8>, ExecError> {
     if let Some(value) = term.as_small_int() {
         let fill = if value < 0 { 0xff } else { 0x00 };
         let mut out = vec![fill; len];
@@ -230,7 +244,7 @@ fn integer_le_bytes(term: Term, len: usize) -> Result<Vec<u8>, ExecError> {
     }
     let big = BigInt::new(term).ok_or(ExecError::Badarg)?;
     let mut out = vec![0_u8; len];
-    for (limb_index, limb) in big.limbs().iter().enumerate() {
+    for (limb_index, limb) in big.limbs(heap).iter().enumerate() {
         for (byte_index, byte) in limb.to_le_bytes().iter().enumerate() {
             let index = limb_index * std::mem::size_of::<u64>() + byte_index;
             if index < len {

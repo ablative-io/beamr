@@ -1,3 +1,4 @@
+use crate::term::heap_borrow::HeapBorrow;
 use std::sync::{Arc, Mutex};
 
 use crate::atom::{Atom, AtomTable};
@@ -16,9 +17,9 @@ fn binary(bytes: &[u8]) -> Term {
     binary::write_binary(heap, bytes).expect("binary heap sized correctly")
 }
 
-fn assert_binary(term: Term, expected: &[u8]) {
+fn assert_binary(term: Term, expected: &[u8], heap: HeapBorrow<'_>) {
     let binary = Binary::new(term).expect("binary term");
-    assert_eq!(binary.as_bytes(), expected);
+    assert_eq!(binary.as_bytes(heap), expected);
 }
 
 fn list(elements: &[Term]) -> Term {
@@ -71,7 +72,11 @@ impl RecordingIoMessages {
             atom_name(request.get(1).expect("request encoding"), ctx),
             "unicode"
         );
-        assert_binary(request.get(2).expect("request bytes"), payload);
+        assert_binary(
+            request.get(2).expect("request bytes"),
+            payload,
+            ctx.borrow_terms(),
+        );
     }
 }
 
@@ -141,6 +146,7 @@ fn io_format_helpers_and_init_stop_are_covered() {
         )
         .expect("io_lib format"),
         b"hello world",
+        ctx.borrow_terms(),
     );
     assert_binary(
         io_bifs::bif_io_lib_format_2(
@@ -155,6 +161,7 @@ fn io_format_helpers_and_init_stop_are_covered() {
         )
         .expect("io_lib format accepts Erlang string format"),
         b"iodata-format",
+        ctx.borrow_terms(),
     );
 
     assert_eq!(
