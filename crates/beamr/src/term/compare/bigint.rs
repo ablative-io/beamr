@@ -4,7 +4,7 @@
 //! comments do not grow that module, which is already past the repository's
 //! 500-line file wall.
 
-use std::cmp::Ordering;
+use core::cmp::Ordering;
 
 use super::super::heap_borrow::HeapBorrow;
 use super::super::{

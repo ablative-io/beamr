@@ -78,7 +78,7 @@
 # Run `./scripts/gate-nostd-ratchet.sh --self-test` to prove the arms fire.
 set -uo pipefail
 
-CEILING=1072           # rustc's own tally. LOWER THIS, NEVER RAISE IT --
+CEILING=1051           # rustc's own tally. LOWER THIS, NEVER RAISE IT --
                        # except for a MEASURED POPULATION CHANGE, of which
                        # B-144 R1 (1039 -> 1075) is the first and only
                        # instance. See below. 1075 -> 1072 at the 0.19.0 cut:
@@ -88,7 +88,26 @@ CEILING=1072           # rustc's own tally. LOWER THIS, NEVER RAISE IT --
                        # attributed -- the delta is commit-level, measured by
                        # this gate itself. A tightening, exactly the direction
                        # this ratchet exists to bank.
-CEILING_PIN="0.19.0 cut (site-4 trio deletion)"
+                       #
+                       # 1072 -> 1051 at the 0.20.0 cut. THIS GATE CAUGHT A REAL
+                       # REGRESSION: the accessor-lifetimes landing took the
+                       # tally to 1073 (three errors in, two out -- net +1), and
+                       # it went unseen because this leg reds STRUCTURALLY on the
+                       # Linux venue (#31), so the landing's own differential
+                       # recorded rc=3 on both arms and counted two dead
+                       # instruments as a matching leg. Repaired here by three
+                       # imports the no_std build always wanted:
+                       # `core::cmp::Ordering` in term/compare/bigint.rs, and
+                       # cfg-gated `alloc::string::String` / `alloc::vec::Vec` in
+                       # term/format.rs and term/shared_binary.rs. Those three
+                       # lines cleared 22 errors, not 1 -- the cascade was
+                       # MEASURED after the edit, never predicted into it, on the
+                       # lead's explicit instruction that a number coming out
+                       # ABOVE the old ceiling would be a finding, not a rounding
+                       # error. Ruling at this cut (Waffles): the ceiling never
+                       # moves up while that delegation stands -- "STAND, not
+                       # GROW" spent on a +1 is a gate that means nothing at +2.
+CEILING_PIN="0.20.0 cut (accessor-landing no_std repair)"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 99

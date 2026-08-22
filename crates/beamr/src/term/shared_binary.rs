@@ -4,6 +4,9 @@
 //! ProcBin heap objects. Sharing the off-heap buffer is an optimisation: process
 //! isolation is preserved because the bytes are immutable through this API.
 
+#[cfg(any(not(feature = "std"), target_arch = "wasm32"))]
+use alloc::vec::Vec;
+
 use std::sync::Arc;
 
 use crate::term::Term;

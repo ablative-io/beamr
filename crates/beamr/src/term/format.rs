@@ -4,6 +4,9 @@
 //! serialization format and deliberately avoids raw `Debug` output for runtime
 //! terms so opaque atom indices and heap words do not leak into user-facing text.
 
+#[cfg(any(not(feature = "std"), target_arch = "wasm32"))]
+use alloc::string::String;
+
 use crate::atom::{Atom, AtomTable};
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{
