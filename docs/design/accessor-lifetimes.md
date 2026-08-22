@@ -411,3 +411,60 @@ and shipping it as the tie would be the fake fix this design exists to avoid.
   (**OBSERVED** — `process/mod.rs:146`, `:155`). No new dependency.
 - **Sweep**: zero `'static` returns over heap memory remain in the four
   families, `accessors.rs:357` `parent_bytes` in the found-and-retired list.
+
+---
+
+## 7. Amendment, after implementation — measured, not predicted
+
+§1–§6 were written before the signatures moved (that ordering is the point).
+Implementation measured two things the design under-stated. Both are corrected
+here rather than silently absorbed.
+
+### 7.1 `with_frame` is used at **16** sites, not three
+
+§4 named three `std` trait implementations as the only readers that cannot be
+handed a witness. **OBSERVED** — `rg -n 'HeapBorrow::with_frame' crates/` returns
+16 call sites in 8 files:
+
+| File:line | Reader | Why no witness is reachable |
+|---|---|---|
+| `term/compare/mod.rs:165`, `:370` | `compare_binaries`, `number_value` | reached from `impl PartialEq for Term` (`term/mod.rs:65`) and `impl Ord for Term` (`:79`) |
+| `term/compare/bigint.rs:27` | `compare_bigint_values` | same |
+| `term/hash.rs:165`, `:193` | binary/bignum hashing | reached from `impl Hash for EtsKey` (`hash.rs:43`) |
+| `term/format.rs:190`, `:248` | `format_binary`, `bigint_to_decimal_string` | `format_term(Term, &AtomTable)` — a debug formatter with no heap handle in any caller |
+| `term/json.rs:167`, `:233` | `binary_to_value`, `bigint_to_value` | `term_to_value(Term, &AtomTable)`, also called from `beamr-wasm` with no process in hand |
+| `etf/encode.rs:164`, `:512` | `encode_bigint`, `encode_binary` | `encode_term(Term, &AtomTable)` — pure reader into an owned `Vec<u8>` |
+| `distribution/etf.rs:346`, `:541` | same pair, distribution copy | same |
+| `ets/copy.rs:113` | `copy_term_to_ets` | copies a process term into ETS-owned `Vec<Box<[u64]>>`; the *source* heap is not nameable at that boundary |
+| `jit/runtime_binary_match.rs:65`, `:330` | `jit_bs_get_integer`, `get_utf` | **the JIT ABI entries receive no process pointer at all** — only the match context. Changing the ABI is a JIT-compiler change, outside this scope |
+
+Each is an `unsafe` block with a written safety argument. `with_frame` is
+`pub(crate)`: no public API exposes it, and every BIF, the interpreter's binary
+opcodes, `mailbox`, and `jit_bs_get_binary` (which *does* receive a process) use
+a real witness instead.
+
+**REASONED** — the guarantee at these 16 sites is weaker than the tie and
+stronger than `'static`: the higher-ranked lifetime makes escape impossible, so
+no borrowed slice can reach a caller, but it does not prevent an allocation
+*inside* the closure. That residual is bounded, listed, and auditable, which
+`'static` never was.
+
+### 7.2 API breakage is wider than §3 predicted
+
+Additional **breaking** public signature changes the compiler forced:
+
+| Item | Change |
+|---|---|
+| `term::bigint_math::BigIntValue::from_bigint` | gains `heap: HeapBorrow<'_>` |
+| `term::bigint_math::BigIntValue::from_term` | gains `heap: HeapBorrow<'_>` |
+| `term::bigint_convert::integer_term_to_string_radix` | gains `heap: HeapBorrow<'_>` |
+| `beamr_wasm::convert::term_to_js_value` | gains `heap: HeapBorrow<'_>` |
+| `beamr_wasm::convert::terms_to_js_array` | gains `heap: HeapBorrow<'_>` |
+
+Additional **additive** (non-breaking) public items: `ets::OwnedTerm::borrow_terms`,
+`constant_pool::ConstantPool::borrow_terms`. Both exist because those types own
+term storage of their own and are therefore truthful witness sources — ETS
+entries and literal pools are not process heaps, but they are storage a term can
+point into, and the borrow-vs-`&mut` argument is identical.
+
+The version decision remains outside this change.

@@ -1,0 +1,187 @@
+================================================================================
+GREEN — the dangle is now a TYPE ERROR
+================================================================================
+
+Tree      : leg/accessor, after R2 (the four accessor families are tied to a
+            HeapBorrow<'heap> witness carried in argument position)
+Toolchain : rustc 1.97.1 (8bab26f4f 2026-07-14)
+
+The red program of docs/evidence/beamr-accessor-dangle-red.txt is re-run
+against this tree. It no longer runs, because it no longer compiles.
+
+================================================================================
+1. THE RED PROGRAM, UNCHANGED — NOW A COMPILE ERROR (E0061 x5)
+================================================================================
+COMMAND
+  cargo test -p beamr --no-default-features --features std \
+    --test accessor_dangle_red --no-run
+
+The four `&'static` bindings it declares cannot even be spelled: the accessors
+no longer return a lifetime the caller may choose.
+
+   Compiling beamr v0.19.4 (/home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/legs/accessor/crates/beamr)
+error[E0061]: this method takes 1 argument but 0 arguments were supplied
+  --> crates/beamr/tests/accessor_dangle_red.rs:30:79
+   |
+30 |     let bytes: &'static [u8] = ProcBin::new(term).expect("proc bin accessor").as_bytes();
+   |                                                                               ^^^^^^^^-- argument #1 of type `HeapBorrow<'_>` is missing
+   |
+note: method defined here
+  --> crates/beamr/src/term/boxed/binary_accessors.rs:60:12
+   |
+60 |     pub fn as_bytes<'heap>(self, heap: HeapBorrow<'heap>) -> &'heap [u8] {
+   |            ^^^^^^^^
+help: provide the argument
+   |
+30 |     let bytes: &'static [u8] = ProcBin::new(term).expect("proc bin accessor").as_bytes(/* HeapBorrow<'_> */);
+   |                                                                                        ++++++++++++++++++++
+
+error[E0061]: this method takes 1 argument but 0 arguments were supplied
+  --> crates/beamr/tests/accessor_dangle_red.rs:52:76
+   |
+52 |     let bytes: &'static [u8] = Binary::new(term).expect("binary accessor").as_bytes();
+   |                                                                            ^^^^^^^^-- argument #1 of type `HeapBorrow<'_>` is missing
+   |
+note: method defined here
+  --> crates/beamr/src/term/binary.rs:91:12
+   |
+91 |     pub fn as_bytes<'heap>(self, heap: HeapBorrow<'heap>) -> &'heap [u8] {
+   |            ^^^^^^^^
+help: provide the argument
+   |
+52 |     let bytes: &'static [u8] = Binary::new(term).expect("binary accessor").as_bytes(/* HeapBorrow<'_> */);
+   |                                                                                     ++++++++++++++++++++
+
+error[E0061]: this method takes 1 argument but 0 arguments were supplied
+   --> crates/beamr/tests/accessor_dangle_red.rs:75:77
+    |
+ 75 |     let limbs: &'static [u64] = BigInt::new(term).expect("bigint accessor").limbs();
+    |                                                                             ^^^^^-- argument #1 of type `HeapBorrow<'_>` is missing
+    |
+note: method defined here
+   --> crates/beamr/src/term/boxed/accessors.rs:134:12
+    |
+134 |     pub fn limbs<'heap>(self, heap: HeapBorrow<'heap>) -> &'heap [u64] {
+    |            ^^^^^
+help: provide the argument
+    |
+ 75 |     let limbs: &'static [u64] = BigInt::new(term).expect("bigint accessor").limbs(/* HeapBorrow<'_> */);
+    |                                                                                   ++++++++++++++++++++
+
+error[E0061]: this method takes 1 argument but 0 arguments were supplied
+   --> crates/beamr/tests/accessor_dangle_red.rs:105:10
+    |
+105 |         .as_bytes();
+    |          ^^^^^^^^-- argument #1 of type `HeapBorrow<'_>` is missing
+    |
+note: method defined here
+   --> crates/beamr/src/term/boxed/binary_accessors.rs:142:12
+    |
+142 |     pub fn as_bytes<'heap>(self, heap: HeapBorrow<'heap>) -> &'heap [u8] {
+    |            ^^^^^^^^
+help: provide the argument
+    |
+105 |         .as_bytes(/* HeapBorrow<'_> */);
+    |                   ++++++++++++++++++++
+
+For more information about this error, try `rustc --explain E0061`.
+error: could not compile `beamr` (test "accessor_dangle_red") due to 4 previous errors
+
+================================================================================
+2. THE STRONGER PROOF — WITNESS SUPPLIED, STILL A BORROW ERROR (E0502 x5)
+================================================================================
+The interesting question is not "did you forget an argument". It is: with the
+witness correctly supplied, can the slice still be held across a collection?
+
+Program (crates/beamr/tests/accessor_dangle_green.rs, deleted after capture):
+each test obtains the slice through the PUBLIC API with a witness taken from
+`&Process`, then calls `gc::collect_minor(&mut process)` while the slice is
+still live. One test per accessor family.
+
+COMMAND
+  cargo test -p beamr --no-default-features --features std \
+    --test accessor_dangle_green --no-run
+
+   Compiling beamr v0.19.4 (/home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/legs/accessor/crates/beamr)
+error[E0502]: cannot borrow `process` as mutable because it is also borrowed as immutable
+  --> crates/beamr/tests/accessor_dangle_green.rs:18:31
+   |
+17 |     let bytes = ProcBin::new(term).expect("accessor").as_bytes(process.borrow_terms());
+   |                                                                ------- immutable borrow occurs here
+18 |     let _ = gc::collect_minor(&mut process);
+   |                               ^^^^^^^^^^^^ mutable borrow occurs here
+19 |     assert_eq!(bytes, b"off-heap");
+   |     ------------------------------ immutable borrow later used here
+
+error[E0502]: cannot borrow `process` as mutable because it is also borrowed as immutable
+  --> crates/beamr/tests/accessor_dangle_green.rs:28:31
+   |
+27 |     let bytes = Binary::new(term).expect("accessor").as_bytes(process.borrow_terms());
+   |                                                               ------- immutable borrow occurs here
+28 |     let _ = gc::collect_minor(&mut process);
+   |                               ^^^^^^^^^^^^ mutable borrow occurs here
+29 |     assert_eq!(bytes, b"hello");
+   |     --------------------------- immutable borrow later used here
+
+error[E0502]: cannot borrow `process` as mutable because it is also borrowed as immutable
+  --> crates/beamr/tests/accessor_dangle_green.rs:38:31
+   |
+37 |     let limbs = BigInt::new(term).expect("accessor").limbs(process.borrow_terms());
+   |                                                            ------- immutable borrow occurs here
+38 |     let _ = gc::collect_minor(&mut process);
+   |                               ^^^^^^^^^^^^ mutable borrow occurs here
+39 |     assert_eq!(limbs, &[7, 9]);
+   |     -------------------------- immutable borrow later used here
+
+error[E0502]: cannot borrow `process` as mutable because it is also borrowed as immutable
+  --> crates/beamr/tests/accessor_dangle_green.rs:50:31
+   |
+49 |     let bytes = SubBinary::new(term).expect("accessor").as_bytes(process.borrow_terms());
+   |                                                                  ------- immutable borrow occurs here
+50 |     let _ = gc::collect_minor(&mut process);
+   |                               ^^^^^^^^^^^^ mutable borrow occurs here
+51 |     assert_eq!(bytes, b"456789");
+   |     ---------------------------- immutable borrow later used here
+
+error[E0502]: cannot borrow `process` as mutable because it is also borrowed as immutable
+  --> crates/beamr/tests/accessor_dangle_green.rs:60:31
+   |
+59 |     let bytes = BinaryRef::new(term).expect("accessor").as_bytes(process.borrow_terms());
+   |                                                                  ------- immutable borrow occurs here
+60 |     let _ = gc::collect_minor(&mut process);
+   |                               ^^^^^^^^^^^^ mutable borrow occurs here
+61 |     assert_eq!(bytes, b"hello");
+   |     --------------------------- immutable borrow later used here
+
+For more information about this error, try `rustc --explain E0502`.
+error: could not compile `beamr` (test "accessor_dangle_green") due to 5 previous errors
+
+================================================================================
+3. THE SAME PROOF, IN-GATE — rustdoc compile_fail doctests
+================================================================================
+A program that must not compile cannot live in the gated tree, so the five
+proofs above also exist as `compile_fail,E0502` rustdoc doctests on the five
+public accessors. They run under the gate's `tests` leg. The expected
+diagnostic is PINNED to E0502: a bare `compile_fail` would pass on a typo.
+
+Precedent for the harness, already in the repository:
+crates/beamr/src/process/mod.rs:147 and :156 (`Process` is neither Send nor Sync).
+No new dependency was added; `trybuild` is not used.
+
+COMMAND
+  cargo test -p beamr --features encode --doc
+
+
+
+running 7 tests
+test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::ProcBin::as_bytes (line 46) - compile fail ... ok
+test crates/beamr/src/term/binary.rs - term::binary::Binary::as_bytes (line 79) - compile fail ... ok
+test crates/beamr/src/term/binary_ref.rs - term::binary_ref::BinaryRef::as_bytes (line 40) - compile fail ... ok
+test crates/beamr/src/term/boxed/accessors.rs - term::boxed::accessors::BigInt::limbs (line 122) - compile fail ... ok
+test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::SubBinary::as_bytes (line 126) - compile fail ... ok
+test crates/beamr/src/process/mod.rs - process::Process (line 156) - compile fail ... ok
+test crates/beamr/src/process/mod.rs - process::Process (line 147) - compile fail ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+all doctests ran in 0.33s; merged doctests compilation took 0.28s
