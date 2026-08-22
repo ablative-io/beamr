@@ -1,0 +1,56 @@
+PRE-REGISTERED EXPECTATION — beamr 0.20.0 release battery
+Written BEFORE the battery ran. Artemis Peach, owning seat.
+
+TREE UNDER TEST : 1f77ee5580c31930e94edf755b3c95bb1f0f697d
+COMMIT          : 5226d730c58001ad05ba6cfd8849a78089b9a7fc
+PARENT          : 7401a531a57c36f2f2d923a40b0d2da0aca7ab0b
+
+CRITERION: GREEN-BY-BASELINE, not absolute green. Absolute green is impossible
+until beamr#31, #32 and #33 are cured. The claim is the DIFFERENTIAL: the rc set
+must match the documented baseline EXACTLY, leg for leg. Any deviation in either
+direction -- a red going green or a green going red -- is the signal.
+
+EXPECTED rc, from the independent differential at gate-logs/accessor-lifetimes-
+differential/ (evidence cb0926dd), which measured BOTH arms of the landing:
+
+    fmt                          0
+    clippy                     101   (the #32 15-diagnostic set)
+    wasm32-check                 0
+    wasm-tests                   0   (86 passed)
+    tests                      101   (#33: distribution_runtimes_exist_only_
+                                      when_configured_and_are_joined_at_shutdown)
+    blocking-call-in-native-bif    0
+    clippy-all-features        101   (#32 again)
+    tests-all-features         101   (#33 again)
+    nostd-ratchet                3   (#31 structural red)
+
+DELTA THIS CUT INTRODUCES vs that measurement: the EtsOrderedSet::new deletion
+(OB-001), three version bumps, a CHANGELOG entry and two obligations-file edits.
+
+PREDICTION: all nine rc values UNCHANGED from the table above.
+
+REASONING, so a surprise is interpretable rather than explained after the fact:
+- The deleted constructor had ZERO in-tree callers (positive-controlled: bare
+  `EtsOrderedSet` matched 12, `EtsOrderedSet::new` matched 0), so no test or
+  production path can lose a reference.
+- It was #[deprecated], so if anything the clippy diagnostic count could FALL
+  were any lint pointed at it -- but #32's set lives in io/uring.rs, which this
+  cut does not touch, so I expect no change rather than a fall.
+- `cargo check -p beamr --all-features` was already clean after the delete.
+
+FALSIFIERS -- what would make me stop rather than proceed:
+- Any leg whose rc differs from the table. In particular a NEW red is a stop:
+  it means this cut introduced it, and a release does not ship a red it created.
+- clippy diagnostic count != 15, or a diagnostic outside io/uring.rs. That
+  would mean the delete or the bumps moved the lint surface.
+- tests failing on any test OTHER than #33's named one. A different failing
+  test is a different defect, not the documented baseline.
+- wasm-tests passing count != 86.
+
+⛔ KNOWN WIDTH CAVEAT, stated up front rather than discovered later: the `tests`
+and `tests-all-features` legs run VERBATIM from gates.json, without
+--no-fail-fast, so they truncate at the first failing suite (66 of 80 suites).
+That is the gate of record and I am not adding flags to it. The unmeasured tail
+is covered by the differential's --no-fail-fast legs on the same content at 80
+suites per arm. The differential and this battery make the claim together;
+neither covers the full width alone.

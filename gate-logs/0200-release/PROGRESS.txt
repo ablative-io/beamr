@@ -1,0 +1,29 @@
+battery start : 2026-08-22T09:31:24Z
+worktree      : /private/tmp/claude-501/-Users-tom-Developer-ablative-stack-beamr/b337ce2b-336a-4856-a9d8-54c90496c9fa/scratchpad/wt-rel
+commit        : 6d37072022927c87f7e35696c65a6ab5cef0d84f
+tree          : 1b22d9a2af099f0e45ff45e7c572bc93a207daf6
+dirty         : 0
+rustc         : rustc 1.97.1 (8bab26f4f 2026-07-14)
+cargo         : cargo 1.97.1 (c980f4866 2026-06-30)
+---
+[09:31:24Z] START fmt
+[09:31:25Z] DONE  fmt rc=0 1s
+[09:31:25Z] START clippy
+[09:31:44Z] DONE  clippy rc=0 19s
+[09:31:44Z] START wasm32-check
+[09:31:46Z] DONE  wasm32-check rc=0 2s
+[09:31:46Z] START wasm-tests
+[09:31:55Z] DONE  wasm-tests rc=0 9s
+[09:31:55Z] START tests
+[09:34:30Z] DONE  tests rc=0 155s
+[09:34:30Z] START blocking-call-in-native-bif
+[09:34:31Z] DONE  blocking-call-in-native-bif rc=0 1s
+[09:34:31Z] START clippy-all-features
+[09:34:41Z] DONE  clippy-all-features rc=0 10s
+[09:34:41Z] START tests-all-features
+[09:37:13Z] DONE  tests-all-features rc=0 152s
+[09:37:13Z] START nostd-ratchet
+[09:37:17Z] DONE  nostd-ratchet rc=0 4s
+---
+battery end   : 2026-08-22T09:37:17Z
+COMPLETE

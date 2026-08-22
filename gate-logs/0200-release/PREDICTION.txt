@@ -1,0 +1,37 @@
+PRE-REGISTERED EXPECTATION — beamr 0.20.0 release battery, RUN 2 (final tree)
+Written BEFORE the battery ran. Artemis Peach, owning seat.
+
+TREE   : 1b22d9a2af099f0e45ff45e7c572bc93a207daf6
+COMMIT : 6d37072022927c87f7e35696c65a6ab5cef0d84f
+
+⛔ THE VENUE IS NAMED THIS TIME, because run 1's table was not. Run 1 inherited
+an rc table measured on rocketfish (Linux) and applied it to this darwin box;
+five of nine legs "deviated", every one toward green, and none of it was the
+tree. This table is derived for THIS venue and travels nowhere else.
+
+VENUE: aarch64-apple-darwin, rustc 1.97.1, this machine (the publishing venue).
+
+⛔ BLIND SPOT, stated up front: crates/beamr/src/io/uring.rs:3 is
+`#![cfg(target_os = "linux")]`, so beamr#32's entire 15-diagnostic site DOES NOT
+COMPILE here. clippy going green on this box is NOT evidence #32 is fixed, and
+#33's distribution test passes here while failing on Linux. This battery cannot
+speak to either. Their status is whatever the last LINUX measurement said, and
+the release receipt must cite that rather than imply this run refreshed it.
+
+EXPECTED — all nine legs rc=0:
+    fmt 0 · clippy 0 · wasm32-check 0 · wasm-tests 0 · tests 0
+    blocking-call-in-native-bif 0 · clippy-all-features 0
+    tests-all-features 0 · nostd-ratchet 0
+
+Run 1 on this venue gave 8/9 at rc=0 with nostd-ratchet rc=1 (tally 1073 vs
+ceiling 1072). Since then: three no_std imports repaired the regression, the
+tally MEASURED at 1051, and the ceiling was tightened to 1051. Ratchet already
+verified PASS in isolation, and the script's own --self-test fires 7/7 against
+the new ceiling. So the only leg expected to move is nostd-ratchet, 1 -> 0.
+
+FALSIFIERS — any of these stops the cut:
+- any leg rc != 0
+- nostd-ratchet reporting a tally != 1051 (the ceiling is now exact; both
+  directions fail by design, and a drift either way means the tree moved)
+- fmt or clippy reding on the three files I edited, which would mean the repair
+  bought the no_std build at the std build's expense

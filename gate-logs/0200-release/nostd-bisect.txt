@@ -1,0 +1,78 @@
+no-std ratchet regression — bisect and composition
+beamr 0.20.0 cut, Artemis Peach, 2026-08-22
+
+THE RED
+    nostd-ratchet: rustc tally=1073, ceiling=1072
+    FAIL: no-std errors 1073 EXCEEDS the ratchet ceiling 1072
+    "The waiver permits the debt to STAND, not to GROW."
+
+THE BISECT — three points, base acting as the positive control
+    c55ac360  pre-landing merge-base    1072   PASS (exactly at ceiling)
+    7401a531  current main, post-merge  1073   FAIL
+    5226d730  the release prep commit   1073   FAIL
+
+The base PASSES. That is what makes this a measurement rather than an artifact:
+the instrument demonstrably discriminates between 1072 and 1073 on this venue.
+The release prep (version bumps, OB-001 delete, CHANGELOG, obligations edits)
+moves the number NOT AT ALL, so the +1 is the accessor-lifetimes landing's.
+
+COMPOSITION — multiset keyed on (code, file, message); line deliberately
+excluded, because a line number is an attribute of an error, not its identity.
+
+    ADDED at head (3)
+      E0433  crates/beamr/src/term/compare/bigint.rs   cannot find module or crate `std`
+             src: use std::cmp::Ordering;
+      E0425  crates/beamr/src/term/format.rs           cannot find type `String`
+             src: pub fn format_term(term: Term, atom_table: &AtomTable) -> String {
+      E0425  crates/beamr/src/term/shared_binary.rs    cannot find type `Vec`
+             src: inner: Arc<Vec<u8>>,
+
+    REMOVED at head (2)
+      E0433  crates/beamr/src/term/binary.rs           cannot find module or crate `std`
+      E0433  crates/beamr/src/term/boxed/accessors.rs  cannot find module or crate `std`
+
+Three in, two out, net +1. Both removed sites are files whose accessors the
+landing rewrote. This is NOT a new kind of breakage: every one of these is the
+same class as the 1072 already waived. The landing shuffled which files trip
+first and the shuffle came out one worse.
+
+THE REPAIR — three imports the no_std build always wanted
+    term/compare/bigint.rs   use std::cmp::Ordering  ->  use core::cmp::Ordering
+    term/format.rs           + cfg-gated use alloc::string::String
+    term/shared_binary.rs    + cfg-gated use alloc::vec::Vec
+
+`core` needs no cfg and is the same type `std` re-exports. `alloc` DOES need
+one: lib.rs gates `extern crate alloc` behind
+`any(not(feature = "std"), target_arch = "wasm32")`, so a bare `use alloc::`
+would break the std build. The two added imports mirror that predicate exactly.
+
+THE MEASUREMENT AFTER THE EDIT
+    tally 1073 -> 1051.  Three lines cleared TWENTY-TWO errors, not one,
+    because unblocking a type resolves the cascade of E0425s behind it.
+
+⛔ That number was MEASURED after the edit and never predicted into it. The
+lead's instruction was explicit: a tally coming out ABOVE the old ceiling would
+be a finding, not a rounding error, and would stop the cut rather than be
+absorbed. It came out below, so the ceiling was set to the measurement:
+CEILING 1072 -> 1051, CEILING_PIN "0.20.0 cut (accessor-landing no_std repair)".
+
+RULING AT THIS CUT (Waffles): the ceiling never moves UP while that delegation
+stands. "STAND, not GROW" spent on a +1 is a gate that means nothing at +2.
+
+VERIFICATION
+    ratchet at new ceiling      PASS, 1051 exactly
+    ratchet --self-test         7/7, every arm fires against the new ceiling
+    cargo check -p beamr (std)  rc=0, the repair does not buy no_std at std's expense
+
+⚠️ WHY THIS WENT UNSEEN — the mechanism outlives the bug
+This leg reds STRUCTURALLY on the Linux venue (#31: the script dies before it
+counts anything). The landing's own differential therefore recorded rc=3 on
+BOTH arms, and that was counted as one of nine matching legs.
+
+Two dead instruments agreeing is not a match. It is the absence of a
+measurement, twice, wearing a green tick inside a 9/9 count.
+
+A gate that reds structurally does not fail closed — it fails SILENT, and it
+fails silent exactly where the thing it guards is changing. For as long as that
+leg reds structurally, every landing that crosses it is ungated and looks
+gated. #31's cure is promoted in its lane on the strength of this.

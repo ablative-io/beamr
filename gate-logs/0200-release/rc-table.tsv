@@ -1,0 +1,10 @@
+leg	rc	seconds
+fmt	0	1
+clippy	0	19
+wasm32-check	0	2
+wasm-tests	0	9
+tests	0	155
+blocking-call-in-native-bif	0	1
+clippy-all-features	0	10
+tests-all-features	0	152
+nostd-ratchet	0	4
