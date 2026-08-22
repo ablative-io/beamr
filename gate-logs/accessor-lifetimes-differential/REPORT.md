@@ -157,8 +157,14 @@ re-runnable rather than merely reported:
 - `accessor-normalize.py` — applies each JSON leg's own `extract` from
   `gates.json` via jq and diffs the multisets.
 
-Raw per-leg output (~2.5 MB, 40 files) was left on the measuring host rather
-than committed. Archive sha256
+Raw per-leg output is committed here as `rawlogs.tar.gz` (414 818 bytes, 62
+entries, ~2.5 MB uncompressed). It was initially left on the measuring host and
+NOT committed -- a judgement the project lead reversed at teardown, on the
+grounds that the structured artifacts are only half the record and the raw
+bytes are what you want when a question arrives late. The host was cleared
+immediately afterwards, so this archive is now the only copy. It was
+hash-verified at both ends of the transfer and its integrity checked by full
+decompression before the source was removed. Archive sha256
 `9045427e3404324fe40366a49ad14242d546b022552142b610c359feca17b446`
 (`accessor-diff-rawlogs.tar.gz`, 414 818 bytes). The four clippy captures that
 carry the red set:
