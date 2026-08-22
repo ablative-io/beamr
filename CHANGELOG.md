@@ -159,6 +159,77 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
+## 0.20.0 — 2026-08-22
+
+### Changed
+- **BREAKING: heap-backed binary and bignum accessors are now tied to a heap
+  borrow.** `Binary::as_bytes`, `BinaryRef::as_bytes`, `ProcBin::as_bytes`,
+  `SubBinary::as_bytes` and `BigInt::limbs` each take a `HeapBorrow<'heap>` and
+  return `&'heap [u8]` / `&'heap [u64]`.
+
+  **What this fixes.** Those accessors returned a slice whose lifetime was not
+  tied to anything — in practice a `&'static [u8]` pointing into a process
+  heap that could be collected, reallocated or moved while the slice was still
+  live. Nothing in the type system objected. The dangle was demonstrated
+  against the unfixed tree first, and the same construction is now a **compile
+  error**: the proof is a `compile_fail` doctest paired with a runnable
+  control, so a proof that stops compiling for some unrelated reason cannot
+  quietly pass as evidence.
+
+  Fifteen sites were found and retired; no `'static` return over heap memory
+  remains in the tree. The signature change ripples through 83 source files.
+
+  **Migration.** Pass a borrow at the call site — `binary.as_bytes(heap.borrow_terms())`
+  where a `&mut Heap` is in hand, or `binary.as_bytes(context.borrow_terms())`
+  inside a native BIF context. Where the bytes must outlive the borrow, own
+  them (`.to_vec()`). Note that `SharedBinary::as_bytes` and
+  `BigIntValue::limbs` are **unchanged** — those types own their bytes rather
+  than pointing into a heap, so callers of those two need no edit.
+
+- **BREAKING: `beamr-cli` 0.7.0 and `beamr-wasm` 0.10.0 move with this cut.**
+  Both pin `beamr` by version, and a `0.19` requirement cannot resolve
+  `0.20.0` — each `0.x` minor is a semver major, so the three pins move
+  together or not at all. `gleam-types` is untouched at 0.4.4.
+
+### Removed
+- **BREAKING: `EtsOrderedSet::new` is deleted** (release obligation OB-001).
+  The constructor built a private atom table holding only the common atoms, so
+  any atom interned by the VM beyond those failed to resolve and key
+  comparison silently degraded to raw intern-index order. It had carried a
+  `#[deprecated]` note saying exactly that, and was retained only so that
+  out-of-tree callers of the publicly re-exported type would not break.
+
+  **Use `EtsOrderedSet::with_atom_table` with the VM atom table**, which is
+  what the registry already does and the one path that orders atom keys
+  correctly. Deleting an inherent constructor is a breaking change, so it was
+  parked for the next breaking window; this is that window.
+
+### Added
+- **`beamr-wasm` now ships a README and declares it** (release obligation
+  OB-005). The crate published without `readme` metadata, so its registry page
+  had no body. The README is derived from the crate's own build script,
+  manifest and host seams rather than written from memory.
+
+### Known cost — filed, unpriced
+- **Tying the accessors to a borrow introduced heap→Vec→heap copies on three
+  hot paths, and their magnitude is unmeasured** (beamr#35). A borrow cannot
+  span `alloc_words(&mut heap)`, so a copy that previously wrote a borrowed
+  slice straight into the destination now materialises an owned `Vec` first.
+
+  Twelve net-new allocations across three families: **mailbox send** (3 — per
+  boxed term on every inter-process send), **ETS** (5 — of which four are on
+  *read-back* via `copy_term_to_heap`, and only one on insert), and **binary
+  matching** (4 — `bs_get_binary` and `bs_get_tail`, per opcode rather than
+  per message).
+
+  No number is attached to this because no existing benchmark can see it: the
+  two bench targets in the tree are both feature-gated on `jit` + `threads`
+  and drive integer `fib`, so they touch none of these paths, and a green from
+  either would be zero evidence. A benchmark built for these paths is
+  specified and queued. `bs_get_integer`, `bs_get_float` and `bs_match_string`
+  took the same signature change and allocate nothing, which gives that
+  benchmark its null arm.
+
 ## 0.19.4 — 2026-08-20
 
 ### Added
