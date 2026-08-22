@@ -1,0 +1,292 @@
+================================================================================
+GATE ROUND 2 — the fix seat's measurement, and what round 1 actually measured
+================================================================================
+
+Seat   : fix seat, flight beamracc-lifetimes-flight3
+Venue  : rocketfish, 16 cores / 31 GiB / 448 GiB free
+Base   : beamr main c55ac360 (the flight's landing target)
+Entry  : .fleet/gate-entry.sh -> ./scripts/ci-verdict.sh gate-rc gates.json
+         UNEDITED. gates.json UNEDITED. No gate script was touched at this seat.
+
+================================================================================
+0. FIRST FINDING — THE ROUND-1 ARTEFACTS PREDATE THE FAN-IN BY 93 MINUTES.
+================================================================================
+
+.fleet/gates/RED-LATEST.md is the verbatim output of the GRADER. The grader
+reads gate-rc/, which the canon leg loop populates. gate-rc/ is gitignored
+(.gitignore:21), so it is not commit evidence and carries no provenance of its
+own except its mtimes. Those mtimes do not describe the tree the gate graded.
+
+$ ls --time-style=+%H:%M:%S gate-rc/  (round-1 set, preserved)
+  10:03:39  declared.count
+  10:03:39  fmt.log
+  10:03:40  fmt.rc
+  10:03:46  clippy.log
+  10:03:46  clippy.rc
+  10:03:59  wasm32-check.log
+  10:03:59  wasm32-check.rc
+  10:04:18  wasm-tests.log
+  10:04:18  wasm-tests.rc
+  10:06:46  blocking-call-in-native-bif.log
+  10:06:46  blocking-call-in-native-bif.rc
+  10:06:46  tests.log
+  10:06:46  tests.rc
+  10:06:53  clippy-all-features.log
+  10:06:53  clippy-all-features.rc
+  10:07:16  tests-all-features.log
+  10:07:17  nostd-ratchet.log
+  10:07:17  nostd-ratchet.rc
+  10:07:17  tests-all-features.rc
+
+$ git reflog --date=format:'%H:%M:%S'
+  ca2a54a5 HEAD@{12:06:18}: commit: fix(proof): pair every compile_fail accessor proof with a runnable control
+  1eeb54a3 HEAD@{11:40:56}: commit: gates: red round 1 — findings verbatim
+  94c601a7 HEAD@{11:40:55}: commit: fanin: leg branch refs recorded
+  0cade123 HEAD@{11:40:55}: merge leg/accessor: Merge made by the 'ort' strategy.
+  6b1f85cc HEAD@{10:14:35}: commit: fleet report: planning seat — accessor lifetimes flight3 (wire contract .fleet/reports/accessor.md)
+  85540999 HEAD@{10:13:13}: commit: fleet plan: flight3 verification pass — carry flight1's plan, correct what the tree contradicts
+  506fa7b3 HEAD@{09:56:57}: checkout: moving from main to fleet/accessor-lifetimes-base
+  c55ac360 HEAD@{09:56:56}: clone: from https://github.com/ablative-io/beamr.git
+
+READ IT ACROSS: every round-1 leg artefact is timestamped 10:03:39-10:07:17.
+At that time HEAD was 506fa7b3 — "fleet base: flight3", i.e. beamr main
+c55ac360 plus the .fleet documents and NOTHING ELSE. The accessor fix arrived
+at 11:40:55 in the fan-in merge 0cade123; the gate commit 1eeb54a3 is one
+second later, 11:40:56 — only the ~1-second grader ran, over 10:07 artefacts.
+
+The source corroborates the clock independently. The clippy findings in the
+round-1 log sit at file_meta_bifs.rs:251-264. Those are MAIN's coordinates.
+
+$ grep '^{' <round-1 clippy.log> | jq ... unnecessary_cast line_start
+  251 252 253 254 255 255 263 264 
+$ git show c55ac360:crates/beamr/src/native/file_meta_bifs.rs | grep -n 'as u32' | cut -d: -f1
+  251 252 253 254 255 263 264    <- MAIN
+$ grep -n 'as u32' crates/beamr/src/native/file_meta_bifs.rs | cut -d: -f1
+  253 254 255 256 257 265 266    <- the FIXED tree (+2, one added use line)
+
+CONCLUSION, OBSERVED: the committed RED gate output is a measurement of the
+flight's BASE, not of the fix. Its five reds are therefore pre-existing on
+beamr main BY CONSTRUCTION. That is not an argument for dismissing them — it
+is the reason each one is re-measured below at the base, independently.
+
+================================================================================
+1. nostd-ratchet — BYTE-IDENTICAL at base and at HEAD. Tree-independent.
+================================================================================
+
+The instrument is dead on this venue: scripts/gate-nostd-ratchet.sh:182 calls
+`mktemp -t nostd-ratchet`, and GNU coreutils rejects a template with no X's.
+The redirect on the next line then fails, cargo never runs, and the script's
+own REFUSE arm fires correctly (rc 3, CANNOT-MEASURE). No tree can change this.
+
+COMMAND (base worktree, beamr main c55ac360)
+  ./scripts/gate-nostd-ratchet.sh
+  mktemp: too few X's in template 'nostd-ratchet'
+  ./scripts/gate-nostd-ratchet.sh: line 184: : No such file or directory
+  ./scripts/gate-nostd-ratchet.sh: line 186: : No such file or directory
+  no-std ratchet: cargo rc=1, rustc tally=<absent>, ceiling=1072
+  REFUSE: cargo exited 1 but no "due to N previous errors" line was
+    found. This gate cannot measure, so it does not get to report.
+    A green here would be worth nothing -- same value whether the tree
+    is sound or the instrument is dead. Fix the parse; do NOT relax it
+    to make this pass.
+  rc=3
+
+COMMAND (the fixed tree) — same script
+  mktemp: too few X's in template 'nostd-ratchet'
+  ./scripts/gate-nostd-ratchet.sh: line 184: : No such file or directory
+  ./scripts/gate-nostd-ratchet.sh: line 186: : No such file or directory
+  no-std ratchet: cargo rc=1, rustc tally=<absent>, ceiling=1072
+  REFUSE: cargo exited 1 but no "due to N previous errors" line was
+    found. This gate cannot measure, so it does not get to report.
+    A green here would be worth nothing -- same value whether the tree
+    is sound or the instrument is dead. Fix the parse; do NOT relax it
+    to make this pass.
+  rc=3
+
+  $ diff <base> <fixed>  ->  BYTE-IDENTICAL
+
+DISPOSITION: beamr's own gate script, outside the accessor-lifetime scope.
+REPORTED, NOT FIXED. Relaxing it to pass would be exactly what its own REFUSE
+text forbids.
+
+================================================================================
+2. clippy and clippy-all-features — the SAME 15 errors at base and at HEAD.
+================================================================================
+
+COMMAND (base worktree, beamr main c55ac360, own target dir, toolchain 1.97.1)
+  cargo clippy --workspace --all-targets --features beamr/encode \
+    --message-format=json --keep-going -- -D warnings
+  rc=101
+  [unused_imports] crates/beamr/src/io/uring.rs:10
+  [dead_code] crates/beamr/src/io/uring.rs:55
+  [dead_code] crates/beamr/src/io/uring.rs:63
+  [clippy::io_other_error] crates/beamr/src/io/uring.rs:138
+  [clippy::collapsible_if] crates/beamr/src/io/uring.rs:187
+  [clippy::collapsible_if] crates/beamr/src/io/uring.rs:188
+  [clippy::while_let_loop] crates/beamr/src/io/uring.rs:250
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:251
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:252
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:253
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:254
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:255
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:255
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:263
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:264
+
+COMMAND (base) cargo clippy --workspace --all-targets --all-features ... -- -D warnings
+  rc=101, 15 errors, same set
+
+COMMAND (the fixed tree) — the clippy leg, same command
+  rc=101
+  [unused_imports] crates/beamr/src/io/uring.rs:10
+  [dead_code] crates/beamr/src/io/uring.rs:55
+  [dead_code] crates/beamr/src/io/uring.rs:63
+  [clippy::io_other_error] crates/beamr/src/io/uring.rs:138
+  [clippy::collapsible_if] crates/beamr/src/io/uring.rs:187
+  [clippy::collapsible_if] crates/beamr/src/io/uring.rs:188
+  [clippy::while_let_loop] crates/beamr/src/io/uring.rs:250
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:253
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:254
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:255
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:256
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:257
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:257
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:265
+  [clippy::unnecessary_cast] crates/beamr/src/native/file_meta_bifs.rs:266
+
+$ diff <base lint+file multiset> <fixed lint+file multiset>
+  IDENTICAL — 15 errors, same lints, same files. Line numbers move by +2
+(eval):102: command not found: use
+  in file_meta_bifs.rs, which is the one  line this flight added to it.
+
+$ git diff --quiet c55ac360 HEAD -- crates/beamr/src/io/uring.rs
+  io/uring.rs (7 of the 15) is BYTE-IDENTICAL to main
+  file_meta_bifs.rs (the other 8) was touched by this flight, but not in the
+  lint region: the casts at :253-:266 are byte-identical to main's :251-:264.
+  The lints are `libc::S_IFMT as u32` where this venue's libc already types
+  the constant u32 — dependency/platform drift, present at base.
+
+DISPOSITION: beamr code outside the accessor-lifetime scope.
+REPORTED, NOT FIXED. No #[allow] in any spelling was added anywhere.
+
+================================================================================
+3. tests and tests-all-features — the SAME ONE test, and it fails at base.
+================================================================================
+
+COMMAND (base worktree, beamr main c55ac360, isolated binary, quiet box)
+  cargo test -p beamr --test thread_inventory_distribution --features encode
+  running 1 test
+  test distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown ... FAILED
+  
+  failures:
+  
+  ---- distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown stdout ----
+  
+  thread 'distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown' (659585) panicked at crates/beamr/tests/thread_inventory_distribution.rs:59:5:
+  an owned distribution bundle must build both runtime workers: dist-send=1, net-kernel=0
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  
+  failures:
+      distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown
+  
+  test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.11s
+  
+  error: test failed, to rerun pass `-p beamr --test thread_inventory_distribution`
+  rc=101
+
+The same test, the same assertion, the same numbers (dist-send=1,
+net-kernel=0) on UNTOUCHED beamr main. The file is byte-identical at HEAD:
+$ git diff --quiet c55ac360 HEAD -- crates/beamr/tests/thread_inventory_distribution.rs
+  BYTE-IDENTICAL to main
+
+On the fixed tree, both legs, every other binary green:
+  tests               : 66 result lines, 2127 passed, 1 failed
+  tests-all-features  : 66 result lines, 2137 passed, 1 failed
+  test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.11s
+
+DISPOSITION: the distribution/tokio runtime bundle, nothing to do with the
+accessor lifetimes. REPORTED, NOT FIXED.
+
+================================================================================
+4. tests-all-features — the round-1 TEST-COUNT trip was a rustc SIGBUS. NOT REPRODUCED.
+================================================================================
+
+Round 1 red the whole run at the TEST-COUNT wall — "tests-all-features emitted
+no 'test result:' line". The cause is in its log, and it is not a defect in
+the tree:
+
+  error: rustc interrupted by SIGBUS, printing backtrace
+  
+  /home/rocketfish/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/lib/librustc_driver-832cf6cfb1386559.so(+0x3c7cedc) [0x7f73bb87cedc]
+  --
+  Caused by:
+    process didn't exit successfully: `/home/rocketfish/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustc --crate-name beamr --edition=2024 crates/beamr-cli/src/main.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --test --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=c5bfb58554b6d5ea -C extra-filename=-bdc3cc25950f14d9 --out-dir /home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/repo/target/debug/deps -C incremental=/home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/repo/target/debug/incremental -L dependency=/home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/repo/target/debug/deps --extern beamr=/home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/repo/target/debug/deps/libbeamr-4f229be3aef7da16.rlib -L native=/home/rocketfish/fleet/runs/beamracc-lifetimes-flight3/repo/target/debug/build/zstd-sys-f3206f1670d6289f/out` (signal: 7, SIGBUS: access to undefined memory)
+  warning: build failed, waiting for other jobs to finish...
+
+rustc died in LLVMContextDispose while codegen'ing the beamr-cli test binary.
+The leg produced 0 test-result lines because no test binary was ever linked.
+That is an instrument/venue event, and the grader was right to refuse it: a
+leg that ran nothing is not a pass.
+
+RE-RUN, the same leg command, on the fixed tree:
+  cargo test --workspace --all-features
+  result lines : 66   (round 1: 0)
+  passed       : 2137
+  SIGBUS lines : 0
+  run twice at this seat (11:45 and 12:08), 0 SIGBUS both times
+
+DISPOSITION: a venue event, NOT REPRODUCED in two subsequent full runs. The
+leg's standing red is the pre-existing test of section 3, not the SIGBUS.
+Recorded because a red that vanishes on re-run is a fact about the venue that
+the next seat needs.
+
+================================================================================
+5. THE FIXED TREE, GRADED BY THE UNEDITED ENTRY
+================================================================================
+
+The canon leg loop, transcribed verbatim from .github/workflows/ci.yml:66-112
+(no `set -e`, subshell around eval, redirect never pipe), run against the
+final tree; then .fleet/gate-entry.sh, unedited.
+
+  $ ./.fleet/gate-entry.sh   ; ENTRY_EXIT=1
+  GATE SCOPE: beamr's own CI verdict harness (gates.json), the real mechanism
+  self-test: all-green -> gamma: rc=0 pass (expected)
+  self-test: one-fail -> FAIL — measured red (expected)
+  self-test: cannot-measure -> CANNOT-MEASURE (expected)
+  self-test: uncontracted-2 -> alpha: rc=2 FAIL (expected)
+  self-test: malformed-rc -> MALFORMED rc (expected)
+  self-test: truncated-set -> LEG COUNT MISMATCH (expected)
+  self-test: empty-tests -> TEST-COUNT (expected)
+  declared legs: 9
+  recorded legs: 9
+    wasm-tests: 2 result line(s), 86 passed
+    tests: 66 result line(s), 2127 passed
+    tests-all-features: 66 result line(s), 2137 passed
+    blocking-call-in-native-bif: rc=0 pass
+    clippy-all-features: rc=101 FAIL — measured red
+    clippy: rc=101 FAIL — measured red
+    fmt: rc=0 pass
+    nostd-ratchet: rc=3 FAIL — measured red
+    tests-all-features: rc=101 FAIL — measured red
+    tests: rc=101 FAIL — measured red
+    wasm-tests: rc=0 pass
+    wasm32-check: rc=0 pass
+
+PER-LEG DIFFERENTIAL, base -> final:
+
+  leg                            base   final   verdict
+  ----------------------------   ----   -----   ----------------------------------
+  fmt                              0      0     UNCHANGED green
+  clippy                         101    101     UNCHANGED — 15 errors, identical set
+  wasm32-check                     0      0     UNCHANGED green
+  wasm-tests                       0      0     UNCHANGED green, 86 passed
+  tests                          101    101     UNCHANGED — same one failure
+  blocking-call-in-native-bif      0      0     UNCHANGED green, 0 findings, zero trusted
+  clippy-all-features            101    101     UNCHANGED — 15 errors, identical set
+  tests-all-features             101    101     UNCHANGED — same one failure
+  nostd-ratchet                    3      3     UNCHANGED — instrument dead, byte-identical
+
+NO LEG THAT WAS GREEN AT BASE IS RED AT THE END. NO LEG CHANGED ITS rc.
+The two test legs each carry ONE MORE PASSING TEST than the builder seat's run
+(2126 -> 2127 and 2136 -> 2137): the structural control this seat added.

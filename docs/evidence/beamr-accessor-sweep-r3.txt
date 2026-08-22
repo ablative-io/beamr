@@ -1,0 +1,106 @@
+================================================================================
+R3 SWEEP — the four accessor families, base c55ac360 -> HEAD ca2a54a5
+================================================================================
+
+Criterion: ZERO remaining `'static` returns over heap memory in the four
+families. The gate's KNOWN ANSWER — accessors.rs:357 `parent_bytes` — must
+appear in the found-and-retired list or the sweep has failed.
+
+================================================================================
+1. THE BASE. COMMAND WITH OUTPUT.
+================================================================================
+
+$ git grep -n "&'static \[" c55ac360 -- crates/beamr/src/term/
+c55ac360:crates/beamr/src/term/binary.rs:70:    pub fn as_bytes(self) -> &'static [u8] {
+c55ac360:crates/beamr/src/term/binary_ref.rs:30:    pub fn as_bytes(&self) -> &'static [u8] {
+c55ac360:crates/beamr/src/term/boxed/accessors.rs:113:    pub fn limbs(self) -> &'static [u64] {
+c55ac360:crates/beamr/src/term/boxed/accessors.rs:281:    pub fn as_bytes(self) -> &'static [u8] {
+c55ac360:crates/beamr/src/term/boxed/accessors.rs:340:    pub fn as_bytes(self) -> &'static [u8] {
+c55ac360:crates/beamr/src/term/boxed/accessors.rs:357:fn parent_bytes(parent: Term) -> Option<&'static [u8]> {
+c55ac360:crates/beamr/src/term/compare/mod.rs:337:fn binary_bytes(term: Term) -> &'static [u8] {
+c55ac360:crates/beamr/src/term/compare/mod.rs:377:fn normalized_limbs(bigint: BigInt) -> &'static [u64] {
+c55ac360:crates/beamr/src/term/shared_binary.rs:79:    pub(crate) fn bytes_from_raw_word(raw: u64) -> &'static [u8] {
+
+$ git grep -n "parent_bytes" c55ac360 -- crates/beamr/src/term/boxed/accessors.rs
+c55ac360:crates/beamr/src/term/boxed/accessors.rs:319:        let parent_bytes = parent_bytes(sub_binary.parent())?;
+c55ac360:crates/beamr/src/term/boxed/accessors.rs:321:        if end > parent_bytes.len() {
+c55ac360:crates/beamr/src/term/boxed/accessors.rs:341:        let bytes = parent_bytes(self.parent()).unwrap_or(&[]);
+c55ac360:crates/beamr/src/term/boxed/accessors.rs:357:fn parent_bytes(parent: Term) -> Option<&'static [u8]> {
+
+$ git show c55ac360:crates/beamr/src/term/boxed/accessors.rs | sed -n '357p'
+fn parent_bytes(parent: Term) -> Option<&'static [u8]> {
+
+================================================================================
+2. THE FINAL TREE. THE SAME COMMAND.
+================================================================================
+
+$ git grep -n "&'static \[" HEAD -- crates/beamr/src/term/
+(no matches — rc=1)
+
+$ git grep -n "'static" HEAD -- crates/beamr/src/term/
+HEAD:crates/beamr/src/term/json.rs:23:    UnsupportedTerm(&'static str),
+HEAD:crates/beamr/src/term/json.rs:35:    AllocationFailed(&'static str),
+
+================================================================================
+3. THE KNOWN ANSWER, TRACKED TO ITS NEW COORDINATE.
+================================================================================
+
+$ git grep -n 'fn parent_bytes' HEAD -- crates/beamr/src/term/
+HEAD:crates/beamr/src/term/boxed/binary_accessors.rs:207:fn parent_bytes<'heap>(parent: Term, heap: HeapBorrow<'heap>) -> Option<&'heap [u8]> {
+
+$ git grep -n 'parent_bytes' HEAD -- crates/beamr/src/term/boxed/accessors.rs
+(absent from accessors.rs — rc=1; it moved with ProcBin/SubBinary to boxed/binary_accessors.rs)
+
+================================================================================
+4. THE FOUND-AND-RETIRED LIST
+================================================================================
+
+  #  base coordinate                     signature at base                              disposition
+  -  ---------------------------------   --------------------------------------------   -----------
+  1  boxed/accessors.rs:113              BigInt::limbs -> &'static [u64]                FOUND AND RETIRED
+  2  boxed/accessors.rs:281              ProcBin::as_bytes -> &'static [u8]             FOUND AND RETIRED
+  3  boxed/accessors.rs:340              SubBinary::as_bytes -> &'static [u8]           FOUND AND RETIRED
+  4  boxed/accessors.rs:357              parent_bytes -> Option<&'static [u8]>          FOUND AND RETIRED  <== the gate's KNOWN ANSWER
+  5  shared_binary.rs:79                 bytes_from_raw_word -> &'static [u8]           FOUND AND RETIRED
+  6  binary.rs:70                        Binary::as_bytes -> &'static [u8]              FOUND AND RETIRED  (in-family)
+  7  binary_ref.rs:30                    BinaryRef::as_bytes -> &'static [u8]           FOUND AND RETIRED  (in-family fan-in)
+  8  compare/mod.rs:337                  binary_bytes -> &'static [u8]                  RETIRED (compiler-forced)
+  9  compare/mod.rs:377                  normalized_limbs -> &'static [u64]             RETIRED (compiler-forced)
+ 10  json.rs:22                          &'static str error-message literal             BENIGN — not over heap memory
+ 11  json.rs:34                          &'static str error-message literal             BENIGN — not over heap memory
+
+================================================================================
+5. THE WORKSPACE, OUTSIDE term/ — every survivor, classified
+================================================================================
+
+$ git grep -n "&'static \[" HEAD -- crates/
+HEAD:crates/beamr-wasm/src/artifact_loader_tests.rs:37:    Bytes(&'static [u8]),
+HEAD:crates/beamr/src/interpreter/opcodes/binary/construction.rs:214:    fn bytes(self, len: usize) -> Option<&'static [u8]> {
+HEAD:crates/beamr/src/interpreter/opcodes/binary/mod.rs:91:pub(super) fn slice_from_words(ptr: *const u64, word_offset: usize, len: usize) -> &'static [u8] {
+HEAD:crates/beamr/src/jit/runtime_binary_build.rs:194:    fn bytes(self, len: usize) -> Option<&'static [u8]> {
+HEAD:crates/beamr/src/native/stdlib_stubs/encoding_bifs.rs:63:) -> Result<(&'static [u8; 64], bool), Term> {
+HEAD:crates/beamr/src/native/stdlib_stubs/encoding_bifs.rs:68:    let mut alphabet: &'static [u8; 64] = BASE64_ALPHABET;
+HEAD:crates/beamr/src/native/stdlib_stubs/encoding_bifs.rs:88:fn base64_alphabet(mode: Term, context: &ProcessContext) -> Result<&'static [u8; 64], Term> {
+
+$ git grep -c "&'static \[" c55ac360 -- crates/ | awk -F: '{s+=$NF} END {print s}'   # base total
+22
+$ git grep -c "&'static \[" HEAD  -- crates/ | awk -F: '{s+=$NF} END {print s}'   # final total
+7
+
+================================================================================
+6. NO LAUNDERING — census over the added lines of the whole flight
+================================================================================
+
+$ git diff c55ac360..HEAD --unified=0 -- crates/ | grep '^+' | grep -v '^+++'  |  grep -c PATTERN
+  added lines           2037
+  transmute              0
+  'static                0
+  #\[allow               0
+  #\[ignore              0
+  \.unwrap()             0
+  from_raw_parts         1
+  unsafe                 30
+  SAFETY                 27
+
+$ git grep -n 'from_raw_parts' HEAD -- crates/beamr/src/term/
+HEAD:crates/beamr/src/term/heap_borrow.rs:79:        unsafe { core::slice::from_raw_parts(ptr, len) }

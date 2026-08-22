@@ -5,6 +5,379 @@ in-band, not assumed: `env | grep ANTHROPIC_MODEL` → `ANTHROPIC_MODEL=claude-o
 
 ---
 
+# REPORT — beamr accessor lifetimes, FIX SEAT (gate round 2)
+
+Flight `beamracc-lifetimes-flight3`, branch `fleet/accessor-lifetimes-base`,
+2026-08-22. Base: beamr `main` `c55ac360`. Gate round 1: RED
+(`.fleet/gates/RED-LATEST.md`, unedited, untouched).
+
+Every claim is **OBSERVED** (command output / `file:line`) or **REASONED**.
+The builder seat's report is preserved verbatim below mine; where I measured
+something it got wrong, I say so with the measurement, not with an adjective.
+
+## Outcome in one line
+
+**Four of the gate's five reds are pre-existing on beamr `main` — each
+re-measured at the base by me, independently, not inherited from the builder's
+claim — and the fifth was a rustc SIGBUS that does not reproduce. None is in
+scope, so all five stand. One red WAS in scope and I fixed it: the in-gate
+compile-fail proof was pinned to `E0502` by an annotation the gated toolchain
+ignores, so it greened on a typo.** The gate is still RED on the same five
+legs; under the workflow's grammar that arrives as `gates_red/Failed`, and per
+the measured-red wall the differential is the criterion.
+
+---
+
+## 1. THE FIRST FINDING — round 1 did not measure the fix
+
+**OBSERVED.** `.fleet/gates/RED-LATEST.md` is the verbatim output of the
+*grader* (`scripts/ci-verdict.sh`). The grader reads `gate-rc/`, which the
+canon leg loop populates. `gate-rc/` is **gitignored** (`.gitignore:21`), so it
+is not commit evidence — its only provenance is its mtimes.
+
+| Fact | OBSERVED |
+|---|---|
+| every round-1 leg artefact | mtime **10:03:39 – 10:07:17** |
+| HEAD in that window | **`506fa7b3`** — `git reflog`: checked out 09:56:57, next commit 10:13:13 |
+| what `506fa7b3` is | beamr `main` `c55ac360` + the `.fleet` documents. **Zero beamr source changes.** |
+| the fan-in that brought the fix in | **`0cade123`, 11:40:55** |
+| the gate commit | **`1eeb54a3`, 11:40:56** — one second later, i.e. the ~1-second grader only |
+
+The source corroborates the clock independently. The round-1 `clippy` log puts
+its `unnecessary_cast` findings at `file_meta_bifs.rs:251-264`. Those are
+**`main`'s** coordinates — the fixed tree's are `:253-266` (+2, the one `use`
+line this flight added to that file).
+
+**CONCLUSION, OBSERVED: the committed RED is a measurement of the flight's
+BASE, not of the fix.** I did not treat that as grounds to dismiss it. It is
+the reason I re-measured every leg at the base myself, in a separate worktree
+with its own target directory, on the pinned toolchain — below.
+
+I did not edit `.fleet/gates/RED-LATEST.md`, `.fleet/gate-entry.sh`,
+`scripts/ci-verdict.sh` or `gates.json`. I ran the canon leg loop (transcribed
+verbatim from `.github/workflows/ci.yml:66-112`) against the final tree so the
+entry has an input that describes the tree it grades, and preserved the round-1
+artefacts. Full transcript: **`docs/evidence/beamr-accessor-gate-round2.txt`**.
+
+---
+
+## 2. DISPOSITION OF EVERY RED — measured at the base, one by one
+
+| # | Leg | rc | Root cause, MEASURED AT THE BASE | Disposition |
+|---|---|---|---|---|
+| 1 | `nostd-ratchet` | 3 | `gate-nostd-ratchet.sh:182` `mktemp -t nostd-ratchet` — GNU coreutils rejects a template with no `X`s, so cargo never runs and the script's own REFUSE arm fires. **Base and final output are BYTE-IDENTICAL** (`diff` → no difference). Tree-independent. | **(b) REPORTED, NOT FIXED** |
+| 2 | `clippy` | 101 | 15 errors. Base worktree at `c55ac360`, same command, same toolchain → **rc=101, identical 15-error set** (`diff` of the lint+file multiset → identical). 7 in `io/uring.rs`, which is **byte-identical to `main`**; 8 `unnecessary_cast` on `libc::S_IFMT as u32` in a region of `file_meta_bifs.rs` byte-identical to `main`. Dependency/platform drift. | **(b) REPORTED, NOT FIXED** |
+| 3 | `clippy-all-features` | 101 | The same 15, measured at the base too (`rc=101`, 15 errors, same set). | **(b) REPORTED, NOT FIXED** |
+| 4 | `tests` / `tests-all-features` | 101 | ONE test: `distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown` (`crates/beamr/tests/thread_inventory_distribution.rs:59`). Run **isolated on untouched `main`, quiet box**: same failure, same numbers — *"dist-send=1, net-kernel=0"*. The test file is **byte-identical** at HEAD. | **(b) REPORTED, NOT FIXED** |
+| 5 | `tests-all-features` TEST-COUNT | — | Round 1 tripped the TEST-COUNT wall with **0 result lines**. Cause is in its own log: `error: rustc interrupted by SIGBUS` in `LLVMContextDispose` while codegen'ing the `beamr-cli` test binary. **NOT REPRODUCED**: two full re-runs at this seat (11:45, 12:08) → **66 result lines, 0 SIGBUS**. | **(b) venue event, REPORTED** |
+
+**The grader was right about #5 and I am not softening it**: a leg that ran no
+test binary is not a pass. What I add is the cause and the fact that it does
+not reproduce — a red that vanishes on re-run is a fact about the venue the
+next seat needs.
+
+### The one red that WAS in scope — FIXED
+
+**The in-gate compile-fail proof did not prove what its prose claimed.**
+Disposition (a): the cause is the flight's own evidence mechanism.
+
+**OBSERVED, isolated control, no beamr code** (throwaway lib crate, so
+rustdoc resolves its own injected `extern crate`): a doc block whose real error
+is **E0384**, annotated ` ```compile_fail,E0308 `, **PASSES** on the toolchain
+`rust-toolchain.toml` pins (`channel = "1.97.1"`) and **FAILS** on nightly
+1.100.0 with `Some expected error codes were not found: ["E0308"]`. The gate
+does not run nightly. **On the gated toolchain ` ```compile_fail,E0502 ` means
+exactly ` ```compile_fail `.**
+
+**OBSERVED on this tree**: deleting the `HeapBorrow` witness argument from one
+of the five proofs — an E0061, an entirely different defect — leaves the
+doctest **green**. The builder's report §3 states the proofs are *"pinned to
+the diagnostic so a typo cannot green them"*. **That is false as measured**,
+and it is the load-bearing sentence of the flight's green evidence.
+
+**The fix — the proof is a matched pair, and the pairing is asserted.** Each of
+the five accessors now carries two adjacent doc blocks: a **bare runnable
+positive control** (the same program *without* the collection) and the
+unchanged `compile_fail` proof. `crates/beamr/src/term/accessor_proof_tests.rs`
+(`#[cfg(test)]`, `include_str!`, 200 lines) asserts for all five pairs that the
+proof is **its control plus exactly one line, and that the line is the
+collection**, and that the population is exactly **five**.
+
+| Instrument | What it establishes | Alone, it proves |
+|---|---|---|
+| positive control compiles **and runs** | every identifier, argument count and import is real | nothing about the borrow |
+| structural control passes | the proof is that program plus one line, the collection | nothing about compilation |
+| `compile_fail` proof does not compile | that one line is what breaks it | only "some error" |
+
+Together: **the failure is the borrow bound.** The conclusion no longer rests
+on an annotation the gated toolchain ignores.
+
+**The new check FIRES — OBSERVED, not asserted.** On the exact edit rustdoc
+waved through (witness argument dropped from the `compile_fail` block only):
+rustdoc → *"7 passed"*; the structural control → **FAILED**, naming the line.
+The vacuity control also fires: delete the collection and rustdoc reports
+*"Test compiled successfully, but it's marked `compile_fail`"*.
+
+The `E0502` annotation is **kept**, not deleted: it is correct, it documents
+the diagnostic, and it becomes load-bearing for free when the pin moves.
+
+Transcript: **`docs/evidence/beamr-accessor-compile-fail-control.txt`**.
+Design amended: **`docs/design/accessor-lifetimes.md` §7.3**.
+Commit: `ca2a54a5`.
+
+**No lint was suppressed to land it.** The one clippy warning my module drew
+(`clippy::manual_is_multiple_of`) was **fixed in the code** (`.is_multiple_of(2)`),
+not `#[allow]`ed.
+
+---
+
+## 3. R3 — THE SWEEP. COMMAND WITH OUTPUT. `:357` IN THE LIST.
+
+Full transcript: **`docs/evidence/beamr-accessor-sweep-r3.txt`**. OBSERVED:
+
+```
+$ git grep -n "&'static \[" HEAD -- crates/beamr/src/term/
+(no matches — rc=1)
+
+$ git grep -n "'static" HEAD -- crates/beamr/src/term/
+HEAD:crates/beamr/src/term/json.rs:23:    UnsupportedTerm(&'static str),
+HEAD:crates/beamr/src/term/json.rs:35:    AllocationFailed(&'static str),
+```
+
+Two survivors, both `&'static str` **error-message literals** — genuinely
+`'static`, not over heap memory. **Zero `'static` returns over heap memory
+remain in the four families.**
+
+**THE KNOWN ANSWER, tracked to its new coordinate — OBSERVED:**
+
+```
+$ git show c55ac360:crates/beamr/src/term/boxed/accessors.rs | sed -n '357p'
+fn parent_bytes(parent: Term) -> Option<&'static [u8]> {
+
+$ git grep -n 'parent_bytes' HEAD -- crates/beamr/src/term/boxed/accessors.rs
+(absent from accessors.rs — rc=1)
+
+$ git grep -n 'fn parent_bytes' HEAD -- crates/beamr/src/term/
+HEAD:crates/beamr/src/term/boxed/binary_accessors.rs:207:fn parent_bytes<'heap>(parent: Term, heap: HeapBorrow<'heap>) -> Option<&'heap [u8]> {
+```
+
+| # | Base coordinate | Signature at base | Disposition |
+|---|---|---|---|
+| 1 | `boxed/accessors.rs:113` | `BigInt::limbs -> &'static [u64]` | **FOUND AND RETIRED** |
+| 2 | `boxed/accessors.rs:281` | `ProcBin::as_bytes -> &'static [u8]` | **FOUND AND RETIRED** |
+| 3 | `boxed/accessors.rs:340` | `SubBinary::as_bytes -> &'static [u8]` | **FOUND AND RETIRED** |
+| 4 | **`boxed/accessors.rs:357`** | **`parent_bytes -> Option<&'static [u8]>`** | **FOUND AND RETIRED — the gate's KNOWN ANSWER** |
+| 5 | `shared_binary.rs:79` | `bytes_from_raw_word -> &'static [u8]` | **FOUND AND RETIRED** |
+| 6 | `binary.rs:70` | `Binary::as_bytes -> &'static [u8]` | **FOUND AND RETIRED** (in-family) |
+| 7 | `binary_ref.rs:30` | `BinaryRef::as_bytes -> &'static [u8]` | **FOUND AND RETIRED** (in-family fan-in) |
+| 8 | `compare/mod.rs:337` | `binary_bytes -> &'static [u8]` | **RETIRED** (compiler-forced) |
+| 9 | `compare/mod.rs:377` | `normalized_limbs -> &'static [u64]` | **RETIRED** (compiler-forced) |
+| 10-11 | `json.rs:22`,`:34` | `&'static str` literals | benign, not over heap memory |
+
+**Workspace census, OBSERVED:** `&'static [` across `crates/` went **22 → 7**.
+The seven survivors: three genuine `'static` constants in `encoding_bifs.rs`
+(the BASE64 alphabet — **must not be "fixed"**), one `&'static [u8]` test
+fixture over a `const` in `beamr-wasm`, and the three Class-D binary-*builder*
+sites of §6 below.
+
+**No laundering — census over the 2037 added lines of the whole flight,
+OBSERVED:** `transmute` **0**, `'static` **0**, `#[allow` **0**, `#[ignore`
+**0**, `.unwrap()` **0**, `from_raw_parts` **1**, `unsafe` 30, `SAFETY` 27. The
+single `from_raw_parts` is `term/heap_borrow.rs:79`, inside
+`HeapBorrow::slice`, where `'heap` comes from `self` — a witness constrained by
+a real shared borrow at construction, so caller inference cannot widen it. It
+is the only raw-pointer-to-slice route in the tied path
+(`git grep -n 'from_raw_parts' HEAD -- crates/beamr/src/term/` returns exactly
+that one line).
+
+**Every `unsafe` block in the four families' files carries a `SAFETY` comment**
+— OBSERVED, checked mechanically over `heap_borrow.rs`, `boxed/accessors.rs`,
+`boxed/binary_accessors.rs`, `shared_binary.rs`, `binary.rs`, `binary_ref.rs`:
+zero blocks without one. The arguments are re-derived against the new
+lifetimes, not carried over: `shared_binary.rs:81-95` reasons explicitly from
+the `Arc` **release** at `gc::release_*`, i.e. from the ProcBin's liveness,
+which is the heap's, which is what the witness borrows.
+
+---
+
+## 4. THE COMPILE-FAIL EVIDENCE, PER ACCESSOR FAMILY
+
+`docs/evidence/beamr-accessor-lifetimes-green.txt` carries the verbatim
+transcripts: **E0061 ×4** (the unchanged red program can no longer be spelled)
+and **E0502 ×5**, one per family, at the `gc::collect_minor` call. In-gate, on
+the final tree, OBSERVED:
+
+```
+running 6 tests   ← the five NEW positive controls + one pre-existing example
+test ...BigInt::limbs (line 125) ... ok
+test ...Binary::as_bytes (line 82) ... ok
+test ...BinaryRef::as_bytes (line 43) ... ok
+test ...ProcBin::as_bytes (line 49) ... ok
+test ...SubBinary::as_bytes (line 152) ... ok
+
+running 7 tests   ← the five compile_fail proofs + two pre-existing Process ones
+test ...BigInt::limbs (line 143) - compile fail ... ok
+test ...Binary::as_bytes (line 100) - compile fail ... ok
+test ...BinaryRef::as_bytes (line 62) - compile fail ... ok
+test ...ProcBin::as_bytes (line 69) - compile fail ... ok
+test ...SubBinary::as_bytes (line 174) - compile fail ... ok
+```
+
+⚠️ **HONEST NOTE, unchanged from the builder's and re-verified by me:** the
+gate's `tests` leg aborts at the first failing test binary
+(`thread_inventory_distribution`), so the Doc-tests phase is **not reached**.
+OBSERVED — `grep -c 'Doc-tests' gate-rc/tests.log` → **0**, and the same is
+true at the base. No differential change; the proofs are in the gated tree and
+pass when run. **The structural control is reached**, because it is an ordinary
+`--lib` unit test — it is the `+1` in `tests` 2126 → **2127** and
+`tests-all-features` 2136 → **2137**.
+
+---
+
+## 5. CORRECTIONS TO THE BUILDER SEAT'S RECORD — measured, not asserted
+
+The builder's report below is substantially accurate and I verified its core
+claims independently. Four statements do not survive measurement:
+
+1. **§3: *"pinned to the diagnostic so a typo cannot green them."*** **FALSE on
+   the gated toolchain** — §2 above, with the isolated control. This is the one
+   I fixed.
+2. **§3 item 1: *"E0061 ×5."*** **It is ×4** — OBSERVED, the evidence file's own
+   transcript ends `due to 4 previous errors` and lists four. The red program
+   declared four `&'static` bindings; `BinaryRef` was not among them. (The
+   E0502 count of **×5** is correct.)
+3. **§8: the `file_meta_bifs` lints *"read `:251-:264` at baseline and
+   `:253-:266` at the end."*** The builder's own numbers are right for the
+   source; but the **round-1 gate log reads `:251-264`**, i.e. `main`'s
+   coordinates — which is the fingerprint that exposed §1. The builder's §8
+   table reports rcs for a "FINAL" gate run whose artefacts are not the ones the
+   gate graded.
+4. **§9, the 500-line wall: *"three of the four files … did grow."*** The wall
+   holds, but the count is understated by an order of magnitude. **OBSERVED: 33
+   files that were already over 500 lines grew.** What matters and is **TRUE**:
+   **no file crossed 500** — checked mechanically over every `crates/**/*.rs`,
+   zero files went from ≤500 at base to >500 at HEAD. The three new Rust files
+   are 177, 104 and 81 lines; mine is 200.
+
+---
+
+## 6. MEASURED REDS BEYOND THIS SCOPE — REPORTED, NOT CHASED
+
+1. **Class D — the binary-*builder* family.** Same defect class, different
+   source, not reachable through the four accessor families:
+   `interpreter/opcodes/binary/mod.rs:91` `slice_from_words` (**byte-identical
+   to `main`**), `interpreter/opcodes/binary/construction.rs:214`
+   `BinaryBuilder::bytes`, `jit/runtime_binary_build.rs:194` `bytes`. Each
+   manufactures a `&'static [u8]` with its own `from_raw_parts` over a raw heap
+   pointer. **This is the next signature that will manufacture an unsound
+   caller**, and it is the single highest-value follow-on from this flight.
+2. **`process_from_abi -> Option<&'static mut Process>`** (`jit/runtime.rs`,
+   `jit/ir_exceptions.rs`) — a `&'static mut` over a raw ABI pointer.
+3. **`jit_bs_get_integer` / `jit_bs_get_utf*` receive no process pointer**
+   (`jit/runtime_binary_match.rs`), so they use `HeapBorrow::with_frame`, whose
+   guarantee is weaker than the tie (escape is impossible; allocating *inside*
+   the closure is not forbidden) and strictly stronger than `'static`. **16
+   `with_frame` sites total**, OBSERVED, each with a written safety argument,
+   each `pub(crate)`, none public. Closing the JIT two needs an ABI change in
+   the compiler's call emission. **This is the residual and it is bounded,
+   listed and auditable** — `'static` was none of those.
+4. **The five gate reds of §2.**
+5. **The `mktemp -t` bug in `gate-nostd-ratchet.sh:182`** is a one-word fix that
+   would restore a dead gate on every Linux venue. **Not mine to make.**
+
+---
+
+## 7. THE DIVERGENT BRANCH — BY MEASUREMENT, RE-DERIVED AT THIS SEAT
+
+OBSERVED — `git for-each-ref` + `git rev-list --left-right --count main...<ref>`
++ `git merge-base --is-ancestor`, excluding this workflow's own refs
+(`refs/*/fleet/*`, `origin/HEAD`, `leg/accessor`):
+
+```
+REF                                        BEHIND  AHEAD  main-is-ancestor
+origin/artemis/audit-amendment-4              197      0  no
+origin/artemis/backport-0.17.1                204      3  no
+origin/artemis/beamr-85-and-26                 12      0  no
+origin/artemis/empty-bundle-class             180      0  no
+origin/artemis/jit-operator-switch             23      2  no
+origin/artemis/release-0.18.2                  37      0  no
+origin/artemis/rf-006                         145      0  no
+origin/diana/beamr-wedge002-3aecb622          280      3  no
+origin/diana/seat-preserve-annabelbox         270      4  no
+origin/feat/jit-cache-enumeration              18      1  no
+origin/fix/0163-borrow-across-alloc           401     15  no
+origin/fix/aion85-nested-run-suspend           16      0  no
+origin/juniper/docs-package                   526      1  no
+origin/seth/replay-rebuild-3aecb622           296      3  no
+```
+
+- **`main` is an ancestor of NO divergent working branch.** The audit's shape —
+  *"173 ahead with `main` an ancestor"* — **describes nothing in this
+  repository**, exactly as gate binding note 2 anticipated. Independently
+  re-derived here; not repeated from the builder.
+- **The topical branch is `origin/fix/0163-borrow-across-alloc`** — the prior
+  0.16.3 call-site-sweep lane for this very defect: **401 behind / 15 ahead**,
+  merge-base `67f89c41`. OBSERVED —
+  `git diff --stat main...origin/fix/0163-borrow-across-alloc -- crates/beamr/src/term/`
+  is **empty**: it carries **no** accessor changes to re-merge. Its 15 commits
+  touch 38 files, mostly `docs/design/beamr/briefs/evidence/…`, `CHANGELOG.md`,
+  `Cargo.lock`, `RELEASE_CHECKLIST.md`.
+
+⚠️ **Re-merging this fix into any of these is the OWNER's work. It is not done
+here, and nothing was merged to beamr `main` at this seat.**
+
+---
+
+## 8. HARD WALLS — measured at this seat
+
+| Wall | Measurement |
+|---|---|
+| No lint suppressions in any spelling | **0** `#[allow` in the flight's 2037 added lines. The one clippy warning my own module drew was **fixed in the code**. |
+| No ignore attributes on tests | **0** `#[ignore` added; my control is an ordinary `#[test]` with no env gate |
+| Never `.unwrap()`/`.expect()` in library code | **0** `.unwrap(` added. Every added `.expect(` is in a `#[cfg(test)]` module, a `*_tests.rs`/`tests/` file, or a `///` doctest — checked mechanically, no non-doc, non-test survivor |
+| No file over 500 lines of code | **No file crossed 500** — mechanically checked over every `crates/**/*.rs`. My new file is 200. 33 files already over 500 at base grew; **REPORTED**, and it is a pre-existing condition of the tree, not one this flight created |
+| Every touched `unsafe` carries a re-derived safety comment | zero un-commented `unsafe` blocks in the six files of the tied path |
+| No new dependencies / version bumps / changelog / release prep | `Cargo.toml`, `Cargo.lock`, `CHANGELOG.md` untouched — not in `git diff --name-only c55ac360..HEAD`. **`trybuild` was NOT added** to fix the pin; the control is 200 lines of `#[cfg(test)]` in-tree |
+| Never edit the gate entry / weaken a check | `.fleet/gates/*`, `.fleet/gate-entry.sh`, `scripts/ci-verdict.sh`, `gates.json`, `scripts/gate-nostd-ratchet.sh`, `scripts/gate-blocking-call.sh` — **all untouched**. The only check that moved got **stronger** |
+| Never one blocking sleep sized to expected duration | every long run polled at a stated interval (45 s / 60 s) under a stated deadline (540 s), with TIMEOUT declared as a distinct outcome. No expiry occurred |
+
+---
+
+## 9. LANE BOUNDARY
+
+This flight produces a **CANDIDATE result branch**. **Nothing was merged to
+beamr `main` at this seat, and nothing may be** — the landing is ratified by
+the repo owner's seat.
+
+---
+
+## 10. RECEIPT
+
+Path is the wire contract: `.fleet/reports/accessor.md`, byte-exact. Confirm
+with `git ls-tree HEAD -- .fleet/reports/`.
+
+Evidence added at this seat:
+- `docs/evidence/beamr-accessor-gate-round2.txt` — the gate differential
+- `docs/evidence/beamr-accessor-compile-fail-control.txt` — the pin control
+- `docs/evidence/beamr-accessor-sweep-r3.txt` — the sweep, with `:357`
+
+---
+---
+
+# APPENDIX — the builder seat's report, verbatim and unedited
+
+Preserved whole. Read §5 above first: four of its statements do not survive
+measurement, and the corrections are there, not here.
+
+---
+
+Model: `claude-opus-5` — this seat's own identifier, verbatim. Pin verified
+in-band, not assumed: `env | grep ANTHROPIC_MODEL` → `ANTHROPIC_MODEL=claude-opus-5`
+(OBSERVED). The harness reports the served model as `claude-opus-5[1m]` (the
+1M-context variant of the pinned model).
+
+---
+
 # REPORT — beamr accessor lifetimes, builder seat
 
 Flight `beamracc-lifetimes-flight3`, branch `leg/accessor`, 2026-08-22.
