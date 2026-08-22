@@ -780,7 +780,8 @@ mod tests {
                 return Outcome::Corrupt;
             }
             for (index, value) in values.iter().enumerate() {
-                let js = term_to_js_value(*value, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+                let js = term_to_js_value(*value, table.as_ref(), process.borrow_terms())
+                    .unwrap_or(JsValue::UNDEFINED);
                 if js.as_string().as_deref() != Some(format!("element-{index}").as_str()) {
                     return Outcome::Corrupt;
                 }
@@ -863,7 +864,8 @@ mod tests {
             let Ok(term) = built else {
                 return Outcome::Refused;
             };
-            let js = term_to_js_value(term, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+            let js = term_to_js_value(term, table.as_ref(), process.borrow_terms())
+                .unwrap_or(JsValue::UNDEFINED);
             for index in 0..count {
                 let got = Reflect::get(&js, &JsValue::from_str(&format!("key-{index:03}")))
                     .unwrap_or(JsValue::UNDEFINED);
@@ -995,7 +997,8 @@ mod tests {
         let groups = list_to_vec_checked(term).expect("nested conversion is a proper list");
         assert_eq!(groups.len(), 40, "outer list length after the collection");
         for (group, value) in groups.iter().enumerate() {
-            let js = term_to_js_value(*value, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+            let js = term_to_js_value(*value, table.as_ref(), process.borrow_terms())
+                .unwrap_or(JsValue::UNDEFINED);
             for entry in 0..6 {
                 let got = Reflect::get(&js, &JsValue::from_str(&format!("k{entry}")))
                     .unwrap_or(JsValue::UNDEFINED);
@@ -1039,7 +1042,7 @@ mod tests {
             .get(binary_context_key(&mut key_context, "name"))
             .expect("name key is present");
         let name_binary = Binary::new(name).expect("string value converts to binary");
-        assert_eq!(name_binary.as_bytes(), b"beamr");
+        assert_eq!(name_binary.as_bytes(owned.borrow_terms()), b"beamr");
 
         let nested = map
             .get(binary_context_key(&mut key_context, "nested"))
@@ -1080,31 +1083,36 @@ mod tests {
             .unwrap_or(Term::NIL);
         let map = context.alloc_map(&[key], &[tuple]).unwrap_or(Term::NIL);
 
-        let utf8_js = term_to_js_value(utf8, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let utf8_js = term_to_js_value(utf8, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert_eq!(utf8_js.as_string().as_deref(), Some("hello"));
 
-        let bytes_js = term_to_js_value(bytes, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let bytes_js = term_to_js_value(bytes, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert!(bytes_js.is_instance_of::<Uint8Array>());
         let bytes_array = Uint8Array::from(bytes_js);
         assert_eq!(bytes_array.length(), 2);
         assert_eq!(bytes_array.get_index(0), 0xff);
         assert_eq!(bytes_array.get_index(1), 0x00);
 
-        let list_js = term_to_js_value(list, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let list_js = term_to_js_value(list, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert!(Array::is_array(&list_js));
         let list_array = Array::from(&list_js);
         assert_eq!(list_array.length(), 2);
         assert_eq!(list_array.get(0).as_f64(), Some(7.0));
         assert_eq!(list_array.get(1).as_string().as_deref(), Some("true"));
 
-        let tuple_js = term_to_js_value(tuple, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let tuple_js = term_to_js_value(tuple, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert!(Array::is_array(&tuple_js));
         let tuple_array = Array::from(&tuple_js);
         assert_eq!(tuple_array.length(), 2);
         assert_eq!(tuple_array.get(0).as_string().as_deref(), Some("hello"));
         assert_eq!(tuple_array.get(1).as_f64(), Some(9.0));
 
-        let map_js = term_to_js_value(map, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let map_js = term_to_js_value(map, table.as_ref(), context.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         let nested_tuple_js =
             Reflect::get(&map_js, &JsValue::from_str("tuple")).unwrap_or(JsValue::UNDEFINED);
         assert!(Array::is_array(&nested_tuple_js));
@@ -1117,7 +1125,8 @@ mod tests {
             .expect("boolean converts to an owned atom term");
         let term = owned.root();
         assert_eq!(term, Term::atom(Atom::TRUE));
-        let js = term_to_js_value(term, table.as_ref()).unwrap_or(JsValue::UNDEFINED);
+        let js = term_to_js_value(term, table.as_ref(), owned.borrow_terms())
+            .unwrap_or(JsValue::UNDEFINED);
         assert_eq!(js.as_string().as_deref(), Some("true"));
     }
 }
@@ -1272,7 +1281,7 @@ mod ar1_row4_sites_12_16_tests {
     /// Read a cons list back BY CONTENTS, iteratively and hard-capped — a stale
     /// pointer can alias an enclosing object and make the list a CYCLE, which
     /// would abort the runner before it could report.
-    fn check_list(term: Term, count: usize) -> Result<(), String> {
+    fn check_list(term: Term, count: usize, heap: HeapBorrow<'_>) -> Result<(), String> {
         let mut seen = 0usize;
         let mut tail = term;
         let cap = count * 2 + 16;
@@ -1289,7 +1298,7 @@ mod ar1_row4_sites_12_16_tests {
                 format!("element {seen}: head is not a binary — carrier `tail` went stale")
             })?;
             let want = element(seen);
-            if binary.as_bytes() != want.as_bytes() {
+            if binary.as_bytes(heap) != want.as_bytes() {
                 return Err(format!(
                     "element {seen}: contents differ — carrier `tail` went stale"
                 ));
@@ -1305,7 +1314,7 @@ mod ar1_row4_sites_12_16_tests {
 
     /// Read the map back BY CONTENTS. Keys are compared as a SET, because this
     /// site sorts by the raw `Term` bit pattern (recorded adjacent at site 15).
-    fn check_map(term: Term, count: usize) -> Result<(), String> {
+    fn check_map(term: Term, count: usize, heap: HeapBorrow<'_>) -> Result<(), String> {
         let map = Map::new(term)
             .ok_or_else(|| "result is not a map — carrier `pairs` went stale".to_string())?;
         if map.len() != count {
@@ -1325,12 +1334,12 @@ mod ar1_row4_sites_12_16_tests {
             let value = Binary::new(value).ok_or_else(|| {
                 format!("entry {index}: value is not a binary — carrier `pairs` went stale")
             })?;
-            if key.as_bytes() != value.as_bytes() {
+            if key.as_bytes(heap) != value.as_bytes(heap) {
                 return Err(format!(
                     "entry {index}: key and value differ — carrier `pairs` went stale"
                 ));
             }
-            names.push(key.as_bytes().to_vec());
+            names.push(key.as_bytes(heap).to_vec());
         }
         names.sort();
         let mut want: Vec<Vec<u8>> = (0..count).map(|i| element(i).into_bytes()).collect();
@@ -1386,9 +1395,9 @@ mod ar1_row4_sites_12_16_tests {
             Err(_) => Err("json_value_to_term returned an error term".to_string()),
             Ok(term) => {
                 if is_map {
-                    check_map(term, count)
+                    check_map(term, count, context.borrow_terms())
                 } else {
-                    check_list(term, count)
+                    check_list(term, count, context.borrow_terms())
                 }
             }
         };
@@ -1406,9 +1415,9 @@ mod ar1_row4_sites_12_16_tests {
             Err(_) => Err("json_value_to_term returned an error term".to_string()),
             Ok(term) => {
                 if is_map {
-                    check_map(term, count)
+                    check_map(term, count, context.borrow_terms())
                 } else {
-                    check_list(term, count)
+                    check_list(term, count, context.borrow_terms())
                 }
             }
         }
@@ -1601,7 +1610,9 @@ mod ar1_row4_sites_12_16_tests {
                             break;
                         }
                         Some(cons) => {
-                            if let Err(reason) = check_list(cons.head(), inner) {
+                            if let Err(reason) =
+                                check_list(cons.head(), inner, process.borrow_terms())
+                            {
                                 stale = Some(format!("outer cell {seen}: {reason}"));
                                 break;
                             }
