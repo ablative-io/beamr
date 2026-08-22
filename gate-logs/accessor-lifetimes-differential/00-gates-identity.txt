@@ -1,0 +1,3 @@
+gates.json sha256 base : b5c9a50bfe4ede80da894d33be22a8b3bafd621193016566264201b7997a74f6
+gates.json sha256 land : b5c9a50bfe4ede80da894d33be22a8b3bafd621193016566264201b7997a74f6
+VERDICT: IDENTICAL — the differential is well-posed, same battery both arms.

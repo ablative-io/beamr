@@ -1,0 +1,74 @@
+[04:28:28Z] === INSTRUMENT: accessor-diff.sh ===
+[04:28:28Z] host=omarchy user=rocketfish utc_open=2026-08-22T04:28:28Z
+[04:28:28Z] uname=Linux 6.19.9-arch1-1 x86_64 nproc=16
+[04:28:28Z] venue recorded -> logs/00-venue.txt
+[04:28:28Z] arm base: creating fresh worktree at /home/rocketfish/fleet/artemis-diff/base from bundle-base
+[04:28:29Z] arm base: HEAD=c55ac360eb573148ef868ce7eb7d03babf05523a VERIFIED, dirty=0
+[04:28:29Z] arm land: creating fresh worktree at /home/rocketfish/fleet/artemis-diff/land from bundle-land
+[04:28:29Z] arm land: HEAD=e1cb306052aa8519c49fc5941940614cd131ed45 VERIFIED, dirty=0
+[04:28:29Z] gates.json identity: base=b5c9a50bfe4ede80da894d33be22a8b3bafd621193016566264201b7997a74f6 land=b5c9a50bfe4ede80da894d33be22a8b3bafd621193016566264201b7997a74f6
+[04:28:29Z] ########## ARM base — battery opening ##########
+[04:28:29Z] arm base legs: fmt clippy wasm32-check wasm-tests tests blocking-call-in-native-bif clippy-all-features tests-all-features nostd-ratchet
+[04:28:29Z]   [base/fmt] START 2026-08-22T04:28:29Z  load='0.78 1.22 1.11 1/1180 1013402'
+[04:28:30Z]   [base/fmt] rc=0 in 1s
+[04:28:30Z]   [base/clippy] START 2026-08-22T04:28:30Z  load='0.78 1.22 1.11 1/1180 1013452'
+[04:28:51Z]   [base/clippy] rc=101 in 21s
+[04:28:51Z]   [base/wasm32-check] START 2026-08-22T04:28:51Z  load='2.27 1.54 1.22 1/1180 1016370'
+[04:29:04Z]   [base/wasm32-check] rc=0 in 13s
+[04:29:04Z]   [base/wasm-tests] START 2026-08-22T04:29:04Z  load='2.12 1.55 1.23 1/1181 1017902'
+[04:29:22Z]   [base/wasm-tests] rc=0 in 18s
+[04:29:22Z]   [base/tests] START 2026-08-22T04:29:22Z  load='2.53 1.69 1.28 1/1181 1019683'
+[04:31:45Z]   [base/tests] rc=101 in 143s
+[04:31:45Z]   [base/blocking-call-in-native-bif] START 2026-08-22T04:31:45Z  load='2.07 2.41 1.65 1/1123 1040423'
+[04:31:45Z]   [base/blocking-call-in-native-bif] rc=0 in 0s
+[04:31:45Z]   [base/clippy-all-features] START 2026-08-22T04:31:45Z  load='2.07 2.41 1.65 2/1125 1040504'
+[04:31:51Z]   [base/clippy-all-features] rc=101 in 6s
+[04:31:51Z]   [base/tests-all-features] START 2026-08-22T04:31:51Z  load='2.14 2.42 1.66 1/1123 1040712'
+[04:34:01Z]   [base/tests-all-features] rc=101 in 130s
+[04:34:01Z]   [base/nostd-ratchet] START 2026-08-22T04:34:01Z  load='2.84 3.54 2.24 1/1124 1059053'
+[04:34:01Z]   [base/nostd-ratchet] rc=3 in 0s
+[04:34:01Z] arm base CLOSED. head_pre=c55ac360eb573148ef868ce7eb7d03babf05523a head_post=c55ac360eb573148ef868ce7eb7d03babf05523a dirty=0
+[04:34:01Z] base arm returned 0
+[04:34:01Z] ########## ARM land — battery opening ##########
+[04:34:01Z] arm land legs: fmt clippy wasm32-check wasm-tests tests blocking-call-in-native-bif clippy-all-features tests-all-features nostd-ratchet
+[04:34:01Z]   [land/fmt] START 2026-08-22T04:34:01Z  load='2.84 3.54 2.24 1/1124 1059116'
+[04:34:03Z]   [land/fmt] rc=0 in 1s
+[04:34:03Z]   [land/clippy] START 2026-08-22T04:34:03Z  load='2.69 3.50 2.23 1/1124 1059176'
+[04:34:23Z]   [land/clippy] rc=101 in 20s
+[04:34:23Z]   [land/wasm32-check] START 2026-08-22T04:34:23Z  load='3.13 3.56 2.28 1/1125 1062106'
+[04:34:36Z]   [land/wasm32-check] rc=0 in 13s
+[04:34:36Z]   [land/wasm-tests] START 2026-08-22T04:34:36Z  load='3.32 3.59 2.31 1/1126 1063599'
+[04:34:54Z]   [land/wasm-tests] rc=0 in 18s
+[04:34:54Z]   [land/tests] START 2026-08-22T04:34:54Z  load='3.10 3.53 2.31 1/1126 1065384'
+[04:37:18Z]   [land/tests] rc=101 in 144s
+[04:37:18Z]   [land/blocking-call-in-native-bif] START 2026-08-22T04:37:18Z  load='3.49 4.10 2.75 2/1138 1088438'
+[04:37:19Z]   [land/blocking-call-in-native-bif] rc=0 in 0s
+[04:37:19Z]   [land/clippy-all-features] START 2026-08-22T04:37:19Z  load='3.49 4.10 2.75 2/1138 1088513'
+[04:37:26Z]   [land/clippy-all-features] rc=101 in 7s
+[04:37:26Z]   [land/tests-all-features] START 2026-08-22T04:37:26Z  load='3.66 4.12 2.77 8/1169 1089581'
+[04:39:50Z]   [land/tests-all-features] rc=101 in 144s
+[04:39:50Z]   [land/nostd-ratchet] START 2026-08-22T04:39:50Z  load='3.56 4.89 3.32 1/1126 1134232'
+[04:39:50Z]   [land/nostd-ratchet] rc=3 in 0s
+[04:39:50Z] arm land CLOSED. head_pre=e1cb306052aa8519c49fc5941940614cd131ed45 head_post=e1cb306052aa8519c49fc5941940614cd131ed45 dirty=0
+[04:39:50Z] land arm returned 0
+[04:39:50Z] === BATTERY COMPLETE — 2026-08-22T04:39:50Z ===
+[04:39:50Z] rc table:
+base	fmt	0	1
+base	clippy	101	21
+base	wasm32-check	0	13
+base	wasm-tests	0	18
+base	tests	101	143
+base	blocking-call-in-native-bif	0	0
+base	clippy-all-features	101	6
+base	tests-all-features	101	130
+base	nostd-ratchet	3	0
+land	fmt	0	1
+land	clippy	101	20
+land	wasm32-check	0	13
+land	wasm-tests	0	18
+land	tests	101	144
+land	blocking-call-in-native-bif	0	0
+land	clippy-all-features	101	7
+land	tests-all-features	101	144
+land	nostd-ratchet	3	0
+[04:39:50Z] DONE

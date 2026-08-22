@@ -1,0 +1,41 @@
+[04:40:07Z] === INSTRUMENT: accessor-diff-p2.sh ===
+[04:40:07Z] utc_open=2026-08-22T04:40:07Z host=omarchy
+[04:40:07Z] ########## P2A — tests, --no-fail-fast, both arms ##########
+[04:40:07Z]   [base/p2a-tests-nff] START load='2.61 4.58 3.25 1/1128 1134397'
+[04:41:31Z]   [base/p2a-tests-nff] rc=101 in 84s  load='1.25 3.75 3.07 1/1121 1146125'
+[04:41:31Z]   [land/p2a-tests-nff] START load='1.25 3.75 3.07 1/1121 1146129'
+[04:42:55Z]   [land/p2a-tests-nff] rc=101 in 84s  load='1.28 3.22 2.95 1/1125 1159943'
+[04:42:55Z] ########## P2B — tests-all-features, --no-fail-fast, both arms ##########
+[04:42:55Z]   [base/p2b-testsall-nff] START load='1.28 3.22 2.95 1/1125 1159950'
+[04:44:19Z]   [base/p2b-testsall-nff] rc=101 in 84s  load='0.54 2.54 2.73 1/1122 1171857'
+[04:44:19Z]   [land/p2b-testsall-nff] START load='0.54 2.54 2.73 1/1122 1171861'
+[04:45:42Z]   [land/p2b-testsall-nff] rc=101 in 83s  load='0.67 2.17 2.59 1/1122 1183760'
+[04:45:42Z] ########## P2C — interleaved A/B, thread_inventory_distribution x5 ##########
+[04:45:58Z]   [p2c r1 base] FAIL (rc=101, load1=0.67)
+[04:46:14Z]   [p2c r1 land] FAIL (rc=101, load1=0.80)
+[04:46:16Z]   [p2c r2 base] FAIL (rc=101, load1=0.91)
+[04:46:19Z]   [p2c r2 land] FAIL (rc=101, load1=0.91)
+[04:46:21Z]   [p2c r3 base] FAIL (rc=101, load1=0.92)
+[04:46:23Z]   [p2c r3 land] FAIL (rc=101, load1=0.92)
+[04:46:25Z]   [p2c r4 base] FAIL (rc=101, load1=0.85)
+[04:46:27Z]   [p2c r4 land] FAIL (rc=101, load1=0.85)
+[04:46:30Z]   [p2c r5 base] FAIL (rc=101, load1=0.78)
+[04:46:32Z]   [p2c r5 land] FAIL (rc=101, load1=0.78)
+[04:46:32Z] === P2 COMPLETE 2026-08-22T04:46:32Z ===
+[04:46:32Z] --- p2 rc table ---
+base	p2a-tests-nff	101	84
+land	p2a-tests-nff	101	84
+base	p2b-testsall-nff	101	84
+land	p2b-testsall-nff	101	83
+[04:46:32Z] --- p2c interleaved (round arm rc verdict load1) ---
+1	base	101	FAIL	0.67
+1	land	101	FAIL	0.80
+2	base	101	FAIL	0.91
+2	land	101	FAIL	0.91
+3	base	101	FAIL	0.92
+3	land	101	FAIL	0.92
+4	base	101	FAIL	0.85
+4	land	101	FAIL	0.85
+5	base	101	FAIL	0.78
+5	land	101	FAIL	0.78
+[04:46:32Z] DONE
