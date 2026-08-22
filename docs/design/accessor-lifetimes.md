@@ -468,3 +468,54 @@ entries and literal pools are not process heaps, but they are storage a term can
 point into, and the borrow-vs-`&mut` argument is identical.
 
 The version decision remains outside this change.
+
+### 7.3 The ` ```compile_fail,E0502 ` annotation is NOT a pin on the gated toolchain
+
+§6 records the in-gate green as "**pinned** in-gate as ` ```compile_fail,E0502 `
+rustdoc doctests". **That claim is false on the toolchain this repository
+pins**, and it was measured, not guessed.
+
+**OBSERVED** — an isolated control, no beamr code: a doc block whose real error
+is E0384 annotated ` ```compile_fail,E0308 ` **passes** under
+`rust-toolchain.toml`'s `channel = "1.97.1"` and **fails** under nightly
+1.100.0 with `Some expected error codes were not found: ["E0308"]`. The gate
+does not run nightly, so in this repository ` ```compile_fail,E0502 ` means
+exactly ` ```compile_fail `.
+
+**OBSERVED on this tree** — deleting the `HeapBorrow` witness argument from one
+of the five proofs leaves it **green**: E0061 is still a compile error, and a
+`compile_fail` doctest cannot tell a borrow bound from a mistyped call. A proof
+that greens on a typo proves nothing about the borrow.
+
+**The correction: the proof is a matched pair, and the pairing is asserted.**
+Each of the five accessors now carries two adjacent doc blocks —
+
+1. a **positive control**, a bare runnable doctest: the same program *without*
+   the collection. It compiles and runs, so every identifier, argument count and
+   import in it is real. `term/accessor_proof_tests.rs` requires the fence to be
+   bare, so `no_run`/`ignore` would break the pairing rather than quietly
+   weaken the control;
+2. the ` ```compile_fail,E0502 ` proof, unchanged.
+
+`crates/beamr/src/term/accessor_proof_tests.rs` (`#[cfg(test)]`, `include_str!`
+so it needs no filesystem and builds for every target the gate compiles) asserts
+for all five pairs that the proof is **its positive control plus exactly one
+line, and that the line is the collection**, and that the population is exactly
+five.
+
+The three instruments together carry a claim none carries alone:
+
+| Instrument | What it establishes |
+|---|---|
+| positive control compiles **and runs** | the program is well formed |
+| structural control passes | the proof is that program plus one line, the collection |
+| `compile_fail` proof does not compile | that line is what breaks it |
+
+∴ the failure is the borrow bound. The conclusion no longer rests on an
+annotation the gated toolchain ignores. Transcript, including the control that
+proves the new check **fires** on the edit rustdoc waved through:
+`docs/evidence/beamr-accessor-compile-fail-control.txt`.
+
+The `E0502` annotation is **kept**, not removed: it is correct, it documents the
+diagnostic for a reader, and it becomes load-bearing for free the day the
+toolchain pin moves to a rustdoc that enforces it.

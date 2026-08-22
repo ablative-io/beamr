@@ -74,7 +74,28 @@ impl Binary {
     /// moves or reclaims this object invalidates them. `heap` is a shared
     /// borrow of that storage and every collecting path needs `&mut Heap`/`&mut
     /// Process`, so holding these bytes across one does not type-check.
-    /// The bound is a type error, not a convention:
+    /// The bound is a type error, not a convention.
+    ///
+    /// The proof is a matched pair. First the positive control — the same
+    /// program *without* the collection, which compiles and runs:
+    ///
+    /// ```
+    /// use beamr::process::Process;
+    /// use beamr::term::binary::{Binary, write_binary};
+    ///
+    /// let mut process = Process::new(1, 233);
+    /// let words = process.heap_mut().alloc_slice(3).expect("words");
+    /// let term = write_binary(words, b"hello").expect("binary");
+    /// let binary = Binary::new(term).expect("accessor");
+    /// let bytes = binary.as_bytes(process.borrow_terms());
+    /// assert_eq!(bytes, b"hello");
+    /// ```
+    ///
+    /// Now the same program with one line added, the collection, and it no
+    /// longer type-checks. `term::accessor_proof_tests` asserts in-gate that
+    /// the two blocks differ by exactly that line, because on this
+    /// repository's pinned toolchain rustdoc IGNORES the `E0502` annotation
+    /// below — measured, see that module.
     ///
     /// ```compile_fail,E0502
     /// use beamr::process::Process;

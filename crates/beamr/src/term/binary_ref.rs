@@ -35,7 +35,29 @@ impl BinaryRef {
     /// object, and `heap` is the shared borrow of it that makes the bound
     /// enforceable.
     /// The bound is a type error, not a convention, for every family this
-    /// reference can hold:
+    /// reference can hold.
+    ///
+    /// The proof is a matched pair. First the positive control — the same
+    /// program *without* the collection, which compiles and runs:
+    ///
+    /// ```
+    /// use beamr::process::Process;
+    /// use beamr::term::binary::write_binary;
+    /// use beamr::term::binary_ref::BinaryRef;
+    ///
+    /// let mut process = Process::new(1, 233);
+    /// let words = process.heap_mut().alloc_slice(3).expect("words");
+    /// let term = write_binary(words, b"hello").expect("binary");
+    /// let binary = BinaryRef::new(term).expect("accessor");
+    /// let bytes = binary.as_bytes(process.borrow_terms());
+    /// assert_eq!(bytes, b"hello");
+    /// ```
+    ///
+    /// Now the same program with one line added, the collection, and it no
+    /// longer type-checks. `term::accessor_proof_tests` asserts in-gate that
+    /// the two blocks differ by exactly that line, because on this
+    /// repository's pinned toolchain rustdoc IGNORES the `E0502` annotation
+    /// below — measured, see that module.
     ///
     /// ```compile_fail,E0502
     /// use beamr::process::Process;

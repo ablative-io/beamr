@@ -117,7 +117,28 @@ impl BigInt {
     /// reclaims this object invalidates them. `heap` is a shared borrow of that
     /// storage and every collecting path needs `&mut Heap`/`&mut Process`, so
     /// the borrow checker rejects any attempt to hold these limbs across one.
-    /// The bound is a type error, not a convention:
+    /// The bound is a type error, not a convention.
+    ///
+    /// The proof is a matched pair. First the positive control — the same
+    /// program *without* the collection, which compiles and runs:
+    ///
+    /// ```
+    /// use beamr::process::Process;
+    /// use beamr::term::boxed::{BigInt, write_bigint};
+    ///
+    /// let mut process = Process::new(1, 233);
+    /// let words = process.heap_mut().alloc_slice(5).expect("words");
+    /// let term = write_bigint(words, false, &[7, 9]).expect("bigint");
+    /// let bigint = BigInt::new(term).expect("accessor");
+    /// let limbs = bigint.limbs(process.borrow_terms());
+    /// assert_eq!(limbs, &[7, 9]);
+    /// ```
+    ///
+    /// Now the same program with one line added, the collection, and it no
+    /// longer type-checks. `term::accessor_proof_tests` asserts in-gate that
+    /// the two blocks differ by exactly that line, because on this
+    /// repository's pinned toolchain rustdoc IGNORES the `E0502` annotation
+    /// below — measured, see that module.
     ///
     /// ```compile_fail,E0502
     /// use beamr::process::Process;

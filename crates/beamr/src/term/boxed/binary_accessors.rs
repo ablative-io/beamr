@@ -41,7 +41,30 @@ impl ProcBin {
     /// dies in a collection. The bound is therefore the ProcBin's liveness,
     /// which is the heap's, which is exactly what `heap` witnesses.
     /// The bound is a type error, not a convention — and it covers the
-    /// `Arc` release, not just object motion:
+    /// `Arc` release, not just object motion.
+    ///
+    /// The proof is a matched pair. First the positive control — the same
+    /// program *without* the collection, which compiles and runs:
+    ///
+    /// ```
+    /// use beamr::process::Process;
+    /// use beamr::term::boxed::ProcBin;
+    /// use beamr::term::shared_binary::{SharedBinary, write_proc_bin};
+    ///
+    /// let mut process = Process::new(1, 233);
+    /// let shared = SharedBinary::new(b"off-heap".to_vec());
+    /// let words = process.heap_mut().alloc_slice_maybe_refcounted(3).expect("words");
+    /// let term = write_proc_bin(words, &shared).expect("proc bin");
+    /// let proc_bin = ProcBin::new(term).expect("accessor");
+    /// let bytes = proc_bin.as_bytes(process.borrow_terms());
+    /// assert_eq!(bytes, b"off-heap");
+    /// ```
+    ///
+    /// Now the same program with one line added, the collection, and it no
+    /// longer type-checks. `term::accessor_proof_tests` asserts in-gate that
+    /// the two blocks differ by exactly that line, because on this
+    /// repository's pinned toolchain rustdoc IGNORES the `E0502` annotation
+    /// below — measured, see that module.
     ///
     /// ```compile_fail,E0502
     /// use beamr::process::Process;
@@ -121,7 +144,32 @@ impl SubBinary {
     /// carries the parent's bound unchanged.
     /// The bound is a type error, not a convention. This path also proves the
     /// private `parent_bytes` helper, which is the only other reader of the
-    /// parent's storage:
+    /// parent's storage.
+    ///
+    /// The proof is a matched pair. First the positive control — the same
+    /// program *without* the collection, which compiles and runs:
+    ///
+    /// ```
+    /// use beamr::process::Process;
+    /// use beamr::term::binary::write_binary;
+    /// use beamr::term::boxed::SubBinary;
+    /// use beamr::term::sub_binary::write_sub_binary;
+    ///
+    /// let mut process = Process::new(1, 233);
+    /// let parent_words = process.heap_mut().alloc_slice(4).expect("parent");
+    /// let parent = write_binary(parent_words, b"0123456789abcdef").expect("binary");
+    /// let sub_words = process.heap_mut().alloc_slice(5).expect("sub");
+    /// let term = write_sub_binary(sub_words, parent, 4, 6).expect("sub binary");
+    /// let sub_binary = SubBinary::new(term).expect("accessor");
+    /// let bytes = sub_binary.as_bytes(process.borrow_terms());
+    /// assert_eq!(bytes, b"456789");
+    /// ```
+    ///
+    /// Now the same program with one line added, the collection, and it no
+    /// longer type-checks. `term::accessor_proof_tests` asserts in-gate that
+    /// the two blocks differ by exactly that line, because on this
+    /// repository's pinned toolchain rustdoc IGNORES the `E0502` annotation
+    /// below — measured, see that module.
     ///
     /// ```compile_fail,E0502
     /// use beamr::process::Process;

@@ -1,0 +1,167 @@
+================================================================================
+CONTROL — the in-gate compile-fail proof, and what it does NOT prove
+================================================================================
+
+Seat      : fix seat, flight beamracc-lifetimes-flight3
+Toolchain : the repository pin, rust-toolchain.toml channel = "1.97.1"
+            rustc 1.97.1 (8bab26f4f 2026-07-14)
+            rustdoc 1.97.1 (8bab26f4f 2026-07-14)
+            nightly, for comparison only: rustdoc 1.100.0-nightly (8925ea358 2026-08-20)
+
+The five accessor proofs are rustdoc doctests marked ```compile_fail,E0502 .
+The error code reads like a pin on the diagnostic. This transcript measures
+whether it is one, and closes the gap it is not.
+
+================================================================================
+1. IS THE ERROR-CODE ANNOTATION ENFORCED? Isolated control, no beamr code.
+================================================================================
+
+A doc block whose REAL error is E0384 (assignment twice to an immutable
+binding), annotated with a DIFFERENT code, E0308. If the annotation is a pin,
+this must fail. A throwaway lib crate under /tmp so rustdoc resolves its own
+injected `extern crate` and the only error in play is the planted one.
+
+FIXTURE /tmp/fixseat/pinctl/src/lib.rs
+//! Minimal control: does rustdoc enforce a `compile_fail` error-code annotation?
+//!
+//! The block's REAL error is E0384 (assignment twice to an immutable binding).
+//! The annotation names E0308. If the annotation is a pin, this must FAIL.
+
+/// ```compile_fail,E0308
+/// let x = 1;
+/// x = 2;
+/// let _ = x;
+/// ```
+pub fn f() {}
+
+COMMAND  cargo +1.97.1 test --doc      # stable, the GATED toolchain
+running 1 test
+test src/lib.rs - f (line 6) - compile fail ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+COMMAND  cargo +nightly test --doc     # comparison only; the gate does not run nightly
+running 1 test
+test src/lib.rs - f (line 6) - compile fail ... FAILED
+
+failures:
+
+---- src/lib.rs - f (line 6) stdout ----
+error[E0384]: cannot assign twice to immutable variable `x`
+ --> src/lib.rs:8:1
+  |
+7 | let x = 1;
+  |     - first assignment to `x`
+8 | x = 2;
+  | ^^^^^ cannot assign twice to immutable variable
+  |
+
+VERDICT: on the GATED toolchain the annotation is IGNORED — the block greens
+under a code that is not its error. Nightly 1.100.0 does enforce it and says so
+("Some expected error codes were not found"). The gate does not run nightly, so
+in this repository ```compile_fail,E0502 means exactly ```compile_fail .
+
+================================================================================
+2. THE PROOF IS NOT VACUOUS — it does fail when the program compiles.
+================================================================================
+
+EDIT: delete the collection from BigInt::limbs' compile_fail block.
+
+COMMAND  cargo test -p beamr --features encode --doc
+test crates/beamr/src/term/boxed/accessors.rs - term::boxed::accessors::BigInt::limbs (line 143) - compile fail ... FAILED
+---- crates/beamr/src/term/boxed/accessors.rs - term::boxed::accessors::BigInt::limbs (line 143) stdout ----
+Test compiled successfully, but it's marked `compile_fail`.
+    crates/beamr/src/term/boxed/accessors.rs - term::boxed::accessors::BigInt::limbs (line 143)
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+error: doctest failed, to rerun pass `-p beamr --doc`
+
+VERDICT: FAILED — "Test compiled successfully, but it's marked `compile_fail`".
+The doctest genuinely demands that the program not compile.
+
+================================================================================
+3. THE HOLE — a WRONG-REASON failure greens it. Measured, not argued.
+================================================================================
+
+EDIT: drop the HeapBorrow witness argument from the compile_fail block ONLY.
+The program now fails with E0061 (wrong argument count) — a completely
+different defect, and NOT the borrow bound the proof claims to demonstrate.
+
+COMMAND  cargo test -p beamr --features encode --doc          # rustdoc ALONE
+test crates/beamr/src/term/boxed/accessors.rs - term::boxed::accessors::BigInt::limbs (line 143) - compile fail ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+VERDICT: STILL GREEN. rustdoc alone cannot tell the borrow bound from a typo.
+That is what the pairing below closes.
+
+COMMAND  cargo test -p beamr --features encode --lib accessor_proof
+running 1 test
+test term::accessor_proof_tests::every_compile_fail_proof_is_its_positive_control_plus_the_collection ... FAILED
+
+failures:
+
+---- term::accessor_proof_tests::every_compile_fail_proof_is_its_positive_control_plus_the_collection stdout ----
+
+thread 'term::accessor_proof_tests::every_compile_fail_proof_is_its_positive_control_plus_the_collection' (702955) panicked at crates/beamr/src/term/accessor_proof_tests.rs:143:5:
+term/boxed/accessors.rs:143 — the one line the compile_fail proof adds must be the collection, but it is "let limbs = bigint.limbs();"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    term::accessor_proof_tests::every_compile_fail_proof_is_its_positive_control_plus_the_collection
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1852 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p beamr --lib`
+
+VERDICT: the structural control FAILS on the same edit rustdoc waved through.
+The checker can fire.
+
+================================================================================
+4. THE TREE AS COMMITTED — both halves green.
+================================================================================
+
+COMMAND  cargo test -p beamr --features encode --lib accessor_proof
+running 1 test
+test term::accessor_proof_tests::every_compile_fail_proof_is_its_positive_control_plus_the_collection ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1852 filtered out; finished in 0.00s
+
+
+COMMAND  cargo test -p beamr --features encode --doc
+running 6 tests
+test crates/beamr/src/scheduler/mod.rs - scheduler::Scheduler::with_services (line 1153) - compile ... ok
+test crates/beamr/src/term/boxed/accessors.rs - term::boxed::accessors::BigInt::limbs (line 125) ... ok
+test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::ProcBin::as_bytes (line 49) ... ok
+test crates/beamr/src/term/binary.rs - term::binary::Binary::as_bytes (line 82) ... ok
+test crates/beamr/src/term/binary_ref.rs - term::binary_ref::BinaryRef::as_bytes (line 43) ... ok
+test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::SubBinary::as_bytes (line 152) ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test crates/beamr/src/term/binary.rs - term::binary::Binary::as_bytes (line 100) - compile fail ... ok
+test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::ProcBin::as_bytes (line 69) - compile fail ... ok
+test crates/beamr/src/term/boxed/accessors.rs - term::boxed::accessors::BigInt::limbs (line 143) - compile fail ... ok
+test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::SubBinary::as_bytes (line 174) - compile fail ... ok
+test crates/beamr/src/term/binary_ref.rs - term::binary_ref::BinaryRef::as_bytes (line 62) - compile fail ... ok
+test crates/beamr/src/process/mod.rs - process::Process (line 147) - compile fail ... ok
+test crates/beamr/src/process/mod.rs - process::Process (line 156) - compile fail ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+all doctests ran in 0.38s; merged doctests compilation took 0.34s
+
+VERDICT: six runnable doctests (the five positive controls, plus one
+pre-existing scheduler example) and seven compile_fail doctests (the five
+accessor proofs, plus the two pre-existing `Process`-is-not-Send ones at
+process/mod.rs:147 and :156). The structural control passes.
+
+The claim the three of them carry TOGETHER, and none carries alone:
+  - the positive control COMPILES AND RUNS  => the program is well formed;
+  - the structural control passes           => the proof is that program plus
+                                               exactly one line, the collection;
+  - the compile_fail proof does not compile => that line is what breaks it.
+Therefore the failure is the borrow bound. The conclusion no longer rests on an
+annotation the gated toolchain ignores.
