@@ -361,6 +361,21 @@ Evidence added at this seat:
 - `docs/evidence/beamr-accessor-compile-fail-control.txt` — the pin control
 - `docs/evidence/beamr-accessor-sweep-r3.txt` — the sweep, with `:357`
 
+**Commit-to-canon alignment, OBSERVED.** The canon transcript of §1's evidence
+file was taken at `ca2a54a5`; `git diff --name-only ca2a54a5..158fd8ba` touches
+only `.fleet/reports/accessor.md` and two `docs/evidence/` files — no
+`crates/`, no `Cargo.*`, no `scripts/`, no `gates.json`. The canon was
+nonetheless **re-run whole at `158fd8ba`** and is identical leg for leg and
+count for count (evidence §6), with a third consecutive SIGBUS-free
+`tests-all-features`.
+
+⚠️ **FOR THE NEXT GATE SEAT.** `gate-rc/` is gitignored: it travels with the
+machine, never with the branch. **The canon leg loop MUST be run before the
+entry means anything** — the entry only grades whatever `gate-rc/` already
+holds, and it cannot tell a fresh artefact from a 93-minute-old one. That is
+exactly how round 1 came to grade the base. `gate-rc/` on this venue now holds
+artefacts from **this** tree.
+
 ---
 ---
 

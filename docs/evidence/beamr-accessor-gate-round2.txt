@@ -290,3 +290,57 @@ PER-LEG DIFFERENTIAL, base -> final:
 NO LEG THAT WAS GREEN AT BASE IS RED AT THE END. NO LEG CHANGED ITS rc.
 The two test legs each carry ONE MORE PASSING TEST than the builder seat's run
 (2126 -> 2127 and 2136 -> 2137): the structural control this seat added.
+
+================================================================================
+6. CONFIRMATION RUN — the same canon at 158fd8ba, the report commit
+================================================================================
+
+Section 5's transcript was taken at ca2a54a5. The commit after it touches only
+documents:
+
+  $ git diff --name-only ca2a54a5..158fd8ba
+    .fleet/reports/accessor.md
+    docs/evidence/beamr-accessor-gate-round2.txt
+    docs/evidence/beamr-accessor-sweep-r3.txt
+
+No crates/, no Cargo.toml, no Cargo.lock, no scripts/, no gates.json — nothing
+that changes what any leg compiles or runs. The canon was nonetheless re-run
+whole at 158fd8ba rather than argued about:
+
+  LEG 1 (fmt)                          rc=0
+  LEG 2 (clippy)                       rc=101
+  LEG 3 (wasm32-check)                 rc=0
+  LEG 4 (wasm-tests)                   rc=0
+  LEG 5 (tests)                        rc=101
+  LEG 6 (blocking-call-in-native-bif)  rc=0
+  LEG 7 (clippy-all-features)          rc=101
+  LEG 8 (tests-all-features)           rc=101
+  LEG 9 (nostd-ratchet)                rc=3
+
+  $ ./.fleet/gate-entry.sh   ; ENTRY_EXIT=1
+    declared legs: 9
+    recorded legs: 9
+      wasm-tests: 2 result line(s), 86 passed
+      tests: 66 result line(s), 2127 passed
+      tests-all-features: 66 result line(s), 2137 passed
+      blocking-call-in-native-bif: rc=0 pass
+      clippy-all-features: rc=101 FAIL — measured red
+      clippy: rc=101 FAIL — measured red
+      fmt: rc=0 pass
+      nostd-ratchet: rc=3 FAIL — measured red
+      tests-all-features: rc=101 FAIL — measured red
+      tests: rc=101 FAIL — measured red
+      wasm-tests: rc=0 pass
+      wasm32-check: rc=0 pass
+
+  tests-all-features SIGBUS lines: 0   (third consecutive full run without one)
+
+IDENTICAL to section 5, leg for leg and count for count.
+
+THE STATE THE NEXT SEAT INHERITS: gate-rc/ now holds artefacts produced from
+THIS tree at 158fd8ba, not the 10:07 base set round 1 graded. The round-1 set
+is preserved and is quoted in sections 0 and 4 above. gate-rc/ is gitignored,
+so it travels with the machine and not with the branch — a gate seat on a
+fresh checkout MUST run the canon leg loop before the entry means anything.
+That is the trap round 1 fell into, and it is not fixed by this file; it is
+only recorded by it.
