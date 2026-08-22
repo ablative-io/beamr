@@ -1,10 +1,21 @@
 # LEG BRIEF — accessor lifetimes (builder seat)
 
-Flight `beamracc-lifetimes-flight1`. Base: `fleet/accessor-lifetimes-base`
+Flight `beamracc-lifetimes-flight3`. Base: `fleet/accessor-lifetimes-base`
 (`main` `c55ac360` + .fleet documents). **Read `.fleet/BRIEF.md` whole
 before you touch anything** — it is the brief of record and it governs.
 `.fleet/plan.md` is the terrain map: coordinates, classification, gate
-traps, all re-derived on this tree. Read it second.
+traps. Read it second — **including its FLIGHT 3 VERIFICATION PASS header
+(V1–V6), which is not optional**: V1 and V2 change how you run the gate and
+what a green means, and a leg that skips them will misread its own results.
+
+This brief and the plan were authored by flight 1's planning counsel and are
+**carried whole**. Flight 1 died at the builder seat on a **provider refusal**
+— its provider declined the request under a cybersecurity policy while the
+leg read unsafe-accessor content. That was not a defect in this plan and not
+a judgement about this work, which is **Tom-ordered memory-safety repair** on
+a VM's own term internals. Flight 3's planning seat re-derived every
+coordinate below against the tree and confirmed them; see the plan's
+verification table.
 
 ---
 
@@ -80,9 +91,23 @@ collecting path takes `&mut` (`heap.rs:285` `Heap::alloc(&mut self)`,
 Process)`, `:101`/`:118` the collectors, `process/gc.rs:43` `root_set(&mut
 Process)`), so a slice tied to a **shared** borrow of `Heap`/`Process` makes
 the collector's `&mut` unobtainable while it lives. That is
-unrepresentability, not a check. Candidate mechanisms T1–T5 and the
-rejected alternatives are laid out in plan §4 — **you choose and you justify;
-the plan does not choose for you.**
+unrepresentability, not a check.
+
+⚠️ **ONE MEASURED EXCEPTION, and it lands on T1 — plan V3.**
+`gc/mod.rs:310` `release_all_refcounted_resources_in_heap(heap: &Heap)`
+**frees** ProcBin `Arc` buffers through a **shared** `&Heap`, walking via
+`Heap::visit_boxed_objects(&self, …)` (`process/heap.rs:452`). Its only
+caller is `replay/driver.rs:34` inside `impl Drop for DecodedHeaps`
+(`:31`-`:37`), where ownership closes the hole — dropping the `Vec<Heap>`
+requires ownership, so no `&Heap` borrow into it can be live. **The strong
+tie is still reachable.** But if you choose **T1 (tie to `&Heap`)**, R1(d)
+must address this signature explicitly — it is a free that needs no `&mut
+Heap` — or reject T1 for it. **T2 (tie to `&Process`) is untouched**: that
+path holds no `Process` at all. Design input only; you do not modify
+`release_*`, it is not one of the four families.
+
+Candidate mechanisms T1–T5 and the rejected alternatives are laid out in plan
+§4 — **you choose and you justify; the plan does not choose for you.**
 
 ### ⛔ THE WALL THAT MAKES A FAKE FIX POSSIBLE — read twice
 A lifetime parameter appearing **only** in the return type or in a
@@ -164,7 +189,12 @@ above).
   not list `:357` as found-and-retired **is a failed sweep.** Account for
   every surviving `'static` line in the sweep output — the two `&'static str`
   literals at `term/json.rs:22,:34` are error-message literals, not heap
-  memory; say so rather than leaving residue unexplained.
+  memory; say so rather than leaving residue unexplained. If you widen the
+  sweep past `term/` (the workspace census is 60 `'static`-returning fns),
+  two further sites are benign and **must not be "fixed"** — plan V6:
+  `native/stdlib_stubs/encoding_bifs.rs:83` `base64_alphabet` (a genuine
+  static constant, **in the same file as Class C `:203`**) and
+  `jit/runtime_closure.rs:144` `runtime_cache` (JIT cache, not process heap).
 - **The compile-fail evidence per accessor family.**
 - **The API-breakage list.**
 - **The flagged follow-on:** re-merging into the divergent working branch is
@@ -175,6 +205,13 @@ above).
   topical one is `origin/fix/0163-borrow-across-alloc` (401 behind / 15
   ahead, and its diff against main touches nothing under
   `crates/beamr/src/term/`). **Re-run it yourself at flight time; refs move.**
+  ⚠️ **Exclude `refs/*/fleet/*` and `origin/HEAD` from the ancestor probe** —
+  plan V5. `git merge-base --is-ancestor main <ref>` is now TRUE for four
+  refs and **all four are this workflow's own** (this flight's base, and
+  flight 1's rescued `origin/fleet/beamracc-flight1-flagged`). They did not
+  exist when the plan was first measured. Report one of them as "the
+  divergent working branch the owner must re-merge into" and you have made
+  the stale-shape error from the opposite direction.
 - **Every claim OBSERVED or REASONED with `file:line` or command output.**
 
 ---
@@ -189,8 +226,106 @@ and it must run green.** Entry: `.fleet/gate-entry.sh` →
 
 **Never weaken, skip or silence a check, and never edit the gate entry.**
 
-Baseline OBSERVED on this tree before any edit: `cargo check --workspace
---features beamr/encode` → `Finished dev profile in 18.37s`, **0 errors**.
+### ⛔ V1 — THE ENTRY DOES NOT RUN THE LEGS. IT ONLY GRADES THEM. Read this before your first gate run.
+
+`ci-verdict.sh` is a **grader** (`:34` `Usage: ci-verdict.sh [GATE_RC_DIR]
+[GATES_JSON]`). It reads `gate-rc/declared.count` and `gate-rc/<leg>.rc` /
+`<leg>.log` that a **separate canon step** must already have written. Run
+`.fleet/gate-entry.sh` on its own and you get, OBSERVED on the untouched tree:
+
+```
+no declared-leg count: the canon step did not reach its first leg
+GATE_EXIT=1
+```
+
+That is **not a red gate** — it is a gate that never ran. The leg-running loop
+lives in **`.github/workflows/ci.yml:68-112`**, not in `scripts/`. Run it
+yourself, then invoke the entry:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+mkdir -p gate-rc
+declared=$(jq -r '.legs | length' gates.json)
+echo "$declared" > gate-rc/declared.count
+for i in $(seq 0 $((declared - 1))); do
+  name=$(jq -r ".legs[$i].name" gates.json)
+  cmd=$(jq -r ".legs[$i].cmd" gates.json)
+  ( eval "$cmd" ) > "gate-rc/${name}.log" 2>&1   # SUBSHELL + REDIRECT, never a pipe
+  echo "$?" > "gate-rc/${name}.rc"
+done
+./.fleet/gate-entry.sh          # grades; DO NOT EDIT IT
+```
+
+Three properties are load-bearing, and `ci.yml:68-93` says so itself: **no
+`set -e`** (every leg must run; the verdict comes from the recorded set), **a
+subshell** around `eval` (so a `cd`-shaped leg cannot relocate later legs —
+leg order must not affect the verdict), and **redirect, never pipe** (a pipe
+hands `$?` to the downstream tool and records the wrong leg's rc).
+`gate-rc/` is gitignored already (`.gitignore:21`), so this does not dirty
+the tree. Takes ~4 min warm.
+
+### ⛔ V2 — THE BASELINE GATE IS ALREADY RED HERE: FIVE OF NINE LEGS, ON THE UNTOUCHED TREE.
+
+Flight 1 measured `cargo check` (`Finished dev profile`, **0 errors** — still
+true, re-confirmed). It never ran the gate. Flight 3's planning seat did, on
+the tree **byte-identical to beamr `main`** (`git diff --name-only
+c55ac360..HEAD` = only `.fleet/*` and `.gitignore`):
+
+| Leg | rc | Cause |
+|---|---|---|
+| `fmt` | **0** | — |
+| `clippy` | **101** | 15 lint errors — `native/file_meta_bifs.rs` ×8 (`unnecessary_cast` `u32`→`u32`, `:251`-`:264`), `io/uring.rs` ×7 (`:10`,`:55`,`:63`,`:138`, +3) |
+| `wasm32-check` | **0** | — |
+| `wasm-tests` | **0** | 86 passed |
+| `tests` | **101** | **1 test fails**: `tests/thread_inventory_distribution.rs:59` — `dist-send=1, net-kernel=0`. 2126 passed / 1 failed |
+| `blocking-call-in-native-bif` | **0** | — |
+| `clippy-all-features` | **101** | same lint family, **same count of 15** |
+| `tests-all-features` | **101** | transient `rustc SIGBUS` first run; clean re-run → **the same one test** as `tests` |
+| `nostd-ratchet` | **3** | `mktemp: too few X's in template 'nostd-ratchet'` — the instrument is **dead on this venue** |
+
+**Five red legs, THREE root causes, none of them yours:** the pre-existing
+clippy lints (legs 2+7), one deterministic test failure (legs 5+8), and a
+`mktemp` incompatibility (leg 9). **Not one is in the four accessor families
+or reachable from them.**
+
+- **Leg 5 is not a flake.** Run 6 times, failed 6 times — 5× sandboxed, 1×
+  unsandboxed. Not in `docs/KNOWN-INTERMITTENTS.md`, and that registry
+  forecloses the shrug anyway: *"An entry here does not license dismissing a
+  red."* Mechanism OBSERVED (`distribution/mod.rs:191-197` builds the
+  net-kernel tokio runtime with `builder.build().ok()`, swallowing the error,
+  so `worker_thread_names()` returns empty = `net-kernel=0`); root cause NOT
+  established, and **out of scope either way**.
+- **Leg 9 makes §7's trap #1 moot here.** The ratchet cannot measure the
+  no-std tally, so you cannot lower `CEILING` even if your change legitimately
+  improves it. The script's own REFUSE arm fires correctly — that is the
+  harness *working*, refusing to green falsely. `gates.json` declares **no**
+  `cannot_measure_rcs`, so rc=3 grades as a plain FAIL.
+- **Leg 8: re-run on any SIGBUS before believing it.** It is a crash in the
+  compiler (LLVM context teardown), not a diagnostic about this tree.
+
+#### ⛔ YOUR GATE OBLIGATION IS DIFFERENTIAL. BINDING.
+
+1. **Capture YOUR OWN baseline before the first edit** — run the V1 canon loop
+   on the untouched tree and keep `gate-rc/`. Do not inherit the table above
+   on faith; venues and toolchains move. This is the control for everything
+   you claim afterwards.
+2. **Add no red.** Every leg green at baseline is green at the end;
+   `clippy`'s error set is **unchanged in content and count** (15); `tests`
+   shows the **same one** failure and no other.
+3. **Fix none of it.** `file_meta_bifs.rs`, `io/uring.rs`,
+   `thread_inventory_distribution.rs`, `gate-nostd-ratchet.sh` — all out of
+   scope, all *"a measured red beyond this scope is REPORTED, not chased."*
+   **`#[allow]` nothing** (banned in any spelling). **Edit no gate script and
+   no gate entry.**
+4. **Report baseline and final side by side, per leg**, in R3. Claim "gate
+   green" without a baseline and you are reporting what you cannot have
+   measured; claim "gate red" without one and you will blame your own change
+   for `file_meta_bifs.rs`.
+5. **This is the measured-red wall's exact shape.** An honest differential —
+   *"the four families are retired, the compiler enforces the bound, and the
+   gate is red on the same five legs it was red on before I started"* — **is a
+   success outcome**, even when the workflow's grammar renders it
+   `gates_red/Failed`. **Do not manufacture a green.**
 
 ### The compile-fail evidence lives OUTSIDE the gate — with one exception the repo grants you
 A program that must not compile cannot live in the gated tree. **Capture the
@@ -213,7 +348,11 @@ reason, a typo included, which would be a green that proves nothing.
 it through the public `SubBinary::as_bytes` path.
 
 ### Two gate legs that will bite this change specifically
-1. **`nostd-ratchet` is strict in BOTH directions.**
+1. **`nostd-ratchet` is strict in BOTH directions** — ⚠️ **but see V2: on this
+   venue the ratchet CANNOT MEASURE AT ALL** (`mktemp` template
+   incompatibility), so it is red at baseline and you cannot lower `CEILING`
+   even if your change earns it. Keep the reasoning below for a venue where
+   the instrument works; **do not "fix" the script here.**
    `scripts/gate-nostd-ratchet.sh:81` `CEILING=1072`; it fails if the tally
    exceeds it (`:120`) **and** if the tally is below it (`:127`), instructing
    `Set CEILING=$tally in this script, in the same commit`. Touching `term/`
@@ -236,14 +375,17 @@ it through the public `SubBinary::as_bytes` path.
 
 - **No lint suppressions in any spelling.**
 - **No ignore attributes on tests** — runtime env-gates only.
-- **No file over 500 lines of code.**
+- **No file over 500 lines of code** — operationally, for a repo where
+  **134 files already exceed it on untouched `main`** (plan V4): **do not
+  create a new over-500 file, and do not grow a file you touch past 500.**
   ⚠️ `crates/beamr/src/term/boxed/accessors.rs` is at **472 lines** — 28 from
   the wall, and it is the most-edited file of this flight. Lifetime
   parameters plus re-derived safety comments will exceed 28 lines. **Plan the
   module split up front**, do not discover the wall at the end. Files already
   over the wall that you must not grow: `term/compare/mod.rs` 713,
   `process/mod.rs` 1361, `native/stdlib_stubs/gc_rooting_tests.rs` 552 —
-  pre-existing, report as measured, do not chase.
+  pre-existing, report as measured, do not chase. (`native/context/mod.rs`
+  is 1815 and sits in the T4 blast radius — same rule.)
 - **Never `.unwrap()`/`.expect()` in library code.** The current
   `SubBinary::as_bytes` uses `unwrap_or`/`checked_add` correctly
   (`accessors.rs:341-344`) — keep that discipline through the rewrite.
