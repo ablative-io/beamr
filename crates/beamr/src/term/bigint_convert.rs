@@ -7,6 +7,7 @@
 
 use super::Term;
 use super::bigint_math::{BigIntValue, normalized};
+use super::heap_borrow::HeapBorrow;
 
 /// Smallest radix accepted by the integer/string conversion BIFs.
 pub const MIN_RADIX: u32 = 2;
@@ -106,11 +107,15 @@ pub fn from_str_radix(text: &str, radix: u32) -> Option<BigIntValue> {
 ///
 /// Returns `None` for non-integer terms or a radix outside `2..=36`.
 #[must_use]
-pub fn integer_term_to_string_radix(term: Term, radix: u32) -> Option<String> {
+pub fn integer_term_to_string_radix(
+    term: Term,
+    radix: u32,
+    heap: HeapBorrow<'_>,
+) -> Option<String> {
     let value = if let Some(small) = term.as_small_int() {
         BigIntValue::from_i64(small)
     } else {
-        BigIntValue::from_term(term)?
+        BigIntValue::from_term(term, heap)?
     };
     to_string_radix(&value, radix)
 }

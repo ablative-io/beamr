@@ -5,6 +5,7 @@ use crate::term::Term;
 use crate::term::binary::{self, Binary};
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, write_cons};
+use crate::term::heap_borrow::HeapBorrow;
 use std::sync::Arc;
 
 use super::string_bifs;
@@ -29,9 +30,9 @@ fn binary(bytes: &[u8]) -> Term {
     binary::write_binary(heap, bytes).expect("binary heap sized correctly")
 }
 
-fn assert_binary(term: Term, expected: &[u8]) {
+fn assert_binary(term: Term, expected: &[u8], heap: HeapBorrow<'_>) {
     let binary = BinaryRef::new(term).expect("binary term");
-    assert_eq!(binary.as_bytes(), expected);
+    assert_eq!(binary.as_bytes(heap), expected);
 }
 
 fn atom_context(process: &mut Process) -> ProcessContext<'_> {
@@ -153,7 +154,7 @@ fn characters_to_binary_converts_integer_code_point_list() {
 
     let result = bif_characters_to_binary(&[list], &mut ctx).unwrap();
     let bin = Binary::new(result).expect("should be a binary");
-    assert_eq!(bin.as_bytes(), b"hi");
+    assert_eq!(bin.as_bytes(ctx.borrow_terms()), b"hi");
 }
 
 #[test]
@@ -269,7 +270,7 @@ fn characters_to_binary_handles_nested_and_improper_chardata() {
     let heap = Box::leak(Box::new([0u64; 2]));
     let chardata = write_cons(heap, cluster, tail).expect("cons");
     let result = bif_characters_to_binary(&[chardata], &mut ctx).expect("binary");
-    assert_binary(result, "e\u{0301}xy".as_bytes());
+    assert_binary(result, "e\u{0301}xy".as_bytes(), ctx.borrow_terms());
 }
 
 #[test]
@@ -292,14 +293,17 @@ fn string_bifs_handle_binary_cases() {
     assert_binary(
         string_bifs::bif_reverse(&[binary(b"abc")], &mut ctx).expect("reverse"),
         b"cba",
+        ctx.borrow_terms(),
     );
     assert_binary(
         string_bifs::bif_lowercase(&[binary(b"HELLO")], &mut ctx).expect("lowercase"),
         b"hello",
+        ctx.borrow_terms(),
     );
     assert_binary(
         string_bifs::bif_uppercase(&[binary(b"hello")], &mut ctx).expect("uppercase"),
         b"HELLO",
+        ctx.borrow_terms(),
     );
     assert_binary(
         string_bifs::bif_trim(
@@ -311,6 +315,7 @@ fn string_bifs_handle_binary_cases() {
         )
         .expect("trim"),
         b"hi",
+        ctx.borrow_terms(),
     );
     assert_eq!(
         string_bifs::bif_equal(&[binary(b"a"), binary(b"a")], &mut ctx),
@@ -330,11 +335,11 @@ fn string_split_returns_list_of_binaries_and_rejects_invalid_input() {
     let result =
         string_bifs::bif_split(&[binary(b"a-b-c"), binary(b"-"), all], &mut ctx).expect("split");
     let first = Cons::new(result).expect("first");
-    assert_binary(first.head(), b"a");
+    assert_binary(first.head(), b"a", ctx.borrow_terms());
     let second = Cons::new(first.tail()).expect("second");
-    assert_binary(second.head(), b"b");
+    assert_binary(second.head(), b"b", ctx.borrow_terms());
     let third = Cons::new(second.tail()).expect("third");
-    assert_binary(third.head(), b"c");
+    assert_binary(third.head(), b"c", ctx.borrow_terms());
     assert_eq!(third.tail(), Term::NIL);
 
     assert_eq!(
@@ -356,6 +361,7 @@ fn binary_part_extracts_slices_and_rejects_out_of_bounds() {
         )
         .expect("part"),
         b"ell",
+        ctx.borrow_terms(),
     );
     assert_binary(
         bif_binary_part(
@@ -364,6 +370,7 @@ fn binary_part_extracts_slices_and_rejects_out_of_bounds() {
         )
         .expect("empty at end"),
         b"",
+        ctx.borrow_terms(),
     );
     assert_eq!(
         bif_binary_part(

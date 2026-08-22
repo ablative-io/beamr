@@ -491,7 +491,9 @@ pub fn bif_abs_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
         return Ok(absolute);
     }
     // Small integers whose absolute value overflows fall through here too.
-    if let Some(integer) = crate::term::bigint_math::BigIntValue::from_term(*value) {
+    if let Some(integer) =
+        crate::term::bigint_math::BigIntValue::from_term(*value, context.borrow_terms())
+    {
         return crate::native::bifs::integer_result(integer.abs(), context);
     }
     let value = Float::new(*value).ok_or_else(badarg)?.value();
@@ -823,7 +825,7 @@ pub fn bif_list_append(args: &[Term], context: &mut ProcessContext) -> Result<Te
     if list_b.is_nil() {
         if let Some(binary) = BinaryRef::new(*list_a) {
             // Own the bytes: alloc_binary may collect and move an inline source.
-            let bytes = binary.as_bytes().to_vec();
+            let bytes = binary.as_bytes(context.borrow_terms()).to_vec();
             return context.alloc_binary(&bytes);
         }
         if Cons::new(*list_a).is_none() {

@@ -15,6 +15,7 @@ use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::Cons;
+use crate::term::heap_borrow::HeapBorrow;
 
 /// Atom for "unix".
 static UNIX_ATOM: std::sync::OnceLock<Atom> = std::sync::OnceLock::new();
@@ -92,7 +93,7 @@ pub fn bif_os_getenv_1(args: &[Term], context: &mut ProcessContext) -> Result<Te
     let [name] = args else {
         return Err(badarg());
     };
-    let key = beam_string_to_string(*name)?;
+    let key = beam_string_to_string(*name, context.borrow_terms())?;
     validate_env_key(&key)?;
     match std::env::var(&key) {
         Ok(value) => context.alloc_binary(value.as_bytes()),
@@ -102,12 +103,12 @@ pub fn bif_os_getenv_1(args: &[Term], context: &mut ProcessContext) -> Result<Te
 }
 
 /// `os:putenv/2` -- sets a host environment variable.
-pub fn bif_os_putenv(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_os_putenv(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [key, value] = args else {
         return Err(badarg());
     };
-    let key = beam_string_to_string(*key)?;
-    let value = beam_string_to_string(*value)?;
+    let key = beam_string_to_string(*key, context.borrow_terms())?;
+    let value = beam_string_to_string(*value, context.borrow_terms())?;
     validate_env_key(&key)?;
     validate_env_value(&value)?;
     // SAFETY: Environment mutation is process-global and therefore unsafe in
@@ -122,11 +123,11 @@ pub fn bif_os_putenv(args: &[Term], _context: &mut ProcessContext) -> Result<Ter
 }
 
 /// `os:unsetenv/1` -- removes a host environment variable.
-pub fn bif_os_unsetenv(args: &[Term], _context: &mut ProcessContext) -> Result<Term, Term> {
+pub fn bif_os_unsetenv(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [name] = args else {
         return Err(badarg());
     };
-    let key = beam_string_to_string(*name)?;
+    let key = beam_string_to_string(*name, context.borrow_terms())?;
     validate_env_key(&key)?;
     // SAFETY: This performs the process-global mutation required by
     // os:unsetenv/1. The key is validated above so std will not panic for an
@@ -211,8 +212,8 @@ pub fn bif_string_split(args: &[Term], context: &mut ProcessContext) -> Result<T
     let [input, pattern] = args else {
         return Err(badarg());
     };
-    let input_string = decode_beam_string(*input)?;
-    let pattern = decode_beam_string(*pattern)?.into_bytes();
+    let input_string = decode_beam_string(*input, context.borrow_terms())?;
+    let pattern = decode_beam_string(*pattern, context.borrow_terms())?.into_bytes();
     if pattern.is_empty() {
         return Err(badarg());
     }
@@ -281,15 +282,15 @@ impl BeamString {
     }
 }
 
-fn decode_beam_string(term: Term) -> Result<BeamString, Term> {
+fn decode_beam_string(term: Term, heap: HeapBorrow<'_>) -> Result<BeamString, Term> {
     if let Some(binary) = BinaryRef::new(term) {
-        return Ok(BeamString::Binary(binary.as_bytes().to_vec()));
+        return Ok(BeamString::Binary(binary.as_bytes(heap).to_vec()));
     }
     proper_byte_list(term).map(BeamString::List)
 }
 
-fn beam_string_to_string(term: Term) -> Result<String, Term> {
-    String::from_utf8(decode_beam_string(term)?.into_bytes()).map_err(|_| badarg())
+fn beam_string_to_string(term: Term, heap: HeapBorrow<'_>) -> Result<String, Term> {
+    String::from_utf8(decode_beam_string(term, heap)?.into_bytes()).map_err(|_| badarg())
 }
 
 fn proper_byte_list(term: Term) -> Result<Vec<u8>, Term> {

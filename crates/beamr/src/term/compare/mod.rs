@@ -4,15 +4,22 @@
 
 use std::cmp::Ordering;
 
+mod bigint;
+
+use super::heap_borrow::HeapBorrow;
 use super::pid_ref::PidRef;
 use super::reference_ref::ReferenceRef;
 use super::{
     Term,
-    bigint_math::{BigIntValue, cmp_abs},
+    bigint_math::BigIntValue,
     binary_ref::BinaryRef,
     boxed::{BigInt, Closure, Cons, Float, Map, Tuple},
 };
 use crate::atom::AtomTable;
+use bigint::{
+    bigint_value_to_f64, compare_bigint_values_owned, compare_bigints,
+    compare_small_int_to_bigint_value,
+};
 
 /// Compares two terms using Erlang `=:=` exact equality semantics.
 #[must_use]
@@ -147,7 +154,17 @@ fn number_value(term: Term) -> Option<NumberValue> {
     } else if let Some(float) = Float::new(term) {
         Some(NumberValue::Float(float.value()))
     } else {
-        BigInt::new(term).map(|bigint| NumberValue::BigInt(BigIntValue::from_bigint(bigint)))
+        BigInt::new(term).map(|bigint| {
+            // SAFETY: `with_frame` hands out a witness bounded to this call and
+            // `from_bigint` copies the limbs into owned storage before it
+            // returns, so no borrow of heap words survives the closure. Nothing
+            // inside allocates on, collects, or drops a process heap — the
+            // whole body is a `Vec<u64>` copy. `Term`'s `PartialEq`/`Ord`
+            // reach here through signatures that cannot carry a witness.
+            let value =
+                unsafe { HeapBorrow::with_frame(|heap| BigIntValue::from_bigint(bigint, heap)) };
+            NumberValue::BigInt(value)
+        })
     }
 }
 
@@ -168,7 +185,7 @@ fn compare_same_rank(
         TermRank::Map => compare_maps(left, right, atom_table),
         TermRank::Nil => Ordering::Equal,
         TermRank::List => compare_lists(left, right, atom_table),
-        TermRank::Binary => binary_bytes(left).cmp(binary_bytes(right)),
+        TermRank::Binary => compare_binaries(left, right),
         TermRank::OtherBoxed => left.raw().cmp(&right.raw()),
     }
 }
@@ -185,7 +202,7 @@ fn compare_same_rank_raw(left: Term, right: Term, term_rank: TermRank) -> Orderi
         TermRank::Map => compare_maps_raw(left, right),
         TermRank::Nil => Ordering::Equal,
         TermRank::List => compare_lists_raw(left, right),
-        TermRank::Binary => binary_bytes(left).cmp(binary_bytes(right)),
+        TermRank::Binary => compare_binaries(left, right),
         TermRank::OtherBoxed => left.raw().cmp(&right.raw()),
     }
 }
@@ -273,7 +290,7 @@ fn compare_same_exact_kind(left: Term, right: Term, kind: ExactKind) -> Ordering
         ExactKind::Closure => compare_closures_exact(left, right),
         ExactKind::Map => compare_maps_exact(left, right),
         ExactKind::Reference => reference_key(left).cmp(&reference_key(right)),
-        ExactKind::Binary => binary_bytes(left).cmp(binary_bytes(right)),
+        ExactKind::Binary => compare_binaries(left, right),
         ExactKind::List => compare_lists_exact(left, right),
         ExactKind::Other => left.raw().cmp(&right.raw()),
     }
@@ -334,90 +351,23 @@ fn reference_key(term: Term) -> Option<(Option<u32>, u64)> {
         .map(|reference| (reference.node().map(|node| node.index()), reference.id()))
 }
 
-fn binary_bytes(term: Term) -> &'static [u8] {
-    BinaryRef::new(term).map_or(&[], |binary| binary.as_bytes())
+fn binary_bytes<'heap>(term: Term, heap: HeapBorrow<'heap>) -> &'heap [u8] {
+    BinaryRef::new(term).map_or(&[], |binary| binary.as_bytes(heap))
 }
 
-fn compare_bigints(left: Term, right: Term) -> Ordering {
-    match (BigInt::new(left), BigInt::new(right)) {
-        (Some(left), Some(right)) => compare_bigint_values(left, right),
-        _ => left.raw().cmp(&right.raw()),
-    }
-}
-
-fn compare_bigint_values(left: BigInt, right: BigInt) -> Ordering {
-    let left_limbs = normalized_limbs(left);
-    let right_limbs = normalized_limbs(right);
-    let left_negative = left.is_negative() && !left_limbs.is_empty();
-    let right_negative = right.is_negative() && !right_limbs.is_empty();
-
-    match (left_negative, right_negative) {
-        (true, false) => Ordering::Less,
-        (false, true) => Ordering::Greater,
-        (false, false) => compare_magnitude(left_limbs, right_limbs),
-        (true, true) => compare_magnitude(left_limbs, right_limbs).reverse(),
-    }
-}
-
-fn compare_small_magnitude(left: u64, right_limbs: &[u64]) -> Ordering {
-    match right_limbs.len().cmp(&1) {
-        Ordering::Less => left.cmp(&0),
-        Ordering::Equal => left.cmp(&right_limbs[0]),
-        Ordering::Greater => Ordering::Less,
-    }
-}
-
-fn compare_magnitude(left: &[u64], right: &[u64]) -> Ordering {
-    match left.len().cmp(&right.len()) {
-        Ordering::Equal => left.iter().rev().cmp(right.iter().rev()),
-        order => order,
-    }
-}
-
-fn normalized_limbs(bigint: BigInt) -> &'static [u64] {
-    let limbs = bigint.limbs();
-    let significant_len = limbs
-        .iter()
-        .rposition(|limb| *limb != 0)
-        .map_or(0, |index| index + 1);
-    &limbs[..significant_len]
-}
-
-fn bigint_value_to_f64(value: &BigIntValue) -> f64 {
-    let mut result = 0.0_f64;
-    for limb in value.limbs().iter().rev() {
-        result = result.mul_add(18_446_744_073_709_551_616.0, *limb as f64);
-    }
-
-    if value.is_negative() && result != 0.0 {
-        -result
-    } else {
-        result
-    }
-}
-
-/// Compares a small integer against an owned bigint value by sign and magnitude.
-fn compare_small_int_to_bigint_value(small: i64, big: &BigIntValue) -> Ordering {
-    let big_negative = big.is_negative();
-
-    match (small.is_negative(), big_negative) {
-        (true, false) => Ordering::Less,
-        (false, true) => Ordering::Greater,
-        (false, false) => compare_small_magnitude(small.unsigned_abs(), big.limbs()),
-        (true, true) => compare_small_magnitude(small.unsigned_abs(), big.limbs()).reverse(),
-    }
-}
-
-/// Compares two owned bigint values by sign and magnitude.
-fn compare_bigint_values_owned(left: &BigIntValue, right: &BigIntValue) -> Ordering {
-    let left_negative = left.is_negative();
-    let right_negative = right.is_negative();
-
-    match (left_negative, right_negative) {
-        (true, false) => Ordering::Less,
-        (false, true) => Ordering::Greater,
-        (false, false) => cmp_abs(left.limbs(), right.limbs()),
-        (true, true) => cmp_abs(left.limbs(), right.limbs()).reverse(),
+/// Orders two binary terms by content.
+///
+/// Term comparison is reached from `impl PartialEq for Term` (`term/mod.rs:65`)
+/// and `impl Ord for Term` (`:79`), whose signatures have no room for a heap
+/// witness. This is one of the three sites the design names as structurally
+/// witness-less; see `docs/design/accessor-lifetimes.md` §4.
+fn compare_binaries(left: Term, right: Term) -> Ordering {
+    // SAFETY: `with_frame`'s witness is higher-ranked, so neither it nor the
+    // two byte slices can escape the closure. The closure body is a slice
+    // comparison: it performs no allocation, runs no collection, and drops no
+    // heap, so nothing can invalidate the bytes while they are read.
+    unsafe {
+        HeapBorrow::with_frame(|heap| binary_bytes(left, heap).cmp(binary_bytes(right, heap)))
     }
 }
 

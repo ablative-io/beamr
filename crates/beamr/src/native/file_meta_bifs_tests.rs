@@ -262,7 +262,7 @@ fn list_dir_returns_ok_list_of_filename_binaries() {
         names.push(
             Binary::new(cons.head())
                 .expect("filename binary")
-                .as_bytes()
+                .as_bytes(context.borrow_terms())
                 .to_vec(),
         );
         tail = cons.tail();

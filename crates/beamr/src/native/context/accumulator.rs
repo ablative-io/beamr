@@ -251,6 +251,7 @@ mod tests {
     use crate::process::Process;
     use crate::term::binary::Binary;
     use crate::term::boxed::Cons;
+    use crate::term::heap_borrow::HeapBorrow;
 
     const WIDTH: usize = 12;
 
@@ -264,7 +265,7 @@ mod tests {
     /// an enclosing cell, turning the list into a CYCLE; a recursive or uncapped
     /// walk hangs instead of reporting, and a hang is the one failure mode this
     /// lane has already paid for once.
-    fn check_list(list: Term, count: usize) -> Result<(), String> {
+    fn check_list(list: Term, count: usize, heap: HeapBorrow<'_>) -> Result<(), String> {
         let cap = count * 2 + 16;
         let mut seen = 0usize;
         let mut tail = list;
@@ -280,10 +281,10 @@ mod tests {
                 format!("entry {seen}: head is not a binary — carrier went stale")
             })?;
             let want = payload(seen);
-            if binary.as_bytes() != want.as_bytes() {
+            if binary.as_bytes(heap) != want.as_bytes() {
                 return Err(format!(
                     "entry {seen}: contents {:?} != {want:?}",
-                    String::from_utf8_lossy(binary.as_bytes())
+                    String::from_utf8_lossy(binary.as_bytes(heap))
                 ));
             }
             seen += 1;
@@ -366,7 +367,10 @@ mod tests {
         let Ok(list) = context.alloc_list(&terms) else {
             return (achieved, Cell::Refused);
         };
-        (achieved, cell_of(check_list(list, count)))
+        (
+            achieved,
+            cell_of(check_list(list, count, context.borrow_terms())),
+        )
     }
 
     /// The same accumulation through [`TermAccumulator`] — identical inputs,
@@ -388,7 +392,10 @@ mod tests {
         let Ok(list) = outcome else {
             return (achieved, Cell::Refused);
         };
-        (achieved, cell_of(check_list(list, count)))
+        (
+            achieved,
+            cell_of(check_list(list, count, context.borrow_terms())),
+        )
     }
 
     fn cell_of(result: Result<(), String>) -> Cell {
@@ -487,7 +494,7 @@ mod tests {
                 accumulator.to_list(context)
             })
             .expect("detached accumulation should succeed");
-        check_list(list, 8).expect("detached list should round-trip");
+        check_list(list, 8, context.borrow_terms()).expect("detached list should round-trip");
     }
 
     /// An odd-length pair run is a caller bug and is REFUSED, never silently

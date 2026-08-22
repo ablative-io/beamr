@@ -11,6 +11,7 @@ use crate::term::binary::Binary;
 use crate::term::boxed::{
     self, BigInt, Closure, Cons, Float, Map, ProcBin, Reference, SubBinary, Tuple,
 };
+use crate::term::heap_borrow::HeapBorrow;
 
 /// A term whose boxed/list objects are owned by ETS rather than a process heap.
 #[derive(Debug)]
@@ -54,6 +55,20 @@ impl OwnedTerm {
         self.root
     }
 
+    /// A witness that this entry's term storage is shared-borrowed.
+    ///
+    /// ETS-owned terms live in `allocations`, which this entry owns. Every path
+    /// that could free them — `into_raw_parts`, `Drop` — needs ownership or
+    /// `&mut self`, so a live witness (or a slice derived from one) makes them
+    /// unobtainable, exactly as `Heap::borrow_terms` does for a process heap.
+    #[must_use]
+    pub fn borrow_terms(&self) -> HeapBorrow<'_> {
+        match self.allocations.first() {
+            Some(allocation) => HeapBorrow::of_words(allocation),
+            None => HeapBorrow::of_words(&[]),
+        }
+    }
+
     /// Deep-copy this ETS-owned term into a process heap for delivery to a caller.
     pub fn copy_to_heap(&self, heap: &mut Heap) -> Result<Term, EtsError> {
         copy_term_to_heap(self.root, heap)
@@ -87,7 +102,15 @@ pub fn copy_term_to_ets(term: Term) -> Result<OwnedTerm, EtsError> {
     let mut copier = EtsCopier {
         allocations: Vec::new(),
     };
-    let root = copier.copy_term(term)?;
+    // SAFETY: the copier writes only into its own `Vec<Box<[u64]>>`; it never
+    // takes `&mut` to the source process heap, allocates on it, collects it or
+    // drops it, and `Process` is neither `Send` nor `Sync` (`process/mod.rs`
+    // `compile_fail` doctests), so no other thread can collect it while this
+    // synchronous copy runs. `with_frame`'s witness is higher-ranked, so no
+    // borrowed slice escapes the closure. This is a witness-less reader in the
+    // sense of `docs/design/accessor-lifetimes.md` §4: the *source* storage is
+    // not nameable here, only the destination.
+    let root = unsafe { HeapBorrow::with_frame(|heap| copier.copy_term(term, heap))? };
     Ok(OwnedTerm {
         root,
         allocations: copier.allocations,
@@ -110,62 +133,62 @@ struct EtsCopier {
 }
 
 impl EtsCopier {
-    fn copy_term(&mut self, term: Term) -> Result<Term, EtsError> {
+    fn copy_term(&mut self, term: Term, heap: HeapBorrow<'_>) -> Result<Term, EtsError> {
         if term.is_list() {
-            self.copy_cons(term)
+            self.copy_cons(term, heap)
         } else if term.is_boxed() {
-            self.copy_boxed(term)
+            self.copy_boxed(term, heap)
         } else {
             Ok(term)
         }
     }
 
-    fn copy_cons(&mut self, term: Term) -> Result<Term, EtsError> {
+    fn copy_cons(&mut self, term: Term, heap: HeapBorrow<'_>) -> Result<Term, EtsError> {
         let cons = Cons::new(term).ok_or(EtsError::InvalidBoxedTerm)?;
-        let head = self.copy_term(cons.head())?;
-        let tail = self.copy_term(cons.tail())?;
+        let head = self.copy_term(cons.head(), heap)?;
+        let tail = self.copy_term(cons.tail(), heap)?;
         self.write_words(2, |words| boxed::write_cons(words, head, tail))
     }
 
-    fn copy_boxed(&mut self, term: Term) -> Result<Term, EtsError> {
+    fn copy_boxed(&mut self, term: Term, heap: HeapBorrow<'_>) -> Result<Term, EtsError> {
         if let Some(tuple) = Tuple::new(term) {
-            return self.copy_tuple(tuple);
+            return self.copy_tuple(tuple, heap);
         }
         if let Some(float) = Float::new(term) {
             return self.copy_float(float);
         }
         if let Some(bigint) = BigInt::new(term) {
-            return self.copy_bigint(bigint);
+            return self.copy_bigint(bigint, heap);
         }
         if let Some(closure) = Closure::new(term) {
-            return self.copy_closure(closure);
+            return self.copy_closure(closure, heap);
         }
         if let Some(map) = Map::new(term) {
-            return self.copy_map(map);
+            return self.copy_map(map, heap);
         }
         if let Some(reference) = Reference::new(term) {
             return self.copy_reference(reference);
         }
         if let Some(binary) = Binary::new(term) {
-            return self.copy_binary(binary.as_bytes());
+            return self.copy_binary(binary.as_bytes(heap));
         }
         if let Some(proc_bin) = ProcBin::new(term) {
-            return self.copy_binary(proc_bin.as_bytes());
+            return self.copy_binary(proc_bin.as_bytes(heap));
         }
         if let Some(sub_binary) = SubBinary::new(term) {
-            return self.copy_binary(sub_binary.as_bytes());
+            return self.copy_binary(sub_binary.as_bytes(heap));
         }
 
         Err(EtsError::InvalidBoxedTerm)
     }
 
-    fn copy_tuple(&mut self, tuple: Tuple) -> Result<Term, EtsError> {
+    fn copy_tuple(&mut self, tuple: Tuple, heap: HeapBorrow<'_>) -> Result<Term, EtsError> {
         let elements = (0..tuple.arity())
             .map(|index| {
                 tuple
                     .get(index)
                     .ok_or(EtsError::InvalidBoxedTerm)
-                    .and_then(|element| self.copy_term(element))
+                    .and_then(|element| self.copy_term(element, heap))
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.write_words(1 + elements.len(), |words| {
@@ -177,21 +200,21 @@ impl EtsCopier {
         self.write_words(2, |words| boxed::write_float(words, float.value()))
     }
 
-    fn copy_bigint(&mut self, bigint: BigInt) -> Result<Term, EtsError> {
-        let limbs = bigint.limbs();
+    fn copy_bigint(&mut self, bigint: BigInt, heap: HeapBorrow<'_>) -> Result<Term, EtsError> {
+        let limbs = bigint.limbs(heap).to_vec();
         self.write_words(3 + limbs.len(), |words| {
-            boxed::write_bigint(words, bigint.is_negative(), limbs)
+            boxed::write_bigint(words, bigint.is_negative(), &limbs)
         })
     }
 
-    fn copy_closure(&mut self, closure: Closure) -> Result<Term, EtsError> {
+    fn copy_closure(&mut self, closure: Closure, heap: HeapBorrow<'_>) -> Result<Term, EtsError> {
         let module = closure.module().ok_or(EtsError::InvalidBoxedTerm)?;
         let free_vars = (0..closure.num_free())
             .map(|index| {
                 closure
                     .free_var(index)
                     .ok_or(EtsError::InvalidBoxedTerm)
-                    .and_then(|free_var| self.copy_term(free_var))
+                    .and_then(|free_var| self.copy_term(free_var, heap))
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.write_words(7 + free_vars.len(), |words| {
@@ -207,19 +230,19 @@ impl EtsCopier {
         })
     }
 
-    fn copy_map(&mut self, map: Map) -> Result<Term, EtsError> {
+    fn copy_map(&mut self, map: Map, heap: HeapBorrow<'_>) -> Result<Term, EtsError> {
         let keys = (0..map.len())
             .map(|index| {
                 map.key(index)
                     .ok_or(EtsError::InvalidBoxedTerm)
-                    .and_then(|key| self.copy_term(key))
+                    .and_then(|key| self.copy_term(key, heap))
             })
             .collect::<Result<Vec<_>, _>>()?;
         let values = (0..map.len())
             .map(|index| {
                 map.value(index)
                     .ok_or(EtsError::InvalidBoxedTerm)
-                    .and_then(|value| self.copy_term(value))
+                    .and_then(|value| self.copy_term(value, heap))
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.write_words(2 + keys.len() + values.len(), |words| {
@@ -273,11 +296,14 @@ fn copy_boxed_to_heap(term: Term, heap: &mut Heap) -> Result<Term, EtsError> {
         return boxed::write_float(words, float.value()).ok_or(EtsError::InvalidBoxedTerm);
     }
     if let Some(bigint) = BigInt::new(term) {
-        let limbs = bigint.limbs();
+        // Own the limbs before touching the destination heap: the witness is
+        // that heap's own shared borrow, so the borrow checker refuses to let
+        // the slice survive `alloc_slice`. Same rule as `mailbox::copy_bigint`.
+        let limbs = bigint.limbs(heap.borrow_terms()).to_vec();
         let words = heap
             .alloc_slice(3 + limbs.len())
             .map_err(|_error| EtsError::AllocationFailed)?;
-        return boxed::write_bigint(words, bigint.is_negative(), limbs)
+        return boxed::write_bigint(words, bigint.is_negative(), &limbs)
             .ok_or(EtsError::InvalidBoxedTerm);
     }
     if let Some(closure) = Closure::new(term) {
@@ -292,14 +318,18 @@ fn copy_boxed_to_heap(term: Term, heap: &mut Heap) -> Result<Term, EtsError> {
             .map_err(|_error| EtsError::AllocationFailed)?;
         return boxed::write_reference(words, reference.id()).ok_or(EtsError::InvalidBoxedTerm);
     }
+    // Own the bytes before allocating, for the reason given at the bignum arm.
     if let Some(binary) = Binary::new(term) {
-        return copy_binary_to_heap(binary.as_bytes(), heap);
+        let bytes = binary.as_bytes(heap.borrow_terms()).to_vec();
+        return copy_binary_to_heap(&bytes, heap);
     }
     if let Some(proc_bin) = ProcBin::new(term) {
-        return copy_binary_to_heap(proc_bin.as_bytes(), heap);
+        let bytes = proc_bin.as_bytes(heap.borrow_terms()).to_vec();
+        return copy_binary_to_heap(&bytes, heap);
     }
     if let Some(sub_binary) = SubBinary::new(term) {
-        return copy_binary_to_heap(sub_binary.as_bytes(), heap);
+        let bytes = sub_binary.as_bytes(heap.borrow_terms()).to_vec();
+        return copy_binary_to_heap(&bytes, heap);
     }
 
     Err(EtsError::InvalidBoxedTerm)
@@ -467,7 +497,7 @@ mod tests {
         assert_eq!(first.head(), Term::small_int(7));
         let second = Cons::new(first.tail()).expect("second cons");
         let copied_binary = Binary::new(second.head()).expect("binary accessor");
-        assert_eq!(copied_binary.as_bytes(), b"ets");
+        assert_eq!(copied_binary.as_bytes(target_heap.borrow_terms()), b"ets");
         assert_eq!(second.tail(), Term::NIL);
 
         let copied_map = Map::new(tuple.get(1).expect("map element")).expect("map accessor");
@@ -501,13 +531,19 @@ mod tests {
             .expect("copy proc bin out");
         let copied_proc_binary =
             Binary::new(copied_proc_bin).expect("copied proc bin is inline binary");
-        assert_eq!(copied_proc_binary.as_bytes(), b"0123456789");
+        assert_eq!(
+            copied_proc_binary.as_bytes(target_heap.borrow_terms()),
+            b"0123456789"
+        );
 
         let copied_sub_binary = owned_sub_binary
             .copy_to_heap(&mut target_heap)
             .expect("copy sub binary out");
         let copied_sub_binary =
             Binary::new(copied_sub_binary).expect("copied sub binary is inline binary");
-        assert_eq!(copied_sub_binary.as_bytes(), b"2345");
+        assert_eq!(
+            copied_sub_binary.as_bytes(target_heap.borrow_terms()),
+            b"2345"
+        );
     }
 }

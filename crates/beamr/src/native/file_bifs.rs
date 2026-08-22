@@ -14,6 +14,7 @@ use crate::native::{
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, Tuple};
+use crate::term::heap_borrow::HeapBorrow;
 
 const DEFAULT_FILE_PERMISSIONS: u32 = 0o644;
 
@@ -52,7 +53,7 @@ pub fn file_open(args: &[Term], context: &mut ProcessContext) -> Result<Term, Te
     let [filename, modes] = args else {
         return Err(badarg());
     };
-    let path = filename_path(*filename)?;
+    let path = filename_path(*filename, context.borrow_terms())?;
     let flags = parse_modes(*modes)?;
     let op = IoOp::Openat {
         dir_fd: libc::AT_FDCWD,
@@ -124,7 +125,7 @@ pub fn file_write(args: &[Term], context: &mut ProcessContext) -> Result<Term, T
     if resource.state() != FdState::Open {
         return error_tuple(context, Atom::CLOSED);
     }
-    let data = binary_bytes(*data_term)?;
+    let data = binary_bytes(*data_term, context.borrow_terms())?;
     let expected_len = data.len();
     let inner = resource.inner();
     context.submit_file_io(
@@ -231,7 +232,7 @@ pub fn pwrite(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term>
         return error_tuple(context, Atom::CLOSED);
     }
     let offset = parse_non_negative_offset(*offset_term)?;
-    let data = binary_bytes(*data_term)?;
+    let data = binary_bytes(*data_term, context.borrow_terms())?;
     let expected_len = data.len();
     context.submit_file_io(
         IoOp::Write {
@@ -321,8 +322,8 @@ fn finish_seek(completion: FileIoCompletion, context: &mut ProcessContext) -> Re
     }
 }
 
-fn filename_path(term: Term) -> Result<PathBuf, Term> {
-    let bytes = BinaryRef::new(term).ok_or_else(badarg)?.as_bytes();
+fn filename_path(term: Term, heap: HeapBorrow<'_>) -> Result<PathBuf, Term> {
+    let bytes = BinaryRef::new(term).ok_or_else(badarg)?.as_bytes(heap);
     let filename = std::str::from_utf8(bytes).map_err(|_| badarg())?;
     Ok(PathBuf::from(filename))
 }
@@ -440,8 +441,11 @@ fn parse_count(term: Term) -> Result<usize, Term> {
         .ok_or_else(badarg)
 }
 
-fn binary_bytes(term: Term) -> Result<Vec<u8>, Term> {
-    Ok(BinaryRef::new(term).ok_or_else(badarg)?.as_bytes().to_vec())
+fn binary_bytes(term: Term, heap: HeapBorrow<'_>) -> Result<Vec<u8>, Term> {
+    Ok(BinaryRef::new(term)
+        .ok_or_else(badarg)?
+        .as_bytes(heap)
+        .to_vec())
 }
 
 fn set_seek_position(

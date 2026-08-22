@@ -11,6 +11,7 @@ use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{BoxedHeader, BoxedTag, ProcBin, write_float};
+use crate::term::heap_borrow::HeapBorrow;
 use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
 use crate::term::sub_binary::{SUB_BINARY_WORDS, write_sub_binary};
 type GetOperands<'a> = (
@@ -78,7 +79,7 @@ pub(super) fn bs_get_integer(
     let (fail, context, size, unit, flags, destination) =
         parse_get_operands(operands, "bs_get_integer2")?;
     let context = read_context(process, module, context)?;
-    match get_integer_value(context, size, unit, flags)? {
+    match get_integer_value(context, size, unit, flags, process.borrow_terms())? {
         Some((value, bits)) => {
             let term = Term::try_small_int(value).ok_or(ExecError::Badarg)?;
             core::write_term(process, destination, term)?;
@@ -97,7 +98,7 @@ pub(super) fn bs_get_float(
         parse_get_operands(operands, "bs_get_float2")?;
     gc::ensure_space(process, 2, 256).map_err(core::gc_error_to_exec)?;
     let context = read_context(process, module, context)?;
-    match get_float_value(context, size, unit, flags)? {
+    match get_float_value(context, size, unit, flags, process.borrow_terms())? {
         Some((value, bits)) => {
             let ptr = process.heap_mut().alloc(2).map_err(ExecError::from)?;
             let term = write_float(heap_slice(ptr, 2), value).ok_or(ExecError::Badarg)?;
@@ -121,9 +122,13 @@ pub(super) fn bs_get_binary(
     let words = SUB_BINARY_WORDS.max(alloc_binary_word_count(bits / u8::BITS as usize));
     gc::ensure_space(process, words, 256).map_err(core::gc_error_to_exec)?;
     let context = read_context(process, module, context)?;
-    match get_binary_bytes(context, size, unit, flags)? {
+    // Own the matched bytes: `allocate_extracted_binary` takes `&mut Process`,
+    // which the witness borrow behind `bytes` makes unobtainable while live.
+    let matched = get_binary_bytes(context, size, unit, flags, process.borrow_terms())?
+        .map(|(bytes, bits)| (bytes.to_vec(), bits));
+    match matched {
         Some((bytes, bits)) => {
-            let binary = allocate_extracted_binary(process, context, bytes, bits)?;
+            let binary = allocate_extracted_binary(process, context, &bytes, bits)?;
             core::write_term(process, destination, binary)?;
             context.set_position_bits(context.position_bits() + bits);
             Ok(InstructionOutcome::Continue)
@@ -160,7 +165,7 @@ pub(super) fn bs_match_string(
     let bit_len = core::operand_usize(bit_len, "bs_match_string bit length")?;
     let expected = literal_bytes(module, literal, bit_len / u8::BITS as usize)?;
     let context = read_context(process, module, context)?;
-    if match_bytes(context, bit_len, expected)? {
+    if match_bytes(context, bit_len, expected, process.borrow_terms())? {
         context.set_position_bits(context.position_bits() + bit_len);
         Ok(InstructionOutcome::Continue)
     } else {
@@ -227,8 +232,13 @@ pub(super) fn bs_get_tail(
     let words = alloc_binary_word_count(bits / u8::BITS as usize);
     gc::ensure_space(process, words, 256).map_err(core::gc_error_to_exec)?;
     let context = read_context(process, module, context_operand)?;
-    let bytes = context.slice(bits).ok_or(ExecError::Badarg)?;
-    let binary = allocate_binary(process, bytes)?;
+    // Own the tail bytes: `allocate_binary` needs `&mut Process`, which the
+    // witness borrow behind `bytes` makes unobtainable while it is live.
+    let bytes = context
+        .slice(bits, process.borrow_terms())
+        .ok_or(ExecError::Badarg)?
+        .to_vec();
+    let binary = allocate_binary(process, &bytes)?;
     core::write_term(process, destination, binary)?;
     context.set_position_bits(context.total_bits());
     Ok(InstructionOutcome::Continue)
@@ -462,7 +472,9 @@ fn run_command_args(
             Ok(context.remaining_bits() == core::operand_usize(stride, "bs_match ensure exactly")?)
         }
         ("integer", [_live, flags, size, unit, dst]) => {
-            let Some((value, bits)) = get_integer_value(context, size, unit, flags)? else {
+            let Some((value, bits)) =
+                get_integer_value(context, size, unit, flags, process.borrow_terms())?
+            else {
                 return Ok(false);
             };
             let term = Term::try_small_int(value).ok_or(ExecError::Badarg)?;
@@ -471,7 +483,9 @@ fn run_command_args(
             Ok(true)
         }
         ("float", [_live, flags, size, unit, dst]) => {
-            let Some((value, bits)) = get_float_value(context, size, unit, flags)? else {
+            let Some((value, bits)) =
+                get_float_value(context, size, unit, flags, process.borrow_terms())?
+            else {
                 return Ok(false);
             };
             // Space was reserved by `bs_match` before the command loop began.
@@ -482,10 +496,14 @@ fn run_command_args(
             Ok(true)
         }
         ("binary", [_live, flags, size, unit, dst]) => {
-            let Some((bytes, bits)) = get_binary_bytes(context, size, unit, flags)? else {
+            // Own the matched bytes: see `bs_get_binary`.
+            let Some((bytes, bits)) =
+                get_binary_bytes(context, size, unit, flags, process.borrow_terms())?
+                    .map(|(bytes, bits)| (bytes.to_vec(), bits))
+            else {
                 return Ok(false);
             };
-            let binary = allocate_extracted_binary(process, context, bytes, bits)?;
+            let binary = allocate_extracted_binary(process, context, &bytes, bits)?;
             core::write_term(process, dst, binary)?;
             context.set_position_bits(context.position_bits() + bits);
             Ok(true)
@@ -503,8 +521,11 @@ fn run_command_args(
                 return Ok(false);
             }
             let bits = context.remaining_bits();
-            let bytes = context.slice(bits).ok_or(ExecError::Badarg)?;
-            let binary = allocate_binary(process, bytes)?;
+            let bytes = context
+                .slice(bits, process.borrow_terms())
+                .ok_or(ExecError::Badarg)?
+                .to_vec();
+            let binary = allocate_binary(process, &bytes)?;
             core::write_term(process, dst, binary)?;
             context.set_position_bits(context.total_bits());
             Ok(true)
@@ -514,7 +535,7 @@ fn run_command_args(
             if !context.has_bits(bits) {
                 return Ok(false);
             }
-            if exact_segment_matches(module, context, bits, value)? {
+            if exact_segment_matches(module, context, bits, value, process.borrow_terms())? {
                 context.set_position_bits(context.position_bits() + bits);
                 Ok(true)
             } else {
@@ -529,6 +550,7 @@ fn get_integer_value(
     size: &Operand,
     unit: &Operand,
     flags: &Operand,
+    heap: HeapBorrow<'_>,
 ) -> Result<Option<(i64, usize)>, ExecError> {
     let size_bits = segment_bits(size, unit)?;
     let flags = SegmentFlags::from_flags(flags);
@@ -543,7 +565,7 @@ fn get_integer_value(
     if size_bits.is_multiple_of(u8::BITS as usize)
         && context.position_bits().is_multiple_of(u8::BITS as usize)
     {
-        let bytes = context.slice(size_bits).ok_or(ExecError::Badarg)?;
+        let bytes = context.slice(size_bits, heap).ok_or(ExecError::Badarg)?;
         return Ok(Some((decode_integer(bytes, flags)?, size_bits)));
     }
     if matches!(flags.endian, Endian::Little) {
@@ -554,7 +576,7 @@ fn get_integer_value(
         return Err(ExecError::Badarg);
     }
     let unsigned = context
-        .read_bits_big_endian(context.position_bits(), size_bits)
+        .read_bits_big_endian(context.position_bits(), size_bits, heap)
         .ok_or(ExecError::Badarg)?;
     let value = if flags.signed && size_bits > 0 && (unsigned >> (size_bits - 1)) & 1 == 1 {
         (unsigned as i64) - (1_i64 << size_bits)
@@ -568,6 +590,7 @@ fn get_float_value(
     size: &Operand,
     unit: &Operand,
     flags: &Operand,
+    heap: HeapBorrow<'_>,
 ) -> Result<Option<(f64, usize)>, ExecError> {
     let bits = segment_bits(size, unit)?;
     if !matches!(bits, 32 | 64) || !context.position_bits().is_multiple_of(u8::BITS as usize) {
@@ -576,7 +599,7 @@ fn get_float_value(
     if !context.has_bits(bits) {
         return Ok(None);
     }
-    let bytes = context.slice(bits).ok_or(ExecError::Badarg)?;
+    let bytes = context.slice(bits, heap).ok_or(ExecError::Badarg)?;
     let value = match (bits, Endian::from_flags(flags)) {
         (32, Endian::Big) => {
             f32::from_bits(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])) as f64
@@ -594,12 +617,13 @@ fn get_float_value(
     };
     Ok(Some((value, bits)))
 }
-fn get_binary_bytes(
+fn get_binary_bytes<'heap>(
     context: MatchContext,
     size: &Operand,
     unit: &Operand,
     _flags: &Operand,
-) -> Result<Option<(&'static [u8], usize)>, ExecError> {
+    heap: HeapBorrow<'heap>,
+) -> Result<Option<(&'heap [u8], usize)>, ExecError> {
     let bits = segment_bits(size, unit)?;
     if !bits.is_multiple_of(u8::BITS as usize)
         || !context.position_bits().is_multiple_of(u8::BITS as usize)
@@ -609,16 +633,24 @@ fn get_binary_bytes(
     if !context.has_bits(bits) {
         return Ok(None);
     }
-    Ok(Some((context.slice(bits).ok_or(ExecError::Badarg)?, bits)))
+    Ok(Some((
+        context.slice(bits, heap).ok_or(ExecError::Badarg)?,
+        bits,
+    )))
 }
-fn match_bytes(context: MatchContext, bits: usize, expected: &[u8]) -> Result<bool, ExecError> {
+fn match_bytes(
+    context: MatchContext,
+    bits: usize,
+    expected: &[u8],
+    heap: HeapBorrow<'_>,
+) -> Result<bool, ExecError> {
     if !bits.is_multiple_of(u8::BITS as usize) {
         return Err(ExecError::Badarg);
     }
     if !context.position_bits().is_multiple_of(u8::BITS as usize) || !context.has_bits(bits) {
         return Ok(false);
     }
-    Ok(context.slice(bits).ok_or(ExecError::Badarg)? == expected)
+    Ok(context.slice(bits, heap).ok_or(ExecError::Badarg)? == expected)
 }
 /// Copy `bytes` into a fresh heap binary. Callers reserve heap space before
 /// deriving `bytes` from the match context — no GC may run here because the
@@ -726,27 +758,28 @@ fn exact_segment_matches(
     context: MatchContext,
     bits: usize,
     value: &Operand,
+    heap: HeapBorrow<'_>,
 ) -> Result<bool, ExecError> {
     if matches!(value, Operand::Literal(_)) {
         if !bits.is_multiple_of(u8::BITS as usize) {
             return Err(ExecError::Badarg);
         }
         let expected = literal_bytes(module, value, bits / u8::BITS as usize)?;
-        return match_bytes(context, bits, expected);
+        return match_bytes(context, bits, expected, heap);
     }
     let expected = core::operand_usize(value, "bs_match exact value")? as u64;
     let position = context.position_bits();
     let actual = match bits {
         0 => 0,
         1..=63 => context
-            .read_bits_big_endian(position, bits)
+            .read_bits_big_endian(position, bits, heap)
             .ok_or(ExecError::Badarg)?,
         64 => {
             let high = context
-                .read_bits_big_endian(position, 32)
+                .read_bits_big_endian(position, 32, heap)
                 .ok_or(ExecError::Badarg)?;
             let low = context
-                .read_bits_big_endian(position + 32, 32)
+                .read_bits_big_endian(position + 32, 32, heap)
                 .ok_or(ExecError::Badarg)?;
             (high << 32) | low
         }
@@ -789,12 +822,17 @@ impl MatchContext {
             .is_some_and(|end| end <= self.total_bits())
     }
     /// Read `size_bits` (1..=63) starting at absolute `pos_bits`, MSB-first.
-    fn read_bits_big_endian(self, pos_bits: usize, size_bits: usize) -> Option<u64> {
+    fn read_bits_big_endian(
+        self,
+        pos_bits: usize,
+        size_bits: usize,
+        heap: HeapBorrow<'_>,
+    ) -> Option<u64> {
         let end = pos_bits.checked_add(size_bits)?;
         if end > self.total_bits() {
             return None;
         }
-        let bytes = self.source()?.as_bytes();
+        let bytes = self.source()?.as_bytes(heap);
         let mut acc = 0_u64;
         for offset in pos_bits..end {
             let byte = *bytes.get(offset / u8::BITS as usize)?;
@@ -803,7 +841,7 @@ impl MatchContext {
         }
         Some(acc)
     }
-    pub(crate) fn slice(self, bits: usize) -> Option<&'static [u8]> {
+    pub(crate) fn slice<'heap>(self, bits: usize, heap: HeapBorrow<'heap>) -> Option<&'heap [u8]> {
         if !bits.is_multiple_of(u8::BITS as usize)
             || !self.position_bits().is_multiple_of(u8::BITS as usize)
         {
@@ -812,7 +850,7 @@ impl MatchContext {
         let start = self.position_bits() / u8::BITS as usize;
         let len = bits / u8::BITS as usize;
         let end = start.checked_add(len)?;
-        self.source()?.as_bytes().get(start..end)
+        self.source()?.as_bytes(heap).get(start..end)
     }
 }
 #[derive(Copy, Clone)]

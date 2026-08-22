@@ -20,7 +20,8 @@ pub fn bif_json_encode_integer(args: &[Term], context: &mut ProcessContext) -> R
     let [term] = args else {
         return Err(badarg());
     };
-    let text = bigint_convert::integer_term_to_string_radix(*term, 10).ok_or_else(badarg)?;
+    let text = bigint_convert::integer_term_to_string_radix(*term, 10, context.borrow_terms())
+        .ok_or_else(badarg)?;
     context.alloc_binary(text.as_bytes())
 }
 
@@ -42,10 +43,11 @@ pub fn bif_json_encode_binary(args: &[Term], context: &mut ProcessContext) -> Re
         return Err(badarg());
     };
     let binary = BinaryRef::new(*term).ok_or_else(badarg)?;
-    if std::str::from_utf8(binary.as_bytes()).is_err() {
+    let bytes = binary.as_bytes(context.borrow_terms()).to_vec();
+    if std::str::from_utf8(&bytes).is_err() {
         return Err(badarg());
     }
-    let escaped = escape_json_string(binary.as_bytes());
+    let escaped = escape_json_string(&bytes);
     context.alloc_binary(&escaped)
 }
 
@@ -69,7 +71,7 @@ pub fn bif_json_decode(args: &[Term], context: &mut ProcessContext) -> Result<Te
     let binary = BinaryRef::new(*term).ok_or_else(badarg)?;
     // Own the bytes: parsing allocates, and a collection may move the
     // input binary's heap data while a borrow would still be live.
-    let bytes = binary.as_bytes().to_vec();
+    let bytes = binary.as_bytes(context.borrow_terms()).to_vec();
     let mut parser = Parser {
         bytes: &bytes,
         pos: 0,
@@ -129,7 +131,9 @@ fn encode_term(term: Term, context: &mut ProcessContext, out: &mut Vec<u8>) -> R
         }
         return Ok(());
     }
-    if let Some(text) = bigint_convert::integer_term_to_string_radix(term, 10) {
+    if let Some(text) =
+        bigint_convert::integer_term_to_string_radix(term, 10, context.borrow_terms())
+    {
         out.extend_from_slice(text.as_bytes());
         return Ok(());
     }
@@ -141,10 +145,11 @@ fn encode_term(term: Term, context: &mut ProcessContext, out: &mut Vec<u8>) -> R
         return Ok(());
     }
     if let Some(binary) = BinaryRef::new(term) {
-        if std::str::from_utf8(binary.as_bytes()).is_err() {
+        let bytes = binary.as_bytes(context.borrow_terms());
+        if std::str::from_utf8(bytes).is_err() {
             return Err(badarg());
         }
-        out.extend_from_slice(&escape_json_string(binary.as_bytes()));
+        out.extend_from_slice(&escape_json_string(bytes));
         return Ok(());
     }
     if term.is_nil() {
@@ -193,7 +198,7 @@ fn encode_object_key(
     out: &mut Vec<u8>,
 ) -> Result<(), Term> {
     if let Some(binary) = BinaryRef::new(key) {
-        out.extend_from_slice(&escape_json_string(binary.as_bytes()));
+        out.extend_from_slice(&escape_json_string(binary.as_bytes(context.borrow_terms())));
         return Ok(());
     }
     if let Some(atom) = key.as_atom() {
@@ -202,7 +207,9 @@ fn encode_object_key(
         out.extend_from_slice(&escape_json_string(name.as_bytes()));
         return Ok(());
     }
-    if let Some(text) = bigint_convert::integer_term_to_string_radix(key, 10) {
+    if let Some(text) =
+        bigint_convert::integer_term_to_string_radix(key, 10, context.borrow_terms())
+    {
         out.extend_from_slice(&escape_json_string(text.as_bytes()));
         return Ok(());
     }

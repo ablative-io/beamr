@@ -1,0 +1,396 @@
+================================================================================
+GATE ROUND 3 — the fix seat's OWN measurement, taken from scratch
+================================================================================
+
+Seat   : fix seat (round 3), flight beamracc-lifetimes-flight3
+Venue  : rocketfish, 16 cores / 31 GiB / 442 GiB free, Linux 6.19.9-arch1-1
+Tree   : fleet/accessor-lifetimes-base @ f0527dd26f2ca209d068a0fd488051543834c283
+Base   : beamr main c55ac360eb573148ef868ce7eb7d03babf05523a
+Chain  : rustc 1.97.1 (8bab26f4f 2026-07-14), pinned by rust-toolchain.toml
+         miri 0.1.0 (8925ea358a 2026-08-20), provisioned and executable
+Entry  : .fleet/gate-entry.sh -> ./scripts/ci-verdict.sh gate-rc gates.json
+         UNEDITED. gates.json UNEDITED. scripts/ UNEDITED. .fleet/gates/ UNEDITED.
+         No gate script, no gate entry and no gate output was touched at this seat.
+
+WHY THIS FILE EXISTS. Gate round 2 (.fleet/gates/red-2.md, RED-LATEST.md)
+returned the same five reds the round-2 fix seat had already dispositioned in
+docs/evidence/beamr-accessor-gate-round2.txt. A disposition inherited from
+another seat is not a measurement. Every claim below was taken again, from a
+fresh base worktree with its own target directory and from a fresh canon run
+over this tree, at this seat, by this seat's own hand.
+
+================================================================================
+1. THE BASE, RE-MEASURED FROM SCRATCH — fresh worktree, fresh target dir
+================================================================================
+
+  $ git worktree add --detach ../base-r3 c55ac360
+    Preparing worktree (detached HEAD c55ac360)
+    HEAD is now at c55ac360 release: resolve OB-004 — aligned-venue wasm-tests re-run is GREEN
+  $ export CARGO_TARGET_DIR=../base-r3-target     # never shared with the fix tree
+  $ rustc --version
+    rustc 1.97.1 (8bab26f4f 2026-07-14)
+
+--------------------------------------------------------------------------------
+1.1 nostd-ratchet — rc=3 at the BASE. The instrument is dead before cargo runs.
+--------------------------------------------------------------------------------
+
+  $ ./scripts/gate-nostd-ratchet.sh            # in ../base-r3, untouched main
+    mktemp: too few X's in template 'nostd-ratchet'
+    ./scripts/gate-nostd-ratchet.sh: line 184: : No such file or directory
+    ./scripts/gate-nostd-ratchet.sh: line 186: : No such file or directory
+    no-std ratchet: cargo rc=1, rustc tally=<absent>, ceiling=1072
+    REFUSE: cargo exited 1 but no "due to N previous errors" line was
+      found. This gate cannot measure, so it does not get to report.
+      A green here would be worth nothing -- same value whether the tree
+      is sound or the instrument is dead. Fix the parse; do NOT relax it
+      to make this pass.
+    rc=3
+
+  $ diff <base-r3 output> <this tree's gate-rc/nostd-ratchet.log>
+    BYTE-IDENTICAL
+
+  MECHANISM, read at the source: scripts/gate-nostd-ratchet.sh:182 is
+  `LOG="$(mktemp -t nostd-ratchet)"`. GNU coreutils requires a template ending
+  in at least three X's, so mktemp fails and LOG is empty. Line 184 is then
+  `cargo check ... > "$LOG" 2>&1` — the redirect to "" fails, so CARGO NEVER
+  RUNS; the shell reports rc=1 for the un-run command. Line 186's parse finds
+  no tally, and the script's own REFUSE arm fires correctly at rc=3.
+
+  This leg cannot be moved by any change to beamr's source. It is not a verdict
+  on this tree, and it was not one at the base either.
+  git diff --quiet c55ac360 HEAD -- scripts/gate-nostd-ratchet.sh  ->  IDENTICAL
+
+--------------------------------------------------------------------------------
+1.2 clippy and clippy-all-features — rc=101 at the BASE, the SAME 15 errors
+--------------------------------------------------------------------------------
+
+  $ cargo clippy --workspace --all-targets --features beamr/encode \
+      --message-format=json --keep-going -- -D warnings
+    rc=101
+    error: could not compile `beamr` (lib) due to 15 previous errors
+
+  $ cargo clippy --workspace --all-targets --all-features \
+      --message-format=json --keep-going -- -D warnings
+    rc=101
+    error: could not compile `beamr` (lib) due to 15 previous errors
+
+  The 15, at BASE coordinates (jq over the JSON, primary spans):
+
+    crates/beamr/src/io/uring.rs:10             [unused_imports]
+    crates/beamr/src/io/uring.rs:55,56,57,58    [dead_code]
+    crates/beamr/src/io/uring.rs:63,64          [dead_code]
+    crates/beamr/src/io/uring.rs:138            [clippy::io_other_error]
+    crates/beamr/src/io/uring.rs:187,188        [clippy::collapsible_if]
+    crates/beamr/src/io/uring.rs:250            [clippy::while_let_loop]
+    crates/beamr/src/native/file_meta_bifs.rs:251,252,253,254,255,255,263,264
+                                                [clippy::unnecessary_cast]
+
+  The same command on THIS tree (round-3 canon, §2 below):
+
+    crates/beamr/src/io/uring.rs:10,55,56,57,58,63,64,138,187,188,250   (unmoved)
+    crates/beamr/src/native/file_meta_bifs.rs:253,254,255,256,257,257,265,266
+
+  $ diff <base lint+file multiset> <HEAD lint+file multiset>     # both legs
+    IDENTICAL
+
+    2 crates/beamr/src/io/uring.rs [clippy::collapsible_if]
+    1 crates/beamr/src/io/uring.rs [clippy::io_other_error]
+    1 crates/beamr/src/io/uring.rs [clippy::while_let_loop]
+    6 crates/beamr/src/io/uring.rs [dead_code]
+    1 crates/beamr/src/io/uring.rs [unused_imports]
+    8 crates/beamr/src/native/file_meta_bifs.rs [clippy::unnecessary_cast]
+
+  THE +2 LINE SHIFT IS ACCOUNTED FOR, NOT WAVED AT:
+
+  $ git diff --quiet c55ac360 HEAD -- crates/beamr/src/io/uring.rs
+    IDENTICAL — the 11 primary spans there are on a file this flight never opened.
+
+  $ diff <(sed -n '250,268p' crates/beamr/src/native/file_meta_bifs.rs) \
+         <(git show c55ac360:crates/beamr/src/native/file_meta_bifs.rs | sed -n '248,266p')
+    REGIONS BYTE-IDENTICAL (HEAD 250-268 == BASE 248-266)
+
+  The whole shift is one added line — `use crate::term::heap_borrow::HeapBorrow;`
+  at file_meta_bifs.rs:15 — plus one blank; the lint region itself is untouched.
+  The lints are `libc::S_IFMT as u32` where this venue's libc already types the
+  constant `u32`: dependency/platform drift, present at the base.
+
+--------------------------------------------------------------------------------
+1.3 tests / tests-all-features — ONE test, and it fails on untouched main
+--------------------------------------------------------------------------------
+
+  $ cargo test -p beamr --test thread_inventory_distribution --features encode
+    running 1 test
+    test distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown ... FAILED
+
+    failures:
+
+    ---- distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown stdout ----
+
+    thread 'distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown' (773871) panicked at crates/beamr/tests/thread_inventory_distribution.rs:59:5:
+    an owned distribution bundle must build both runtime workers: dist-send=1, net-kernel=0
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+    failures:
+        distribution_runtimes_exist_only_when_configured_and_are_joined_at_shutdown
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.11s
+
+    error: test failed, to rerun pass `-p beamr --test thread_inventory_distribution`
+    rc=101
+
+  Same test, same assertion, same numbers (dist-send=1, net-kernel=0) on
+  UNTOUCHED beamr main, and the test file is byte-identical at HEAD:
+  $ git diff --quiet c55ac360 HEAD -- crates/beamr/tests/thread_inventory_distribution.rs
+    IDENTICAL
+
+  It is the ONLY failure in either test leg on this tree — 66 result lines,
+  2127 passed (tests) and 2137 passed (tests-all-features), one failure each,
+  the same one.
+
+================================================================================
+2. THIS TREE, GRADED BY THE UNEDITED ENTRY — round 3, this seat's own canon
+================================================================================
+
+The canon leg loop, transcribed verbatim from .github/workflows/ci.yml:66-112
+(no `set -e`, subshell around eval, redirect never pipe), run whole against
+f0527dd2. The round-2 artefact set was PRESERVED first (../gate-rc-round2-preserved)
+so nothing that had already been graded was destroyed to make room.
+
+  gates.json declares 9 legs
+  LEG 1 (fmt) rc=0
+  LEG 2 (clippy) rc=101
+  LEG 3 (wasm32-check) rc=0
+  LEG 4 (wasm-tests) rc=0
+  LEG 5 (tests) rc=101
+  LEG 6 (blocking-call-in-native-bif) rc=0
+  LEG 7 (clippy-all-features) rc=101
+  LEG 8 (tests-all-features) rc=101
+  LEG 9 (nostd-ratchet) rc=3
+  ### CANON LOOP DONE ###
+
+  Elapsed 12:27:23 -> 12:31:38 (~4m15s). Polled at 30 s under a 900 s deadline;
+  the deadline did NOT expire, so there is no TIMEOUT to report.
+
+  $ ./.fleet/gate-entry.sh   ; ENTRY_EXIT=1
+  GATE SCOPE: beamr's own CI verdict harness (gates.json), the real mechanism
+  self-test: all-green -> gamma: rc=0 pass (expected)
+  self-test: one-fail -> FAIL — measured red (expected)
+  self-test: cannot-measure -> CANNOT-MEASURE (expected)
+  self-test: uncontracted-2 -> alpha: rc=2 FAIL (expected)
+  self-test: malformed-rc -> MALFORMED rc (expected)
+  self-test: truncated-set -> LEG COUNT MISMATCH (expected)
+  self-test: empty-tests -> TEST-COUNT (expected)
+  declared legs: 9
+  recorded legs: 9
+    wasm-tests: 2 result line(s), 86 passed
+    tests: 66 result line(s), 2127 passed
+    tests-all-features: 66 result line(s), 2137 passed
+    blocking-call-in-native-bif: rc=0 pass
+    clippy-all-features: rc=101 FAIL — measured red
+    clippy: rc=101 FAIL — measured red
+    fmt: rc=0 pass
+    nostd-ratchet: rc=3 FAIL — measured red
+    tests-all-features: rc=101 FAIL — measured red
+    tests: rc=101 FAIL — measured red
+    wasm-tests: rc=0 pass
+    wasm32-check: rc=0 pass
+
+PER-LEG, ROUND 2 (the gate's own grade) vs ROUND 3 (mine), AND vs THE BASE:
+
+  leg                            base   r2    r3    verdict
+  ----------------------------   ----   ---   ---   ------------------------------
+  fmt                              0     0     0    UNCHANGED green
+  clippy                         101   101   101    UNCHANGED — 15 errors, identical set
+  wasm32-check                     0     0     0    UNCHANGED green
+  wasm-tests                       0     0     0    UNCHANGED green, 86 passed
+  tests                          101   101   101    UNCHANGED — the same one failure
+  blocking-call-in-native-bif      0     0     0    UNCHANGED green
+  clippy-all-features            101   101   101    UNCHANGED — 15 errors, identical set
+  tests-all-features             101   101   101    UNCHANGED — the same one failure
+  nostd-ratchet                    3     3     3    UNCHANGED — instrument dead, byte-identical
+
+  NO LEG THAT WAS GREEN AT THE BASE IS RED HERE. NO LEG CHANGED ITS rc.
+  tests-all-features SIGBUS lines: 0 — a fourth consecutive clean full run,
+  which is the round-1 TEST-COUNT trip failing to reproduce once more.
+
+================================================================================
+3. NEW AT THIS SEAT — the five compile_fail proofs are NOT executed in-gate,
+   and the blocker is the PRE-EXISTING test red, not the flight
+================================================================================
+
+MEASURED, and neither round-1 nor round-2 recorded it:
+
+  $ grep -c 'Doc-tests' gate-rc/tests.log               -> 0
+  $ grep -c 'Doc-tests' gate-rc/tests-all-features.log  -> 0
+  $ grep -c '^     Running' gate-rc/tests.log           -> 66
+  $ grep -c '^test result:' gate-rc/tests.log           -> 66
+  $ tail -1 gate-rc/tests.log
+    error: test failed, to rerun pass `-p beamr --test thread_inventory_distribution`
+
+  All 66 test binaries run; the pre-existing failure of §1.3 is the last of
+  them, and `cargo test` then stops without ever entering the Doc-tests phase.
+  The five ` ```compile_fail ` accessor proofs are rustdoc doctests, so on this
+  tree THE GATE NEVER RUNS THEM. That is a fact about the pre-existing red, not
+  about the proofs — but a proof nobody executes is not evidence, so it is
+  measured directly here instead.
+
+  $ cargo test --doc -p beamr --features encode          ; rc=0
+     Doc-tests beamr
+
+    running 6 tests
+    test crates/beamr/src/scheduler/mod.rs - scheduler::Scheduler::with_services (line 1153) - compile ... ok
+    test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::ProcBin::as_bytes (line 49) ... ok
+    test crates/beamr/src/term/binary.rs - term::binary::Binary::as_bytes (line 82) ... ok
+    test crates/beamr/src/term/binary_ref.rs - term::binary_ref::BinaryRef::as_bytes (line 43) ... ok
+    test crates/beamr/src/term/boxed/accessors.rs - term::boxed::accessors::BigInt::limbs (line 125) ... ok
+    test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::SubBinary::as_bytes (line 152) ... ok
+
+    test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    running 7 tests
+    test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::ProcBin::as_bytes (line 69) - compile fail ... ok
+    test crates/beamr/src/term/boxed/binary_accessors.rs - term::boxed::binary_accessors::SubBinary::as_bytes (line 174) - compile fail ... ok
+    test crates/beamr/src/term/binary_ref.rs - term::binary_ref::BinaryRef::as_bytes (line 62) - compile fail ... ok
+    test crates/beamr/src/term/boxed/accessors.rs - term::boxed::accessors::BigInt::limbs (line 143) - compile fail ... ok
+    test crates/beamr/src/term/binary.rs - term::binary::Binary::as_bytes (line 100) - compile fail ... ok
+    test crates/beamr/src/process/mod.rs - process::Process (line 156) - compile fail ... ok
+    test crates/beamr/src/process/mod.rs - process::Process (line 147) - compile fail ... ok
+
+    test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+  READ IT ACROSS. Five positive controls COMPILE AND RUN — so every identifier,
+  argument count and import in each proof program is real. The same five
+  programs plus one `collect_minor` line FAIL TO COMPILE. The bug is a type
+  error, per accessor family, measured at this seat.
+
+  WHAT THE GATE DOES STILL EXECUTE — the structural half, which is what makes
+  the pair a proof rather than two unrelated blocks:
+
+  $ grep -n 'every_compile_fail_proof_is_its_positive_control_plus_the_collection' gate-rc/tests.log
+    1829:test term::accessor_proof_tests::every_compile_fail_proof_is_its_positive_control_plus_the_collection ... ok
+  $ ... gate-rc/tests-all-features.log
+    1833:test term::accessor_proof_tests::every_compile_fail_proof_is_its_positive_control_plus_the_collection ... ok
+
+  That control is a lib unit test, so it runs long before the failing
+  integration binary. It asserts all five pairs differ by exactly one line and
+  that the line is the collection, and that the population is exactly five.
+
+  DISPOSITION. The two ways to put the doctests back inside the gate are
+  (i) `--no-fail-fast` in gates.json's two test legs, which is EDITING THE GATE,
+  and (ii) fixing crates/beamr/tests/thread_inventory_distribution.rs, which is
+  beamr code outside the accessor-lifetime scope. Both are refused.
+  REPORTED, NOT FIXED — and it is a live consequence of the pre-existing red
+  that the owner's seat should know about.
+
+================================================================================
+4. THE SWEEP, RE-RUN AT THIS SEAT — :357 tracked to its new coordinate
+================================================================================
+
+  $ git grep -n "&'static \[" HEAD -- crates/beamr/src/term/
+    (no matches — rc=1)
+
+  $ git grep -n "'static" HEAD -- crates/beamr/src/term/
+    HEAD:crates/beamr/src/term/json.rs:23:    UnsupportedTerm(&'static str),
+    HEAD:crates/beamr/src/term/json.rs:35:    AllocationFailed(&'static str),
+    (both are error-message string literals, not heap memory)
+
+  THE GATE'S KNOWN ANSWER, FOUND AND RETIRED:
+
+  $ git grep -n 'fn parent_bytes' HEAD -- crates/beamr/src/term/
+    HEAD:crates/beamr/src/term/boxed/binary_accessors.rs:207:fn parent_bytes<'heap>(parent: Term, heap: HeapBorrow<'heap>) -> Option<&'heap [u8]> {
+
+  $ git grep -n 'parent_bytes' HEAD -- crates/beamr/src/term/boxed/accessors.rs
+    (absent — rc=1; it moved with ProcBin/SubBinary into boxed/binary_accessors.rs)
+
+  #  base coordinate                signature at base                       disposition
+  -  ----------------------------   -------------------------------------   -----------------
+  1  boxed/accessors.rs:113         BigInt::limbs -> &'static [u64]         FOUND AND RETIRED
+  2  boxed/accessors.rs:281         ProcBin::as_bytes -> &'static [u8]      FOUND AND RETIRED
+  3  boxed/accessors.rs:340         SubBinary::as_bytes -> &'static [u8]    FOUND AND RETIRED
+  4  boxed/accessors.rs:357         parent_bytes -> Option<&'static [u8]>   FOUND AND RETIRED  <== KNOWN ANSWER
+  5  shared_binary.rs:79            bytes_from_raw_word -> &'static [u8]    FOUND AND RETIRED
+  6  binary.rs:70                   Binary::as_bytes -> &'static [u8]       FOUND AND RETIRED (in-family)
+  7  binary_ref.rs:30               BinaryRef::as_bytes -> &'static [u8]    FOUND AND RETIRED (in-family fan-in)
+  8  compare/mod.rs:337             binary_bytes -> &'static [u8]           RETIRED (compiler-forced)
+  9  compare/mod.rs:377             normalized_limbs -> &'static [u64]      RETIRED (compiler-forced)
+
+================================================================================
+5. NO LAUNDERING — re-checked at HEAD over the whole tied path, not the diff
+================================================================================
+
+  $ git grep -n -F 'transmute' -- crates/beamr/src/term/ crates/beamr/src/process/
+    (none)
+  $ git grep -n -F 'from_raw_parts' -- crates/beamr/src/term/ crates/beamr/src/process/
+    crates/beamr/src/process/heap.rs:568:  unsafe { std::slice::from_raw_parts(src, len).to_vec() }   <- owns immediately
+    crates/beamr/src/term/heap_borrow.rs:79: unsafe { core::slice::from_raw_parts(ptr, len) }         <- the ONE site
+  $ git grep -n -E "fn [a-z_]+<'[a-z]+>\(.*\*(const|mut) .*\) -> &'" -- crates/beamr/src/term/ crates/beamr/src/process/
+    (none — no helper takes a raw pointer and returns a caller-inferred lifetime)
+
+  The single conversion site is HeapBorrow::slice (heap_borrow.rs:75-80). Its
+  `'heap` is the WITNESS's own lifetime, and the witness is only constructible
+  from a real shared borrow in ARGUMENT position (HeapBorrow::of_words takes
+  `&'heap [u64]`), so the caller cannot widen it by inference. Everything the
+  four families return flows through that one function.
+
+  Census over the flight's 2037 added lines under crates/, fixed-string:
+    transmute 0 · 'static 0 · #[allow 0 · #[expect 0 · #[deny 0 · #[warn 0
+    #[ignore 0 · .unwrap() 0 · from_raw_parts 1 · unsafe 30 · SAFETY 27
+
+  Workspace transmutes, for contrast, all pre-existing and unrelated (JIT
+  function-pointer casts): interpreter/opcodes/core.rs:883,
+  jit/compiler/compiler_tests.rs:60, jit/runtime_closure.rs:174.
+
+================================================================================
+6. THE DIVERGENT BRANCH — re-derived by MEASUREMENT at this seat
+================================================================================
+
+  $ git fetch --prune origin
+  $ git for-each-ref refs/remotes/origin + git rev-list --left-right --count origin/main...<ref>
+
+  REF                                        AHEAD  BEHIND  last commit
+  origin/artemis/audit-amendment-4               0     197  72e6f504 2026-08-08
+  origin/artemis/backport-0.17.1                 3     204  32ad9252 2026-08-12
+  origin/artemis/beamr-85-and-26                 0      12  dcf95ba1 2026-08-19
+  origin/artemis/empty-bundle-class              0     180  0460a704 2026-08-09
+  origin/artemis/jit-operator-switch             2      23  ae6eb1d0 2026-08-19
+  origin/artemis/release-0.18.2                  0      37  dc1cce61 2026-08-17
+  origin/artemis/rf-006                          0     145  2551841b 2026-08-10
+  origin/diana/beamr-wedge002-3aecb622           3     280  c45552c5 2026-07-30
+  origin/diana/seat-preserve-annabelbox          4     270  59872db9 2026-07-30
+  origin/feat/jit-cache-enumeration              1      18  10ff5482 2026-08-19
+  origin/fix/0163-borrow-across-alloc           15     401  9d0d0e0d 2026-07-29
+  origin/fix/aion85-nested-run-suspend           0      16  c9b1bb79 2026-08-19
+  origin/juniper/docs-package                    1     526  bf9dcb49 2026-07-17
+  origin/seth/replay-rebuild-3aecb622            3     296  dc991433 2026-07-30
+  origin/main                                    0       0  c55ac360 2026-08-21
+  (this workflow's own refs excluded: origin/fleet/accessor-lifetimes-base 4/0,
+   origin/fleet/beamracc-flight1-flagged 2/0)
+
+  MEASURED CONCLUSION, matching round 2's independently: `main` is an ancestor
+  of NO divergent working branch — every one of the fourteen is behind. The
+  audit's "173 ahead with main an ancestor" describes nothing in this
+  repository today, exactly as gate binding note 2 anticipated.
+
+  The topical branch is origin/fix/0163-borrow-across-alloc — the 0.16.3
+  call-site-sweep lane for THIS defect — 15 ahead / 401 behind.
+  RE-MERGING IS THE OWNER'S WORK. Nothing was merged at this seat.
+
+================================================================================
+7. DISPOSITION — round 3
+================================================================================
+
+  Every one of the five red legs re-measured AT THE BASE at this seat, from a
+  fresh worktree, on the pinned toolchain, with its own target directory:
+
+    nostd-ratchet         rc=3   at base — byte-identical output, cargo never runs
+    clippy                rc=101 at base — the same 15, same lints, same files
+    clippy-all-features   rc=101 at base — the same 15
+    tests                 rc=101 at base — the same one test, the same numbers
+    tests-all-features    rc=101 at base — the same one test
+
+  ALL FIVE ARE (b) UNDER THE SEAT'S DISPOSITION ALGORITHM: beamr code and beamr
+  gate scripts outside the accessor-lifetime scope. COMMITTED AS EVIDENCE,
+  REPORTED, NOT FIXED. The gate stands RED and the red is correct.
+
+  Nothing in-scope was found red at this seat. No lint was suppressed, no test
+  ignored, no gate script, gate entry or gate output edited, nothing merged.

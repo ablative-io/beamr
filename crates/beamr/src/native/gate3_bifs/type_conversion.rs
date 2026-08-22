@@ -7,6 +7,7 @@ use crate::term::Term;
 use crate::term::bigint_convert;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, Float, Map, Tuple};
+use crate::term::heap_borrow::HeapBorrow;
 
 /// erlang:atom_to_binary/1 — converts an atom to a UTF-8 binary.
 pub fn bif_atom_to_binary_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
@@ -46,7 +47,7 @@ pub fn bif_binary_to_atom(args: &[Term], context: &mut ProcessContext) -> Result
     let [binary_term] = args else {
         return Err(badarg());
     };
-    let name = binary_to_utf8(*binary_term)?;
+    let name = binary_to_utf8(*binary_term, context.borrow_terms())?;
     let table = context.atom_table_arc().ok_or_else(badarg)?;
     Ok(Term::atom(table.intern(name)))
 }
@@ -77,9 +78,9 @@ pub fn bif_binary_to_existing_atom_2(
 }
 
 fn binary_to_existing_atom(binary_term: Term, context: &mut ProcessContext) -> Result<Term, Term> {
-    let name = binary_to_utf8(binary_term)?;
+    let name = binary_to_utf8(binary_term, context.borrow_terms())?.to_owned();
     let table = context.atom_table().ok_or_else(badarg)?;
-    let atom = table.lookup(name).ok_or_else(badarg)?;
+    let atom = table.lookup(&name).ok_or_else(badarg)?;
     Ok(Term::atom(atom))
 }
 
@@ -98,7 +99,7 @@ pub fn bif_binary_to_list(args: &[Term], context: &mut ProcessContext) -> Result
         return Err(badarg());
     };
     let binary = BinaryRef::new(*binary_term).ok_or_else(badarg)?;
-    let bytes = binary.as_bytes();
+    let bytes = binary.as_bytes(context.borrow_terms()).to_vec();
 
     let elements: Vec<_> = bytes
         .iter()
@@ -203,11 +204,11 @@ pub fn bif_list_to_binary(args: &[Term], context: &mut ProcessContext) -> Result
     }
 
     let mut bytes = Vec::new();
-    collect_iodata(*list_term, &mut bytes)?;
+    collect_iodata(*list_term, &mut bytes, context.borrow_terms())?;
     context.alloc_binary(&bytes)
 }
 
-fn collect_iodata(term: Term, bytes: &mut Vec<u8>) -> Result<(), Term> {
+fn collect_iodata(term: Term, bytes: &mut Vec<u8>, heap: HeapBorrow<'_>) -> Result<(), Term> {
     if term.is_nil() {
         return Ok(());
     }
@@ -217,19 +218,19 @@ fn collect_iodata(term: Term, bytes: &mut Vec<u8>) -> Result<(), Term> {
         return Ok(());
     }
     if let Some(binary) = BinaryRef::new(term) {
-        bytes.extend_from_slice(binary.as_bytes());
+        bytes.extend_from_slice(binary.as_bytes(heap));
         return Ok(());
     }
     if let Some(cons) = Cons::new(term) {
-        collect_iodata(cons.head(), bytes)?;
-        return collect_iodata(cons.tail(), bytes);
+        collect_iodata(cons.head(), bytes, heap)?;
+        return collect_iodata(cons.tail(), bytes, heap);
     }
     Err(badarg())
 }
 
-fn binary_to_utf8(binary_term: Term) -> Result<&'static str, Term> {
+fn binary_to_utf8<'heap>(binary_term: Term, heap: HeapBorrow<'heap>) -> Result<&'heap str, Term> {
     let binary = BinaryRef::new(binary_term).ok_or_else(badarg)?;
-    std::str::from_utf8(binary.as_bytes()).map_err(|_| badarg())
+    std::str::from_utf8(binary.as_bytes(heap)).map_err(|_| badarg())
 }
 
 fn proper_byte_list(term: Term) -> Result<Vec<u8>, Term> {

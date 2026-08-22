@@ -9,6 +9,7 @@ use crate::process::Process;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, Tuple};
+use crate::term::heap_borrow::HeapBorrow;
 
 const STDIN_FD: i32 = 0;
 const STDOUT_FD: i32 = 1;
@@ -122,6 +123,11 @@ impl StandardIoServer {
     }
 
     fn handle_request(&self, process: &mut Process, request: Term) -> Term {
+        // Own every iodata argument before touching `process` mutably: the
+        // witness borrow ends with the `Vec`, so no heap slice reaches the
+        // reply path.
+        let bytes_of =
+            |term: Option<Term>| term.and_then(|t| iodata_bytes(t, process.borrow_terms()));
         let Some(tuple) = Tuple::new(request) else {
             return self.error_request(process);
         };
@@ -136,28 +142,23 @@ impl StandardIoServer {
             return self.error_request(process);
         }
         if kind == self.atoms.put_chars {
-            return tuple
-                .get(2)
-                .and_then(iodata_bytes)
+            let chars = bytes_of(tuple.get(2));
+            return chars
                 .and_then(|bytes| self.write_stdout(&bytes).then_some(Term::atom(Atom::OK)))
                 .unwrap_or_else(|| self.error_request(process));
         }
         if kind == self.atoms.get_line {
-            return tuple
-                .get(2)
-                .and_then(iodata_bytes)
+            let prompt = bytes_of(tuple.get(2));
+            return prompt
                 .and_then(|prompt| self.get_line(process, &prompt, b'\n'))
                 .unwrap_or_else(|| self.error_request(process));
         }
         if kind == self.atoms.get_until {
-            let delimiter = tuple
-                .get(3)
-                .and_then(iodata_bytes)
+            let delimiter = bytes_of(tuple.get(3))
                 .and_then(|bytes| bytes.first().copied())
                 .unwrap_or(b'\n');
-            return tuple
-                .get(2)
-                .and_then(iodata_bytes)
+            let prompt = bytes_of(tuple.get(2));
+            return prompt
                 .and_then(|prompt| self.get_line(process, &prompt, delimiter))
                 .unwrap_or_else(|| self.error_request(process));
         }
@@ -248,17 +249,17 @@ impl StandardIoAtoms {
     }
 }
 
-fn iodata_bytes(term: Term) -> Option<Vec<u8>> {
+fn iodata_bytes(term: Term, heap: HeapBorrow<'_>) -> Option<Vec<u8>> {
     let mut bytes = Vec::new();
-    collect_iodata(term, &mut bytes).then_some(bytes)
+    collect_iodata(term, &mut bytes, heap).then_some(bytes)
 }
 
-fn collect_iodata(term: Term, out: &mut Vec<u8>) -> bool {
+fn collect_iodata(term: Term, out: &mut Vec<u8>, heap: HeapBorrow<'_>) -> bool {
     if term.is_nil() {
         return true;
     }
     if let Some(binary) = BinaryRef::new(term) {
-        out.extend_from_slice(binary.as_bytes());
+        out.extend_from_slice(binary.as_bytes(heap));
         return true;
     }
     if let Some(byte) = term
@@ -271,7 +272,7 @@ fn collect_iodata(term: Term, out: &mut Vec<u8>) -> bool {
     let Some(cons) = Cons::new(term) else {
         return false;
     };
-    collect_iodata(cons.head(), out) && collect_iodata(cons.tail(), out)
+    collect_iodata(cons.head(), out, heap) && collect_iodata(cons.tail(), out, heap)
 }
 
 fn heap_alloc_tuple(process: &mut Process, elements: &[Term]) -> Option<Term> {

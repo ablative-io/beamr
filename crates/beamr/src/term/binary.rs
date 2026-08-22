@@ -3,6 +3,7 @@
 //! This brief implements inline heap binaries: a boxed binary header, followed
 //! by the byte length and byte data packed directly into heap words.
 
+use crate::term::heap_borrow::HeapBorrow;
 use crate::term::{
     Term,
     boxed::{BoxedHeader, BoxedTag},
@@ -67,12 +68,58 @@ impl Binary {
         self.len() == 0
     }
 
-    pub fn as_bytes(self) -> &'static [u8] {
+    /// Bytes of this inline binary, borrowed for the witness's borrow.
+    ///
+    /// Inline binary bytes are packed *into* heap words, so a collection that
+    /// moves or reclaims this object invalidates them. `heap` is a shared
+    /// borrow of that storage and every collecting path needs `&mut Heap`/`&mut
+    /// Process`, so holding these bytes across one does not type-check.
+    /// The bound is a type error, not a convention.
+    ///
+    /// The proof is a matched pair. First the positive control — the same
+    /// program *without* the collection, which compiles and runs:
+    ///
+    /// ```
+    /// use beamr::process::Process;
+    /// use beamr::term::binary::{Binary, write_binary};
+    ///
+    /// let mut process = Process::new(1, 233);
+    /// let words = process.heap_mut().alloc_slice(3).expect("words");
+    /// let term = write_binary(words, b"hello").expect("binary");
+    /// let binary = Binary::new(term).expect("accessor");
+    /// let bytes = binary.as_bytes(process.borrow_terms());
+    /// assert_eq!(bytes, b"hello");
+    /// ```
+    ///
+    /// Now the same program with one line added, the collection, and it no
+    /// longer type-checks. `term::accessor_proof_tests` asserts in-gate that
+    /// the two blocks differ by exactly that line, because on this
+    /// repository's pinned toolchain rustdoc IGNORES the `E0502` annotation
+    /// below — measured, see that module.
+    ///
+    /// ```compile_fail,E0502
+    /// use beamr::process::Process;
+    /// use beamr::term::binary::{Binary, write_binary};
+    ///
+    /// let mut process = Process::new(1, 233);
+    /// let words = process.heap_mut().alloc_slice(3).expect("words");
+    /// let term = write_binary(words, b"hello").expect("binary");
+    /// let binary = Binary::new(term).expect("accessor");
+    /// let bytes = binary.as_bytes(process.borrow_terms());
+    /// let _ = beamr::gc::collect_minor(&mut process);
+    /// assert_eq!(bytes, b"hello");
+    /// ```
+    pub fn as_bytes<'heap>(self, heap: HeapBorrow<'heap>) -> &'heap [u8] {
         let len = self.len();
-        // SAFETY: inline binary data starts after header and length. Bytes are
-        // packed in native little-endian word order by write_binary; tests and
-        // consumers read the same in-process representation.
-        unsafe { std::slice::from_raw_parts(self.ptr.add(2).cast::<u8>(), len) }
+        // SAFETY: inline binary data starts after the header and length words,
+        // and `write_binary` reserved `packed_word_count(len)` words for it, so
+        // `len` bytes follow `ptr.add(2)` inside this boxed object. Bytes are
+        // packed in native little-endian word order by `write_binary`; tests
+        // and consumers read the same in-process representation. `heap`
+        // witnesses a live shared borrow of the storage holding those words, so
+        // they stay valid and immovable for `'heap` and the returned slice
+        // cannot outlive that borrow.
+        unsafe { heap.slice(self.ptr.add(2).cast::<u8>(), len) }
     }
 }
 
@@ -93,7 +140,7 @@ mod tests {
         assert_eq!(packed_word_count(bytes.len()), 1);
         assert_eq!(heap.len(), 3);
         assert_eq!(binary.len(), 5);
-        assert_eq!(binary.as_bytes(), bytes);
+        assert_eq!(binary.as_bytes(HeapBorrow::of_words(&heap)), bytes);
     }
 
     #[test]
@@ -106,7 +153,7 @@ mod tests {
         assert_eq!(BoxedHeader::size(heap[0]), 1);
         assert_eq!(binary.len(), 0);
         assert!(binary.is_empty());
-        assert_eq!(binary.as_bytes(), b"");
+        assert_eq!(binary.as_bytes(HeapBorrow::of_words(&heap)), b"");
     }
 
     #[test]

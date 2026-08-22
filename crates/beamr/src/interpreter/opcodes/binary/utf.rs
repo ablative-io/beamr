@@ -4,12 +4,14 @@ use crate::loader::decode::compact::Operand;
 use crate::module::Module;
 use crate::process::Process;
 use crate::term::Term;
+use crate::term::heap_borrow::HeapBorrow;
 
 use super::super::core;
 use super::jump_label;
 use super::matching::{Endian, MatchContext};
 
-type UtfDecoder = fn(MatchContext, Endian) -> Result<Option<(u32, usize)>, ExecError>;
+type UtfDecoder =
+    fn(MatchContext, Endian, HeapBorrow<'_>) -> Result<Option<(u32, usize)>, ExecError>;
 
 pub(super) fn bs_get_utf8(
     process: &mut Process,
@@ -125,7 +127,7 @@ fn utf_get_with_endian(
     decoder: UtfDecoder,
 ) -> Result<InstructionOutcome, ExecError> {
     let context = read_context(process, module, context)?;
-    match decoder(context, Endian::from_flags(flags))? {
+    match decoder(context, Endian::from_flags(flags), process.borrow_terms())? {
         Some((codepoint, bits)) => {
             let term = Term::try_small_int(i64::from(codepoint)).ok_or(ExecError::Badarg)?;
             core::write_term(process, destination, term)?;
@@ -145,7 +147,7 @@ fn utf_skip_with_endian(
     decoder: UtfDecoder,
 ) -> Result<InstructionOutcome, ExecError> {
     let context = read_context(process, module, context)?;
-    match decoder(context, Endian::from_flags(flags))? {
+    match decoder(context, Endian::from_flags(flags), process.borrow_terms())? {
         Some((_codepoint, bits)) => {
             context.set_position_bits(context.position_bits() + bits);
             Ok(InstructionOutcome::Continue)
@@ -184,12 +186,16 @@ fn read_context(
     MatchContext::new(core::read_term(process, module, operand)?).ok_or(ExecError::Badarg)
 }
 
-fn decode_utf8(context: MatchContext, _endian: Endian) -> Result<Option<(u32, usize)>, ExecError> {
+fn decode_utf8(
+    context: MatchContext,
+    _endian: Endian,
+    heap: HeapBorrow<'_>,
+) -> Result<Option<(u32, usize)>, ExecError> {
     if !context.position_bits().is_multiple_of(u8::BITS as usize) {
         return Ok(None);
     }
     let bytes = context
-        .slice(context.remaining_bits())
+        .slice(context.remaining_bits(), heap)
         .ok_or(ExecError::Badarg)?;
     let Some(first) = bytes.first().copied() else {
         return Ok(None);
@@ -220,12 +226,16 @@ fn decode_utf8(context: MatchContext, _endian: Endian) -> Result<Option<(u32, us
     Ok(Some((codepoint, needed * u8::BITS as usize)))
 }
 
-fn decode_utf16(context: MatchContext, endian: Endian) -> Result<Option<(u32, usize)>, ExecError> {
-    let Some(first) = read_u16(context, 0, endian)? else {
+fn decode_utf16(
+    context: MatchContext,
+    endian: Endian,
+    heap: HeapBorrow<'_>,
+) -> Result<Option<(u32, usize)>, ExecError> {
+    let Some(first) = read_u16(context, 0, endian, heap)? else {
         return Ok(None);
     };
     if (0xd800..=0xdbff).contains(&first) {
-        let Some(second) = read_u16(context, 2, endian)? else {
+        let Some(second) = read_u16(context, 2, endian, heap)? else {
             return Ok(None);
         };
         if !(0xdc00..=0xdfff).contains(&second) {
@@ -246,11 +256,15 @@ fn decode_utf16(context: MatchContext, endian: Endian) -> Result<Option<(u32, us
     }
 }
 
-fn decode_utf32(context: MatchContext, endian: Endian) -> Result<Option<(u32, usize)>, ExecError> {
+fn decode_utf32(
+    context: MatchContext,
+    endian: Endian,
+    heap: HeapBorrow<'_>,
+) -> Result<Option<(u32, usize)>, ExecError> {
     if !context.position_bits().is_multiple_of(u8::BITS as usize) || !context.has_bits(32) {
         return Ok(None);
     }
-    let bytes = context.slice(32).ok_or(ExecError::Badarg)?;
+    let bytes = context.slice(32, heap).ok_or(ExecError::Badarg)?;
     let codepoint = match endian {
         Endian::Big => u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
         Endian::Little => u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
@@ -266,6 +280,7 @@ fn read_u16(
     context: MatchContext,
     byte_offset: usize,
     endian: Endian,
+    heap: HeapBorrow<'_>,
 ) -> Result<Option<u16>, ExecError> {
     if !context.position_bits().is_multiple_of(u8::BITS as usize) {
         return Ok(None);
@@ -274,7 +289,7 @@ fn read_u16(
     if !context.has_bits(bits) {
         return Ok(None);
     }
-    let bytes = context.slice(bits).ok_or(ExecError::Badarg)?;
+    let bytes = context.slice(bits, heap).ok_or(ExecError::Badarg)?;
     let pair = [bytes[byte_offset], bytes[byte_offset + 1]];
     Ok(Some(match endian {
         Endian::Big => u16::from_be_bytes(pair),

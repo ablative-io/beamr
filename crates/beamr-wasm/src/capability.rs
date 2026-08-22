@@ -33,6 +33,7 @@
 //! their abort hooks. The caller-type record lives INSIDE the in-flight
 //! entry (W4: one per-pid structure family, never a parallel map).
 
+use beamr::term::heap_borrow::HeapBorrow;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -368,7 +369,7 @@ impl CapabilityBridge {
 
         // Arg validation (badarg-class on a REGISTERED capability, distinct
         // from the typed refusal — R5).
-        let call_args = self.marshal_args(op, args)?;
+        let call_args = self.marshal_args(op, args, process.borrow_terms())?;
 
         // Invoke the host method. A sync throw or a non-thenable return is
         // the `refused` leg, returned synchronously as a value.
@@ -466,10 +467,16 @@ impl CapabilityBridge {
 
     /// Marshal + validate the BEAM args into the host-call JS values.
     /// Returns badarg on shape errors (R5's distinction).
-    fn marshal_args(&self, op: CapabilityOp, args: &[Term]) -> Result<Vec<JsValue>, Term> {
+    fn marshal_args(
+        &self,
+        op: CapabilityOp,
+        args: &[Term],
+        heap: HeapBorrow<'_>,
+    ) -> Result<Vec<JsValue>, Term> {
         let badarg = || Term::atom(Atom::BADARG);
-        let to_js =
-            |term: Term| term_to_js_value(term, self.atom_table.as_ref()).map_err(|_| badarg());
+        let to_js = |term: Term| {
+            term_to_js_value(term, self.atom_table.as_ref(), heap).map_err(|_| badarg())
+        };
         match op {
             CapabilityOp::FetchRequest => {
                 let request = to_js(*args.first().ok_or_else(badarg)?)?;

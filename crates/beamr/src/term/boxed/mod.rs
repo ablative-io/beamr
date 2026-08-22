@@ -6,13 +6,14 @@
 //! exactly two words (head, tail) with no header.
 
 mod accessors;
+mod binary_accessors;
 
 #[cfg(feature = "threads")]
 pub use crate::io::resource::FdResource;
 pub use accessors::{
-    BigInt, Closure, Cons, ExternalPid, ExternalReference, Float, Map, ProcBin, Reference,
-    SubBinary, Tuple,
+    BigInt, Closure, Cons, ExternalPid, ExternalReference, Float, Map, Reference, Tuple,
 };
+pub use binary_accessors::{ProcBin, SubBinary};
 
 use crate::{atom::Atom, term::Term};
 
@@ -259,6 +260,7 @@ pub fn write_reference(heap: &mut [u64], id: u64) -> Option<Term> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::term::heap_borrow::HeapBorrow;
 
     #[test]
     fn boxed_header_encodes_distinct_tags_and_payload_size() {
@@ -409,7 +411,7 @@ mod tests {
         assert_eq!(BoxedHeader::size(heap[0]), 4);
         assert!(bigint.is_negative());
         assert_eq!(bigint.limb_count(), 2);
-        assert_eq!(bigint.limbs(), limbs);
+        assert_eq!(bigint.limbs(HeapBorrow::of_words(&heap)), limbs);
     }
 
     #[test]

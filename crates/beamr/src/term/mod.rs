@@ -5,6 +5,11 @@
 //! the word. Boxed values (tuples, lists, binaries, floats, big
 //! integers, closures, maps, references) are tagged pointers into
 //! the process-local heap.
+/// In-gate control for the five `compile_fail` accessor proofs — the gated
+/// toolchain ignores their `E0502` annotation, so the pairing is what carries
+/// the claim. See the module documentation.
+#[cfg(test)]
+mod accessor_proof_tests;
 pub mod bigint_convert;
 pub mod bigint_math;
 pub mod binary;
@@ -13,6 +18,7 @@ pub mod boxed;
 pub mod compare;
 pub mod format;
 pub mod hash;
+pub mod heap_borrow;
 #[cfg(feature = "json")]
 pub mod json;
 pub mod pid_ref;

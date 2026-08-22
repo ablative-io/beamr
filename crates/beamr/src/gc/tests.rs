@@ -349,7 +349,10 @@ fn sub_binary_traces_proc_bin_parent_across_minor_gc() {
     collect_minor(&mut process).expect("minor GC succeeds");
 
     let sub_binary = crate::term::boxed::SubBinary::new(process.x_reg(0)).expect("sub binary root");
-    assert_eq!(sub_binary.as_bytes(), &shared.as_bytes()[10..22]);
+    assert_eq!(
+        sub_binary.as_bytes(process.borrow_terms()),
+        &shared.as_bytes()[10..22]
+    );
     let parent = sub_binary.parent();
     let parent_ptr = parent.heap_ptr().expect("rewritten parent pointer");
     assert!(!process.heap().young_contains(parent_ptr));
@@ -370,7 +373,7 @@ fn proc_bin_survives_minor_gc_as_leaf_with_shared_bytes() {
     assert_eq!(process.virtual_binary_heap(), 100 * 1024);
     let proc_bin = ProcBin::new(process.x_reg(0)).expect("proc bin root");
     assert_eq!(proc_bin.len(), 100 * 1024);
-    assert_eq!(proc_bin.as_bytes(), shared.as_bytes());
+    assert_eq!(proc_bin.as_bytes(process.borrow_terms()), shared.as_bytes());
     assert_no_term_pointer_into_young(&process, process.x_reg(0));
 }
 
@@ -440,7 +443,7 @@ fn surviving_proc_bin_has_stable_ref_count_after_major_gc() {
     assert_eq!(shared.ref_count(), 2);
     assert_eq!(process.virtual_binary_heap(), 12 * 1024);
     let proc_bin = ProcBin::new(process.x_reg(0)).expect("proc bin root");
-    assert_eq!(proc_bin.as_bytes(), shared.as_bytes());
+    assert_eq!(proc_bin.as_bytes(process.borrow_terms()), shared.as_bytes());
 }
 
 #[test]
@@ -649,7 +652,7 @@ fn minor_release_walk_decrements_pacing_by_exactly_the_unreachable_proc_bin_byte
         "dead ProcBin's heap-owned Arc is released exactly once"
     );
     let promoted = ProcBin::new(process.x_reg(0)).expect("promoted ProcBin");
-    assert_eq!(promoted.as_bytes(), &[0xE2; 100][..]);
+    assert_eq!(promoted.as_bytes(process.borrow_terms()), &[0xE2; 100][..]);
 }
 
 #[test]
@@ -737,9 +740,15 @@ fn major_release_walk_accounts_compacted_source_proc_bins_exactly() {
     assert_eq!(old_dead.ref_count(), 1);
     assert_eq!(young_dead.ref_count(), 1);
     let compacted_old = ProcBin::new(process.x_reg(1)).expect("compacted old ProcBin");
-    assert_eq!(compacted_old.as_bytes(), &[0x11; 80][..]);
+    assert_eq!(
+        compacted_old.as_bytes(process.borrow_terms()),
+        &[0x11; 80][..]
+    );
     let compacted_young = ProcBin::new(process.x_reg(6)).expect("compacted young ProcBin");
-    assert_eq!(compacted_young.as_bytes(), &[0x33; 40][..]);
+    assert_eq!(
+        compacted_young.as_bytes(process.borrow_terms()),
+        &[0x33; 40][..]
+    );
 }
 
 proptest! {

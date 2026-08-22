@@ -7,6 +7,7 @@ use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{Cons, Tuple};
 use crate::term::compare;
 use crate::term::format::format_term;
+use crate::term::heap_borrow::HeapBorrow;
 
 pub fn bif_io_put_chars_1(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [chars] = args else {
@@ -48,7 +49,7 @@ pub fn bif_io_get_line_1(args: &[Term], context: &mut ProcessContext) -> Result<
         return Err(badarg());
     };
     let target = context.group_leader()?;
-    let prompt_bytes = iodata_bytes(*prompt)?;
+    let prompt_bytes = iodata_bytes(*prompt, context.borrow_terms())?;
     let prompt_bin = context.alloc_binary(&prompt_bytes)?;
     let request = io_request_tuple(context, "get_line", prompt_bin)?;
     send_io_request_and_wait(target, request, context)
@@ -71,7 +72,8 @@ pub fn bif_io_lib_format_2(args: &[Term], context: &mut ProcessContext) -> Resul
 }
 
 fn format_bytes(format: Term, arguments: Term, context: &ProcessContext) -> Result<Vec<u8>, Term> {
-    let format = iodata_bytes(format)?;
+    let heap = context.borrow_terms();
+    let format = iodata_bytes(format, heap)?;
     let arguments = list_terms(arguments)?;
     let mut out = Vec::with_capacity(format.len());
     let mut arg_index = 0usize;
@@ -89,7 +91,7 @@ fn format_bytes(format: Term, arguments: Term, context: &ProcessContext) -> Resu
         match directive {
             b's' => {
                 let arg = next_arg(&arguments, &mut arg_index)?;
-                out.extend_from_slice(&binary_bytes(arg)?);
+                out.extend_from_slice(&binary_bytes(arg, heap)?);
             }
             b'p' | b'w' => {
                 let arg = next_arg(&arguments, &mut arg_index)?;
@@ -114,23 +116,23 @@ fn next_arg(arguments: &[Term], index: &mut usize) -> Result<Term, Term> {
 }
 
 fn write_iodata(term: Term, context: &ProcessContext) -> Result<(), Term> {
-    let bytes = iodata_bytes(term)?;
+    let bytes = iodata_bytes(term, context.borrow_terms())?;
     context.write_to_io_sink(&bytes);
     Ok(())
 }
 
-fn iodata_bytes(term: Term) -> Result<Vec<u8>, Term> {
+fn iodata_bytes(term: Term, heap: HeapBorrow<'_>) -> Result<Vec<u8>, Term> {
     let mut bytes = Vec::new();
-    collect_iodata(term, &mut bytes)?;
+    collect_iodata(term, &mut bytes, heap)?;
     Ok(bytes)
 }
 
-fn collect_iodata(term: Term, out: &mut Vec<u8>) -> Result<(), Term> {
+fn collect_iodata(term: Term, out: &mut Vec<u8>, heap: HeapBorrow<'_>) -> Result<(), Term> {
     if term.is_nil() {
         return Ok(());
     }
     if let Some(binary) = BinaryRef::new(term) {
-        out.extend_from_slice(binary.as_bytes());
+        out.extend_from_slice(binary.as_bytes(heap));
         return Ok(());
     }
     if let Some(byte) = term
@@ -141,8 +143,8 @@ fn collect_iodata(term: Term, out: &mut Vec<u8>) -> Result<(), Term> {
         return Ok(());
     }
     let cons = Cons::new(term).ok_or_else(badarg)?;
-    collect_iodata(cons.head(), out)?;
-    collect_iodata(cons.tail(), out)
+    collect_iodata(cons.head(), out, heap)?;
+    collect_iodata(cons.tail(), out, heap)
 }
 
 fn list_terms(term: Term) -> Result<Vec<Term>, Term> {
@@ -164,9 +166,9 @@ fn render_term(term: Term, context: &ProcessContext) -> String {
     format_term(term, atom_table)
 }
 
-fn binary_bytes(term: Term) -> Result<Vec<u8>, Term> {
+fn binary_bytes(term: Term, heap: HeapBorrow<'_>) -> Result<Vec<u8>, Term> {
     BinaryRef::new(term)
-        .map(|binary| binary.as_bytes().to_vec())
+        .map(|binary| binary.as_bytes(heap).to_vec())
         .ok_or_else(badarg)
 }
 

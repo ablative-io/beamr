@@ -871,7 +871,10 @@ fn abs_promotes_small_overflow_and_accepts_bignums() {
     let promoted = bif_abs_1(&[Term::small_int(Term::SMALL_INT_MIN)], &mut ctx).expect("promotes");
     let bigint = BigInt::new(promoted).expect("bignum box");
     assert!(!bigint.is_negative());
-    assert_eq!(bigint.limbs(), [Term::SMALL_INT_MIN.unsigned_abs()]);
+    assert_eq!(
+        bigint.limbs(ctx.borrow_terms()),
+        [Term::SMALL_INT_MIN.unsigned_abs()]
+    );
 
     // abs(-(10^20)) -> 100000000000000000000 keeps the magnitude, drops the sign.
     let magnitude = 100_000_000_000_000_000_000_u128;
@@ -880,7 +883,7 @@ fn abs_promotes_small_overflow_and_accepts_bignums() {
     let absolute = bif_abs_1(&[negative], &mut ctx).expect("abs");
     let bigint = BigInt::new(absolute).expect("bignum box");
     assert!(!bigint.is_negative());
-    assert_eq!(bigint.limbs(), limbs);
+    assert_eq!(bigint.limbs(ctx.borrow_terms()), limbs);
 
     // A non-canonical bignum holding -5 demotes to the small immediate 5.
     let small_magnitude = ctx.alloc_bigint(true, &[5]).expect("bignum");

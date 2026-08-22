@@ -75,9 +75,12 @@ pub fn load_module(args: &[Term], context: &mut ProcessContext) -> Result<Term, 
         return Err(badarg());
     };
     let module_name = name_term.as_atom().ok_or_else(badarg)?;
-    let bytes = BinaryRef::new(*bytes_term).ok_or_else(badarg)?.as_bytes();
+    let bytes = BinaryRef::new(*bytes_term)
+        .ok_or_else(badarg)?
+        .as_bytes(context.borrow_terms())
+        .to_vec();
     let facility = context.code_management_facility().ok_or_else(badarg)?;
-    let result = facility.load_module(bytes).map_err(|_| badarg())?;
+    let result = facility.load_module(&bytes).map_err(|_| badarg())?;
     if result.module_name != module_name {
         return Err(badarg());
     }

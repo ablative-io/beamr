@@ -131,7 +131,7 @@ fn fresh_gleam_project_runs_end_to_end() {
     );
     let payload = BinaryRef::new(result.root()).expect("main returns the JSON payload binary");
     assert_eq!(
-        std::str::from_utf8(payload.as_bytes()).expect("utf8 payload"),
+        std::str::from_utf8(payload.as_bytes(result.borrow_terms())).expect("utf8 payload"),
         EXPECTED_PAYLOAD
     );
     let printed = sink.0.lock().expect("sink lock").clone();

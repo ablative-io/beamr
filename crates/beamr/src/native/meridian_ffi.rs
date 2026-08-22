@@ -9,6 +9,7 @@ use crate::scheduler::DirtySchedulerKind;
 use crate::term::Term;
 use crate::term::binary::Binary;
 use crate::term::boxed::{Cons, ProcBin, SubBinary};
+use crate::term::heap_borrow::HeapBorrow;
 
 pub fn register_meridian_ffi(
     registry: &BifRegistryImpl,
@@ -77,31 +78,31 @@ fn ok_nil(ctx: &mut ProcessContext) -> Result<Term, Term> {
     ctx.alloc_tuple(&[Term::atom(Atom::OK), Term::NIL])
 }
 
-fn extract_string(term: Term) -> Result<String, Term> {
+fn extract_string(term: Term, heap: HeapBorrow<'_>) -> Result<String, Term> {
     let mut bytes = Vec::new();
-    collect_bytes(term, &mut bytes)?;
+    collect_bytes(term, &mut bytes, heap)?;
     String::from_utf8(bytes).map_err(|_| Term::atom(Atom::BADARG))
 }
 
-fn collect_bytes(term: Term, bytes: &mut Vec<u8>) -> Result<(), Term> {
+fn collect_bytes(term: Term, bytes: &mut Vec<u8>, heap: HeapBorrow<'_>) -> Result<(), Term> {
     if let Some(binary) = Binary::new(term) {
-        bytes.extend_from_slice(binary.as_bytes());
+        bytes.extend_from_slice(binary.as_bytes(heap));
         return Ok(());
     }
     if let Some(proc_bin) = ProcBin::new(term) {
-        bytes.extend_from_slice(proc_bin.as_bytes());
+        bytes.extend_from_slice(proc_bin.as_bytes(heap));
         return Ok(());
     }
     if let Some(sub_binary) = SubBinary::new(term) {
-        bytes.extend_from_slice(sub_binary.as_bytes());
+        bytes.extend_from_slice(sub_binary.as_bytes(heap));
         return Ok(());
     }
     if term.is_nil() {
         return Ok(());
     }
     if let Some(cons) = Cons::new(term) {
-        collect_bytes(cons.head(), bytes)?;
-        collect_bytes(cons.tail(), bytes)?;
+        collect_bytes(cons.head(), bytes, heap)?;
+        collect_bytes(cons.tail(), bytes, heap)?;
         return Ok(());
     }
     if let Some(byte) = term
@@ -122,7 +123,7 @@ fn nif_read_file(args: &[Term], ctx: &mut ProcessContext) -> Result<Term, Term> 
     let [path_term] = args else {
         return Err(badarg());
     };
-    let path = extract_string(*path_term)?;
+    let path = extract_string(*path_term, ctx.borrow_terms())?;
     match std::fs::read(&path) {
         Ok(content) => ok_binary(ctx, &content),
         Err(e) => Err(err_binary(ctx, e.to_string().as_bytes())?),
@@ -133,7 +134,7 @@ fn nif_run_cmd(args: &[Term], ctx: &mut ProcessContext) -> Result<Term, Term> {
     let [command_term] = args else {
         return Err(badarg());
     };
-    let command = extract_string(*command_term)?;
+    let command = extract_string(*command_term, ctx.borrow_terms())?;
     match std::process::Command::new("sh")
         .arg("-c")
         .arg(&command)
@@ -148,8 +149,8 @@ fn nif_write_file(args: &[Term], ctx: &mut ProcessContext) -> Result<Term, Term>
     let [path_term, content_term] = args else {
         return Err(badarg());
     };
-    let path = extract_string(*path_term)?;
-    let content = extract_string(*content_term)?;
+    let path = extract_string(*path_term, ctx.borrow_terms())?;
+    let content = extract_string(*content_term, ctx.borrow_terms())?;
     if let Some(parent) = std::path::Path::new(&path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -163,7 +164,7 @@ fn nif_read_json(args: &[Term], ctx: &mut ProcessContext) -> Result<Term, Term> 
     let [path_term] = args else {
         return Err(badarg());
     };
-    let path = extract_string(*path_term)?;
+    let path = extract_string(*path_term, ctx.borrow_terms())?;
     match std::fs::read_to_string(&path) {
         Ok(content) => ok_binary(ctx, content.as_bytes()),
         Err(e) => Err(err_binary(ctx, e.to_string().as_bytes())?),
@@ -174,7 +175,7 @@ fn nif_commit(args: &[Term], ctx: &mut ProcessContext) -> Result<Term, Term> {
     let [message_term] = args else {
         return Err(badarg());
     };
-    let _message = extract_string(*message_term)?;
+    let _message = extract_string(*message_term, ctx.borrow_terms())?;
     ok_binary(ctx, b"commit stub")
 }
 
@@ -182,10 +183,10 @@ fn nif_run_step_norn(args: &[Term], ctx: &mut ProcessContext) -> Result<Term, Te
     let [name_term, profile_term, instruction_term, schema_term] = args else {
         return Err(badarg());
     };
-    let _name = extract_string(*name_term)?;
-    let _profile = extract_string(*profile_term)?;
-    let _instruction = extract_string(*instruction_term)?;
-    let _schema = extract_string(*schema_term)?;
+    let _name = extract_string(*name_term, ctx.borrow_terms())?;
+    let _profile = extract_string(*profile_term, ctx.borrow_terms())?;
+    let _instruction = extract_string(*instruction_term, ctx.borrow_terms())?;
+    let _schema = extract_string(*schema_term, ctx.borrow_terms())?;
     ok_binary(ctx, b"step stub")
 }
 

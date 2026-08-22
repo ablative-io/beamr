@@ -16,6 +16,7 @@ use crate::term::Term;
 use crate::term::bigint_math::BigIntValue;
 use crate::term::compare;
 use crate::term::format::format_term;
+use crate::term::heap_borrow::HeapBorrow;
 use crate::timer::TimerRef;
 
 type Gate1Bif = (&'static str, u8, Capability, NativeFn);
@@ -322,7 +323,7 @@ fn arithmetic(
     small_operation: fn(i64, i64) -> Option<i64>,
     big_operation: fn(&BigIntValue, &BigIntValue) -> BigIntValue,
 ) -> Result<Term, Term> {
-    let (left, right) = two_integer_values(args)?;
+    let (left, right) = two_integer_values(args, context.borrow_terms())?;
     if let (Some(left_small), Some(right_small)) = (left.to_small_i64(), right.to_small_i64())
         && let Some(result) = small_operation(left_small, right_small).and_then(Term::try_small_int)
     {
@@ -332,7 +333,7 @@ fn arithmetic(
 }
 
 fn div_rem(args: &[Term], context: &mut ProcessContext, quotient: bool) -> Result<Term, Term> {
-    let (left, right) = two_integer_values(args)?;
+    let (left, right) = two_integer_values(args, context.borrow_terms())?;
     if right.is_zero() {
         return Err(badarith());
     }
@@ -359,12 +360,15 @@ fn div_rem(args: &[Term], context: &mut ProcessContext, quotient: bool) -> Resul
     )
 }
 
-fn two_integer_values(args: &[Term]) -> Result<(BigIntValue, BigIntValue), Term> {
+fn two_integer_values(
+    args: &[Term],
+    heap: HeapBorrow<'_>,
+) -> Result<(BigIntValue, BigIntValue), Term> {
     let [left, right] = args else {
         return Err(badarith());
     };
-    let left = BigIntValue::from_term(*left).ok_or_else(badarith)?;
-    let right = BigIntValue::from_term(*right).ok_or_else(badarith)?;
+    let left = BigIntValue::from_term(*left, heap).ok_or_else(badarith)?;
+    let right = BigIntValue::from_term(*right, heap).ok_or_else(badarith)?;
     Ok((left, right))
 }
 
@@ -566,7 +570,10 @@ mod tests {
         )
         .expect("addition should promote");
         let added = BigInt::new(added).expect("addition result should be BigInt");
-        assert_eq!(added.limbs(), &[(Term::SMALL_INT_MAX as u64) + 1]);
+        assert_eq!(
+            added.limbs(context.borrow_terms()),
+            &[(Term::SMALL_INT_MAX as u64) + 1]
+        );
 
         let subtracted = subtract(
             &[small_int(Term::SMALL_INT_MIN), small_int(1)],
@@ -576,7 +583,7 @@ mod tests {
         let subtracted = BigInt::new(subtracted).expect("subtraction result should be BigInt");
         assert!(subtracted.is_negative());
         assert_eq!(
-            subtracted.limbs(),
+            subtracted.limbs(context.borrow_terms()),
             &[Term::SMALL_INT_MIN.unsigned_abs() + 1]
         );
 

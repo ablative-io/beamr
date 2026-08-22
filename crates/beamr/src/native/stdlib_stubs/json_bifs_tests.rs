@@ -1,3 +1,4 @@
+use crate::term::heap_borrow::HeapBorrow;
 use std::sync::Arc;
 
 use crate::atom::{Atom, AtomTable};
@@ -21,9 +22,9 @@ fn context(process: &mut Process) -> ProcessContext<'_> {
     context
 }
 
-fn binary_string(term: Term) -> String {
+fn binary_string(term: Term, heap: HeapBorrow<'_>) -> String {
     let binary = BinaryRef::new(term).expect("binary result");
-    String::from_utf8(binary.as_bytes().to_vec()).expect("utf8")
+    String::from_utf8(binary.as_bytes(heap).to_vec()).expect("utf8")
 }
 
 #[test]
@@ -32,11 +33,14 @@ fn encode_integer_formats_small_and_big() {
     let mut ctx = context(&mut process);
 
     let small = bif_json_encode_integer(&[Term::small_int(-42)], &mut ctx).expect("small");
-    assert_eq!(binary_string(small), "-42");
+    assert_eq!(binary_string(small, ctx.borrow_terms()), "-42");
 
     let big = ctx.alloc_bigint(false, &[u64::MAX]).expect("bignum");
     let encoded = bif_json_encode_integer(&[big], &mut ctx).expect("big");
-    assert_eq!(binary_string(encoded), "18446744073709551615");
+    assert_eq!(
+        binary_string(encoded, process.borrow_terms()),
+        "18446744073709551615"
+    );
 }
 
 #[test]
@@ -46,11 +50,11 @@ fn encode_float_keeps_a_decimal_point() {
 
     let one = ctx.alloc_float(1.0).expect("float");
     let encoded = bif_json_encode_float(&[one], &mut ctx).expect("encode");
-    assert_eq!(binary_string(encoded), "1.0");
+    assert_eq!(binary_string(encoded, ctx.borrow_terms()), "1.0");
 
     let fractional = ctx.alloc_float(-2.5).expect("float");
     let encoded = bif_json_encode_float(&[fractional], &mut ctx).expect("encode");
-    assert_eq!(binary_string(encoded), "-2.5");
+    assert_eq!(binary_string(encoded, ctx.borrow_terms()), "-2.5");
 
     let infinity = ctx.alloc_float(f64::INFINITY).expect("float");
     assert!(bif_json_encode_float(&[infinity], &mut ctx).is_err());
@@ -72,7 +76,7 @@ fn encode_binary_escapes_json_string_characters() {
     expected.push_str("\\n");
     expected.push_str("\\u0001");
     expected.push('"');
-    assert_eq!(binary_string(encoded), expected);
+    assert_eq!(binary_string(encoded, process.borrow_terms()), expected);
 }
 
 #[test]
@@ -87,7 +91,10 @@ fn encode_term_handles_nested_structures() {
     };
     let map = ctx.alloc_map(&[label], &[list]).expect("map");
     let encoded = bif_json_encode(&[map], &mut ctx).expect("encode");
-    assert_eq!(binary_string(encoded), r#"{"total":[1,2]}"#);
+    assert_eq!(
+        binary_string(encoded, process.borrow_terms()),
+        r#"{"total":[1,2]}"#
+    );
 }
 
 #[test]
@@ -111,7 +118,7 @@ fn decode_parses_objects_arrays_and_scalars() {
     assert!((float.value() - -2.5).abs() < f64::EPSILON);
     let cons = Cons::new(cons.tail()).expect("third");
     let text = BinaryRef::new(cons.head()).expect("string element");
-    assert_eq!(text.as_bytes(), b"xA");
+    assert_eq!(text.as_bytes(ctx.borrow_terms()), b"xA");
     let cons = Cons::new(cons.tail()).expect("fourth");
     assert_eq!(cons.head(), Term::atom(Atom::TRUE));
     let cons = Cons::new(cons.tail()).expect("fifth");
@@ -162,14 +169,14 @@ fn encode_binary_passes_multibyte_utf8_through_byte_exact() {
     let dash = ctx.alloc_binary("—".as_bytes()).expect("binary");
     let encoded = bif_json_encode_binary(&[dash], &mut ctx).expect("encode");
     let bytes = BinaryRef::new(encoded).expect("binary result");
-    assert_eq!(bytes.as_bytes(), b"\"\xE2\x80\x94\"");
+    assert_eq!(bytes.as_bytes(ctx.borrow_terms()), b"\"\xE2\x80\x94\"");
 
     let mixed = ctx
         .alloc_binary("café — naïve 😀\n\"quoted\"".as_bytes())
         .expect("binary");
     let encoded = bif_json_encode_binary(&[mixed], &mut ctx).expect("encode");
     assert_eq!(
-        binary_string(encoded),
+        binary_string(encoded, process.borrow_terms()),
         "\"café — naïve 😀\\n\\\"quoted\\\"\""
     );
 }
@@ -208,15 +215,15 @@ fn encoded_multibyte_binary_round_trips_through_decode() {
     let encoded = bif_json_encode_binary(&[input], &mut ctx).expect("encode");
     let decoded = bif_json_decode(&[encoded], &mut ctx).expect("decode");
     let bytes = BinaryRef::new(decoded).expect("string");
-    assert_eq!(bytes.as_bytes(), raw);
+    assert_eq!(bytes.as_bytes(ctx.borrow_terms()), raw);
 
     let escaped = ctx.alloc_binary(b"\"\\u2014\"").expect("binary");
     let decoded = bif_json_decode(&[escaped], &mut ctx).expect("decode");
     let bytes = BinaryRef::new(decoded).expect("string");
-    assert_eq!(bytes.as_bytes(), b"\xE2\x80\x94");
+    assert_eq!(bytes.as_bytes(ctx.borrow_terms()), b"\xE2\x80\x94");
     let encoded = bif_json_encode_binary(&[decoded], &mut ctx).expect("encode");
     let bytes = BinaryRef::new(encoded).expect("binary result");
-    assert_eq!(bytes.as_bytes(), b"\"\xE2\x80\x94\"");
+    assert_eq!(bytes.as_bytes(ctx.borrow_terms()), b"\"\xE2\x80\x94\"");
 }
 
 #[test]
@@ -245,7 +252,10 @@ fn multibyte_binary_moved_by_minor_gc_encodes_byte_exact() {
     assert_ne!(moved, input, "young heap binary should move under minor GC");
     let mut ctx = context(&mut process);
     let encoded = bif_json_encode_binary(&[moved], &mut ctx).expect("encode");
-    assert_eq!(binary_string(encoded), "\"— gc-moved — 😀 —\"");
+    assert_eq!(
+        binary_string(encoded, process.borrow_terms()),
+        "\"— gc-moved — 😀 —\""
+    );
 }
 
 #[test]
@@ -294,8 +304,11 @@ fn encode_result_allocation_collects_with_multibyte_input_live() {
         "live input should be promoted by the collection"
     );
     let survivor = BinaryRef::new(survivor).expect("moved input");
-    assert_eq!(survivor.as_bytes(), raw.as_bytes());
-    assert_eq!(binary_string(encoded), format!("\"{raw}\""));
+    assert_eq!(survivor.as_bytes(process.borrow_terms()), raw.as_bytes());
+    assert_eq!(
+        binary_string(encoded, process.borrow_terms()),
+        format!("\"{raw}\"")
+    );
 }
 
 #[test]
@@ -308,10 +321,13 @@ fn decode_handles_bignums_and_surrogate_pairs() {
         .expect("binary");
     let decoded = bif_json_decode(&[big], &mut ctx).expect("bignum decodes");
     let encoded = bif_json_encode_integer(&[decoded], &mut ctx).expect("round trip");
-    assert_eq!(binary_string(encoded), "123456789012345678901234567890");
+    assert_eq!(
+        binary_string(encoded, ctx.borrow_terms()),
+        "123456789012345678901234567890"
+    );
 
     let emoji = ctx.alloc_binary(b"\"\\uD83D\\uDE00\"").expect("binary");
     let decoded = bif_json_decode(&[emoji], &mut ctx).expect("surrogate pair decodes");
     let text = BinaryRef::new(decoded).expect("string");
-    assert_eq!(text.as_bytes(), "😀".as_bytes());
+    assert_eq!(text.as_bytes(ctx.borrow_terms()), "😀".as_bytes());
 }

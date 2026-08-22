@@ -12,6 +12,7 @@ use super::{
     binary_ref::BinaryRef,
     boxed::{BigInt, Closure, Cons, Float, Map, Tuple},
     compare,
+    heap_borrow::HeapBorrow,
     pid_ref::PidRef,
     reference_ref::ReferenceRef,
 };
@@ -154,7 +155,14 @@ fn hash_term(term: Term, state: &mut StableHasher) {
         state.write_u64(reference.id());
     } else if let Some(binary) = BinaryRef::new(term) {
         hash_kind(HashKind::Binary, state);
-        state.write(binary.as_bytes());
+        // SAFETY: `EtsKey`'s `Hash` impl (`:43`) reaches here through
+        // `Hasher::hash`, whose signature cannot carry a heap witness — one of
+        // the three structurally witness-less sites in
+        // `docs/design/accessor-lifetimes.md` §4. `with_frame`'s witness is
+        // higher-ranked, so the byte slice cannot escape the closure, and the
+        // closure only feeds those bytes to the hasher: no allocation, no
+        // collection, no heap drop can happen while they are read.
+        unsafe { HeapBorrow::with_frame(|heap| state.write(binary.as_bytes(heap))) };
     } else if term.is_list() {
         hash_list(term, state);
     } else {
@@ -178,7 +186,11 @@ fn hash_tuple(tuple: Tuple, state: &mut StableHasher) {
 }
 
 fn hash_bigint(bigint: BigInt, state: &mut StableHasher) {
-    let value = BigIntValue::from_bigint(bigint);
+    // SAFETY: as the binary arm above — reached from `Hash for EtsKey`, whose
+    // signature has no room for a witness. `from_bigint` copies the limbs into
+    // owned storage inside the closure, so no borrow of heap words escapes, and
+    // the copy allocates on the Rust heap, never on a process heap.
+    let value = unsafe { HeapBorrow::with_frame(|heap| BigIntValue::from_bigint(bigint, heap)) };
     if let Some(small) = value.to_small_i64().and_then(Term::try_small_int) {
         hash_term(small, state);
         return;

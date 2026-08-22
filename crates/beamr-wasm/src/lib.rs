@@ -371,7 +371,10 @@ impl WasmVm {
         let atom_table = Arc::clone(&self.atom_table);
         let promise = wasm_bindgen_futures::future_to_promise(async move {
             match future.await {
-                Ok(reply) => term_to_js_value(reply.owned().root(), atom_table.as_ref()),
+                Ok(reply) => {
+                    let owned = reply.owned();
+                    term_to_js_value(owned.root(), atom_table.as_ref(), owned.borrow_terms())
+                }
                 Err(error) => Err(JsValue::from_str(&error.to_string())),
             }
         });
@@ -1391,7 +1394,7 @@ impl HostAsyncNifs {
         let Some(pid) = context.pid() else {
             return Err(Term::atom(beamr::atom::Atom::BADARG));
         };
-        let args_array = terms_to_js_array(args, self.atom_table.as_ref())
+        let args_array = terms_to_js_array(args, self.atom_table.as_ref(), context.borrow_terms())
             .map_err(|_| Term::atom(beamr::atom::Atom::BADARG))?;
         let value = match arguments {
             HostCallbackArguments::SingleArray => callback.call1(&JsValue::UNDEFINED, &args_array),
@@ -1516,8 +1519,9 @@ impl HostJsCallbacks {
         let Some((name_term, callback_args)) = args.split_first() else {
             return Err(Term::atom(beamr::atom::Atom::BADARG));
         };
-        let name_value = term_to_js_value(*name_term, self.atom_table.as_ref())
-            .map_err(|_| Term::atom(beamr::atom::Atom::BADARG))?;
+        let name_value =
+            term_to_js_value(*name_term, self.atom_table.as_ref(), context.borrow_terms())
+                .map_err(|_| Term::atom(beamr::atom::Atom::BADARG))?;
         let Some(name) = name_value.as_string() else {
             return Err(Term::atom(beamr::atom::Atom::BADARG));
         };
@@ -1602,10 +1606,13 @@ fn invoke_actor_handler(id: u64, request: &OwnedTerm, atom_table: &Arc<AtomTable
     let Some(handler) = handler else {
         return error_reply_term(atom_table, "actor handler is not registered");
     };
-    let request_value = match term_to_js_value(request.root(), atom_table.as_ref()) {
-        Ok(value) => value,
-        Err(_) => return error_reply_term(atom_table, "failed to marshal request to JavaScript"),
-    };
+    let request_value =
+        match term_to_js_value(request.root(), atom_table.as_ref(), request.borrow_terms()) {
+            Ok(value) => value,
+            Err(_) => {
+                return error_reply_term(atom_table, "failed to marshal request to JavaScript");
+            }
+        };
     let reply_value = match handler.call1(&JsValue::UNDEFINED, &request_value) {
         Ok(value) => value,
         Err(_) => return error_reply_term(atom_table, "actor handler threw an exception"),

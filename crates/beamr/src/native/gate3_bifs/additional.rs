@@ -69,7 +69,7 @@ pub fn bif_is_function_2(args: &[Term], context: &mut ProcessContext) -> Result<
             Closure::new(*value).is_some_and(|closure| i64::from(closure.arity()) == expected),
         ));
     }
-    let big = BigIntValue::from_term(*arity).ok_or_else(badarg)?;
+    let big = BigIntValue::from_term(*arity, context.borrow_terms()).ok_or_else(badarg)?;
     if big.is_negative() {
         return Err(badarg());
     }
@@ -115,7 +115,7 @@ pub fn bif_binary_part(args: &[Term], context: &mut ProcessContext) -> Result<Te
         .and_then(|value| usize::try_from(value).ok())
         .ok_or_else(badarg)?;
     let end = offset.checked_add(length).ok_or_else(badarg)?;
-    let bytes = binary.as_bytes();
+    let bytes = binary.as_bytes(context.borrow_terms());
     if end > bytes.len() {
         return Err(badarg());
     }
@@ -157,7 +157,7 @@ pub fn bif_unary_minus(args: &[Term], context: &mut ProcessContext) -> Result<Te
         return Ok(negated);
     }
     // Small integers whose negation overflows fall through here too.
-    if let Some(integer) = BigIntValue::from_term(*value) {
+    if let Some(integer) = BigIntValue::from_term(*value, context.borrow_terms()) {
         return integer_result(integer.negate(), context);
     }
     let value = Float::new(*value).ok_or_else(badarg)?.value();

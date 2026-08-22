@@ -3,6 +3,7 @@
 use crate::atom::{Atom, AtomTable};
 use crate::term::binary_ref::BinaryRef;
 use crate::term::boxed::{BigInt, Closure, Cons, ExternalPid, Float, Map, Reference, Tuple};
+use crate::term::heap_borrow::HeapBorrow;
 use crate::term::{Tag, Term};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
@@ -153,8 +154,18 @@ fn encode_i64_big(value: i64, out: &mut Vec<u8>) -> Result<(), EncodeError> {
 
 fn encode_bigint(bigint: BigInt, out: &mut Vec<u8>) -> Result<(), EncodeError> {
     let mut bytes = Vec::with_capacity(bigint.limb_count() * std::mem::size_of::<u64>());
-    for limb in bigint.limbs() {
-        bytes.extend_from_slice(&limb.to_le_bytes());
+    // SAFETY: the ETF encoders are pure readers — they append to an owned
+    // `Vec<u8>` and never allocate on, collect, or drop a process heap. No
+    // caller of `encode_term` holds a heap handle to build a witness from, so
+    // this is a witness-less reader in the sense of
+    // `docs/design/accessor-lifetimes.md` §4; `with_frame`'s higher-ranked
+    // witness keeps the limb slice inside the closure.
+    unsafe {
+        HeapBorrow::with_frame(|heap| {
+            for limb in bigint.limbs(heap) {
+                bytes.extend_from_slice(&limb.to_le_bytes());
+            }
+        });
     }
     encode_big_bytes(bigint.is_negative(), &bytes, out)
 }
@@ -496,11 +507,13 @@ fn collect_list(term: Term) -> Result<(Vec<Term>, Term), EncodeError> {
 }
 
 fn encode_binary(binary: BinaryRef, out: &mut Vec<u8>) -> Result<(), EncodeError> {
-    let bytes = binary.as_bytes();
+    // SAFETY: as `encode_bigint` — a pure reader appending to an owned buffer,
+    // with no heap handle available anywhere in the `encode_term` call chain.
+    let bytes = unsafe { HeapBorrow::with_frame(|heap| binary.as_bytes(heap).to_vec()) };
     let length = u32::try_from(bytes.len()).map_err(|_| EncodeError::UnsupportedTerm)?;
     out.push(tags::BINARY_EXT);
     out.extend_from_slice(&length.to_be_bytes());
-    out.extend_from_slice(bytes);
+    out.extend_from_slice(&bytes);
     Ok(())
 }
 
@@ -799,7 +812,7 @@ mod tests {
         );
     }
 
-    fn flatten_segments(segments: &[IoSegment]) -> Vec<u8> {
+    fn flatten_segments(segments: &[IoSegment], heap: HeapBorrow<'_>) -> Vec<u8> {
         let mut bytes = Vec::new();
         for segment in segments {
             match segment {
@@ -807,7 +820,7 @@ mod tests {
                 IoSegment::Reference(term) => bytes.extend_from_slice(
                     BinaryRef::new(*term)
                         .expect("reference segment should be binary")
-                        .as_bytes(),
+                        .as_bytes(heap),
                 ),
             }
         }
@@ -827,7 +840,10 @@ mod tests {
         let encoded = encode_term(binary, &atoms()).expect("encoded");
 
         assert_eq!(segments, vec![IoSegment::Owned(encoded.clone())]);
-        assert_eq!(flatten_segments(&segments), encoded);
+        assert_eq!(
+            flatten_segments(&segments, HeapBorrow::of_words(&_heap)),
+            encoded
+        );
     }
 
     #[test]
@@ -843,7 +859,7 @@ mod tests {
         );
         assert_eq!(segments[1], IoSegment::Reference(binary));
         assert_eq!(
-            flatten_segments(&segments),
+            flatten_segments(&segments, HeapBorrow::of_words(&_heap)),
             encode_term(binary, &atoms()).expect("encoded")
         );
     }
@@ -861,7 +877,7 @@ mod tests {
                 if *term == binary
         ));
         assert_eq!(
-            flatten_segments(&segments),
+            flatten_segments(&segments, HeapBorrow::of_words(&heap)),
             encode_term(binary, &atoms()).expect("encoded")
         );
     }
@@ -886,7 +902,7 @@ mod tests {
                 IoSegment::Reference(reference) if *reference == binary
             )));
             assert_eq!(
-                flatten_segments(&segments),
+                flatten_segments(&segments, HeapBorrow::of_words(&map_heap)),
                 encode_term(term, &table).expect("encoded")
             );
         }

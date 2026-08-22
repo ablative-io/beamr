@@ -409,7 +409,7 @@ mod tests {
             bif_system_info(&[Term::atom(item_atom)], &mut context).expect("system_info succeeds");
         Binary::new(term)
             .expect("system_info item returns binary")
-            .as_bytes()
+            .as_bytes(context.borrow_terms())
             .to_vec()
     }
 

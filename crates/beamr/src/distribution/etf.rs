@@ -4,6 +4,7 @@
 //! `COMPRESSED_EXT` and atom-cache references are negotiated/implemented outside
 //! this codec.
 
+use crate::term::heap_borrow::HeapBorrow;
 use std::fmt;
 use std::io::Read;
 
@@ -335,8 +336,18 @@ fn encode_bigint(bigint: BigInt, out: &mut Vec<u8>) -> Result<(), EncodeError> {
         .checked_mul(std::mem::size_of::<u64>())
         .ok_or(EncodeError::UnsupportedTerm)?;
     let mut bytes = Vec::with_capacity(capacity);
-    for limb in bigint.limbs() {
-        bytes.extend_from_slice(&limb.to_le_bytes());
+    // SAFETY: the ETF encoders are pure readers — they append to an owned
+    // `Vec<u8>` and never allocate on, collect, or drop a process heap. No
+    // caller of `encode_term` holds a heap handle to build a witness from, so
+    // this is a witness-less reader in the sense of
+    // `docs/design/accessor-lifetimes.md` §4; `with_frame`'s higher-ranked
+    // witness keeps the limb slice inside the closure.
+    unsafe {
+        HeapBorrow::with_frame(|heap| {
+            for limb in bigint.limbs(heap) {
+                bytes.extend_from_slice(&limb.to_le_bytes());
+            }
+        });
     }
     encode_big_bytes(bigint.is_negative(), &bytes, out)
 }
@@ -525,11 +536,13 @@ fn collect_list(term: Term) -> Result<(Vec<Term>, Term), EncodeError> {
 }
 
 fn encode_binary(binary: BinaryRef, out: &mut Vec<u8>) -> Result<(), EncodeError> {
-    let bytes = binary.as_bytes();
+    // SAFETY: as `encode_bigint` — a pure reader appending to an owned buffer,
+    // with no heap handle available anywhere in the `encode_term` call chain.
+    let bytes = unsafe { HeapBorrow::with_frame(|heap| binary.as_bytes(heap).to_vec()) };
     let length = u32::try_from(bytes.len()).map_err(|_| EncodeError::UnsupportedTerm)?;
     out.push(tags::BINARY_EXT);
     out.extend_from_slice(&length.to_be_bytes());
-    out.extend_from_slice(bytes);
+    out.extend_from_slice(&bytes);
     Ok(())
 }
 
@@ -1224,7 +1237,7 @@ mod tests {
         let binary = decode_term(&[131, 109, 0, 0, 0, 3, b'a', b'b', b'c'], &mut heap, &atoms)
             .expect("binary decode");
         assert_eq!(
-            Binary::new(binary).map(|binary| binary.as_bytes()),
+            Binary::new(binary).map(|binary| binary.as_bytes(heap.borrow_terms())),
             Some(b"abc".as_slice())
         );
 
