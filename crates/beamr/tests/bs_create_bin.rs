@@ -50,7 +50,7 @@ fn call(module: &Module, atoms: &AtomTable, function: &str) -> Vec<u8> {
     );
     BinaryRef::new(process.x_reg(0))
         .expect("binary result")
-        .as_bytes()
+        .as_bytes(process.borrow_terms())
         .to_vec()
 }
 

@@ -90,7 +90,7 @@ pub fn udp_send(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
     let addr = SocketAddr::V4(SocketAddrV4::new(parse_ipv4(*host)?, parse_port(*port)?));
     let bytes = BinaryRef::new(*data)
         .ok_or_else(badarg)?
-        .as_bytes()
+        .as_bytes(context.borrow_terms())
         .to_vec();
     let expected_len = bytes.len();
     context.submit_file_io(
@@ -750,7 +750,7 @@ mod ar1_row4_site10_tests {
             let binary = payload.get(2).ok_or_else(|| "no binary slot".to_string())?;
             let binary =
                 BinaryRef::new(binary).ok_or_else(|| "payload binary missing".to_string())?;
-            if binary.as_bytes() != data.as_slice() {
+            if binary.as_bytes(context.borrow_terms()) != data.as_slice() {
                 return Err("datagram contents differ".to_string());
             }
             Ok(())

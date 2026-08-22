@@ -163,6 +163,7 @@ mod gc_hazard_tests {
     use crate::atom::AtomTable;
     use crate::native::ProcessContext;
     use crate::term::binary_ref::BinaryRef;
+    use crate::term::heap_borrow::HeapBorrow;
     use std::sync::Arc;
 
     fn test_context(process: &mut Process, live_x: u16) -> ProcessContext<'_> {
@@ -183,10 +184,10 @@ mod gc_hazard_tests {
         }
     }
 
-    fn binary_bytes(term: Term) -> Vec<u8> {
+    fn binary_bytes(term: Term, heap: HeapBorrow<'_>) -> Vec<u8> {
         BinaryRef::new(term)
             .expect("map value must stay a readable binary")
-            .as_bytes()
+            .as_bytes(heap)
             .to_vec()
     }
 
@@ -283,7 +284,7 @@ mod gc_hazard_tests {
             let key = Term::small_int(index as i64);
             let value = merged.get(key).expect("every original key must survive");
             assert_eq!(
-                binary_bytes(value),
+                binary_bytes(value, process.borrow_terms()),
                 *want,
                 "value for key {index} must read back byte-exact"
             );

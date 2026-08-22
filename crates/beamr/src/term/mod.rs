@@ -13,6 +13,7 @@ pub mod boxed;
 pub mod compare;
 pub mod format;
 pub mod hash;
+pub mod heap_borrow;
 #[cfg(feature = "json")]
 pub mod json;
 pub mod pid_ref;

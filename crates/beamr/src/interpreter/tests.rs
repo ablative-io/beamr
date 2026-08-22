@@ -2735,7 +2735,7 @@ fn interpreter_binary_opcodes_construct_and_match_binary_patterns() {
     assert_eq!(
         Binary::new(process.x_reg(0))
             .expect("constructed binary")
-            .as_bytes(),
+            .as_bytes(process.borrow_terms()),
         &[65, 66, 67]
     );
 
@@ -2808,7 +2808,9 @@ fn interpreter_binary_opcodes_construct_and_match_binary_patterns() {
     assert_eq!(process.x_reg(2).as_small_int(), Some(65));
     assert_eq!(process.x_reg(3).as_small_int(), Some(66));
     assert_eq!(
-        Binary::new(process.x_reg(4)).expect("rest").as_bytes(),
+        Binary::new(process.x_reg(4))
+            .expect("rest")
+            .as_bytes(process.borrow_terms()),
         &[67]
     );
 }

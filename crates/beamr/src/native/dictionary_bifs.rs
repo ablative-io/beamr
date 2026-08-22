@@ -227,7 +227,7 @@ mod tests {
                 let (_key, value) = tuple_pair(entry);
                 let bytes = Binary::new(value)
                     .expect("value survived as a binary")
-                    .as_bytes();
+                    .as_bytes(context.borrow_terms());
                 assert_eq!(bytes.len(), PAYLOAD, "value binary truncated");
                 assert!(
                     bytes.iter().all(|byte| *byte == bytes[0]),

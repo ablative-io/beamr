@@ -87,14 +87,15 @@ pub(crate) extern "C" fn jit_bs_put_binary(process: *mut Process, builder: u64, 
         set_badarg(process);
         return 1;
     };
-    let bytes = binary.as_bytes();
+    // Own the bytes: the builder append below writes through the process heap.
+    let bytes = binary.as_bytes(process.borrow_terms()).to_vec();
     let size_bits = bytes.len() * u8::BITS as usize;
     let start = builder.write_position_bits();
     if !start.is_multiple_of(u8::BITS as usize) || !builder.can_append(size_bits) {
         set_badarg(process);
         return 1;
     }
-    builder.write_bytes(start / u8::BITS as usize, bytes);
+    builder.write_bytes(start / u8::BITS as usize, &bytes);
     builder.set_write_position_bits(start + size_bits);
     0
 }

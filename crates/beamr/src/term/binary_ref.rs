@@ -1,5 +1,6 @@
 //! Unified accessor for inline and off-heap binaries.
 
+use crate::term::heap_borrow::HeapBorrow;
 use crate::term::{
     Term,
     binary::Binary,
@@ -26,12 +27,34 @@ impl BinaryRef {
         SubBinary::new(term).map(Self::Sub)
     }
 
-    /// Returns binary bytes without copying the backing storage.
-    pub fn as_bytes(&self) -> &'static [u8] {
+    /// Returns binary bytes without copying the backing storage, borrowed for
+    /// the witness's borrow.
+    ///
+    /// The fan-in over all three binary families: whichever family backs this
+    /// reference, the bytes are bounded by the process heap that owns the boxed
+    /// object, and `heap` is the shared borrow of it that makes the bound
+    /// enforceable.
+    /// The bound is a type error, not a convention, for every family this
+    /// reference can hold:
+    ///
+    /// ```compile_fail,E0502
+    /// use beamr::process::Process;
+    /// use beamr::term::binary::write_binary;
+    /// use beamr::term::binary_ref::BinaryRef;
+    ///
+    /// let mut process = Process::new(1, 233);
+    /// let words = process.heap_mut().alloc_slice(3).expect("words");
+    /// let term = write_binary(words, b"hello").expect("binary");
+    /// let binary = BinaryRef::new(term).expect("accessor");
+    /// let bytes = binary.as_bytes(process.borrow_terms());
+    /// let _ = beamr::gc::collect_minor(&mut process);
+    /// assert_eq!(bytes, b"hello");
+    /// ```
+    pub fn as_bytes<'heap>(&self, heap: HeapBorrow<'heap>) -> &'heap [u8] {
         match self {
-            Self::Inline(binary) => binary.as_bytes(),
-            Self::Refc(proc_bin) => proc_bin.as_bytes(),
-            Self::Sub(sub_binary) => sub_binary.as_bytes(),
+            Self::Inline(binary) => binary.as_bytes(heap),
+            Self::Refc(proc_bin) => proc_bin.as_bytes(heap),
+            Self::Sub(sub_binary) => sub_binary.as_bytes(heap),
         }
     }
 
@@ -67,7 +90,7 @@ mod tests {
 
         assert!(matches!(binary, BinaryRef::Inline(_)));
         assert_eq!(binary.len(), 5);
-        assert_eq!(binary.as_bytes(), b"hello");
+        assert_eq!(binary.as_bytes(HeapBorrow::of_words(&heap)), b"hello");
     }
 
     #[test]
@@ -79,7 +102,7 @@ mod tests {
 
         assert!(matches!(binary, BinaryRef::Refc(_)));
         assert_eq!(binary.len(), 8);
-        assert_eq!(binary.as_bytes(), b"off-heap");
+        assert_eq!(binary.as_bytes(HeapBorrow::of_words(&heap)), b"off-heap");
     }
 
     #[test]
@@ -93,7 +116,7 @@ mod tests {
 
         assert!(matches!(binary, BinaryRef::Sub(_)));
         assert_eq!(binary.len(), 6);
-        assert_eq!(binary.as_bytes(), b"456789");
+        assert_eq!(binary.as_bytes(HeapBorrow::of_words(&sub_heap)), b"456789");
     }
 
     #[test]

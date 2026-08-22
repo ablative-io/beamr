@@ -83,7 +83,7 @@ fn materialises_literal_storage_and_returns_stable_roots() {
     );
     assert!(Cons::new(pool.get(2).expect("list")).is_some());
     assert_eq!(
-        Binary::new(pool.get(3).expect("binary")).map(|b| b.as_bytes()),
+        Binary::new(pool.get(3).expect("binary")).map(|b| b.as_bytes(pool.borrow_terms())),
         Some(&b"bin"[..])
     );
     assert_eq!(
@@ -182,10 +182,10 @@ fn big_integer_literals_materialise_with_sign_and_limbs() {
     ];
     let positive = BigInt::new(pool.get(0).expect("positive")).expect("bigint box");
     assert!(!positive.is_negative());
-    assert_eq!(positive.limbs(), expected);
+    assert_eq!(positive.limbs(pool.borrow_terms()), expected);
     let negative = BigInt::new(pool.get(1).expect("negative")).expect("bigint box");
     assert!(negative.is_negative());
-    assert_eq!(negative.limbs(), expected);
+    assert_eq!(negative.limbs(pool.borrow_terms()), expected);
 }
 
 #[test]
@@ -219,9 +219,15 @@ fn integer_literal_beyond_small_range_materialises_as_bignum_box() {
 
     let positive = BigInt::new(pool.get(0).expect("positive")).expect("bigint box");
     assert!(!positive.is_negative());
-    assert_eq!(positive.limbs(), [positive_value.unsigned_abs()]);
+    assert_eq!(
+        positive.limbs(pool.borrow_terms()),
+        [positive_value.unsigned_abs()]
+    );
     let negative = BigInt::new(pool.get(1).expect("negative")).expect("bigint box");
     assert!(negative.is_negative());
-    assert_eq!(negative.limbs(), [negative_value.unsigned_abs()]);
+    assert_eq!(
+        negative.limbs(pool.borrow_terms()),
+        [negative_value.unsigned_abs()]
+    );
     assert_eq!(pool.get(2), Some(Term::small_int(Term::SMALL_INT_MIN)));
 }

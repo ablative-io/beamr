@@ -410,9 +410,13 @@ fn copy_float(float: Float, heap: &mut Heap) -> Result<Term, SendError> {
 }
 
 fn copy_bigint(bigint: BigInt, heap: &mut Heap) -> Result<Term, SendError> {
-    let limbs = bigint.limbs();
+    // Own the limbs before touching the receiver heap. The witness is the
+    // receiver heap's own shared borrow — the only borrow in hand here — so the
+    // borrow checker refuses to let the slice survive `alloc_words`. That is
+    // what makes the copy-out mandatory rather than remembered.
+    let limbs = bigint.limbs(heap.borrow_terms()).to_vec();
     let words = alloc_words(heap, 3 + limbs.len())?;
-    boxed::write_bigint(words, bigint.is_negative(), limbs).ok_or(SendError::InvalidBoxedTerm)
+    boxed::write_bigint(words, bigint.is_negative(), &limbs).ok_or(SendError::InvalidBoxedTerm)
 }
 
 fn copy_closure(closure: Closure, heap: &mut Heap) -> Result<Term, SendError> {
@@ -463,12 +467,13 @@ fn copy_reference(reference: Reference, heap: &mut Heap) -> Result<Term, SendErr
 }
 
 fn copy_binary(binary: Binary, heap: &mut Heap) -> Result<Term, SendError> {
-    let bytes = binary.as_bytes();
+    // Own the bytes before allocating: see `copy_bigint`.
+    let bytes = binary.as_bytes(heap.borrow_terms()).to_vec();
     let words = alloc_words(
         heap,
         2 + crate::term::binary::packed_word_count(bytes.len()),
     )?;
-    crate::term::binary::write_binary(words, bytes).ok_or(SendError::InvalidBoxedTerm)
+    crate::term::binary::write_binary(words, &bytes).ok_or(SendError::InvalidBoxedTerm)
 }
 
 /// Off-heap binaries are shared, not copied: the receiver gets its own
@@ -493,12 +498,13 @@ fn copy_proc_bin(proc_bin: &ProcBin, heap: &mut Heap) -> Result<Term, SendError>
 /// Sub-binaries copy only their visible byte range (threshold-aware), so the
 /// receiver never retains the parent binary's full storage.
 fn copy_sub_binary(sub_binary: &SubBinary, heap: &mut Heap) -> Result<Term, SendError> {
-    let bytes = sub_binary.as_bytes();
+    // Own the bytes before allocating: see `copy_bigint`.
+    let bytes = sub_binary.as_bytes(heap.borrow_terms()).to_vec();
     // A copy above the refc threshold lands as a ProcBin; mark the allocation
     // so the GC release walk drops its Arc. See `process::heap::AllocKind`.
     let words =
         alloc_words_maybe_refcounted(heap, shared_binary::alloc_binary_word_count(bytes.len()))?;
-    shared_binary::alloc_binary(words, bytes).ok_or(SendError::InvalidBoxedTerm)
+    shared_binary::alloc_binary(words, &bytes).ok_or(SendError::InvalidBoxedTerm)
 }
 
 fn alloc_words(heap: &mut Heap, word_count: usize) -> Result<&mut [u64], SendError> {
@@ -725,7 +731,9 @@ mod tests {
         let cons = Cons::new(existing).expect("receiver data intact");
         assert_eq!(cons.head().as_small_int(), Some(7));
         assert_eq!(
-            BinaryRef::new(message).expect("sender binary").as_bytes(),
+            BinaryRef::new(message)
+                .expect("sender binary")
+                .as_bytes(receiver_heap.borrow_terms()),
             payload.as_slice()
         );
     }

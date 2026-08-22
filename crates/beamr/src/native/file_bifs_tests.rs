@@ -323,7 +323,12 @@ fn read_file_submits_tracked_offset_and_advances_on_success() {
     let result = file_read(&[resource, Term::small_int(5)], &mut context).expect("read result");
     let (tag, bytes) = tuple_reason(result);
     assert_eq!(tag, Term::atom(Atom::OK));
-    assert_eq!(Binary::new(bytes).expect("binary").as_bytes(), b"abc");
+    assert_eq!(
+        Binary::new(bytes)
+            .expect("binary")
+            .as_bytes(context.borrow_terms()),
+        b"abc"
+    );
     assert_eq!(inner.current_offset(), 10);
 
     facility.push_completion(
@@ -335,7 +340,12 @@ fn read_file_submits_tracked_offset_and_advances_on_success() {
     let result = file_read(&[resource, Term::small_int(5)], &mut context).expect("eof result");
     let (tag, bytes) = tuple_reason(result);
     assert_eq!(tag, Term::atom(Atom::OK));
-    assert_eq!(Binary::new(bytes).expect("binary").as_bytes(), b"");
+    assert_eq!(
+        Binary::new(bytes)
+            .expect("binary")
+            .as_bytes(context.borrow_terms()),
+        b""
+    );
     assert_eq!(inner.current_offset(), 10);
 }
 
@@ -550,7 +560,12 @@ fn pread_submits_explicit_offset_and_does_not_advance_tracked_offset() {
     .expect("pread completion result");
     let (tag, bytes) = tuple_reason(result);
     assert_eq!(tag, Term::atom(Atom::OK));
-    assert_eq!(Binary::new(bytes).expect("binary").as_bytes(), b"data");
+    assert_eq!(
+        Binary::new(bytes)
+            .expect("binary")
+            .as_bytes(context.borrow_terms()),
+        b"data"
+    );
     assert_eq!(inner.current_offset(), 3);
 }
 

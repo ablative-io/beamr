@@ -41,7 +41,9 @@ fn allocation_helpers_write_valid_terms_on_process_heap() {
 
         assert_eq!(Float::new(float).expect("float accessor").value(), 1.5);
         assert_eq!(
-            Binary::new(binary).expect("binary accessor").as_bytes(),
+            Binary::new(binary)
+                .expect("binary accessor")
+                .as_bytes(context.borrow_terms()),
             b"beamr"
         );
         let cons = Cons::new(list).expect("list accessor");

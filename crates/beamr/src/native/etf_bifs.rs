@@ -93,7 +93,7 @@ pub fn bif_binary_to_term(args: &[Term], context: &mut ProcessContext) -> Result
     // a collection would move and zero-fill an inline source under a borrow.
     let bytes = BinaryRef::new(*binary)
         .ok_or_else(badarg)?
-        .as_bytes()
+        .as_bytes(context.borrow_terms())
         .to_vec();
     decode_term(&bytes, context, atom_table.as_ref()).map_err(|_| badarg())
 }
@@ -108,7 +108,7 @@ pub fn bif_binary_to_term_2(args: &[Term], context: &mut ProcessContext) -> Resu
     // a collection would move and zero-fill an inline source under a borrow.
     let bytes = BinaryRef::new(*binary)
         .ok_or_else(badarg)?
-        .as_bytes()
+        .as_bytes(context.borrow_terms())
         .to_vec();
     let decoded = decode_term_with_options(&bytes, context, atom_table.as_ref(), options)
         .map_err(|_| badarg())?;
@@ -278,7 +278,7 @@ mod tests {
         let result = bif_term_to_binary(&[tuple], &mut context).expect("term_to_binary result");
         let binary = Binary::new(result).expect("result should be binary");
         assert_eq!(
-            binary.as_bytes(),
+            binary.as_bytes(process.borrow_terms()),
             &[
                 tags::VERSION,
                 tags::SMALL_TUPLE_EXT,
@@ -355,8 +355,12 @@ mod tests {
         };
 
         assert_eq!(
-            BinaryRef::new(flattened).expect("flattened").as_bytes(),
-            BinaryRef::new(term_binary).expect("term binary").as_bytes()
+            BinaryRef::new(flattened)
+                .expect("flattened")
+                .as_bytes(process.borrow_terms()),
+            BinaryRef::new(term_binary)
+                .expect("term binary")
+                .as_bytes(process.borrow_terms())
         );
     }
 
@@ -440,10 +444,10 @@ mod tests {
         };
         let uncompressed_bytes = BinaryRef::new(uncompressed)
             .expect("uncompressed binary")
-            .as_bytes();
+            .as_bytes(process.borrow_terms());
         let compressed_bytes = BinaryRef::new(compressed)
             .expect("compressed binary")
-            .as_bytes();
+            .as_bytes(process.borrow_terms());
         assert!(compressed_bytes.len() < uncompressed_bytes.len());
         assert_eq!(compressed_bytes[0], tags::VERSION);
         assert_eq!(compressed_bytes[1], tags::COMPRESSED_EXT);
@@ -476,8 +480,12 @@ mod tests {
             bif_term_to_binary_2(&[Term::small_int(42), option], &mut context).expect("encoded")
         };
         assert_eq!(
-            Binary::new(encoded).expect("encoded").as_bytes(),
-            Binary::new(uncompressed).expect("uncompressed").as_bytes()
+            Binary::new(encoded)
+                .expect("encoded")
+                .as_bytes(process.borrow_terms()),
+            Binary::new(uncompressed)
+                .expect("uncompressed")
+                .as_bytes(process.borrow_terms())
         );
     }
 
@@ -502,8 +510,12 @@ mod tests {
             bif_term_to_binary_2(&[Term::small_int(42), option], &mut context).expect("encoded")
         };
         assert_eq!(
-            Binary::new(encoded).expect("encoded").as_bytes(),
-            Binary::new(uncompressed).expect("uncompressed").as_bytes()
+            Binary::new(encoded)
+                .expect("encoded")
+                .as_bytes(process.borrow_terms()),
+            Binary::new(uncompressed)
+                .expect("uncompressed")
+                .as_bytes(process.borrow_terms())
         );
     }
 

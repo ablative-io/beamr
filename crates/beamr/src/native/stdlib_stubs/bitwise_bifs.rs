@@ -4,6 +4,7 @@ use crate::atom::Atom;
 use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::bigint_math::{BigIntValue, bitand_abs, low_bits_mask, set_bit};
+use crate::term::heap_borrow::HeapBorrow;
 
 pub fn bif_band(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     two_ints(args, context, |left, right| left & right)
@@ -13,7 +14,7 @@ pub fn bif_bnot(args: &[Term], context: &mut ProcessContext) -> Result<Term, Ter
     let [value] = args else {
         return Err(badarg());
     };
-    let value = integer_value(*value)?;
+    let value = integer_value(*value, context.borrow_terms())?;
     integer_result(BigIntValue::from_i64(-1).sub(&value), context)
 }
 
@@ -25,7 +26,7 @@ pub fn bif_bsl(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term
     let [value, shift] = args else {
         return Err(badarg());
     };
-    let value = integer_value(*value)?;
+    let value = integer_value(*value, context.borrow_terms())?;
     let shift = shift
         .as_small_int()
         .and_then(|value| usize::try_from(value).ok())
@@ -38,7 +39,7 @@ pub fn bif_bsr(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term
     let [value, shift] = args else {
         return Err(badarg());
     };
-    let value = integer_value(*value)?;
+    let value = integer_value(*value, context.borrow_terms())?;
     let shift = shift
         .as_small_int()
         .and_then(|value| usize::try_from(value).ok())
@@ -58,8 +59,8 @@ fn two_ints(
     let [left, right] = args else {
         return Err(badarg());
     };
-    let left = integer_value(*left)?;
-    let right = integer_value(*right)?;
+    let left = integer_value(*left, context.borrow_terms())?;
+    let right = integer_value(*right, context.borrow_terms())?;
     let width = left.bit_length().max(right.bit_length()).saturating_add(1);
     let left_twos = to_twos_complement(&left, width);
     let right_twos = to_twos_complement(&right, width);
@@ -170,8 +171,8 @@ fn test_bit(limbs: &[u64], bit: usize) -> bool {
         .is_some_and(|value| ((value >> offset) & 1) == 1)
 }
 
-fn integer_value(term: Term) -> Result<BigIntValue, Term> {
-    BigIntValue::from_term(term).ok_or_else(badarg)
+fn integer_value(term: Term, heap: HeapBorrow<'_>) -> Result<BigIntValue, Term> {
+    BigIntValue::from_term(term, heap).ok_or_else(badarg)
 }
 
 fn integer_result(value: BigIntValue, context: &mut ProcessContext) -> Result<Term, Term> {

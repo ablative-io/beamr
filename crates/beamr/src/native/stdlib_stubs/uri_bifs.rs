@@ -11,13 +11,14 @@ use crate::atom::Atom;
 use crate::native::ProcessContext;
 use crate::term::Term;
 use crate::term::binary_ref::BinaryRef;
+use crate::term::heap_borrow::HeapBorrow;
 
 /// `uri_string:parse/1` over a UTF-8 binary, RFC 3986 component split.
 pub fn bif_uri_string_parse(args: &[Term], context: &mut ProcessContext) -> Result<Term, Term> {
     let [input] = args else {
         return Err(badarg());
     };
-    let owned = binary_text(*input)?;
+    let owned = binary_text(*input, context.borrow_terms())?;
     let text = owned.as_str();
 
     let (rest, fragment) = match text.split_once('#') {
@@ -122,7 +123,7 @@ pub fn bif_uri_string_dissect_query(
     let [input] = args else {
         return Err(badarg());
     };
-    let text = binary_text(*input)?;
+    let text = binary_text(*input, context.borrow_terms())?;
     if text.is_empty() {
         return Ok(Term::NIL);
     }
@@ -305,9 +306,9 @@ fn error_tuple(context: &mut ProcessContext, reason: &str, detail: &str) -> Resu
 /// Owns the input text up front: every component slice the callers derive
 /// borrows this owned copy, never the process heap — the sequential
 /// `alloc_binary` calls below may collect and move an inline source.
-fn binary_text(term: Term) -> Result<String, Term> {
+fn binary_text(term: Term, heap: HeapBorrow<'_>) -> Result<String, Term> {
     let binary = BinaryRef::new(term).ok_or_else(badarg)?;
-    std::str::from_utf8(binary.as_bytes())
+    std::str::from_utf8(binary.as_bytes(heap))
         .map(str::to_owned)
         .map_err(|_| badarg())
 }
@@ -483,10 +484,10 @@ mod ar1_row4_site7_tests {
                     "entry {index} ({name}): value is not a binary — carrier `values` went stale"
                 )
             })?;
-            if binary.as_bytes() != want.as_bytes() {
+            if binary.as_bytes(context.borrow_terms()) != want.as_bytes() {
                 return Err(format!(
                     "entry {index} ({name}): contents {:?} != expected",
-                    String::from_utf8_lossy(binary.as_bytes())
+                    String::from_utf8_lossy(binary.as_bytes(context.borrow_terms()))
                 ));
             }
         }
@@ -702,16 +703,16 @@ mod ar1_row4_tests {
                 .ok_or_else(|| format!("element {seen}: value is not a binary"))?;
             let want_key = format!("k{seen:0WIDTH$}");
             let want_value = format!("v{seen:0WIDTH$}");
-            if key.as_bytes() != want_key.as_bytes() {
+            if key.as_bytes(context.borrow_terms()) != want_key.as_bytes() {
                 return Err(format!(
                     "element {seen}: key contents {:?} != {want_key:?}",
-                    String::from_utf8_lossy(key.as_bytes())
+                    String::from_utf8_lossy(key.as_bytes(context.borrow_terms()))
                 ));
             }
-            if value.as_bytes() != want_value.as_bytes() {
+            if value.as_bytes(context.borrow_terms()) != want_value.as_bytes() {
                 return Err(format!(
                     "element {seen}: value contents {:?} != {want_value:?}",
-                    String::from_utf8_lossy(value.as_bytes())
+                    String::from_utf8_lossy(value.as_bytes(context.borrow_terms()))
                 ));
             }
             seen += 1;

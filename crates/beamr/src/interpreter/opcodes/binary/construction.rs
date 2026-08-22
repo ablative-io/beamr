@@ -117,14 +117,15 @@ pub(crate) fn bs_put_binary(
 ) -> Result<(), ExecError> {
     let source = core::read_term(process, module, source)?;
     let binary = BinaryRef::new(source).ok_or(ExecError::Badarg)?;
-    let bytes = binary.as_bytes();
+    // Own the bytes: the builder append below writes through the process heap.
+    let bytes = binary.as_bytes(process.borrow_terms()).to_vec();
     let size_bits = bytes.len() * u8::BITS as usize;
     let builder = BinaryBuilder::new(builder).ok_or(ExecError::Badarg)?;
     let start = builder.write_position_bits();
     if !start.is_multiple_of(u8::BITS as usize) || !builder.can_append(size_bits) {
         return Err(ExecError::Badarg);
     }
-    builder.write_bytes(start / u8::BITS as usize, bytes);
+    builder.write_bytes(start / u8::BITS as usize, &bytes);
     builder.set_write_position_bits(start + size_bits);
     Ok(())
 }

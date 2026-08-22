@@ -2,6 +2,7 @@
 use super::runtime::{alloc_words, alloc_words_rooted, process_from_abi};
 use crate::process::Process;
 use crate::term::Term;
+use crate::term::heap_borrow::HeapBorrow;
 use crate::term::shared_binary::{alloc_binary, alloc_binary_word_count};
 use crate::term::sub_binary::{SUB_BINARY_WORDS, write_sub_binary};
 use crate::term::{
@@ -53,10 +54,20 @@ pub(crate) extern "C" fn jit_bs_get_integer(match_ctx: u64, size_bits: u64, flag
     {
         return BINARY_HELPER_FAILURE;
     }
-    let Some(bytes) = context.slice(size_bits) else {
-        return BINARY_HELPER_FAILURE;
-    };
-    let Some(value) = decode_integer(bytes, SegmentFlags::from_raw(flags)) else {
+    // SAFETY: this ABI entry receives no process pointer at all — the JIT
+    // calls it with only the match context — so no witness can be built. Like
+    // the `std` trait readers in `docs/design/accessor-lifetimes.md` §4, this
+    // is a structurally witness-less reader: `with_frame`'s higher-ranked
+    // witness keeps the slice inside the closure, and the closure only decodes
+    // an integer — it performs no allocation, runs no collection, and drops no
+    // heap, so nothing can invalidate the bytes while they are read.
+    let Some(value) = (unsafe {
+        HeapBorrow::with_frame(|heap| {
+            context
+                .slice(size_bits, heap)
+                .and_then(|bytes| decode_integer(bytes, SegmentFlags::from_raw(flags)))
+        })
+    }) else {
         return BINARY_HELPER_FAILURE;
     };
     let Some(term) = Term::try_small_int(value) else {
@@ -91,7 +102,7 @@ pub(crate) extern "C" fn jit_bs_get_binary(
     {
         return BINARY_HELPER_FAILURE;
     }
-    let Some(bytes) = context.slice(bits) else {
+    let Some(bytes) = context.slice(bits, process.borrow_terms()) else {
         return BINARY_HELPER_FAILURE;
     };
     let source = context.source_term();
@@ -209,7 +220,7 @@ impl JitMatchContext {
             .checked_add(bits)
             .is_some_and(|end| end <= self.total_bits())
     }
-    fn slice(self, bits: usize) -> Option<&'static [u8]> {
+    fn slice<'heap>(self, bits: usize, heap: HeapBorrow<'heap>) -> Option<&'heap [u8]> {
         if !bits.is_multiple_of(u8::BITS as usize)
             || !self.position_bits().is_multiple_of(u8::BITS as usize)
         {
@@ -218,7 +229,7 @@ impl JitMatchContext {
         let start = self.position_bits() / u8::BITS as usize;
         let len = bits / u8::BITS as usize;
         let end = start.checked_add(len)?;
-        self.source()?.as_bytes().get(start..end)
+        self.source()?.as_bytes(heap).get(start..end)
     }
 }
 
@@ -304,12 +315,20 @@ pub(super) fn allocate_binary(process: &mut Process, bytes: &[u8]) -> Option<Ter
 fn get_utf(
     match_ctx: u64,
     flags: u64,
-    decoder: fn(JitMatchContext, Endian) -> Option<(u32, usize)>,
+    decoder: fn(JitMatchContext, Endian, HeapBorrow<'_>) -> Option<(u32, usize)>,
 ) -> u64 {
     let Some(context) = JitMatchContext::new(Term::from_raw(match_ctx)) else {
         return BINARY_HELPER_FAILURE;
     };
-    let Some((codepoint, bits)) = decoder(context, Endian::from_raw(flags)) else {
+    // SAFETY: `jit_bs_get_utf{8,16,32}` are ABI entries that receive no process
+    // pointer, so no witness can be built — a structurally witness-less reader
+    // in the sense of `docs/design/accessor-lifetimes.md` §4. `with_frame`'s
+    // higher-ranked witness keeps every slice the decoder reads inside the
+    // closure, and the decoders only read bytes and return a codepoint: no
+    // allocation, no collection, no heap drop happens while they run.
+    let Some((codepoint, bits)) =
+        (unsafe { HeapBorrow::with_frame(|heap| decoder(context, Endian::from_raw(flags), heap)) })
+    else {
         return BINARY_HELPER_FAILURE;
     };
     let Some(term) = Term::try_small_int(i64::from(codepoint)) else {
@@ -319,11 +338,15 @@ fn get_utf(
     term.raw()
 }
 
-fn decode_utf8(context: JitMatchContext, _endian: Endian) -> Option<(u32, usize)> {
+fn decode_utf8(
+    context: JitMatchContext,
+    _endian: Endian,
+    heap: HeapBorrow<'_>,
+) -> Option<(u32, usize)> {
     if !context.position_bits().is_multiple_of(u8::BITS as usize) {
         return None;
     }
-    let bytes = context.slice(context.remaining_bits())?;
+    let bytes = context.slice(context.remaining_bits(), heap)?;
     let first = bytes.first().copied()?;
     let (needed, mut codepoint, min) = if first <= 0x7f {
         (1, u32::from(first), 0)
@@ -349,10 +372,14 @@ fn decode_utf8(context: JitMatchContext, _endian: Endian) -> Option<(u32, usize)
         .then_some((codepoint, needed * u8::BITS as usize))
 }
 
-fn decode_utf16(context: JitMatchContext, endian: Endian) -> Option<(u32, usize)> {
-    let first = read_u16(context, 0, endian)?;
+fn decode_utf16(
+    context: JitMatchContext,
+    endian: Endian,
+    heap: HeapBorrow<'_>,
+) -> Option<(u32, usize)> {
+    let first = read_u16(context, 0, endian, heap)?;
     if (0xd800..=0xdbff).contains(&first) {
-        let second = read_u16(context, 2, endian)?;
+        let second = read_u16(context, 2, endian, heap)?;
         if !(0xdc00..=0xdfff).contains(&second) {
             return None;
         }
@@ -366,11 +393,15 @@ fn decode_utf16(context: JitMatchContext, endian: Endian) -> Option<(u32, usize)
     }
 }
 
-fn decode_utf32(context: JitMatchContext, endian: Endian) -> Option<(u32, usize)> {
+fn decode_utf32(
+    context: JitMatchContext,
+    endian: Endian,
+    heap: HeapBorrow<'_>,
+) -> Option<(u32, usize)> {
     if !context.position_bits().is_multiple_of(u8::BITS as usize) || !context.has_bits(32) {
         return None;
     }
-    let bytes = context.slice(32)?;
+    let bytes = context.slice(32, heap)?;
     let codepoint = match endian {
         Endian::Big => u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
         Endian::Little => u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
@@ -378,7 +409,12 @@ fn decode_utf32(context: JitMatchContext, endian: Endian) -> Option<(u32, usize)
     valid_codepoint(codepoint).then_some((codepoint, 32))
 }
 
-fn read_u16(context: JitMatchContext, byte_offset: usize, endian: Endian) -> Option<u16> {
+fn read_u16(
+    context: JitMatchContext,
+    byte_offset: usize,
+    endian: Endian,
+    heap: HeapBorrow<'_>,
+) -> Option<u16> {
     if !context.position_bits().is_multiple_of(u8::BITS as usize) {
         return None;
     }
@@ -386,7 +422,7 @@ fn read_u16(context: JitMatchContext, byte_offset: usize, endian: Endian) -> Opt
     if !context.has_bits(bits) {
         return None;
     }
-    let bytes = context.slice(bits)?;
+    let bytes = context.slice(bits, heap)?;
     let pair = [bytes[byte_offset], bytes[byte_offset + 1]];
     Some(match endian {
         Endian::Big => u16::from_be_bytes(pair),
@@ -466,10 +502,10 @@ mod gc_hazard_tests {
         }
     }
 
-    fn extracted_bytes(term: Term) -> Vec<u8> {
+    fn extracted_bytes(term: Term, heap: HeapBorrow<'_>) -> Vec<u8> {
         BinaryRef::new(term)
             .expect("extraction result must stay a readable binary")
-            .as_bytes()
+            .as_bytes(heap)
             .to_vec()
     }
 
@@ -547,7 +583,10 @@ mod gc_hazard_tests {
         );
         assert_ne!(out_raw, 0, "extraction allocation must succeed");
         let expected: Vec<u8> = (1..=20).collect();
-        assert_eq!(extracted_bytes(Term::from_raw(out_raw)), expected);
+        assert_eq!(
+            extracted_bytes(Term::from_raw(out_raw), process.borrow_terms()),
+            expected
+        );
     }
 
     #[test]
@@ -568,7 +607,10 @@ mod gc_hazard_tests {
             "geometry must have collected"
         );
         let expected: Vec<u8> = (1..=20).collect();
-        assert_eq!(extracted_bytes(Term::from_raw(out_raw)), expected);
+        assert_eq!(
+            extracted_bytes(Term::from_raw(out_raw), process.borrow_terms()),
+            expected
+        );
     }
 
     #[test]
@@ -600,7 +642,10 @@ mod gc_hazard_tests {
         // The box referent: the extraction must still reach live parent bytes
         // after the collection moved the ProcBin box — a stale pre-alloc Term
         // capture leaves the result referencing the zeroed old young region.
-        assert_eq!(extracted_bytes(Term::from_raw(out_raw)), raw[..20].to_vec());
+        assert_eq!(
+            extracted_bytes(Term::from_raw(out_raw), process.borrow_terms()),
+            raw[..20].to_vec()
+        );
     }
 
     /// W4. Guards the O(1) sharing arm of `jit_bs_get_binary` — the arm
@@ -695,6 +740,9 @@ mod gc_hazard_tests {
         assert_eq!(extracted.len(), 20, "160 bits were requested");
         assert_eq!(extracted.parent(), forwarded);
 
-        assert_eq!(extracted_bytes(out), raw[..20].to_vec());
+        assert_eq!(
+            extracted_bytes(out, process.borrow_terms()),
+            raw[..20].to_vec()
+        );
     }
 }

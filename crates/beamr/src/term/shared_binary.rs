@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::term::Term;
 use crate::term::binary::{packed_word_count, write_binary};
 use crate::term::boxed::{BoxedHeader, BoxedTag};
+use crate::term::heap_borrow::HeapBorrow;
 
 /// Maximum byte length stored as an inline heap binary.
 ///
@@ -76,12 +77,29 @@ impl SharedBinary {
         Self { inner: cloned }
     }
 
-    pub(crate) fn bytes_from_raw_word(raw: u64) -> &'static [u8] {
+    pub(crate) fn bytes_from_raw_word<'heap>(raw: u64, heap: HeapBorrow<'heap>) -> &'heap [u8] {
         let ptr = raw as *const Vec<u8>;
-        // SAFETY: ProcBin heap words own a strong `Arc<Vec<u8>>` reference, so
-        // the pointed-to `Vec` remains live while the ProcBin object is live.
-        // Access is read-only through shared references.
-        unsafe { (*ptr).as_slice() }
+        // SAFETY: `raw` is a word read from a validated ProcBin payload, so it
+        // is a pointer produced by `Arc::into_raw` for `Arc<Vec<u8>>` whose
+        // strong reference the ProcBin heap object owns. Reading the `Vec`'s
+        // data pointer and length through it is read-only. The buffer does not
+        // move under GC, but GC *releases* that strong reference when the
+        // owning ProcBin dies in a collection (`gc::release_*`), so the bytes
+        // are bounded by the ProcBin's liveness — i.e. by the heap's. `heap`
+        // witnesses a live shared borrow of that heap, so the buffer cannot be
+        // released for `'heap`.
+        let (data, len) = unsafe { ((*ptr).as_ptr(), (*ptr).len()) };
+        // SAFETY: `data`/`len` describe the `Vec`'s initialised buffer, which
+        // the reasoning above keeps alive and unwritten for `'heap`.
+        unsafe { heap.slice(data, len) }
+    }
+
+    pub(crate) fn len_from_raw_word(raw: u64) -> usize {
+        let ptr = raw as *const Vec<u8>;
+        // SAFETY: as `bytes_from_raw_word` — `raw` came from a validated ProcBin
+        // payload word and the `Arc<Vec<u8>>` strong reference is owned by the
+        // live heap object. Only the length is read, and no borrow escapes.
+        unsafe { (*ptr).len() }
     }
 
     pub(crate) fn retained_raw_word(&self) -> u64 {
@@ -164,7 +182,7 @@ mod tests {
         let proc_bin = crate::term::boxed::ProcBin::new(term).expect("proc bin accessor");
 
         assert_eq!(proc_bin.len(), 8);
-        assert_eq!(proc_bin.as_bytes(), b"proc-bin");
+        assert_eq!(proc_bin.as_bytes(HeapBorrow::of_words(&heap)), b"proc-bin");
         let cloned = proc_bin.shared_binary();
         assert_eq!(cloned.as_bytes(), b"proc-bin");
         assert_eq!(shared.ref_count(), 3);
@@ -181,7 +199,7 @@ mod tests {
             assert_eq!(
                 crate::term::binary::Binary::new(term)
                     .expect("inline binary")
-                    .as_bytes(),
+                    .as_bytes(HeapBorrow::of_words(&heap)),
                 bytes.as_slice()
             );
         }
@@ -198,7 +216,7 @@ mod tests {
         assert_eq!(
             crate::term::boxed::ProcBin::new(term)
                 .expect("proc bin")
-                .as_bytes(),
+                .as_bytes(HeapBorrow::of_words(&heap)),
             bytes
         );
         assert_eq!(heap.len(), PROC_BIN_WORDS);

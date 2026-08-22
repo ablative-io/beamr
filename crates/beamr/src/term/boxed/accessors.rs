@@ -1,7 +1,8 @@
 //! Borrowed accessor structs for reading boxed term layouts.
 
 use crate::atom::Atom;
-use crate::term::{Term, binary::Binary, shared_binary::SharedBinary};
+use crate::term::Term;
+use crate::term::heap_borrow::HeapBorrow;
 
 use super::{BoxedHeader, BoxedTag};
 
@@ -110,11 +111,34 @@ impl BigInt {
         self.word(2) as usize
     }
 
-    pub fn limbs(self) -> &'static [u64] {
+    /// Limb words of this bignum, borrowed for the witness's borrow.
+    ///
+    /// The limbs live *in* the process heap, so a collection that moves or
+    /// reclaims this object invalidates them. `heap` is a shared borrow of that
+    /// storage and every collecting path needs `&mut Heap`/`&mut Process`, so
+    /// the borrow checker rejects any attempt to hold these limbs across one.
+    /// The bound is a type error, not a convention:
+    ///
+    /// ```compile_fail,E0502
+    /// use beamr::process::Process;
+    /// use beamr::term::boxed::{BigInt, write_bigint};
+    ///
+    /// let mut process = Process::new(1, 233);
+    /// let words = process.heap_mut().alloc_slice(5).expect("words");
+    /// let term = write_bigint(words, false, &[7, 9]).expect("bigint");
+    /// let bigint = BigInt::new(term).expect("accessor");
+    /// let limbs = bigint.limbs(process.borrow_terms());
+    /// let _ = beamr::gc::collect_minor(&mut process);
+    /// assert_eq!(limbs, &[7, 9]);
+    /// ```
+    pub fn limbs<'heap>(self, heap: HeapBorrow<'heap>) -> &'heap [u64] {
         let count = self.limb_count();
-        // SAFETY: the limb count is written by write_bigint, and the returned
-        // borrow points into caller-owned heap storage that must outlive use.
-        unsafe { std::slice::from_raw_parts(self.ptr.add(3), count) }
+        // SAFETY: `limb_count` is the word written by `write_bigint`, so `count`
+        // limb words follow the three-word header inside this bignum's boxed
+        // object. `heap` witnesses a live shared borrow of the storage that
+        // object sits in, which keeps the words valid and immovable for
+        // `'heap`; the returned slice cannot outlive that borrow.
+        unsafe { heap.slice(self.ptr.add(3), count) }
     }
 
     fn word(self, offset: usize) -> u64 {
@@ -255,112 +279,6 @@ impl Map {
     }
 }
 
-/// Borrowed accessor for an off-heap reference-counted binary.
-#[derive(Copy, Clone, Debug)]
-pub struct ProcBin {
-    ptr: *const u64,
-}
-
-impl ProcBin {
-    pub fn new(term: Term) -> Option<Self> {
-        let ptr = header_ptr(term, BoxedTag::ProcBin)?;
-        // SAFETY: `header_ptr` returned a boxed ProcBin header pointer.
-        let header = unsafe { *ptr };
-        if BoxedHeader::size(header) != 2 {
-            return None;
-        }
-        // SAFETY: validated ProcBin layout has two payload words; word two is
-        // the raw Arc pointer and must be present/non-null before access.
-        if unsafe { *ptr.add(2) } == 0 {
-            return None;
-        }
-
-        Some(Self { ptr })
-    }
-
-    pub fn as_bytes(self) -> &'static [u8] {
-        SharedBinary::bytes_from_raw_word(self.arc_ptr_word())
-    }
-
-    pub fn len(self) -> usize {
-        self.as_bytes().len()
-    }
-
-    pub fn is_empty(self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn shared_binary(self) -> SharedBinary {
-        SharedBinary::clone_from_raw_word(self.arc_ptr_word())
-    }
-
-    fn arc_ptr_word(self) -> u64 {
-        // SAFETY: ProcBin payload word two stores the raw `Arc<Vec<u8>>` pointer.
-        unsafe { *self.ptr.add(2) }
-    }
-}
-
-/// Borrowed accessor for a sub-binary view into an inline Binary or ProcBin.
-#[derive(Copy, Clone, Debug)]
-pub struct SubBinary {
-    ptr: *const u64,
-}
-
-impl SubBinary {
-    pub fn new(term: Term) -> Option<Self> {
-        let ptr = header_ptr(term, BoxedTag::SubBinary)?;
-        // SAFETY: `header_ptr` returned a boxed SubBinary header pointer.
-        let header = unsafe { *ptr };
-        if BoxedHeader::size(header) != 4 {
-            return None;
-        }
-
-        let sub_binary = Self { ptr };
-        let parent_bytes = parent_bytes(sub_binary.parent())?;
-        let end = sub_binary.offset().checked_add(sub_binary.len())?;
-        if end > parent_bytes.len() {
-            return None;
-        }
-
-        Some(sub_binary)
-    }
-
-    pub fn parent(self) -> Term {
-        Term::from_raw(self.word(1))
-    }
-
-    pub fn len(self) -> usize {
-        self.word(3) as usize
-    }
-
-    pub fn is_empty(self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn as_bytes(self) -> &'static [u8] {
-        let bytes = parent_bytes(self.parent()).unwrap_or(&[]);
-        let start = self.offset();
-        let end = start.checked_add(self.len()).unwrap_or(start);
-        bytes.get(start..end).unwrap_or(&[])
-    }
-
-    fn offset(self) -> usize {
-        self.word(2) as usize
-    }
-
-    fn word(self, offset: usize) -> u64 {
-        // SAFETY: validated SubBinary layout contains fixed payload words.
-        unsafe { *self.ptr.add(offset) }
-    }
-}
-
-fn parent_bytes(parent: Term) -> Option<&'static [u8]> {
-    if let Some(binary) = Binary::new(parent) {
-        return Some(binary.as_bytes());
-    }
-    ProcBin::new(parent).map(ProcBin::as_bytes)
-}
-
 /// Borrowed accessor for a boxed reference.
 #[derive(Copy, Clone, Debug)]
 pub struct Reference {
@@ -456,7 +374,7 @@ fn word_at(ptr: *const u64, offset: usize) -> u64 {
     unsafe { *ptr.add(offset) }
 }
 
-fn header_ptr(term: Term, expected_tag: BoxedTag) -> Option<*const u64> {
+pub(super) fn header_ptr(term: Term, expected_tag: BoxedTag) -> Option<*const u64> {
     if !term.is_boxed() {
         return None;
     }
