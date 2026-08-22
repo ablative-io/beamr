@@ -945,3 +945,43 @@ Instrument: every `pub fn` line added or removed by this flight, all crates.
 ================================================================================
 END — round 4
 ================================================================================
+
+================================================================================
+13. CONFIRMATION CANON AT THE REPORT COMMIT
+================================================================================
+
+  The grade of §2 was taken against 1abfdad4. The report and this file were then
+  committed as 843b48fe. Since that commit adds only docs/ and .fleet/ text, no
+  compiled artefact moved — but "no artefact moved" is a claim, so the entry was
+  re-run at the report commit rather than asserted:
+
+  $ ./.fleet/gate-entry.sh ; echo ENTRY_EXIT=$?
+  ENTRY_EXIT=1
+  $ diff ../gates-round-4.log ../gates-round-4-confirm.log
+  (no output — IDENTICAL to the pre-commit grade, leg for leg, count for count)
+
+  Working tree at the report commit: CLEAN (`git status --short` empty).
+  Files changed by this seat, against the round-3 tree:
+    .fleet/reports/accessor.md                   +496
+    docs/evidence/beamr-accessor-gate-round4.txt +947
+  NO SOURCE FILE WAS TOUCHED AT THIS SEAT, because no red on this tree had an
+  in-scope cause.
+
+================================================================================
+14. LANE BOUNDARY — measured, not asserted
+================================================================================
+
+  $ git rev-parse --short origin/fleet/accessor-lifetimes-base   -> 506fa7b3
+  $ git rev-parse --short HEAD                                   -> 843b48fe
+  $ git rev-list --count origin/fleet/accessor-lifetimes-base..HEAD  -> 19
+  $ git branch --contains HEAD -a | grep -c ' main$'             -> 0
+  $ git rev-list --left-right --count main...HEAD                -> 0   23
+
+  main is 0 ahead of HEAD and HEAD is 23 ahead of main: main is an ANCESTOR of
+  this candidate, and this candidate is in NO branch named main. Nineteen
+  commits sit local to the run tree, unpushed — the fan-in contract's business,
+  not this seat's. NOTHING WAS MERGED TO BEAMR main AND NOTHING WAS PUSHED.
+
+================================================================================
+END — round 4 (with confirmation)
+================================================================================
