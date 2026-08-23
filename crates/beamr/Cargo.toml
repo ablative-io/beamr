@@ -79,6 +79,14 @@ opentelemetry_sdk = { version = "0.32.1", features = ["testing"] }
 proptest = "1.11.0"
 
 [[bench]]
+# beamr#35's differential bench. Deliberately NOT feature-gated: gating on
+# jit+threads is what left the two benches below unable to see the term-copy
+# paths at all. The differential runner copies this stanza plus the bench
+# source into the base-arm worktree.
+name = "term_copy"
+harness = false
+
+[[bench]]
 name = "jit_comparison"
 harness = false
 required-features = ["jit", "threads"]
