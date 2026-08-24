@@ -25,8 +25,8 @@ deopt-after-side-effect guard sees them correctly. The 75-variant consistency
 walk is green with the derived Supported count moved 60 → 64, still exhaustive,
 still wildcard-free, not weakened. Six new test files carry R3, R3b, R4, R5 and
 the findings. `is_no_fail_label` was NOT edited — F1's declaration is made at the
-bytes in §2. Six further findings (F7–F12) were measured and are recorded in §10
-rather than papered over.
+bytes in §2. Eight further findings — F7, F8, F9, F-AWL, F10a, F10b, F11, F12 —
+were measured and are recorded in §9 and §10 rather than papered over.
 
 **The gate is NOT green.** 8 of the 9 canon legs pass — including `tests` (2196
 passed) and `tests-all-features` (2206 passed), where every fixture in this
@@ -82,7 +82,12 @@ Supported count = 60, as the plan measured.
 ### 1b. Final — **NOT GATE-GREEN. 8 of 9 canon legs green; the 9th cannot measure on this venue.**
 
 Stated plainly rather than dressed up: **this leg did not reach GATE-GREEN, and
-it cannot from inside its own wall.** Receipt at `aed8fde5`:
+it cannot from inside its own wall.**
+
+Receipt taken at `aed8fde5`, the commit carrying every code change in this leg.
+Commits after it touch only `.fleet/reports/build.md` — this file — which no
+canon leg reads and which the census counts inside the wall, so the verdict is
+unchanged at the tip. A confirming run at the tip was made and matched.
 
 ```
 == 1. environment floors ==
@@ -828,9 +833,13 @@ stating one; rustfmt re-flowed nothing else.
 
 ---
 
-## 9. Venue remediation — the clippy leg was RED AT BASE on this box
+## 9. Venue remediation — TWO canon legs were RED AT THE PINNED BASE on this box
 
 **Declared as its own diff category so review never reads it as mechanism.**
+Both were measured at `272ca9e` in a throwaway worktree before anything was
+changed, so "pre-existing" is a measurement here, not a claim. A third base red —
+`nostd-ratchet` — could NOT be remediated, because its cause lives outside this
+leg's wall; it is finding F11 in §10 and it is why §1b is not green.
 
 ### 9a. Finding F10a — the `clippy` leg
 
@@ -945,12 +954,13 @@ failing measurement behind it. Recorded so the seat can decide. The full audit o
 
 ---
 
-## 10. Findings — F7 through F10, recorded in the register of F1–F6
+## 10. Findings — F7 through F12, recorded in the register of F1–F6
 
 Plan findings **F1–F6 are binding and were not re-litigated**. F1 is discharged
 in §2d, F2 in §4d, F3 in §5 (full `ablative-io/aion` paths carried throughout),
-F4 in §4c, F5 in §3a (no divergence to report), F6 in §3c and §6c. Four further
-drifts were measured at the bytes on this leg.
+F4 in §4c, F5 in §3a (no divergence to report), F6 in §3c and §6c. Six further
+drifts were measured at the bytes on this leg — F7, F8, F9, F11, F12 and F-AWL.
+The two venue reds, F10a and F10b, are in §9 beside the diff they carry.
 
 ### F7 — a deopt AFTER a frame push duplicates the frame in the raise-time stacktrace. **Pre-existing; measured with a control.**
 
@@ -1230,5 +1240,11 @@ Tests leg (§9b): `crates/beamr/src/distribution/mod.rs`,
 `crates/beamr/tests/thread_inventory_distribution.rs`,
 `crates/beamr/tests/with_services.rs`.
 
-Everything is inside the wall (`crates/`, `.fleet/`). Nothing outside it was
-touched. Nothing was pushed.
+### Report
+
+`.fleet/reports/build.md` — this file.
+
+Everything is inside the wall (`crates/`, `.fleet/`). **Nothing outside the wall
+was touched**, including `scripts/gate-nostd-ratchet.sh`, whose one-line repair
+would have made the ninth canon leg measurable — see §1b and §10 F11 for why that
+was reported rather than done. Nothing was pushed.
