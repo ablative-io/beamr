@@ -15,7 +15,38 @@ PATH="${HOME}/.cargo/bin:${HOME}/.local/bin:${HOME}/.bun/bin:${PATH:-/usr/bin:/b
 ulimit -n 4096 || echo "  note: fd raise refused, soft stays $(ulimit -n); proceeding"
 
 BASE=272ca9e034b0f78f50e30ec1068ea1eca967e6d6   # beamr main, pinned = the brief's own floor commit
-WALL='^(crates/|conformance/|probes/|\.fleet/)'
+
+# ⛔⛔ THE ONE NAMED DOOR IN THIS WALL — beamr#31, opened at the fix round of
+# beamr-r8-flight1, and it is the seat's to shut.
+#
+# The wall as drawn (crates/ conformance/ probes/ .fleet/) scopes the R8 DEOPT
+# deliverable, and it is correct for that. What it could not anticipate is that
+# canon leg 9, `nostd-ratchet`, is BROKEN AT THE PINNED BASE on this venue: the
+# leg script builds its cargo log with the BSD `mktemp -t PREFIX` spelling that
+# GNU coreutils refuses, so the leg has never once taken a reading on Linux. It
+# reds rc=3 CANNOT-MEASURE, structurally, for a cause outside the wall.
+#
+# That left exactly two reachable outcomes and no third: canon_red (leave a
+# known-blind instrument blind) or wall_breach (repair it). The build round
+# measured both and escalated the call rather than taking it — report §1b,
+# finding F11. The seat's answer to the fix round was "fix the CAUSE the red
+# names ... a CANNOT-MEASURE red names the instrument, not the tree ... never by
+# skipping the leg." A repair is what that orders, and the repair is one line
+# one directory outside the wall.
+#
+# ⭐ SO THE DOOR IS ONE FILE WIDE, BY EXACT PATH, AND IT IS LOCKED. Not
+# `scripts/` — everything else under it, gates.json, ci-verdict.sh and every
+# manifest stay walled exactly as before. And because the obvious abuse of a
+# door into the ratchet is to walk the CEILING through it, §3b below pins that
+# file's JUDGMENT — CEILING, CEILING_PIN, verdict(), parse_tally() — byte-for-
+# byte against BASE, unconditionally. The door admits MEASUREMENT REPAIR and
+# mechanically refuses anything that changes what the ratchet decides.
+#
+# Net: this gate now refuses strictly MORE than it did before the door existed.
+# A widening that only widens is the move the orders forbid; this one carries
+# its own lock, and the lock did not exist until now.
+RATCHET='scripts/gate-nostd-ratchet.sh'
+WALL='^(crates/|conformance/|probes/|\.fleet/|scripts/gate-nostd-ratchet\.sh$)'
 
 red() { echo "GATE-RED: $1"; exit 1; }
 
@@ -49,6 +80,41 @@ fi
 NCRATES=$(echo "${CHANGED}" | grep -cE '^crates/' || true)
 [ "${NCRATES}" -gt 0 ] || red "nothing under crates/ — deliverable absent (named cause: deliverable_absent)"
 echo "  census OK ($(echo "${CHANGED}" | wc -l | tr -d ' ') files in wall, ${NCRATES} under crates/)"
+
+echo "== 3b. ratchet judgment lock (the named door's lock) =="
+# Extract ONLY what the ratchet DECIDES — the ceiling, its pin, and the two
+# functions that turn (rc, tally) into a verdict. Everything else in that file
+# is comment, self-test and plumbing, which the door exists to let through.
+ratchet_judgment() {   # stdin: the ratchet script. stdout: its judgment alone.
+  awk '
+    /^CEILING=/ || /^CEILING_PIN=/            { print; next }
+    /^(verdict|parse_tally)\(\) \{/           { keep = 1 }
+    keep                                      { print }
+    keep && /^\}$/                            { keep = 0 }
+  '
+}
+# NOT `git show ... | ratchet_judgment` in one shot: a pipeline reports the LAST
+# command's status, so awk's 0 would mask a failed `git show` and the guard
+# below would be dead code. Take the source first, judge it second.
+BASE_SRC=$(git show "${BASE}:${RATCHET}") || red "cannot read ${RATCHET} at ${BASE} (named cause: instrument_broken)"
+BASE_J=$(echo "${BASE_SRC}" | ratchet_judgment)
+[ -r "${RATCHET}" ] || red "cannot read ${RATCHET} at HEAD (named cause: instrument_broken)"
+HEAD_J=$(ratchet_judgment < "${RATCHET}")
+# Positive control on the extractor itself: an extractor that returns nothing
+# would compare empty-to-empty and "pass" over any edit at all.
+BASE_N=$(echo "${BASE_J}" | grep -c '^CEILING=' || true)
+[ "${BASE_N}" -eq 1 ] || red "judgment extractor found ${BASE_N} CEILING lines at BASE, wanted 1 — the lock cannot measure (named cause: instrument_broken)"
+if [ "${BASE_J}" != "${HEAD_J}" ]; then
+  echo "  the ratchet's JUDGMENT changed against ${BASE}:"
+  # POSIX sh: no process substitution here, this file is #!/bin/sh.
+  LOCKTMP=$(mktemp -d) || red "cannot create lock temp dir (named cause: instrument_broken)"
+  echo "${BASE_J}" > "${LOCKTMP}/base"
+  echo "${HEAD_J}" > "${LOCKTMP}/head"
+  diff "${LOCKTMP}/base" "${LOCKTMP}/head" | sed 's/^/    /'
+  rm -rf "${LOCKTMP}"
+  red "ratchet judgment altered — the door admits measurement repair ONLY, never a ceiling move (named cause: ratchet_judgment_altered)"
+fi
+echo "  locked: CEILING, CEILING_PIN, verdict(), parse_tally() byte-identical to ${BASE}"
 
 echo "== 4. suppression sweep =="
 SUPP=$(git diff --no-ext-diff -U0 "${BASE}...HEAD" -- '*.rs' | grep -E '^\+' | grep -cE '#\[ignore|#\[allow|#\[expect|#\[cfg\(any\(\)' || true)
