@@ -275,7 +275,7 @@ fn replay_disables_the_distribution_bundle_even_with_some_config() {
     )
     .expect("replay scheduler starts");
 
-    // NEITHER runtime exists: the bundle is Disabled (no "beamr-net-kernel"
+    // NEITHER runtime exists: the bundle is Disabled (no "beamr-netkernel"
     // worker), not merely sender-less. This is the commit-5 resolution of the
     // commit-4 inconsistency.
     assert_eq!(

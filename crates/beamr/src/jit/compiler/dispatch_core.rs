@@ -424,6 +424,28 @@ pub(super) fn lower_core_instruction(
             return_status_raw(builder, JIT_STATUS_DEOPT, JIT_DEOPT_SENTINEL);
             Ok(Some(true))
         }
+        // BEAMR-R8-DEOPT: the four error-raising terminals take the func_info
+        // treatment VERBATIM — the arm above is the template and this is the same
+        // body. Each is reached only via a fail edge (a select_val fall-through
+        // trap or an assertion fail edge); it deopts, and the restarted
+        // interpreter raises the error against operands IT recomputes.
+        //
+        // NO STATE CROSSES THE DEOPT, deliberately. `JIT_STATUS_DEOPT` makes
+        // `call_native` return `Ok(None)` (interpreter/opcodes/core.rs:950) —
+        // "the JIT declined" — so the caller re-enters the callee at its
+        // BYTECODE ENTRY and re-executes the whole function interpreted. That
+        // restart, not a marshalled operand, is what makes the raised reason
+        // correct: e.g. AWL's `Badmatch` subject is re-pointed into X0 by a
+        // `Move` immediately before the trap, and the restart re-executes that
+        // `Move` itself. Marshalling operands here would be a NEW mechanism and
+        // would break exactly that fidelity.
+        Instruction::Badmatch { .. }
+        | Instruction::Badrecord { .. }
+        | Instruction::CaseEnd { .. }
+        | Instruction::IfEnd => {
+            return_status_raw(builder, JIT_STATUS_DEOPT, JIT_DEOPT_SENTINEL);
+            Ok(Some(true))
+        }
         // -- exception handling --
         Instruction::Try { destination, label } => {
             let catch_block = blocks.label_block(label_operand(label)?)?;

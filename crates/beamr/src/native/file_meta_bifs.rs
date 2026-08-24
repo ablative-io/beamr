@@ -250,20 +250,18 @@ fn file_info_tuple(context: &mut ProcessContext, data: &StatxData) -> Result<Ter
 }
 
 fn file_type_atom(atom_table: &AtomTable, mode: u32) -> Atom {
-    match mode & libc::S_IFMT as u32 {
-        value if value == libc::S_IFREG as u32 => atom_table.intern("regular"),
-        value if value == libc::S_IFDIR as u32 => atom_table.intern("directory"),
-        value if value == libc::S_IFLNK as u32 => atom_table.intern("symlink"),
-        value if value == libc::S_IFBLK as u32 || value == libc::S_IFCHR as u32 => {
-            atom_table.intern("device")
-        }
+    match mode & libc::S_IFMT {
+        value if value == libc::S_IFREG => atom_table.intern("regular"),
+        value if value == libc::S_IFDIR => atom_table.intern("directory"),
+        value if value == libc::S_IFLNK => atom_table.intern("symlink"),
+        value if value == libc::S_IFBLK || value == libc::S_IFCHR => atom_table.intern("device"),
         _ => atom_table.intern("other"),
     }
 }
 
 fn access_atom(atom_table: &AtomTable, mode: u32) -> Atom {
-    let read_bits = (libc::S_IRUSR | libc::S_IRGRP | libc::S_IROTH) as u32;
-    let write_bits = (libc::S_IWUSR | libc::S_IWGRP | libc::S_IWOTH) as u32;
+    let read_bits = libc::S_IRUSR | libc::S_IRGRP | libc::S_IROTH;
+    let write_bits = libc::S_IWUSR | libc::S_IWGRP | libc::S_IWOTH;
     let readable = mode & read_bits != 0;
     let writable = mode & write_bits != 0;
     match (readable, writable) {

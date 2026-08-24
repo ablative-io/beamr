@@ -366,6 +366,30 @@ impl TranslationPlan {
                 Instruction::FuncInfo { .. } => {
                     block_starts.insert(index + 1);
                 }
+                // Error-raising terminals (BEAMR-R8-DEOPT): DEOPT terminals on the
+                // func_info seam, reached only via a fail edge — a select_val
+                // fall-through trap (CaseEnd) or an assertion fail edge
+                // (Badmatch). When reached they deopt, and the restarted
+                // interpreter raises {badmatch,V} / {case_clause,V} / the bare
+                // atom if_clause against operands it recomputes itself.
+                //
+                // The `value` operand is ACCEPTED, NOT ACCEPTED BLIND: the
+                // interpreter reads it (interpreter/opcodes/exceptions.rs:143-163
+                // via `core::read_term`), so a shape this tier cannot represent
+                // must be rejected here rather than lowered into a deopt whose
+                // restart then fails differently.
+                Instruction::Badmatch { value }
+                | Instruction::Badrecord { value }
+                | Instruction::CaseEnd { value } => {
+                    validate_read_operand(value)?;
+                    block_starts.insert(index + 1);
+                }
+                // `IfEnd` is fieldless (loader/decode/instruction.rs:252): there is
+                // no operand to validate, and its reason is a bare atom built by
+                // the interpreter. Block-start insertion only.
+                Instruction::IfEnd => {
+                    block_starts.insert(index + 1);
+                }
                 other => {
                     // The pre-pass rejects here only variants the coverage table
                     // marks non-Supported; a divergence is a coverage-table bug.
@@ -479,9 +503,11 @@ fn control_flow_successors(
     match &instructions[index] {
         // Leaves the function: no in-slice successor. (Helper-return / tail calls
         // return the callee result; FuncInfo and the recv-markers deopt; Return
-        // returns.) An effect before these never reaches a later slice instruction
-        // by fall-through — only a real branch can, and that branch is its own
-        // edge below.
+        // returns; the BEAMR-R8-DEOPT error terminals Badmatch/Badrecord/CaseEnd/
+        // IfEnd deopt and the restarted interpreter RAISES, so control leaves via
+        // the exception, never by fall-through to a sibling clause.) An effect
+        // before these never reaches a later slice instruction by fall-through —
+        // only a real branch can, and that branch is its own edge below.
         Instruction::Return
         | Instruction::CallExt { .. }
         | Instruction::CallExtOnly { .. }
@@ -494,7 +520,11 @@ fn control_flow_successors(
         | Instruction::RecvMarkerReserve { .. }
         | Instruction::RecvMarkerBind { .. }
         | Instruction::RecvMarkerClear { .. }
-        | Instruction::RecvMarkerUse { .. } => {}
+        | Instruction::RecvMarkerUse { .. }
+        | Instruction::Badmatch { .. }
+        | Instruction::Badrecord { .. }
+        | Instruction::CaseEnd { .. }
+        | Instruction::IfEnd => {}
         // Unconditional in-slice transfers: target only, never fall-through.
         Instruction::Jump { target } => succ.extend(resolve(target)),
         Instruction::Call { label, .. }

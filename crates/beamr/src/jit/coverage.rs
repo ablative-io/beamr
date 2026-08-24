@@ -106,7 +106,19 @@ pub fn coverage(instruction: &Instruction) -> Coverage {
         // -- landing pad. Lowered as a DEOPT terminal (RecvMarker precedent): the
         // -- restarted interpreter raises error:function_clause. Reached only via
         // -- a dispatch fail edge; normal calls enter at the label AFTER it.
-        | Instruction::FuncInfo { .. } => Coverage::Supported,
+        | Instruction::FuncInfo { .. }
+        // -- Supported: BEAMR-R8-DEOPT — the four error-raising terminals, under
+        // -- the func_info treatment exactly. Each is reached ONLY via a fail
+        // -- edge (a select_val fall-through trap or an assertion fail edge),
+        // -- lowered as a DEOPT terminal, and the restarted interpreter raises
+        // -- the error: {badmatch,V} / {case_clause,V} / the bare atom if_clause.
+        // -- No state crosses the deopt — the restart recomputes every operand
+        // -- from the function's bytecode entry. A cold error trap no longer
+        // -- rejects its whole containing function from JIT/AOT coverage.
+        | Instruction::Badmatch { .. }
+        | Instruction::Badrecord { .. }
+        | Instruction::CaseEnd { .. }
+        | Instruction::IfEnd => Coverage::Supported,
 
         // -- RejectedIncremental: wave 2 (the arc's next brief) --
         Instruction::SelectTupleArity { .. } => Coverage::RejectedIncremental {
@@ -119,12 +131,6 @@ pub fn coverage(instruction: &Instruction) -> Coverage {
         | Instruction::RawRaise
         | Instruction::BuildStacktrace => Coverage::RejectedIncremental {
             reason: "wave 2: exception machinery / error terminals",
-        },
-        Instruction::Badmatch { .. }
-        | Instruction::Badrecord { .. }
-        | Instruction::CaseEnd { .. }
-        | Instruction::IfEnd => Coverage::RejectedIncremental {
-            reason: "wave 2: error-raising terminals",
         },
         Instruction::UpdateRecord { .. } => Coverage::RejectedIncremental {
             reason: "wave 2: UpdateRecord (record update over tuples)",
@@ -280,14 +286,20 @@ pub(crate) fn is_observable_side_effect(instruction: &Instruction) -> bool {
 /// `CallFun`/`CallFun2`/`Apply`/`ApplyLast` (`handle_helper_return` / the tail
 /// `dealloc` `frame_guard` deopt); the heap-allocating data ops `PutList`/
 /// `PutTuple2`/`MakeFun` and `BinaryOp` (deopt on a null heap allocation); and
-/// `Fmove` (deopt on a zero/invalid float box, `ir_float.rs:96`).
+/// `Fmove` (deopt on a zero/invalid float box, `ir_float.rs:96`); and the
+/// error-raising terminals `Badmatch`/`Badrecord`/`CaseEnd`/`IfEnd`
+/// (BEAMR-R8-DEOPT — an UNCONDITIONAL deopt on the `func_info` seam,
+/// `dispatch_core.rs`, so the restarted interpreter raises).
 ///
 /// Everything else is `false`: pure register/heap reads, the guards and the plain
 /// float/map ops (which branch only to REAL in-slice fail labels, never deopt),
 /// `Send`/`RemoveMessage`/`Timeout`/`LoopRecEnd` (observable but non-deopting
 /// lowerings), the plain in-slice `Call`/`CallOnly` jumps, the exception-seam
-/// ops, and every non-`Supported` variant (never lowered — the pre-pass rejects
-/// the whole function first, so their class never gates a live decision).
+/// ops, and the REMAINING non-`Supported` variants (never lowered — the pre-pass
+/// rejects the whole function first, so their class never gates a live
+/// decision). Since BEAMR-R8-DEOPT that remainder no longer includes
+/// `Badmatch`/`Badrecord`/`CaseEnd`/`IfEnd`: they are `Supported` and their
+/// `true` classification above DOES gate a live decision.
 pub(crate) fn is_runtime_deopt_capable(instruction: &Instruction) -> bool {
     match instruction {
         Instruction::Bif { .. }
@@ -318,7 +330,15 @@ pub(crate) fn is_runtime_deopt_capable(instruction: &Instruction) -> bool {
         | Instruction::BinaryOp { .. }
         | Instruction::Fmove { .. }
         // LEG 1c A2: func_info is lowered as an unconditional DEOPT terminal.
-        | Instruction::FuncInfo { .. } => true,
+        | Instruction::FuncInfo { .. }
+        // BEAMR-R8-DEOPT: the four error-raising terminals are lowered as
+        // unconditional DEOPT terminals on the same seam (dispatch_core.rs), so
+        // they are runtime-deopt-capable and the deopt-after-side-effect guard
+        // must see them.
+        | Instruction::Badmatch { .. }
+        | Instruction::Badrecord { .. }
+        | Instruction::CaseEnd { .. }
+        | Instruction::IfEnd => true,
         Instruction::Label { .. }
         | Instruction::Line { .. }
         | Instruction::Move { .. }
@@ -359,10 +379,6 @@ pub(crate) fn is_runtime_deopt_capable(instruction: &Instruction) -> bool {
         | Instruction::Raise { .. }
         | Instruction::RawRaise
         | Instruction::BuildStacktrace
-        | Instruction::Badmatch { .. }
-        | Instruction::Badrecord { .. }
-        | Instruction::CaseEnd { .. }
-        | Instruction::IfEnd
         | Instruction::UpdateRecord { .. }
         | Instruction::OnLoad
         | Instruction::NifStart

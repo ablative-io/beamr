@@ -115,7 +115,7 @@ impl Scheduler {
         // Distribution bundle, owner-only (spec §3.6/§4): an Owned bundle aborts
         // the drain and the connection read/accept/heartbeat lifecycle tasks, then
         // synchronously JOINS BOTH tokio runtime workers ("beamr-dist-send" and
-        // "beamr-net-kernel") before returning — replacing the former abort-only
+        // "beamr-netkernel") before returning — replacing the former abort-only
         // stop that left the runtimes to a last-Arc Drop. A Disabled bundle
         // no-ops. Idempotent: a second shutdown finds both runtimes already taken.
         // `shutdown_owned` leaves the slot readable so the post-shutdown inventory
