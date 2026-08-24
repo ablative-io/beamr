@@ -25,10 +25,21 @@ deopt-after-side-effect guard sees them correctly. The 75-variant consistency
 walk is green with the derived Supported count moved 60 → 64, still exhaustive,
 still wildcard-free, not weakened. Six new test files carry R3, R3b, R4, R5 and
 the findings. `is_no_fail_label` was NOT edited — F1's declaration is made at the
-bytes in §2. Four further findings (F7–F10) were measured and are recorded in
-§10 rather than papered over. The gate is GREEN; reaching green required fixing
-a **pre-existing, venue-specific clippy red measured at the pinned base**, which
-is declared as its own diff category in §9.
+bytes in §2. Six further findings (F7–F12) were measured and are recorded in §10
+rather than papered over.
+
+**The gate is NOT green.** 8 of the 9 canon legs pass — including `tests` (2196
+passed) and `tests-all-features` (2206 passed), where every fixture in this
+report runs — and the 9th, `nostd-ratchet`, returns **CANNOT-MEASURE (rc=3)** for
+a cause outside this leg's wall: a BSD `mktemp -t PREFIX` idiom in
+`scripts/gate-nostd-ratchet.sh` that GNU coreutils refuses. Receipt and reasoning
+in §1b; the finding, its proof, and its one-line fix in §10 F11. The ratchet's
+underlying measurement is a **PASS** — 1051 errors, exactly at the ceiling —
+measured by running the script's own logic with the template repaired in `/tmp`
+so nothing in the tree is touched. Getting the other eight legs green
+additionally required fixing two **pre-existing, venue-specific reds measured at
+the pinned base** (clippy; and a thread name Linux truncates), declared as their
+own diff category in §9.
 
 ---
 
@@ -68,9 +79,77 @@ test result: ok. 4 passed; 0 failed
 
 Supported count = 60, as the plan measured.
 
-### 1b. Final — GATE-GREEN
+### 1b. Final — **NOT GATE-GREEN. 8 of 9 canon legs green; the 9th cannot measure on this venue.**
 
-*(receipt pasted in §11 after the closing run)*
+Stated plainly rather than dressed up: **this leg did not reach GATE-GREEN, and
+it cannot from inside its own wall.** Receipt at `aed8fde5`:
+
+```
+== 1. environment floors ==
+  disk free: 400G
+== 2. tree receipt ==
+  HEAD: aed8fde53b4818fd71113ac1ed10dda323022bf1
+  TREE: CLEAN
+== 3. paths census ==
+  census OK (30 files in wall, 24 under crates/)
+== 4. suppression sweep ==
+  clean
+== 5. the canon (gates.json legs, run as ci.yml runs them) ==
+  gates.json declares 9 legs
+  LEG 1 (fmt) rc=0
+  LEG 2 (clippy) rc=0
+  LEG 3 (wasm32-check) rc=0
+  LEG 4 (wasm-tests) rc=0
+  LEG 5 (tests) rc=0
+  LEG 6 (blocking-call-in-native-bif) rc=0
+  LEG 7 (clippy-all-features) rc=0
+  LEG 8 (tests-all-features) rc=0
+  LEG 9 (nostd-ratchet) rc=3
+== 6. verdict (scripts/ci-verdict.sh — the one copy of the truth) ==
+  wasm-tests: 2 result line(s), 86 passed
+  tests: 85 result line(s), 2196 passed
+  tests-all-features: 85 result line(s), 2206 passed
+  blocking-call-in-native-bif: rc=0 pass
+  clippy-all-features: rc=0 pass
+  clippy: rc=0 pass
+  fmt: rc=0 pass
+  nostd-ratchet: rc=3 FAIL — measured red
+  tests-all-features: rc=0 pass
+  tests: rc=0 pass
+  wasm-tests: rc=0 pass
+  wasm32-check: rc=0 pass
+GATE-RED: canon verdict rc=1 (named cause: canon_red — read the leg logs above)
+```
+
+**The rig arms are all green**: tree CLEAN, census in the wall (30 files, 24 under
+`crates/`), suppression sweep **clean** (R6, mechanically). **Eight canon legs are
+green**, including `tests` (2196 passed) and `tests-all-features` (2206 passed),
+which is where every fixture in this report runs.
+
+**Leg 9, `nostd-ratchet`, returns rc=3 — CANNOT MEASURE, not FAIL-on-the-merits.**
+Its cause is named in full in **finding F11 (§10)**: a BSD `mktemp -t PREFIX`
+idiom in `scripts/gate-nostd-ratchet.sh` that GNU coreutils refuses, so the
+script's log file is never created and its own REFUSE arm fires — correctly.
+`scripts/` is untouched by this leg (`git diff 272ca9e...HEAD -- scripts/
+gates.json` is empty) and the failure is deterministic on GNU coreutils, so it is
+structural at the pinned base; the base run never reached it only because it
+stopped earlier at `deliverable_absent`. The script's own ceiling comment already
+records this venue behaviour as issue **#31**.
+
+**The ratchet itself is a PASS, measured** — running the script's own logic with
+only the template repaired, from a copy in `/tmp` so nothing in the tree is
+touched: `rustc tally=1051, ceiling=1051 → PASS: exactly at the ceiling. Debt
+held.` This brief neither added nor removed no-std debt.
+
+**Why the gate was not made green.** The one-line repair lives outside this
+leg's wall, which `gate-entry.sh` §3 enforces mechanically: editing `scripts/`
+reds the gate with `wall_breach`. The only two reachable outcomes on this venue
+are `canon_red` (leave it) or `wall_breach` (fix it). The orders forbid editing
+the gate and forbid changing anything outside the wall, and the leg orders' own
+rule for exactly this case is *"Any other red at base is a rig finding — report
+it, do not route around it, do not edit the gate."* That is what was done. **The
+call on whether to widen the wall for a one-character-class instrument repair is
+the seat's, not the builder's.**
 
 ---
 
@@ -726,7 +805,26 @@ alternative**, with no semantic change to the line itself.
 Every other line in the mechanism diff is a real mechanism change or a comment
 that states one.
 
-### Category 3 — VENUE REMEDIATION: see §9, kept entirely separate
+### Category 3 — rustfmt-forced rejoins in the VENUE-REMEDIATION diff: **ONE**
+
+The house rule covers the whole diff, so the one genuine rejoin is declared here
+rather than left inside §9's remediation. In
+`crates/beamr/src/native/file_meta_bifs.rs`, dropping `as u32` shortened the
+guard enough that rustfmt collapsed the arm's block body onto one line:
+
+```diff
+-        value if value == libc::S_IFBLK as u32 || value == libc::S_IFCHR as u32 => {
+-            atom_table.intern("device")
+-        }
++        value if value == libc::S_IFBLK || value == libc::S_IFCHR => atom_table.intern("device"),
+```
+
+Three source lines become one. **No mechanism change** — the same guard, the same
+call, the same atom. Every other line in the venue-remediation diff
+(`io/uring.rs` included, checked hunk by hunk) is a real edit or a comment
+stating one; rustfmt re-flowed nothing else.
+
+### Category 4 — VENUE REMEDIATION: see §9, kept entirely separate
 
 ---
 
@@ -925,6 +1023,107 @@ scaffolding, not evidence, so R4's harness uses the ordinary scheduler in both
 arms and says so in its own header (§7). Recorded because a reader may reasonably
 expect "replay parity" to mean beamr's `crate::replay`; today it cannot.
 
+### F11 — the `nostd-ratchet` canon leg CANNOT MEASURE on this venue: a BSD `mktemp` idiom in the leg script. **The underlying ratchet is a PASS.**
+
+This is the one canon leg that did not go green, and the cause is the
+INSTRUMENT, not the tree. `scripts/gate-nostd-ratchet.sh` line 203:
+
+```sh
+LOG="$(mktemp -t nostd-ratchet)"
+```
+
+`mktemp -t PREFIX` is the BSD/macOS spelling. GNU coreutils requires the template
+to end in at least three `X`s, so on this box:
+
+```
+$ mktemp -t nostd-ratchet
+mktemp: too few X's in template 'nostd-ratchet'   (mktemp (GNU coreutils) 9.10)
+```
+
+`LOG` is therefore empty, `cargo check ... > "" 2>&1` fails with rc=1 having
+captured nothing, the tally line is absent, and the script's own REFUSE arm fires
+— correctly, because a gate that cannot measure must not report. The leg log
+names it in full:
+
+```
+  leg nostd-ratchet rc=3 — last 30 lines:
+    mktemp: too few X's in template 'nostd-ratchet'
+    ./scripts/gate-nostd-ratchet.sh: line 203: : No such file or directory
+    ./scripts/gate-nostd-ratchet.sh: line 205: : No such file or directory
+    no-std ratchet: cargo rc=1, rustc tally=<absent>, ceiling=1051
+    REFUSE: cargo exited 1 but no "due to N previous errors" line was found.
+```
+
+**The script already knows.** Its own ceiling comment records this venue
+behaviour and what it cost: *"it went unseen because this leg reds STRUCTURALLY
+on the Linux venue (#31), so the landing's own differential recorded rc=3 on both
+arms and counted two dead instruments as a matching leg."*
+
+**Pre-existing, proven:** `git diff 272ca9e...HEAD -- scripts/ gates.json` is
+EMPTY — this leg touched neither. The failure is deterministic on GNU coreutils,
+so it is structural at the pinned base and was simply never reached there (the
+base run stopped at `deliverable_absent`).
+
+**The tree is a PASS on the merits, measured.** Running the script's own logic
+with ONLY the template repaired (`nostd-ratchet` → `nostd-ratchet.XXXXXX`), from
+a copy in `/tmp` so nothing in the tree is touched:
+
+```
+$ bash /tmp/nostd-fixed.sh
+no-std ratchet: cargo rc=101, rustc tally=1051, ceiling=1051
+PASS: no-std errors 1051, exactly at the ceiling 1051. Debt held.
+VERDICT_RC=0
+```
+
+**1051, exactly at the ceiling.** This brief added no no-std debt and removed
+none, which is precisely what the ratchet demands.
+
+**Why it is NOT fixed here, stated as the conflict it is.** The one-line repair
+lives in `scripts/gate-nostd-ratchet.sh`. `scripts/` is **outside this leg's
+wall** — `gate-entry.sh` §3 enforces `^(crates/|conformance/|probes/|\.fleet/)`
+and would red with named cause `wall_breach`. So the two reachable states on this
+venue are `canon_red` (leave it) or `wall_breach` (fix it); **GATE-GREEN is not
+reachable from inside this wall**, and manufacturing one would mean either
+editing the gate or widening the wall, both of which the orders forbid. The leg
+orders' own instruction for this case is followed: *"Any other red at base is a
+rig finding — report it, do not route around it, do not edit the gate."*
+
+**The fix, for whoever holds the wider wall** — one character class:
+
+```diff
+-LOG="$(mktemp -t nostd-ratchet)"
++LOG="$(mktemp -t nostd-ratchet.XXXXXX)"
+```
+
+Worth noting for the seat: CI is `ubuntu-latest` (`.github/workflows/ci.yml`) on
+the same pinned toolchain, so this leg is dead in CI too, and has been. A gate
+that cannot measure has been reporting for some time.
+
+### F12 — stacktrace frames are attributed to the FOLLOWING function's header line
+
+Noticed while verifying the R3 transcripts against the fixture source, recorded
+because it is checkable and reproducible. It is **pre-existing and independent of
+the JIT** — both arms agree exactly, which is why R3's identity property is
+unaffected — and it was NOT chased to root cause, being outside this brief.
+
+Measured against `crates/beamr/tests/fixtures/awl_terminals.erl`:
+
+| Frame reported | Function's own source span | Line reported | What is actually at that line |
+|---|---|---|---|
+| `verdict_code/1` | 55–61 | **73** | `first_failing_target(FailingTargets) ->` — the next function's header |
+| `report_presence/1` | 79–82 | **85** | `gate_passed(R) ->` — the next function's header |
+| `probe_verdict/1` (frame 2) | 123–128 | **130** | `probe_failing_target(Sel) ->` — the next function's header |
+| `probe_verdict/1` (frame 3) | 123–128 | 124 | `try verdict_code(V) of` — **correct** |
+| `probe_presence/1` (frame 2) | 137–142 | **149** | `probe_gate_passed(Sel) ->` — the next function's header |
+| `probe_presence/1` (frame 3) | 137–142 | 138 | `try report_presence(Report) of` — **correct** |
+
+The pattern is consistent: every frame but the outermost reports the NEXT
+line-table entry rather than the entry at-or-before its instruction pointer. The
+committed `.beam` files are confirmed to match their `.erl` sources byte for byte
+(`erlc` re-run into a temp dir and `cmp`'d), so this is not a stale-fixture
+artefact. A reader debugging from a beamr stacktrace today is being pointed one
+function too far down the file.
+
 ### F-AWL — the AWL `let assert` list burst is STILL rejected after R8, for a reason that is not the terminal. **This bears on R5's estate-side arm.**
 
 `assert_list` (`ablative-io/aion` `crates/aion-awl/src/mir/select/emit/burst.rs:344-396`)
@@ -985,6 +1184,11 @@ will mis-grade a correct fix:
    still rejected at `TypeTestOp::IsNonemptyList`, which is not one of the four
    terminals and is not in this brief's scope. The `CaseEnd` population should
    clear; part of the `Badmatch` population may not.
+3. **F8 (§10)** — admission is not the same as entry. `call_last` never
+   dispatches compiled code, so a cured function reached only by a tail call from
+   a frame-bearing caller is admitted but never entered natively. If the
+   estate-side arm also measures native entry (not just admission), that is the
+   number to watch, and it is orthogonal to this brief.
 
 ---
 
