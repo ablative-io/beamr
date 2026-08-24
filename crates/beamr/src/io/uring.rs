@@ -7,7 +7,6 @@ use std::ffi::CString;
 use std::io;
 use std::mem;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::os::fd::RawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::Mutex;
@@ -15,7 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, TryRecvError};
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use io_uring::{IoUring, opcode, types};
 
 use crate::io::ring::{CompletionRing, IoCompletion, IoOp, IoResult, StatxData};
@@ -135,8 +134,7 @@ impl IoUringRing {
                 if let Err(payload) = handle.join() {
                     std::panic::resume_unwind(payload);
                 }
-                Err(io::Error::new(
-                    io::ErrorKind::Other,
+                Err(io::Error::other(
                     "io_uring thread exited during initialization",
                 ))
             }
@@ -184,12 +182,11 @@ impl CompletionRing for IoUringRing {
             return;
         }
         let _sent = self.op_sender.send(RingMessage::Shutdown);
-        if let Ok(mut handle_slot) = self.thread.lock() {
-            if let Some(handle) = handle_slot.take() {
-                if let Err(payload) = handle.join() {
-                    std::panic::resume_unwind(payload);
-                }
-            }
+        if let Ok(mut handle_slot) = self.thread.lock()
+            && let Some(handle) = handle_slot.take()
+            && let Err(payload) = handle.join()
+        {
+            std::panic::resume_unwind(payload);
         }
     }
 }
@@ -247,11 +244,8 @@ fn drain_messages(
     if shutting_down {
         return;
     }
-    loop {
-        match op_receiver.try_recv() {
-            Ok(message) => handle_message(ring, message, completion_sender, pending, in_flight),
-            Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
-        }
+    while let Ok(message) = op_receiver.try_recv() {
+        handle_message(ring, message, completion_sender, pending, in_flight);
     }
 }
 
@@ -502,11 +496,21 @@ fn decode_completion(op_id: u64, result: i32, op: InFlightOp) -> IoCompletion {
         InFlightOp::Fsync => Ok(IoResult::Synced),
         InFlightOp::Openat { path: _path } => Ok(IoResult::Opened(result)),
         InFlightOp::Statx { path: _path, stat } => Ok(IoResult::StatResult(statx_to_data(&stat))),
-        InFlightOp::SendMsg { .. } => Ok(IoResult::DatagramSent(result as usize)),
+        // The datagram anchors are bound, not dropped with `..`: `data`/`iov`/
+        // `msg` exist only to keep the buffers the kernel wrote through alive
+        // until completion, and binding them here is how the rest of this match
+        // says so (see `Connect { storage: _storage }` above).
+        InFlightOp::SendMsg {
+            data: _data,
+            addr_storage: _addr_storage,
+            iov: _iov,
+            msg: _msg,
+        } => Ok(IoResult::DatagramSent(result as usize)),
         InFlightOp::RecvMsg {
             mut buffer,
             addr_storage,
-            ..
+            iov: _iov,
+            msg: _msg,
         } => {
             let bytes = result as usize;
             buffer.truncate(bytes);

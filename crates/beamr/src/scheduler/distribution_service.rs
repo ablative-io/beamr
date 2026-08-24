@@ -33,7 +33,7 @@ pub(super) struct DistributionService {
     /// drives the connection read/accept and heartbeat tasks. `None` under
     /// replay (no runtime, no outbound traffic) or if the runtime build failed.
     sender: Option<DistSender>,
-    /// Synchronous net-kernel facade, owning the "beamr-net-kernel" runtime that
+    /// Synchronous net-kernel facade, owning the "beamr-netkernel" runtime that
     /// drives blocking `connect_node` calls. Shares `connections`.
     net_kernel: Arc<NetKernel>,
     /// Process-wide identity of this bundle (spec §5): two inventory entries with
@@ -116,7 +116,7 @@ impl DistributionService {
 
     /// OS thread names of BOTH runtime workers (spec §5 `thread_names`): the
     /// sender's "beamr-dist-send" worker (when present and not yet joined) and
-    /// the net-kernel's "beamr-net-kernel" worker.
+    /// the net-kernel's "beamr-netkernel" worker.
     pub(super) fn runtime_thread_names(&self) -> Vec<String> {
         let mut names = self
             .sender

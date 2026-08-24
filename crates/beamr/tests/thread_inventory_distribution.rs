@@ -7,7 +7,7 @@
 //! harness has co-resident schedulers whose distribution runtimes make a
 //! process-wide diff unattributable there (the entity-local half of the
 //! assertion lives in `inventory_tests`). This binary is the only test in its
-//! own OS process, so the "beamr-dist-send"/"beamr-net-kernel" workers it
+//! own OS process, so the "beamr-dist-send"/"beamr-netkernel" workers it
 //! observes are exactly the ones the scheduler under test built.
 
 #![cfg(feature = "threads")]
