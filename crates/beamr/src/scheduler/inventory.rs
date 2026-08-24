@@ -189,7 +189,7 @@ fn standard_io_entry(
 
 /// The distribution bundle's line, read through its [`ServiceMode`] (spec §3.6).
 /// An `Owned` bundle reports BOTH runtime workers in one entry — the sender's
-/// "beamr-dist-send" worker and the net-kernel's "beamr-net-kernel" worker —
+/// "beamr-dist-send" worker and the net-kernel's "beamr-netkernel" worker —
 /// with `configured` the construction request (stable across shutdown) and
 /// `actual` the live count (zero after the §4 join). A `Disabled` slot (honest
 /// `distribution: None`) reports the §5 disabled entry: no instance, no threads.

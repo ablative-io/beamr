@@ -159,6 +159,31 @@ parse_tally() {   # stdin: a cargo log. stdout: N, or nothing.
   grep -oE 'due to [0-9]+ previous errors?' | grep -oE '[0-9]+' | tail -1
 }
 
+# ⛔ beamr#31 LIVED HERE. This was `mktemp -t nostd-ratchet` -- the BSD/macOS
+# spelling, where -t takes a PREFIX and mktemp appends the random part itself.
+# GNU coreutils spells -t as a flag and reads the operand as a TEMPLATE, which
+# it requires to end in >=3 X's, so on every Linux venue it refused:
+#
+#     mktemp: too few X's in template 'nostd-ratchet'
+#
+# $LOG was then empty, `> ""` failed before cargo ever ran, and the REFUSE arm
+# fired -- CORRECTLY, on an instrument that had never taken a reading. That is
+# why the ceiling comment above records this leg as rc=3 "STRUCTURALLY on the
+# Linux venue": the leg was not measuring beamr, it was measuring mktemp.
+#
+# ⭐ THIS IS NOT A COSMETIC REPAIR. The +1 regression named at the 0.20.0 cut
+# (1072 -> 1073) walked in THROUGH this hole: both arms of that differential
+# recorded rc=3, and two dead instruments were counted as a matching leg. A
+# ratchet that cannot take a reading is not a lenient ratchet, it is an absent
+# one -- and it reports the same rc whether the tree is sound or ruined.
+#
+# The form below is a plain TEMPLATE operand, which is correct on BOTH venues:
+# GNU gets its X's, BSD accepts the same spelling. No -t, so nothing to spell
+# two ways.
+new_log() {   # stdout: a fresh writable path for the cargo log. Fails loudly.
+  mktemp "${TMPDIR:-/tmp}/nostd-ratchet.XXXXXX"
+}
+
 # --- self-test: every arm, both directions, on MINTED inputs ----------------
 if [ "${1:-}" = "--self-test" ]; then
   echo "gate-nostd-ratchet self-test (ceiling $CEILING)"
@@ -185,6 +210,16 @@ if [ "${1:-}" = "--self-test" ]; then
   if [ -z "$got" ]; then pass=$((pass+1)); echo "  PASS  parser/no-anchor -> empty"
   else echo "  FAIL  parser/no-anchor: invented '$got'"; fi
 
+  # The log file the measurement is READ OUT OF -- beamr#31's regression test.
+  # It calls new_log, the SAME function the real run calls; a self-test that
+  # re-spelled the mktemp line here would have passed all through #31's life.
+  probe=$(new_log); rc=$?
+  total=$((total+1))
+  if [ "$rc" -eq 0 ] && [ -n "$probe" ] && printf 'x\n' > "$probe" 2>/dev/null; then
+    pass=$((pass+1)); echo "  PASS  instrument/log-file -> writable path"
+  else echo "  FAIL  instrument/log-file: mktemp rc=$rc, path '$probe' (beamr#31)"; fi
+  [ -n "$probe" ] && rm -f "$probe"
+
   arm "over-ceiling/must-FAIL"      1 101 $((CEILING+1))
   arm "at-ceiling/must-PASS"        0 101 "$CEILING"
   arm "under-ceiling/must-FAIL"     2 101 $((CEILING-1))
@@ -198,7 +233,14 @@ if [ "${1:-}" = "--self-test" ]; then
 fi
 
 # --- the real run -----------------------------------------------------------
-LOG="$(mktemp -t nostd-ratchet)"
+LOG="$(new_log)" || {
+  # The gate's own doctrine, applied to the gate: an instrument that cannot be
+  # built does not get to report. rc=3 is CANNOT-MEASURE, never a pass.
+  echo "REFUSE: cannot create the cargo log -- mktemp failed. This gate has no" >&2
+  echo "  reading to take, so it does not get to report one. (beamr#31 was" >&2
+  echo "  exactly this, silently: fix the instrument, never the ceiling.)" >&2
+  exit 3
+}
 # ⛔ never 2>/dev/null: rustc's tally goes to stderr and IS the measurement.
 cargo check -p beamr --no-default-features > "$LOG" 2>&1
 RC=$?

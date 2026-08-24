@@ -49,10 +49,17 @@ pub const NET_KERNEL_CONNECT_DEADLINE: Duration = Duration::from_secs(15);
 
 /// OS thread name of the net-kernel runtime's single worker.
 ///
+/// FIFTEEN BYTES, deliberately. Linux caps a thread name at `TASK_COMM_LEN - 1`
+/// = 15 bytes, and `/proc/self/task/*/comm` — the ground truth the spec §5
+/// inventory is validated against — reports the TRUNCATED name. A longer
+/// constant makes `worker_thread_names` claim a name the OS never carries, so
+/// the probe finds nothing and the inventory silently over-reports. (This was
+/// "beamr-net-kernel", 16 bytes, which /proc reported as "beamr-net-kerne".)
+///
 /// Set as the runtime's `thread_name` (spec §5 naming defect: the worker was
 /// previously unnamed, taking tokio's default), so it is also the name the OS
 /// thread probe and the service inventory attribute the worker under.
-pub const NET_KERNEL_THREAD_NAME: &str = "beamr-net-kernel";
+pub const NET_KERNEL_THREAD_NAME: &str = "beamr-netkernel";
 
 /// Configuration for beamr distribution services.
 #[derive(Clone)]
@@ -67,7 +74,7 @@ pub struct DistributionConfig {
 /// The net-kernel's owned tokio [`Runtime`], isolated behind interior
 /// mutability so [`NetKernel::shutdown`] can take it through a shared `&self`
 /// and hand it to [`join_runtime_drop`] (spec §4), which joins the
-/// "beamr-net-kernel" worker before returning from every context except that
+/// "beamr-netkernel" worker before returning from every context except that
 /// runtime's own thread (see its three-context docs). The take happens in its
 /// own statement so this mutex is never held across the join —
 /// [`NetKernel::worker_thread_names`] locks it from worker-side contexts. Held

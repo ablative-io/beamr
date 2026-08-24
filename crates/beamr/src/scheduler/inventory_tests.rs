@@ -9,7 +9,10 @@ use std::thread;
 use std::time::Duration;
 
 use super::service::ServiceModeLabel;
-use super::{NativeBifs, Scheduler, SchedulerConfig, dirty, execution, inventory, thread_probe};
+use super::{NativeBifs, Scheduler, SchedulerConfig, dirty, execution, inventory};
+// Used only by the macOS-gated OS thread probe below.
+#[cfg(target_os = "macos")]
+use super::thread_probe;
 use crate::module::ModuleRegistry;
 
 fn new_default_scheduler() -> Scheduler {

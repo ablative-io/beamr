@@ -196,7 +196,7 @@ fn file_info_submits_statx_and_finishes_record_tuple() {
     facility.push_completion(
         FileIoContinuation::FileInfo,
         Ok(IoResult::StatResult(StatxData {
-            mode: libc::S_IFREG as u32 | 0o644,
+            mode: super::mode_bits(libc::S_IFREG) | 0o644,
             size: 12,
             dev_major: 1,
             dev_minor: 2,
@@ -281,7 +281,7 @@ fn completion_handlers_reject_mismatched_file_io_continuations() {
     facility.push_completion(
         FileIoContinuation::ListDir,
         Ok(IoResult::StatResult(StatxData {
-            mode: libc::S_IFREG as u32,
+            mode: super::mode_bits(libc::S_IFREG),
             ..StatxData::default()
         })),
     );
