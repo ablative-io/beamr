@@ -1,12 +1,17 @@
 //! Instruction-classification tier for the demand-JIT compiler.
 //!
-//! The four classification tables of record — [`coverage`],
-//! [`is_observable_side_effect`], [`is_runtime_deopt_capable`], and
-//! [`is_no_fail_label`] — live together HERE, deliberately beside each other:
-//! each is EXHAUSTIVE WITH NO WILDCARD ARM, so a later wave adding an
-//! `Instruction` variant must classify it in every table in this one module or
-//! compilation breaks. The translation-planning machinery that consumes these
-//! tables lives in `ir_control`.
+//! THREE classification tables of record — [`coverage`],
+//! [`is_observable_side_effect`], and [`is_runtime_deopt_capable`] — live
+//! together HERE, deliberately beside each other: each is EXHAUSTIVE WITH NO
+//! WILDCARD ARM over `Instruction`, so a later wave adding a variant must
+//! classify it in every table in this one module or compilation breaks.
+//! [`is_no_fail_label`] also lives here but is a DIFFERENT KIND of thing: an
+//! `&Operand` predicate (it classifies fail-label OPERANDS, zero `Instruction`
+//! variants), so the exhaustive-per-variant duty does NOT extend to it. This
+//! header previously called it a fourth exhaustive variant table — an
+//! over-claim that a downstream brief amendment inherited verbatim; corrected
+//! at the BEAMR-R8-DEOPT landing. The translation-planning machinery that
+//! consumes these tables lives in `ir_control`.
 
 use crate::loader::Instruction;
 
