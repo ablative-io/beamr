@@ -1,0 +1,85 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 1752,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 1,
+  "deferred_names": [
+   "erl_eval:partial_eval/1"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erl_bits",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_eval",
+   "status": "absent",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 22060,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "erl_bits",
+  "erl_eval",
+  "erlang",
+  "lists"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "eval_bits",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/eval_bits.beam",
+ "registration_deviation": [],
+ "sha256": "b95867a601d64b7de9d19dc8297b59f98ec4430ef89610b4e317f1cadb665a8d",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

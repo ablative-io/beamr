@@ -1,0 +1,379 @@
+module	dets
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	1385
+op	2	func_info/3	231
+op	3	int_code_end/0	1
+op	4	call/2	245
+op	5	call_last/3	103
+op	6	call_only/2	65
+op	7	call_ext/2	248
+op	8	call_ext_last/3	106
+op	9	bif0/2	10
+op	10	bif1/4	5
+op	11	bif2/5	24
+op	12	allocate/2	202
+op	13	allocate_heap/3	37
+op	16	test_heap/2	359
+op	18	deallocate/1	273
+op	19	return/0	372
+op	20	send/0	39
+op	21	remove_message/0	15
+op	22	timeout/0	2
+op	23	loop_rec/2	5
+op	24	loop_rec_end/1	4
+op	25	wait/1	3
+op	39	is_lt/3	3
+op	40	is_ge/3	18
+op	43	is_eq_exact/3	245
+op	44	is_ne_exact/3	19
+op	45	is_integer/2	13
+op	48	is_atom/2	7
+op	49	is_pid/2	2
+op	52	is_nil/2	62
+op	55	is_list/2	17
+op	56	is_nonempty_list/2	42
+op	57	is_tuple/2	171
+op	58	test_arity/3	134
+op	59	select_val/3	71
+op	60	select_tuple_arity/3	11
+op	61	jump/1	58
+op	62	catch/2	54
+op	63	catch_end/1	54
+op	64	move/2	1797
+op	65	get_list/3	41
+op	66	get_tuple_element/3	681
+op	69	put_list/3	191
+op	72	badmatch/1	55
+op	74	case_end/1	70
+op	75	call_fun/1	6
+op	77	is_function/2	1
+op	78	call_ext_only/2	28
+op	96	fmove/2	2
+op	97	fconv/2	1
+op	101	fdiv/4	1
+op	104	try/2	10
+op	105	try_end/1	10
+op	106	try_case/1	10
+op	107	try_case_end/1	2
+op	108	raise/2	6
+op	114	is_boolean/2	1
+op	124	gc_bif1/5	4
+op	125	gc_bif2/6	30
+op	136	trim/2	98
+op	153	line/1	1070
+op	159	is_tagged_tuple/4	213
+op	160	build_stacktrace/0	2
+op	162	get_hd/2	2
+op	164	put_tuple2/2	322
+op	166	bs_start_match3/4	2
+op	169	swap/2	31
+op	171	make_fun3/3	22
+op	172	init_yregs/1	162
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	2
+op	175	recv_marker_reserve/1	1
+op	176	recv_marker_use/1	1
+op	180	badrecord/1	78
+op	181	update_record/5	56
+op	182	bs_match/3	3
+impt	dets_server:all/0
+impt	dets_server:close/1
+impt	dets_server:get_pid/1
+impt	dets_server:open_file/1
+impt	dets_server:open_file/2
+impt	dets_server:pid2name/1
+impt	dets_server:start/0
+impt	dets_server:stop/0
+impt	dets_server:users/1
+impt	dets_server:verbose/1
+impt	dets_utils:all_allocated/1
+impt	dets_utils:all_free/1
+impt	dets_utils:bad_object/2
+impt	dets_utils:cache_lookup/4
+impt	dets_utils:cache_size/1
+impt	dets_utils:cmp/2
+impt	dets_utils:corrupt/2
+impt	dets_utils:corrupt_file/2
+impt	dets_utils:corrupt_reason/2
+impt	dets_utils:debug_mode/0
+impt	dets_utils:family/1
+impt	dets_utils:file_error/2
+impt	dets_utils:find_allocated/4
+impt	dets_utils:find_next_allocated/3
+impt	dets_utils:get_freelists/1
+impt	dets_utils:init_disk_map/1
+impt	dets_utils:new_cache/1
+impt	dets_utils:open/2
+impt	dets_utils:position/2
+impt	dets_utils:position/3
+impt	dets_utils:pread/4
+impt	dets_utils:pread_close/4
+impt	dets_utils:pread_n/3
+impt	dets_utils:pwrite/2
+impt	dets_utils:pwrite/3
+impt	dets_utils:read_4/2
+impt	dets_utils:rename/2
+impt	dets_utils:stop_disk_map/0
+impt	dets_utils:sync/1
+impt	dets_utils:truncate/3
+impt	dets_utils:vformat/2
+impt	dets_utils:write_file/2
+impt	dets_v9:bchunk_init/2
+impt	dets_v9:bulk_input/3
+impt	dets_v9:cache_segps/3
+impt	dets_v9:check_file_header/2
+impt	dets_v9:compact_init/3
+impt	dets_v9:db_hash/2
+impt	dets_v9:do_perform_save/1
+impt	dets_v9:file_info/1
+impt	dets_v9:find_object/2
+impt	dets_v9:fsck_input/4
+impt	dets_v9:init_freelist/1
+impt	dets_v9:initiate_file/11
+impt	dets_v9:mark_dirty/1
+impt	dets_v9:may_grow/3
+impt	dets_v9:no_slots/1
+impt	dets_v9:output_objs/3
+impt	dets_v9:prep_table_copy/9
+impt	dets_v9:read_bchunks/2
+impt	dets_v9:read_file_header/2
+impt	dets_v9:scan_objs/8
+impt	dets_v9:slot_objs/2
+impt	dets_v9:table_parameters/1
+impt	dets_v9:try_bchunk_header/2
+impt	dets_v9:v_segments/1
+impt	dets_v9:write_cache/1
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/1
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_list/1
+impt	erlang:binary_to_term/1
+impt	erlang:bsl/2
+impt	erlang:convert_time_unit/3
+impt	erlang:demonitor/2
+impt	erlang:div/2
+impt	erlang:element/2
+impt	erlang:erase/1
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:exit/1
+impt	erlang:external_size/1
+impt	erlang:garbage_collect/0
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:length/1
+impt	erlang:link/1
+impt	erlang:list_to_integer/1
+impt	erlang:make_ref/0
+impt	erlang:max/2
+impt	erlang:min/2
+impt	erlang:monitor/2
+impt	erlang:monotonic_time/0
+impt	erlang:monotonic_time/1
+impt	erlang:process_flag/2
+impt	erlang:put/2
+impt	erlang:raise/3
+impt	erlang:rem/2
+impt	erlang:round/1
+impt	erlang:self/0
+impt	erlang:send_after/3
+impt	erlang:setelement/3
+impt	erlang:term_to_binary/1
+impt	erlang:throw/1
+impt	erlang:time_offset/0
+impt	erlang:tuple_size/1
+impt	erlang:tuple_to_list/1
+impt	erlang:unlink/1
+impt	ets:delete/1
+impt	ets:insert/2
+impt	ets:is_compiled_ms/1
+impt	ets:match_spec_compile/1
+impt	ets:match_spec_run/2
+impt	ets:new/2
+impt	ets:safe_fixtable/2
+impt	ets:select/1
+impt	ets:select/3
+impt	ets:tab2list/1
+impt	ets:whereis/1
+impt	file:close/1
+impt	file:copy/2
+impt	file:delete/1
+impt	file:position/2
+impt	file:read_file/1
+impt	file:read_file_info/1
+impt	file:write_file/2
+impt	file_sorter:sort/3
+impt	filename:dirname/1
+impt	io:format/2
+impt	io_lib:format/2
+impt	lists:all/2
+impt	lists:append/1
+impt	lists:concat/1
+impt	lists:flatmap/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:foreach/2
+impt	lists:keydelete/3
+impt	lists:keyreplace/4
+impt	lists:keysearch/3
+impt	lists:keysort/2
+impt	lists:map/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:usort/1
+impt	logger:allow/2
+impt	logger:macro_log/4
+impt	proc_lib:spawn_link/3
+impt	qlc:table/2
+impt	sys:handle_system_msg/6
+impt	timer:minutes/1
+impt	timer:sleep/1
+disasm	ok
+callext	dets_server:all/0	2
+callext	dets_server:close/1	1
+callext	dets_server:get_pid/1	7
+callext	dets_server:open_file/1	1
+callext	dets_server:open_file/2	1
+callext	dets_server:pid2name/1	1
+callext	dets_server:start/0	1
+callext	dets_server:stop/0	1
+callext	dets_server:users/1	1
+callext	dets_server:verbose/1	1
+callext	dets_utils:all_allocated/1	1
+callext	dets_utils:all_free/1	1
+callext	dets_utils:bad_object/2	4
+callext	dets_utils:cache_lookup/4	1
+callext	dets_utils:cache_size/1	3
+callext	dets_utils:cmp/2	2
+callext	dets_utils:corrupt/2	1
+callext	dets_utils:corrupt_file/2	1
+callext	dets_utils:corrupt_reason/2	6
+callext	dets_utils:debug_mode/0	3
+callext	dets_utils:family/1	1
+callext	dets_utils:file_error/2	6
+callext	dets_utils:find_allocated/4	1
+callext	dets_utils:find_next_allocated/3	2
+callext	dets_utils:get_freelists/1	6
+callext	dets_utils:init_disk_map/1	1
+callext	dets_utils:new_cache/1	1
+callext	dets_utils:open/2	3
+callext	dets_utils:position/2	1
+callext	dets_utils:position/3	1
+callext	dets_utils:pread/4	1
+callext	dets_utils:pread_close/4	1
+callext	dets_utils:pread_n/3	1
+callext	dets_utils:pwrite/2	3
+callext	dets_utils:pwrite/3	1
+callext	dets_utils:read_4/2	1
+callext	dets_utils:rename/2	2
+callext	dets_utils:stop_disk_map/0	2
+callext	dets_utils:sync/1	1
+callext	dets_utils:truncate/3	3
+callext	dets_utils:vformat/2	1
+callext	dets_utils:write_file/2	1
+callext	dets_v9:bchunk_init/2	1
+callext	dets_v9:bulk_input/3	1
+callext	dets_v9:cache_segps/3	1
+callext	dets_v9:check_file_header/2	5
+callext	dets_v9:compact_init/3	1
+callext	dets_v9:db_hash/2	1
+callext	dets_v9:do_perform_save/1	1
+callext	dets_v9:file_info/1	1
+callext	dets_v9:find_object/2	1
+callext	dets_v9:fsck_input/4	1
+callext	dets_v9:init_freelist/1	3
+callext	dets_v9:initiate_file/11	3
+callext	dets_v9:mark_dirty/1	1
+callext	dets_v9:may_grow/3	1
+callext	dets_v9:no_slots/1	1
+callext	dets_v9:output_objs/3	1
+callext	dets_v9:prep_table_copy/9	1
+callext	dets_v9:read_bchunks/2	1
+callext	dets_v9:read_file_header/2	1
+callext	dets_v9:scan_objs/8	1
+callext	dets_v9:slot_objs/2	4
+callext	dets_v9:table_parameters/1	3
+callext	dets_v9:try_bchunk_header/2	1
+callext	dets_v9:v_segments/1	1
+callext	dets_v9:write_cache/1	2
+callext	erlang:++/2	7
+callext	erlang:atom_to_list/1	2
+callext	erlang:binary_to_term/1	4
+callext	erlang:convert_time_unit/3	1
+callext	erlang:demonitor/2	1
+callext	erlang:erase/1	1
+callext	erlang:error/1	2
+callext	erlang:error/2	52
+callext	erlang:exit/1	15
+callext	erlang:external_size/1	1
+callext	erlang:garbage_collect/0	7
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:link/1	2
+callext	erlang:list_to_integer/1	1
+callext	erlang:make_ref/0	6
+callext	erlang:monitor/2	1
+callext	erlang:monotonic_time/0	1
+callext	erlang:monotonic_time/1	2
+callext	erlang:process_flag/2	1
+callext	erlang:put/2	2
+callext	erlang:raise/3	16
+callext	erlang:send_after/3	4
+callext	erlang:setelement/3	1
+callext	erlang:term_to_binary/1	2
+callext	erlang:throw/1	5
+callext	erlang:time_offset/0	1
+callext	erlang:tuple_to_list/1	1
+callext	erlang:unlink/1	2
+callext	ets:delete/1	1
+callext	ets:insert/2	1
+callext	ets:is_compiled_ms/1	2
+callext	ets:match_spec_compile/1	2
+callext	ets:match_spec_run/2	4
+callext	ets:new/2	2
+callext	ets:safe_fixtable/2	2
+callext	ets:select/1	1
+callext	ets:select/3	1
+callext	ets:tab2list/1	1
+callext	ets:whereis/1	1
+callext	file:close/1	19
+callext	file:copy/2	1
+callext	file:delete/1	9
+callext	file:position/2	1
+callext	file:read_file/1	1
+callext	file:read_file_info/1	3
+callext	file:write_file/2	1
+callext	file_sorter:sort/3	1
+callext	filename:dirname/1	1
+callext	io:format/2	3
+callext	io_lib:format/2	2
+callext	lists:all/2	1
+callext	lists:append/1	2
+callext	lists:concat/1	1
+callext	lists:flatmap/2	1
+callext	lists:flatten/1	1
+callext	lists:foldl/3	2
+callext	lists:foreach/2	3
+callext	lists:keydelete/3	2
+callext	lists:keyreplace/4	2
+callext	lists:keysearch/3	3
+callext	lists:keysort/2	1
+callext	lists:map/2	2
+callext	lists:member/2	1
+callext	lists:reverse/1	4
+callext	lists:usort/1	4
+callext	logger:allow/2	11
+callext	logger:macro_log/4	11
+callext	proc_lib:spawn_link/3	1
+callext	qlc:table/2	1
+callext	sys:handle_system_msg/6	2
+callext	timer:minutes/1	1
+callext	timer:sleep/1	2

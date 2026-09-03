@@ -1,0 +1,166 @@
+module	Elixir.IEx.Server
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	219
+op	2	func_info/3	36
+op	3	int_code_end/0	1
+op	4	call/2	22
+op	5	call_last/3	27
+op	6	call_only/2	5
+op	7	call_ext/2	87
+op	8	call_ext_last/3	14
+op	9	bif0/2	11
+op	10	bif1/4	1
+op	11	bif2/5	1
+op	12	allocate/2	26
+op	13	allocate_heap/3	2
+op	16	test_heap/2	26
+op	18	deallocate/1	17
+op	19	return/0	30
+op	21	remove_message/0	13
+op	23	loop_rec/2	4
+op	24	loop_rec_end/1	1
+op	25	wait/1	4
+op	41	is_eq/3	2
+op	43	is_eq_exact/3	42
+op	44	is_ne_exact/3	4
+op	52	is_nil/2	1
+op	53	is_binary/2	10
+op	55	is_list/2	2
+op	57	is_tuple/2	19
+op	58	test_arity/3	13
+op	59	select_val/3	18
+op	60	select_tuple_arity/3	5
+op	61	jump/1	27
+op	64	move/2	382
+op	66	get_tuple_element/3	80
+op	69	put_list/3	16
+op	72	badmatch/1	2
+op	74	case_end/1	9
+op	75	call_fun/1	1
+op	78	call_ext_only/2	7
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	115	is_function2/3	1
+op	125	gc_bif2/6	3
+op	136	trim/2	13
+op	153	line/1	143
+op	154	put_map_assoc/5	1
+op	155	put_map_exact/5	7
+op	156	is_map/2	13
+op	158	get_map_elements/3	12
+op	159	is_tagged_tuple/4	2
+op	160	build_stacktrace/0	1
+op	164	put_tuple2/2	24
+op	169	swap/2	1
+op	171	make_fun3/3	7
+op	172	init_yregs/1	40
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	11
+op	175	recv_marker_reserve/1	1
+op	177	bs_create_bin/6	8
+op	178	call_fun2/3	4
+impt	Elixir.Access:get/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Exception:format_banner/3
+impt	Elixir.Exception:format_exit/1
+impt	Elixir.Exception:format_stacktrace/1
+impt	Elixir.IEx:color/2
+impt	Elixir.IEx.Autocomplete:remsh/1
+impt	Elixir.IEx.Broker:register/1
+impt	Elixir.IEx.Broker:respond/4
+impt	Elixir.IEx.Config:alive_prompt/0
+impt	Elixir.IEx.Config:default_prompt/0
+impt	Elixir.IEx.Config:parser/0
+impt	Elixir.IO:gets/2
+impt	Elixir.IO:puts/1
+impt	Elixir.IO:puts/2
+impt	Elixir.IO:write/2
+impt	Elixir.IO.ANSI:reset/0
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:get/3
+impt	Elixir.Keyword:merge/2
+impt	Elixir.Keyword:take/2
+impt	Elixir.List:to_string/1
+impt	Elixir.Map:update!/3
+impt	Elixir.Node:alive?/0
+impt	Elixir.Process:delete/1
+impt	Elixir.Process:put/2
+impt	Elixir.String:contains?/2
+impt	Elixir.String:replace/3
+impt	Elixir.String:trim/1
+impt	Elixir.String.Chars:to_string/1
+impt	Elixir.System:halt/1
+impt	Elixir.System:version/0
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:+/2
+impt	erlang:=:=/2
+impt	erlang:apply/3
+impt	erlang:demonitor/2
+impt	erlang:error/1
+impt	erlang:exit/1
+impt	erlang:exit/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:group_leader/0
+impt	erlang:link/1
+impt	erlang:monitor/2
+impt	erlang:node/0
+impt	erlang:node/1
+impt	erlang:process_flag/2
+impt	erlang:self/0
+impt	erlang:send/2
+impt	erlang:spawn_monitor/3
+impt	io:setopts/1
+impt	proc_lib:start/3
+disasm	ok
+callext	Elixir.Access:get/2	4
+callext	Elixir.Enum:reduce/3	1
+callext	Elixir.Exception:format_banner/3	1
+callext	Elixir.Exception:format_exit/1	1
+callext	Elixir.Exception:format_stacktrace/1	1
+callext	Elixir.IEx:color/2	6
+callext	Elixir.IEx.Autocomplete:remsh/1	1
+callext	Elixir.IEx.Broker:register/1	2
+callext	Elixir.IEx.Broker:respond/4	1
+callext	Elixir.IEx.Config:alive_prompt/0	1
+callext	Elixir.IEx.Config:default_prompt/0	1
+callext	Elixir.IEx.Config:parser/0	1
+callext	Elixir.IO:gets/2	1
+callext	Elixir.IO:puts/1	4
+callext	Elixir.IO:puts/2	1
+callext	Elixir.IO:write/2	1
+callext	Elixir.IO.ANSI:reset/0	1
+callext	Elixir.Kernel:inspect/1	4
+callext	Elixir.Keyword:get/3	3
+callext	Elixir.Keyword:merge/2	1
+callext	Elixir.Keyword:take/2	1
+callext	Elixir.List:to_string/1	1
+callext	Elixir.Map:update!/3	1
+callext	Elixir.Node:alive?/0	1
+callext	Elixir.Process:delete/1	1
+callext	Elixir.Process:put/2	1
+callext	Elixir.String:contains?/2	1
+callext	Elixir.String:replace/3	3
+callext	Elixir.String:trim/1	1
+callext	Elixir.String.Chars:to_string/1	11
+callext	Elixir.System:halt/1	1
+callext	Elixir.System:version/0	1
+callext	elixir_erl_pass:no_parens_remote/2	8
+callext	erlang:apply/3	1
+callext	erlang:demonitor/2	1
+callext	erlang:error/1	13
+callext	erlang:exit/1	1
+callext	erlang:exit/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:group_leader/0	5
+callext	erlang:link/1	1
+callext	erlang:monitor/2	2
+callext	erlang:process_flag/2	2
+callext	erlang:send/2	5
+callext	erlang:spawn_monitor/3	1
+callext	io:setopts/1	2
+callext	proc_lib:start/3	1

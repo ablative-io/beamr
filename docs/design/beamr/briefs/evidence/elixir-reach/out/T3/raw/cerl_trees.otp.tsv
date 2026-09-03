@@ -1,0 +1,295 @@
+module	cerl_trees
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	313
+op	2	func_info/3	38
+op	3	int_code_end/0	1
+op	4	call/2	321
+op	5	call_last/3	64
+op	6	call_only/2	6
+op	7	call_ext/2	445
+op	8	call_ext_last/3	44
+op	10	bif1/4	3
+op	11	bif2/5	3
+op	12	allocate/2	27
+op	13	allocate_heap/3	2
+op	16	test_heap/2	78
+op	18	deallocate/1	77
+op	19	return/0	94
+op	40	is_ge/3	3
+op	43	is_eq_exact/3	8
+op	45	is_integer/2	1
+op	52	is_nil/2	16
+op	56	is_nonempty_list/2	19
+op	57	is_tuple/2	49
+op	58	test_arity/3	49
+op	59	select_val/3	7
+op	61	jump/1	4
+op	64	move/2	1671
+op	65	get_list/3	15
+op	66	get_tuple_element/3	276
+op	69	put_list/3	47
+op	72	badmatch/1	42
+op	74	case_end/1	8
+op	75	call_fun/1	30
+op	78	call_ext_only/2	2
+op	125	gc_bif2/6	31
+op	136	trim/2	223
+op	153	line/1	603
+op	154	put_map_assoc/5	1
+op	158	get_map_elements/3	1
+op	159	is_tagged_tuple/4	2
+op	162	get_hd/2	1
+op	164	put_tuple2/2	69
+op	169	swap/2	59
+op	171	make_fun3/3	4
+op	172	init_yregs/1	177
+impt	cerl:alias_pat/1
+impt	cerl:alias_var/1
+impt	cerl:ann_c_alias/3
+impt	cerl:ann_c_apply/3
+impt	cerl:ann_c_binary/2
+impt	cerl:ann_c_bitstr/6
+impt	cerl:ann_c_call/4
+impt	cerl:ann_c_case/3
+impt	cerl:ann_c_catch/2
+impt	cerl:ann_c_clause/4
+impt	cerl:ann_c_cons_skel/3
+impt	cerl:ann_c_fun/3
+impt	cerl:ann_c_let/4
+impt	cerl:ann_c_letrec/3
+impt	cerl:ann_c_map/3
+impt	cerl:ann_c_map_pair/4
+impt	cerl:ann_c_map_pattern/2
+impt	cerl:ann_c_module/5
+impt	cerl:ann_c_primop/3
+impt	cerl:ann_c_receive/4
+impt	cerl:ann_c_record/4
+impt	cerl:ann_c_record_pair/3
+impt	cerl:ann_c_seq/3
+impt	cerl:ann_c_try/6
+impt	cerl:ann_c_tuple_skel/2
+impt	cerl:ann_c_values/2
+impt	cerl:apply_args/1
+impt	cerl:apply_op/1
+impt	cerl:binary_segments/1
+impt	cerl:bitstr_flags/1
+impt	cerl:bitstr_size/1
+impt	cerl:bitstr_type/1
+impt	cerl:bitstr_unit/1
+impt	cerl:bitstr_val/1
+impt	cerl:call_args/1
+impt	cerl:call_module/1
+impt	cerl:call_name/1
+impt	cerl:case_arg/1
+impt	cerl:case_clauses/1
+impt	cerl:catch_body/1
+impt	cerl:clause_body/1
+impt	cerl:clause_guard/1
+impt	cerl:clause_pats/1
+impt	cerl:clause_vars/1
+impt	cerl:concrete/1
+impt	cerl:cons_hd/1
+impt	cerl:cons_tl/1
+impt	cerl:fun_body/1
+impt	cerl:fun_vars/1
+impt	cerl:get_ann/1
+impt	cerl:is_c_map_pattern/1
+impt	cerl:let_arg/1
+impt	cerl:let_body/1
+impt	cerl:let_vars/1
+impt	cerl:letrec_body/1
+impt	cerl:letrec_defs/1
+impt	cerl:letrec_vars/1
+impt	cerl:map_arg/1
+impt	cerl:map_es/1
+impt	cerl:map_pair_key/1
+impt	cerl:map_pair_op/1
+impt	cerl:map_pair_val/1
+impt	cerl:module_attrs/1
+impt	cerl:module_defs/1
+impt	cerl:module_exports/1
+impt	cerl:module_name/1
+impt	cerl:module_vars/1
+impt	cerl:primop_args/1
+impt	cerl:primop_name/1
+impt	cerl:receive_action/1
+impt	cerl:receive_clauses/1
+impt	cerl:receive_timeout/1
+impt	cerl:record_arg/1
+impt	cerl:record_es/1
+impt	cerl:record_id/1
+impt	cerl:record_pair_key/1
+impt	cerl:record_pair_val/1
+impt	cerl:seq_arg/1
+impt	cerl:seq_body/1
+impt	cerl:set_ann/2
+impt	cerl:subtrees/1
+impt	cerl:try_arg/1
+impt	cerl:try_body/1
+impt	cerl:try_evars/1
+impt	cerl:try_handler/1
+impt	cerl:try_vars/1
+impt	cerl:tuple_es/1
+impt	cerl:type/1
+impt	cerl:update_c_alias/3
+impt	cerl:update_c_apply/3
+impt	cerl:update_c_binary/2
+impt	cerl:update_c_bitstr/6
+impt	cerl:update_c_call/4
+impt	cerl:update_c_case/3
+impt	cerl:update_c_catch/2
+impt	cerl:update_c_clause/4
+impt	cerl:update_c_cons/3
+impt	cerl:update_c_cons_skel/3
+impt	cerl:update_c_fun/3
+impt	cerl:update_c_let/4
+impt	cerl:update_c_letrec/3
+impt	cerl:update_c_map/3
+impt	cerl:update_c_map_pair/4
+impt	cerl:update_c_module/5
+impt	cerl:update_c_primop/3
+impt	cerl:update_c_receive/4
+impt	cerl:update_c_record/4
+impt	cerl:update_c_record_pair/3
+impt	cerl:update_c_seq/3
+impt	cerl:update_c_try/6
+impt	cerl:update_c_tuple/2
+impt	cerl:update_c_tuple_skel/2
+impt	cerl:update_c_values/2
+impt	cerl:values_es/1
+impt	cerl:var_name/1
+impt	erlang:+/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:max/2
+impt	erlang:throw/1
+impt	erlang:tuple_size/1
+impt	lists:foldl/3
+impt	ordsets:add_element/2
+impt	ordsets:subtract/2
+impt	ordsets:union/2
+disasm	ok
+callext	cerl:alias_pat/1	6
+callext	cerl:alias_var/1	6
+callext	cerl:ann_c_alias/3	1
+callext	cerl:ann_c_apply/3	1
+callext	cerl:ann_c_binary/2	1
+callext	cerl:ann_c_bitstr/6	1
+callext	cerl:ann_c_call/4	1
+callext	cerl:ann_c_case/3	1
+callext	cerl:ann_c_catch/2	1
+callext	cerl:ann_c_clause/4	1
+callext	cerl:ann_c_cons_skel/3	1
+callext	cerl:ann_c_fun/3	1
+callext	cerl:ann_c_let/4	1
+callext	cerl:ann_c_letrec/3	1
+callext	cerl:ann_c_map/3	1
+callext	cerl:ann_c_map_pair/4	1
+callext	cerl:ann_c_map_pattern/2	1
+callext	cerl:ann_c_module/5	1
+callext	cerl:ann_c_primop/3	1
+callext	cerl:ann_c_receive/4	1
+callext	cerl:ann_c_record/4	1
+callext	cerl:ann_c_record_pair/3	1
+callext	cerl:ann_c_seq/3	1
+callext	cerl:ann_c_try/6	1
+callext	cerl:ann_c_tuple_skel/2	1
+callext	cerl:ann_c_values/2	1
+callext	cerl:apply_args/1	6
+callext	cerl:apply_op/1	6
+callext	cerl:binary_segments/1	6
+callext	cerl:bitstr_flags/1	4
+callext	cerl:bitstr_size/1	6
+callext	cerl:bitstr_type/1	4
+callext	cerl:bitstr_unit/1	4
+callext	cerl:bitstr_val/1	6
+callext	cerl:call_args/1	6
+callext	cerl:call_module/1	6
+callext	cerl:call_name/1	6
+callext	cerl:case_arg/1	6
+callext	cerl:case_clauses/1	6
+callext	cerl:catch_body/1	6
+callext	cerl:clause_body/1	6
+callext	cerl:clause_guard/1	6
+callext	cerl:clause_pats/1	6
+callext	cerl:clause_vars/1	1
+callext	cerl:concrete/1	3
+callext	cerl:cons_hd/1	9
+callext	cerl:cons_tl/1	9
+callext	cerl:fun_body/1	6
+callext	cerl:fun_vars/1	6
+callext	cerl:get_ann/1	28
+callext	cerl:is_c_map_pattern/1	1
+callext	cerl:let_arg/1	6
+callext	cerl:let_body/1	6
+callext	cerl:let_vars/1	6
+callext	cerl:letrec_body/1	6
+callext	cerl:letrec_defs/1	6
+callext	cerl:letrec_vars/1	3
+callext	cerl:map_arg/1	5
+callext	cerl:map_es/1	7
+callext	cerl:map_pair_key/1	6
+callext	cerl:map_pair_op/1	6
+callext	cerl:map_pair_val/1	6
+callext	cerl:module_attrs/1	4
+callext	cerl:module_defs/1	6
+callext	cerl:module_exports/1	5
+callext	cerl:module_name/1	4
+callext	cerl:module_vars/1	2
+callext	cerl:primop_args/1	6
+callext	cerl:primop_name/1	4
+callext	cerl:receive_action/1	6
+callext	cerl:receive_clauses/1	6
+callext	cerl:receive_timeout/1	6
+callext	cerl:record_arg/1	4
+callext	cerl:record_es/1	6
+callext	cerl:record_id/1	3
+callext	cerl:record_pair_key/1	5
+callext	cerl:record_pair_val/1	6
+callext	cerl:seq_arg/1	6
+callext	cerl:seq_body/1	6
+callext	cerl:set_ann/2	2
+callext	cerl:subtrees/1	1
+callext	cerl:try_arg/1	6
+callext	cerl:try_body/1	6
+callext	cerl:try_evars/1	6
+callext	cerl:try_handler/1	6
+callext	cerl:try_vars/1	6
+callext	cerl:tuple_es/1	9
+callext	cerl:type/1	6
+callext	cerl:update_c_alias/3	2
+callext	cerl:update_c_apply/3	2
+callext	cerl:update_c_binary/2	2
+callext	cerl:update_c_bitstr/6	2
+callext	cerl:update_c_call/4	2
+callext	cerl:update_c_case/3	2
+callext	cerl:update_c_catch/2	2
+callext	cerl:update_c_clause/4	2
+callext	cerl:update_c_cons/3	2
+callext	cerl:update_c_cons_skel/3	2
+callext	cerl:update_c_fun/3	2
+callext	cerl:update_c_let/4	2
+callext	cerl:update_c_letrec/3	2
+callext	cerl:update_c_map/3	2
+callext	cerl:update_c_map_pair/4	2
+callext	cerl:update_c_module/5	2
+callext	cerl:update_c_primop/3	2
+callext	cerl:update_c_receive/4	2
+callext	cerl:update_c_record/4	2
+callext	cerl:update_c_record_pair/3	2
+callext	cerl:update_c_seq/3	2
+callext	cerl:update_c_try/6	2
+callext	cerl:update_c_tuple/2	2
+callext	cerl:update_c_tuple_skel/2	2
+callext	cerl:update_c_values/2	2
+callext	cerl:values_es/1	6
+callext	cerl:var_name/1	6
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:throw/1	1
+callext	lists:foldl/3	2
+callext	ordsets:add_element/2	2
+callext	ordsets:subtract/2	7
+callext	ordsets:union/2	24

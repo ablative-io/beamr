@@ -2,3 +2,10 @@
 swept=1320 not_ok=0
 header==max_seen: 544  header!=max_seen: 776
 modules whose max opcode > 184 (beamr ceiling): 10 of 1320
+distinct opcodes > 184 across OTP:       4 185       6 186 
+== T2 sweep (Elixir core, 271) ==
+t2 swept=271 not_ok=0
+distinct opcodes > 184 across T2: 
+T2 modules with any opcode > 184: 0
+T2 modules with 183 or 184: 0
+done=2026-09-03T03:45:49Z

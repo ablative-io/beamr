@@ -1,0 +1,124 @@
+module	Elixir.Mix.ProjectStack
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	302
+op	2	func_info/3	88
+op	3	int_code_end/0	1
+op	4	call/2	19
+op	5	call_last/3	1
+op	6	call_only/2	31
+op	7	call_ext/2	38
+op	8	call_ext_last/3	13
+op	9	bif0/2	4
+op	10	bif1/4	2
+op	11	bif2/5	3
+op	12	allocate/2	21
+op	13	allocate_heap/3	11
+op	16	test_heap/2	73
+op	18	deallocate/1	38
+op	19	return/0	82
+op	41	is_eq/3	1
+op	43	is_eq_exact/3	5
+op	52	is_nil/2	16
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	22
+op	57	is_tuple/2	25
+op	58	test_arity/3	25
+op	59	select_val/3	20
+op	61	jump/1	18
+op	64	move/2	160
+op	65	get_list/3	13
+op	66	get_tuple_element/3	47
+op	69	put_list/3	18
+op	72	badmatch/1	6
+op	74	case_end/1	12
+op	75	call_fun/1	5
+op	78	call_ext_only/2	21
+op	104	try/2	3
+op	105	try_end/1	3
+op	106	try_case/1	3
+op	108	raise/2	3
+op	124	gc_bif1/5	1
+op	136	trim/2	7
+op	153	line/1	156
+op	154	put_map_assoc/5	4
+op	155	put_map_exact/5	10
+op	156	is_map/2	23
+op	158	get_map_elements/3	17
+op	162	get_hd/2	8
+op	163	get_tl/2	1
+op	164	put_tuple2/2	51
+op	169	swap/2	4
+op	171	make_fun3/3	38
+op	172	init_yregs/1	13
+op	177	bs_create_bin/6	1
+impt	Elixir.Access:get/2
+impt	Elixir.Access:get_and_update/3
+impt	Elixir.Access:pop/2
+impt	Elixir.Enum:find_value/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:max/1
+impt	Elixir.Enum:split_while/2
+impt	Elixir.File:cd!/2
+impt	Elixir.GenServer:call/3
+impt	Elixir.GenServer:start_link/3
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:merge/2
+impt	Elixir.Keyword:pop/2
+impt	Elixir.List:last/1
+impt	Elixir.Map:get_and_update!/3
+impt	Elixir.Map:take/2
+impt	Elixir.Map:update!/3
+impt	Elixir.Mix.Project:manifest_path/1
+impt	Elixir.Path:dirname/1
+impt	Elixir.Path:join/2
+impt	Elixir.Process:info/2
+impt	Elixir.RuntimeError:exception/1
+impt	Elixir.Supervisor:child_spec/2
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:++/2
+impt	erlang:=:=/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	erlang:max/2
+impt	erlang:not/1
+impt	erlang:phash2/2
+impt	erlang:self/0
+impt	logger:error/2
+disasm	ok
+callext	Elixir.Access:get/2	3
+callext	Elixir.Access:get_and_update/3	1
+callext	Elixir.Access:pop/2	1
+callext	Elixir.Enum:find_value/2	2
+callext	Elixir.Enum:map/2	2
+callext	Elixir.Enum:max/1	1
+callext	Elixir.Enum:split_while/2	1
+callext	Elixir.File:cd!/2	1
+callext	Elixir.GenServer:call/3	3
+callext	Elixir.GenServer:start_link/3	1
+callext	Elixir.Kernel:inspect/1	1
+callext	Elixir.Keyword:merge/2	3
+callext	Elixir.Keyword:pop/2	1
+callext	Elixir.List:last/1	1
+callext	Elixir.Map:get_and_update!/3	2
+callext	Elixir.Map:take/2	1
+callext	Elixir.Map:update!/3	1
+callext	Elixir.Mix.Project:manifest_path/1	1
+callext	Elixir.Path:dirname/1	1
+callext	Elixir.Path:join/2	1
+callext	Elixir.Process:info/2	2
+callext	Elixir.RuntimeError:exception/1	1
+callext	Elixir.Supervisor:child_spec/2	1
+callext	elixir_erl_pass:no_parens_remote/2	11
+callext	erlang:++/2	3
+callext	erlang:error/1	19
+callext	erlang:error/3	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:phash2/2	1
+callext	logger:error/2	1

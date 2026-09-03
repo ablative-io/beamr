@@ -1,0 +1,190 @@
+module	Elixir.Mix.Tasks.Deps.Compile
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	233
+op	2	func_info/3	39
+op	3	int_code_end/0	1
+op	4	call/2	24
+op	5	call_last/3	2
+op	6	call_only/2	4
+op	7	call_ext/2	126
+op	8	call_ext_last/3	30
+op	10	bif1/4	7
+op	11	bif2/5	1
+op	12	allocate/2	29
+op	16	test_heap/2	24
+op	18	deallocate/1	32
+op	19	return/0	38
+op	40	is_ge/3	1
+op	42	is_ne/3	2
+op	43	is_eq_exact/3	15
+op	44	is_ne_exact/3	2
+op	52	is_nil/2	1
+op	53	is_binary/2	5
+op	56	is_nonempty_list/2	2
+op	57	is_tuple/2	15
+op	58	test_arity/3	15
+op	59	select_val/3	36
+op	61	jump/1	27
+op	64	move/2	390
+op	66	get_tuple_element/3	31
+op	69	put_list/3	17
+op	72	badmatch/1	3
+op	74	case_end/1	13
+op	78	call_ext_only/2	9
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	112	apply/1	10
+op	113	apply_last/2	2
+op	136	trim/2	19
+op	153	line/1	194
+op	154	put_map_assoc/5	1
+op	156	is_map/2	11
+op	158	get_map_elements/3	30
+op	159	is_tagged_tuple/4	2
+op	161	raw_raise/0	1
+op	163	get_tl/2	1
+op	164	put_tuple2/2	12
+op	169	swap/2	7
+op	171	make_fun3/3	11
+op	172	init_yregs/1	49
+op	177	bs_create_bin/6	10
+impt	Elixir.Access:get/2
+impt	Elixir.Code:prepend_path/2
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:all?/2
+impt	Elixir.Enum:each/2
+impt	Elixir.Enum:filter/2
+impt	Elixir.Enum:join/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:reject/2
+impt	Elixir.File:cp_r/2
+impt	Elixir.File:exists?/1
+impt	Elixir.File:mkdir_p!/1
+impt	Elixir.File:regular?/1
+impt	Elixir.File:rm_rf!/1
+impt	Elixir.File:write!/2
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:get/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.Keyword:put/3
+impt	Elixir.Mix:install?/0
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix.Dep:available?/1
+impt	Elixir.Mix.Dep:compilable?/1
+impt	Elixir.Mix.Dep:filter_by_name/3
+impt	Elixir.Mix.Dep:in_dependency/2
+impt	Elixir.Mix.Dep:load_and_cache/0
+impt	Elixir.Mix.Dep:make?/1
+impt	Elixir.Mix.Dep:mix?/1
+impt	Elixir.Mix.Dep:ok?/1
+impt	Elixir.Mix.Dep.ElixirSCM:update/3
+impt	Elixir.Mix.Dep.Loader:with_system_env/2
+impt	Elixir.Mix.Project:build_path/0
+impt	Elixir.Mix.Project:build_path/1
+impt	Elixir.Mix.Project:build_structure/2
+impt	Elixir.Mix.Project:config/0
+impt	Elixir.Mix.Project:deps_config/0
+impt	Elixir.Mix.Project:get!/0
+impt	Elixir.Mix.Project:with_build_lock/2
+impt	Elixir.Mix.Rebar:available?/1
+impt	Elixir.Mix.Rebar:dependency_config/1
+impt	Elixir.Mix.Rebar:rebar_args/2
+impt	Elixir.Mix.Rebar:serialize_config/1
+impt	Elixir.Mix.Sync.PubSub:broadcast/2
+impt	Elixir.Mix.Task:run/1
+impt	Elixir.Mix.Task:run/2
+impt	Elixir.Mix.Tasks.Deps.Partition:server/3
+impt	Elixir.Mix.Tasks.Local.Rebar:run/1
+impt	Elixir.Mix.Utils:symlink_or_copy/2
+impt	Elixir.OptionParser:parse/2
+impt	Elixir.Path:join/1
+impt	Elixir.Path:join/2
+impt	Elixir.Path:relative_to_cwd/1
+impt	Elixir.String.Chars:to_string/1
+impt	Elixir.System:get_env/2
+impt	Elixir.System:pid/0
+impt	Elixir.System:version/0
+impt	Elixir.Version:match?/2
+impt	elixir_erl_pass:no_parens_remote/2
+impt	elixir_erl_pass:parens_map_field/2
+impt	erlang:++/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_binary/1
+impt	erlang:binary_to_integer/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:not/1
+impt	os:type/0
+disasm	ok
+callext	Elixir.Access:get/2	17
+callext	Elixir.Code:prepend_path/2	2
+callext	Elixir.Enum:__in__/2	1
+callext	Elixir.Enum:all?/2	1
+callext	Elixir.Enum:each/2	1
+callext	Elixir.Enum:filter/2	2
+callext	Elixir.Enum:join/2	1
+callext	Elixir.Enum:reduce/3	2
+callext	Elixir.Enum:reject/2	1
+callext	Elixir.File:cp_r/2	1
+callext	Elixir.File:exists?/1	2
+callext	Elixir.File:mkdir_p!/1	1
+callext	Elixir.File:regular?/1	2
+callext	Elixir.File:rm_rf!/1	1
+callext	Elixir.File:write!/2	1
+callext	Elixir.Kernel:inspect/1	9
+callext	Elixir.Keyword:get/2	1
+callext	Elixir.Keyword:get/3	1
+callext	Elixir.Keyword:put/3	1
+callext	Elixir.Mix:install?/0	1
+callext	Elixir.Mix:raise/1	4
+callext	Elixir.Mix:shell/0	6
+callext	Elixir.Mix.Dep:available?/1	1
+callext	Elixir.Mix.Dep:compilable?/1	1
+callext	Elixir.Mix.Dep:filter_by_name/3	1
+callext	Elixir.Mix.Dep:in_dependency/2	1
+callext	Elixir.Mix.Dep:load_and_cache/0	1
+callext	Elixir.Mix.Dep:make?/1	1
+callext	Elixir.Mix.Dep:mix?/1	1
+callext	Elixir.Mix.Dep:ok?/1	1
+callext	Elixir.Mix.Dep.ElixirSCM:update/3	1
+callext	Elixir.Mix.Dep.Loader:with_system_env/2	1
+callext	Elixir.Mix.Project:build_path/0	1
+callext	Elixir.Mix.Project:build_path/1	1
+callext	Elixir.Mix.Project:build_structure/2	1
+callext	Elixir.Mix.Project:config/0	2
+callext	Elixir.Mix.Project:deps_config/0	1
+callext	Elixir.Mix.Project:get!/0	1
+callext	Elixir.Mix.Project:with_build_lock/2	1
+callext	Elixir.Mix.Rebar:available?/1	1
+callext	Elixir.Mix.Rebar:dependency_config/1	1
+callext	Elixir.Mix.Rebar:rebar_args/2	1
+callext	Elixir.Mix.Rebar:serialize_config/1	1
+callext	Elixir.Mix.Sync.PubSub:broadcast/2	1
+callext	Elixir.Mix.Task:run/1	3
+callext	Elixir.Mix.Task:run/2	2
+callext	Elixir.Mix.Tasks.Deps.Partition:server/3	1
+callext	Elixir.Mix.Tasks.Local.Rebar:run/1	1
+callext	Elixir.Mix.Utils:symlink_or_copy/2	2
+callext	Elixir.OptionParser:parse/2	1
+callext	Elixir.Path:join/1	1
+callext	Elixir.Path:join/2	16
+callext	Elixir.Path:relative_to_cwd/1	1
+callext	Elixir.String.Chars:to_string/1	6
+callext	Elixir.System:get_env/2	1
+callext	Elixir.System:pid/0	1
+callext	Elixir.System:version/0	2
+callext	Elixir.Version:match?/2	1
+callext	elixir_erl_pass:no_parens_remote/2	12
+callext	elixir_erl_pass:parens_map_field/2	6
+callext	erlang:++/2	1
+callext	erlang:atom_to_binary/1	1
+callext	erlang:binary_to_integer/1	1
+callext	erlang:error/1	19
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	os:type/0	1

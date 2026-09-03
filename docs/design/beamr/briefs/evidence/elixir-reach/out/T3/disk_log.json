@@ -1,0 +1,103 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 5852,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "ets",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "file",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "proc_lib",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "sys",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 101492,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "disk_log_1",
+  "disk_log_server",
+  "erlang",
+  "ets",
+  "file",
+  "io_lib",
+  "lists",
+  "proc_lib",
+  "sys"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "disk_log",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/kernel-11.0.3/ebin/disk_log.beam",
+ "registration_deviation": [],
+ "sha256": "09d5b42deabf5b3b76a7dfbfbc3de41411cf63788d0e355835fa790925c51e92",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

@@ -1,0 +1,71 @@
+module	Elixir.Module.Types.Traverse
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	125
+op	2	func_info/3	27
+op	3	int_code_end/0	1
+op	4	call/2	17
+op	5	call_last/3	12
+op	6	call_only/2	20
+op	7	call_ext/2	5
+op	8	call_ext_last/3	8
+op	11	bif2/5	2
+op	12	allocate/2	19
+op	13	allocate_heap/3	1
+op	16	test_heap/2	15
+op	18	deallocate/1	5
+op	19	return/0	15
+op	43	is_eq_exact/3	2
+op	45	is_integer/2	3
+op	46	is_float/2	1
+op	48	is_atom/2	7
+op	49	is_pid/2	1
+op	52	is_nil/2	29
+op	53	is_binary/2	1
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	40
+op	57	is_tuple/2	12
+op	58	test_arity/3	9
+op	59	select_val/3	12
+op	60	select_tuple_arity/3	2
+op	61	jump/1	11
+op	64	move/2	194
+op	65	get_list/3	35
+op	66	get_tuple_element/3	35
+op	72	badmatch/1	2
+op	74	case_end/1	2
+op	75	call_fun/1	1
+op	78	call_ext_only/2	12
+op	124	gc_bif1/5	2
+op	136	trim/2	1
+op	153	line/1	65
+op	156	is_map/2	2
+op	158	get_map_elements/3	2
+op	159	is_tagged_tuple/4	11
+op	163	get_tl/2	2
+op	164	put_tuple2/2	1
+op	169	swap/2	22
+op	171	make_fun3/3	15
+op	172	init_yregs/1	1
+impt	Elixir.Enum:any?/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Keyword:fetch!/2
+impt	Elixir.Module.Types.Of:struct_info/5
+impt	Elixir.Module.Types.Of:unknown_struct_field/6
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:==/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+disasm	ok
+callext	Elixir.Enum:any?/2	1
+callext	Elixir.Enum:reduce/3	14
+callext	Elixir.Keyword:fetch!/2	1
+callext	Elixir.Module.Types.Of:struct_info/5	1
+callext	Elixir.Module.Types.Of:unknown_struct_field/6	1
+callext	elixir_erl_pass:no_parens_remote/2	2
+callext	erlang:error/1	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

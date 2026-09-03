@@ -1,0 +1,75 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 401,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "queue",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 10492,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Enum",
+  "Elixir.Process",
+  "Elixir.RuntimeError",
+  "Elixir.String.Chars",
+  "erlang",
+  "queue"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.IEx.History",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/iex/ebin/Elixir.IEx.History.beam",
+ "registration_deviation": [],
+ "sha256": "e36efdb827ba224d1277a540ab454e269bfa536c6d9105707e43eb51911ac4da",
+ "skipped_in_dirs": 14,
+ "tier": "T4"
+}

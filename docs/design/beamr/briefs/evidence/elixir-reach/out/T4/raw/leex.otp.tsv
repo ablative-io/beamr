@@ -1,0 +1,235 @@
+module	leex
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	840
+op	2	func_info/3	198
+op	3	int_code_end/0	1
+op	4	call/2	199
+op	5	call_last/3	63
+op	6	call_only/2	86
+op	7	call_ext/2	188
+op	8	call_ext_last/3	42
+op	10	bif1/4	2
+op	11	bif2/5	6
+op	12	allocate/2	130
+op	13	allocate_heap/3	23
+op	16	test_heap/2	250
+op	18	deallocate/1	123
+op	19	return/0	236
+op	39	is_lt/3	19
+op	40	is_ge/3	26
+op	43	is_eq_exact/3	150
+op	44	is_ne_exact/3	9
+op	45	is_integer/2	3
+op	52	is_nil/2	43
+op	55	is_list/2	4
+op	56	is_nonempty_list/2	123
+op	57	is_tuple/2	66
+op	58	test_arity/3	49
+op	59	select_val/3	42
+op	60	select_tuple_arity/3	14
+op	61	jump/1	24
+op	62	catch/2	1
+op	63	catch_end/1	1
+op	64	move/2	1395
+op	65	get_list/3	113
+op	66	get_tuple_element/3	343
+op	69	put_list/3	258
+op	72	badmatch/1	23
+op	74	case_end/1	29
+op	78	call_ext_only/2	44
+op	104	try/2	8
+op	105	try_end/1	8
+op	106	try_case/1	8
+op	108	raise/2	8
+op	112	apply/1	4
+op	114	is_boolean/2	1
+op	124	gc_bif1/5	4
+op	125	gc_bif2/6	49
+op	136	trim/2	60
+op	153	line/1	685
+op	159	is_tagged_tuple/4	32
+op	162	get_hd/2	8
+op	163	get_tl/2	4
+op	164	put_tuple2/2	218
+op	169	swap/2	41
+op	171	make_fun3/3	23
+op	172	init_yregs/1	85
+op	178	call_fun2/3	2
+op	180	badrecord/1	2
+op	181	update_record/5	8
+impt	code:lib_dir/1
+impt	epp:default_encoding/0
+impt	epp:encoding_to_string/1
+impt	epp:set_encoding/1
+impt	erl_anno:new/1
+impt	erl_parse:parse_term/1
+impt	erl_scan:line/1
+impt	erl_scan:string/1
+impt	erl_scan:tokens/3
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:</2
+impt	erlang:=:=/2
+impt	erlang:atom_to_list/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_integer/2
+impt	erlang:list_to_tuple/1
+impt	erlang:nif_error/1
+impt	erlang:raise/3
+impt	erlang:throw/1
+impt	erlang:tuple_size/1
+impt	file:close/1
+impt	file:format_error/1
+impt	file:get_cwd/0
+impt	file:open/2
+impt	file:position/2
+impt	filename:basename/1
+impt	filename:basename/2
+impt	filename:dirname/1
+impt	filename:extension/1
+impt	filename:flatten/1
+impt	filename:join/2
+impt	filename:rootname/1
+impt	io:format/2
+impt	io:fwrite/2
+impt	io:fwrite/3
+impt	io:get_line/2
+impt	io:getopts/1
+impt	io:nl/1
+impt	io:put_chars/2
+impt	io:setopts/2
+impt	io_lib:fwrite/2
+impt	io_lib:write/1
+impt	io_lib:write_char/1
+impt	io_lib:write_char_as_latin1/1
+impt	io_lib:write_string/1
+impt	io_lib:write_string_as_latin1/1
+impt	lists:append/1
+impt	lists:concat/1
+impt	lists:flatmap/2
+impt	lists:foldl/3
+impt	lists:foldr/3
+impt	lists:foreach/2
+impt	lists:join/2
+impt	lists:keyfind/3
+impt	lists:keysort/2
+impt	lists:map/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	lists:sublist/2
+impt	lists:usort/1
+impt	orddict:append/3
+impt	orddict:fetch/2
+impt	orddict:fetch_keys/1
+impt	orddict:new/0
+impt	orddict:store/3
+impt	ordsets:add_element/2
+impt	ordsets:is_element/2
+impt	ordsets:new/0
+impt	ordsets:union/2
+impt	os:getenv/1
+impt	proplists:get_bool/2
+impt	proplists:get_value/2
+impt	re:run/3
+impt	re:split/3
+impt	string:length/1
+impt	string:prefix/2
+impt	string:slice/3
+impt	string:take/2
+impt	string:take/3
+impt	unicode:characters_to_list/1
+disasm	ok
+callext	code:lib_dir/1	1
+callext	epp:default_encoding/0	1
+callext	epp:encoding_to_string/1	1
+callext	epp:set_encoding/1	2
+callext	erl_anno:new/1	1
+callext	erl_parse:parse_term/1	1
+callext	erl_scan:line/1	2
+callext	erl_scan:string/1	1
+callext	erl_scan:tokens/3	1
+callext	erlang:++/2	13
+callext	erlang:atom_to_list/1	2
+callext	erlang:error/1	13
+callext	erlang:error/2	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_atom/1	2
+callext	erlang:list_to_integer/2	2
+callext	erlang:list_to_tuple/1	1
+callext	erlang:nif_error/1	6
+callext	erlang:raise/3	1
+callext	erlang:throw/1	1
+callext	file:close/1	10
+callext	file:format_error/1	1
+callext	file:get_cwd/0	1
+callext	file:open/2	5
+callext	file:position/2	2
+callext	filename:basename/1	1
+callext	filename:basename/2	1
+callext	filename:dirname/1	2
+callext	filename:extension/1	1
+callext	filename:flatten/1	3
+callext	filename:join/2	6
+callext	filename:rootname/1	1
+callext	io:format/2	2
+callext	io:fwrite/2	5
+callext	io:fwrite/3	59
+callext	io:get_line/2	5
+callext	io:getopts/1	1
+callext	io:nl/1	1
+callext	io:put_chars/2	1
+callext	io:setopts/2	2
+callext	io_lib:fwrite/2	3
+callext	io_lib:write/1	1
+callext	io_lib:write_char/1	1
+callext	io_lib:write_char_as_latin1/1	1
+callext	io_lib:write_string/1	2
+callext	io_lib:write_string_as_latin1/1	1
+callext	lists:append/1	1
+callext	lists:concat/1	2
+callext	lists:flatmap/2	2
+callext	lists:foldl/3	4
+callext	lists:foldr/3	2
+callext	lists:foreach/2	10
+callext	lists:join/2	7
+callext	lists:keyfind/3	7
+callext	lists:keysort/2	1
+callext	lists:map/2	2
+callext	lists:member/2	11
+callext	lists:reverse/1	5
+callext	lists:sort/1	5
+callext	lists:sublist/2	1
+callext	lists:usort/1	1
+callext	orddict:append/3	1
+callext	orddict:fetch/2	1
+callext	orddict:fetch_keys/1	1
+callext	orddict:new/0	1
+callext	orddict:store/3	2
+callext	ordsets:add_element/2	5
+callext	ordsets:is_element/2	1
+callext	ordsets:new/0	1
+callext	ordsets:union/2	2
+callext	os:getenv/1	1
+callext	proplists:get_bool/2	6
+callext	proplists:get_value/2	6
+callext	re:run/3	1
+callext	re:split/3	1
+callext	string:length/1	2
+callext	string:prefix/2	1
+callext	string:slice/3	2
+callext	string:take/2	1
+callext	string:take/3	1
+callext	unicode:characters_to_list/1	1

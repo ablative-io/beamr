@@ -1,0 +1,91 @@
+module	Elixir.Mix.Tasks.Deps.Unlock
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	53
+op	2	func_info/3	13
+op	3	int_code_end/0	1
+op	4	call/2	2
+op	5	call_last/3	3
+op	6	call_only/2	2
+op	7	call_ext/2	32
+op	8	call_ext_last/3	7
+op	12	allocate/2	8
+op	16	test_heap/2	5
+op	18	deallocate/1	4
+op	19	return/0	11
+op	44	is_ne_exact/3	1
+op	52	is_nil/2	4
+op	53	is_binary/2	1
+op	57	is_tuple/2	2
+op	58	test_arity/3	2
+op	59	select_val/3	6
+op	61	jump/1	2
+op	64	move/2	71
+op	66	get_tuple_element/3	4
+op	72	badmatch/1	1
+op	74	case_end/1	1
+op	78	call_ext_only/2	3
+op	112	apply/1	1
+op	113	apply_last/2	2
+op	136	trim/2	5
+op	153	line/1	46
+op	156	is_map/2	1
+op	158	get_map_elements/3	1
+op	169	swap/2	2
+op	171	make_fun3/3	5
+op	172	init_yregs/1	10
+op	177	bs_create_bin/6	4
+impt	Elixir.Access:get/2
+impt	Elixir.Enum:filter/2
+impt	Elixir.Enum:join/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:map_join/3
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:sort/1
+impt	Elixir.Kernel:=~/2
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Map:drop/2
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix.Dep.Converger:converge/1
+impt	Elixir.Mix.Dep.Lock:read/0
+impt	Elixir.Mix.Dep.Lock:write/1
+impt	Elixir.Mix.Project:get!/0
+impt	Elixir.Mix.Project:with_deps_lock/1
+impt	Elixir.OptionParser:parse/2
+impt	Elixir.String.Chars:to_string/1
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:--/2
+impt	erlang:atom_to_binary/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	maps:keys/1
+disasm	ok
+callext	Elixir.Access:get/2	4
+callext	Elixir.Enum:filter/2	1
+callext	Elixir.Enum:join/2	1
+callext	Elixir.Enum:map/2	2
+callext	Elixir.Enum:map_join/3	1
+callext	Elixir.Enum:reduce/3	1
+callext	Elixir.Enum:sort/1	1
+callext	Elixir.Kernel:=~/2	1
+callext	Elixir.Kernel:inspect/1	1
+callext	Elixir.Map:drop/2	2
+callext	Elixir.Mix:raise/1	2
+callext	Elixir.Mix:shell/0	3
+callext	Elixir.Mix.Dep.Converger:converge/1	1
+callext	Elixir.Mix.Dep.Lock:read/0	4
+callext	Elixir.Mix.Dep.Lock:write/1	2
+callext	Elixir.Mix.Project:get!/0	1
+callext	Elixir.Mix.Project:with_deps_lock/1	1
+callext	Elixir.OptionParser:parse/2	1
+callext	Elixir.String.Chars:to_string/1	1
+callext	elixir_erl_pass:no_parens_remote/2	1
+callext	erlang:--/2	2
+callext	erlang:atom_to_binary/1	1
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	maps:keys/1	3

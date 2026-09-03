@@ -1,0 +1,157 @@
+module	Elixir.Mix.Dep.Converger
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	286
+op	2	func_info/3	51
+op	3	int_code_end/0	1
+op	4	call/2	23
+op	5	call_last/3	6
+op	6	call_only/2	8
+op	7	call_ext/2	97
+op	8	call_ext_last/3	24
+op	10	bif1/4	2
+op	11	bif2/5	8
+op	12	allocate/2	27
+op	13	allocate_heap/3	4
+op	16	test_heap/2	56
+op	18	deallocate/1	41
+op	19	return/0	61
+op	41	is_eq/3	2
+op	43	is_eq_exact/3	23
+op	44	is_ne_exact/3	3
+op	52	is_nil/2	2
+op	53	is_binary/2	1
+op	56	is_nonempty_list/2	2
+op	57	is_tuple/2	26
+op	58	test_arity/3	22
+op	59	select_val/3	46
+op	60	select_tuple_arity/3	2
+op	61	jump/1	26
+op	64	move/2	416
+op	65	get_list/3	2
+op	66	get_tuple_element/3	72
+op	69	put_list/3	7
+op	72	badmatch/1	8
+op	74	case_end/1	19
+op	75	call_fun/1	2
+op	78	call_ext_only/2	12
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	108	raise/2	1
+op	112	apply/1	5
+op	113	apply_last/2	1
+op	136	trim/2	23
+op	153	line/1	175
+op	154	put_map_assoc/5	1
+op	155	put_map_exact/5	8
+op	156	is_map/2	25
+op	158	get_map_elements/3	37
+op	159	is_tagged_tuple/4	3
+op	164	put_tuple2/2	31
+op	169	swap/2	9
+op	171	make_fun3/3	23
+op	172	init_yregs/1	39
+op	177	bs_create_bin/6	5
+impt	Elixir.Access:get/2
+impt	Elixir.Access:get_and_update/3
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:all?/2
+impt	Elixir.Enum:any?/2
+impt	Elixir.Enum:each/2
+impt	Elixir.Enum:find/2
+impt	Elixir.Enum:into/3
+impt	Elixir.Enum:join/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reject/2
+impt	Elixir.Enum:reverse/1
+impt	Elixir.Enum:split_while/2
+impt	Elixir.Enum:split_with/2
+impt	Elixir.Enum:uniq/1
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:delete/2
+impt	Elixir.Keyword:fetch/2
+impt	Elixir.Keyword:get/2
+impt	Elixir.List:first/1
+impt	Elixir.List:wrap/1
+impt	Elixir.Map:get_and_update!/3
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix.Dep.Loader:children/1
+impt	Elixir.Mix.Dep.Loader:load/3
+impt	Elixir.Mix.Dep.Loader:skip?/2
+impt	Elixir.Mix.Dep.Loader:split_by_env_and_target/2
+impt	Elixir.Mix.Dep.Loader:vsn_match/3
+impt	Elixir.Mix.Dep.Loader:with_system_env/2
+impt	Elixir.Mix.Dep.Lock:read/0
+impt	Elixir.Mix.RemoteConverger:get/0
+impt	Elixir.Mix.Utils:find_cycle!/1
+impt	Elixir.String.Chars:to_string/1
+impt	digraph:add_edge/3
+impt	digraph:add_vertex/2
+impt	digraph:delete/1
+impt	digraph:new/0
+impt	digraph_utils:topsort/1
+impt	elixir_erl_pass:no_parens_remote/2
+impt	elixir_erl_pass:parens_map_field/2
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:/=/2
+impt	erlang:==/2
+impt	erlang:binary_to_atom/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:make_fun/3
+impt	erlang:not/1
+disasm	ok
+callext	Elixir.Access:get/2	8
+callext	Elixir.Access:get_and_update/3	2
+callext	Elixir.Enum:__in__/2	2
+callext	Elixir.Enum:all?/2	1
+callext	Elixir.Enum:any?/2	2
+callext	Elixir.Enum:each/2	3
+callext	Elixir.Enum:find/2	1
+callext	Elixir.Enum:into/3	1
+callext	Elixir.Enum:join/2	1
+callext	Elixir.Enum:map/2	6
+callext	Elixir.Enum:reject/2	1
+callext	Elixir.Enum:reverse/1	1
+callext	Elixir.Enum:split_while/2	1
+callext	Elixir.Enum:split_with/2	2
+callext	Elixir.Enum:uniq/1	1
+callext	Elixir.Kernel:inspect/1	1
+callext	Elixir.Keyword:delete/2	1
+callext	Elixir.Keyword:fetch/2	4
+callext	Elixir.Keyword:get/2	2
+callext	Elixir.List:first/1	1
+callext	Elixir.List:wrap/1	6
+callext	Elixir.Map:get_and_update!/3	2
+callext	Elixir.Mix:raise/1	2
+callext	Elixir.Mix:shell/0	1
+callext	Elixir.Mix.Dep.Loader:children/1	1
+callext	Elixir.Mix.Dep.Loader:load/3	1
+callext	Elixir.Mix.Dep.Loader:skip?/2	3
+callext	Elixir.Mix.Dep.Loader:split_by_env_and_target/2	1
+callext	Elixir.Mix.Dep.Loader:vsn_match/3	1
+callext	Elixir.Mix.Dep.Loader:with_system_env/2	1
+callext	Elixir.Mix.Dep.Lock:read/0	1
+callext	Elixir.Mix.RemoteConverger:get/0	3
+callext	Elixir.Mix.Utils:find_cycle!/1	1
+callext	Elixir.String.Chars:to_string/1	3
+callext	digraph:add_edge/3	1
+callext	digraph:add_vertex/2	1
+callext	digraph:delete/1	2
+callext	digraph:new/0	1
+callext	digraph_utils:topsort/1	1
+callext	elixir_erl_pass:no_parens_remote/2	16
+callext	elixir_erl_pass:parens_map_field/2	1
+callext	erlang:++/2	9
+callext	erlang:--/2	3
+callext	erlang:binary_to_atom/2	2
+callext	erlang:error/1	22
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:make_fun/3	2

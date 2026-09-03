@@ -1,0 +1,84 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 379,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 10196,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Enum",
+  "Elixir.Exception",
+  "Elixir.Kernel",
+  "Elixir.Keyword",
+  "Elixir.String",
+  "Elixir.String.Chars",
+  "elixir_erl_pass",
+  "erlang",
+  "lists",
+  "maps"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.KeyError",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/elixir/ebin/Elixir.KeyError.beam",
+ "registration_deviation": [],
+ "sha256": "73fe45b4b944f3ca29ea754202b4bb5bbb263628414e8c84cd85ae937fc79c8f",
+ "skipped_in_dirs": 14,
+ "tier": "T2"
+}

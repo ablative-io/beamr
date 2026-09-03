@@ -1,0 +1,142 @@
+module	beam_types
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	937
+op	2	func_info/3	126
+op	3	int_code_end/0	1
+op	4	call/2	245
+op	5	call_last/3	84
+op	6	call_only/2	110
+op	7	call_ext/2	43
+op	8	call_ext_last/3	4
+op	10	bif1/4	2
+op	11	bif2/5	14
+op	12	allocate/2	174
+op	13	allocate_heap/3	6
+op	16	test_heap/2	210
+op	18	deallocate/1	140
+op	19	return/0	321
+op	39	is_lt/3	10
+op	40	is_ge/3	27
+op	43	is_eq_exact/3	265
+op	44	is_ne_exact/3	34
+op	45	is_integer/2	15
+op	46	is_float/2	10
+op	47	is_number/2	1
+op	48	is_atom/2	5
+op	52	is_nil/2	41
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	90
+op	57	is_tuple/2	106
+op	58	test_arity/3	59
+op	59	select_val/3	52
+op	60	select_tuple_arity/3	27
+op	61	jump/1	91
+op	64	move/2	931
+op	65	get_list/3	47
+op	66	get_tuple_element/3	377
+op	69	put_list/3	50
+op	72	badmatch/1	16
+op	73	if_end/0	3
+op	74	case_end/1	8
+op	77	is_function/2	1
+op	78	call_ext_only/2	19
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	108	raise/2	1
+op	114	is_boolean/2	8
+op	117	bs_get_integer2/7	2
+op	124	gc_bif1/5	10
+op	125	gc_bif2/6	71
+op	129	is_bitstr/2	1
+op	133	bs_init_writable/0	1
+op	136	trim/2	40
+op	153	line/1	469
+op	154	put_map_assoc/5	10
+op	156	is_map/2	15
+op	158	get_map_elements/3	15
+op	159	is_tagged_tuple/4	143
+op	162	get_hd/2	1
+op	163	get_tl/2	11
+op	164	put_tuple2/2	169
+op	165	bs_get_tail/3	2
+op	166	bs_start_match3/4	3
+op	167	bs_get_position/3	3
+op	168	bs_set_position/2	4
+op	169	swap/2	49
+op	171	make_fun3/3	10
+op	172	init_yregs/1	42
+op	177	bs_create_bin/6	6
+op	178	call_fun2/3	1
+op	181	update_record/5	32
+op	182	bs_match/3	7
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:band/2
+impt	erlang:bit_size/1
+impt	erlang:bor/2
+impt	erlang:bsl/2
+impt	erlang:bsr/2
+impt	erlang:ceil/1
+impt	erlang:div/2
+impt	erlang:error/1
+impt	erlang:float/1
+impt	erlang:floor/1
+impt	erlang:fun_info/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_boolean/1
+impt	erlang:list_to_tuple/1
+impt	erlang:map_size/1
+impt	erlang:max/2
+impt	erlang:min/2
+impt	erlang:rem/2
+impt	erlang:tuple_size/1
+impt	erlang:tuple_to_list/1
+impt	erts_internal:cmp_term/2
+impt	erts_internal:mc_iterator/1
+impt	erts_internal:mc_refill/1
+impt	lists:foldl/3
+impt	lists:mapfoldl/3
+impt	lists:reverse/1
+impt	lists:usort/1
+impt	maps:fold/3
+impt	maps:from_list/1
+impt	maps:keys/1
+impt	maps:remove/2
+impt	maps:to_list/1
+impt	ordsets:intersection/2
+impt	ordsets:size/1
+impt	ordsets:subtract/2
+impt	ordsets:union/2
+disasm	ok
+callext	erlang:++/2	2
+callext	erlang:error/1	12
+callext	erlang:fun_info/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_tuple/1	1
+callext	erlang:tuple_to_list/1	1
+callext	erts_internal:cmp_term/2	7
+callext	erts_internal:mc_iterator/1	3
+callext	erts_internal:mc_refill/1	3
+callext	lists:foldl/3	6
+callext	lists:mapfoldl/3	1
+callext	lists:reverse/1	6
+callext	lists:usort/1	2
+callext	maps:fold/3	1
+callext	maps:from_list/1	1
+callext	maps:keys/1	8
+callext	maps:remove/2	3
+callext	maps:to_list/1	2
+callext	ordsets:intersection/2	1
+callext	ordsets:size/1	1
+callext	ordsets:subtract/2	1
+callext	ordsets:union/2	1

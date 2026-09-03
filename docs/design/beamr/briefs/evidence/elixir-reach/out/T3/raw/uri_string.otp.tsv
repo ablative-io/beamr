@@ -1,0 +1,137 @@
+module	uri_string
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	820
+op	2	func_info/3	167
+op	3	int_code_end/0	1
+op	4	call/2	247
+op	5	call_last/3	94
+op	6	call_only/2	88
+op	7	call_ext/2	62
+op	8	call_ext_last/3	41
+op	10	bif1/4	2
+op	11	bif2/5	6
+op	12	allocate/2	172
+op	13	allocate_heap/3	1
+op	16	test_heap/2	108
+op	18	deallocate/1	122
+op	19	return/0	239
+op	40	is_ge/3	74
+op	43	is_eq_exact/3	135
+op	44	is_ne_exact/3	14
+op	52	is_nil/2	22
+op	53	is_binary/2	28
+op	55	is_list/2	23
+op	56	is_nonempty_list/2	26
+op	57	is_tuple/2	12
+op	58	test_arity/3	12
+op	59	select_val/3	41
+op	61	jump/1	59
+op	64	move/2	973
+op	65	get_list/3	17
+op	66	get_tuple_element/3	91
+op	69	put_list/3	51
+op	72	badmatch/1	1
+op	73	if_end/0	5
+op	74	case_end/1	7
+op	78	call_ext_only/2	29
+op	104	try/2	19
+op	105	try_end/1	19
+op	106	try_case/1	19
+op	108	raise/2	14
+op	124	gc_bif1/5	6
+op	125	gc_bif2/6	54
+op	133	bs_init_writable/0	17
+op	136	trim/2	50
+op	138	bs_get_utf8/5	20
+op	153	line/1	588
+op	154	put_map_assoc/5	48
+op	156	is_map/2	18
+op	157	has_map_fields/3	13
+op	158	get_map_elements/3	22
+op	159	is_tagged_tuple/4	15
+op	162	get_hd/2	2
+op	163	get_tl/2	3
+op	164	put_tuple2/2	89
+op	165	bs_get_tail/3	76
+op	166	bs_start_match3/4	15
+op	167	bs_get_position/3	56
+op	168	bs_set_position/2	96
+op	169	swap/2	15
+op	170	bs_start_match4/4	21
+op	171	make_fun3/3	22
+op	172	init_yregs/1	60
+op	177	bs_create_bin/6	64
+op	178	call_fun2/3	1
+op	182	bs_match/3	106
+impt	binary:last/1
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:binary_to_integer/1
+impt	erlang:byte_size/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_binary/1
+impt	erlang:integer_to_list/2
+impt	erlang:iolist_size/1
+impt	erlang:iolist_to_binary/1
+impt	erlang:is_list/1
+impt	erlang:raise/3
+impt	erlang:split_binary/2
+impt	erlang:throw/1
+impt	inet:parse_ipv4strict_address/1
+impt	inet:parse_ipv6strict_address/1
+impt	lists:filter/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:seq/2
+impt	maps:fold/3
+impt	maps:map/2
+impt	maps:merge/2
+impt	maps:remove/2
+impt	maps:with/2
+impt	proplists:get_value/3
+impt	string:split/3
+impt	unicode:characters_to_binary/1
+impt	unicode:characters_to_binary/3
+impt	unicode:characters_to_list/1
+impt	unicode:characters_to_list/2
+disasm	ok
+callext	binary:last/1	4
+callext	erlang:++/2	8
+callext	erlang:binary_to_integer/1	1
+callext	erlang:error/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_binary/1	1
+callext	erlang:integer_to_list/2	1
+callext	erlang:iolist_size/1	1
+callext	erlang:iolist_to_binary/1	1
+callext	erlang:raise/3	14
+callext	erlang:split_binary/2	5
+callext	erlang:throw/1	27
+callext	inet:parse_ipv4strict_address/1	2
+callext	inet:parse_ipv6strict_address/1	2
+callext	lists:filter/2	11
+callext	lists:member/2	1
+callext	lists:reverse/1	10
+callext	lists:reverse/2	2
+callext	lists:seq/2	1
+callext	maps:fold/3	1
+callext	maps:map/2	3
+callext	maps:merge/2	3
+callext	maps:remove/2	2
+callext	maps:with/2	3
+callext	proplists:get_value/3	4
+callext	string:split/3	1
+callext	unicode:characters_to_binary/1	5
+callext	unicode:characters_to_binary/3	1
+callext	unicode:characters_to_list/1	11
+callext	unicode:characters_to_list/2	1

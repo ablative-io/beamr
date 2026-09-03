@@ -1,0 +1,185 @@
+module	beam_doc
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	496
+op	2	func_info/3	98
+op	3	int_code_end/0	1
+op	4	call/2	57
+op	5	call_last/3	33
+op	6	call_only/2	31
+op	7	call_ext/2	133
+op	8	call_ext_last/3	17
+op	11	bif2/5	11
+op	12	allocate/2	56
+op	13	allocate_heap/3	22
+op	16	test_heap/2	168
+op	18	deallocate/1	65
+op	19	return/0	137
+op	43	is_eq_exact/3	63
+op	44	is_ne_exact/3	7
+op	48	is_atom/2	3
+op	52	is_nil/2	16
+op	53	is_binary/2	2
+op	55	is_list/2	11
+op	56	is_nonempty_list/2	33
+op	57	is_tuple/2	62
+op	58	test_arity/3	51
+op	59	select_val/3	36
+op	60	select_tuple_arity/3	10
+op	61	jump/1	34
+op	64	move/2	476
+op	65	get_list/3	20
+op	66	get_tuple_element/3	324
+op	69	put_list/3	72
+op	72	badmatch/1	10
+op	73	if_end/0	1
+op	74	case_end/1	7
+op	75	call_fun/1	4
+op	78	call_ext_only/2	28
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	124	gc_bif1/5	10
+op	136	trim/2	22
+op	153	line/1	332
+op	154	put_map_assoc/5	15
+op	155	put_map_exact/5	6
+op	156	is_map/2	27
+op	157	has_map_fields/3	2
+op	158	get_map_elements/3	8
+op	159	is_tagged_tuple/4	82
+op	162	get_hd/2	6
+op	163	get_tl/2	6
+op	164	put_tuple2/2	123
+op	169	swap/2	35
+op	171	make_fun3/3	48
+op	172	init_yregs/1	32
+op	180	badrecord/1	29
+op	181	update_record/5	40
+impt	digraph:add_edge/3
+impt	digraph:add_vertex/2
+impt	digraph:delete/1
+impt	digraph:new/0
+impt	digraph_utils:reachable/2
+impt	erl_anno:file/1
+impt	erl_anno:location/1
+impt	erl_anno:new/1
+impt	erl_anno:set_file/2
+impt	erl_lint:format_error/1
+impt	erl_parse:parse_exprs/1
+impt	erl_pp:expr/1
+impt	erl_scan:string/1
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:and/2
+impt	erlang:atom_to_list/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_map_key/2
+impt	erlang:length/1
+impt	erlang:map_get/2
+impt	filename:absname/1
+impt	filename:join/2
+impt	io_lib:format/2
+impt	lists:all/2
+impt	lists:filter/2
+impt	lists:filtermap/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:join/2
+impt	lists:map/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	lists:uniq/1
+impt	lists:uniq/2
+impt	maps:find/2
+impt	maps:fold/3
+impt	maps:keys/1
+impt	maps:merge/2
+impt	maps:merge_with/3
+impt	maps:remove/2
+impt	maps:to_list/1
+impt	maps:update/3
+impt	maps:update_with/4
+impt	proplists:get_all_values/2
+impt	proplists:get_value/3
+impt	sets:add_element/2
+impt	sets:filter/2
+impt	sets:from_list/1
+impt	sets:intersection/2
+impt	sets:is_element/2
+impt	sets:map/2
+impt	sets:new/0
+impt	sets:to_list/1
+impt	sets:union/2
+impt	string:split/2
+impt	string:trim/1
+impt	string:trim/3
+impt	unicode:characters_to_binary/1
+impt	unicode:characters_to_list/1
+disasm	ok
+callext	digraph:add_edge/3	1
+callext	digraph:add_vertex/2	2
+callext	digraph:delete/1	1
+callext	digraph:new/0	1
+callext	digraph_utils:reachable/2	2
+callext	erl_anno:file/1	2
+callext	erl_anno:location/1	2
+callext	erl_anno:new/1	3
+callext	erl_anno:set_file/2	1
+callext	erl_lint:format_error/1	3
+callext	erl_parse:parse_exprs/1	1
+callext	erl_pp:expr/1	1
+callext	erl_scan:string/1	1
+callext	erlang:++/2	6
+callext	erlang:--/2	3
+callext	erlang:atom_to_list/1	2
+callext	erlang:error/1	28
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	filename:absname/1	1
+callext	filename:join/2	1
+callext	io_lib:format/2	9
+callext	lists:all/2	1
+callext	lists:filter/2	2
+callext	lists:filtermap/2	1
+callext	lists:flatten/1	3
+callext	lists:foldl/3	11
+callext	lists:join/2	2
+callext	lists:map/2	2
+callext	lists:member/2	9
+callext	lists:reverse/1	1
+callext	lists:sort/1	1
+callext	lists:uniq/1	6
+callext	lists:uniq/2	1
+callext	maps:find/2	4
+callext	maps:fold/3	1
+callext	maps:keys/1	4
+callext	maps:merge/2	4
+callext	maps:merge_with/3	1
+callext	maps:remove/2	2
+callext	maps:to_list/1	1
+callext	maps:update/3	2
+callext	maps:update_with/4	1
+callext	proplists:get_all_values/2	2
+callext	proplists:get_value/3	2
+callext	sets:add_element/2	1
+callext	sets:filter/2	1
+callext	sets:from_list/1	6
+callext	sets:intersection/2	1
+callext	sets:is_element/2	6
+callext	sets:map/2	1
+callext	sets:new/0	4
+callext	sets:to_list/1	2
+callext	sets:union/2	4
+callext	string:split/2	1
+callext	string:trim/1	3
+callext	string:trim/3	1
+callext	unicode:characters_to_binary/1	7
+callext	unicode:characters_to_list/1	3

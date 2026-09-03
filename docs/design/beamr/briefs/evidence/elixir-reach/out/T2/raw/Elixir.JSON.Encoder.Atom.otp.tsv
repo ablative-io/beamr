@@ -1,0 +1,25 @@
+module	Elixir.JSON.Encoder.Atom
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	28
+op	2	func_info/3	7
+op	3	int_code_end/0	1
+op	6	call_only/2	2
+op	7	call_ext/2	1
+op	12	allocate/2	1
+op	18	deallocate/1	1
+op	19	return/0	11
+op	59	select_val/3	3
+op	61	jump/1	2
+op	64	move/2	18
+op	75	call_fun/1	1
+op	78	call_ext_only/2	3
+op	153	line/1	8
+impt	erlang:atom_to_binary/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+disasm	ok
+callext	erlang:atom_to_binary/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

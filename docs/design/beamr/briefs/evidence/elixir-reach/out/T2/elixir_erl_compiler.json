@@ -1,0 +1,116 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 677,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "beam_validator",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "compile",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_internal",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "persistent_term",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "proplists",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "v3_core",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 11724,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "beam_validator",
+  "compile",
+  "elixir_aliases",
+  "elixir_errors",
+  "elixir_utils",
+  "erl_internal",
+  "erlang",
+  "io_lib",
+  "lists",
+  "persistent_term",
+  "proplists",
+  "v3_core"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "elixir_erl_compiler",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/elixir/ebin/elixir_erl_compiler.beam",
+ "registration_deviation": [],
+ "sha256": "ba158787cbade44e92f7064f7d2ef93f837412f4295f38a605e9135cc9dbf59a",
+ "skipped_in_dirs": 14,
+ "tier": "T2"
+}

@@ -1,0 +1,89 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 583,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "file",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 9856,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.Enum",
+  "Elixir.File",
+  "Elixir.List",
+  "Elixir.Mix",
+  "Elixir.Mix.Dep.Converger",
+  "Elixir.Mix.Project",
+  "Elixir.Mix.Task",
+  "Elixir.OptionParser",
+  "Elixir.Path",
+  "Elixir.String.Chars",
+  "elixir_erl_pass",
+  "erlang",
+  "file",
+  "lists"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.Mix.Tasks.Deps.Clean",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/mix/ebin/Elixir.Mix.Tasks.Deps.Clean.beam",
+ "registration_deviation": [],
+ "sha256": "3ed75aff8c389fc31642ef95a48874247da362657a3c0358695840f7feff8277",
+ "skipped_in_dirs": 14,
+ "tier": "T4"
+}

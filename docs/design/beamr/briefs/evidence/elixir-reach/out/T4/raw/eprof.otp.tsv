@@ -1,0 +1,147 @@
+module	eprof
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	214
+op	2	func_info/3	66
+op	3	int_code_end/0	1
+op	4	call/2	62
+op	5	call_last/3	13
+op	6	call_only/2	28
+op	7	call_ext/2	58
+op	8	call_ext_last/3	5
+op	9	bif0/2	2
+op	11	bif2/5	11
+op	12	allocate/2	38
+op	13	allocate_heap/3	3
+op	16	test_heap/2	73
+op	18	deallocate/1	31
+op	19	return/0	57
+op	20	send/0	2
+op	21	remove_message/0	1
+op	23	loop_rec/2	1
+op	24	loop_rec_end/1	1
+op	25	wait/1	1
+op	40	is_ge/3	2
+op	43	is_eq_exact/3	23
+op	44	is_ne_exact/3	2
+op	48	is_atom/2	6
+op	49	is_pid/2	1
+op	52	is_nil/2	7
+op	55	is_list/2	16
+op	56	is_nonempty_list/2	10
+op	57	is_tuple/2	32
+op	58	test_arity/3	26
+op	59	select_val/3	7
+op	60	select_tuple_arity/3	2
+op	61	jump/1	4
+op	64	move/2	352
+op	65	get_list/3	9
+op	66	get_tuple_element/3	131
+op	69	put_list/3	50
+op	72	badmatch/1	5
+op	74	case_end/1	2
+op	77	is_function/2	5
+op	78	call_ext_only/2	19
+op	96	fmove/2	7
+op	97	fconv/2	2
+op	100	fmul/4	2
+op	101	fdiv/4	1
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	112	apply/1	1
+op	125	gc_bif2/6	8
+op	136	trim/2	12
+op	153	line/1	189
+op	159	is_tagged_tuple/4	25
+op	164	put_tuple2/2	66
+op	169	swap/2	9
+op	171	make_fun3/3	9
+op	172	init_yregs/1	25
+op	181	update_record/5	5
+impt	code:all_loaded/0
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:</2
+impt	erlang:apply/3
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:exit/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:max/2
+impt	erlang:process_flag/2
+impt	erlang:self/0
+impt	erlang:spawn_link/1
+impt	erlang:system_flag/2
+impt	erlang:timestamp/0
+impt	erlang:trace/3
+impt	erlang:trace_info/2
+impt	erlang:trace_pattern/3
+impt	erlang:tuple_to_list/1
+impt	erlang:unlink/1
+impt	erlang:whereis/1
+impt	file:close/1
+impt	file:open/2
+impt	gb_trees:empty/0
+impt	gb_trees:enter/3
+impt	gb_trees:lookup/2
+impt	gb_trees:to_list/1
+impt	gen_server:call/3
+impt	gen_server:reply/2
+impt	gen_server:start/4
+impt	io:format/2
+impt	io:format/3
+impt	io_lib:format/2
+impt	lists:duplicate/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:foreach/2
+impt	lists:max/1
+impt	lists:reverse/1
+impt	lists:sort/2
+impt	proplists:get_value/2
+impt	proplists:get_value/3
+impt	string:length/1
+disasm	ok
+callext	code:all_loaded/0	1
+callext	erlang:++/2	1
+callext	erlang:apply/3	1
+callext	erlang:error/1	2
+callext	erlang:exit/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:process_flag/2	1
+callext	erlang:spawn_link/1	1
+callext	erlang:system_flag/2	2
+callext	erlang:timestamp/0	2
+callext	erlang:trace/3	1
+callext	erlang:trace_info/2	1
+callext	erlang:trace_pattern/3	2
+callext	erlang:tuple_to_list/1	1
+callext	erlang:unlink/1	1
+callext	erlang:whereis/1	1
+callext	file:close/1	2
+callext	file:open/2	1
+callext	gb_trees:empty/0	6
+callext	gb_trees:enter/3	2
+callext	gb_trees:lookup/2	1
+callext	gb_trees:to_list/1	2
+callext	gen_server:call/3	8
+callext	gen_server:reply/2	2
+callext	gen_server:start/4	1
+callext	io:format/2	2
+callext	io:format/3	1
+callext	io_lib:format/2	1
+callext	lists:duplicate/2	1
+callext	lists:flatten/1	1
+callext	lists:foldl/3	3
+callext	lists:foreach/2	2
+callext	lists:max/1	3
+callext	lists:reverse/1	2
+callext	lists:sort/2	3
+callext	proplists:get_value/2	2
+callext	proplists:get_value/3	2
+callext	string:length/1	13

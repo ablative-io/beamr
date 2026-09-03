@@ -1,0 +1,56 @@
+module	Elixir.Inspect.Function
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	52
+op	2	func_info/3	10
+op	3	int_code_end/0	1
+op	4	call/2	4
+op	5	call_last/3	1
+op	6	call_only/2	2
+op	7	call_ext/2	28
+op	12	allocate/2	4
+op	18	deallocate/1	7
+op	19	return/0	15
+op	43	is_eq_exact/3	18
+op	48	is_atom/2	1
+op	52	is_nil/2	2
+op	53	is_binary/2	7
+op	56	is_nonempty_list/2	16
+op	57	is_tuple/2	1
+op	58	test_arity/3	1
+op	59	select_val/3	3
+op	61	jump/1	9
+op	64	move/2	73
+op	65	get_list/3	15
+op	66	get_tuple_element/3	2
+op	74	case_end/1	2
+op	78	call_ext_only/2	3
+op	112	apply/1	1
+op	136	trim/2	1
+op	153	line/1	30
+op	162	get_hd/2	1
+op	169	swap/2	3
+op	172	init_yregs/1	16
+op	177	bs_create_bin/6	7
+impt	Elixir.Access:get/2
+impt	Elixir.Code.Identifier:extract_anonymous_fun_parent/1
+impt	Elixir.Macro:inspect_atom/2
+impt	Elixir.String.Chars:to_string/1
+impt	erlang:atom_to_list/1
+impt	erlang:fun_info/1
+impt	erlang:function_exported/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_binary/1
+disasm	ok
+callext	Elixir.Access:get/2	10
+callext	Elixir.Code.Identifier:extract_anonymous_fun_parent/1	1
+callext	Elixir.Macro:inspect_atom/2	5
+callext	Elixir.String.Chars:to_string/1	7
+callext	erlang:atom_to_list/1	1
+callext	erlang:fun_info/1	1
+callext	erlang:function_exported/3	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:integer_to_binary/1	2

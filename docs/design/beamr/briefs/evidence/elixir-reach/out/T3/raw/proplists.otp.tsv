@@ -1,0 +1,74 @@
+module	proplists
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	169
+op	2	func_info/3	44
+op	3	int_code_end/0	1
+op	4	call/2	42
+op	5	call_last/3	13
+op	6	call_only/2	24
+op	7	call_ext/2	7
+op	8	call_ext_last/3	3
+op	10	bif1/4	15
+op	11	bif2/5	18
+op	12	allocate/2	37
+op	16	test_heap/2	36
+op	18	deallocate/1	21
+op	19	return/0	63
+op	40	is_ge/3	15
+op	43	is_eq_exact/3	24
+op	44	is_ne_exact/3	3
+op	48	is_atom/2	18
+op	52	is_nil/2	22
+op	55	is_list/2	3
+op	56	is_nonempty_list/2	25
+op	57	is_tuple/2	6
+op	58	test_arity/3	11
+op	59	select_val/3	1
+op	64	move/2	143
+op	65	get_list/3	25
+op	66	get_tuple_element/3	23
+op	69	put_list/3	23
+op	78	call_ext_only/2	13
+op	136	trim/2	6
+op	153	line/1	86
+op	154	put_map_assoc/5	2
+op	155	put_map_exact/5	1
+op	156	is_map/2	2
+op	157	has_map_fields/3	2
+op	164	put_tuple2/2	15
+op	169	swap/2	9
+op	171	make_fun3/3	1
+op	172	init_yregs/1	1
+impt	erlang:++/2
+impt	erlang:=:=/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:map_get/2
+impt	erlang:setelement/3
+impt	erlang:tuple_size/1
+impt	lists:foldr/3
+impt	lists:reverse/1
+impt	maps:from_keys/2
+impt	maps:remove/2
+impt	maps:to_list/1
+impt	sets:add_element/2
+impt	sets:new/0
+impt	sets:to_list/1
+disasm	ok
+callext	erlang:++/2	2
+callext	erlang:error/1	8
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:setelement/3	1
+callext	lists:foldr/3	1
+callext	lists:reverse/1	2
+callext	maps:from_keys/2	1
+callext	maps:remove/2	1
+callext	maps:to_list/1	1
+callext	sets:add_element/2	2
+callext	sets:new/0	1
+callext	sets:to_list/1	1

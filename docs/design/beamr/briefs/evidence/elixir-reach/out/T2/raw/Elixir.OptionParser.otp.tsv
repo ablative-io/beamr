@@ -1,0 +1,174 @@
+module	Elixir.OptionParser
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	354
+op	2	func_info/3	62
+op	3	int_code_end/0	1
+op	4	call/2	42
+op	5	call_last/3	19
+op	6	call_only/2	21
+op	7	call_ext/2	125
+op	8	call_ext_last/3	17
+op	10	bif1/4	1
+op	11	bif2/5	3
+op	12	allocate/2	46
+op	16	test_heap/2	58
+op	18	deallocate/1	58
+op	19	return/0	84
+op	39	is_lt/3	2
+op	40	is_ge/3	2
+op	41	is_eq/3	1
+op	43	is_eq_exact/3	33
+op	44	is_ne_exact/3	4
+op	45	is_integer/2	1
+op	48	is_atom/2	1
+op	52	is_nil/2	12
+op	53	is_binary/2	18
+op	55	is_list/2	10
+op	56	is_nonempty_list/2	7
+op	57	is_tuple/2	21
+op	58	test_arity/3	19
+op	59	select_val/3	51
+op	60	select_tuple_arity/3	1
+op	61	jump/1	41
+op	64	move/2	492
+op	65	get_list/3	5
+op	66	get_tuple_element/3	60
+op	69	put_list/3	16
+op	72	badmatch/1	6
+op	74	case_end/1	7
+op	78	call_ext_only/2	8
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	108	raise/2	1
+op	124	gc_bif1/5	1
+op	125	gc_bif2/6	1
+op	133	bs_init_writable/0	3
+op	136	trim/2	17
+op	153	line/1	230
+op	154	put_map_assoc/5	1
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	10
+op	159	is_tagged_tuple/4	1
+op	162	get_hd/2	1
+op	164	put_tuple2/2	39
+op	165	bs_get_tail/3	2
+op	166	bs_start_match3/4	6
+op	167	bs_get_position/3	6
+op	168	bs_set_position/2	17
+op	169	swap/2	10
+op	170	bs_start_match4/4	1
+op	171	make_fun3/3	12
+op	172	init_yregs/1	65
+op	177	bs_create_bin/6	33
+op	182	bs_match/3	27
+impt	Elixir.Access:get/2
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:flat_map/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:map_join/3
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:reverse/1
+impt	Elixir.Enum:reverse/2
+impt	Elixir.Enum:sort/1
+impt	Elixir.Enum:split_while/2
+impt	Elixir.Float:parse/1
+impt	Elixir.IO:warn/1
+impt	Elixir.Integer:parse/1
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:delete/2
+impt	Elixir.Keyword:get/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.Keyword:has_key?/2
+impt	Elixir.Keyword:update/4
+impt	Elixir.List:delete/2
+impt	Elixir.List:duplicate/2
+impt	Elixir.List:first/2
+impt	Elixir.List:pop_at/2
+impt	Elixir.List:to_string/1
+impt	Elixir.List:wrap/1
+impt	Elixir.Map:get/3
+impt	Elixir.Map:update/4
+impt	Elixir.OptionParser.ParseError:exception/1
+impt	Elixir.Regex:compile/2
+impt	Elixir.RuntimeError:exception/1
+impt	Elixir.String:contains?/2
+impt	Elixir.String:graphemes/1
+impt	Elixir.String:jaro_distance/2
+impt	Elixir.String:length/1
+impt	Elixir.String:replace/3
+impt	Elixir.String:to_charlist/1
+impt	Elixir.String:trim_leading/2
+impt	Elixir.String:upcase/1
+impt	Elixir.String.Chars:to_string/1
+impt	binary:split/2
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:>=/2
+impt	erlang:atom_to_binary/1
+impt	erlang:binary_to_atom/1
+impt	erlang:binary_to_existing_atom/1
+impt	erlang:error/1
+impt	erlang:error/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	erlang:map_get/2
+impt	erlang:not/1
+disasm	ok
+callext	Elixir.Access:get/2	20
+callext	Elixir.ArgumentError:exception/1	2
+callext	Elixir.Enum:__in__/2	12
+callext	Elixir.Enum:flat_map/2	1
+callext	Elixir.Enum:map/2	3
+callext	Elixir.Enum:map_join/3	4
+callext	Elixir.Enum:reduce/3	2
+callext	Elixir.Enum:reverse/1	9
+callext	Elixir.Enum:reverse/2	3
+callext	Elixir.Enum:sort/1	2
+callext	Elixir.Enum:split_while/2	1
+callext	Elixir.Float:parse/1	1
+callext	Elixir.IO:warn/1	2
+callext	Elixir.Integer:parse/1	1
+callext	Elixir.Kernel:inspect/1	3
+callext	Elixir.Keyword:delete/2	1
+callext	Elixir.Keyword:get/2	1
+callext	Elixir.Keyword:get/3	2
+callext	Elixir.Keyword:has_key?/2	1
+callext	Elixir.Keyword:update/4	1
+callext	Elixir.List:delete/2	1
+callext	Elixir.List:duplicate/2	1
+callext	Elixir.List:first/2	1
+callext	Elixir.List:pop_at/2	1
+callext	Elixir.List:to_string/1	1
+callext	Elixir.List:wrap/1	6
+callext	Elixir.Map:get/3	1
+callext	Elixir.Map:update/4	1
+callext	Elixir.OptionParser.ParseError:exception/1	2
+callext	Elixir.Regex:compile/2	2
+callext	Elixir.RuntimeError:exception/1	1
+callext	Elixir.String:contains?/2	3
+callext	Elixir.String:graphemes/1	1
+callext	Elixir.String:jaro_distance/2	1
+callext	Elixir.String:length/1	1
+callext	Elixir.String:replace/3	4
+callext	Elixir.String:to_charlist/1	1
+callext	Elixir.String:trim_leading/2	4
+callext	Elixir.String:upcase/1	1
+callext	Elixir.String.Chars:to_string/1	17
+callext	binary:split/2	1
+callext	elixir_erl_pass:no_parens_remote/2	4
+callext	erlang:++/2	2
+callext	erlang:--/2	1
+callext	erlang:atom_to_binary/1	4
+callext	erlang:binary_to_atom/1	1
+callext	erlang:binary_to_existing_atom/1	1
+callext	erlang:error/1	9
+callext	erlang:error/3	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

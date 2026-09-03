@@ -1,0 +1,77 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 168,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "prim_file",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 3640,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "erlang",
+  "lists",
+  "prim_file"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "raw_file_io",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/kernel-11.0.3/ebin/raw_file_io.beam",
+ "registration_deviation": [],
+ "sha256": "1c16252b160f267273b13b1d55da0626c7aa34ba1a1bb47a572340b0d3a8b936",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

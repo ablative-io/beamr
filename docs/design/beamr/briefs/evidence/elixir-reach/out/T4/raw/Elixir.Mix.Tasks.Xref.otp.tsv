@@ -1,0 +1,266 @@
+module	Elixir.Mix.Tasks.Xref
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	624
+op	2	func_info/3	150
+op	3	int_code_end/0	1
+op	4	call/2	61
+op	5	call_last/3	22
+op	6	call_only/2	30
+op	7	call_ext/2	232
+op	8	call_ext_last/3	39
+op	10	bif1/4	1
+op	11	bif2/5	15
+op	12	allocate/2	78
+op	13	allocate_heap/3	11
+op	16	test_heap/2	120
+op	18	deallocate/1	63
+op	19	return/0	139
+op	39	is_lt/3	3
+op	40	is_ge/3	1
+op	41	is_eq/3	2
+op	42	is_ne/3	1
+op	43	is_eq_exact/3	29
+op	44	is_ne_exact/3	9
+op	48	is_atom/2	5
+op	52	is_nil/2	18
+op	53	is_binary/2	28
+op	55	is_list/2	3
+op	56	is_nonempty_list/2	20
+op	57	is_tuple/2	76
+op	58	test_arity/3	72
+op	59	select_val/3	49
+op	60	select_tuple_arity/3	2
+op	61	jump/1	78
+op	64	move/2	896
+op	65	get_list/3	16
+op	66	get_tuple_element/3	165
+op	69	put_list/3	36
+op	72	badmatch/1	9
+op	74	case_end/1	13
+op	78	call_ext_only/2	27
+op	104	try/2	4
+op	105	try_end/1	4
+op	106	try_case/1	4
+op	108	raise/2	4
+op	112	apply/1	19
+op	113	apply_last/2	3
+op	124	gc_bif1/5	11
+op	125	gc_bif2/6	4
+op	132	bs_match_string/4	2
+op	136	trim/2	44
+op	153	line/1	453
+op	154	put_map_assoc/5	3
+op	155	put_map_exact/5	3
+op	156	is_map/2	17
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	17
+op	159	is_tagged_tuple/4	14
+op	164	put_tuple2/2	50
+op	165	bs_get_tail/3	2
+op	166	bs_start_match3/4	4
+op	167	bs_get_position/3	3
+op	168	bs_set_position/2	3
+op	169	swap/2	33
+op	171	make_fun3/3	74
+op	172	init_yregs/1	105
+op	177	bs_create_bin/6	31
+op	178	call_fun2/3	5
+op	182	bs_match/3	21
+impt	Elixir.Access:get/2
+impt	Elixir.Application:spec/2
+impt	Elixir.Code:compile_file/1
+impt	Elixir.Code:compiler_options/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:concat/1
+impt	Elixir.Enum:count/2
+impt	Elixir.Enum:count_until/3
+impt	Elixir.Enum:each/2
+impt	Elixir.Enum:filter/2
+impt	Elixir.Enum:find/2
+impt	Elixir.Enum:join/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:min_by/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:reject/2
+impt	Elixir.Enum:sort/1
+impt	Elixir.Enum:sort/2
+impt	Elixir.Enum:sort_by/2
+impt	Elixir.Enum:split_with/2
+impt	Elixir.Enum:take/2
+impt	Elixir.Enum:to_list/1
+impt	Elixir.Enum:uniq_by/2
+impt	Elixir.Exception:format_file_line/2
+impt	Elixir.Exception:format_mfa/3
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:fetch/2
+impt	Elixir.Keyword:get_values/2
+impt	Elixir.List:keydelete/3
+impt	Elixir.List:keymember?/3
+impt	Elixir.Map:drop/2
+impt	Elixir.Map:get/3
+impt	Elixir.Map:new/1
+impt	Elixir.Map:new/2
+impt	Elixir.Map:split/2
+impt	Elixir.Map:update/4
+impt	Elixir.Map:update!/3
+impt	Elixir.MapSet:member?/2
+impt	Elixir.MapSet:new/1
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix.Compilers.Elixir:read_manifest/1
+impt	Elixir.Mix.Dep:cached/0
+impt	Elixir.Mix.Dep.Umbrella:cached/0
+impt	Elixir.Mix.Project:config/0
+impt	Elixir.Mix.Project:manifest_path/0
+impt	Elixir.Mix.Project:umbrella?/0
+impt	Elixir.Mix.Task:reenable/1
+impt	Elixir.Mix.Task:run/2
+impt	Elixir.Mix.Utils:parse_mfa/1
+impt	Elixir.Mix.Utils:print_tree/3
+impt	Elixir.Mix.Utils:write_dot_graph!/5
+impt	Elixir.Mix.Utils:write_json_tree!/4
+impt	Elixir.OptionParser:parse!/2
+impt	Elixir.Path:basename/1
+impt	Elixir.Path:join/1
+impt	Elixir.Path:join/2
+impt	Elixir.Path:relative_to_cwd/1
+impt	Elixir.Path:rootname/1
+impt	Elixir.String:split/3
+impt	Elixir.String:trim_trailing/1
+impt	Elixir.String.Chars:to_string/1
+impt	beam_lib:chunks/2
+impt	code:which/1
+impt	digraph:add_edge/5
+impt	digraph:add_vertex/2
+impt	digraph:delete/1
+impt	digraph:edge/2
+impt	digraph:in_degree/2
+impt	digraph:in_neighbours/2
+impt	digraph:new/0
+impt	digraph:out_degree/2
+impt	digraph:out_neighbours/2
+impt	digraph_utils:cyclic_strong_components/1
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:==/2
+impt	erlang:>=/2
+impt	erlang:atom_to_binary/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:is_map_key/2
+impt	erlang:length/1
+impt	erlang:map_get/2
+impt	erlang:map_size/1
+impt	ets:delete/1
+impt	ets:delete/2
+impt	ets:insert/2
+impt	ets:lookup/2
+impt	ets:lookup_element/3
+impt	ets:new/2
+impt	lists:reverse/1
+impt	maps:from_list/1
+impt	maps:keys/1
+impt	maps:merge/2
+impt	maps:put/3
+impt	maps:values/1
+disasm	ok
+callext	Elixir.Access:get/2	28
+callext	Elixir.Application:spec/2	1
+callext	Elixir.Code:compile_file/1	1
+callext	Elixir.Code:compiler_options/1	3
+callext	Elixir.Enum:__in__/2	5
+callext	Elixir.Enum:concat/1	1
+callext	Elixir.Enum:count/2	2
+callext	Elixir.Enum:count_until/3	1
+callext	Elixir.Enum:each/2	1
+callext	Elixir.Enum:filter/2	3
+callext	Elixir.Enum:find/2	1
+callext	Elixir.Enum:join/2	2
+callext	Elixir.Enum:map/2	8
+callext	Elixir.Enum:min_by/2	1
+callext	Elixir.Enum:reduce/3	40
+callext	Elixir.Enum:reject/2	1
+callext	Elixir.Enum:sort/1	9
+callext	Elixir.Enum:sort/2	4
+callext	Elixir.Enum:sort_by/2	1
+callext	Elixir.Enum:split_with/2	1
+callext	Elixir.Enum:take/2	2
+callext	Elixir.Enum:to_list/1	1
+callext	Elixir.Enum:uniq_by/2	1
+callext	Elixir.Exception:format_file_line/2	1
+callext	Elixir.Exception:format_mfa/3	1
+callext	Elixir.Kernel:inspect/1	3
+callext	Elixir.Keyword:fetch/2	1
+callext	Elixir.Keyword:get_values/2	2
+callext	Elixir.List:keydelete/3	1
+callext	Elixir.List:keymember?/3	1
+callext	Elixir.Map:drop/2	2
+callext	Elixir.Map:get/3	2
+callext	Elixir.Map:new/1	1
+callext	Elixir.Map:new/2	4
+callext	Elixir.Map:split/2	1
+callext	Elixir.Map:update/4	1
+callext	Elixir.Map:update!/3	2
+callext	Elixir.MapSet:member?/2	1
+callext	Elixir.MapSet:new/1	3
+callext	Elixir.Mix:raise/1	11
+callext	Elixir.Mix:shell/0	9
+callext	Elixir.Mix.Compilers.Elixir:read_manifest/1	3
+callext	Elixir.Mix.Dep:cached/0	2
+callext	Elixir.Mix.Dep.Umbrella:cached/0	1
+callext	Elixir.Mix.Project:config/0	1
+callext	Elixir.Mix.Project:manifest_path/0	1
+callext	Elixir.Mix.Project:umbrella?/0	2
+callext	Elixir.Mix.Task:reenable/1	1
+callext	Elixir.Mix.Task:run/2	1
+callext	Elixir.Mix.Utils:parse_mfa/1	1
+callext	Elixir.Mix.Utils:print_tree/3	1
+callext	Elixir.Mix.Utils:write_dot_graph!/5	1
+callext	Elixir.Mix.Utils:write_json_tree!/4	1
+callext	Elixir.OptionParser:parse!/2	1
+callext	Elixir.Path:basename/1	1
+callext	Elixir.Path:join/1	2
+callext	Elixir.Path:join/2	1
+callext	Elixir.Path:relative_to_cwd/1	2
+callext	Elixir.Path:rootname/1	1
+callext	Elixir.String:split/3	1
+callext	Elixir.String:trim_trailing/1	1
+callext	Elixir.String.Chars:to_string/1	33
+callext	beam_lib:chunks/2	1
+callext	code:which/1	1
+callext	digraph:add_edge/5	1
+callext	digraph:add_vertex/2	1
+callext	digraph:delete/1	2
+callext	digraph:edge/2	3
+callext	digraph:in_degree/2	1
+callext	digraph:in_neighbours/2	1
+callext	digraph:new/0	1
+callext	digraph:out_degree/2	1
+callext	digraph:out_neighbours/2	2
+callext	digraph_utils:cyclic_strong_components/1	1
+callext	elixir_erl_pass:no_parens_remote/2	9
+callext	erlang:++/2	1
+callext	erlang:--/2	1
+callext	erlang:atom_to_binary/1	1
+callext	erlang:error/1	12
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	ets:delete/1	2
+callext	ets:delete/2	1
+callext	ets:insert/2	2
+callext	ets:lookup/2	1
+callext	ets:lookup_element/3	1
+callext	ets:new/2	1
+callext	lists:reverse/1	12
+callext	maps:from_list/1	4
+callext	maps:keys/1	1
+callext	maps:merge/2	3
+callext	maps:put/3	2
+callext	maps:values/1	1

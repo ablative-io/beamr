@@ -1,0 +1,66 @@
+module	Elixir.Mix.Tasks.Loadpaths
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	28
+op	2	func_info/3	6
+op	3	int_code_end/0	1
+op	4	call/2	1
+op	6	call_only/2	1
+op	7	call_ext/2	17
+op	8	call_ext_last/3	2
+op	12	allocate/2	2
+op	16	test_heap/2	1
+op	18	deallocate/1	1
+op	19	return/0	6
+op	41	is_eq/3	1
+op	42	is_ne/3	1
+op	59	select_val/3	4
+op	61	jump/1	1
+op	64	move/2	35
+op	66	get_tuple_element/3	2
+op	78	call_ext_only/2	3
+op	112	apply/1	1
+op	136	trim/2	1
+op	153	line/1	22
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	1
+op	172	init_yregs/1	6
+op	177	bs_create_bin/6	1
+impt	Elixir.Access:get/2
+impt	Elixir.Code:prepend_path/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.File:rm_rf/1
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Mix:debug?/0
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix.Dep.ElixirSCM:read/0
+impt	Elixir.Mix.Project:app_path/1
+impt	Elixir.Mix.Project:compile_path/1
+impt	Elixir.Mix.Project:config/0
+impt	Elixir.Mix.Project:consolidation_path/1
+impt	Elixir.Mix.Task:run/2
+impt	Elixir.System:version/0
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:system_info/1
+disasm	ok
+callext	Elixir.Access:get/2	3
+callext	Elixir.Code:prepend_path/1	1
+callext	Elixir.Enum:__in__/2	1
+callext	Elixir.File:rm_rf/1	2
+callext	Elixir.Kernel:inspect/1	1
+callext	Elixir.Mix:debug?/0	1
+callext	Elixir.Mix:shell/0	1
+callext	Elixir.Mix.Dep.ElixirSCM:read/0	1
+callext	Elixir.Mix.Project:app_path/1	1
+callext	Elixir.Mix.Project:compile_path/1	1
+callext	Elixir.Mix.Project:config/0	1
+callext	Elixir.Mix.Project:consolidation_path/1	1
+callext	Elixir.Mix.Task:run/2	1
+callext	Elixir.System:version/0	1
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:system_info/1	1

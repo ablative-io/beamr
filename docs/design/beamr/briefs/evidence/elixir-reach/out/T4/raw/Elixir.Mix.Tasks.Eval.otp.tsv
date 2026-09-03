@@ -1,0 +1,55 @@
+module	Elixir.Mix.Tasks.Eval
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	24
+op	2	func_info/3	5
+op	3	int_code_end/0	1
+op	6	call_only/2	1
+op	7	call_ext/2	11
+op	8	call_ext_last/3	1
+op	12	allocate/2	1
+op	16	test_heap/2	1
+op	18	deallocate/1	1
+op	19	return/0	6
+op	56	is_nonempty_list/2	1
+op	57	is_tuple/2	1
+op	58	test_arity/3	1
+op	59	select_val/3	3
+op	61	jump/1	2
+op	64	move/2	28
+op	65	get_list/3	1
+op	66	get_tuple_element/3	1
+op	69	put_list/3	1
+op	72	badmatch/1	1
+op	78	call_ext_only/2	3
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	108	raise/2	1
+op	136	trim/2	2
+op	153	line/1	17
+op	172	init_yregs/1	5
+impt	Elixir.Code:eval_string/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix.Project:get/0
+impt	Elixir.Mix.Task:reenable/1
+impt	Elixir.Mix.Task:run/2
+impt	Elixir.OptionParser:parse_head!/2
+impt	Elixir.System:argv/0
+impt	Elixir.System:argv/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+disasm	ok
+callext	Elixir.Code:eval_string/1	1
+callext	Elixir.Enum:__in__/2	1
+callext	Elixir.Mix:raise/1	2
+callext	Elixir.Mix.Project:get/0	1
+callext	Elixir.Mix.Task:reenable/1	1
+callext	Elixir.Mix.Task:run/2	1
+callext	Elixir.OptionParser:parse_head!/2	1
+callext	Elixir.System:argv/0	1
+callext	Elixir.System:argv/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

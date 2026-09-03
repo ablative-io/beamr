@@ -1,0 +1,199 @@
+module	Elixir.Module
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	457
+op	2	func_info/3	96
+op	3	int_code_end/0	1
+op	4	call/2	75
+op	5	call_last/3	20
+op	6	call_only/2	29
+op	7	call_ext/2	151
+op	8	call_ext_last/3	56
+op	10	bif1/4	1
+op	11	bif2/5	4
+op	12	allocate/2	85
+op	13	allocate_heap/3	5
+op	16	test_heap/2	77
+op	18	deallocate/1	63
+op	19	return/0	104
+op	40	is_ge/3	18
+op	43	is_eq_exact/3	37
+op	44	is_ne_exact/3	8
+op	45	is_integer/2	17
+op	46	is_float/2	1
+op	48	is_atom/2	66
+op	52	is_nil/2	35
+op	53	is_binary/2	20
+op	55	is_list/2	14
+op	56	is_nonempty_list/2	31
+op	57	is_tuple/2	55
+op	58	test_arity/3	54
+op	59	select_val/3	37
+op	61	jump/1	32
+op	64	move/2	784
+op	65	get_list/3	25
+op	66	get_tuple_element/3	125
+op	69	put_list/3	24
+op	72	badmatch/1	17
+op	74	case_end/1	12
+op	78	call_ext_only/2	17
+op	104	try/2	6
+op	105	try_end/1	6
+op	106	try_case/1	6
+op	108	raise/2	6
+op	114	is_boolean/2	2
+op	125	gc_bif2/6	8
+op	136	trim/2	54
+op	153	line/1	384
+op	154	put_map_assoc/5	5
+op	155	put_map_exact/5	7
+op	156	is_map/2	7
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	10
+op	159	is_tagged_tuple/4	8
+op	162	get_hd/2	1
+op	163	get_tl/2	5
+op	164	put_tuple2/2	82
+op	165	bs_get_tail/3	1
+op	169	swap/2	11
+op	170	bs_start_match4/4	2
+op	171	make_fun3/3	8
+op	172	init_yregs/1	53
+op	177	bs_create_bin/6	30
+op	182	bs_match/3	3
+impt	Elixir.Access:get/2
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Code:ensure_compiled/1
+impt	Elixir.Code:ensure_loaded?/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.IO:warn/2
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Kernel:struct!/2
+impt	Elixir.Kernel.Typespec:defines_type?/2
+impt	Elixir.Kernel.Typespec:spec_to_callback/2
+impt	Elixir.Keyword:get/2
+impt	Elixir.Keyword:has_key?/2
+impt	Elixir.Keyword:take/2
+impt	Elixir.List:last/1
+impt	Elixir.List:wrap/1
+impt	Elixir.Macro:expand_once/2
+impt	Elixir.Macro:prewalk/2
+impt	Elixir.Macro:underscore/1
+impt	Elixir.Macro.Env:__struct__/0
+impt	Elixir.Module.Behaviour:callbacks/1
+impt	Elixir.String:split/2
+impt	Elixir.String.Chars:to_string/1
+impt	elixir:env_for_eval/1
+impt	elixir:eval_quoted/3
+impt	elixir_aliases:concat/1
+impt	elixir_aliases:safe_concat/1
+impt	elixir_def:reset_last/1
+impt	elixir_def:take_definition/2
+impt	elixir_env:trace/2
+impt	elixir_erl_pass:no_parens_remote/2
+impt	elixir_module:compile/6
+impt	elixir_module:data_tables/1
+impt	elixir_module:file/1
+impt	elixir_module:is_open/1
+impt	elixir_module:mode/1
+impt	elixir_module:next_counter/1
+impt	elixir_overridable:overridable_for/2
+impt	elixir_overridable:overridables_for/1
+impt	elixir_overridable:record_overridable/3
+impt	elixir_quote:linify_with_context_counter/3
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_binary/1
+impt	erlang:binary_to_atom/1
+impt	erlang:binary_to_atom/2
+impt	erlang:error/1
+impt	erlang:function_exported/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_integer/1
+impt	erlang:map_get/2
+impt	ets:delete/2
+impt	ets:insert/2
+impt	ets:insert_new/2
+impt	ets:lookup/2
+impt	ets:lookup_element/3
+impt	ets:member/2
+impt	ets:select/2
+impt	ets:select/3
+impt	ets:take/2
+impt	ets:update_element/3
+impt	lists:all/2
+impt	lists:foreach/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	maps:merge/2
+disasm	ok
+callext	Elixir.Access:get/2	1
+callext	Elixir.ArgumentError:exception/1	23
+callext	Elixir.Code:ensure_compiled/1	1
+callext	Elixir.Code:ensure_loaded?/1	1
+callext	Elixir.Enum:__in__/2	2
+callext	Elixir.Enum:reduce/3	2
+callext	Elixir.IO:warn/2	6
+callext	Elixir.Kernel:inspect/1	20
+callext	Elixir.Kernel:struct!/2	2
+callext	Elixir.Kernel.Typespec:defines_type?/2	1
+callext	Elixir.Kernel.Typespec:spec_to_callback/2	1
+callext	Elixir.Keyword:get/2	3
+callext	Elixir.Keyword:has_key?/2	1
+callext	Elixir.Keyword:take/2	1
+callext	Elixir.List:last/1	1
+callext	Elixir.List:wrap/1	2
+callext	Elixir.Macro:expand_once/2	3
+callext	Elixir.Macro:prewalk/2	1
+callext	Elixir.Macro:underscore/1	1
+callext	Elixir.Macro.Env:__struct__/0	1
+callext	Elixir.Module.Behaviour:callbacks/1	1
+callext	Elixir.String:split/2	1
+callext	Elixir.String.Chars:to_string/1	21
+callext	elixir:env_for_eval/1	3
+callext	elixir:eval_quoted/3	1
+callext	elixir_aliases:concat/1	2
+callext	elixir_aliases:safe_concat/1	2
+callext	elixir_def:reset_last/1	1
+callext	elixir_def:take_definition/2	2
+callext	elixir_env:trace/2	2
+callext	elixir_erl_pass:no_parens_remote/2	3
+callext	elixir_module:compile/6	1
+callext	elixir_module:data_tables/1	1
+callext	elixir_module:file/1	1
+callext	elixir_module:is_open/1	1
+callext	elixir_module:mode/1	1
+callext	elixir_module:next_counter/1	1
+callext	elixir_overridable:overridable_for/2	1
+callext	elixir_overridable:overridables_for/1	1
+callext	elixir_overridable:record_overridable/3	1
+callext	elixir_quote:linify_with_context_counter/3	1
+callext	erlang:++/2	2
+callext	erlang:atom_to_binary/1	2
+callext	erlang:binary_to_atom/1	2
+callext	erlang:binary_to_atom/2	2
+callext	erlang:error/1	34
+callext	erlang:function_exported/3	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	ets:delete/2	1
+callext	ets:insert/2	12
+callext	ets:insert_new/2	4
+callext	ets:lookup/2	6
+callext	ets:lookup_element/3	7
+callext	ets:member/2	2
+callext	ets:select/2	2
+callext	ets:select/3	1
+callext	ets:take/2	5
+callext	ets:update_element/3	4
+callext	lists:all/2	1
+callext	lists:foreach/2	4
+callext	lists:member/2	1
+callext	lists:reverse/1	2
+callext	maps:merge/2	3

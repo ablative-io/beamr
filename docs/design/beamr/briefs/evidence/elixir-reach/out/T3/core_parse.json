@@ -1,0 +1,95 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 10629,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 5,
+  "deferred_names": [
+   "io_lib:deep_char_list/1",
+   "io_lib:write/1",
+   "io_lib:write_atom/1",
+   "io_lib:write_char/1",
+   "io_lib:write_string/1"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "cerl",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_anno",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_scan",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  }
+ ],
+ "bytes": 340860,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "cerl",
+  "erl_anno",
+  "erl_scan",
+  "erlang",
+  "io_lib"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "core_parse",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/compiler-10.0.3/ebin/core_parse.beam",
+ "registration_deviation": [],
+ "sha256": "b8c74681306c7ba2b7a57eed14fb0bb284a4a98b8b7c9d5c806121c8870b7082",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

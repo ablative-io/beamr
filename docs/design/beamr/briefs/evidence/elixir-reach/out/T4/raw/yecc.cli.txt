@@ -1,0 +1,5 @@
+io_lib:fwrite/2
+io_lib:write_atom_as_latin1/1
+io_lib:write/1
+io_lib:write_string/1
+io_lib:write_string_as_latin1/1

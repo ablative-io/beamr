@@ -1,0 +1,68 @@
+module	unicode_util
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	9226
+op	2	func_info/3	72
+op	3	int_code_end/0	1
+op	4	call/2	96
+op	5	call_last/3	48
+op	6	call_only/2	60
+op	7	call_ext/2	10
+op	8	call_ext_last/3	13
+op	11	bif2/5	6
+op	12	allocate/2	67
+op	16	test_heap/2	109
+op	18	deallocate/1	80
+op	19	return/0	7538
+op	39	is_lt/3	2
+op	40	is_ge/3	4070
+op	43	is_eq_exact/3	272
+op	44	is_ne_exact/3	7
+op	45	is_integer/2	57
+op	52	is_nil/2	45
+op	56	is_nonempty_list/2	58
+op	57	is_tuple/2	19
+op	58	test_arity/3	1
+op	59	select_val/3	171
+op	60	select_tuple_arity/3	6
+op	61	jump/1	696
+op	64	move/2	7734
+op	65	get_list/3	53
+op	66	get_tuple_element/3	51
+op	69	put_list/3	117
+op	74	case_end/1	7
+op	78	call_ext_only/2	5
+op	125	gc_bif2/6	32
+op	136	trim/2	10
+op	138	bs_get_utf8/5	4
+op	153	line/1	194
+op	154	put_map_assoc/5	3
+op	162	get_hd/2	4
+op	164	put_tuple2/2	21
+op	165	bs_get_tail/3	5
+op	166	bs_start_match3/4	3
+op	167	bs_get_position/3	4
+op	168	bs_set_position/2	7
+op	169	swap/2	5
+op	172	init_yregs/1	19
+op	182	bs_match/3	8
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:>=/2
+impt	erlang:div/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:rem/2
+impt	lists:keysort/2
+impt	lists:reverse/1
+disasm	ok
+callext	erlang:++/2	9
+callext	erlang:error/1	7
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	lists:keysort/2	1
+callext	lists:reverse/1	9

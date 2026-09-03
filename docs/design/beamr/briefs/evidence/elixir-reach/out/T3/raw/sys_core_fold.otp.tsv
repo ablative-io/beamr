@@ -1,0 +1,272 @@
+module	sys_core_fold
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	1171
+op	2	func_info/3	201
+op	3	int_code_end/0	1
+op	4	call/2	321
+op	5	call_last/3	78
+op	6	call_only/2	60
+op	7	call_ext/2	202
+op	8	call_ext_last/3	83
+op	10	bif1/4	12
+op	11	bif2/5	3
+op	12	allocate/2	204
+op	13	allocate_heap/3	30
+op	16	test_heap/2	277
+op	18	deallocate/1	208
+op	19	return/0	351
+op	39	is_lt/3	2
+op	40	is_ge/3	17
+op	43	is_eq_exact/3	177
+op	44	is_ne_exact/3	19
+op	45	is_integer/2	15
+op	46	is_float/2	3
+op	48	is_atom/2	5
+op	52	is_nil/2	88
+op	53	is_binary/2	1
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	126
+op	57	is_tuple/2	62
+op	58	test_arity/3	32
+op	59	select_val/3	136
+op	60	select_tuple_arity/3	21
+op	61	jump/1	49
+op	64	move/2	1763
+op	65	get_list/3	106
+op	66	get_tuple_element/3	566
+op	69	put_list/3	140
+op	72	badmatch/1	7
+op	74	case_end/1	64
+op	77	is_function/2	2
+op	78	call_ext_only/2	50
+op	104	try/2	19
+op	105	try_end/1	19
+op	106	try_case/1	19
+op	108	raise/2	13
+op	124	gc_bif1/5	16
+op	125	gc_bif2/6	34
+op	129	is_bitstr/2	1
+op	133	bs_init_writable/0	1
+op	136	trim/2	101
+op	153	line/1	816
+op	154	put_map_assoc/5	2
+op	156	is_map/2	2
+op	158	get_map_elements/3	2
+op	159	is_tagged_tuple/4	165
+op	161	raw_raise/0	1
+op	162	get_hd/2	9
+op	163	get_tl/2	12
+op	164	put_tuple2/2	204
+op	169	swap/2	58
+op	171	make_fun3/3	20
+op	172	init_yregs/1	111
+op	177	bs_create_bin/6	11
+op	180	badrecord/1	4
+op	181	update_record/5	83
+impt	cerl:alias_pat/1
+impt	cerl:alias_var/1
+impt	cerl:ann_abstract/2
+impt	cerl:ann_c_cons/3
+impt	cerl:ann_c_let/4
+impt	cerl:ann_c_map/3
+impt	cerl:ann_c_record/4
+impt	cerl:ann_c_tuple/2
+impt	cerl:ann_make_data/3
+impt	cerl:c_let/3
+impt	cerl:c_seq/2
+impt	cerl:call_arity/1
+impt	cerl:call_module/1
+impt	cerl:call_name/1
+impt	cerl:case_clauses/1
+impt	cerl:clause_body/1
+impt	cerl:clause_guard/1
+impt	cerl:clause_pats/1
+impt	cerl:concrete/1
+impt	cerl:data_arity/1
+impt	cerl:data_es/1
+impt	cerl:data_type/1
+impt	cerl:get_ann/1
+impt	cerl:is_c_fname/1
+impt	cerl:is_c_list/1
+impt	cerl:is_c_values/1
+impt	cerl:is_c_var/1
+impt	cerl:is_data/1
+impt	cerl:is_literal/1
+impt	cerl:is_literal_term/1
+impt	cerl:let_arg/1
+impt	cerl:let_body/1
+impt	cerl:let_vars/1
+impt	cerl:list_length/1
+impt	cerl:record_arg/1
+impt	cerl:record_es/1
+impt	cerl:record_id/1
+impt	cerl:set_ann/2
+impt	cerl:type/1
+impt	cerl:update_c_clause/4
+impt	cerl:update_c_record/4
+impt	cerl:update_data/3
+impt	cerl:values_es/1
+impt	cerl:var_name/1
+impt	cerl_clauses:match/2
+impt	cerl_clauses:match_list/2
+impt	cerl_trees:map/2
+impt	cerl_trees:next_free_variable_name/1
+impt	core_lib:is_var_used/2
+impt	core_lib:make_values/1
+impt	erl_bifs:is_exit_bif/3
+impt	erl_bifs:is_pure/3
+impt	erl_bifs:is_safe/3
+impt	erl_internal:bif/2
+impt	erl_internal:bool_op/2
+impt	erl_internal:comp_op/2
+impt	erl_internal:new_type_test/2
+impt	erl_internal:op_type/2
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:abs/1
+impt	erlang:apply/3
+impt	erlang:binary_to_list/1
+impt	erlang:bit_size/1
+impt	erlang:bsr/2
+impt	erlang:erase/1
+impt	erlang:error/1
+impt	erlang:fun_info/2
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_boolean/1
+impt	erlang:length/1
+impt	erlang:not/1
+impt	erlang:put/2
+impt	erlang:raise/3
+impt	erlang:rem/2
+impt	erlang:throw/1
+impt	erts_internal:mc_iterator/1
+impt	erts_internal:mc_refill/1
+impt	io:fwrite/2
+impt	io_lib:format/2
+impt	lists:all/2
+impt	lists:any/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:foldr/3
+impt	lists:keyfind/3
+impt	lists:map/2
+impt	lists:mapfoldl/3
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:unzip/1
+impt	maps:from_list/1
+impt	orddict:find/2
+impt	orddict:from_list/1
+impt	orddict:new/0
+impt	orddict:store/3
+impt	ordsets:from_list/1
+impt	sets:add_element/2
+impt	sets:is_element/2
+impt	sets:new/0
+impt	sets:to_list/1
+impt	sys_core_fold_lists:call/4
+disasm	ok
+callext	cerl:alias_pat/1	1
+callext	cerl:alias_var/1	2
+callext	cerl:ann_abstract/2	1
+callext	cerl:ann_c_cons/3	4
+callext	cerl:ann_c_let/4	2
+callext	cerl:ann_c_map/3	1
+callext	cerl:ann_c_record/4	1
+callext	cerl:ann_c_tuple/2	2
+callext	cerl:ann_make_data/3	3
+callext	cerl:c_let/3	2
+callext	cerl:c_seq/2	1
+callext	cerl:call_arity/1	2
+callext	cerl:call_module/1	2
+callext	cerl:call_name/1	2
+callext	cerl:case_clauses/1	2
+callext	cerl:clause_body/1	1
+callext	cerl:clause_guard/1	1
+callext	cerl:clause_pats/1	1
+callext	cerl:concrete/1	5
+callext	cerl:data_arity/1	3
+callext	cerl:data_es/1	6
+callext	cerl:data_type/1	4
+callext	cerl:get_ann/1	11
+callext	cerl:is_c_fname/1	2
+callext	cerl:is_c_list/1	1
+callext	cerl:is_c_values/1	2
+callext	cerl:is_c_var/1	1
+callext	cerl:is_data/1	7
+callext	cerl:is_literal/1	4
+callext	cerl:is_literal_term/1	1
+callext	cerl:let_arg/1	1
+callext	cerl:let_body/1	1
+callext	cerl:let_vars/1	1
+callext	cerl:list_length/1	1
+callext	cerl:record_arg/1	1
+callext	cerl:record_es/1	1
+callext	cerl:record_id/1	1
+callext	cerl:set_ann/2	3
+callext	cerl:type/1	4
+callext	cerl:update_c_clause/4	1
+callext	cerl:update_c_record/4	1
+callext	cerl:update_data/3	1
+callext	cerl:values_es/1	2
+callext	cerl:var_name/1	1
+callext	cerl_clauses:match/2	4
+callext	cerl_clauses:match_list/2	2
+callext	cerl_trees:map/2	2
+callext	cerl_trees:next_free_variable_name/1	1
+callext	core_lib:is_var_used/2	10
+callext	core_lib:make_values/1	8
+callext	erl_bifs:is_exit_bif/3	1
+callext	erl_bifs:is_pure/3	2
+callext	erl_bifs:is_safe/3	2
+callext	erl_internal:bif/2	2
+callext	erl_internal:bool_op/2	3
+callext	erl_internal:comp_op/2	4
+callext	erl_internal:new_type_test/2	3
+callext	erl_internal:op_type/2	1
+callext	erlang:++/2	10
+callext	erlang:apply/3	1
+callext	erlang:binary_to_list/1	1
+callext	erlang:erase/1	3
+callext	erlang:error/1	48
+callext	erlang:fun_info/2	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:put/2	10
+callext	erlang:raise/3	18
+callext	erlang:throw/1	16
+callext	erts_internal:mc_iterator/1	1
+callext	erts_internal:mc_refill/1	1
+callext	io:fwrite/2	1
+callext	io_lib:format/2	14
+callext	lists:all/2	6
+callext	lists:any/2	1
+callext	lists:flatten/1	11
+callext	lists:foldl/3	2
+callext	lists:foldr/3	2
+callext	lists:keyfind/3	2
+callext	lists:map/2	1
+callext	lists:mapfoldl/3	6
+callext	lists:member/2	9
+callext	lists:reverse/1	2
+callext	lists:reverse/2	1
+callext	lists:unzip/1	1
+callext	maps:from_list/1	1
+callext	orddict:find/2	1
+callext	orddict:from_list/1	1
+callext	orddict:new/0	3
+callext	orddict:store/3	1
+callext	ordsets:from_list/1	1
+callext	sets:add_element/2	3
+callext	sets:is_element/2	2
+callext	sets:new/0	4
+callext	sets:to_list/1	1
+callext	sys_core_fold_lists:call/4	1

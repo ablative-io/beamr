@@ -1,0 +1,178 @@
+module	httpc
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	523
+op	2	func_info/3	107
+op	3	int_code_end/0	1
+op	4	call/2	86
+op	5	call_last/3	48
+op	6	call_only/2	68
+op	7	call_ext/2	82
+op	8	call_ext_last/3	11
+op	9	bif0/2	1
+op	12	allocate/2	72
+op	13	allocate_heap/3	7
+op	16	test_heap/2	125
+op	18	deallocate/1	59
+op	19	return/0	149
+op	21	remove_message/0	8
+op	22	timeout/0	2
+op	23	loop_rec/2	2
+op	24	loop_rec_end/1	2
+op	26	wait_timeout/2	1
+op	39	is_lt/3	1
+op	40	is_ge/3	8
+op	43	is_eq_exact/3	118
+op	44	is_ne_exact/3	6
+op	45	is_integer/2	13
+op	48	is_atom/2	12
+op	49	is_pid/2	12
+op	50	is_reference/2	2
+op	52	is_nil/2	16
+op	53	is_binary/2	4
+op	55	is_list/2	22
+op	56	is_nonempty_list/2	47
+op	57	is_tuple/2	37
+op	58	test_arity/3	25
+op	59	select_val/3	32
+op	60	select_tuple_arity/3	5
+op	61	jump/1	30
+op	64	move/2	648
+op	65	get_list/3	46
+op	66	get_tuple_element/3	101
+op	69	put_list/3	62
+op	72	badmatch/1	5
+op	74	case_end/1	6
+op	78	call_ext_only/2	15
+op	104	try/2	10
+op	105	try_end/1	10
+op	106	try_case/1	10
+op	108	raise/2	10
+op	114	is_boolean/2	1
+op	115	is_function2/3	5
+op	124	gc_bif1/5	1
+op	136	trim/2	24
+op	153	line/1	292
+op	154	put_map_assoc/5	2
+op	156	is_map/2	2
+op	158	get_map_elements/3	10
+op	159	is_tagged_tuple/4	22
+op	164	put_tuple2/2	104
+op	169	swap/2	5
+op	171	make_fun3/3	15
+op	172	init_yregs/1	43
+op	177	bs_create_bin/6	1
+op	178	call_fun2/3	3
+op	181	update_record/5	41
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:alias/0
+impt	erlang:atom_to_list/1
+impt	erlang:binary_to_list/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_list/2
+impt	erlang:iolist_size/1
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	erlang:setelement/3
+impt	erlang:throw/1
+impt	erlang:unalias/1
+impt	error_logger:info_report/1
+impt	http_request:normalize_host/3
+impt	http_util:connection_tokens/1
+impt	http_util:maybe_add_brackets/2
+impt	http_util:timestamp/0
+impt	http_util:to_lower/1
+impt	http_util:to_upper/1
+impt	httpc_cookie:cookies/3
+impt	httpc_handler:stream_next/1
+impt	httpc_manager:cancel_request/2
+impt	httpc_manager:get_options/2
+impt	httpc_manager:info/1
+impt	httpc_manager:request/2
+impt	httpc_manager:reset_cookies/1
+impt	httpc_manager:set_options/2
+impt	httpc_manager:start_link/3
+impt	httpc_manager:store_cookies/3
+impt	httpc_manager:which_cookies/1
+impt	httpc_manager:which_cookies/3
+impt	httpc_manager:which_sessions/1
+impt	httpc_profile_sup:start_child/1
+impt	httpc_profile_sup:stop_child/1
+impt	inets_trace:report_event/4
+impt	io_lib:format/2
+impt	lists:flatten/1
+impt	lists:foreach/2
+impt	lists:keydelete/3
+impt	lists:keysearch/3
+impt	lists:keystore/4
+impt	lists:member/2
+impt	lists:reverse/1
+impt	proplists:get_value/2
+impt	proplists:get_value/3
+impt	public_key:cacerts_get/0
+impt	public_key:pkix_verify_hostname_match_fun/1
+impt	supervisor:which_children/1
+impt	unicode:characters_to_list/1
+impt	uri_string:normalize/2
+impt	uri_string:recompose/1
+disasm	ok
+callext	erlang:++/2	2
+callext	erlang:--/2	1
+callext	erlang:alias/0	1
+callext	erlang:atom_to_list/1	2
+callext	erlang:binary_to_list/1	1
+callext	erlang:error/1	5
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/2	1
+callext	erlang:iolist_size/1	1
+callext	erlang:list_to_atom/1	1
+callext	erlang:raise/3	4
+callext	erlang:setelement/3	2
+callext	erlang:throw/1	5
+callext	erlang:unalias/1	5
+callext	error_logger:info_report/1	4
+callext	http_request:normalize_host/3	1
+callext	http_util:connection_tokens/1	1
+callext	http_util:maybe_add_brackets/2	1
+callext	http_util:timestamp/0	1
+callext	http_util:to_lower/1	1
+callext	http_util:to_upper/1	2
+callext	httpc_cookie:cookies/3	1
+callext	httpc_handler:stream_next/1	1
+callext	httpc_manager:cancel_request/2	1
+callext	httpc_manager:get_options/2	1
+callext	httpc_manager:info/1	1
+callext	httpc_manager:request/2	1
+callext	httpc_manager:reset_cookies/1	1
+callext	httpc_manager:set_options/2	1
+callext	httpc_manager:start_link/3	1
+callext	httpc_manager:store_cookies/3	1
+callext	httpc_manager:which_cookies/1	1
+callext	httpc_manager:which_cookies/3	1
+callext	httpc_manager:which_sessions/1	1
+callext	httpc_profile_sup:start_child/1	1
+callext	httpc_profile_sup:stop_child/1	1
+callext	inets_trace:report_event/4	1
+callext	io_lib:format/2	5
+callext	lists:flatten/1	1
+callext	lists:foreach/2	2
+callext	lists:keydelete/3	5
+callext	lists:keysearch/3	2
+callext	lists:keystore/4	1
+callext	lists:member/2	3
+callext	lists:reverse/1	2
+callext	proplists:get_value/2	14
+callext	proplists:get_value/3	5
+callext	public_key:cacerts_get/0	1
+callext	public_key:pkix_verify_hostname_match_fun/1	1
+callext	supervisor:which_children/1	2
+callext	unicode:characters_to_list/1	1
+callext	uri_string:normalize/2	1
+callext	uri_string:recompose/1	2

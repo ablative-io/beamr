@@ -1,0 +1,100 @@
+module	elixir_utils
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	140
+op	2	func_info/3	36
+op	3	int_code_end/0	1
+op	4	call/2	7
+op	5	call_last/3	5
+op	6	call_only/2	6
+op	7	call_ext/2	25
+op	8	call_ext_last/3	4
+op	11	bif2/5	3
+op	12	allocate/2	24
+op	13	allocate_heap/3	2
+op	16	test_heap/2	26
+op	18	deallocate/1	36
+op	19	return/0	57
+op	43	is_eq_exact/3	11
+op	44	is_ne_exact/3	1
+op	45	is_integer/2	11
+op	52	is_nil/2	15
+op	53	is_binary/2	4
+op	55	is_list/2	7
+op	56	is_nonempty_list/2	30
+op	57	is_tuple/2	20
+op	58	test_arity/3	16
+op	59	select_val/3	14
+op	64	move/2	91
+op	65	get_list/3	21
+op	66	get_tuple_element/3	51
+op	69	put_list/3	13
+op	74	case_end/1	8
+op	78	call_ext_only/2	7
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	107	try_case_end/1	2
+op	114	is_boolean/2	1
+op	125	gc_bif2/6	1
+op	136	trim/2	1
+op	153	line/1	75
+op	159	is_tagged_tuple/4	16
+op	162	get_hd/2	1
+op	163	get_tl/2	7
+op	164	put_tuple2/2	22
+op	171	make_fun3/3	2
+op	172	init_yregs/1	4
+impt	Elixir.Path:relative_to_cwd/1
+impt	Elixir.UnicodeConversionError:exception/1
+impt	elixir_aliases:inspect/1
+impt	elixir_config:get/1
+impt	elixir_utils:characters_to_list/1
+impt	elixir_utils:relative_to_cwd/1
+impt	elixir_utils:split_last/1
+impt	erl_internal:op_type/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_list/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:list_to_atom/1
+impt	erlang:map_get/2
+impt	file:read_file_info/2
+impt	file:read_link_info/1
+impt	file:write_file_info/3
+impt	io_lib:format/2
+impt	lists:all/2
+impt	lists:keyfind/3
+impt	lists:last/1
+impt	lists:reverse/1
+impt	unicode:characters_to_binary/1
+impt	unicode:characters_to_list/1
+disasm	ok
+callext	Elixir.Path:relative_to_cwd/1	1
+callext	Elixir.UnicodeConversionError:exception/1	1
+callext	elixir_aliases:inspect/1	1
+callext	elixir_config:get/1	1
+callext	elixir_utils:characters_to_list/1	1
+callext	elixir_utils:relative_to_cwd/1	1
+callext	elixir_utils:split_last/1	2
+callext	erl_internal:op_type/2	1
+callext	erlang:++/2	2
+callext	erlang:atom_to_list/1	2
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_atom/1	2
+callext	file:read_file_info/2	2
+callext	file:read_link_info/1	1
+callext	file:write_file_info/3	2
+callext	io_lib:format/2	2
+callext	lists:all/2	2
+callext	lists:keyfind/3	5
+callext	lists:last/1	1
+callext	lists:reverse/1	1
+callext	unicode:characters_to_binary/1	1
+callext	unicode:characters_to_list/1	1

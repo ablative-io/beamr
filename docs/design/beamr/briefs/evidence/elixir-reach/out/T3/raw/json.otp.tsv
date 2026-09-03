@@ -1,0 +1,143 @@
+module	json
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	537
+op	2	func_info/3	92
+op	3	int_code_end/0	1
+op	4	call/2	30
+op	5	call_last/3	33
+op	6	call_only/2	151
+op	7	call_ext/2	36
+op	8	call_ext_last/3	8
+op	11	bif2/5	18
+op	12	allocate/2	59
+op	13	allocate_heap/3	2
+op	16	test_heap/2	94
+op	18	deallocate/1	37
+op	19	return/0	85
+op	39	is_lt/3	2
+op	40	is_ge/3	27
+op	43	is_eq_exact/3	51
+op	45	is_integer/2	3
+op	46	is_float/2	3
+op	48	is_atom/2	3
+op	52	is_nil/2	13
+op	53	is_binary/2	10
+op	55	is_list/2	4
+op	56	is_nonempty_list/2	21
+op	57	is_tuple/2	17
+op	58	test_arity/3	15
+op	59	select_val/3	31
+op	60	select_tuple_arity/3	2
+op	61	jump/1	85
+op	64	move/2	909
+op	65	get_list/3	14
+op	66	get_tuple_element/3	85
+op	69	put_list/3	109
+op	72	badmatch/1	11
+op	74	case_end/1	3
+op	75	call_fun/1	31
+op	78	call_ext_only/2	16
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	115	is_function2/3	17
+op	120	bs_skip_bits2/5	2
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	210
+op	133	bs_init_writable/0	1
+op	136	trim/2	18
+op	138	bs_get_utf8/5	1
+op	152	gc_bif3/7	20
+op	153	line/1	356
+op	154	put_map_assoc/5	4
+op	155	put_map_exact/5	9
+op	156	is_map/2	9
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	5
+op	159	is_tagged_tuple/4	18
+op	162	get_hd/2	1
+op	163	get_tl/2	8
+op	164	put_tuple2/2	33
+op	165	bs_get_tail/3	2
+op	167	bs_get_position/3	12
+op	168	bs_set_position/2	12
+op	169	swap/2	32
+op	170	bs_start_match4/4	41
+op	171	make_fun3/3	10
+op	172	init_yregs/1	22
+op	177	bs_create_bin/6	8
+op	178	call_fun2/3	14
+op	180	badrecord/1	10
+op	181	update_record/5	10
+op	182	bs_match/3	42
+impt	binary:at/2
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:-/2
+impt	erlang:atom_to_binary/2
+impt	erlang:band/2
+impt	erlang:binary_part/3
+impt	erlang:bor/2
+impt	erlang:bsl/2
+impt	erlang:bsr/2
+impt	erlang:bxor/2
+impt	erlang:byte_size/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/3
+impt	erlang:float_to_binary/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_binary/1
+impt	erlang:integer_to_binary/2
+impt	erlang:iolist_size/1
+impt	erlang:iolist_to_binary/1
+impt	erlang:is_map_key/2
+impt	erts_internal:mc_iterator/1
+impt	erts_internal:mc_refill/1
+impt	json:encode_atom/2
+impt	json:encode_binary/1
+impt	json:encode_float/1
+impt	json:encode_integer/1
+impt	lists:duplicate/2
+impt	lists:foldl/3
+impt	lists:map/2
+impt	lists:reverse/1
+impt	maps:fold/3
+impt	maps:from_list/1
+impt	maps:iterator/2
+impt	maps:merge/2
+impt	maps:to_list/1
+impt	string:next_codepoint/1
+impt	string:take/2
+disasm	ok
+callext	binary:at/2	1
+callext	erlang:atom_to_binary/2	3
+callext	erlang:error/1	11
+callext	erlang:error/3	2
+callext	erlang:float_to_binary/2	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_binary/1	3
+callext	erlang:integer_to_binary/2	6
+callext	erlang:iolist_size/1	5
+callext	erlang:iolist_to_binary/1	2
+callext	erts_internal:mc_iterator/1	1
+callext	erts_internal:mc_refill/1	1
+callext	json:encode_atom/2	1
+callext	json:encode_binary/1	1
+callext	json:encode_float/1	1
+callext	json:encode_integer/1	1
+callext	lists:duplicate/2	1
+callext	lists:foldl/3	1
+callext	lists:map/2	1
+callext	lists:reverse/1	3
+callext	maps:fold/3	2
+callext	maps:from_list/1	2
+callext	maps:iterator/2	1
+callext	maps:merge/2	1
+callext	maps:to_list/1	2
+callext	string:next_codepoint/1	1
+callext	string:take/2	1

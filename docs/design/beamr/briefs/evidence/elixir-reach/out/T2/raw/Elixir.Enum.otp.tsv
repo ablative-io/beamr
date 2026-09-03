@@ -1,0 +1,212 @@
+module	Elixir.Enum
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	1967
+op	2	func_info/3	529
+op	3	int_code_end/0	1
+op	4	call/2	177
+op	5	call_last/3	102
+op	6	call_only/2	190
+op	7	call_ext/2	295
+op	8	call_ext_last/3	85
+op	10	bif1/4	1
+op	11	bif2/5	154
+op	12	allocate/2	343
+op	13	allocate_heap/3	125
+op	16	test_heap/2	559
+op	18	deallocate/1	409
+op	19	return/0	612
+op	39	is_lt/3	48
+op	40	is_ge/3	52
+op	41	is_eq/3	16
+op	42	is_ne/3	1
+op	43	is_eq_exact/3	159
+op	44	is_ne_exact/3	11
+op	45	is_integer/2	30
+op	48	is_atom/2	62
+op	52	is_nil/2	125
+op	53	is_binary/2	14
+op	55	is_list/2	78
+op	56	is_nonempty_list/2	138
+op	57	is_tuple/2	83
+op	58	test_arity/3	72
+op	59	select_val/3	56
+op	60	select_tuple_arity/3	8
+op	61	jump/1	170
+op	64	move/2	2035
+op	65	get_list/3	114
+op	66	get_tuple_element/3	213
+op	69	put_list/3	272
+op	72	badmatch/1	29
+op	74	case_end/1	27
+op	75	call_fun/1	83
+op	77	is_function/2	2
+op	78	call_ext_only/2	76
+op	96	fmove/2	51
+op	97	fconv/2	9
+op	99	fsub/4	5
+op	100	fmul/4	5
+op	101	fdiv/4	10
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	112	apply/1	13
+op	114	is_boolean/2	1
+op	115	is_function2/3	54
+op	124	gc_bif1/5	12
+op	125	gc_bif2/6	152
+op	136	trim/2	56
+op	153	line/1	1258
+op	154	put_map_assoc/5	7
+op	155	put_map_exact/5	4
+op	156	is_map/2	69
+op	157	has_map_fields/3	4
+op	158	get_map_elements/3	116
+op	159	is_tagged_tuple/4	4
+op	161	raw_raise/0	2
+op	162	get_hd/2	3
+op	163	get_tl/2	7
+op	164	put_tuple2/2	350
+op	169	swap/2	94
+op	171	make_fun3/3	272
+op	172	init_yregs/1	104
+op	177	bs_create_bin/6	9
+op	178	call_fun2/3	189
+impt	Dict:update/4
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Collectable:into/1
+impt	Elixir.Enum:count/1
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:to_list/1
+impt	Elixir.Enum.EmptyError:exception/1
+impt	Elixir.Enum.OutOfBoundsError:exception/1
+impt	Elixir.Enumerable:count/1
+impt	Elixir.Enumerable:impl_for/1
+impt	Elixir.Enumerable:member?/2
+impt	Elixir.Enumerable:reduce/3
+impt	Elixir.Enumerable:slice/1
+impt	Elixir.IO:warn/1
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.List:foldl/3
+impt	Elixir.List:keysort/3
+impt	Elixir.Map:get/2
+impt	Elixir.MapSet:new/1
+impt	Elixir.MapSet:new/2
+impt	Elixir.MapSet:size/1
+impt	Elixir.MapSet:union/2
+impt	Elixir.Range:new/2
+impt	Elixir.Range:new/3
+impt	Elixir.Range:size/1
+impt	Elixir.Range:to_list/1
+impt	Elixir.Stream.Reducers:chunk_by/3
+impt	Elixir.Stream.Reducers:chunk_every/5
+impt	Elixir.Stream.Reducers:zip_with/2
+impt	Elixir.String.Chars:to_string/1
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/1
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:==/2
+impt	erlang:div/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:error/3
+impt	erlang:floor/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:iolist_to_binary/1
+impt	erlang:is_map_key/2
+impt	erlang:length/1
+impt	erlang:list_to_tuple/1
+impt	erlang:make_ref/0
+impt	erlang:make_tuple/2
+impt	erlang:map_get/2
+impt	erlang:map_size/1
+impt	erlang:max/2
+impt	erlang:min/2
+impt	erlang:rem/2
+impt	erlang:setelement/3
+impt	erlang:tuple_to_list/1
+impt	lists:keysort/2
+impt	lists:max/1
+impt	lists:member/2
+impt	lists:min/1
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:sort/1
+impt	lists:sort/2
+impt	maps:fold/3
+impt	maps:from_list/1
+impt	maps:merge/2
+impt	maps:put/3
+impt	maps:to_list/1
+impt	math:exp/1
+impt	math:log/1
+impt	rand:uniform/0
+impt	rand:uniform/1
+disasm	ok
+callext	Dict:update/4	1
+callext	Elixir.ArgumentError:exception/1	5
+callext	Elixir.Collectable:into/1	2
+callext	Elixir.Enum:count/1	1
+callext	Elixir.Enum:reduce/3	1
+callext	Elixir.Enum:to_list/1	4
+callext	Elixir.Enum.EmptyError:exception/1	17
+callext	Elixir.Enum.OutOfBoundsError:exception/1	1
+callext	Elixir.Enumerable:count/1	2
+callext	Elixir.Enumerable:impl_for/1	3
+callext	Elixir.Enumerable:member?/2	1
+callext	Elixir.Enumerable:reduce/3	115
+callext	Elixir.Enumerable:slice/1	4
+callext	Elixir.IO:warn/1	5
+callext	Elixir.Kernel:inspect/1	5
+callext	Elixir.List:foldl/3	1
+callext	Elixir.List:keysort/3	2
+callext	Elixir.Map:get/2	1
+callext	Elixir.MapSet:new/1	2
+callext	Elixir.MapSet:new/2	2
+callext	Elixir.MapSet:size/1	2
+callext	Elixir.MapSet:union/2	2
+callext	Elixir.Range:new/2	1
+callext	Elixir.Range:new/3	1
+callext	Elixir.Range:size/1	4
+callext	Elixir.Range:to_list/1	1
+callext	Elixir.Stream.Reducers:chunk_by/3	1
+callext	Elixir.Stream.Reducers:chunk_every/5	1
+callext	Elixir.Stream.Reducers:zip_with/2	2
+callext	Elixir.String.Chars:to_string/1	13
+callext	erlang:++/2	6
+callext	erlang:error/1	9
+callext	erlang:error/2	37
+callext	erlang:error/3	17
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:iolist_to_binary/1	4
+callext	erlang:list_to_tuple/1	1
+callext	erlang:make_ref/0	1
+callext	erlang:make_tuple/2	1
+callext	erlang:setelement/3	3
+callext	erlang:tuple_to_list/1	1
+callext	lists:keysort/2	1
+callext	lists:max/1	2
+callext	lists:member/2	1
+callext	lists:min/1	2
+callext	lists:reverse/1	55
+callext	lists:reverse/2	10
+callext	lists:sort/1	3
+callext	lists:sort/2	1
+callext	maps:fold/3	49
+callext	maps:from_list/1	4
+callext	maps:merge/2	2
+callext	maps:put/3	3
+callext	maps:to_list/1	1
+callext	math:exp/1	5
+callext	math:log/1	15
+callext	rand:uniform/0	11
+callext	rand:uniform/1	5

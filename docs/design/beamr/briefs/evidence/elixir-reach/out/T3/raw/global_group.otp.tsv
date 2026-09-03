@@ -1,0 +1,177 @@
+module	global_group
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	470
+op	2	func_info/3	84
+op	3	int_code_end/0	1
+op	4	call/2	78
+op	5	call_last/3	20
+op	6	call_only/2	30
+op	7	call_ext/2	141
+op	8	call_ext_last/3	18
+op	9	bif0/2	15
+op	10	bif1/4	18
+op	11	bif2/5	5
+op	12	allocate/2	76
+op	13	allocate_heap/3	12
+op	16	test_heap/2	214
+op	18	deallocate/1	102
+op	19	return/0	133
+op	20	send/0	27
+op	21	remove_message/0	3
+op	23	loop_rec/2	1
+op	25	wait/1	1
+op	40	is_ge/3	1
+op	42	is_ne/3	8
+op	43	is_eq_exact/3	116
+op	44	is_ne_exact/3	6
+op	45	is_integer/2	8
+op	48	is_atom/2	3
+op	49	is_pid/2	4
+op	52	is_nil/2	10
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	4
+op	57	is_tuple/2	45
+op	58	test_arity/3	27
+op	59	select_val/3	22
+op	60	select_tuple_arity/3	5
+op	61	jump/1	43
+op	62	catch/2	1
+op	63	catch_end/1	1
+op	64	move/2	709
+op	65	get_list/3	4
+op	66	get_tuple_element/3	277
+op	69	put_list/3	41
+op	72	badmatch/1	3
+op	74	case_end/1	21
+op	78	call_ext_only/2	25
+op	104	try/2	6
+op	105	try_end/1	6
+op	106	try_case/1	6
+op	107	try_case_end/1	1
+op	108	raise/2	4
+op	114	is_boolean/2	2
+op	124	gc_bif1/5	3
+op	136	trim/2	57
+op	153	line/1	377
+op	154	put_map_assoc/5	10
+op	156	is_map/2	37
+op	158	get_map_elements/3	27
+op	159	is_tagged_tuple/4	57
+op	164	put_tuple2/2	216
+op	169	swap/2	17
+op	171	make_fun3/3	12
+op	172	init_yregs/1	47
+op	180	badrecord/1	11
+op	181	update_record/5	24
+impt	application:get_env/2
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:demonitor/1
+impt	erlang:disconnect_node/1
+impt	erlang:error/1
+impt	erlang:exit/1
+impt	erlang:get/0
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:link/1
+impt	erlang:make_ref/0
+impt	erlang:map_size/1
+impt	erlang:monitor/2
+impt	erlang:node/0
+impt	erlang:nodes/0
+impt	erlang:nodes/1
+impt	erlang:nodes/2
+impt	erlang:process_flag/2
+impt	erlang:put/2
+impt	erlang:register/2
+impt	erlang:self/0
+impt	erlang:spawn_link/1
+impt	erlang:throw/1
+impt	erlang:unlink/1
+impt	erlang:whereis/1
+impt	erpc:check_response/3
+impt	erpc:reqids_new/0
+impt	erpc:send_request/6
+impt	error_logger:error_report/1
+impt	gen_server:call/3
+impt	gen_server:cast/2
+impt	gen_server:reply/2
+impt	gen_server:start/4
+impt	gen_server:start_link/4
+impt	global:registered_names/0
+impt	global:whereis_name/1
+impt	global_search:start/2
+impt	io_lib:format/2
+impt	lists:delete/2
+impt	lists:foldl/3
+impt	lists:foreach/2
+impt	lists:keysearch/3
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	maps:fold/3
+impt	maps:from_keys/2
+impt	maps:keys/1
+impt	maps:remove/2
+impt	maps:take/2
+impt	net_kernel:monitor_nodes/2
+impt	persistent_term:get/1
+impt	persistent_term:get/2
+impt	persistent_term:put/2
+disasm	ok
+callext	application:get_env/2	1
+callext	erlang:++/2	1
+callext	erlang:--/2	6
+callext	erlang:demonitor/1	2
+callext	erlang:disconnect_node/1	1
+callext	erlang:error/1	24
+callext	erlang:exit/1	7
+callext	erlang:get/0	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:link/1	1
+callext	erlang:make_ref/0	1
+callext	erlang:monitor/2	1
+callext	erlang:nodes/0	2
+callext	erlang:nodes/1	2
+callext	erlang:nodes/2	1
+callext	erlang:process_flag/2	3
+callext	erlang:put/2	21
+callext	erlang:register/2	1
+callext	erlang:spawn_link/1	1
+callext	erlang:throw/1	6
+callext	erlang:unlink/1	4
+callext	erlang:whereis/1	3
+callext	erpc:check_response/3	1
+callext	erpc:reqids_new/0	1
+callext	erpc:send_request/6	3
+callext	error_logger:error_report/1	1
+callext	gen_server:call/3	2
+callext	gen_server:cast/2	1
+callext	gen_server:reply/2	6
+callext	gen_server:start/4	1
+callext	gen_server:start_link/4	1
+callext	global:registered_names/0	3
+callext	global:whereis_name/1	5
+callext	global_search:start/2	11
+callext	io_lib:format/2	1
+callext	lists:delete/2	13
+callext	lists:foldl/3	8
+callext	lists:foreach/2	2
+callext	lists:keysearch/3	6
+callext	lists:member/2	2
+callext	lists:reverse/1	1
+callext	lists:sort/1	8
+callext	maps:fold/3	1
+callext	maps:from_keys/2	1
+callext	maps:keys/1	1
+callext	maps:remove/2	4
+callext	maps:take/2	3
+callext	net_kernel:monitor_nodes/2	1
+callext	persistent_term:get/1	1
+callext	persistent_term:get/2	2
+callext	persistent_term:put/2	1

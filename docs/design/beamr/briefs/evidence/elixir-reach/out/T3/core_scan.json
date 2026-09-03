@@ -1,0 +1,87 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 1268,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 3,
+  "deferred_names": [
+   "io_lib:fwrite/2",
+   "io_lib:write/1",
+   "io_lib:write_string/2"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "string",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 20520,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "erlang",
+  "io_lib",
+  "lists",
+  "string"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "core_scan",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/compiler-10.0.3/ebin/core_scan.beam",
+ "registration_deviation": [],
+ "sha256": "eb2b0dccfdfd3ed5b46c146e275936fbcfdb47f1dd0072847f62ef8b5b09733e",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

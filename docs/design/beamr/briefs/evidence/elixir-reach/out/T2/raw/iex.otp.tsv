@@ -1,0 +1,68 @@
+module	iex
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	37
+op	2	func_info/3	11
+op	3	int_code_end/0	1
+op	4	call/2	3
+op	5	call_last/3	1
+op	6	call_only/2	3
+op	7	call_ext/2	9
+op	8	call_ext_last/3	2
+op	9	bif0/2	2
+op	12	allocate/2	5
+op	13	allocate_heap/3	1
+op	16	test_heap/2	6
+op	18	deallocate/1	4
+op	19	return/0	7
+op	20	send/0	2
+op	21	remove_message/0	2
+op	23	loop_rec/2	2
+op	24	loop_rec_end/1	2
+op	25	wait/1	2
+op	43	is_eq_exact/3	6
+op	44	is_ne_exact/3	1
+op	52	is_nil/2	2
+op	56	is_nonempty_list/2	4
+op	64	move/2	29
+op	65	get_list/3	2
+op	66	get_tuple_element/3	3
+op	69	put_list/3	5
+op	72	badmatch/1	3
+op	78	call_ext_only/2	3
+op	136	trim/2	1
+op	153	line/1	29
+op	159	is_tagged_tuple/4	4
+op	162	get_hd/2	2
+op	164	put_tuple2/2	6
+op	171	make_fun3/3	2
+op	172	init_yregs/1	2
+impt	Elixir.IEx.Server:run_from_shell/2
+impt	application:ensure_all_started/1
+impt	elixir:start_cli/0
+impt	elixir_utils:characters_to_binary/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:make_ref/0
+impt	erlang:self/0
+impt	erlang:spawn/1
+impt	erlang:spawn_link/1
+impt	init:get_plain_arguments/0
+impt	init:notify_when_started/1
+impt	init:wait_until_started/0
+impt	io:setopts/1
+disasm	ok
+callext	Elixir.IEx.Server:run_from_shell/2	1
+callext	application:ensure_all_started/1	2
+callext	elixir:start_cli/0	1
+callext	elixir_utils:characters_to_binary/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:make_ref/0	1
+callext	erlang:spawn/1	1
+callext	erlang:spawn_link/1	1
+callext	init:get_plain_arguments/0	1
+callext	init:notify_when_started/1	1
+callext	init:wait_until_started/0	1
+callext	io:setopts/1	1

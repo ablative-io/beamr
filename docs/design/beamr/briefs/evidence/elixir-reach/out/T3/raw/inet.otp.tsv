@@ -1,0 +1,328 @@
+module	inet
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	1148
+op	2	func_info/3	251
+op	3	int_code_end/0	1
+op	4	call/2	137
+op	5	call_last/3	110
+op	6	call_only/2	142
+op	7	call_ext/2	186
+op	8	call_ext_last/3	37
+op	9	bif0/2	4
+op	10	bif1/4	1
+op	11	bif2/5	4
+op	12	allocate/2	208
+op	13	allocate_heap/3	5
+op	16	test_heap/2	199
+op	18	deallocate/1	174
+op	19	return/0	272
+op	20	send/0	6
+op	21	remove_message/0	10
+op	22	timeout/0	7
+op	23	loop_rec/2	7
+op	24	loop_rec_end/1	7
+op	39	is_lt/3	3
+op	40	is_ge/3	19
+op	43	is_eq_exact/3	131
+op	44	is_ne_exact/3	16
+op	45	is_integer/2	13
+op	48	is_atom/2	35
+op	49	is_pid/2	3
+op	50	is_reference/2	1
+op	51	is_port/2	15
+op	52	is_nil/2	55
+op	53	is_binary/2	1
+op	55	is_list/2	22
+op	56	is_nonempty_list/2	60
+op	57	is_tuple/2	63
+op	58	test_arity/3	43
+op	59	select_val/3	87
+op	60	select_tuple_arity/3	6
+op	61	jump/1	44
+op	64	move/2	1440
+op	65	get_list/3	56
+op	66	get_tuple_element/3	298
+op	69	put_list/3	93
+op	72	badmatch/1	10
+op	74	case_end/1	41
+op	77	is_function/2	1
+op	78	call_ext_only/2	65
+op	104	try/2	6
+op	105	try_end/1	6
+op	106	try_case/1	6
+op	107	try_case_end/1	3
+op	108	raise/2	5
+op	112	apply/1	25
+op	113	apply_last/2	11
+op	119	bs_get_binary2/7	2
+op	120	bs_skip_bits2/5	2
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	49
+op	136	trim/2	47
+op	153	line/1	716
+op	154	put_map_assoc/5	18
+op	156	is_map/2	34
+op	157	has_map_fields/3	2
+op	158	get_map_elements/3	46
+op	159	is_tagged_tuple/4	119
+op	161	raw_raise/0	2
+op	162	get_hd/2	4
+op	163	get_tl/2	2
+op	164	put_tuple2/2	117
+op	166	bs_start_match3/4	3
+op	169	swap/2	32
+op	171	make_fun3/3	22
+op	172	init_yregs/1	61
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	3
+op	175	recv_marker_reserve/1	1
+op	178	call_fun2/3	4
+op	180	badrecord/1	3
+op	181	update_record/5	46
+op	182	bs_match/3	3
+impt	application:get_env/2
+impt	erl_posix_msg:message/1
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_list/1
+impt	erlang:band/2
+impt	erlang:binary_to_list/1
+impt	erlang:bor/2
+impt	erlang:bsl/2
+impt	erlang:bsr/2
+impt	erlang:cancel_timer/1
+impt	erlang:demonitor/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:integer_to_list/1
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:monitor/2
+impt	erlang:pid_to_list/1
+impt	erlang:port_connect/2
+impt	erlang:port_info/1
+impt	erlang:port_info/2
+impt	erlang:port_to_list/1
+impt	erlang:ports/0
+impt	erlang:read_timer/1
+impt	erlang:self/0
+impt	erlang:start_timer/3
+impt	erlang:unlink/1
+impt	file:native_name_encoding/0
+impt	gen_tcp_socket:which_sockets/0
+impt	gen_udp_socket:which_sockets/0
+impt	inet:getopts/2
+impt	inet:getservbyport/2
+impt	inet_db:get_rc/0
+impt	inet_db:gethostname/0
+impt	inet_db:lookup_socket/1
+impt	inet_db:put_socket_type/2
+impt	inet_db:register_socket/2
+impt	inet_db:res_option/1
+impt	inet_db:take_socket_type/1
+impt	inet_db:tolower/1
+impt	inet_gethost_native:gethostbyaddr/1
+impt	inet_gethost_native:gethostbyname/2
+impt	inet_hosts:gethostbyaddr/1
+impt	inet_hosts:gethostbyname/2
+impt	inet_parse:address/1
+impt	inet_parse:ipv4_address/1
+impt	inet_parse:ipv4strict_address/1
+impt	inet_parse:ipv6_address/1
+impt	inet_parse:ipv6strict_address/1
+impt	inet_parse:ntoa/1
+impt	inet_parse:strict_address/1
+impt	inet_parse:visible_string/1
+impt	inet_res:gethostbyaddr_tm/2
+impt	inet_res:gethostbyname_tm/3
+impt	inet_udp:close/1
+impt	inet_udp:open/2
+impt	io:format/2
+impt	lists:append/1
+impt	lists:delete/2
+impt	lists:duplicate/2
+impt	lists:filter/2
+impt	lists:foldl/3
+impt	lists:foreach/2
+impt	lists:keydelete/3
+impt	lists:keyreplace/4
+impt	lists:keysearch/3
+impt	lists:member/2
+impt	lists:partition/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	lists:splitwith/2
+impt	maps:from_list/1
+impt	net:gethostname/0
+impt	net:getifaddrs/1
+impt	net:getifaddrs/2
+impt	net:getservbyname/2
+impt	net:getservbyport/2
+impt	persistent_term:get/2
+impt	prim_inet:bind/3
+impt	prim_inet:close/1
+impt	prim_inet:fdopen/5
+impt	prim_inet:getfd/1
+impt	prim_inet:gethostname/1
+impt	prim_inet:getifaddrs/1
+impt	prim_inet:getiflist/1
+impt	prim_inet:getopt/2
+impt	prim_inet:getopts/2
+impt	prim_inet:getservbyname/3
+impt	prim_inet:getservbyport/3
+impt	prim_inet:getstat/2
+impt	prim_inet:getstatus/1
+impt	prim_inet:gettype/1
+impt	prim_inet:ifget/3
+impt	prim_inet:ifset/3
+impt	prim_inet:ignorefd/2
+impt	prim_inet:is_sockopt_val/2
+impt	prim_inet:open/4
+impt	prim_inet:peername/1
+impt	prim_inet:peernames/1
+impt	prim_inet:peernames/2
+impt	prim_inet:send/2
+impt	prim_inet:setopt/3
+impt	prim_inet:setopts/2
+impt	prim_inet:setpeername/2
+impt	prim_inet:setsockname/2
+impt	prim_inet:sockname/1
+impt	prim_inet:socknames/1
+impt	prim_inet:socknames/2
+impt	prim_socket:enc_sockaddr/1
+impt	proplists:get_value/2
+impt	socket:close/1
+impt	socket:getopt/2
+impt	socket:ioctl/2
+impt	socket:ioctl/3
+impt	socket:ioctl/4
+impt	socket:is_supported/2
+impt	socket:open/4
+impt	string:uppercase/1
+impt	unicode:characters_to_binary/3
+impt	unicode:characters_to_list/2
+disasm	ok
+callext	application:get_env/2	4
+callext	erl_posix_msg:message/1	1
+callext	erlang:++/2	23
+callext	erlang:--/2	2
+callext	erlang:atom_to_list/1	10
+callext	erlang:binary_to_list/1	6
+callext	erlang:cancel_timer/1	1
+callext	erlang:demonitor/2	2
+callext	erlang:error/1	10
+callext	erlang:error/2	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	12
+callext	erlang:list_to_atom/1	2
+callext	erlang:monitor/2	1
+callext	erlang:pid_to_list/1	2
+callext	erlang:port_connect/2	2
+callext	erlang:port_info/1	1
+callext	erlang:port_info/2	8
+callext	erlang:port_to_list/1	1
+callext	erlang:ports/0	1
+callext	erlang:read_timer/1	1
+callext	erlang:start_timer/3	1
+callext	erlang:unlink/1	2
+callext	file:native_name_encoding/0	2
+callext	gen_tcp_socket:which_sockets/0	1
+callext	gen_udp_socket:which_sockets/0	1
+callext	inet:getopts/2	1
+callext	inet:getservbyport/2	1
+callext	inet_db:get_rc/0	1
+callext	inet_db:gethostname/0	2
+callext	inet_db:lookup_socket/1	1
+callext	inet_db:put_socket_type/2	2
+callext	inet_db:register_socket/2	2
+callext	inet_db:res_option/1	6
+callext	inet_db:take_socket_type/1	1
+callext	inet_db:tolower/1	3
+callext	inet_gethost_native:gethostbyaddr/1	1
+callext	inet_gethost_native:gethostbyname/2	1
+callext	inet_hosts:gethostbyaddr/1	1
+callext	inet_hosts:gethostbyname/2	1
+callext	inet_parse:address/1	1
+callext	inet_parse:ipv4_address/1	3
+callext	inet_parse:ipv4strict_address/1	2
+callext	inet_parse:ipv6_address/1	2
+callext	inet_parse:ipv6strict_address/1	3
+callext	inet_parse:ntoa/1	2
+callext	inet_parse:strict_address/1	1
+callext	inet_parse:visible_string/1	1
+callext	inet_res:gethostbyaddr_tm/2	1
+callext	inet_res:gethostbyname_tm/3	1
+callext	inet_udp:close/1	2
+callext	inet_udp:open/2	2
+callext	io:format/2	1
+callext	lists:append/1	2
+callext	lists:delete/2	1
+callext	lists:duplicate/2	1
+callext	lists:filter/2	1
+callext	lists:foldl/3	2
+callext	lists:foreach/2	1
+callext	lists:keydelete/3	7
+callext	lists:keyreplace/4	1
+callext	lists:keysearch/3	1
+callext	lists:member/2	8
+callext	lists:partition/2	2
+callext	lists:reverse/1	17
+callext	lists:sort/1	1
+callext	lists:splitwith/2	2
+callext	maps:from_list/1	2
+callext	net:gethostname/0	2
+callext	net:getifaddrs/1	2
+callext	net:getifaddrs/2	1
+callext	net:getservbyname/2	1
+callext	net:getservbyport/2	1
+callext	persistent_term:get/2	3
+callext	prim_inet:bind/3	6
+callext	prim_inet:close/1	6
+callext	prim_inet:fdopen/5	1
+callext	prim_inet:getfd/1	2
+callext	prim_inet:gethostname/1	1
+callext	prim_inet:getifaddrs/1	2
+callext	prim_inet:getiflist/1	1
+callext	prim_inet:getopt/2	3
+callext	prim_inet:getopts/2	1
+callext	prim_inet:getservbyname/3	1
+callext	prim_inet:getservbyport/3	1
+callext	prim_inet:getstat/2	3
+callext	prim_inet:getstatus/1	2
+callext	prim_inet:gettype/1	1
+callext	prim_inet:ifget/3	2
+callext	prim_inet:ifset/3	1
+callext	prim_inet:ignorefd/2	1
+callext	prim_inet:is_sockopt_val/2	5
+callext	prim_inet:open/4	1
+callext	prim_inet:peername/1	3
+callext	prim_inet:peernames/1	1
+callext	prim_inet:peernames/2	1
+callext	prim_inet:send/2	1
+callext	prim_inet:setopt/3	4
+callext	prim_inet:setopts/2	2
+callext	prim_inet:setpeername/2	2
+callext	prim_inet:setsockname/2	2
+callext	prim_inet:sockname/1	4
+callext	prim_inet:socknames/1	1
+callext	prim_inet:socknames/2	1
+callext	prim_socket:enc_sockaddr/1	1
+callext	proplists:get_value/2	1
+callext	socket:close/1	1
+callext	socket:getopt/2	1
+callext	socket:ioctl/2	1
+callext	socket:ioctl/3	7
+callext	socket:ioctl/4	1
+callext	socket:is_supported/2	2
+callext	socket:open/4	1
+callext	string:uppercase/1	1
+callext	unicode:characters_to_binary/3	1
+callext	unicode:characters_to_list/2	1

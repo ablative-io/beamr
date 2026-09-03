@@ -1,0 +1,70 @@
+module	beam_listing
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	41
+op	2	func_info/3	12
+op	3	int_code_end/0	1
+op	4	call/2	6
+op	6	call_only/2	3
+op	7	call_ext/2	19
+op	8	call_ext_last/3	4
+op	11	bif2/5	1
+op	12	allocate/2	3
+op	13	allocate_heap/3	5
+op	16	test_heap/2	19
+op	18	deallocate/1	4
+op	19	return/0	8
+op	43	is_eq_exact/3	2
+op	52	is_nil/2	3
+op	56	is_nonempty_list/2	4
+op	57	is_tuple/2	4
+op	58	test_arity/3	3
+op	59	select_val/3	2
+op	60	select_tuple_arity/3	1
+op	61	jump/1	3
+op	64	move/2	75
+op	65	get_list/3	2
+op	66	get_tuple_element/3	22
+op	69	put_list/3	23
+op	72	badmatch/1	1
+op	78	call_ext_only/2	7
+op	136	trim/2	12
+op	153	line/1	37
+op	154	put_map_assoc/5	1
+op	156	is_map/2	1
+op	159	is_tagged_tuple/4	3
+op	164	put_tuple2/2	3
+op	169	swap/2	5
+op	171	make_fun3/3	4
+op	172	init_yregs/1	1
+impt	beam_opcodes:format_number/0
+impt	beam_ssa_pp:format_function/1
+impt	core_pp:format/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:map_get/2
+impt	io:format/3
+impt	io:put_chars/2
+impt	io_lib:format/2
+impt	lists:foldl/3
+impt	lists:foreach/2
+impt	lists:join/2
+impt	lists:sort/1
+impt	maps:to_list/1
+disasm	ok
+callext	beam_opcodes:format_number/0	1
+callext	beam_ssa_pp:format_function/1	1
+callext	core_pp:format/1	1
+callext	erlang:error/1	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	io:format/3	10
+callext	io:put_chars/2	3
+callext	io_lib:format/2	3
+callext	lists:foldl/3	1
+callext	lists:foreach/2	3
+callext	lists:join/2	1
+callext	lists:sort/1	1
+callext	maps:to_list/1	1

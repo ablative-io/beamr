@@ -1,0 +1,4 @@
+io_lib:write/1
+io_lib:write_string/2
+io_lib:write_string_as_latin1/2
+io_lib_pretty:print/2

@@ -1,0 +1,131 @@
+module	elixir_clauses
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	291
+op	2	func_info/3	62
+op	3	int_code_end/0	1
+op	4	call/2	43
+op	5	call_last/3	13
+op	6	call_only/2	22
+op	7	call_ext/2	65
+op	8	call_ext_last/3	19
+op	11	bif2/5	12
+op	12	allocate/2	44
+op	13	allocate_heap/3	8
+op	16	test_heap/2	113
+op	18	deallocate/1	34
+op	19	return/0	54
+op	40	is_ge/3	1
+op	43	is_eq_exact/3	35
+op	44	is_ne_exact/3	1
+op	48	is_atom/2	10
+op	52	is_nil/2	36
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	48
+op	57	is_tuple/2	62
+op	58	test_arity/3	57
+op	59	select_val/3	9
+op	60	select_tuple_arity/3	1
+op	61	jump/1	10
+op	64	move/2	598
+op	65	get_list/3	34
+op	66	get_tuple_element/3	220
+op	69	put_list/3	63
+op	72	badmatch/1	41
+op	74	case_end/1	7
+op	75	call_fun/1	2
+op	78	call_ext_only/2	39
+op	115	is_function2/3	1
+op	124	gc_bif1/5	1
+op	125	gc_bif2/6	2
+op	136	trim/2	23
+op	153	line/1	273
+op	154	put_map_assoc/5	1
+op	155	put_map_exact/5	8
+op	156	is_map/2	11
+op	157	has_map_fields/3	3
+op	158	get_map_elements/3	2
+op	159	is_tagged_tuple/4	29
+op	162	get_hd/2	1
+op	163	get_tl/2	6
+op	164	put_tuple2/2	92
+op	169	swap/2	36
+op	171	make_fun3/3	25
+op	172	init_yregs/1	33
+op	178	call_fun2/3	3
+op	180	badrecord/1	3
+op	181	update_record/5	9
+impt	Elixir.Macro:expand_once/2
+impt	Elixir.Macro:to_string/1
+impt	elixir_env:check_unused_vars/2
+impt	elixir_env:merge_and_check_unused_vars/3
+impt	elixir_env:merge_vars/2
+impt	elixir_env:reset_read/2
+impt	elixir_env:reset_unused_vars/1
+impt	elixir_errors:file_error/4
+impt	elixir_errors:file_warn/4
+impt	elixir_expand:expand/3
+impt	elixir_expand:expand_args/3
+impt	elixir_utils:get_line/1
+impt	elixir_utils:split_last/1
+impt	elixir_utils:split_opts/1
+impt	elixir_utils:var_info/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_map_key/2
+impt	erlang:map_get/2
+impt	erlang:map_size/1
+impt	io_lib:format/2
+impt	lists:all/2
+impt	lists:foldl/3
+impt	lists:keyfind/3
+impt	lists:keytake/3
+impt	lists:map/2
+impt	lists:mapfoldl/3
+impt	lists:member/2
+impt	lists:sort/1
+impt	maps:fold/3
+impt	maps:from_keys/2
+impt	maps:keys/1
+impt	maps:merge/2
+impt	maps:merge_with/3
+impt	maps:update_with/4
+disasm	ok
+callext	Elixir.Macro:expand_once/2	1
+callext	Elixir.Macro:to_string/1	7
+callext	elixir_env:check_unused_vars/2	1
+callext	elixir_env:merge_and_check_unused_vars/3	4
+callext	elixir_env:merge_vars/2	1
+callext	elixir_env:reset_read/2	1
+callext	elixir_env:reset_unused_vars/1	4
+callext	elixir_errors:file_error/4	32
+callext	elixir_errors:file_warn/4	5
+callext	elixir_expand:expand/3	10
+callext	elixir_expand:expand_args/3	1
+callext	elixir_utils:get_line/1	1
+callext	elixir_utils:split_last/1	1
+callext	elixir_utils:split_opts/1	1
+callext	elixir_utils:var_info/2	1
+callext	erlang:++/2	2
+callext	erlang:error/1	6
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	io_lib:format/2	14
+callext	lists:all/2	1
+callext	lists:foldl/3	5
+callext	lists:keyfind/3	1
+callext	lists:keytake/3	2
+callext	lists:map/2	1
+callext	lists:mapfoldl/3	6
+callext	lists:member/2	1
+callext	lists:sort/1	1
+callext	maps:fold/3	4
+callext	maps:from_keys/2	1
+callext	maps:keys/1	1
+callext	maps:merge/2	2
+callext	maps:merge_with/3	1
+callext	maps:update_with/4	1

@@ -1,0 +1,129 @@
+module	Elixir.Module.Behaviour
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	275
+op	2	func_info/3	55
+op	3	int_code_end/0	1
+op	4	call/2	34
+op	5	call_last/3	10
+op	6	call_only/2	10
+op	7	call_ext/2	71
+op	8	call_ext_last/3	28
+op	10	bif1/4	1
+op	11	bif2/5	4
+op	12	allocate/2	39
+op	13	allocate_heap/3	2
+op	16	test_heap/2	57
+op	18	deallocate/1	39
+op	19	return/0	68
+op	41	is_eq/3	1
+op	42	is_ne/3	1
+op	43	is_eq_exact/3	14
+op	52	is_nil/2	6
+op	53	is_binary/2	4
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	10
+op	57	is_tuple/2	39
+op	58	test_arity/3	37
+op	59	select_val/3	32
+op	60	select_tuple_arity/3	1
+op	61	jump/1	26
+op	64	move/2	327
+op	65	get_list/3	8
+op	66	get_tuple_element/3	96
+op	69	put_list/3	70
+op	72	badmatch/1	2
+op	74	case_end/1	15
+op	78	call_ext_only/2	9
+op	112	apply/1	4
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	2
+op	136	trim/2	16
+op	153	line/1	184
+op	154	put_map_assoc/5	2
+op	156	is_map/2	17
+op	158	get_map_elements/3	17
+op	162	get_hd/2	2
+op	164	put_tuple2/2	35
+op	169	swap/2	23
+op	171	make_fun3/3	20
+op	172	init_yregs/1	26
+op	177	bs_create_bin/6	4
+impt	Elixir.Access:get/2
+impt	Elixir.Access:get_and_update/3
+impt	Elixir.Access:pop/2
+impt	Elixir.Code:ensure_loaded?/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:any?/2
+impt	Elixir.Enum:find/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Exception:format_mfa/3
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:get/2
+impt	Elixir.Keyword:has_key?/2
+impt	Elixir.Keyword:put_new/3
+impt	Elixir.List:flatten/1
+impt	Elixir.Map:get_and_update!/3
+impt	Elixir.Map:update/4
+impt	Elixir.Map:update!/3
+impt	Elixir.Range:new/2
+impt	Elixir.String.Chars:to_string/1
+impt	elixir_erl_pass:no_parens_remote/2
+impt	elixir_utils:get_line/1
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:==/2
+impt	erlang:atom_to_list/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:function_exported/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:insert_element/3
+impt	erlang:iolist_to_binary/1
+impt	erlang:list_to_atom/1
+impt	erlang:map_size/1
+impt	erlang:not/1
+impt	lists:keyfind/3
+impt	lists:reverse/1
+impt	maps:find/2
+impt	maps:values/1
+disasm	ok
+callext	Elixir.Access:get/2	4
+callext	Elixir.Access:get_and_update/3	1
+callext	Elixir.Access:pop/2	1
+callext	Elixir.Code:ensure_loaded?/1	3
+callext	Elixir.Enum:__in__/2	3
+callext	Elixir.Enum:any?/2	2
+callext	Elixir.Enum:find/2	1
+callext	Elixir.Enum:map/2	3
+callext	Elixir.Enum:reduce/3	9
+callext	Elixir.Exception:format_mfa/3	1
+callext	Elixir.Kernel:inspect/1	17
+callext	Elixir.Keyword:get/2	1
+callext	Elixir.Keyword:has_key?/2	1
+callext	Elixir.Keyword:put_new/3	1
+callext	Elixir.List:flatten/1	1
+callext	Elixir.Map:get_and_update!/3	2
+callext	Elixir.Map:update/4	1
+callext	Elixir.Map:update!/3	1
+callext	Elixir.Range:new/2	1
+callext	Elixir.String.Chars:to_string/1	5
+callext	elixir_erl_pass:no_parens_remote/2	14
+callext	elixir_utils:get_line/1	1
+callext	erlang:++/2	1
+callext	erlang:atom_to_list/1	1
+callext	erlang:error/1	19
+callext	erlang:function_exported/3	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:insert_element/3	2
+callext	erlang:iolist_to_binary/1	1
+callext	erlang:list_to_atom/1	1
+callext	lists:keyfind/3	1
+callext	lists:reverse/1	1
+callext	maps:find/2	1
+callext	maps:values/1	1

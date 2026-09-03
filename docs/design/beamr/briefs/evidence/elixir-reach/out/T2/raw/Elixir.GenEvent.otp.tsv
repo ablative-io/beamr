@@ -1,0 +1,153 @@
+module	Elixir.GenEvent
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	297
+op	2	func_info/3	76
+op	3	int_code_end/0	1
+op	4	call/2	55
+op	5	call_last/3	32
+op	6	call_only/2	28
+op	7	call_ext/2	53
+op	8	call_ext_last/3	19
+op	9	bif0/2	8
+op	11	bif2/5	3
+op	12	allocate/2	46
+op	13	allocate_heap/3	15
+op	16	test_heap/2	74
+op	18	deallocate/1	50
+op	19	return/0	76
+op	21	remove_message/0	7
+op	23	loop_rec/2	2
+op	24	loop_rec_end/1	1
+op	25	wait/1	2
+op	41	is_eq/3	1
+op	43	is_eq_exact/3	44
+op	48	is_atom/2	6
+op	49	is_pid/2	3
+op	52	is_nil/2	9
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	28
+op	57	is_tuple/2	24
+op	58	test_arity/3	9
+op	59	select_val/3	18
+op	60	select_tuple_arity/3	10
+op	61	jump/1	6
+op	64	move/2	621
+op	65	get_list/3	20
+op	66	get_tuple_element/3	178
+op	69	put_list/3	46
+op	72	badmatch/1	10
+op	74	case_end/1	4
+op	75	call_fun/1	1
+op	78	call_ext_only/2	6
+op	104	try/2	7
+op	105	try_end/1	7
+op	106	try_case/1	7
+op	107	try_case_end/1	1
+op	108	raise/2	1
+op	112	apply/1	4
+op	124	gc_bif1/5	1
+op	136	trim/2	27
+op	153	line/1	210
+op	154	put_map_assoc/5	1
+op	159	is_tagged_tuple/4	19
+op	160	build_stacktrace/0	1
+op	162	get_hd/2	1
+op	163	get_tl/2	7
+op	164	put_tuple2/2	83
+op	169	swap/2	30
+op	171	make_fun3/3	8
+op	172	init_yregs/1	11
+op	177	bs_create_bin/6	5
+op	181	update_record/5	8
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.IO:puts/2
+impt	Elixir.IO:warn/2
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:get/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.Process:put/2
+impt	code:is_loaded/1
+impt	elixir_env:to_caller/1
+impt	elixir_quote:validate_quote/1
+impt	erlang:apply/3
+impt	erlang:demonitor/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:exit/1
+impt	erlang:function_exported/3
+impt	erlang:get/0
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	erlang:monitor/2
+impt	erlang:self/0
+impt	erlang:send/2
+impt	erlang:setelement/3
+impt	error_logger:error_msg/2
+impt	gen:call/4
+impt	gen:debug_options/2
+impt	gen:format_status_header/2
+impt	gen:start/5
+impt	gen:start/6
+impt	gen:stop/3
+impt	global:send/2
+impt	lists:keydelete/3
+impt	lists:keyfind/3
+impt	lists:keyreplace/4
+impt	lists:keytake/3
+impt	lists:reverse/1
+impt	lists:unzip/1
+impt	ordsets:from_list/1
+impt	ordsets:to_list/1
+impt	proc_lib:hibernate/3
+impt	proc_lib:init_ack/2
+impt	sys:handle_debug/4
+impt	sys:handle_system_msg/7
+disasm	ok
+callext	Elixir.ArgumentError:exception/1	1
+callext	Elixir.Enum:map/2	3
+callext	Elixir.Enum:reduce/3	4
+callext	Elixir.IO:puts/2	4
+callext	Elixir.IO:warn/2	1
+callext	Elixir.Kernel:inspect/1	10
+callext	Elixir.Keyword:get/2	1
+callext	Elixir.Keyword:get/3	1
+callext	Elixir.Process:put/2	1
+callext	code:is_loaded/1	1
+callext	elixir_env:to_caller/1	1
+callext	elixir_quote:validate_quote/1	1
+callext	erlang:apply/3	1
+callext	erlang:demonitor/2	1
+callext	erlang:error/1	1
+callext	erlang:exit/1	2
+callext	erlang:function_exported/3	3
+callext	erlang:get/0	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:monitor/2	3
+callext	erlang:send/2	4
+callext	erlang:setelement/3	1
+callext	error_logger:error_msg/2	1
+callext	gen:call/4	2
+callext	gen:debug_options/2	1
+callext	gen:format_status_header/2	1
+callext	gen:start/5	1
+callext	gen:start/6	3
+callext	gen:stop/3	1
+callext	global:send/2	1
+callext	lists:keydelete/3	2
+callext	lists:keyfind/3	3
+callext	lists:keyreplace/4	1
+callext	lists:keytake/3	1
+callext	lists:reverse/1	4
+callext	lists:unzip/1	1
+callext	ordsets:from_list/1	1
+callext	ordsets:to_list/1	1
+callext	proc_lib:hibernate/3	1
+callext	proc_lib:init_ack/2	1
+callext	sys:handle_debug/4	1
+callext	sys:handle_system_msg/7	1

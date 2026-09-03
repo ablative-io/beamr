@@ -44,7 +44,8 @@
  "D": [
   {
    "module": "erlang",
-   "status": null
+   "status": "native-stub",
+   "t3_load_status": "loaded"
   }
  ],
  "bytes": 3036,

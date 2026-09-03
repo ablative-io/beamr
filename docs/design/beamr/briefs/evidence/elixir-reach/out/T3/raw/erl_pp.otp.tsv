@@ -1,0 +1,164 @@
+module	erl_pp
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	706
+op	2	func_info/3	178
+op	3	int_code_end/0	1
+op	4	call/2	365
+op	5	call_last/3	82
+op	6	call_only/2	78
+op	7	call_ext/2	87
+op	8	call_ext_last/3	11
+op	11	bif2/5	29
+op	12	allocate/2	195
+op	13	allocate_heap/3	22
+op	16	test_heap/2	273
+op	18	deallocate/1	142
+op	19	return/0	225
+op	39	is_lt/3	10
+op	40	is_ge/3	11
+op	43	is_eq_exact/3	54
+op	44	is_ne_exact/3	4
+op	45	is_integer/2	5
+op	48	is_atom/2	6
+op	52	is_nil/2	58
+op	55	is_list/2	8
+op	56	is_nonempty_list/2	66
+op	57	is_tuple/2	67
+op	58	test_arity/3	49
+op	59	select_val/3	26
+op	60	select_tuple_arity/3	14
+op	61	jump/1	18
+op	64	move/2	1484
+op	65	get_list/3	61
+op	66	get_tuple_element/3	283
+op	69	put_list/3	308
+op	72	badmatch/1	31
+op	74	case_end/1	6
+op	75	call_fun/1	1
+op	78	call_ext_only/2	18
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	16
+op	136	trim/2	108
+op	153	line/1	618
+op	154	put_map_assoc/5	3
+op	156	is_map/2	3
+op	157	has_map_fields/3	1
+op	159	is_tagged_tuple/4	37
+op	162	get_hd/2	3
+op	163	get_tl/2	5
+op	164	put_tuple2/2	228
+op	169	swap/2	59
+op	171	make_fun3/3	38
+op	172	init_yregs/1	102
+op	178	call_fun2/3	12
+op	181	update_record/5	1
+impt	epp:default_encoding/0
+impt	erl_anno:new/1
+impt	erl_internal:bif/3
+impt	erl_parse:abstract/1
+impt	erl_parse:abstract/2
+impt	erl_parse:func_prec/0
+impt	erl_parse:inop_prec/1
+impt	erl_parse:max_prec/0
+impt	erl_parse:preop_prec/1
+impt	erl_parse:type_inop_prec/1
+impt	erl_parse:type_preop_prec/1
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:apply/3
+impt	erlang:atom_to_list/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_tuple/1
+impt	erlang:map_get/2
+impt	erlang:max/2
+impt	erlang:tuple_to_list/1
+impt	io_lib:format/2
+impt	io_lib:write/1
+impt	io_lib:write_string/2
+impt	io_lib:write_string_as_latin1/2
+impt	io_lib_format:indentation/2
+impt	io_lib_pretty:print/2
+impt	lists:append/1
+impt	lists:concat/1
+impt	lists:filter/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:foldr/3
+impt	lists:last/1
+impt	lists:map/2
+impt	lists:mapfoldl/3
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:seq/2
+impt	lists:sum/1
+impt	lists:unzip/1
+impt	maps:fold/3
+impt	proplists:get_bool/2
+impt	proplists:get_value/3
+impt	string:length/1
+impt	string:slice/2
+impt	string:slice/3
+impt	string:to_upper/1
+disasm	ok
+callext	epp:default_encoding/0	1
+callext	erl_anno:new/1	1
+callext	erl_internal:bif/3	1
+callext	erl_parse:abstract/1	3
+callext	erl_parse:abstract/2	1
+callext	erl_parse:func_prec/0	1
+callext	erl_parse:inop_prec/1	11
+callext	erl_parse:max_prec/0	3
+callext	erl_parse:preop_prec/1	6
+callext	erl_parse:type_inop_prec/1	3
+callext	erl_parse:type_preop_prec/1	2
+callext	erlang:++/2	7
+callext	erlang:apply/3	1
+callext	erlang:atom_to_list/1	6
+callext	erlang:error/1	7
+callext	erlang:error/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_atom/1	1
+callext	erlang:list_to_tuple/1	3
+callext	erlang:tuple_to_list/1	2
+callext	io_lib:format/2	11
+callext	io_lib:write/1	5
+callext	io_lib:write_string/2	1
+callext	io_lib:write_string_as_latin1/2	1
+callext	io_lib_format:indentation/2	1
+callext	io_lib_pretty:print/2	2
+callext	lists:append/1	2
+callext	lists:concat/1	1
+callext	lists:filter/2	1
+callext	lists:flatten/1	1
+callext	lists:foldl/3	2
+callext	lists:foldr/3	1
+callext	lists:last/1	1
+callext	lists:map/2	1
+callext	lists:mapfoldl/3	2
+callext	lists:reverse/1	2
+callext	lists:reverse/2	1
+callext	lists:seq/2	1
+callext	lists:sum/1	1
+callext	lists:unzip/1	1
+callext	maps:fold/3	1
+callext	proplists:get_bool/2	1
+callext	proplists:get_value/3	4
+callext	string:length/1	5
+callext	string:slice/2	1
+callext	string:slice/3	1
+callext	string:to_upper/1	1

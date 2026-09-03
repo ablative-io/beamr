@@ -1,0 +1,83 @@
+module	Elixir.Base
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	1346
+op	2	func_info/3	105
+op	3	int_code_end/0	1
+op	4	call/2	491
+op	5	call_last/3	48
+op	6	call_only/2	82
+op	7	call_ext/2	38
+op	8	call_ext_last/3	10
+op	11	bif2/5	192
+op	12	allocate/2	56
+op	16	test_heap/2	5
+op	18	deallocate/1	158
+op	19	return/0	242
+op	40	is_ge/3	1666
+op	43	is_eq_exact/3	263
+op	44	is_ne_exact/3	30
+op	53	is_binary/2	17
+op	57	is_tuple/2	5
+op	58	test_arity/3	5
+op	59	select_val/3	49
+op	61	jump/1	464
+op	64	move/2	1170
+op	66	get_tuple_element/3	5
+op	72	badmatch/1	16
+op	74	case_end/1	9
+op	78	call_ext_only/2	3
+op	104	try/2	5
+op	105	try_end/1	5
+op	106	try_case/1	5
+op	108	raise/2	5
+op	119	bs_get_binary2/7	16
+op	124	gc_bif1/5	26
+op	125	gc_bif2/6	437
+op	133	bs_init_writable/0	20
+op	136	trim/2	153
+op	153	line/1	951
+op	157	has_map_fields/3	5
+op	164	put_tuple2/2	5
+op	165	bs_get_tail/3	20
+op	167	bs_get_position/3	110
+op	168	bs_set_position/2	145
+op	169	swap/2	100
+op	170	bs_start_match4/4	47
+op	172	init_yregs/1	304
+op	177	bs_create_bin/6	140
+op	182	bs_match/3	406
+impt	Elixir.Access:get/2
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Kernel:inspect/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.String.Chars:to_string/1
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:band/2
+impt	erlang:bit_size/1
+impt	erlang:bor/2
+impt	erlang:bsl/2
+impt	erlang:bsr/2
+impt	erlang:bxor/2
+impt	erlang:byte_size/1
+impt	erlang:div/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:map_get/2
+impt	erlang:rem/2
+disasm	ok
+callext	Elixir.Access:get/2	4
+callext	Elixir.ArgumentError:exception/1	10
+callext	Elixir.Kernel:inspect/2	1
+callext	Elixir.Keyword:get/3	21
+callext	Elixir.String.Chars:to_string/1	2
+callext	erlang:error/1	10
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

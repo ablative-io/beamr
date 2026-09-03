@@ -1,1 +1,7 @@
 T2	Elixir.Access	loaded	None	ok
+T2	Elixir.Agent.Server	loaded	None	ok
+T2	Elixir.Agent	loaded	None	ok
+T2	Elixir.Application	loaded	None	ok
+T2	Elixir.ArgumentError	loaded	None	ok
+T2	Elixir.ArithmeticError	loaded	None	ok
+T2	Elixir.Atom	loaded	None	ok

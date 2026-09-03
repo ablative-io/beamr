@@ -1,0 +1,78 @@
+module	Elixir.Inspect.BitString
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	48
+op	2	func_info/3	9
+op	3	int_code_end/0	1
+op	4	call/2	2
+op	5	call_last/3	1
+op	6	call_only/2	3
+op	7	call_ext/2	13
+op	8	call_ext_last/3	4
+op	11	bif2/5	1
+op	12	allocate/2	4
+op	16	test_heap/2	4
+op	18	deallocate/1	1
+op	19	return/0	9
+op	43	is_eq_exact/3	7
+op	53	is_binary/2	1
+op	57	is_tuple/2	1
+op	58	test_arity/3	1
+op	59	select_val/3	4
+op	61	jump/1	6
+op	64	move/2	64
+op	66	get_tuple_element/3	2
+op	69	put_list/3	4
+op	72	badmatch/1	2
+op	74	case_end/1	1
+op	78	call_ext_only/2	6
+op	117	bs_get_integer2/7	1
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	2
+op	136	trim/2	1
+op	153	line/1	30
+op	155	put_map_exact/5	1
+op	156	is_map/2	2
+op	158	get_map_elements/3	2
+op	164	put_tuple2/2	2
+op	165	bs_get_tail/3	1
+op	166	bs_start_match3/4	1
+op	169	swap/2	1
+op	170	bs_start_match4/4	1
+op	172	init_yregs/1	5
+op	177	bs_create_bin/6	1
+op	182	bs_match/3	4
+impt	Elixir.Code.Identifier:escape/3
+impt	Elixir.Inspect.Algebra:color_doc/3
+impt	Elixir.Inspect.Algebra:concat/2
+impt	Elixir.Inspect.Algebra:empty/0
+impt	Elixir.Inspect.Algebra:flex_glue/2
+impt	Elixir.Inspect.Algebra:group/1
+impt	Elixir.Inspect.Algebra:nest/2
+impt	Elixir.Inspect.Integer:inspect/2
+impt	Elixir.String:printable?/2
+impt	erlang:-/2
+impt	erlang:bit_size/1
+impt	erlang:byte_size/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_binary/1
+impt	erlang:iolist_to_binary/1
+impt	erlang:max/2
+disasm	ok
+callext	Elixir.Code.Identifier:escape/3	1
+callext	Elixir.Inspect.Algebra:color_doc/3	4
+callext	Elixir.Inspect.Algebra:concat/2	4
+callext	Elixir.Inspect.Algebra:empty/0	1
+callext	Elixir.Inspect.Algebra:flex_glue/2	1
+callext	Elixir.Inspect.Algebra:group/1	1
+callext	Elixir.Inspect.Algebra:nest/2	1
+callext	Elixir.Inspect.Integer:inspect/2	3
+callext	Elixir.String:printable?/2	1
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:integer_to_binary/1	1
+callext	erlang:iolist_to_binary/1	1

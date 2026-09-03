@@ -1,0 +1,95 @@
+module	net_adm
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	77
+op	2	func_info/3	23
+op	3	int_code_end/0	1
+op	4	call/2	15
+op	5	call_last/3	11
+op	6	call_only/2	3
+op	7	call_ext/2	20
+op	8	call_ext_last/3	3
+op	9	bif0/2	1
+op	12	allocate/2	16
+op	13	allocate_heap/3	1
+op	16	test_heap/2	14
+op	18	deallocate/1	17
+op	19	return/0	23
+op	21	remove_message/0	1
+op	22	timeout/0	1
+op	23	loop_rec/2	1
+op	24	loop_rec_end/1	1
+op	26	wait_timeout/2	1
+op	43	is_eq_exact/3	11
+op	48	is_atom/2	1
+op	52	is_nil/2	6
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	6
+op	57	is_tuple/2	1
+op	58	test_arity/3	1
+op	59	select_val/3	1
+op	61	jump/1	1
+op	62	catch/2	1
+op	63	catch_end/1	1
+op	64	move/2	96
+op	65	get_list/3	5
+op	66	get_tuple_element/3	8
+op	69	put_list/3	12
+op	72	badmatch/1	3
+op	74	case_end/1	1
+op	78	call_ext_only/2	3
+op	113	apply_last/2	1
+op	136	trim/2	5
+op	153	line/1	59
+op	159	is_tagged_tuple/4	8
+op	163	get_tl/2	1
+op	164	put_tuple2/2	4
+op	169	swap/2	2
+op	172	init_yregs/1	9
+impt	code:root_dir/0
+impt	erlang:++/2
+impt	erlang:atom_to_list/1
+impt	erlang:disconnect_node/1
+impt	erlang:exit/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:list_to_atom/1
+impt	erlang:node/0
+impt	erlang:nodes/0
+impt	file:path_consult/2
+impt	gen:call/4
+impt	inet:gethostbyname/1
+impt	inet:gethostname/0
+impt	inet_db:res_option/1
+impt	init:get_argument/1
+impt	io:format/2
+impt	lists:flatten/1
+impt	lists:member/2
+impt	net_adm:host_file/0
+impt	net_kernel:epmd_module/0
+impt	net_kernel:longnames/0
+impt	net_kernel:monitor_nodes/1
+disasm	ok
+callext	code:root_dir/0	1
+callext	erlang:++/2	3
+callext	erlang:atom_to_list/1	1
+callext	erlang:disconnect_node/1	1
+callext	erlang:exit/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_atom/1	1
+callext	erlang:nodes/0	1
+callext	file:path_consult/2	1
+callext	gen:call/4	1
+callext	inet:gethostbyname/1	1
+callext	inet:gethostname/0	1
+callext	inet_db:res_option/1	1
+callext	init:get_argument/1	1
+callext	io:format/2	1
+callext	lists:flatten/1	1
+callext	lists:member/2	2
+callext	net_adm:host_file/0	1
+callext	net_kernel:epmd_module/0	1
+callext	net_kernel:longnames/0	1
+callext	net_kernel:monitor_nodes/1	2

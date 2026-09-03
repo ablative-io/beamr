@@ -1,0 +1,2 @@
+rand:uniform/1
+Dict:update/4

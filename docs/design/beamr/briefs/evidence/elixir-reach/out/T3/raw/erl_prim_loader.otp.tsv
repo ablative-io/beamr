@@ -1,0 +1,185 @@
+module	erl_prim_loader
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	658
+op	2	func_info/3	150
+op	3	int_code_end/0	1
+op	4	call/2	173
+op	5	call_last/3	87
+op	6	call_only/2	58
+op	7	call_ext/2	110
+op	8	call_ext_last/3	9
+op	9	bif0/2	9
+op	10	bif1/4	1
+op	11	bif2/5	2
+op	12	allocate/2	115
+op	13	allocate_heap/3	14
+op	16	test_heap/2	191
+op	18	deallocate/1	113
+op	19	return/0	171
+op	20	send/0	8
+op	21	remove_message/0	17
+op	22	timeout/0	4
+op	23	loop_rec/2	7
+op	24	loop_rec_end/1	5
+op	25	wait/1	4
+op	26	wait_timeout/2	4
+op	39	is_lt/3	4
+op	40	is_ge/3	5
+op	43	is_eq_exact/3	104
+op	44	is_ne_exact/3	10
+op	48	is_atom/2	8
+op	49	is_pid/2	2
+op	51	is_port/2	1
+op	52	is_nil/2	50
+op	53	is_binary/2	2
+op	55	is_list/2	12
+op	56	is_nonempty_list/2	73
+op	57	is_tuple/2	39
+op	58	test_arity/3	27
+op	59	select_val/3	28
+op	60	select_tuple_arity/3	14
+op	61	jump/1	29
+op	62	catch/2	14
+op	63	catch_end/1	14
+op	64	move/2	943
+op	65	get_list/3	66
+op	66	get_tuple_element/3	229
+op	69	put_list/3	66
+op	72	badmatch/1	10
+op	74	case_end/1	27
+op	75	call_fun/1	5
+op	78	call_ext_only/2	10
+op	104	try/2	4
+op	105	try_end/1	4
+op	106	try_case/1	4
+op	113	apply_last/2	1
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	14
+op	136	trim/2	39
+op	153	line/1	479
+op	154	put_map_assoc/5	2
+op	159	is_tagged_tuple/4	71
+op	162	get_hd/2	6
+op	163	get_tl/2	3
+op	164	put_tuple2/2	191
+op	169	swap/2	27
+op	171	make_fun3/3	13
+op	172	init_yregs/1	82
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	1
+op	175	recv_marker_reserve/1	1
+op	176	recv_marker_use/1	1
+op	178	call_fun2/3	4
+op	180	badrecord/1	8
+op	181	update_record/5	16
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_list/1
+impt	erlang:binary_to_term/1
+impt	erlang:bsr/2
+impt	erlang:byte_size/1
+impt	erlang:display/1
+impt	erlang:erase/1
+impt	erlang:exit/1
+impt	erlang:exit/2
+impt	erlang:garbage_collect/0
+impt	erlang:get/0
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:group_leader/0
+impt	erlang:length/1
+impt	erlang:make_ref/0
+impt	erlang:min/2
+impt	erlang:process_flag/2
+impt	erlang:process_info/2
+impt	erlang:put/2
+impt	erlang:register/2
+impt	erlang:self/0
+impt	erlang:spawn_link/1
+impt	erlang:spawn_monitor/1
+impt	erlang:system_info/1
+impt	erlang:term_to_binary/1
+impt	erlang:unlink/1
+impt	erlang:whereis/1
+impt	init:archive_extension/0
+impt	init:get_argument/1
+impt	init:objfile_extension/0
+impt	lists:member/2
+impt	lists:reverse/2
+impt	os:system_time/1
+impt	persistent_term:get/1
+impt	persistent_term:put/2
+impt	prim_file:get_cwd/0
+impt	prim_file:get_cwd/1
+impt	prim_file:list_dir/1
+impt	prim_file:read_file/1
+impt	prim_file:read_file_info/1
+impt	prim_file:read_link/1
+impt	prim_file:read_link_info/1
+impt	prim_inet:bind/3
+impt	prim_inet:close/1
+impt	prim_inet:connect/4
+impt	prim_inet:open/3
+impt	prim_inet:send/2
+impt	prim_inet:sendto/4
+impt	prim_inet:setopts/2
+impt	prim_zip:close/1
+impt	prim_zip:foldl/3
+impt	prim_zip:open/3
+disasm	ok
+callext	erlang:++/2	32
+callext	erlang:--/2	1
+callext	erlang:atom_to_list/1	13
+callext	erlang:binary_to_term/1	1
+callext	erlang:display/1	5
+callext	erlang:erase/1	4
+callext	erlang:exit/1	3
+callext	erlang:exit/2	1
+callext	erlang:garbage_collect/0	1
+callext	erlang:get/0	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:group_leader/0	1
+callext	erlang:make_ref/0	1
+callext	erlang:process_flag/2	1
+callext	erlang:process_info/2	1
+callext	erlang:put/2	3
+callext	erlang:register/2	1
+callext	erlang:spawn_link/1	2
+callext	erlang:spawn_monitor/1	1
+callext	erlang:system_info/1	6
+callext	erlang:term_to_binary/1	1
+callext	erlang:unlink/1	2
+callext	erlang:whereis/1	1
+callext	init:archive_extension/0	1
+callext	init:get_argument/1	3
+callext	init:objfile_extension/0	2
+callext	lists:member/2	2
+callext	lists:reverse/2	2
+callext	os:system_time/1	1
+callext	persistent_term:get/1	1
+callext	persistent_term:put/2	1
+callext	prim_file:get_cwd/0	5
+callext	prim_file:get_cwd/1	3
+callext	prim_file:list_dir/1	1
+callext	prim_file:read_file/1	2
+callext	prim_file:read_file_info/1	5
+callext	prim_file:read_link/1	1
+callext	prim_file:read_link_info/1	1
+callext	prim_inet:bind/3	1
+callext	prim_inet:close/1	2
+callext	prim_inet:connect/4	1
+callext	prim_inet:open/3	1
+callext	prim_inet:send/2	1
+callext	prim_inet:sendto/4	1
+callext	prim_inet:setopts/2	1
+callext	prim_zip:close/1	3
+callext	prim_zip:foldl/3	1
+callext	prim_zip:open/3	1

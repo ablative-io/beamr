@@ -1,0 +1,179 @@
+module	file
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	456
+op	2	func_info/3	103
+op	3	int_code_end/0	1
+op	4	call/2	100
+op	5	call_last/3	56
+op	6	call_only/2	42
+op	7	call_ext/2	45
+op	8	call_ext_last/3	12
+op	9	bif0/2	1
+op	10	bif1/4	1
+op	11	bif2/5	1
+op	12	allocate/2	94
+op	13	allocate_heap/3	3
+op	16	test_heap/2	93
+op	18	deallocate/1	84
+op	19	return/0	132
+op	20	send/0	1
+op	21	remove_message/0	2
+op	23	loop_rec/2	1
+op	24	loop_rec_end/1	1
+op	25	wait/1	1
+op	39	is_lt/3	4
+op	40	is_ge/3	13
+op	43	is_eq_exact/3	53
+op	44	is_ne_exact/3	1
+op	45	is_integer/2	36
+op	48	is_atom/2	10
+op	49	is_pid/2	28
+op	51	is_port/2	1
+op	52	is_nil/2	8
+op	53	is_binary/2	7
+op	55	is_list/2	24
+op	56	is_nonempty_list/2	5
+op	57	is_tuple/2	40
+op	58	test_arity/3	25
+op	59	select_val/3	16
+op	60	select_tuple_arity/3	6
+op	61	jump/1	18
+op	64	move/2	560
+op	65	get_list/3	5
+op	66	get_tuple_element/3	122
+op	69	put_list/3	70
+op	72	badmatch/1	1
+op	73	if_end/0	1
+op	74	case_end/1	11
+op	78	call_ext_only/2	11
+op	104	try/2	6
+op	105	try_end/1	6
+op	106	try_case/1	6
+op	107	try_case_end/1	1
+op	108	raise/2	5
+op	112	apply/1	3
+op	113	apply_last/2	17
+op	115	is_function2/3	1
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	6
+op	136	trim/2	20
+op	153	line/1	302
+op	159	is_tagged_tuple/4	53
+op	160	build_stacktrace/0	1
+op	162	get_hd/2	5
+op	164	put_tuple2/2	57
+op	165	bs_get_tail/3	1
+op	166	bs_start_match3/4	1
+op	167	bs_get_position/3	2
+op	168	bs_set_position/2	2
+op	169	swap/2	14
+op	171	make_fun3/3	3
+op	172	init_yregs/1	42
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	2
+op	175	recv_marker_reserve/1	1
+op	176	recv_marker_use/1	1
+op	178	call_fun2/3	1
+op	182	bs_match/3	6
+impt	epp:set_encoding/1
+impt	erl_eval:exprs/2
+impt	erl_eval:new_bindings/0
+impt	erl_posix_msg:message/1
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:atom_to_list/1
+impt	erlang:byte_size/1
+impt	erlang:demonitor/2
+impt	erlang:dt_restore_tag/1
+impt	erlang:dt_spread_tag/1
+impt	erlang:error/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:iolist_size/1
+impt	erlang:iolist_to_binary/1
+impt	erlang:length/1
+impt	erlang:list_to_binary/1
+impt	erlang:list_to_tuple/1
+impt	erlang:min/2
+impt	erlang:monitor/2
+impt	erlang:nif_error/1
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	file:close/1
+impt	file:native_name_encoding/0
+impt	file:open/2
+impt	file:position/2
+impt	file:read/2
+impt	filename:join/2
+impt	filename:pathtype/1
+impt	gen_server:call/3
+impt	gen_tcp:send/2
+impt	io:parse_erl_exprs/3
+impt	io:read/3
+impt	io:request/2
+impt	io_lib:format/2
+impt	lists:foreach/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	prim_file:delete/1
+impt	prim_file:read_file/1
+impt	prim_file:read_file_info/2
+impt	prim_file:read_link_info/2
+impt	prim_file:write_file_info/3
+impt	proplists:get_value/3
+impt	ram_file:open/2
+impt	raw_file_io:open/2
+impt	socket:send/2
+impt	socket:sendfile/5
+disasm	ok
+callext	epp:set_encoding/1	2
+callext	erl_eval:exprs/2	1
+callext	erl_eval:new_bindings/0	4
+callext	erl_posix_msg:message/1	1
+callext	erlang:++/2	1
+callext	erlang:atom_to_list/1	1
+callext	erlang:demonitor/2	1
+callext	erlang:dt_restore_tag/1	1
+callext	erlang:dt_spread_tag/1	1
+callext	erlang:error/2	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:iolist_size/1	2
+callext	erlang:iolist_to_binary/1	1
+callext	erlang:list_to_binary/1	1
+callext	erlang:list_to_tuple/1	1
+callext	erlang:monitor/2	1
+callext	erlang:nif_error/1	1
+callext	erlang:raise/3	1
+callext	file:close/1	1
+callext	file:native_name_encoding/0	1
+callext	file:open/2	1
+callext	file:position/2	3
+callext	file:read/2	1
+callext	filename:join/2	2
+callext	filename:pathtype/1	1
+callext	gen_server:call/3	1
+callext	gen_tcp:send/2	1
+callext	io:parse_erl_exprs/3	1
+callext	io:read/3	1
+callext	io:request/2	3
+callext	io_lib:format/2	3
+callext	lists:foreach/2	1
+callext	lists:member/2	8
+callext	lists:reverse/1	3
+callext	lists:reverse/2	1
+callext	prim_file:delete/1	1
+callext	prim_file:read_file/1	1
+callext	prim_file:read_file_info/2	1
+callext	prim_file:read_link_info/2	1
+callext	prim_file:write_file_info/3	1
+callext	proplists:get_value/3	1
+callext	ram_file:open/2	1
+callext	raw_file_io:open/2	1
+callext	socket:send/2	1
+callext	socket:sendfile/5	1

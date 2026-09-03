@@ -1,0 +1,66 @@
+module	Elixir.Mix.Tasks.Source
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	42
+op	2	func_info/3	6
+op	3	int_code_end/0	1
+op	4	call/2	1
+op	6	call_only/2	1
+op	7	call_ext/2	15
+op	8	call_ext_last/3	6
+op	12	allocate/2	2
+op	19	return/0	5
+op	40	is_ge/3	2
+op	43	is_eq_exact/3	2
+op	52	is_nil/2	1
+op	53	is_binary/2	5
+op	56	is_nonempty_list/2	1
+op	57	is_tuple/2	4
+op	58	test_arity/3	4
+op	59	select_val/3	4
+op	61	jump/1	7
+op	64	move/2	37
+op	65	get_list/3	1
+op	66	get_tuple_element/3	8
+op	72	badmatch/1	1
+op	74	case_end/1	2
+op	78	call_ext_only/2	3
+op	113	apply_last/2	1
+op	153	line/1	25
+op	166	bs_start_match3/4	1
+op	169	swap/2	1
+op	172	init_yregs/1	9
+op	177	bs_create_bin/6	3
+op	182	bs_match/3	1
+impt	Elixir.Access:get/2
+impt	Elixir.Code:string_to_quoted!/1
+impt	Elixir.IEx.Introspection:decompose/2
+impt	Elixir.IEx.Introspection:open_location/2
+impt	Elixir.IEx.Introspection:source_location/1
+impt	Elixir.IO:write/1
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix.Task:reenable/1
+impt	Elixir.Mix.Task:run/2
+impt	Elixir.OptionParser:parse!/2
+impt	Elixir.Path:relative_to_cwd/1
+impt	Elixir.String.Chars:to_string/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+disasm	ok
+callext	Elixir.Access:get/2	1
+callext	Elixir.Code:string_to_quoted!/1	1
+callext	Elixir.IEx.Introspection:decompose/2	1
+callext	Elixir.IEx.Introspection:open_location/2	1
+callext	Elixir.IEx.Introspection:source_location/1	1
+callext	Elixir.IO:write/1	1
+callext	Elixir.Mix:raise/1	4
+callext	Elixir.Mix:shell/0	1
+callext	Elixir.Mix.Task:reenable/1	2
+callext	Elixir.Mix.Task:run/2	1
+callext	Elixir.OptionParser:parse!/2	1
+callext	Elixir.Path:relative_to_cwd/1	1
+callext	Elixir.String.Chars:to_string/1	5
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

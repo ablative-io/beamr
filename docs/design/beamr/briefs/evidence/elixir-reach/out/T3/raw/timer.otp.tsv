@@ -1,0 +1,130 @@
+module	timer
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	200
+op	2	func_info/3	52
+op	3	int_code_end/0	1
+op	4	call/2	31
+op	5	call_last/3	13
+op	6	call_only/2	19
+op	7	call_ext/2	39
+op	8	call_ext_last/3	1
+op	9	bif0/2	11
+op	10	bif1/4	1
+op	12	allocate/2	39
+op	13	allocate_heap/3	4
+op	16	test_heap/2	47
+op	18	deallocate/1	45
+op	19	return/0	70
+op	20	send/0	6
+op	21	remove_message/0	6
+op	22	timeout/0	2
+op	23	loop_rec/2	2
+op	24	loop_rec_end/1	2
+op	25	wait/1	2
+op	26	wait_timeout/2	2
+op	40	is_ge/3	7
+op	43	is_eq_exact/3	43
+op	44	is_ne_exact/3	2
+op	45	is_integer/2	6
+op	48	is_atom/2	18
+op	49	is_pid/2	5
+op	50	is_reference/2	3
+op	52	is_nil/2	8
+op	55	is_list/2	9
+op	56	is_nonempty_list/2	6
+op	57	is_tuple/2	23
+op	58	test_arity/3	14
+op	59	select_val/3	5
+op	60	select_tuple_arity/3	6
+op	61	jump/1	3
+op	64	move/2	259
+op	65	get_list/3	6
+op	66	get_tuple_element/3	78
+op	69	put_list/3	23
+op	72	badmatch/1	7
+op	74	case_end/1	3
+op	75	call_fun/1	1
+op	78	call_ext_only/2	5
+op	104	try/2	6
+op	105	try_end/1	6
+op	106	try_case/1	6
+op	108	raise/2	3
+op	115	is_function2/3	6
+op	124	gc_bif1/5	3
+op	125	gc_bif2/6	20
+op	136	trim/2	15
+op	153	line/1	137
+op	159	is_tagged_tuple/4	7
+op	164	put_tuple2/2	57
+op	169	swap/2	14
+op	171	make_fun3/3	2
+op	172	init_yregs/1	11
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:-/2
+impt	erlang:apply/2
+impt	erlang:apply/3
+impt	erlang:cancel_timer/1
+impt	erlang:cancel_timer/2
+impt	erlang:convert_time_unit/3
+impt	erlang:demonitor/2
+impt	erlang:div/2
+impt	erlang:exit/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	erlang:make_ref/0
+impt	erlang:monitor/2
+impt	erlang:monotonic_time/0
+impt	erlang:monotonic_time/1
+impt	erlang:node/0
+impt	erlang:node/1
+impt	erlang:process_flag/2
+impt	erlang:self/0
+impt	erlang:send_after/3
+impt	erlang:spawn/3
+impt	erlang:spawn_monitor/1
+impt	erlang:spawn_monitor/3
+impt	erlang:start_timer/4
+impt	erlang:whereis/1
+impt	ets:delete/1
+impt	ets:foldl/3
+impt	ets:insert/2
+impt	ets:new/2
+impt	ets:take/2
+impt	gen_server:call/3
+impt	gen_server:start_link/4
+impt	supervisor:restart_child/2
+impt	supervisor:start_child/2
+disasm	ok
+callext	erlang:apply/2	1
+callext	erlang:apply/3	1
+callext	erlang:cancel_timer/1	1
+callext	erlang:cancel_timer/2	1
+callext	erlang:convert_time_unit/3	3
+callext	erlang:demonitor/2	1
+callext	erlang:exit/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:make_ref/0	5
+callext	erlang:monitor/2	2
+callext	erlang:monotonic_time/0	6
+callext	erlang:monotonic_time/1	1
+callext	erlang:process_flag/2	1
+callext	erlang:send_after/3	1
+callext	erlang:spawn/3	1
+callext	erlang:spawn_monitor/1	1
+callext	erlang:spawn_monitor/3	1
+callext	erlang:start_timer/4	2
+callext	erlang:whereis/1	1
+callext	ets:delete/1	1
+callext	ets:foldl/3	1
+callext	ets:insert/2	3
+callext	ets:new/2	1
+callext	ets:take/2	2
+callext	gen_server:call/3	1
+callext	gen_server:start_link/4	1
+callext	supervisor:restart_child/2	1
+callext	supervisor:start_child/2	1

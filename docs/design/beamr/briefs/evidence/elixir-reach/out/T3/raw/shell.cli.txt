@@ -1,0 +1,13 @@
+io_lib:fwrite/2
+io_lib:write_atom_as_latin1/1
+erl_eval:new_bindings/0
+erl_eval:expr/2
+erl_eval:bindings/1
+erl_eval:del_binding/2
+erl_eval:check_command/2
+erl_eval:expr/4
+erl_eval:expr_list/4
+erl_eval:fun_data/1
+erl_eval:add_binding/3
+erl_eval:extended_parse_exprs/1
+io_lib_pretty:print/2

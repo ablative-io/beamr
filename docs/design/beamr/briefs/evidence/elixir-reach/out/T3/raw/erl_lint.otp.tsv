@@ -1,0 +1,318 @@
+module	erl_lint
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	2916
+op	2	func_info/3	611
+op	3	int_code_end/0	1
+op	4	call/2	934
+op	5	call_last/3	247
+op	6	call_only/2	352
+op	7	call_ext/2	365
+op	8	call_ext_last/3	71
+op	10	bif1/4	7
+op	11	bif2/5	57
+op	12	allocate/2	452
+op	13	allocate_heap/3	91
+op	16	test_heap/2	936
+op	18	deallocate/1	469
+op	19	return/0	909
+op	39	is_lt/3	7
+op	40	is_ge/3	20
+op	41	is_eq/3	2
+op	43	is_eq_exact/3	378
+op	44	is_ne_exact/3	44
+op	45	is_integer/2	23
+op	48	is_atom/2	26
+op	52	is_nil/2	135
+op	53	is_binary/2	3
+op	55	is_list/2	11
+op	56	is_nonempty_list/2	251
+op	57	is_tuple/2	345
+op	58	test_arity/3	276
+op	59	select_val/3	170
+op	60	select_tuple_arity/3	44
+op	61	jump/1	115
+op	64	move/2	4389
+op	65	get_list/3	195
+op	66	get_tuple_element/3	1719
+op	69	put_list/3	521
+op	72	badmatch/1	28
+op	73	if_end/0	1
+op	74	case_end/1	87
+op	75	call_fun/1	2
+op	78	call_ext_only/2	108
+op	104	try/2	6
+op	105	try_end/1	6
+op	106	try_case/1	6
+op	107	try_case_end/1	1
+op	108	raise/2	1
+op	112	apply/1	2
+op	115	is_function2/3	1
+op	124	gc_bif1/5	27
+op	125	gc_bif2/6	7
+op	136	trim/2	241
+op	153	line/1	2022
+op	154	put_map_assoc/5	3
+op	156	is_map/2	14
+op	157	has_map_fields/3	2
+op	158	get_map_elements/3	10
+op	159	is_tagged_tuple/4	303
+op	162	get_hd/2	14
+op	163	get_tl/2	28
+op	164	put_tuple2/2	872
+op	169	swap/2	294
+op	170	bs_start_match4/4	1
+op	171	make_fun3/3	136
+op	172	init_yregs/1	308
+op	178	call_fun2/3	16
+op	180	badrecord/1	79
+op	181	update_record/5	66
+op	182	bs_match/3	3
+impt	digraph:delete/1
+impt	digraph_utils:reachable/2
+impt	erl_anno:file/1
+impt	erl_anno:line/1
+impt	erl_anno:location/1
+impt	erl_anno:new/1
+impt	erl_anno:set_file/2
+impt	erl_anno:set_generated/2
+impt	erl_anno:text/1
+impt	erl_bits:set_bit_type/2
+impt	erl_eval:partial_eval/1
+impt	erl_features:configurable/0
+impt	erl_features:keywords/1
+impt	erl_internal:arith_op/2
+impt	erl_internal:bif/2
+impt	erl_internal:guard_bif/2
+impt	erl_internal:is_type/2
+impt	erl_internal:old_type_test/2
+impt	erl_internal:op_type/2
+impt	erl_internal:type_test/2
+impt	erl_parse:first_anno/1
+impt	erl_parse:map_anno/2
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:--/2
+impt	erlang:</2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:atom_to_binary/1
+impt	erlang:atom_to_list/1
+impt	erlang:binary_to_existing_atom/1
+impt	erlang:binary_to_list/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_list/1
+impt	erlang:is_atom/1
+impt	erlang:is_builtin/3
+impt	erlang:is_map_key/2
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_existing_atom/1
+impt	erlang:map_get/2
+impt	erlang:map_size/1
+impt	erlang:not/1
+impt	erts_internal:mc_iterator/1
+impt	erts_internal:mc_refill/1
+impt	filename:basename/1
+impt	gb_sets:add/2
+impt	gb_sets:add_element/2
+impt	gb_sets:empty/0
+impt	gb_sets:fold/3
+impt	gb_sets:from_list/1
+impt	gb_sets:is_element/2
+impt	gb_sets:is_member/2
+impt	gb_sets:new/0
+impt	gb_sets:subtract/2
+impt	gb_sets:to_list/1
+impt	io_lib:format/2
+impt	io_lib:latin1_char_list/1
+impt	lists:all/2
+impt	lists:any/2
+impt	lists:append/1
+impt	lists:dropwhile/2
+impt	lists:duplicate/2
+impt	lists:filter/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:foldr/3
+impt	lists:keymember/3
+impt	lists:last/1
+impt	lists:map/2
+impt	lists:mapfoldl/3
+impt	lists:member/2
+impt	lists:merge/1
+impt	lists:partition/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	lists:splitwith/2
+impt	lists:usort/1
+impt	maps:find/2
+impt	maps:fold/3
+impt	maps:from_keys/2
+impt	maps:from_list/1
+impt	maps:keys/1
+impt	maps:merge/2
+impt	maps:merge_with/3
+impt	maps:put/3
+impt	maps:remove/2
+impt	orddict:filter/2
+impt	orddict:find/2
+impt	orddict:from_list/1
+impt	orddict:is_key/2
+impt	orddict:merge/3
+impt	orddict:store/3
+impt	orddict:to_list/1
+impt	ordsets:add_element/2
+impt	ordsets:del_element/2
+impt	ordsets:from_list/1
+impt	ordsets:intersection/2
+impt	ordsets:is_element/2
+impt	ordsets:subtract/2
+impt	ordsets:union/2
+impt	otp_internal:obsolete/3
+impt	otp_internal:obsolete_callback/3
+impt	otp_internal:obsolete_type/3
+impt	proplists:get_value/3
+impt	sets:add_element/2
+impt	sets:is_element/2
+impt	sets:new/0
+impt	sets:to_list/1
+impt	sofs:converse/1
+impt	sofs:drestriction/2
+impt	sofs:family_specification/2
+impt	sofs:family_to_digraph/1
+impt	sofs:family_to_relation/1
+impt	sofs:from_external/2
+impt	sofs:no_elements/1
+impt	sofs:rel2fam/1
+impt	sofs:relation/1
+impt	sofs:relation/2
+impt	sofs:relation_to_family/1
+impt	sofs:to_external/1
+impt	string:find/2
+impt	string:jaro_similarity/2
+impt	unicode:characters_to_list/1
+disasm	ok
+callext	digraph:delete/1	1
+callext	digraph_utils:reachable/2	1
+callext	erl_anno:file/1	1
+callext	erl_anno:line/1	1
+callext	erl_anno:location/1	3
+callext	erl_anno:new/1	3
+callext	erl_anno:set_file/2	6
+callext	erl_anno:set_generated/2	1
+callext	erl_anno:text/1	1
+callext	erl_bits:set_bit_type/2	2
+callext	erl_eval:partial_eval/1	9
+callext	erl_features:configurable/0	1
+callext	erl_features:keywords/1	1
+callext	erl_internal:arith_op/2	2
+callext	erl_internal:bif/2	5
+callext	erl_internal:guard_bif/2	4
+callext	erl_internal:is_type/2	1
+callext	erl_internal:old_type_test/2	1
+callext	erl_internal:op_type/2	1
+callext	erl_internal:type_test/2	2
+callext	erl_parse:first_anno/1	3
+callext	erl_parse:map_anno/2	2
+callext	erlang:++/2	28
+callext	erlang:--/2	5
+callext	erlang:atom_to_binary/1	1
+callext	erlang:atom_to_list/1	21
+callext	erlang:binary_to_existing_atom/1	1
+callext	erlang:binary_to_list/1	1
+callext	erlang:error/1	77
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	4
+callext	erlang:is_builtin/3	3
+callext	erlang:list_to_atom/1	1
+callext	erlang:list_to_existing_atom/1	1
+callext	erts_internal:mc_iterator/1	4
+callext	erts_internal:mc_refill/1	4
+callext	filename:basename/1	1
+callext	gb_sets:add/2	1
+callext	gb_sets:add_element/2	6
+callext	gb_sets:empty/0	8
+callext	gb_sets:fold/3	2
+callext	gb_sets:from_list/1	9
+callext	gb_sets:is_element/2	12
+callext	gb_sets:is_member/2	6
+callext	gb_sets:new/0	1
+callext	gb_sets:subtract/2	1
+callext	gb_sets:to_list/1	13
+callext	io_lib:format/2	7
+callext	io_lib:latin1_char_list/1	1
+callext	lists:all/2	10
+callext	lists:any/2	3
+callext	lists:append/1	4
+callext	lists:dropwhile/2	1
+callext	lists:duplicate/2	1
+callext	lists:filter/2	3
+callext	lists:flatten/1	24
+callext	lists:foldl/3	59
+callext	lists:foldr/3	1
+callext	lists:keymember/3	1
+callext	lists:last/1	2
+callext	lists:map/2	5
+callext	lists:mapfoldl/3	4
+callext	lists:member/2	27
+callext	lists:merge/1	1
+callext	lists:partition/2	1
+callext	lists:reverse/1	4
+callext	lists:sort/1	3
+callext	lists:splitwith/2	2
+callext	lists:usort/1	2
+callext	maps:find/2	8
+callext	maps:fold/3	7
+callext	maps:from_keys/2	1
+callext	maps:from_list/1	1
+callext	maps:keys/1	4
+callext	maps:merge/2	1
+callext	maps:merge_with/3	1
+callext	maps:put/3	11
+callext	maps:remove/2	1
+callext	orddict:filter/2	3
+callext	orddict:find/2	10
+callext	orddict:from_list/1	2
+callext	orddict:is_key/2	2
+callext	orddict:merge/3	3
+callext	orddict:store/3	1
+callext	orddict:to_list/1	1
+callext	ordsets:add_element/2	5
+callext	ordsets:del_element/2	1
+callext	ordsets:from_list/1	9
+callext	ordsets:intersection/2	1
+callext	ordsets:is_element/2	3
+callext	ordsets:subtract/2	6
+callext	ordsets:union/2	2
+callext	otp_internal:obsolete/3	1
+callext	otp_internal:obsolete_callback/3	1
+callext	otp_internal:obsolete_type/3	1
+callext	proplists:get_value/3	1
+callext	sets:add_element/2	3
+callext	sets:is_element/2	1
+callext	sets:new/0	2
+callext	sets:to_list/1	1
+callext	sofs:converse/1	1
+callext	sofs:drestriction/2	1
+callext	sofs:family_specification/2	1
+callext	sofs:family_to_digraph/1	1
+callext	sofs:family_to_relation/1	1
+callext	sofs:from_external/2	1
+callext	sofs:no_elements/1	1
+callext	sofs:rel2fam/1	1
+callext	sofs:relation/1	1
+callext	sofs:relation/2	2
+callext	sofs:relation_to_family/1	1
+callext	sofs:to_external/1	3
+callext	string:find/2	1
+callext	string:jaro_similarity/2	1
+callext	unicode:characters_to_list/1	1

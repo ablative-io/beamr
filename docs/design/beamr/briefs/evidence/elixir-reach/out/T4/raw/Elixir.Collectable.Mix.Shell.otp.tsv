@@ -1,0 +1,30 @@
+module	Elixir.Collectable.Mix.Shell
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	27
+op	2	func_info/3	8
+op	3	int_code_end/0	1
+op	6	call_only/2	2
+op	12	allocate/2	1
+op	16	test_heap/2	1
+op	18	deallocate/1	1
+op	19	return/0	10
+op	43	is_eq_exact/3	1
+op	59	select_val/3	2
+op	61	jump/1	2
+op	64	move/2	14
+op	66	get_tuple_element/3	1
+op	75	call_fun/1	1
+op	78	call_ext_only/2	3
+op	153	line/1	9
+op	156	is_map/2	1
+op	158	get_map_elements/3	1
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	1
+op	171	make_fun3/3	1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+disasm	ok
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

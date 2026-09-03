@@ -1,0 +1,245 @@
+module	ets
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	609
+op	2	func_info/3	151
+op	3	int_code_end/0	1
+op	4	call/2	67
+op	5	call_last/3	35
+op	6	call_only/2	24
+op	7	call_ext/2	182
+op	8	call_ext_last/3	41
+op	11	bif2/5	3
+op	12	allocate/2	78
+op	13	allocate_heap/3	4
+op	16	test_heap/2	111
+op	18	deallocate/1	62
+op	19	return/0	94
+op	21	remove_message/0	1
+op	23	loop_rec/2	1
+op	24	loop_rec_end/1	1
+op	25	wait/1	1
+op	39	is_lt/3	8
+op	40	is_ge/3	2
+op	43	is_eq_exact/3	80
+op	44	is_ne_exact/3	8
+op	45	is_integer/2	7
+op	48	is_atom/2	2
+op	52	is_nil/2	28
+op	53	is_binary/2	3
+op	55	is_list/2	10
+op	56	is_nonempty_list/2	36
+op	57	is_tuple/2	62
+op	58	test_arity/3	43
+op	59	select_val/3	28
+op	60	select_tuple_arity/3	5
+op	61	jump/1	60
+op	62	catch/2	6
+op	63	catch_end/1	6
+op	64	move/2	901
+op	65	get_list/3	33
+op	66	get_tuple_element/3	171
+op	69	put_list/3	98
+op	72	badmatch/1	13
+op	74	case_end/1	22
+op	75	call_fun/1	3
+op	77	is_function/2	2
+op	78	call_ext_only/2	75
+op	104	try/2	17
+op	105	try_end/1	17
+op	106	try_case/1	17
+op	108	raise/2	10
+op	124	gc_bif1/5	6
+op	125	gc_bif2/6	17
+op	136	trim/2	28
+op	153	line/1	527
+op	159	is_tagged_tuple/4	21
+op	161	raw_raise/0	2
+op	163	get_tl/2	3
+op	164	put_tuple2/2	80
+op	169	swap/2	21
+op	171	make_fun3/3	18
+op	172	init_yregs/1	67
+op	178	call_fun2/3	6
+op	181	update_record/5	3
+impt	dets:from_ets/2
+impt	dets:to_ets/2
+impt	disk_log:bchunk/3
+impt	disk_log:blog_terms/2
+impt	disk_log:chunk/3
+impt	disk_log:close/1
+impt	disk_log:log_terms/2
+impt	disk_log:open/1
+impt	disk_log:sync/1
+impt	erl_eval:fun_data/1
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:binary_to_term/1
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:error/3
+impt	erlang:exit/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	erlang:list_to_integer/1
+impt	erlang:list_to_tuple/1
+impt	erlang:make_ref/0
+impt	erlang:match_spec_test/3
+impt	erlang:md5_final/1
+impt	erlang:md5_init/0
+impt	erlang:md5_update/2
+impt	erlang:nif_error/1
+impt	erlang:process_info/2
+impt	erlang:raise/3
+impt	erlang:system_info/1
+impt	erlang:term_to_binary/1
+impt	erlang:throw/1
+impt	erlang:tuple_to_list/1
+impt	ets:all/0
+impt	ets:delete/1
+impt	ets:delete_all_objects/1
+impt	ets:first/1
+impt	ets:first_lookup/1
+impt	ets:info/1
+impt	ets:info/2
+impt	ets:insert/2
+impt	ets:internal_delete_all/2
+impt	ets:internal_request_all/0
+impt	ets:internal_select_delete/2
+impt	ets:is_compiled_ms/1
+impt	ets:last/1
+impt	ets:last_lookup/1
+impt	ets:lookup/2
+impt	ets:match_object/2
+impt	ets:match_spec_compile/1
+impt	ets:match_spec_run_r/3
+impt	ets:new/2
+impt	ets:next/2
+impt	ets:next_lookup/2
+impt	ets:prev/2
+impt	ets:prev_lookup/2
+impt	ets:safe_fixtable/2
+impt	ets:select/1
+impt	ets:select/3
+impt	ets:select_delete/2
+impt	ets:whereis/1
+impt	file:delete/1
+impt	file:read_file_info/1
+impt	io:format/1
+impt	io:format/2
+impt	io:get_line/1
+impt	io:put_chars/1
+impt	io_lib:format/2
+impt	lists:duplicate/2
+impt	lists:flatmap/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:foldr/3
+impt	lists:foreach/2
+impt	lists:keydelete/3
+impt	lists:keyfind/3
+impt	lists:keysearch/3
+impt	lists:member/2
+impt	lists:nth/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	ms_transform:transform_from_shell/3
+impt	qlc:table/2
+impt	re:compile/2
+impt	re:run/3
+impt	string:slice/3
+impt	string:trim/3
+impt	unicode:characters_to_list/1
+disasm	ok
+callext	dets:from_ets/2	1
+callext	dets:to_ets/2	1
+callext	disk_log:bchunk/3	2
+callext	disk_log:blog_terms/2	1
+callext	disk_log:chunk/3	2
+callext	disk_log:close/1	10
+callext	disk_log:log_terms/2	1
+callext	disk_log:open/1	3
+callext	disk_log:sync/1	1
+callext	erl_eval:fun_data/1	1
+callext	erlang:++/2	9
+callext	erlang:binary_to_term/1	2
+callext	erlang:error/1	1
+callext	erlang:error/2	9
+callext	erlang:error/3	1
+callext	erlang:exit/1	5
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_integer/1	1
+callext	erlang:list_to_tuple/1	1
+callext	erlang:make_ref/0	3
+callext	erlang:match_spec_test/3	1
+callext	erlang:md5_final/1	2
+callext	erlang:md5_init/0	2
+callext	erlang:md5_update/2	3
+callext	erlang:nif_error/1	51
+callext	erlang:process_info/2	1
+callext	erlang:raise/3	5
+callext	erlang:system_info/1	1
+callext	erlang:term_to_binary/1	1
+callext	erlang:throw/1	32
+callext	erlang:tuple_to_list/1	2
+callext	ets:all/0	1
+callext	ets:delete/1	4
+callext	ets:delete_all_objects/1	1
+callext	ets:first/1	6
+callext	ets:first_lookup/1	1
+callext	ets:info/1	1
+callext	ets:info/2	10
+callext	ets:insert/2	2
+callext	ets:internal_delete_all/2	2
+callext	ets:internal_request_all/0	1
+callext	ets:internal_select_delete/2	1
+callext	ets:is_compiled_ms/1	2
+callext	ets:last/1	1
+callext	ets:last_lookup/1	1
+callext	ets:lookup/2	8
+callext	ets:match_object/2	1
+callext	ets:match_spec_compile/1	2
+callext	ets:match_spec_run_r/3	1
+callext	ets:new/2	1
+callext	ets:next/2	5
+callext	ets:next_lookup/2	1
+callext	ets:prev/2	1
+callext	ets:prev_lookup/2	1
+callext	ets:safe_fixtable/2	11
+callext	ets:select/1	2
+callext	ets:select/3	3
+callext	ets:select_delete/2	1
+callext	ets:whereis/1	1
+callext	file:delete/1	4
+callext	file:read_file_info/1	1
+callext	io:format/1	1
+callext	io:format/2	6
+callext	io:get_line/1	1
+callext	io:put_chars/1	1
+callext	io_lib:format/2	3
+callext	lists:duplicate/2	1
+callext	lists:flatmap/2	1
+callext	lists:flatten/1	1
+callext	lists:foldl/3	1
+callext	lists:foldr/3	1
+callext	lists:foreach/2	1
+callext	lists:keydelete/3	1
+callext	lists:keyfind/3	20
+callext	lists:keysearch/3	6
+callext	lists:member/2	4
+callext	lists:nth/2	2
+callext	lists:reverse/1	2
+callext	lists:sort/1	1
+callext	ms_transform:transform_from_shell/3	1
+callext	qlc:table/2	1
+callext	re:compile/2	1
+callext	re:run/3	2
+callext	string:slice/3	1
+callext	string:trim/3	1
+callext	unicode:characters_to_list/1	1

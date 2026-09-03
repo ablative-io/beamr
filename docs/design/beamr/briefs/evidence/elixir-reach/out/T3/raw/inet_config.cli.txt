@@ -1,0 +1,11 @@
+inet_db:add_rc_list/1
+inet_db:res_option/1
+inet_db:res_option/2
+inet_db:gethostname/0
+inet_db:set_lookup/1
+inet_db:set_hostname/1
+inet_db:set_domain/1
+inet_db:ins_search/1
+inet_db:add_search/1
+inet_db:add_ns/1
+inet_db:add_host/2

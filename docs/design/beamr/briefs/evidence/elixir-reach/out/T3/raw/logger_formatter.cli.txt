@@ -1,0 +1,9 @@
+io_lib:chars_length/1
+io_lib:printable_list/1
+io_lib:scan_format/2
+io_lib:build_text/2
+io_lib:fwrite/2
+io_lib:fread/2
+io_lib:printable_latin1_list/1
+io_lib:printable_unicode_list/1
+calendar:system_time_to_rfc3339/2

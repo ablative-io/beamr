@@ -1,0 +1,193 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 10039,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 5,
+  "deferred_names": [
+   "io_lib:fwrite/2",
+   "io_lib:write/1",
+   "io_lib:write_atom_as_latin1/1",
+   "io_lib:write_string/1",
+   "io_lib:write_string_as_latin1/1"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "code",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "epp",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_anno",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_lint",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_parse",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_scan",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erts_debug",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "ets",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "file",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "filename",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "ordsets",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "os",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "proplists",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "sofs",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "string",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "unicode",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 141408,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "code",
+  "epp",
+  "erl_anno",
+  "erl_lint",
+  "erl_parse",
+  "erl_scan",
+  "erlang",
+  "erts_debug",
+  "ets",
+  "file",
+  "filename",
+  "io",
+  "io_lib",
+  "lists",
+  "maps",
+  "ordsets",
+  "os",
+  "proplists",
+  "sofs",
+  "string",
+  "unicode",
+  "yeccparser",
+  "yeccscan"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "yecc",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/parsetools-2.8/ebin/yecc.beam",
+ "registration_deviation": [],
+ "sha256": "1e1ebcba97135e9ea091e9a18ee9ad0ac95b0919e4af33ce87c64799cb1b17a1",
+ "skipped_in_dirs": 14,
+ "tier": "T4"
+}

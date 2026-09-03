@@ -1,0 +1,8 @@
+inet_db:get_rc/0
+inet_db:put_socket_type/2
+inet_db:take_socket_type/1
+inet_db:res_option/1
+inet_db:tolower/1
+inet_db:gethostname/0
+inet_db:register_socket/2
+inet_db:lookup_socket/1

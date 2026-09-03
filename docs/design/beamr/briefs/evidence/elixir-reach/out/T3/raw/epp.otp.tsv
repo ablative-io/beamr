@@ -1,0 +1,257 @@
+module	epp
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	828
+op	2	func_info/3	152
+op	3	int_code_end/0	1
+op	4	call/2	297
+op	5	call_last/3	133
+op	6	call_only/2	84
+op	7	call_ext/2	131
+op	8	call_ext_last/3	36
+op	9	bif0/2	5
+op	11	bif2/5	4
+op	12	allocate/2	157
+op	13	allocate_heap/3	11
+op	16	test_heap/2	282
+op	18	deallocate/1	86
+op	19	return/0	176
+op	20	send/0	4
+op	21	remove_message/0	11
+op	22	timeout/0	1
+op	23	loop_rec/2	5
+op	24	loop_rec_end/1	4
+op	25	wait/1	4
+op	40	is_ge/3	10
+op	43	is_eq_exact/3	131
+op	44	is_ne_exact/3	3
+op	45	is_integer/2	4
+op	48	is_atom/2	5
+op	52	is_nil/2	47
+op	53	is_binary/2	1
+op	55	is_list/2	4
+op	56	is_nonempty_list/2	149
+op	57	is_tuple/2	77
+op	58	test_arity/3	53
+op	59	select_val/3	67
+op	60	select_tuple_arity/3	21
+op	61	jump/1	23
+op	64	move/2	1473
+op	65	get_list/3	134
+op	66	get_tuple_element/3	356
+op	69	put_list/3	197
+op	72	badmatch/1	24
+op	73	if_end/0	1
+op	74	case_end/1	30
+op	75	call_fun/1	8
+op	78	call_ext_only/2	35
+op	104	try/2	15
+op	105	try_end/1	15
+op	106	try_case/1	15
+op	107	try_case_end/1	1
+op	108	raise/2	10
+op	124	gc_bif1/5	5
+op	125	gc_bif2/6	21
+op	136	trim/2	113
+op	153	line/1	640
+op	154	put_map_assoc/5	6
+op	155	put_map_exact/5	7
+op	158	get_map_elements/3	8
+op	159	is_tagged_tuple/4	107
+op	162	get_hd/2	13
+op	163	get_tl/2	4
+op	164	put_tuple2/2	328
+op	165	bs_get_tail/3	3
+op	166	bs_start_match3/4	5
+op	167	bs_get_position/3	6
+op	168	bs_set_position/2	10
+op	169	swap/2	58
+op	170	bs_start_match4/4	1
+op	171	make_fun3/3	9
+op	172	init_yregs/1	72
+op	173	recv_marker_bind/2	3
+op	174	recv_marker_clear/1	3
+op	175	recv_marker_reserve/1	3
+op	176	recv_marker_use/1	1
+op	178	call_fun2/3	2
+op	180	badrecord/1	1
+op	181	update_record/5	34
+op	182	bs_match/3	22
+impt	code:lib_dir/1
+impt	erl_anno:generated/1
+impt	erl_anno:line/1
+impt	erl_anno:new/1
+impt	erl_anno:set_generated/2
+impt	erl_anno:set_line/2
+impt	erl_eval:exprs/3
+impt	erl_eval:new_bindings/0
+impt	erl_features:all/0
+impt	erl_features:configurable/0
+impt	erl_features:info/1
+impt	erl_features:init_parse_state/2
+impt	erl_features:update_parse_state/4
+impt	erl_lint:is_guard_expr/1
+impt	erl_parse:abstract/1
+impt	erl_parse:map_anno/2
+impt	erl_parse:parse_exprs/1
+impt	erl_parse:parse_form/1
+impt	erl_parse:parse_term/1
+impt	erl_parse:tokens/1
+impt	erl_scan:line/1
+impt	erl_scan:location/1
+impt	erl_scan:symbol/1
+impt	erl_scan:text/1
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:atom_to_list/1
+impt	erlang:byte_size/1
+impt	erlang:demonitor/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:exit/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_map_key/2
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_binary/1
+impt	erlang:list_to_integer/1
+impt	erlang:list_to_tuple/1
+impt	erlang:map_get/2
+impt	erlang:monitor/2
+impt	erlang:process_flag/2
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	erlang:setelement/3
+impt	erlang:spawn/1
+impt	erlang:system_info/1
+impt	erlang:throw/1
+impt	erlang:tuple_to_list/1
+impt	erts_internal:mc_iterator/1
+impt	erts_internal:mc_refill/1
+impt	file:close/1
+impt	file:format_error/1
+impt	file:open/2
+impt	file:path_open/3
+impt	file:position/2
+impt	file:read/2
+impt	file:read_file_info/1
+impt	filename:basename/1
+impt	filename:dirname/1
+impt	filename:join/1
+impt	filename:split/1
+impt	io:fwrite/2
+impt	io:getopts/1
+impt	io:scan_erl_form/4
+impt	io:setopts/2
+impt	io_lib:format/2
+impt	io_lib:fwrite/2
+impt	io_lib:write_atom/1
+impt	io_lib:write_char/1
+impt	io_lib:write_string/1
+impt	lists:append/1
+impt	lists:flatmap/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:keyfind/3
+impt	lists:map/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:usort/1
+impt	maps:from_list/1
+impt	maps:remove/2
+impt	os:getenv/1
+impt	proplists:delete/2
+impt	proplists:get_bool/2
+impt	proplists:get_value/2
+impt	proplists:get_value/3
+impt	proplists:is_defined/2
+impt	string:lowercase/1
+impt	unicode:characters_to_list/1
+disasm	ok
+callext	code:lib_dir/1	1
+callext	erl_anno:generated/1	1
+callext	erl_anno:line/1	2
+callext	erl_anno:new/1	10
+callext	erl_anno:set_generated/2	1
+callext	erl_anno:set_line/2	1
+callext	erl_eval:exprs/3	1
+callext	erl_eval:new_bindings/0	1
+callext	erl_features:all/0	2
+callext	erl_features:configurable/0	1
+callext	erl_features:info/1	2
+callext	erl_features:init_parse_state/2	1
+callext	erl_features:update_parse_state/4	1
+callext	erl_lint:is_guard_expr/1	1
+callext	erl_parse:abstract/1	2
+callext	erl_parse:map_anno/2	1
+callext	erl_parse:parse_exprs/1	1
+callext	erl_parse:parse_form/1	1
+callext	erl_parse:parse_term/1	1
+callext	erl_parse:tokens/1	2
+callext	erl_scan:line/1	1
+callext	erl_scan:location/1	1
+callext	erl_scan:symbol/1	1
+callext	erl_scan:text/1	1
+callext	erlang:++/2	8
+callext	erlang:atom_to_list/1	6
+callext	erlang:demonitor/2	1
+callext	erlang:error/1	7
+callext	erlang:exit/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_atom/1	2
+callext	erlang:list_to_binary/1	1
+callext	erlang:list_to_integer/1	1
+callext	erlang:list_to_tuple/1	1
+callext	erlang:monitor/2	3
+callext	erlang:process_flag/2	1
+callext	erlang:raise/3	27
+callext	erlang:setelement/3	1
+callext	erlang:spawn/1	1
+callext	erlang:system_info/1	2
+callext	erlang:throw/1	3
+callext	erlang:tuple_to_list/1	1
+callext	erts_internal:mc_iterator/1	1
+callext	erts_internal:mc_refill/1	1
+callext	file:close/1	5
+callext	file:format_error/1	1
+callext	file:open/2	3
+callext	file:path_open/3	3
+callext	file:position/2	3
+callext	file:read/2	2
+callext	file:read_file_info/1	1
+callext	filename:basename/1	1
+callext	filename:dirname/1	2
+callext	filename:join/1	1
+callext	filename:split/1	2
+callext	io:fwrite/2	1
+callext	io:getopts/1	1
+callext	io:scan_erl_form/4	2
+callext	io:setopts/2	4
+callext	io_lib:format/2	3
+callext	io_lib:fwrite/2	1
+callext	io_lib:write_atom/1	1
+callext	io_lib:write_char/1	1
+callext	io_lib:write_string/1	1
+callext	lists:append/1	1
+callext	lists:flatmap/2	1
+callext	lists:flatten/1	1
+callext	lists:foldl/3	1
+callext	lists:keyfind/3	2
+callext	lists:map/2	1
+callext	lists:member/2	4
+callext	lists:reverse/1	9
+callext	lists:usort/1	1
+callext	maps:from_list/1	1
+callext	maps:remove/2	4
+callext	os:getenv/1	1
+callext	proplists:delete/2	1
+callext	proplists:get_bool/2	2
+callext	proplists:get_value/2	4
+callext	proplists:get_value/3	13
+callext	proplists:is_defined/2	1
+callext	string:lowercase/1	1
+callext	unicode:characters_to_list/1	3

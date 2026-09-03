@@ -1,0 +1,276 @@
+module	socket
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	1366
+op	2	func_info/3	185
+op	3	int_code_end/0	1
+op	4	call/2	215
+op	5	call_last/3	197
+op	6	call_only/2	74
+op	7	call_ext/2	156
+op	8	call_ext_last/3	57
+op	9	bif0/2	1
+op	10	bif1/4	1
+op	11	bif2/5	1
+op	12	allocate/2	130
+op	16	test_heap/2	237
+op	18	deallocate/1	221
+op	19	return/0	270
+op	20	send/0	1
+op	21	remove_message/0	102
+op	22	timeout/0	59
+op	23	loop_rec/2	60
+op	24	loop_rec_end/1	60
+op	25	wait/1	1
+op	26	wait_timeout/2	56
+op	39	is_lt/3	13
+op	40	is_ge/3	12
+op	43	is_eq_exact/3	242
+op	44	is_ne_exact/3	26
+op	45	is_integer/2	24
+op	48	is_atom/2	8
+op	49	is_pid/2	3
+op	50	is_reference/2	43
+op	52	is_nil/2	49
+op	53	is_binary/2	21
+op	55	is_list/2	50
+op	56	is_nonempty_list/2	27
+op	57	is_tuple/2	159
+op	58	test_arity/3	135
+op	59	select_val/3	162
+op	60	select_tuple_arity/3	20
+op	61	jump/1	43
+op	64	move/2	1875
+op	65	get_list/3	25
+op	66	get_tuple_element/3	561
+op	69	put_list/3	182
+op	72	badmatch/1	3
+op	73	if_end/0	2
+op	74	case_end/1	28
+op	78	call_ext_only/2	112
+op	104	try/2	11
+op	105	try_end/1	11
+op	106	try_case/1	11
+op	107	try_case_end/1	2
+op	108	raise/2	6
+op	112	apply/1	1
+op	114	is_boolean/2	3
+op	115	is_function2/3	1
+op	124	gc_bif1/5	9
+op	125	gc_bif2/6	14
+op	136	trim/2	98
+op	153	line/1	678
+op	154	put_map_assoc/5	7
+op	156	is_map/2	19
+op	157	has_map_fields/3	2
+op	158	get_map_elements/3	17
+op	159	is_tagged_tuple/4	154
+op	160	build_stacktrace/0	4
+op	162	get_hd/2	4
+op	164	put_tuple2/2	278
+op	169	swap/2	31
+op	171	make_fun3/3	2
+op	172	init_yregs/1	95
+op	173	recv_marker_bind/2	17
+op	174	recv_marker_clear/1	197
+op	175	recv_marker_reserve/1	17
+op	176	recv_marker_use/1	59
+impt	binary:part/3
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:atom_to_list/1
+impt	erlang:binary_to_list/1
+impt	erlang:byte_size/1
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_list/1
+impt	erlang:iolist_to_binary/1
+impt	erlang:length/1
+impt	erlang:list_to_binary/1
+impt	erlang:list_to_integer/1
+impt	erlang:make_ref/0
+impt	erlang:map_get/2
+impt	erlang:monotonic_time/1
+impt	erlang:pid_to_list/1
+impt	erlang:raise/3
+impt	erlang:ref_to_list/1
+impt	erlang:self/0
+impt	erlang:tl/1
+impt	inet_parse:ntoa/1
+impt	io:format/2
+impt	io_lib:format/2
+impt	lists:append/1
+impt	lists:duplicate/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:foreach/2
+impt	lists:keysearch/3
+impt	lists:member/2
+impt	lists:nth/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:sort/1
+impt	net:getnameinfo/1
+impt	prim_socket:accept/2
+impt	prim_socket:bind/2
+impt	prim_socket:bind/3
+impt	prim_socket:cancel/3
+impt	prim_socket:close/1
+impt	prim_socket:connect/1
+impt	prim_socket:connect/3
+impt	prim_socket:debug/1
+impt	prim_socket:enc_sockaddr/1
+impt	prim_socket:finalize_close/1
+impt	prim_socket:getopt/2
+impt	prim_socket:getopt/3
+impt	prim_socket:getopt_native/3
+impt	prim_socket:info/0
+impt	prim_socket:info/1
+impt	prim_socket:ioctl/2
+impt	prim_socket:ioctl/3
+impt	prim_socket:ioctl/4
+impt	prim_socket:is_supported/1
+impt	prim_socket:is_supported/2
+impt	prim_socket:listen/2
+impt	prim_socket:open/2
+impt	prim_socket:open/4
+impt	prim_socket:p_get/1
+impt	prim_socket:peeloff/2
+impt	prim_socket:peername/1
+impt	prim_socket:peernames/2
+impt	prim_socket:recv/4
+impt	prim_socket:recvfrom/4
+impt	prim_socket:recvmmsg/6
+impt	prim_socket:recvmsg/5
+impt	prim_socket:rest_iov/2
+impt	prim_socket:send/4
+impt	prim_socket:sendfile/4
+impt	prim_socket:sendfile/5
+impt	prim_socket:sendmmsg/4
+impt	prim_socket:sendmsg/4
+impt	prim_socket:sendmsg/5
+impt	prim_socket:sendto/4
+impt	prim_socket:sendto/5
+impt	prim_socket:sendv/3
+impt	prim_socket:setopt/3
+impt	prim_socket:setopt_native/3
+impt	prim_socket:shutdown/2
+impt	prim_socket:socket_debug/1
+impt	prim_socket:sockname/1
+impt	prim_socket:socknames/2
+impt	prim_socket:supports/0
+impt	prim_socket:supports/1
+impt	prim_socket:supports/2
+impt	prim_socket:use_registry/1
+impt	socket:getopt/2
+impt	socket:setopt/3
+impt	socket_registry:cancel_monitor/1
+impt	socket_registry:monitor/1
+impt	socket_registry:monitored_by/1
+impt	socket_registry:number_of/0
+impt	socket_registry:number_of_monitors/0
+impt	socket_registry:number_of_monitors/1
+impt	socket_registry:which_monitors/1
+impt	socket_registry:which_sockets/1
+impt	string:to_upper/1
+impt	string:uppercase/1
+disasm	ok
+callext	binary:part/3	1
+callext	erlang:++/2	11
+callext	erlang:atom_to_list/1	5
+callext	erlang:binary_to_list/1	1
+callext	erlang:error/1	25
+callext	erlang:error/2	52
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	6
+callext	erlang:iolist_to_binary/1	10
+callext	erlang:list_to_binary/1	3
+callext	erlang:list_to_integer/1	1
+callext	erlang:make_ref/0	33
+callext	erlang:monotonic_time/1	3
+callext	erlang:pid_to_list/1	1
+callext	erlang:raise/3	5
+callext	erlang:ref_to_list/1	1
+callext	inet_parse:ntoa/1	1
+callext	io:format/2	1
+callext	io_lib:format/2	1
+callext	lists:append/1	1
+callext	lists:duplicate/2	1
+callext	lists:flatten/1	1
+callext	lists:foldl/3	1
+callext	lists:foreach/2	1
+callext	lists:keysearch/3	1
+callext	lists:member/2	1
+callext	lists:nth/2	1
+callext	lists:reverse/1	7
+callext	lists:reverse/2	3
+callext	lists:sort/1	2
+callext	net:getnameinfo/1	1
+callext	prim_socket:accept/2	2
+callext	prim_socket:bind/2	2
+callext	prim_socket:bind/3	1
+callext	prim_socket:cancel/3	1
+callext	prim_socket:close/1	1
+callext	prim_socket:connect/1	2
+callext	prim_socket:connect/3	2
+callext	prim_socket:debug/1	1
+callext	prim_socket:enc_sockaddr/1	8
+callext	prim_socket:finalize_close/1	2
+callext	prim_socket:getopt/2	3
+callext	prim_socket:getopt/3	2
+callext	prim_socket:getopt_native/3	1
+callext	prim_socket:info/0	1
+callext	prim_socket:info/1	1
+callext	prim_socket:ioctl/2	3
+callext	prim_socket:ioctl/3	5
+callext	prim_socket:ioctl/4	7
+callext	prim_socket:is_supported/1	1
+callext	prim_socket:is_supported/2	1
+callext	prim_socket:listen/2	3
+callext	prim_socket:open/2	1
+callext	prim_socket:open/4	1
+callext	prim_socket:p_get/1	2
+callext	prim_socket:peeloff/2	1
+callext	prim_socket:peername/1	1
+callext	prim_socket:peernames/2	1
+callext	prim_socket:recv/4	3
+callext	prim_socket:recvfrom/4	3
+callext	prim_socket:recvmmsg/6	3
+callext	prim_socket:recvmsg/5	3
+callext	prim_socket:rest_iov/2	17
+callext	prim_socket:send/4	4
+callext	prim_socket:sendfile/4	2
+callext	prim_socket:sendfile/5	2
+callext	prim_socket:sendmmsg/4	2
+callext	prim_socket:sendmsg/4	2
+callext	prim_socket:sendmsg/5	2
+callext	prim_socket:sendto/4	2
+callext	prim_socket:sendto/5	2
+callext	prim_socket:sendv/3	4
+callext	prim_socket:setopt/3	2
+callext	prim_socket:setopt_native/3	1
+callext	prim_socket:shutdown/2	1
+callext	prim_socket:socket_debug/1	1
+callext	prim_socket:sockname/1	1
+callext	prim_socket:socknames/2	1
+callext	prim_socket:supports/0	1
+callext	prim_socket:supports/1	1
+callext	prim_socket:supports/2	1
+callext	prim_socket:use_registry/1	1
+callext	socket:getopt/2	2
+callext	socket:setopt/3	1
+callext	socket_registry:cancel_monitor/1	1
+callext	socket_registry:monitor/1	1
+callext	socket_registry:monitored_by/1	1
+callext	socket_registry:number_of/0	1
+callext	socket_registry:number_of_monitors/0	1
+callext	socket_registry:number_of_monitors/1	1
+callext	socket_registry:which_monitors/1	2
+callext	socket_registry:which_sockets/1	6
+callext	string:to_upper/1	4
+callext	string:uppercase/1	1

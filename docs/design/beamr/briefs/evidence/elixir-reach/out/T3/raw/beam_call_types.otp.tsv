@@ -1,0 +1,112 @@
+module	beam_call_types
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	553
+op	2	func_info/3	41
+op	3	int_code_end/0	1
+op	4	call/2	55
+op	5	call_last/3	26
+op	6	call_only/2	26
+op	7	call_ext/2	236
+op	8	call_ext_last/3	1
+op	11	bif2/5	1
+op	12	allocate/2	140
+op	13	allocate_heap/3	4
+op	16	test_heap/2	170
+op	18	deallocate/1	183
+op	19	return/0	261
+op	39	is_lt/3	1
+op	40	is_ge/3	19
+op	43	is_eq_exact/3	109
+op	44	is_ne_exact/3	16
+op	45	is_integer/2	12
+op	52	is_nil/2	178
+op	56	is_nonempty_list/2	278
+op	57	is_tuple/2	70
+op	58	test_arity/3	43
+op	59	select_val/3	54
+op	60	select_tuple_arity/3	2
+op	61	jump/1	53
+op	64	move/2	811
+op	65	get_list/3	146
+op	66	get_tuple_element/3	157
+op	69	put_list/3	44
+op	72	badmatch/1	5
+op	74	case_end/1	30
+op	78	call_ext_only/2	9
+op	124	gc_bif1/5	5
+op	125	gc_bif2/6	7
+op	136	trim/2	36
+op	153	line/1	322
+op	156	is_map/2	1
+op	159	is_tagged_tuple/4	73
+op	162	get_hd/2	1
+op	163	get_tl/2	128
+op	164	put_tuple2/2	180
+op	169	swap/2	17
+op	171	make_fun3/3	4
+op	172	init_yregs/1	67
+op	178	call_fun2/3	2
+op	181	update_record/5	7
+impt	beam_bounds:bounds/2
+impt	beam_bounds:bounds/3
+impt	beam_bounds:relop/3
+impt	beam_types:get_tuple_element/2
+impt	beam_types:is_boolean_type/1
+impt	beam_types:is_singleton_type/1
+impt	beam_types:join/2
+impt	beam_types:make_atom/1
+impt	beam_types:make_boolean/0
+impt	beam_types:meet/2
+impt	beam_types:normalize/1
+impt	beam_types:set_tuple_element/3
+impt	beam_types:subtract/2
+impt	beam_types:update_tuple/2
+impt	erl_bifs:is_exit_bif/3
+impt	erl_bifs:is_safe/3
+impt	erl_internal:arith_op/2
+impt	erl_internal:comp_op/2
+impt	erl_internal:new_type_test/2
+impt	erlang:+/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:abs/1
+impt	erlang:bsr/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	lists:any/2
+impt	lists:duplicate/2
+impt	lists:foldl/3
+impt	lists:max/1
+impt	lists:min/1
+disasm	ok
+callext	beam_bounds:bounds/2	3
+callext	beam_bounds:bounds/3	7
+callext	beam_bounds:relop/3	1
+callext	beam_types:get_tuple_element/2	8
+callext	beam_types:is_boolean_type/1	1
+callext	beam_types:is_singleton_type/1	1
+callext	beam_types:join/2	24
+callext	beam_types:make_atom/1	7
+callext	beam_types:make_boolean/0	27
+callext	beam_types:meet/2	99
+callext	beam_types:normalize/1	8
+callext	beam_types:set_tuple_element/3	34
+callext	beam_types:subtract/2	3
+callext	beam_types:update_tuple/2	1
+callext	erl_bifs:is_exit_bif/3	2
+callext	erl_bifs:is_safe/3	1
+callext	erl_internal:arith_op/2	1
+callext	erl_internal:comp_op/2	1
+callext	erl_internal:new_type_test/2	1
+callext	erlang:error/1	7
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	lists:any/2	2
+callext	lists:duplicate/2	2
+callext	lists:foldl/3	1
+callext	lists:max/1	1
+callext	lists:min/1	1

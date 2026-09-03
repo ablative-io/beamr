@@ -1,0 +1,7 @@
+rand:seed/1
+rand:seed58/2
+rand:exro928_seed/1
+rand:exro928_next_state/1
+rand:exro928_next/1
+rand:exro928_jump_2pow512/1
+rand:exro928_jump_2pow20/1

@@ -1,0 +1,199 @@
+module	Elixir.Mix.Tasks.Release
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	492
+op	2	func_info/3	48
+op	3	int_code_end/0	1
+op	4	call/2	23
+op	5	call_last/3	9
+op	6	call_only/2	5
+op	7	call_ext/2	227
+op	8	call_ext_last/3	60
+op	11	bif2/5	1
+op	12	allocate/2	35
+op	13	allocate_heap/3	2
+op	16	test_heap/2	42
+op	18	deallocate/1	28
+op	19	return/0	41
+op	42	is_ne/3	1
+op	43	is_eq_exact/3	11
+op	44	is_ne_exact/3	2
+op	48	is_atom/2	1
+op	52	is_nil/2	4
+op	53	is_binary/2	30
+op	56	is_nonempty_list/2	2
+op	57	is_tuple/2	58
+op	58	test_arity/3	58
+op	59	select_val/3	76
+op	61	jump/1	96
+op	64	move/2	627
+op	65	get_list/3	2
+op	66	get_tuple_element/3	120
+op	69	put_list/3	53
+op	72	badmatch/1	2
+op	74	case_end/1	48
+op	75	call_fun/1	1
+op	77	is_function/2	1
+op	78	call_ext_only/2	10
+op	113	apply_last/2	3
+op	136	trim/2	20
+op	153	line/1	291
+op	155	put_map_exact/5	3
+op	156	is_map/2	31
+op	158	get_map_elements/3	54
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	27
+op	169	swap/2	9
+op	171	make_fun3/3	19
+op	172	init_yregs/1	102
+op	177	bs_create_bin/6	30
+op	178	call_fun2/3	2
+impt	Elixir.Access:get/2
+impt	Elixir.Application:app_dir/2
+impt	Elixir.Config.Reader:read!/2
+impt	Elixir.EEx.Engine:fetch_assign!/2
+impt	Elixir.Enum:filter/2
+impt	Elixir.Enum:find/3
+impt	Elixir.Enum:flat_map/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:uniq/1
+impt	Elixir.File:chmod!/2
+impt	Elixir.File:cp!/2
+impt	Elixir.File:cp_r!/2
+impt	Elixir.File:dir?/1
+impt	Elixir.File:exists?/1
+impt	Elixir.File:ls!/1
+impt	Elixir.File:mkdir_p!/1
+impt	Elixir.File:read!/1
+impt	Elixir.File:regular?/1
+impt	Elixir.File:rename!/2
+impt	Elixir.File:rm/1
+impt	Elixir.File:rm_rf!/1
+impt	Elixir.File:write!/2
+impt	Elixir.IO:warn/1
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:fetch!/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.Keyword:put_new/3
+impt	Elixir.List:delete/2
+impt	Elixir.List:wrap/1
+impt	Elixir.Map:update!/3
+impt	Elixir.Mix:ensure_application!/1
+impt	Elixir.Mix:env/0
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix:target/0
+impt	Elixir.Mix.Generator:copy_template/4
+impt	Elixir.Mix.Project:build_path/0
+impt	Elixir.Mix.Project:config/0
+impt	Elixir.Mix.Project:consolidation_path/1
+impt	Elixir.Mix.Project:get!/0
+impt	Elixir.Mix.Release:copy_app/2
+impt	Elixir.Mix.Release:copy_ebin/3
+impt	Elixir.Mix.Release:copy_erts/1
+impt	Elixir.Mix.Release:from_config!/3
+impt	Elixir.Mix.Release:make_boot_script/4
+impt	Elixir.Mix.Release:make_cookie/2
+impt	Elixir.Mix.Release:make_start_erl/2
+impt	Elixir.Mix.Release:make_sys_config/3
+impt	Elixir.Mix.Release:rel_templates_path/2
+impt	Elixir.Mix.Task:run/2
+impt	Elixir.OptionParser:parse!/2
+impt	Elixir.Path:basename/1
+impt	Elixir.Path:dirname/1
+impt	Elixir.Path:join/1
+impt	Elixir.Path:join/2
+impt	Elixir.Path:relative_to/2
+impt	Elixir.Path:relative_to_cwd/1
+impt	Elixir.Stream:run/1
+impt	Elixir.String:replace/3
+impt	Elixir.String:to_charlist/1
+impt	Elixir.String.Chars:to_string/1
+impt	Elixir.Task:async_stream/3
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erl_tar:create/3
+impt	erlang:++/2
+impt	erlang:=/=/2
+impt	erlang:atom_to_binary/1
+impt	erlang:binary_to_atom/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	lists:reverse/1
+impt	maps:keys/1
+disasm	ok
+callext	Elixir.Access:get/2	11
+callext	Elixir.Application:app_dir/2	1
+callext	Elixir.Config.Reader:read!/2	1
+callext	Elixir.EEx.Engine:fetch_assign!/2	7
+callext	Elixir.Enum:filter/2	1
+callext	Elixir.Enum:find/3	1
+callext	Elixir.Enum:flat_map/2	1
+callext	Elixir.Enum:map/2	3
+callext	Elixir.Enum:reduce/3	5
+callext	Elixir.Enum:uniq/1	1
+callext	Elixir.File:chmod!/2	1
+callext	Elixir.File:cp!/2	1
+callext	Elixir.File:cp_r!/2	1
+callext	Elixir.File:dir?/1	2
+callext	Elixir.File:exists?/1	7
+callext	Elixir.File:ls!/1	1
+callext	Elixir.File:mkdir_p!/1	2
+callext	Elixir.File:read!/1	2
+callext	Elixir.File:regular?/1	2
+callext	Elixir.File:rename!/2	1
+callext	Elixir.File:rm/1	2
+callext	Elixir.File:rm_rf!/1	2
+callext	Elixir.File:write!/2	4
+callext	Elixir.IO:warn/1	2
+callext	Elixir.Kernel:inspect/1	5
+callext	Elixir.Keyword:fetch!/2	1
+callext	Elixir.Keyword:get/3	2
+callext	Elixir.Keyword:put_new/3	1
+callext	Elixir.List:delete/2	1
+callext	Elixir.List:wrap/1	2
+callext	Elixir.Map:update!/3	3
+callext	Elixir.Mix:ensure_application!/1	2
+callext	Elixir.Mix:env/0	3
+callext	Elixir.Mix:raise/1	3
+callext	Elixir.Mix:shell/0	3
+callext	Elixir.Mix:target/0	2
+callext	Elixir.Mix.Generator:copy_template/4	2
+callext	Elixir.Mix.Project:build_path/0	1
+callext	Elixir.Mix.Project:config/0	2
+callext	Elixir.Mix.Project:consolidation_path/1	1
+callext	Elixir.Mix.Project:get!/0	1
+callext	Elixir.Mix.Release:copy_app/2	1
+callext	Elixir.Mix.Release:copy_ebin/3	1
+callext	Elixir.Mix.Release:copy_erts/1	1
+callext	Elixir.Mix.Release:from_config!/3	2
+callext	Elixir.Mix.Release:make_boot_script/4	1
+callext	Elixir.Mix.Release:make_cookie/2	1
+callext	Elixir.Mix.Release:make_start_erl/2	1
+callext	Elixir.Mix.Release:make_sys_config/3	1
+callext	Elixir.Mix.Release:rel_templates_path/2	3
+callext	Elixir.Mix.Task:run/2	1
+callext	Elixir.OptionParser:parse!/2	1
+callext	Elixir.Path:basename/1	1
+callext	Elixir.Path:dirname/1	3
+callext	Elixir.Path:join/1	2
+callext	Elixir.Path:join/2	22
+callext	Elixir.Path:relative_to/2	1
+callext	Elixir.Path:relative_to_cwd/1	1
+callext	Elixir.Stream:run/1	1
+callext	Elixir.String:replace/3	3
+callext	Elixir.String:to_charlist/1	3
+callext	Elixir.String.Chars:to_string/1	30
+callext	Elixir.Task:async_stream/3	1
+callext	elixir_erl_pass:no_parens_remote/2	51
+callext	erl_tar:create/3	1
+callext	erlang:++/2	4
+callext	erlang:atom_to_binary/1	2
+callext	erlang:binary_to_atom/1	1
+callext	erlang:error/1	52
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	lists:reverse/1	3
+callext	maps:keys/1	1

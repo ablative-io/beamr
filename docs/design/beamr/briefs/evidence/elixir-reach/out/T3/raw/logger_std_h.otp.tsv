@@ -1,0 +1,181 @@
+module	logger_std_h
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	232
+op	2	func_info/3	55
+op	3	int_code_end/0	1
+op	4	call/2	52
+op	5	call_last/3	19
+op	6	call_only/2	15
+op	7	call_ext/2	79
+op	8	call_ext_last/3	8
+op	9	bif0/2	6
+op	10	bif1/4	1
+op	11	bif2/5	4
+op	12	allocate/2	44
+op	13	allocate_heap/3	5
+op	16	test_heap/2	32
+op	18	deallocate/1	49
+op	19	return/0	69
+op	20	send/0	11
+op	21	remove_message/0	11
+op	22	timeout/0	3
+op	23	loop_rec/2	4
+op	24	loop_rec_end/1	4
+op	25	wait/1	1
+op	26	wait_timeout/2	3
+op	39	is_lt/3	2
+op	40	is_ge/3	2
+op	41	is_eq/3	1
+op	42	is_ne/3	1
+op	43	is_eq_exact/3	42
+op	44	is_ne_exact/3	2
+op	45	is_integer/2	3
+op	52	is_nil/2	3
+op	53	is_binary/2	1
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	5
+op	57	is_tuple/2	14
+op	58	test_arity/3	5
+op	59	select_val/3	11
+op	60	select_tuple_arity/3	2
+op	61	jump/1	8
+op	64	move/2	389
+op	65	get_list/3	4
+op	66	get_tuple_element/3	58
+op	69	put_list/3	6
+op	72	badmatch/1	10
+op	74	case_end/1	5
+op	78	call_ext_only/2	10
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	114	is_boolean/2	1
+op	124	gc_bif1/5	1
+op	125	gc_bif2/6	7
+op	136	trim/2	34
+op	153	line/1	222
+op	154	put_map_assoc/5	26
+op	155	put_map_exact/5	1
+op	156	is_map/2	13
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	35
+op	159	is_tagged_tuple/4	30
+op	162	get_hd/2	1
+op	164	put_tuple2/2	36
+op	169	swap/2	7
+op	171	make_fun3/3	2
+op	172	init_yregs/1	32
+op	173	recv_marker_bind/2	2
+op	174	recv_marker_clear/1	5
+op	175	recv_marker_reserve/1	2
+op	176	recv_marker_use/1	2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_list/1
+impt	erlang:byte_size/1
+impt	erlang:demonitor/2
+impt	erlang:error/1
+impt	erlang:exit/1
+impt	erlang:exit/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_list/1
+impt	erlang:is_process_alive/1
+impt	erlang:map_get/2
+impt	erlang:monitor/2
+impt	erlang:monotonic_time/1
+impt	erlang:not/1
+impt	erlang:process_flag/2
+impt	erlang:self/0
+impt	erlang:spawn_link/1
+impt	erlang:unlink/1
+impt	file:close/1
+impt	file:datasync/1
+impt	file:delete/1
+impt	file:open/2
+impt	file:read/2
+impt	file:read_file_info/2
+impt	file:rename/2
+impt	file:write/2
+impt	filelib:ensure_dir/1
+impt	filename:absname/1
+impt	filename:rootname/2
+impt	io:put_chars/2
+impt	lists:member/2
+impt	lists:partition/2
+impt	logger_h_common:adding_handler/1
+impt	logger_h_common:changing_config/3
+impt	logger_h_common:error_notify/1
+impt	logger_h_common:filesync/2
+impt	logger_h_common:filter_config/1
+impt	logger_h_common:log/2
+impt	logger_h_common:removing_handler/1
+impt	maps:merge/2
+impt	maps:remove/2
+impt	maps:to_list/1
+impt	maps:with/2
+impt	zlib:close/1
+impt	zlib:deflate/2
+impt	zlib:deflate/3
+impt	zlib:deflateEnd/1
+impt	zlib:deflateInit/6
+impt	zlib:inflate/2
+impt	zlib:inflateEnd/1
+impt	zlib:inflateInit/2
+impt	zlib:open/0
+disasm	ok
+callext	erlang:++/2	4
+callext	erlang:--/2	1
+callext	erlang:atom_to_list/1	1
+callext	erlang:demonitor/2	2
+callext	erlang:error/1	1
+callext	erlang:exit/1	3
+callext	erlang:exit/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	1
+callext	erlang:is_process_alive/1	1
+callext	erlang:monitor/2	2
+callext	erlang:monotonic_time/1	1
+callext	erlang:process_flag/2	1
+callext	erlang:spawn_link/1	1
+callext	erlang:unlink/1	1
+callext	file:close/1	7
+callext	file:datasync/1	2
+callext	file:delete/1	5
+callext	file:open/2	6
+callext	file:read/2	2
+callext	file:read_file_info/2	8
+callext	file:rename/2	2
+callext	file:write/2	4
+callext	filelib:ensure_dir/1	2
+callext	filename:absname/1	2
+callext	filename:rootname/2	1
+callext	io:put_chars/2	4
+callext	lists:member/2	2
+callext	lists:partition/2	1
+callext	logger_h_common:adding_handler/1	1
+callext	logger_h_common:changing_config/3	1
+callext	logger_h_common:error_notify/1	1
+callext	logger_h_common:filesync/2	1
+callext	logger_h_common:filter_config/1	1
+callext	logger_h_common:log/2	1
+callext	logger_h_common:removing_handler/1	1
+callext	maps:merge/2	2
+callext	maps:remove/2	1
+callext	maps:to_list/1	1
+callext	maps:with/2	4
+callext	zlib:close/1	2
+callext	zlib:deflate/2	1
+callext	zlib:deflate/3	1
+callext	zlib:deflateEnd/1	1
+callext	zlib:deflateInit/6	1
+callext	zlib:inflate/2	1
+callext	zlib:inflateEnd/1	1
+callext	zlib:inflateInit/2	1
+callext	zlib:open/0	2

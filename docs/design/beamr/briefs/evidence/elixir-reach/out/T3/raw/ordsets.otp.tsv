@@ -1,0 +1,49 @@
+module	ordsets
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	86
+op	2	func_info/3	25
+op	3	int_code_end/0	1
+op	4	call/2	9
+op	5	call_last/3	4
+op	6	call_only/2	11
+op	7	call_ext/2	2
+op	11	bif2/5	3
+op	12	allocate/2	11
+op	16	test_heap/2	9
+op	18	deallocate/1	7
+op	19	return/0	34
+op	39	is_lt/3	15
+op	40	is_ge/3	2
+op	44	is_ne_exact/3	2
+op	52	is_nil/2	14
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	18
+op	64	move/2	49
+op	65	get_list/3	18
+op	69	put_list/3	9
+op	78	call_ext_only/2	6
+op	124	gc_bif1/5	1
+op	153	line/1	38
+op	169	swap/2	1
+impt	erlang:=:=/2
+impt	erlang:==/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	lists:filter/2
+impt	lists:filtermap/2
+impt	lists:foldl/3
+impt	lists:map/2
+impt	lists:umerge/1
+impt	lists:usort/1
+disasm	ok
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	lists:filter/2	1
+callext	lists:filtermap/2	1
+callext	lists:foldl/3	1
+callext	lists:map/2	1
+callext	lists:umerge/1	1
+callext	lists:usort/1	1

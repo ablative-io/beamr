@@ -1,0 +1,232 @@
+module	fprof
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	878
+op	2	func_info/3	140
+op	3	int_code_end/0	1
+op	4	call/2	305
+op	5	call_last/3	49
+op	6	call_only/2	83
+op	7	call_ext/2	196
+op	8	call_ext_last/3	75
+op	9	bif0/2	16
+op	10	bif1/4	74
+op	11	bif2/5	4
+op	12	allocate/2	137
+op	13	allocate_heap/3	23
+op	16	test_heap/2	222
+op	18	deallocate/1	124
+op	19	return/0	166
+op	20	send/0	10
+op	21	remove_message/0	35
+op	22	timeout/0	5
+op	23	loop_rec/2	20
+op	24	loop_rec_end/1	18
+op	25	wait/1	15
+op	26	wait_timeout/2	2
+op	39	is_lt/3	3
+op	40	is_ge/3	4
+op	43	is_eq_exact/3	203
+op	44	is_ne_exact/3	15
+op	45	is_integer/2	10
+op	46	is_float/2	1
+op	48	is_atom/2	25
+op	49	is_pid/2	13
+op	50	is_reference/2	4
+op	51	is_port/2	3
+op	52	is_nil/2	126
+op	55	is_list/2	26
+op	56	is_nonempty_list/2	123
+op	57	is_tuple/2	90
+op	58	test_arity/3	56
+op	59	select_val/3	35
+op	60	select_tuple_arity/3	15
+op	61	jump/1	98
+op	64	move/2	2066
+op	65	get_list/3	91
+op	66	get_tuple_element/3	295
+op	69	put_list/3	294
+op	72	badmatch/1	3
+op	74	case_end/1	28
+op	75	call_fun/1	1
+op	77	is_function/2	3
+op	78	call_ext_only/2	30
+op	96	fmove/2	10
+op	97	fconv/2	5
+op	100	fmul/4	5
+op	104	try/2	22
+op	105	try_end/1	22
+op	106	try_case/1	22
+op	107	try_case_end/1	2
+op	108	raise/2	8
+op	112	apply/1	1
+op	124	gc_bif1/5	7
+op	125	gc_bif2/6	30
+op	136	trim/2	104
+op	153	line/1	746
+op	156	is_map/2	1
+op	159	is_tagged_tuple/4	65
+op	161	raw_raise/0	1
+op	162	get_hd/2	24
+op	163	get_tl/2	7
+op	164	put_tuple2/2	119
+op	169	swap/2	19
+op	171	make_fun3/3	22
+op	172	init_yregs/1	133
+op	173	recv_marker_bind/2	6
+op	174	recv_marker_clear/1	17
+op	175	recv_marker_reserve/1	6
+op	176	recv_marker_use/1	7
+op	178	call_fun2/3	3
+op	180	badrecord/1	1
+op	181	update_record/5	13
+impt	dbg:trace_client/3
+impt	dbg:trace_port/2
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:apply/2
+impt	erlang:demonitor/1
+impt	erlang:demonitor/2
+impt	erlang:div/2
+impt	erlang:element/2
+impt	erlang:erase/0
+impt	erlang:erase/1
+impt	erlang:error/2
+impt	erlang:exit/1
+impt	erlang:exit/2
+impt	erlang:fun_to_list/1
+impt	erlang:get/0
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:group_leader/0
+impt	erlang:hd/1
+impt	erlang:length/1
+impt	erlang:link/1
+impt	erlang:list_to_tuple/1
+impt	erlang:make_fun/3
+impt	erlang:make_ref/0
+impt	erlang:monitor/2
+impt	erlang:pid_to_list/1
+impt	erlang:port_close/1
+impt	erlang:port_to_list/1
+impt	erlang:process_flag/2
+impt	erlang:put/2
+impt	erlang:raise/3
+impt	erlang:ref_to_list/1
+impt	erlang:register/2
+impt	erlang:rem/2
+impt	erlang:self/0
+impt	erlang:spawn/1
+impt	erlang:trace/3
+impt	erlang:trace_delivered/1
+impt	erlang:trace_pattern/3
+impt	erlang:tuple_to_list/1
+impt	erlang:whereis/1
+impt	ets:delete/1
+impt	ets:delete/2
+impt	ets:file2tab/1
+impt	ets:insert/2
+impt	ets:lookup/2
+impt	ets:new/2
+impt	ets:safe_fixtable/2
+impt	ets:select/1
+impt	ets:select/2
+impt	ets:select/3
+impt	ets:tab2file/2
+impt	ets:tab2list/1
+impt	ets:update_counter/3
+impt	file:close/1
+impt	file:open/2
+impt	fprof:$code_change/1
+impt	io:format/2
+impt	io:format/3
+impt	io:nl/1
+impt	io:put_chars/2
+impt	io_lib:format/2
+impt	io_lib:nl/0
+impt	lists:append/1
+impt	lists:append/2
+impt	lists:duplicate/2
+impt	lists:flatten/1
+impt	lists:foreach/2
+impt	lists:keysearch/3
+impt	lists:map/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	maps:from_list/1
+impt	maps:to_list/1
+disasm	ok
+callext	dbg:trace_client/3	1
+callext	dbg:trace_port/2	1
+callext	erlang:++/2	1
+callext	erlang:apply/2	2
+callext	erlang:demonitor/1	1
+callext	erlang:demonitor/2	2
+callext	erlang:erase/0	3
+callext	erlang:erase/1	15
+callext	erlang:error/2	36
+callext	erlang:exit/1	9
+callext	erlang:exit/2	4
+callext	erlang:fun_to_list/1	1
+callext	erlang:get/0	4
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:group_leader/0	6
+callext	erlang:link/1	1
+callext	erlang:list_to_tuple/1	1
+callext	erlang:make_fun/3	1
+callext	erlang:make_ref/0	3
+callext	erlang:monitor/2	7
+callext	erlang:pid_to_list/1	1
+callext	erlang:port_close/1	1
+callext	erlang:port_to_list/1	1
+callext	erlang:process_flag/2	2
+callext	erlang:put/2	67
+callext	erlang:raise/3	10
+callext	erlang:ref_to_list/1	1
+callext	erlang:register/2	1
+callext	erlang:spawn/1	2
+callext	erlang:trace/3	4
+callext	erlang:trace_delivered/1	1
+callext	erlang:trace_pattern/3	4
+callext	erlang:tuple_to_list/1	1
+callext	erlang:whereis/1	4
+callext	ets:delete/1	3
+callext	ets:delete/2	1
+callext	ets:file2tab/1	1
+callext	ets:insert/2	10
+callext	ets:lookup/2	7
+callext	ets:new/2	4
+callext	ets:safe_fixtable/2	1
+callext	ets:select/1	1
+callext	ets:select/2	1
+callext	ets:select/3	1
+callext	ets:tab2file/2	1
+callext	ets:tab2list/1	2
+callext	ets:update_counter/3	2
+callext	file:close/1	2
+callext	file:open/2	1
+callext	fprof:$code_change/1	1
+callext	io:format/2	6
+callext	io:format/3	12
+callext	io:nl/1	1
+callext	io:put_chars/2	5
+callext	io_lib:format/2	2
+callext	io_lib:nl/0	4
+callext	lists:append/1	1
+callext	lists:append/2	2
+callext	lists:duplicate/2	3
+callext	lists:flatten/1	4
+callext	lists:foreach/2	6
+callext	lists:keysearch/3	1
+callext	lists:map/2	2
+callext	lists:member/2	2
+callext	lists:reverse/1	5
+callext	lists:sort/1	3
+callext	maps:from_list/1	1
+callext	maps:to_list/1	1

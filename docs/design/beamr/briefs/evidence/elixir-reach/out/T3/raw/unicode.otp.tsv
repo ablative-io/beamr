@@ -1,0 +1,118 @@
+module	unicode
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	448
+op	2	func_info/3	70
+op	3	int_code_end/0	1
+op	4	call/2	69
+op	5	call_last/3	26
+op	6	call_only/2	15
+op	7	call_ext/2	28
+op	8	call_ext_last/3	26
+op	10	bif1/4	1
+op	12	allocate/2	69
+op	13	allocate_heap/3	1
+op	16	test_heap/2	142
+op	18	deallocate/1	101
+op	19	return/0	177
+op	40	is_ge/3	36
+op	43	is_eq_exact/3	52
+op	44	is_ne_exact/3	6
+op	45	is_integer/2	27
+op	52	is_nil/2	11
+op	53	is_binary/2	33
+op	55	is_list/2	16
+op	56	is_nonempty_list/2	11
+op	57	is_tuple/2	32
+op	58	test_arity/3	11
+op	59	select_val/3	32
+op	60	select_tuple_arity/3	12
+op	61	jump/1	13
+op	64	move/2	384
+op	65	get_list/3	8
+op	66	get_tuple_element/3	103
+op	69	put_list/3	75
+op	72	badmatch/1	4
+op	74	case_end/1	28
+op	78	call_ext_only/2	15
+op	104	try/2	15
+op	105	try_end/1	14
+op	106	try_case/1	15
+op	108	raise/2	15
+op	119	bs_get_binary2/7	1
+op	124	gc_bif1/5	4
+op	125	gc_bif2/6	6
+op	136	trim/2	20
+op	138	bs_get_utf8/5	2
+op	140	bs_get_utf16/5	4
+op	142	bs_get_utf32/5	4
+op	153	line/1	248
+op	159	is_tagged_tuple/4	8
+op	160	build_stacktrace/0	1
+op	162	get_hd/2	4
+op	163	get_tl/2	4
+op	164	put_tuple2/2	82
+op	165	bs_get_tail/3	18
+op	166	bs_start_match3/4	11
+op	167	bs_get_position/3	19
+op	168	bs_set_position/2	29
+op	169	swap/2	17
+op	170	bs_start_match4/4	4
+op	171	make_fun3/3	24
+op	172	init_yregs/1	18
+op	177	bs_create_bin/6	12
+op	178	call_fun2/3	9
+op	182	bs_match/3	64
+impt	erlang:-/2
+impt	erlang:binary_to_list/1
+impt	erlang:byte_size/1
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:error/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:iolist_to_binary/1
+impt	erlang:is_binary/1
+impt	erlang:list_to_binary/1
+impt	erlang:nif_error/1
+impt	erlang:raise/3
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	unicode:bin_is_7bit/1
+impt	unicode:characters_to_binary/2
+impt	unicode:characters_to_list/2
+impt	unicode_util:category/1
+impt	unicode_util:is_letter_not_pattern_syntax/1
+impt	unicode_util:is_other_id_continue/1
+impt	unicode_util:is_other_id_start/1
+impt	unicode_util:is_whitespace/1
+impt	unicode_util:nfc/1
+impt	unicode_util:nfd/1
+impt	unicode_util:nfkc/1
+impt	unicode_util:nfkd/1
+disasm	ok
+callext	erlang:binary_to_list/1	2
+callext	erlang:error/1	1
+callext	erlang:error/2	1
+callext	erlang:error/3	15
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:iolist_to_binary/1	2
+callext	erlang:list_to_binary/1	2
+callext	erlang:nif_error/1	3
+callext	erlang:raise/3	1
+callext	lists:reverse/1	10
+callext	lists:reverse/2	4
+callext	unicode:bin_is_7bit/1	1
+callext	unicode:characters_to_binary/2	3
+callext	unicode:characters_to_list/2	4
+callext	unicode_util:category/1	3
+callext	unicode_util:is_letter_not_pattern_syntax/1	2
+callext	unicode_util:is_other_id_continue/1	2
+callext	unicode_util:is_other_id_start/1	2
+callext	unicode_util:is_whitespace/1	1
+callext	unicode_util:nfc/1	2
+callext	unicode_util:nfd/1	2
+callext	unicode_util:nfkc/1	2
+callext	unicode_util:nfkd/1	2

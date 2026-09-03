@@ -1,0 +1,177 @@
+module	Elixir.Mix.Compilers.Test
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	174
+op	2	func_info/3	46
+op	3	int_code_end/0	1
+op	4	call/2	20
+op	5	call_last/3	1
+op	6	call_only/2	4
+op	7	call_ext/2	85
+op	8	call_ext_last/3	14
+op	10	bif1/4	1
+op	11	bif2/5	4
+op	12	allocate/2	20
+op	13	allocate_heap/3	5
+op	16	test_heap/2	40
+op	18	deallocate/1	29
+op	19	return/0	47
+op	41	is_eq/3	2
+op	43	is_eq_exact/3	8
+op	44	is_ne_exact/3	3
+op	52	is_nil/2	4
+op	56	is_nonempty_list/2	2
+op	57	is_tuple/2	11
+op	58	test_arity/3	11
+op	59	select_val/3	19
+op	61	jump/1	5
+op	64	move/2	276
+op	65	get_list/3	2
+op	66	get_tuple_element/3	34
+op	69	put_list/3	20
+op	72	badmatch/1	8
+op	74	case_end/1	1
+op	75	call_fun/1	3
+op	78	call_ext_only/2	15
+op	104	try/2	6
+op	105	try_end/1	6
+op	106	try_case/1	6
+op	108	raise/2	4
+op	136	trim/2	15
+op	153	line/1	160
+op	154	put_map_assoc/5	3
+op	156	is_map/2	3
+op	158	get_map_elements/3	2
+op	159	is_tagged_tuple/4	7
+op	161	raw_raise/0	2
+op	164	put_tuple2/2	11
+op	169	swap/2	15
+op	171	make_fun3/3	24
+op	172	init_yregs/1	34
+op	177	bs_create_bin/6	1
+op	181	update_record/5	1
+impt	Elixir.Access:get/2
+impt	Elixir.Agent:cast/2
+impt	Elixir.Agent:start_link/1
+impt	Elixir.Agent:stop/3
+impt	Elixir.Agent:update/2
+impt	Elixir.Application:ensure_all_started/1
+impt	Elixir.Application:fetch_env!/2
+impt	Elixir.Application:put_env/3
+impt	Elixir.Code:compiler_options/1
+impt	Elixir.Collectable:into/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:any?/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:shuffle/1
+impt	Elixir.ExUnit:async_run/0
+impt	Elixir.ExUnit:await_run/1
+impt	Elixir.ExUnit:run/0
+impt	Elixir.File:cwd!/0
+impt	Elixir.File:mkdir_p!/1
+impt	Elixir.File:read!/1
+impt	Elixir.File:rm/1
+impt	Elixir.File:write!/2
+impt	Elixir.Kernel.LexicalTracker:references/1
+impt	Elixir.Kernel.ParallelCompiler:require/2
+impt	Elixir.Keyword:get/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.Keyword:merge/2
+impt	Elixir.Map:drop/2
+impt	Elixir.Map:put_new_lazy/3
+impt	Elixir.MapSet:new/1
+impt	Elixir.MapSet:size/1
+impt	Elixir.MapSet:to_list/1
+impt	Elixir.MapSet:union/2
+impt	Elixir.Mix.Compilers.Elixir:read_manifest/1
+impt	Elixir.Mix.Project:compile_path/0
+impt	Elixir.Mix.Project:config_mtime/0
+impt	Elixir.Mix.Project:manifest_path/0
+impt	Elixir.Mix.Project:project_file/0
+impt	Elixir.Mix.Tasks.Compile.Elixir:manifests/0
+impt	Elixir.Mix.Utils:last_modified/1
+impt	Elixir.Mix.Utils:stale?/2
+impt	Elixir.Module:get_attribute/2
+impt	Elixir.Path:dirname/1
+impt	Elixir.Path:join/2
+impt	Elixir.Path:relative_to/2
+impt	Elixir.Task:shutdown/1
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:atom_to_binary/1
+impt	erlang:binary_to_term/1
+impt	erlang:error/1
+impt	erlang:exit/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_map_key/2
+impt	erlang:map_get/2
+impt	erlang:not/1
+impt	erlang:setelement/3
+impt	erlang:term_to_binary/2
+impt	lists:reverse/1
+impt	maps:put/3
+impt	rand:seed/2
+disasm	ok
+callext	Elixir.Access:get/2	2
+callext	Elixir.Agent:cast/2	1
+callext	Elixir.Agent:start_link/1	1
+callext	Elixir.Agent:stop/3	1
+callext	Elixir.Agent:update/2	2
+callext	Elixir.Application:ensure_all_started/1	1
+callext	Elixir.Application:fetch_env!/2	3
+callext	Elixir.Application:put_env/3	3
+callext	Elixir.Code:compiler_options/1	3
+callext	Elixir.Collectable:into/1	1
+callext	Elixir.Enum:__in__/2	8
+callext	Elixir.Enum:any?/2	2
+callext	Elixir.Enum:map/2	3
+callext	Elixir.Enum:reduce/3	12
+callext	Elixir.Enum:shuffle/1	1
+callext	Elixir.ExUnit:async_run/0	1
+callext	Elixir.ExUnit:await_run/1	1
+callext	Elixir.ExUnit:run/0	1
+callext	Elixir.File:cwd!/0	1
+callext	Elixir.File:mkdir_p!/1	1
+callext	Elixir.File:read!/1	1
+callext	Elixir.File:rm/1	1
+callext	Elixir.File:write!/2	1
+callext	Elixir.Kernel.LexicalTracker:references/1	1
+callext	Elixir.Kernel.ParallelCompiler:require/2	2
+callext	Elixir.Keyword:get/2	1
+callext	Elixir.Keyword:get/3	2
+callext	Elixir.Keyword:merge/2	1
+callext	Elixir.Map:drop/2	1
+callext	Elixir.Map:put_new_lazy/3	1
+callext	Elixir.MapSet:new/1	3
+callext	Elixir.MapSet:size/1	2
+callext	Elixir.MapSet:to_list/1	1
+callext	Elixir.MapSet:union/2	1
+callext	Elixir.Mix.Compilers.Elixir:read_manifest/1	1
+callext	Elixir.Mix.Project:compile_path/0	1
+callext	Elixir.Mix.Project:config_mtime/0	1
+callext	Elixir.Mix.Project:manifest_path/0	1
+callext	Elixir.Mix.Project:project_file/0	1
+callext	Elixir.Mix.Tasks.Compile.Elixir:manifests/0	1
+callext	Elixir.Mix.Utils:last_modified/1	2
+callext	Elixir.Mix.Utils:stale?/2	4
+callext	Elixir.Module:get_attribute/2	1
+callext	Elixir.Path:dirname/1	1
+callext	Elixir.Path:join/2	3
+callext	Elixir.Path:relative_to/2	3
+callext	Elixir.Task:shutdown/1	1
+callext	erlang:++/2	4
+callext	erlang:--/2	1
+callext	erlang:atom_to_binary/1	1
+callext	erlang:binary_to_term/1	1
+callext	erlang:error/1	5
+callext	erlang:exit/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:setelement/3	2
+callext	erlang:term_to_binary/2	1
+callext	lists:reverse/1	4
+callext	maps:put/3	1
+callext	rand:seed/2	1

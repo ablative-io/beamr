@@ -1,0 +1,29 @@
+module	Elixir.IEx.App
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	20
+op	2	func_info/3	6
+op	3	int_code_end/0	1
+op	6	call_only/2	1
+op	7	call_ext/2	2
+op	8	call_ext_last/3	1
+op	12	allocate/2	1
+op	19	return/0	6
+op	43	is_eq_exact/3	1
+op	59	select_val/3	1
+op	61	jump/1	1
+op	64	move/2	19
+op	78	call_ext_only/2	3
+op	153	line/1	9
+impt	Elixir.Application:get_env/3
+impt	Elixir.Application:put_env/3
+impt	Elixir.Supervisor:start_link/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+disasm	ok
+callext	Elixir.Application:get_env/3	1
+callext	Elixir.Application:put_env/3	1
+callext	Elixir.Supervisor:start_link/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

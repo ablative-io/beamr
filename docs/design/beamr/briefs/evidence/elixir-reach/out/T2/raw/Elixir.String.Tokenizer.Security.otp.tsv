@@ -1,0 +1,76 @@
+module	Elixir.String.Tokenizer.Security
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	3502
+op	2	func_info/3	20
+op	3	int_code_end/0	1
+op	4	call/2	11
+op	6	call_only/2	2
+op	7	call_ext/2	29
+op	8	call_ext_last/3	7
+op	11	bif2/5	1
+op	12	allocate/2	10
+op	13	allocate_heap/3	3
+op	16	test_heap/2	18
+op	18	deallocate/1	16
+op	19	return/0	3439
+op	42	is_ne/3	1
+op	43	is_eq_exact/3	5
+op	53	is_binary/2	5
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	3
+op	57	is_tuple/2	10
+op	58	test_arity/3	10
+op	59	select_val/3	9
+op	61	jump/1	8
+op	64	move/2	3496
+op	66	get_tuple_element/3	23
+op	69	put_list/3	9
+op	72	badmatch/1	3
+op	74	case_end/1	3
+op	78	call_ext_only/2	4
+op	136	trim/2	7
+op	153	line/1	60
+op	163	get_tl/2	1
+op	164	put_tuple2/2	15
+op	169	swap/2	1
+op	171	make_fun3/3	7
+op	172	init_yregs/1	16
+op	177	bs_create_bin/6	7
+impt	Elixir.Access:get/2
+impt	Elixir.Enum:any?/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:reverse/1
+impt	Elixir.Enum:reverse/2
+impt	Elixir.List.Chars:to_charlist/1
+impt	Elixir.String.Chars:to_string/1
+impt	Elixir.String.Tokenizer:dir/1
+impt	erlang:++/2
+impt	erlang:=:=/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:list_to_bitstring/1
+impt	io_lib:format/2
+impt	maps:put/3
+impt	unicode:characters_to_nfd_list/1
+disasm	ok
+callext	Elixir.Access:get/2	1
+callext	Elixir.Enum:any?/2	1
+callext	Elixir.Enum:map/2	3
+callext	Elixir.Enum:reduce/3	3
+callext	Elixir.Enum:reverse/1	1
+callext	Elixir.Enum:reverse/2	3
+callext	Elixir.List.Chars:to_charlist/1	1
+callext	Elixir.String.Chars:to_string/1	9
+callext	Elixir.String.Tokenizer:dir/1	3
+callext	erlang:++/2	6
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:list_to_bitstring/1	1
+callext	io_lib:format/2	1
+callext	maps:put/3	1
+callext	unicode:characters_to_nfd_list/1	2
