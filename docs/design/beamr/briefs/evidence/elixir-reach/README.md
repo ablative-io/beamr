@@ -172,7 +172,81 @@ modules that are NOT loaded — at this base those are the six T3 decode-failed 
 The supplementary pass (`tools/cprime.sh`, `outC/`) re-runs the probe over every tier with `--dir` = the 41 minus the erts
 ebin, so a call into `erlang`, `erts_internal`, `init`, `prim_*` etc. that has **no registered native lands in `deferred`
 under the erts target module** — that list, by name with C6's call counts, is the missing-BIF/NIF census Tom asked for.
-It is reported in the section *Supplementary C* below (absent if the pass had not finished when this commit was cut).
+It is reported in the section *Supplementary C* below.
+
+## Supplementary C — the missing-native census (`tools/cprime.sh`, `outC/`, C16)
+
+Same probe, same tiers, `--dir` = the 41 minus `erts-17.0.5/ebin` (`DIRS-noerts.txt`, 40 dirs). With the erts stand-ins
+gone, a call whose target is one of the 22 erts-preloaded modules (`erlang`, `erts_internal`, `init`, `persistent_term`,
+`prim_*`, `zlib`, `counters`, …) and that has **no registered native** lands in `deferred` under that target; the two passes
+were then compared row by row (`transcripts/cprime-consistency.txt`): every `load_status` and every `first_refused_opcode`
+is identical, and the `deferred` sets differ ONLY by erts-target MFAs (T2 +252 · T3 +713 · T4 +162 occurrences; T1 +0).
+`unresolved` stays 0 in every tier under both passes. Independent instrument: every MFA named below is also absent from
+`sets/NATIVE-MFAS.txt` (the registry's own census via `--natives`, 330 MFAs, 178 under `erlang`), and the ones
+sampled were also grepped in `crates/beamr/src` (`setelement`: no occurrence; `element/2`: registered at
+`native/gate3_bifs/mod.rs:43`). Runtime consequence at this base: a `deferred` import is looked up in the module registry
+once at call time and raises `Undef` if the module is still absent — no native lookup happens on that path
+(`interpreter/opcodes/core.rs:580-588`). With the erts ebin loaded these same calls reach `erlang.beam`'s bytecode instead
+(the stub bodies in OTP's `erlang.erl` are `nif_error(undefined)` — stated from OTP source knowledge, NOT re-measured here;
+the counts below do not depend on it). Call counts are C6's `call_ext*` occurrences in the calling module; "distinct MFAs"
+per target are distinct names, not occurrences. The full 374-row all-tiers table is `SUPPLEMENTARY-C-MFAS.md`.
+
+Headline (T1–T4, 567 modules, 561 loaded — T3's six decode-failed modules cannot contribute): **374 distinct erts-target MFAs with no registered native, 2910 call sites.**
+Top by call sites: `erlang:nif_error/1` 602 · `erlang:error/2` 399 · `erlang:error/3` 338 · `erlang:--/2` 146 ·
+`erlang:setelement/3` 103 · `erlang:function_exported/3` 76 · `erlang:apply/3` 59 · `erlang:make_fun/3` 33. Registered
+neighbours for contrast: `erlang:error/1`, `erlang:element/2`, `erlang:++/2`, `erlang:binary_to_atom/1`, `erlang:spawn/1`,
+`erlang:monitor/2` are all in the registry — the gaps are arity- and name-specific, not whole-module.
+
+### T1 — 6 modules, 6 loaded; **0 distinct missing-native MFAs, 0 call sites, in 0 modules**
+
+| target module | distinct MFAs | call sites |
+|---|---|---|
+
+### T2 — 271 modules, 271 loaded; **86 distinct missing-native MFAs, 393 call sites, in 91 modules**
+
+| target module | distinct MFAs | call sites |
+|---|---|---|
+| `erlang` | 76 | 374 |
+| `init` | 6 | 9 |
+| `persistent_term` | 2 | 8 |
+| `erts_internal` | 2 | 2 |
+
+Top MFAs by call sites (T2): `erlang:error/2` ×70 (13 mod); `erlang:setelement/3` ×66 (9 mod); `erlang:error/3` ×59 (15 mod); `erlang:--/2` ×35 (15 mod); `erlang:function_exported/3` ×29 (20 mod); `erlang:apply/3` ×23 (16 mod); `erlang:apply/2` ×7 (7 mod); `erlang:binary_to_atom/2` ×7 (5 mod); `erlang:make_fun/3` ×6 (6 mod); `erlang:list_to_integer/2` ×6 (3 mod); `erlang:float_to_list/2` ×5 (3 mod); `persistent_term:get/2` ×5 (3 mod); `erlang:module_loaded/1` ×4 (4 mod); `erlang:halt/1` ×4 (3 mod); `persistent_term:put/2` ×3 (3 mod); `erlang:split_binary/2` ×3 (2 mod); `erlang:insert_element/3` ×3 (2 mod); `erlang:monitor/3` ×3 (3 mod); `init:restart/0` ×2 (2 mod); `erlang:make_tuple/2` ×2 (2 mod); `erlang:fun_info/1` ×2 (2 mod); `erlang:convert_time_unit/3` ×2 (2 mod); `erlang:port_info/2` ×2 (1 mod); `erlang:cancel_timer/2` ×2 (2 mod); `init:get_argument/1` ×2 (2 mod); `init:get_plain_arguments/0` ×2 (2 mod); `init:restart/1` ×1 (1 mod); `erlang:port_to_list/1` ×1 (1 mod); `erlang:ref_to_list/1` ×1 (1 mod); `erlang:garbage_collect/1` ×1 (1 mod); `erlang:localtime/0` ×1 (1 mod); `erlang:get_cookie/0` ×1 (1 mod); `erlang:monitor_node/2` ×1 (1 mod); `erlang:monitor_node/3` ×1 (1 mod); `erlang:nodes/1` ×1 (1 mod); `erlang:set_cookie/2` ×1 (1 mod); `erlang:spawn/2` ×1 (1 mod); `erlang:spawn_link/2` ×1 (1 mod); `erlang:spawn_monitor/2` ×1 (1 mod); `erlang:spawn_opt/3` ×1 (1 mod)
+
+### T3 — 142 modules, 136 loaded; **337 distinct missing-native MFAs, 2232 call sites, in 108 modules**
+
+| target module | distinct MFAs | call sites |
+|---|---|---|
+| `erlang` | 107 | 1641 |
+| `erts_internal` | 55 | 161 |
+| `prim_socket` | 53 | 122 |
+| `prim_inet` | 34 | 72 |
+| `persistent_term` | 5 | 58 |
+| `init` | 13 | 45 |
+| `erl_prim_loader` | 12 | 36 |
+| `prim_file` | 18 | 31 |
+| `zlib` | 14 | 20 |
+| `prim_buffer` | 7 | 17 |
+| `socket_registry` | 8 | 14 |
+| `prim_zip` | 3 | 5 |
+| `erts_code_purger` | 3 | 4 |
+| `erts_literal_area_collector` | 2 | 3 |
+| `erl_tracer` | 1 | 1 |
+| `prim_net` | 1 | 1 |
+| `erl_init` | 1 | 1 |
+
+Top MFAs by call sites (T3): `erlang:nif_error/1` ×596 (24 mod); `erlang:error/2` ×285 (28 mod); `erlang:error/3` ×258 (12 mod); `erlang:--/2` ×56 (23 mod); `erlang:apply/3` ×31 (20 mod); `init:get_argument/1` ×28 (15 mod); `persistent_term:put/2` ×25 (12 mod); `erts_internal:mc_iterator/1` ×24 (13 mod); `erts_internal:mc_refill/1` ×24 (13 mod); `erlang:make_fun/3` ×24 (6 mod); `erlang:function_exported/3` ×22 (11 mod); `erlang:setelement/3` ×21 (8 mod); `erlang:garbage_collect/0` ×19 (9 mod); `persistent_term:get/2` ×19 (9 mod); `prim_socket:rest_iov/2` ×17 (1 mod); `erlang:monitor_node/2` ×15 (3 mod); `erlang:system_flag/2` ×13 (4 mod); `erlang:module_loaded/1` ×12 (5 mod); `erlang:display_string/2` ×12 (4 mod); `erts_internal:cmp_term/2` ×11 (3 mod); `erlang:halt/1` ×11 (6 mod); `erlang:convert_time_unit/3` ×11 (6 mod); `erlang:port_info/2` ×10 (3 mod); `erlang:spawn_request/5` ×10 (2 mod); `erts_internal:purge_module/2` ×10 (1 mod); `erlang:split_binary/2` ×10 (4 mod); `erl_prim_loader:list_dir/1` ×9 (3 mod); `erlang:send/3` ×9 (5 mod); `prim_socket:enc_sockaddr/1` ×9 (2 mod); `erl_prim_loader:read_file/1` ×8 (5 mod); `erl_prim_loader:read_file_info/1` ×8 (5 mod); `persistent_term:get/1` ×8 (5 mod); `erlang:apply/2` ×8 (8 mod); `prim_inet:close/1` ×8 (2 mod); `erlang:monitor/3` ×7 (5 mod); `prim_inet:bind/3` ×7 (2 mod); `erlang:list_to_integer/2` ×7 (2 mod); `erlang:processes_iterator/0` ×7 (3 mod); `erts_internal:map_next/3` ×7 (2 mod); `prim_socket:ioctl/4` ×7 (1 mod)
+
+### T4 — 148 modules, 148 loaded; **63 distinct missing-native MFAs, 285 call sites, in 61 modules**
+
+| target module | distinct MFAs | call sites |
+|---|---|---|
+| `erlang` | 43 | 247 |
+| `zlib` | 11 | 24 |
+| `persistent_term` | 4 | 9 |
+| `counters` | 5 | 5 |
+
+Top MFAs by call sites (T4): `erlang:--/2` ×55 (23 mod); `erlang:error/2` ×44 (5 mod); `erlang:function_exported/3` ×25 (15 mod); `erlang:error/3` ×21 (16 mod); `erlang:setelement/3` ×16 (5 mod); `erlang:binary_to_atom/2` ×7 (6 mod); `erlang:trace_pattern/3` ×7 (3 mod); `zlib:close/1` ×7 (2 mod); `erlang:nif_error/1` ×6 (1 mod); `erlang:apply/3` ×5 (4 mod); `erlang:md5/1` ×5 (4 mod); `erlang:trace/3` ×5 (2 mod); `zlib:open/0` ×5 (2 mod); `erlang:unalias/1` ×5 (1 mod); `erlang:list_to_pid/1` ×4 (1 mod); `persistent_term:erase/1` ×4 (2 mod); `erlang:fun_info/1` ×3 (3 mod); `erlang:make_fun/3` ×3 (2 mod); `erlang:float_to_list/2` ×3 (1 mod); `erlang:crc32/2` ×3 (1 mod); `erlang:list_to_port/1` ×2 (1 mod); `erlang:list_to_ref/1` ×2 (1 mod); `persistent_term:get/0` ×2 (2 mod); `persistent_term:put/2` ×2 (2 mod); `erlang:port_close/1` ×2 (2 mod); `erlang:trace_info/2` ×2 (2 mod); `erlang:system_flag/2` ×2 (1 mod); `erlang:timestamp/0` ×2 (1 mod); `zlib:inflate/2` ×2 (2 mod); `zlib:inflateEnd/1` ×2 (2 mod); `zlib:inflateInit/3` ×2 (1 mod); `erlang:apply/2` ×2 (1 mod); `erlang:list_to_integer/2` ×2 (1 mod); `erlang:processes/0` ×2 (1 mod); `erlang:loaded/0` ×1 (1 mod); `erlang:garbage_collect/0` ×1 (1 mod); `erlang:garbage_collect/1` ×1 (1 mod); `zlib:gzip/1` ×1 (1 mod); `persistent_term:get/2` ×1 (1 mod); `counters:get/2` ×1 (1 mod)
 
 ## Not measured (brief R3, each its own line; no zero is implied by absence)
 
@@ -191,4 +265,4 @@ It is reported in the section *Supplementary C* below (absent if the pass had no
 `COMMANDS.md` (C1–C15) · `MANIFEST.tsv` (575 rows: tier, path, sha256 of file bytes, bytes; `.beam` files never committed) ·
 `DIRS.txt` · `lists/` · `sets/` (`DECODER-SET.txt`, `EXECUTED-SET.txt`, `NATIVE-MFAS.txt`, `NATIVE-MODULES.tsv`) · `T3-REACH.tsv`
 (142 rows with `depth`) · `t4-otp-beyond-t3.tsv` · `out/<tier>/<module>.json` (R4 schema) + `out/<tier>/raw/` (probe JSON+stderr+rc,
-walker TSV, CLI stdout+stderr+rc per module) · `controls/`, `controls191/`, `t1/` (sources, `.S`) · `tools/` · `transcripts/`.
+walker TSV, CLI stdout+stderr+rc per module) · `outC/<tier>/` (supplementary C probe JSON+stderr+rc per module) · `SUPPLEMENTARY-C-MFAS.md` · `controls/`, `controls191/`, `t1/` (sources, `.S`) · `tools/` · `transcripts/`.
