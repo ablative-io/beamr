@@ -2,8 +2,10 @@
 
 ## Advisory — JIT-compiled code silently dropped every message it sent to another process
 
-**Affects 40 of the 58 published versions: every version from `0.4.0` through
-`0.18.1`, with no holes in the published sequence. FIXED IN `0.18.2`** — see
+<!-- class: jit-message-drop status: fixed fixed_in: 0.18.2 -->
+
+**Affects 40 versions, `0.4.0` through `0.18.1`; 66 published as of 2026-09-03,
+yanked versions counted. FIXED IN `0.18.2`** — see
 that entry's "Fixed" section below.
 
 **`0.18.2` reaches no existing consumer on its own.** Each `0.x` minor is a
@@ -76,6 +78,8 @@ path in question.
 
 ## Advisory — silent memory-safety defects in every version below 0.16.3
 
+<!-- class: asbytes-0.16.3 status: fixed fixed_in: 0.16.3 -->
+
 **If you are on any version below `0.16.3`, upgrade.** Three classes of
 silent memory-safety defect were fixed across `0.16.2` and `0.16.3`. None of
 them produce an error or a crash — the failure mode in every case is
@@ -94,6 +98,8 @@ through `v0.15.2`, and at `67f89c4`** (the `0.16.2` commit). The launder's
 signature is present from `v0.2.0`. So the class fixed in `0.16.3` spans
 essentially the crate's whole published history, not one minor line.
 
+<!-- class: gc-refcount-0.16.2 status: fixed fixed_in: 0.16.2 -->
+
 **The two classes fixed in `0.16.2` are now measured.** C1, the GC
 refcount-release walk, was introduced by `2c064ed` on 2026-06-08; C2, ETS
 storage of borrowed caller-heap terms, was introduced by `487aae5` on
@@ -107,6 +113,8 @@ published (`v0.8.3`, `v0.12.1`). Reading every served crate pin below
 `0.16.3` measures 35 affected published versions (33 live and two yanked).
 Published `0.16.2` is not affected: its pin `5206e7af` contains the
 `67f89c4` fix.
+
+<!-- class: ets-borrow-0.16.2 status: fixed fixed_in: 0.16.2 -->
 
 The original wording was not wrong about `0.16.0`/`0.16.1` — it was wrong
 about everything it left out. A version enumeration in a disclosure is a
@@ -127,6 +135,8 @@ published version. `0.16.2` has no tag and is pinned by commit
 carries the two 0.16.2 classes regardless of its version number — check
 with `git merge-base --is-ancestor 67f89c4 <base>`.
 
+<!-- class: rf006-jit-rooting status: fixed fixed_in: 0.18.1 -->
+
 **The "Known remaining JIT sites" class is FIXED in `0.18.1`** — see that
 entry's "Fixed" section. `0.16.3`, `0.17.0` and `0.18.0` all carry it,
 reachable under the `jit` feature, which is **on by default** in those
@@ -138,36 +148,57 @@ sweep at the fix commit shows zero remaining REAL-verdict sites under
 `crates/beamr/src/jit/`
 (`docs/design/beamr/briefs/evidence/review-23-07/rf-006/sweep/verdicts.json`).
 
-**`0.18.1` is still not a clean bill of health.** A second rooting class —
-accumulator rooting in native BIFs, **no JIT required**: a term accumulated
-into a `Vec` or threaded `tail` goes stale when a later allocation in the
-same loop collects, and the terminal `alloc_list`/`alloc_tuple` roots a
-pointer that is already stale — is **open, sized and unfixed in every
-released version including `0.18.1`**: 17 verified crossings, one shape,
-enumerated by name in
-`docs/design/beamr/briefs/evidence/accumulator-rooting/dispositions.json`,
-with a pre-registered landing gate at
-`docs/design/beamr/briefs/AR-1-LANDING-GATE.md`. Two of the seventeen have
-demonstrated red-at-parent probes; the class is real, not theoretical. Four
-further sites cleared on unaudited word-count arithmetic are recorded
-`UNRULED-PRERESERVE` (gate row 3) — unruled, not safe. The audit ships in
-this tree **before** any fix exists, deliberately, so the accounting cannot
-be derived from the post-fix state.
+<!-- class: ar1-accumulator status: fixed fixed_in: 0.19.0 -->
+
+**STATUS (2026-09-03): AR-1 is fixed, first tagged in `beamr-v0.19.0`.** All
+17/17 registered accumulator-rooting crossings are structurally eliminated;
+the docs-repo record `tracking/beamr-ar1-status-20260903.md` reports 16
+red-at-parent demonstrations, site 4 defended with its positive control, and
+all four PRERESERVE rows ruled — two discharged and two promoted and fixed by
+`3c64a23`. The published-set pin is crates.io `0.19.0`, published
+2026-08-18T04:47:31Z; a tag set is not the published set. The site ledger is
+`docs/design/beamr/briefs/evidence/accumulator-rooting/dispositions.json`.
+
+**`0.18.1` is still not a clean bill of health:** it predates this
+accumulator-rooting closure, which first ships in `0.19.0`.
+
+<!-- class: jit-threads-coupling status: open fixed_in: - -->
 
 🔴 **`jit` CANNOT BE DISABLED IN ANY BUILD THAT RETAINS `threads`.** The
 manifest declares `jit = ["std", "threads", …]`, but parts of the scheduler
-are gated on `threads` while referencing `crate::jit`, so a build with
-`threads` and without `jit` does not compile. Disabling this class therefore
-requires giving up `threads` as well. **If you run threaded beamr you carry
-this surface, and turning the feature off is not a mitigation open to you.**
-**That is a defect under repair, not an intended property.** The exact
-failing command is in the `0.17.0` entry; the coupling predates `0.17.0` and
-is present at `v0.16.3` too.
+are gated on `threads` while referencing `crate::jit`. **Open as of
+2026-09-03: 7 errors on `cargo check -p beamr --no-default-features --features
+std,threads,net,fs,embedded,readiness`; adding `jit` compiles.** Turning the
+feature off is not a mitigation for a build retaining `threads`; scheduling
+is the project lead's. The coupling predates `0.17.0` and is present at
+`v0.16.3` too.
 
 *(A paragraph naming RF-006 as this class's owner stood here from `0.17.0`
 until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
+
+## Unreleased
+
+### Fixed (record) — class closures unrecorded at their cut
+
+<!-- fixed: asbytes-0.16.3 in 0.16.3 -->
+The fix is carried by release commit `9d0d0e0` and tag `v0.16.3`.
+
+<!-- fixed: gc-refcount-0.16.2 in 0.16.2 commit 67f89c4 -->
+The fix commit is `67f89c4`; `0.16.2` has no tag and is pinned by that commit.
+
+<!-- fixed: ets-borrow-0.16.2 in 0.16.2 commit 67f89c4 -->
+The fix commit is `67f89c4`; `0.16.2` has no tag and is pinned by that commit.
+
+<!-- fixed: rf006-jit-rooting in 0.18.1 -->
+The fix is carried by release commit `2551841` and tag `v0.18.1`.
+
+<!-- fixed: jit-message-drop in 0.18.2 -->
+The fix is carried by release commit `ea85228` and tag `v0.18.2`.
+
+<!-- fixed: ar1-accumulator in 0.19.0 commit 1a70068 -->
+The fix commit is `1a70068`, first carried by tag `beamr-v0.19.0`.
 
 ## 0.20.0 — 2026-08-22
 

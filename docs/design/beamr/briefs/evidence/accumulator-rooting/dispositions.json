@@ -4,6 +4,7 @@
   "purpose": "The SINGLE disposition ledger shared by gate row 2 and gate row R10. Two accountings over one population will disagree, and the disagreement resolves to whichever is checked second.",
   "registered": "PRE-FIX. No clock is written in this file by rule: a version-controlled artefact takes its time from the commit that carries it, and a date claimed from memory is a carried count with extra steps. See the commit introducing this file.",
   "state": "PRE-REGISTRATION -- no fix designed, none applied. Every crossing row is PENDING by construction. This file is committed BEFORE the fix so the accounting cannot be derived from the post-fix state, which is the pinned-count defect one level down.",
+  "state_at": {"ref": "4ed30c7a55cc83e398dd5e0786ce2db4617e5c70", "state": "POST-FIX — all 17 STRUCTURALLY-ELIMINATED", "record": "tracking/beamr-ar1-status-20260903.md"},
   "population": {
     "count": 17,
     "crossings_1_to_13": "verdict REAL in docs/design/beamr/briefs/evidence/review-23-07/rf-006/sweep/verdicts.json, in that file's order -- the numbering AR-1-GROUND-PACK.md uses (#11 term/json.rs, #12/#13 convert.rs)",

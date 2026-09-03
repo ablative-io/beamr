@@ -4,12 +4,15 @@ A ground-up BEAM virtual machine written in Rust, targeting [Gleam](https://glea
 
 Built for [Meridian](https://github.com/ablative/yggdrasil) workflow execution, where Gleam's type system provides compile-time validation: if the workflow compiles, the types are correct.
 
-## ⚠️ Security advisory (2026-08-07)
+<!-- release: 0.20.0 -->
 
-**If you are on any version below `0.16.3`, upgrade.** Three classes of
-silent memory-safety defect were fixed across `0.16.2` and `0.16.3`. None of
-them produce an error or a crash — corrupted or freed data is read as valid —
-so a passing test suite proves nothing about your exposure.
+## ⚠️ Security advisory (2026-09-03)
+
+<!-- class: asbytes-0.16.3 status: fixed fixed_in: 0.16.3 -->
+
+**If you are on any version below `0.16.3`, upgrade.** The changelog records
+the memory-safety fixes carried by `0.16.2` and `0.16.3`; a passing test suite
+does not prove that an older build was unexposed to silent corruption.
 
 **This is not a `0.16.x` problem.** The `as_bytes` borrow-across-allocation
 class fixed in `0.16.3` is present in **every version from at least `0.4.4`**:
@@ -20,23 +23,23 @@ class fixed in `0.16.3` is present in **every version from at least `0.4.4`**:
 commits, affected tag and published populations, and the `0.16.2` correction
 are recorded in the CHANGELOG advisory linked below.
 
-**Your options are `0.17.0` or `0.16.3`.** Both carry the fixes. `0.17.0` is
-the current line and the one to prefer; note it is a breaking change
-(`spawn_link_dirty` is removed). `0.16.3` is the last patch on the `0.16.x`
-line if something holds you there.
+<!-- class: rf006-jit-rooting status: fixed fixed_in: 0.18.1 -->
 
-**A correction to what the earlier advisories told you.** The `0.16.2` and
-`0.16.3` notes described the remaining JIT-reachable sites as *"reachable
-only under the optional `jit` feature"*, which reads as a mitigation you
-could apply. **It is not one.** `jit` cannot be disabled in any build that
-retains `threads` — such a build does not compile. The word was wrong in the
-direction that matters, and it was wrong for `0.16.2` and `0.16.3` exactly as
-published. This is a defect under repair, not an intended property.
+The current release of the `beamr` crate is `0.20.0`. The changelog's release
+entries record the JIT GC-rooting class as fixed in `0.18.1`, compiled message
+delivery as fixed in `0.18.2`, and accumulator rooting as fixed in `0.19.0`.
+Those entries, together with the `0.16.2` and `0.16.3` records above, are the
+release-by-release source of truth; the separately versioned `beamr-cli` and
+`beamr-wasm` crates are not this release line.
 
-**So neither `0.16.3` nor `0.17.0` is a clean bill of health**, and the only
-configuration that removes that surface is **dropping the `threads` feature**
-— not dropping `jit`. The remaining JIT sites are owned and are not fixed in
-any released version to date.
+<!-- class: jit-threads-coupling status: open fixed_in: - -->
+
+**The `jit`/`threads` feature coupling remains open as of 2026-09-03.**
+`cargo check -p beamr --no-default-features --features
+std,threads,net,fs,embedded,readiness` fails with 7 unresolved `crate::jit`
+errors, while adding `jit` compiles. Turning off `jit` is therefore not a
+mitigation for a build that retains `threads`; scheduling a product-code fix
+is the project lead's decision.
 
 Full mechanics — the affected classes, the exact failing build command, how
 to test a git base for the fixes, and what remains open — are in
