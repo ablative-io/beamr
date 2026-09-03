@@ -1,0 +1,2091 @@
+{
+  "schema_note": "One row per `git grep -n -w unsafe` line. `prose` extends the four-value code-site kind vocabulary so all 200 lines are represented.",
+  "instrument": {
+    "source": "git grep -n -w unsafe 43d87819ed37515695a697b7416d47c6740502e2 -- crates/beamr/src",
+    "population_rs_files": 327,
+    "same_instrument_from_raw_parts_control": 5,
+    "safety_lookback_lines": 4
+  },
+  "tallies": {
+    "total": 200,
+    "code": 197,
+    "prose": 3,
+    "files": 48,
+    "kinds": {
+      "block": 192,
+      "prose": 3,
+      "impl": 2,
+      "extern": 1,
+      "fn": 2
+    },
+    "classes": {
+      "NONE": 138,
+      "C3": 30,
+      "C2": 1,
+      "RF-006": 29,
+      "C1": 2
+    },
+    "safety_present": 166,
+    "safety_absent": 31,
+    "regions": {
+      "io": 57,
+      "term": 38,
+      "jit": 29,
+      "native": 25,
+      "scheduler": 14,
+      "gc": 10,
+      "interpreter": 8,
+      "supervision": 5,
+      "mailbox": 3,
+      "distribution": 2,
+      "etf": 2,
+      "process": 2,
+      "constant_pool": 1,
+      "ets": 1
+    },
+    "jit_by_file": {
+      "runtime_binary_match": 7,
+      "runtime_closure": 6,
+      "runtime": 6,
+      "compiler_tests": 5,
+      "runtime_binary_build": 2,
+      "runtime_map": 2,
+      "runtime_message": 1
+    }
+  },
+  "undocumented_sites": [
+    "crates/beamr/src/distribution/etf.rs:345",
+    "crates/beamr/src/etf/encode.rs:163",
+    "crates/beamr/src/ets/copy.rs:113",
+    "crates/beamr/src/interpreter/opcodes/binary/mod.rs:84",
+    "crates/beamr/src/interpreter/opcodes/binary/mod.rs:88",
+    "crates/beamr/src/interpreter/opcodes/binary/mod.rs:92",
+    "crates/beamr/src/interpreter/opcodes/binary/mod.rs:96",
+    "crates/beamr/src/interpreter/pattern.rs:174",
+    "crates/beamr/src/jit/runtime_binary_build.rs:28",
+    "crates/beamr/src/jit/runtime_binary_build.rs:198",
+    "crates/beamr/src/jit/runtime_binary_match.rs:36",
+    "crates/beamr/src/jit/runtime_binary_match.rs:64",
+    "crates/beamr/src/jit/runtime_binary_match.rs:272",
+    "crates/beamr/src/jit/runtime_binary_match.rs:276",
+    "crates/beamr/src/jit/runtime_binary_match.rs:311",
+    "crates/beamr/src/jit/runtime_binary_match.rs:330",
+    "crates/beamr/src/jit/runtime_closure.rs:174",
+    "crates/beamr/src/jit/runtime_message.rs:61",
+    "crates/beamr/src/native/otp_stubs/erlang_stubs.rs:119",
+    "crates/beamr/src/native/udp_bifs.rs:497",
+    "crates/beamr/src/native/udp_bifs.rs:499",
+    "crates/beamr/src/scheduler/thread_probe.rs:43",
+    "crates/beamr/src/term/binary.rs:122",
+    "crates/beamr/src/term/boxed/accessors.rs:162",
+    "crates/beamr/src/term/compare/mod.rs:165",
+    "crates/beamr/src/term/format.rs:193",
+    "crates/beamr/src/term/hash.rs:165",
+    "crates/beamr/src/term/heap_borrow.rs:58",
+    "crates/beamr/src/term/heap_borrow.rs:75",
+    "crates/beamr/src/term/json.rs:167",
+    "crates/beamr/src/term/shared_binary.rs:94"
+  ],
+  "sites": [
+    {
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "fn": "rebase_pool_pointer",
+      "line": 285,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "fn": "encode_bigint",
+      "line": 345,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "fn": "encode_binary",
+      "line": 541,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/etf/encode.rs",
+      "fn": "encode_bigint",
+      "line": 163,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/etf/encode.rs",
+      "fn": "encode_binary",
+      "line": 512,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/ets/copy.rs",
+      "fn": "copy_term_to_ets",
+      "line": 113,
+      "kind": "block",
+      "class": "C2",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "ETS term ownership/storage boundary"
+    },
+    {
+      "file": "crates/beamr/src/gc/mod.rs",
+      "fn": "object_size",
+      "line": 200,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/gc/mod.rs",
+      "fn": "retain_proc_bin_arc",
+      "line": 373,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/gc/mod.rs",
+      "fn": "release_proc_bin_arc",
+      "line": 387,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/gc/mod.rs",
+      "fn": "read_raw_word",
+      "line": 396,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/gc/mod.rs",
+      "fn": "write_raw_word",
+      "line": 402,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/gc/tests.rs",
+      "fn": "alloc_tuple",
+      "line": 53,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/gc/tests.rs",
+      "fn": "alloc_cons",
+      "line": 60,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/gc/tests.rs",
+      "fn": "alloc_closure",
+      "line": 73,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/gc/tests.rs",
+      "fn": "alloc_proc_bin",
+      "line": 81,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/gc/tests.rs",
+      "fn": "alloc_fd_resource",
+      "line": 93,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/interpreter/opcodes/binary/mod.rs",
+      "fn": "read_word",
+      "line": 84,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/interpreter/opcodes/binary/mod.rs",
+      "fn": "write_word",
+      "line": 88,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/interpreter/opcodes/binary/mod.rs",
+      "fn": "slice_from_words",
+      "line": 92,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "absent",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/interpreter/opcodes/binary/mod.rs",
+      "fn": "heap_slice",
+      "line": 96,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "absent",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/interpreter/opcodes/core.rs",
+      "fn": "call_native",
+      "line": 883,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "representation conversion with layout invariant"
+    },
+    {
+      "file": "crates/beamr/src/interpreter/opcodes/core.rs",
+      "fn": "heap_slice",
+      "line": 1145,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/interpreter/pattern.rs",
+      "fn": "select_tuple_arity_jumps_to_arity_match_or_fail",
+      "line": 174,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "absent",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/interpreter/tests.rs",
+      "fn": "heap_binary",
+      "line": 52,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "close_fd_synchronously",
+      "line": 190,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "new",
+      "line": 217,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "new",
+      "line": 226,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "inner_ref",
+      "line": 282,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "arc_ptr_word",
+      "line": 287,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "clone_fd_inner_from_raw_word",
+      "line": 309,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "retain_fd_inner_arc",
+      "line": 322,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "release_fd_inner_arc",
+      "line": 338,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "read_raw_word",
+      "line": 356,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "write_raw_word",
+      "line": 362,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "pipe_read_fd",
+      "line": 401,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "pipe_read_fd",
+      "line": 404,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "fd_identity",
+      "line": 414,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "fd_identity",
+      "line": 415,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "fd_closed_since",
+      "line": 430,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "fd_closed_since",
+      "line": 431,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/resource.rs",
+      "fn": "explicit_close_then_drop_does_not_submit_or_close_twice",
+      "line": 513,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "sendmsg_fd",
+      "line": 33,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "sendmsg_fd",
+      "line": 41,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "recvmsg_fd",
+      "line": 52,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "recvmsg_fd",
+      "line": 58,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "recvmsg_fd",
+      "line": 64,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "read_fd",
+      "line": 306,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "read_fd",
+      "line": 309,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "write_fd",
+      "line": 330,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "write_fd",
+      "line": 333,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "close_fd",
+      "line": 344,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "fsync_fd",
+      "line": 354,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "openat_fd",
+      "line": 365,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "statx_fd",
+      "line": 375,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "statx_fd",
+      "line": 378,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "statx_fd",
+      "line": 382,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "accept_fd",
+      "line": 393,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "accept_fd",
+      "line": 396,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "connect_fd",
+      "line": 413,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "wait_for_connect",
+      "line": 435,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "wait_for_connect",
+      "line": 455,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "socket_addr_to_raw",
+      "line": 504,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "socket_addr_to_raw",
+      "line": 517,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "socket_addr_to_raw",
+      "line": 535,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "sockaddr_to_addr",
+      "line": 549,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/thread_pool.rs",
+      "fn": "sockaddr_to_addr",
+      "line": 559,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "handle_message",
+      "line": 265,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "build_entry",
+      "line": 311,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "build_entry",
+      "line": 364,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "build_entry",
+      "line": 404,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "build_entry",
+      "line": 427,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "build_entry",
+      "line": 433,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "socket_addr_to_raw",
+      "line": 581,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "socket_addr_to_raw",
+      "line": 593,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "socket_addr_to_raw",
+      "line": 610,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "sockaddr_to_addr",
+      "line": 624,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "sockaddr_to_addr",
+      "line": 634,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "read_pipe_completes_after_writer_thread_writes",
+      "line": 669,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "read_pipe_completes_after_writer_thread_writes",
+      "line": 682,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "read_pipe_completes_after_writer_thread_writes",
+      "line": 684,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/io/uring.rs",
+      "fn": "read_pipe_completes_after_writer_thread_writes",
+      "line": 697,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "io_uring kernel submission/completion ABI and owned buffer pointer"
+    },
+    {
+      "file": "crates/beamr/src/jit/compiler/compiler_tests.rs",
+      "fn": "raw_jit_fn",
+      "line": 60,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/compiler/compiler_tests.rs",
+      "fn": "heap_closure",
+      "line": 92,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/compiler/compiler_tests.rs",
+      "fn": "heap_float",
+      "line": 109,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/compiler/compiler_tests.rs",
+      "fn": "heap_map",
+      "line": 118,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/compiler/compiler_tests.rs",
+      "fn": "compiled_test_heap_guard_survives_a_collection_with_a_live_y_register",
+      "line": 378,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "fn": "jit_box_float",
+      "line": 57,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "fn": "jit_call_interpreted",
+      "line": 116,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "fn": "jit_call_interpreted",
+      "line": 124,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "fn": "jit_call_interpreted",
+      "line": 126,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "fn": "jit_call_interpreted",
+      "line": 128,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "fn": "process_from_abi",
+      "line": 408,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "fn": "jit_bs_init",
+      "line": 28,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "fn": "bytes",
+      "line": 198,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "jit_bs_start_match",
+      "line": 36,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "jit_bs_get_integer",
+      "line": 64,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "jit_bs_get_binary",
+      "line": 134,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "read_word",
+      "line": 272,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "write_word",
+      "line": 276,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "allocate_binary",
+      "line": 311,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "get_utf",
+      "line": 330,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "fn": "jit_call_closure",
+      "line": 68,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "fn": "runtime_dispatch_context",
+      "line": 136,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "fn": "runtime_dispatch_context",
+      "line": 138,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "fn": "runtime_dispatch_context",
+      "line": 140,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "fn": "runtime_cache",
+      "line": 150,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "fn": "call_native_closure",
+      "line": 174,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "fn": "map_pair_terms",
+      "line": 101,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "fn": "write_map_entries",
+      "line": 152,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "present",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "fn": "jit_send_message",
+      "line": 61,
+      "kind": "block",
+      "class": "RF-006",
+      "rf006_verdict": "SAFE-C",
+      "safety_comment": "absent",
+      "reason": "JIT-reachable crossing; current site carries a local safety invariant"
+    },
+    {
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "fn": "copy_cons",
+      "line": 358,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "fn": "alloc_words",
+      "line": 514,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "fn": "alloc_words_maybe_refcounted",
+      "line": 525,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/native/actor_cooperative_tests.rs",
+      "fn": "noop",
+      "line": 59,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/actor_dynamic_tests.rs",
+      "fn": "noop",
+      "line": 52,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/context/accumulator.rs",
+      "fn": "module scope",
+      "line": 13,
+      "kind": "prose",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "comment/prose occurrence; not an unsafe code site"
+    },
+    {
+      "file": "crates/beamr/src/native/file_bifs_tests.rs",
+      "fn": "pipe_read_fd",
+      "line": 156,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/file_bifs_tests.rs",
+      "fn": "pipe_read_fd",
+      "line": 159,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/inet_bifs.rs",
+      "fn": "socket_handle",
+      "line": 370,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+      "fn": "bif_os_putenv",
+      "line": 114,
+      "kind": "prose",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "comment/prose occurrence; not an unsafe code site"
+    },
+    {
+      "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+      "fn": "bif_os_putenv",
+      "line": 119,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/otp_stubs/erlang_stubs.rs",
+      "fn": "bif_os_unsetenv",
+      "line": 135,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "create_connect_socket",
+      "line": 507,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "configure_connect_socket",
+      "line": 524,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "set_nonblocking",
+      "line": 540,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "set_nonblocking",
+      "line": 545,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "create_listener_socket",
+      "line": 563,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "configure_and_listen",
+      "line": 581,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "configure_and_listen",
+      "line": 599,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "configure_and_listen",
+      "line": 612,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "close_raw_fd",
+      "line": 781,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs_tests.rs",
+      "fn": "fd_released",
+      "line": 156,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs_tests.rs",
+      "fn": "fd_released",
+      "line": 161,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs_tests.rs",
+      "fn": "fd_released",
+      "line": 165,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs_tests.rs",
+      "fn": "fd_released",
+      "line": 181,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "native BIF/FFI term access under process-heap lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/udp_bifs.rs",
+      "fn": "create_udp_socket",
+      "line": 172,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/udp_bifs.rs",
+      "fn": "create_udp_socket",
+      "line": 187,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/udp_bifs.rs",
+      "fn": "create_udp_socket",
+      "line": 197,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/udp_bifs.rs",
+      "fn": "udp_open_zero_returns_passive_fd_resource_bound_to_udp_socket",
+      "line": 497,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/native/udp_bifs.rs",
+      "fn": "udp_open_zero_returns_passive_fd_resource_bound_to_udp_socket",
+      "line": 499,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "OS/FFI I/O buffer or descriptor boundary with locally stated lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/process/heap.rs",
+      "fn": "copy_words_from_ptr",
+      "line": 568,
+      "kind": "block",
+      "class": "C1",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "GC heap allocation/release-walk mechanism and AllocKind state"
+    },
+    {
+      "file": "crates/beamr/src/process/heap.rs",
+      "fn": "write_words",
+      "line": 574,
+      "kind": "block",
+      "class": "C1",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "GC heap allocation/release-walk mechanism and AllocKind state"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/dirty.rs",
+      "fn": "recv_or_shutdown",
+      "line": 156,
+      "kind": "impl",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/mod.rs",
+      "fn": "add_scheduler_duration",
+      "line": 1021,
+      "kind": "impl",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "allocate_fd_resource_for_process",
+      "line": 184,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "pipe_read_fd",
+      "line": 196,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "pipe_read_fd",
+      "line": 199,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "fd_identity",
+      "line": 209,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "fd_identity",
+      "line": 210,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "fd_closed_since",
+      "line": 225,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "fd_closed_since",
+      "line": 226,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "process_terminate_closes_owned_fd_resources_before_heap_reset",
+      "line": 427,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "reference_message_to_executing_receiver_round_trips_via_etf",
+      "line": 1063,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/supervision_tests.rs",
+      "fn": "reference_message_to_executing_receiver_round_trips_via_etf",
+      "line": 1067,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/thread_probe.rs",
+      "fn": "process_thread_names",
+      "line": 43,
+      "kind": "extern",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/scheduler/thread_probe.rs",
+      "fn": "mach_port_deallocate",
+      "line": 55,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "scheduler thread handoff or Send/extern boundary"
+    },
+    {
+      "file": "crates/beamr/src/supervision/link.rs",
+      "fn": "enqueue_exit_message_with_source",
+      "line": 272,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/supervision/link.rs",
+      "fn": "alloc_young_tuple",
+      "line": 521,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/supervision/monitor.rs",
+      "fn": "enqueue_down_message",
+      "line": 290,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/supervision/monitor.rs",
+      "fn": "enqueue_down_message",
+      "line": 305,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/supervision/monitor_tests.rs",
+      "fn": "alloc_young_tuple",
+      "line": 143,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/term/binary.rs",
+      "fn": "new",
+      "line": 54,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/binary.rs",
+      "fn": "len",
+      "line": 64,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/binary.rs",
+      "fn": "as_bytes",
+      "line": 122,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "word",
+      "line": 41,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "word",
+      "line": 72,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "value",
+      "line": 90,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "limbs",
+      "line": 162,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "word",
+      "line": 167,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "new",
+      "line": 181,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "new",
+      "line": 190,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "word",
+      "line": 247,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "word",
+      "line": 299,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "id",
+      "line": 321,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "word",
+      "line": 357,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "word",
+      "line": 389,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "word_at",
+      "line": 395,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "fn": "header_ptr",
+      "line": 405,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/binary_accessors.rs",
+      "fn": "new",
+      "line": 23,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/binary_accessors.rs",
+      "fn": "new",
+      "line": 29,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/binary_accessors.rs",
+      "fn": "arc_ptr_word",
+      "line": 101,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/binary_accessors.rs",
+      "fn": "new",
+      "line": 115,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/boxed/binary_accessors.rs",
+      "fn": "word",
+      "line": 203,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/compare/bigint.rs",
+      "fn": "compare_bigint_values",
+      "line": 27,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "fn": "number_value",
+      "line": 165,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "fn": "compare_binaries",
+      "line": 369,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/format.rs",
+      "fn": "format_binary",
+      "line": 193,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "absent",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/term/format.rs",
+      "fn": "bigint_to_decimal_string",
+      "line": 250,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/hash.rs",
+      "fn": "hash_term",
+      "line": 165,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "absent",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/term/hash.rs",
+      "fn": "hash_bigint",
+      "line": 193,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/heap_borrow.rs",
+      "fn": "with_frame",
+      "line": 58,
+      "kind": "fn",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "absent",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/term/heap_borrow.rs",
+      "fn": "slice",
+      "line": 75,
+      "kind": "fn",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "absent",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/term/heap_borrow.rs",
+      "fn": "slice",
+      "line": 76,
+      "kind": "prose",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "comment/prose occurrence; not an unsafe code site"
+    },
+    {
+      "file": "crates/beamr/src/term/heap_borrow.rs",
+      "fn": "slice",
+      "line": 79,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "present",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/term/json.rs",
+      "fn": "binary_to_value",
+      "line": 167,
+      "kind": "block",
+      "class": "C3",
+      "rf006_verdict": "SAFE-FIXED",
+      "safety_comment": "absent",
+      "reason": "borrowed byte/heap view; classified against the borrow-across-allocation class"
+    },
+    {
+      "file": "crates/beamr/src/term/json.rs",
+      "fn": "bigint_to_value",
+      "line": 233,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "low-level representation, allocation, or pointer operation outside the advisory mechanisms"
+    },
+    {
+      "file": "crates/beamr/src/term/shared_binary.rs",
+      "fn": "clone_from_raw_word",
+      "line": 77,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/term/shared_binary.rs",
+      "fn": "bytes_from_raw_word",
+      "line": 94,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "absent",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/term/shared_binary.rs",
+      "fn": "bytes_from_raw_word",
+      "line": 97,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    },
+    {
+      "file": "crates/beamr/src/term/shared_binary.rs",
+      "fn": "len_from_raw_word",
+      "line": 105,
+      "kind": "block",
+      "class": "NONE",
+      "rf006_verdict": null,
+      "safety_comment": "present",
+      "reason": "raw-pointer reconstruction or dereference under local ownership/lifetime invariant"
+    }
+  ]
+}

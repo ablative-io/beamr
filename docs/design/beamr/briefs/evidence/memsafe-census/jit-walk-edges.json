@@ -1,0 +1,4296 @@
+{
+  "instrument": "44 dispatch registrations; syntactic Rust call graph across crates/beamr/src; depth <= 4; stop at interpreter/scheduler",
+  "roots": [
+    "jit_alloc_tuple",
+    "jit_alloc_cons",
+    "jit_alloc_closure",
+    "jit_box_float",
+    "jit_call_closure",
+    "jit_charge_reduction",
+    "jit_call_interpreted",
+    "jit_alloc_frame",
+    "jit_dealloc_frame",
+    "jit_test_heap",
+    "jit_trim_frame",
+    "jit_y_read",
+    "jit_y_write",
+    "jit_bs_start_match",
+    "jit_bs_get_integer",
+    "jit_bs_get_binary",
+    "jit_bs_test_tail",
+    "jit_bs_test_unit",
+    "jit_bs_get_utf8",
+    "jit_bs_get_utf16",
+    "jit_bs_get_utf32",
+    "jit_bs_init",
+    "jit_bs_put_integer",
+    "jit_bs_put_binary",
+    "jit_bs_put_utf8",
+    "jit_bs_put_utf16",
+    "jit_bs_put_utf32",
+    "jit_bs_finish",
+    "jit_map_new",
+    "jit_map_update",
+    "jit_map_get",
+    "jit_map_has_key",
+    "jit_send_message",
+    "jit_receive_peek",
+    "jit_receive_next",
+    "jit_receive_accept",
+    "jit_receive_wait",
+    "jit_receive_wait_timeout",
+    "jit_receive_timeout",
+    "jit_exception_class",
+    "jit_exception_reason",
+    "jit_exception_trace",
+    "jit_clear_exception",
+    "jit_add_compiled_frame"
+  ],
+  "naive_string_tokens": 45,
+  "reached_functions": 281,
+  "reached": [
+    "add",
+    "advance_save_pointer",
+    "all",
+    "alloc",
+    "alloc_in_region",
+    "alloc_in_region_maybe_refcounted",
+    "alloc_words",
+    "alloc_words_rooted",
+    "allocate_binary",
+    "arity",
+    "as_bytes",
+    "as_slice",
+    "as_small_int",
+    "atom",
+    "available",
+    "borrow_terms",
+    "boxed_ptr",
+    "bytes",
+    "call_interpreted_closure",
+    "call_native_closure",
+    "call_ptr",
+    "can_append",
+    "can_transition",
+    "capabilities",
+    "clear_raw_stacktrace",
+    "clone",
+    "cmp",
+    "code_position",
+    "collect",
+    "collect_major",
+    "collect_minor_with_live",
+    "compacted_old_capacity_after_major",
+    "compare_binaries",
+    "compare_closures_raw",
+    "compare_lists_raw",
+    "compare_maps_raw",
+    "compare_numbers",
+    "compare_same_rank_raw",
+    "compare_tuples_raw",
+    "contains",
+    "contains_key",
+    "copy_any_term",
+    "copy_words_from_ptr",
+    "current_exception",
+    "current_frame",
+    "current_message",
+    "current_module",
+    "decode_integer",
+    "decrease_virtual_binary_heap",
+    "decrement_reductions",
+    "deopt",
+    "distribution_send_error",
+    "drain",
+    "drain_arrival",
+    "encode_big_bytes",
+    "encode_i64_big",
+    "encode_integer",
+    "encode_utf16",
+    "encode_utf32",
+    "ensure_space",
+    "exception",
+    "exception_handler_count",
+    "exception_return",
+    "export_ip",
+    "fibonacci_capacity_for",
+    "finish",
+    "finish_stats",
+    "first",
+    "free_var",
+    "fresh_old_region",
+    "from",
+    "from_bits",
+    "from_raw",
+    "from_slice",
+    "function_at_ip",
+    "generation",
+    "get",
+    "get_utf",
+    "grow_to_next_capacity_with_max",
+    "grow_young_to",
+    "has_bits",
+    "header",
+    "heap",
+    "heap_mut",
+    "heap_ptr",
+    "index",
+    "insert",
+    "instruments",
+    "intern",
+    "is_atom",
+    "is_boxed",
+    "is_export",
+    "is_list",
+    "is_local",
+    "is_negative",
+    "is_nil",
+    "is_small_int",
+    "is_zero",
+    "iter",
+    "iter_mut",
+    "jit_add_compiled_frame",
+    "jit_alloc_closure",
+    "jit_alloc_cons",
+    "jit_alloc_frame",
+    "jit_alloc_tuple",
+    "jit_box_float",
+    "jit_bs_finish",
+    "jit_bs_get_binary",
+    "jit_bs_get_integer",
+    "jit_bs_get_utf16",
+    "jit_bs_get_utf32",
+    "jit_bs_get_utf8",
+    "jit_bs_init",
+    "jit_bs_put_binary",
+    "jit_bs_put_integer",
+    "jit_bs_put_utf16",
+    "jit_bs_put_utf32",
+    "jit_bs_put_utf8",
+    "jit_bs_start_match",
+    "jit_bs_test_tail",
+    "jit_bs_test_unit",
+    "jit_call_closure",
+    "jit_call_interpreted",
+    "jit_charge_reduction",
+    "jit_clear_exception",
+    "jit_dealloc_frame",
+    "jit_exception_class",
+    "jit_exception_reason",
+    "jit_exception_trace",
+    "jit_map_get",
+    "jit_map_has_key",
+    "jit_map_new",
+    "jit_map_update",
+    "jit_receive_accept",
+    "jit_receive_next",
+    "jit_receive_peek",
+    "jit_receive_timeout",
+    "jit_receive_wait",
+    "jit_receive_wait_timeout",
+    "jit_runtime_context",
+    "jit_send_message",
+    "jit_test_heap",
+    "jit_trim_frame",
+    "jit_y_read",
+    "jit_y_write",
+    "key",
+    "label_ip",
+    "last",
+    "len",
+    "list_ptr",
+    "lookup",
+    "mailbox_mut",
+    "map_entries",
+    "map_get_return",
+    "map_pair_terms",
+    "map_update",
+    "map_word_count",
+    "native_root",
+    "native_root_depth",
+    "nested_handler_floor",
+    "new",
+    "new_stats",
+    "next",
+    "next_capacity",
+    "normal",
+    "note_gc_attempt",
+    "note_gc_completion",
+    "num_free",
+    "object_size",
+    "of_words",
+    "ok",
+    "old_capacity",
+    "packed_word_count",
+    "pid",
+    "pid_key",
+    "pid_number",
+    "pop",
+    "pop_frame",
+    "position_bits",
+    "process_exception",
+    "process_from_abi",
+    "push",
+    "push_frame",
+    "push_native_root",
+    "put_utf",
+    "rank",
+    "raw",
+    "raw_cmp",
+    "raw_stacktrace",
+    "read_raw_word",
+    "rebase_block_terms",
+    "rebase_boxed_block_terms",
+    "rebase_pool_pointer",
+    "rebase_term_word",
+    "receive_return",
+    "record",
+    "record_copy",
+    "record_gc_collection",
+    "record_message_sent",
+    "reductions_exhausted",
+    "reference_key",
+    "release_all_refcounted_resources_in_compacted_sources",
+    "release_fd_inner_arc",
+    "release_proc_bin_arc",
+    "remaining_bits",
+    "remove",
+    "remove_current_message",
+    "replace_old",
+    "replace_roots",
+    "replace_roots_with_live_x",
+    "reset",
+    "reset_save_pointer",
+    "reset_young",
+    "resolve_closure_target",
+    "retain_refcounted_resource_arc",
+    "rewrite_copied_object",
+    "rewrite_word",
+    "roots",
+    "roots_with_live_x",
+    "run_with_native_services",
+    "runtime_cache",
+    "runtime_dispatch_context",
+    "send_local_via_facility",
+    "send_remote",
+    "send_return",
+    "send_to_self",
+    "set_badarg",
+    "set_code_position",
+    "set_current_exception",
+    "set_current_module",
+    "set_jit_exec_error",
+    "set_jit_runtime_context",
+    "set_jit_status",
+    "set_jit_transfer",
+    "set_nested_handler_floor",
+    "set_position_bits",
+    "set_raw_stacktrace",
+    "set_receive_timeout",
+    "set_receive_timer_ref",
+    "set_write_position_bits",
+    "set_x_reg",
+    "set_y_reg",
+    "size",
+    "source_term",
+    "stack",
+    "stack_mut",
+    "status",
+    "tag",
+    "tagged_ptr",
+    "take",
+    "take_jit_status",
+    "term_for_root",
+    "term_from_ptr_like",
+    "total_capacity",
+    "total_used",
+    "transition_process_to_waiting",
+    "transition_to",
+    "trim_y_regs",
+    "truncate",
+    "truncate_native_roots",
+    "try_small_int",
+    "used",
+    "valid_codepoint",
+    "virtual_binary_heap",
+    "virtual_binary_pressure_exceeds_heap",
+    "visit_boxed_objects",
+    "with_capacity",
+    "word",
+    "write_bytes",
+    "write_float",
+    "write_map",
+    "write_map_entries",
+    "write_position_bits",
+    "write_sub_binary",
+    "write_words",
+    "x_reg",
+    "x_regs_mut",
+    "y_reg",
+    "y_slots",
+    "yield_",
+    "young_capacity"
+  ],
+  "edges": [
+    {
+      "from": "jit_alloc_tuple",
+      "to": "alloc_words",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 21
+    },
+    {
+      "from": "jit_alloc_tuple",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 21
+    },
+    {
+      "from": "jit_alloc_cons",
+      "to": "alloc_words",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 38
+    },
+    {
+      "from": "jit_alloc_cons",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 38
+    },
+    {
+      "from": "jit_alloc_closure",
+      "to": "alloc_words",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 15
+    },
+    {
+      "from": "jit_alloc_closure",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 15
+    },
+    {
+      "from": "jit_box_float",
+      "to": "alloc_words",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 46
+    },
+    {
+      "from": "jit_box_float",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 46
+    },
+    {
+      "from": "jit_box_float",
+      "to": "write_float",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 46
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "add",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "arity",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "call_interpreted_closure",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "call_native_closure",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "deopt",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "exception_return",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "free_var",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "from",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "function_at_ip",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "generation",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "is_export",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "jit_runtime_context",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "label_ip",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "lookup",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "num_free",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "resolve_closure_target",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "runtime_cache",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "runtime_dispatch_context",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "set_code_position",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_call_closure",
+      "to": "set_x_reg",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 27
+    },
+    {
+      "from": "jit_charge_reduction",
+      "to": "decrement_reductions",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 65
+    },
+    {
+      "from": "jit_charge_reduction",
+      "to": "from",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 65
+    },
+    {
+      "from": "jit_charge_reduction",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 65
+    },
+    {
+      "from": "jit_charge_reduction",
+      "to": "reductions_exhausted",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 65
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "add",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "code_position",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "current_exception",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "current_module",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "decrement_reductions",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "deopt",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "exception",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "exception_handler_count",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "export_ip",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "from",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "get",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "jit_runtime_context",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "lookup",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "nested_handler_floor",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "normal",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "reductions_exhausted",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "run_with_native_services",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "set_code_position",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "set_current_module",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "set_jit_status",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "set_jit_transfer",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "set_nested_handler_floor",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "set_x_reg",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "x_reg",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_call_interpreted",
+      "to": "yield_",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 79
+    },
+    {
+      "from": "jit_alloc_frame",
+      "to": "code_position",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 277
+    },
+    {
+      "from": "jit_alloc_frame",
+      "to": "current_module",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 277
+    },
+    {
+      "from": "jit_alloc_frame",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 277
+    },
+    {
+      "from": "jit_alloc_frame",
+      "to": "push_frame",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 277,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_alloc_frame",
+      "to": "stack_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 277
+    },
+    {
+      "from": "jit_dealloc_frame",
+      "to": "pop_frame",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 305
+    },
+    {
+      "from": "jit_dealloc_frame",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 305
+    },
+    {
+      "from": "jit_dealloc_frame",
+      "to": "stack_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 305
+    },
+    {
+      "from": "jit_test_heap",
+      "to": "ensure_space",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 320
+    },
+    {
+      "from": "jit_test_heap",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 320
+    },
+    {
+      "from": "jit_trim_frame",
+      "to": "current_frame",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 339
+    },
+    {
+      "from": "jit_trim_frame",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 339
+    },
+    {
+      "from": "jit_trim_frame",
+      "to": "stack",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 339
+    },
+    {
+      "from": "jit_trim_frame",
+      "to": "stack_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 339
+    },
+    {
+      "from": "jit_trim_frame",
+      "to": "trim_y_regs",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 339
+    },
+    {
+      "from": "jit_trim_frame",
+      "to": "y_slots",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 339
+    },
+    {
+      "from": "jit_y_read",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 372
+    },
+    {
+      "from": "jit_y_read",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 372
+    },
+    {
+      "from": "jit_y_read",
+      "to": "stack",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 372
+    },
+    {
+      "from": "jit_y_read",
+      "to": "y_reg",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 372
+    },
+    {
+      "from": "jit_y_write",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 390
+    },
+    {
+      "from": "jit_y_write",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 390
+    },
+    {
+      "from": "jit_y_write",
+      "to": "set_y_reg",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 390
+    },
+    {
+      "from": "jit_y_write",
+      "to": "stack_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 390
+    },
+    {
+      "from": "jit_bs_start_match",
+      "to": "alloc_words_rooted",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 16
+    },
+    {
+      "from": "jit_bs_start_match",
+      "to": "boxed_ptr",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 16
+    },
+    {
+      "from": "jit_bs_start_match",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 16
+    },
+    {
+      "from": "jit_bs_start_match",
+      "to": "len",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 16
+    },
+    {
+      "from": "jit_bs_start_match",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 16
+    },
+    {
+      "from": "jit_bs_start_match",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 16
+    },
+    {
+      "from": "jit_bs_start_match",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 16
+    },
+    {
+      "from": "jit_bs_get_integer",
+      "to": "decode_integer",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 44,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_integer",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 44
+    },
+    {
+      "from": "jit_bs_get_integer",
+      "to": "has_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 44,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_integer",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 44
+    },
+    {
+      "from": "jit_bs_get_integer",
+      "to": "position_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 44,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_integer",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 44
+    },
+    {
+      "from": "jit_bs_get_integer",
+      "to": "set_position_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 44,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_integer",
+      "to": "try_small_int",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 44
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "alloc_words_rooted",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "allocate_binary",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "borrow_terms",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "has_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "position_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "remaining_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "set_position_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "source_term",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_binary",
+      "to": "write_sub_binary",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 80
+    },
+    {
+      "from": "jit_bs_test_tail",
+      "to": "from",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 158
+    },
+    {
+      "from": "jit_bs_test_tail",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 158
+    },
+    {
+      "from": "jit_bs_test_tail",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 158
+    },
+    {
+      "from": "jit_bs_test_tail",
+      "to": "remaining_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 158,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_test_unit",
+      "to": "from",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 168
+    },
+    {
+      "from": "jit_bs_test_unit",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 168
+    },
+    {
+      "from": "jit_bs_test_unit",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 168
+    },
+    {
+      "from": "jit_bs_test_unit",
+      "to": "remaining_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 168,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_get_utf8",
+      "to": "get_utf",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 178
+    },
+    {
+      "from": "jit_bs_get_utf16",
+      "to": "get_utf",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 182
+    },
+    {
+      "from": "jit_bs_get_utf32",
+      "to": "get_utf",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 186
+    },
+    {
+      "from": "jit_bs_init",
+      "to": "alloc_words",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 14
+    },
+    {
+      "from": "jit_bs_init",
+      "to": "boxed_ptr",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 14
+    },
+    {
+      "from": "jit_bs_init",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 14
+    },
+    {
+      "from": "jit_bs_init",
+      "to": "packed_word_count",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 14
+    },
+    {
+      "from": "jit_bs_init",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 14
+    },
+    {
+      "from": "jit_bs_init",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 14
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "as_small_int",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "can_append",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "encode_integer",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "set_badarg",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "set_write_position_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "write_bytes",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_put_integer",
+      "to": "write_position_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 35,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "as_bytes",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "borrow_terms",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "can_append",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "len",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "set_badarg",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "set_write_position_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "write_bytes",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_put_binary",
+      "to": "write_position_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 78,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_put_utf8",
+      "to": "put_utf",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 103
+    },
+    {
+      "from": "jit_bs_put_utf16",
+      "to": "encode_utf16",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 111
+    },
+    {
+      "from": "jit_bs_put_utf16",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 111
+    },
+    {
+      "from": "jit_bs_put_utf16",
+      "to": "put_utf",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 111
+    },
+    {
+      "from": "jit_bs_put_utf32",
+      "to": "encode_utf32",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 122
+    },
+    {
+      "from": "jit_bs_put_utf32",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 122
+    },
+    {
+      "from": "jit_bs_put_utf32",
+      "to": "put_utf",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 122
+    },
+    {
+      "from": "jit_bs_finish",
+      "to": "allocate_binary",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 133,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_bs_finish",
+      "to": "bytes",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_bs_finish",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_bs_finish",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_bs_finish",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_bs_finish",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_bs_finish",
+      "to": "set_badarg",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_bs_finish",
+      "to": "write_position_bits",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 133,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_map_new",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 11
+    },
+    {
+      "from": "jit_map_new",
+      "to": "map_update",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 11
+    },
+    {
+      "from": "jit_map_new",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 11
+    },
+    {
+      "from": "jit_map_update",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 23
+    },
+    {
+      "from": "jit_map_update",
+      "to": "map_update",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 23
+    },
+    {
+      "from": "jit_map_update",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 23
+    },
+    {
+      "from": "jit_map_get",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_map_get",
+      "to": "get",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_map_get",
+      "to": "map_get_return",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_map_get",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_map_get",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 35
+    },
+    {
+      "from": "jit_map_has_key",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 45
+    },
+    {
+      "from": "jit_map_has_key",
+      "to": "get",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 45
+    },
+    {
+      "from": "jit_map_has_key",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 45
+    },
+    {
+      "from": "jit_send_message",
+      "to": "clone",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "distribution_send_error",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_send_message",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "is_local",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "jit_runtime_context",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "pid",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "pid_number",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "record_message_sent",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "send_local_via_facility",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_send_message",
+      "to": "send_remote",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "send_return",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_send_message",
+      "to": "send_to_self",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "jit_send_message",
+      "to": "set_jit_exec_error",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 40
+    },
+    {
+      "from": "jit_receive_peek",
+      "to": "current_message",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_receive_peek",
+      "to": "mailbox_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_receive_peek",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_receive_peek",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_receive_peek",
+      "to": "receive_return",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 133
+    },
+    {
+      "from": "jit_receive_next",
+      "to": "advance_save_pointer",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 151
+    },
+    {
+      "from": "jit_receive_next",
+      "to": "mailbox_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 151
+    },
+    {
+      "from": "jit_receive_next",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 151
+    },
+    {
+      "from": "jit_receive_accept",
+      "to": "mailbox_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 158
+    },
+    {
+      "from": "jit_receive_accept",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 158
+    },
+    {
+      "from": "jit_receive_accept",
+      "to": "remove_current_message",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 158
+    },
+    {
+      "from": "jit_receive_accept",
+      "to": "set_receive_timeout",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 158
+    },
+    {
+      "from": "jit_receive_accept",
+      "to": "set_receive_timer_ref",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 158
+    },
+    {
+      "from": "jit_receive_wait",
+      "to": "current_message",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 167
+    },
+    {
+      "from": "jit_receive_wait",
+      "to": "mailbox_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 167
+    },
+    {
+      "from": "jit_receive_wait",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 167
+    },
+    {
+      "from": "jit_receive_wait",
+      "to": "set_jit_status",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 167
+    },
+    {
+      "from": "jit_receive_wait",
+      "to": "transition_process_to_waiting",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 167
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "as_small_int",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "code_position",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "current_message",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "from_raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "mailbox_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "ok",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "set_jit_status",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "set_receive_timeout",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "set_receive_timer_ref",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_wait_timeout",
+      "to": "transition_process_to_waiting",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 179
+    },
+    {
+      "from": "jit_receive_timeout",
+      "to": "mailbox_mut",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 206
+    },
+    {
+      "from": "jit_receive_timeout",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 206
+    },
+    {
+      "from": "jit_receive_timeout",
+      "to": "reset_save_pointer",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 206
+    },
+    {
+      "from": "jit_receive_timeout",
+      "to": "set_receive_timeout",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 206
+    },
+    {
+      "from": "jit_receive_timeout",
+      "to": "set_receive_timer_ref",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 206
+    },
+    {
+      "from": "jit_exception_class",
+      "to": "process_exception",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 287
+    },
+    {
+      "from": "jit_exception_class",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 287
+    },
+    {
+      "from": "jit_exception_reason",
+      "to": "process_exception",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 291
+    },
+    {
+      "from": "jit_exception_reason",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 291
+    },
+    {
+      "from": "jit_exception_trace",
+      "to": "process_exception",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 295
+    },
+    {
+      "from": "jit_exception_trace",
+      "to": "raw",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 295
+    },
+    {
+      "from": "jit_clear_exception",
+      "to": "clear_raw_stacktrace",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 299
+    },
+    {
+      "from": "jit_clear_exception",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 299
+    },
+    {
+      "from": "jit_clear_exception",
+      "to": "set_current_exception",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 299
+    },
+    {
+      "from": "jit_add_compiled_frame",
+      "to": "current_module",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 307
+    },
+    {
+      "from": "jit_add_compiled_frame",
+      "to": "new",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 307
+    },
+    {
+      "from": "jit_add_compiled_frame",
+      "to": "process_from_abi",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 307
+    },
+    {
+      "from": "jit_add_compiled_frame",
+      "to": "push",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 307
+    },
+    {
+      "from": "jit_add_compiled_frame",
+      "to": "raw_stacktrace",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 307
+    },
+    {
+      "from": "jit_add_compiled_frame",
+      "to": "set_raw_stacktrace",
+      "depth": 1,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 307
+    },
+    {
+      "from": "alloc_words",
+      "to": "alloc",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 481
+    },
+    {
+      "from": "alloc_words",
+      "to": "ensure_space",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 481
+    },
+    {
+      "from": "alloc_words",
+      "to": "heap_mut",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 481
+    },
+    {
+      "from": "write_float",
+      "to": "boxed_ptr",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 146
+    },
+    {
+      "from": "write_float",
+      "to": "len",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 146
+    },
+    {
+      "from": "write_float",
+      "to": "new",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 146
+    },
+    {
+      "from": "arity",
+      "to": "header",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 21
+    },
+    {
+      "from": "arity",
+      "to": "size",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 21
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "clone",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "code_position",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "current_exception",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "current_module",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "decrement_reductions",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "deopt",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "exception",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "exception_handler_count",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "nested_handler_floor",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "new",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "normal",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "raw",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "reductions_exhausted",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "run_with_native_services",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "set_code_position",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "set_current_module",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "set_jit_status",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "set_jit_transfer",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "set_nested_handler_floor",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "x_reg",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_interpreted_closure",
+      "to": "yield_",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 183
+    },
+    {
+      "from": "call_native_closure",
+      "to": "call_ptr",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 153
+    },
+    {
+      "from": "call_native_closure",
+      "to": "jit_runtime_context",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 153
+    },
+    {
+      "from": "call_native_closure",
+      "to": "new",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 153
+    },
+    {
+      "from": "call_native_closure",
+      "to": "set_jit_runtime_context",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 153
+    },
+    {
+      "from": "call_native_closure",
+      "to": "set_jit_status",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 153
+    },
+    {
+      "from": "call_native_closure",
+      "to": "take_jit_status",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 153
+    },
+    {
+      "from": "call_native_closure",
+      "to": "x_regs_mut",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 153
+    },
+    {
+      "from": "call_native_closure",
+      "to": "yield_",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 153
+    },
+    {
+      "from": "exception_return",
+      "to": "atom",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 282
+    },
+    {
+      "from": "exception_return",
+      "to": "exception",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 282,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "exception_return",
+      "to": "raw",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 282
+    },
+    {
+      "from": "exception_return",
+      "to": "set_current_exception",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_closure.rs",
+      "line": 282
+    },
+    {
+      "from": "free_var",
+      "to": "from_raw",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 222
+    },
+    {
+      "from": "free_var",
+      "to": "num_free",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 222
+    },
+    {
+      "from": "free_var",
+      "to": "word",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 222
+    },
+    {
+      "from": "from",
+      "to": "capabilities",
+      "depth": 2,
+      "file": "crates/beamr/src/capability/sandbox.rs",
+      "line": 40
+    },
+    {
+      "from": "function_at_ip",
+      "to": "get",
+      "depth": 2,
+      "file": "crates/beamr/src/module.rs",
+      "line": 179
+    },
+    {
+      "from": "is_export",
+      "to": "generation",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 232
+    },
+    {
+      "from": "lookup",
+      "to": "get",
+      "depth": 2,
+      "file": "crates/beamr/src/atom/table.rs",
+      "line": 255
+    },
+    {
+      "from": "num_free",
+      "to": "word",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 210
+    },
+    {
+      "from": "set_x_reg",
+      "to": "from",
+      "depth": 2,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 893
+    },
+    {
+      "from": "exception_handler_count",
+      "to": "len",
+      "depth": 2,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 778
+    },
+    {
+      "from": "export_ip",
+      "to": "get",
+      "depth": 2,
+      "file": "crates/beamr/src/module.rs",
+      "line": 163
+    },
+    {
+      "from": "export_ip",
+      "to": "label_ip",
+      "depth": 2,
+      "file": "crates/beamr/src/module.rs",
+      "line": 163,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "get",
+      "to": "term_for_root",
+      "depth": 2,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 78
+    },
+    {
+      "from": "set_jit_transfer",
+      "to": "new",
+      "depth": 2,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 1199
+    },
+    {
+      "from": "x_reg",
+      "to": "from",
+      "depth": 2,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 888
+    },
+    {
+      "from": "pop_frame",
+      "to": "pop",
+      "depth": 2,
+      "file": "crates/beamr/src/process/stack.rs",
+      "line": 221,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "ensure_space",
+      "to": "available",
+      "depth": 2,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 149
+    },
+    {
+      "from": "ensure_space",
+      "to": "collect_major",
+      "depth": 2,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 149
+    },
+    {
+      "from": "ensure_space",
+      "to": "collect_minor_with_live",
+      "depth": 2,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 149
+    },
+    {
+      "from": "ensure_space",
+      "to": "grow_to_next_capacity_with_max",
+      "depth": 2,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 149
+    },
+    {
+      "from": "ensure_space",
+      "to": "heap",
+      "depth": 2,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 149
+    },
+    {
+      "from": "ensure_space",
+      "to": "heap_mut",
+      "depth": 2,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 149
+    },
+    {
+      "from": "ensure_space",
+      "to": "virtual_binary_pressure_exceeds_heap",
+      "depth": 2,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 149
+    },
+    {
+      "from": "current_frame",
+      "to": "last",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 100
+    },
+    {
+      "from": "trim_y_regs",
+      "to": "drain",
+      "depth": 2,
+      "file": "crates/beamr/src/process/stack.rs",
+      "line": 124,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "trim_y_regs",
+      "to": "from",
+      "depth": 2,
+      "file": "crates/beamr/src/process/stack.rs",
+      "line": 124
+    },
+    {
+      "from": "y_reg",
+      "to": "from",
+      "depth": 2,
+      "file": "crates/beamr/src/process/stack.rs",
+      "line": 100
+    },
+    {
+      "from": "y_reg",
+      "to": "get",
+      "depth": 2,
+      "file": "crates/beamr/src/process/stack.rs",
+      "line": 100
+    },
+    {
+      "from": "set_y_reg",
+      "to": "from",
+      "depth": 2,
+      "file": "crates/beamr/src/process/stack.rs",
+      "line": 111
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "alloc_words",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "iter",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "iter_mut",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "len",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "native_root",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "native_root_depth",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "push",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "push_native_root",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "truncate_native_roots",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446
+    },
+    {
+      "from": "alloc_words_rooted",
+      "to": "with_capacity",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "line": 446,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "boxed_ptr",
+      "to": "tagged_ptr",
+      "depth": 2,
+      "file": "crates/beamr/src/term/mod.rs",
+      "line": 229
+    },
+    {
+      "from": "borrow_terms",
+      "to": "first",
+      "depth": 2,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 56
+    },
+    {
+      "from": "borrow_terms",
+      "to": "of_words",
+      "depth": 2,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 56
+    },
+    {
+      "from": "write_sub_binary",
+      "to": "boxed_ptr",
+      "depth": 2,
+      "file": "crates/beamr/src/term/sub_binary.rs",
+      "line": 16
+    },
+    {
+      "from": "write_sub_binary",
+      "to": "len",
+      "depth": 2,
+      "file": "crates/beamr/src/term/sub_binary.rs",
+      "line": 16
+    },
+    {
+      "from": "write_sub_binary",
+      "to": "new",
+      "depth": 2,
+      "file": "crates/beamr/src/term/sub_binary.rs",
+      "line": 16
+    },
+    {
+      "from": "write_sub_binary",
+      "to": "raw",
+      "depth": 2,
+      "file": "crates/beamr/src/term/sub_binary.rs",
+      "line": 16
+    },
+    {
+      "from": "get_utf",
+      "to": "from",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 315
+    },
+    {
+      "from": "get_utf",
+      "to": "from_raw",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 315
+    },
+    {
+      "from": "get_utf",
+      "to": "new",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 315
+    },
+    {
+      "from": "get_utf",
+      "to": "position_bits",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 315,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "get_utf",
+      "to": "raw",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 315
+    },
+    {
+      "from": "get_utf",
+      "to": "set_position_bits",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 315,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "get_utf",
+      "to": "try_small_int",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 315
+    },
+    {
+      "from": "as_small_int",
+      "to": "is_small_int",
+      "depth": 2,
+      "file": "crates/beamr/src/term/mod.rs",
+      "line": 258
+    },
+    {
+      "from": "encode_integer",
+      "to": "encode_i64_big",
+      "depth": 2,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 314
+    },
+    {
+      "from": "encode_integer",
+      "to": "push",
+      "depth": 2,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 314
+    },
+    {
+      "from": "set_badarg",
+      "to": "atom",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 437
+    },
+    {
+      "from": "set_badarg",
+      "to": "set_current_exception",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "line": 437
+    },
+    {
+      "from": "as_bytes",
+      "to": "as_slice",
+      "depth": 2,
+      "file": "crates/beamr/src/term/shared_binary.rs",
+      "line": 52
+    },
+    {
+      "from": "put_utf",
+      "to": "as_small_int",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218
+    },
+    {
+      "from": "put_utf",
+      "to": "can_append",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "put_utf",
+      "to": "from_raw",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218
+    },
+    {
+      "from": "put_utf",
+      "to": "len",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218
+    },
+    {
+      "from": "put_utf",
+      "to": "new",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218
+    },
+    {
+      "from": "put_utf",
+      "to": "process_from_abi",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218
+    },
+    {
+      "from": "put_utf",
+      "to": "set_badarg",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218
+    },
+    {
+      "from": "put_utf",
+      "to": "set_write_position_bits",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "put_utf",
+      "to": "valid_codepoint",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "put_utf",
+      "to": "with_capacity",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "put_utf",
+      "to": "write_bytes",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "put_utf",
+      "to": "write_position_bits",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 218,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "encode_utf32",
+      "to": "valid_codepoint",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_binary_build.rs",
+      "line": 283,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "map_update",
+      "to": "all",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 51
+    },
+    {
+      "from": "map_update",
+      "to": "iter",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 51
+    },
+    {
+      "from": "map_update",
+      "to": "iter_mut",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 51
+    },
+    {
+      "from": "map_update",
+      "to": "map_entries",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 51,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "map_update",
+      "to": "map_pair_terms",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 51
+    },
+    {
+      "from": "map_update",
+      "to": "new",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 51
+    },
+    {
+      "from": "map_update",
+      "to": "push",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 51
+    },
+    {
+      "from": "map_update",
+      "to": "raw_cmp",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 51
+    },
+    {
+      "from": "map_update",
+      "to": "write_map_entries",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 51
+    },
+    {
+      "from": "clone",
+      "to": "collect",
+      "depth": 2,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 172
+    },
+    {
+      "from": "clone",
+      "to": "iter",
+      "depth": 2,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 172
+    },
+    {
+      "from": "clone",
+      "to": "iter_mut",
+      "depth": 2,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 172
+    },
+    {
+      "from": "clone",
+      "to": "len",
+      "depth": 2,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 172
+    },
+    {
+      "from": "clone",
+      "to": "rebase_block_terms",
+      "depth": 2,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 172
+    },
+    {
+      "from": "is_local",
+      "to": "index",
+      "depth": 2,
+      "file": "crates/beamr/src/distribution/node.rs",
+      "line": 22
+    },
+    {
+      "from": "pid_number",
+      "to": "word",
+      "depth": 2,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 347
+    },
+    {
+      "from": "record_message_sent",
+      "to": "add",
+      "depth": 2,
+      "file": "crates/beamr/src/telemetry/metrics.rs",
+      "line": 193,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "record_message_sent",
+      "to": "instruments",
+      "depth": 2,
+      "file": "crates/beamr/src/telemetry/metrics.rs",
+      "line": 193
+    },
+    {
+      "from": "current_message",
+      "to": "drain_arrival",
+      "depth": 2,
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "line": 121
+    },
+    {
+      "from": "current_message",
+      "to": "get",
+      "depth": 2,
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "line": 121
+    },
+    {
+      "from": "advance_save_pointer",
+      "to": "len",
+      "depth": 2,
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "line": 129
+    },
+    {
+      "from": "remove_current_message",
+      "to": "drain_arrival",
+      "depth": 2,
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "line": 137
+    },
+    {
+      "from": "remove_current_message",
+      "to": "remove",
+      "depth": 2,
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "line": 137
+    },
+    {
+      "from": "transition_process_to_waiting",
+      "to": "status",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 215
+    },
+    {
+      "from": "transition_process_to_waiting",
+      "to": "transition_to",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/runtime_message.rs",
+      "line": 215
+    },
+    {
+      "from": "process_exception",
+      "to": "current_exception",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 339
+    },
+    {
+      "from": "process_exception",
+      "to": "process_from_abi",
+      "depth": 2,
+      "file": "crates/beamr/src/jit/ir_exceptions.rs",
+      "line": 339
+    },
+    {
+      "from": "alloc",
+      "to": "ensure_space",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 135
+    },
+    {
+      "from": "alloc",
+      "to": "heap_mut",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 135
+    },
+    {
+      "from": "alloc",
+      "to": "virtual_binary_pressure_exceeds_heap",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 135
+    },
+    {
+      "from": "header",
+      "to": "word",
+      "depth": 3,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 33
+    },
+    {
+      "from": "take_jit_status",
+      "to": "take",
+      "depth": 3,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 1186
+    },
+    {
+      "from": "atom",
+      "to": "intern",
+      "depth": 3,
+      "file": "crates/beamr/src/ets/match_spec.rs",
+      "line": 730
+    },
+    {
+      "from": "word",
+      "to": "add",
+      "depth": 3,
+      "file": "crates/beamr/src/term/boxed/accessors.rs",
+      "line": 37,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "capabilities",
+      "to": "all",
+      "depth": 3,
+      "file": "crates/beamr/src/capability/sandbox.rs",
+      "line": 27
+    },
+    {
+      "from": "capabilities",
+      "to": "from_slice",
+      "depth": 3,
+      "file": "crates/beamr/src/capability/sandbox.rs",
+      "line": 27
+    },
+    {
+      "from": "term_for_root",
+      "to": "boxed_ptr",
+      "depth": 3,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 102
+    },
+    {
+      "from": "term_for_root",
+      "to": "get",
+      "depth": 3,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 102
+    },
+    {
+      "from": "term_for_root",
+      "to": "list_ptr",
+      "depth": 3,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 102
+    },
+    {
+      "from": "collect_major",
+      "to": "collect",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 118
+    },
+    {
+      "from": "collect_major",
+      "to": "record_gc_collection",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 118
+    },
+    {
+      "from": "collect_minor_with_live",
+      "to": "collect",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 106
+    },
+    {
+      "from": "collect_minor_with_live",
+      "to": "record_gc_collection",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 106
+    },
+    {
+      "from": "grow_to_next_capacity_with_max",
+      "to": "available",
+      "depth": 3,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 519
+    },
+    {
+      "from": "grow_to_next_capacity_with_max",
+      "to": "grow_young_to",
+      "depth": 3,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 519
+    },
+    {
+      "from": "grow_to_next_capacity_with_max",
+      "to": "new",
+      "depth": 3,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 519
+    },
+    {
+      "from": "grow_to_next_capacity_with_max",
+      "to": "next_capacity",
+      "depth": 3,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 519
+    },
+    {
+      "from": "heap",
+      "to": "new",
+      "depth": 3,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 1086
+    },
+    {
+      "from": "virtual_binary_pressure_exceeds_heap",
+      "to": "heap",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 172
+    },
+    {
+      "from": "virtual_binary_pressure_exceeds_heap",
+      "to": "total_capacity",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 172
+    },
+    {
+      "from": "virtual_binary_pressure_exceeds_heap",
+      "to": "total_used",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 172
+    },
+    {
+      "from": "virtual_binary_pressure_exceeds_heap",
+      "to": "virtual_binary_heap",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 172
+    },
+    {
+      "from": "native_root",
+      "to": "get",
+      "depth": 3,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 981
+    },
+    {
+      "from": "native_root_depth",
+      "to": "len",
+      "depth": 3,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 1006
+    },
+    {
+      "from": "push_native_root",
+      "to": "len",
+      "depth": 3,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 975
+    },
+    {
+      "from": "push_native_root",
+      "to": "push",
+      "depth": 3,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 975
+    },
+    {
+      "from": "truncate_native_roots",
+      "to": "truncate",
+      "depth": 3,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 1011
+    },
+    {
+      "from": "first",
+      "to": "next",
+      "depth": 3,
+      "file": "crates/beamr/src/ets/ordered_set.rs",
+      "line": 55
+    },
+    {
+      "from": "is_small_int",
+      "to": "tag",
+      "depth": 3,
+      "file": "crates/beamr/src/term/mod.rs",
+      "line": 184
+    },
+    {
+      "from": "encode_i64_big",
+      "to": "as_slice",
+      "depth": 3,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 327
+    },
+    {
+      "from": "encode_i64_big",
+      "to": "encode_big_bytes",
+      "depth": 3,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 327
+    },
+    {
+      "from": "encode_i64_big",
+      "to": "is_negative",
+      "depth": 3,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 327
+    },
+    {
+      "from": "all",
+      "to": "from_slice",
+      "depth": 3,
+      "file": "crates/beamr/src/native/capability.rs",
+      "line": 75
+    },
+    {
+      "from": "map_pair_terms",
+      "to": "collect",
+      "depth": 3,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 90
+    },
+    {
+      "from": "map_pair_terms",
+      "to": "from_raw",
+      "depth": 3,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 90
+    },
+    {
+      "from": "map_pair_terms",
+      "to": "ok",
+      "depth": 3,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 90
+    },
+    {
+      "from": "raw_cmp",
+      "to": "cmp",
+      "depth": 3,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 86
+    },
+    {
+      "from": "raw_cmp",
+      "to": "compare_same_rank_raw",
+      "depth": 3,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 86
+    },
+    {
+      "from": "raw_cmp",
+      "to": "rank",
+      "depth": 3,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 86
+    },
+    {
+      "from": "write_map_entries",
+      "to": "alloc_words_rooted",
+      "depth": 3,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 127
+    },
+    {
+      "from": "write_map_entries",
+      "to": "iter",
+      "depth": 3,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 127
+    },
+    {
+      "from": "write_map_entries",
+      "to": "len",
+      "depth": 3,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 127
+    },
+    {
+      "from": "write_map_entries",
+      "to": "map_word_count",
+      "depth": 3,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 127
+    },
+    {
+      "from": "write_map_entries",
+      "to": "write_map",
+      "depth": 3,
+      "file": "crates/beamr/src/jit/runtime_map.rs",
+      "line": 127
+    },
+    {
+      "from": "collect",
+      "to": "compacted_old_capacity_after_major",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "contains_key",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "collect",
+      "to": "copy_any_term",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "finish_stats",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "fresh_old_region",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "heap",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "heap_mut",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "new",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "new_stats",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "note_gc_attempt",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "note_gc_completion",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "release_all_refcounted_resources_in_compacted_sources",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "replace_old",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "replace_roots",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "reset_young",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "rewrite_copied_object",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "roots",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "collect",
+      "to": "total_used",
+      "depth": 3,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 19
+    },
+    {
+      "from": "rebase_block_terms",
+      "to": "rebase_boxed_block_terms",
+      "depth": 3,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "rebase_block_terms",
+      "to": "rebase_term_word",
+      "depth": 3,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "instruments",
+      "to": "clone",
+      "depth": 3,
+      "file": "crates/beamr/src/telemetry/metrics.rs",
+      "line": 121
+    },
+    {
+      "from": "instruments",
+      "to": "new",
+      "depth": 3,
+      "file": "crates/beamr/src/telemetry/metrics.rs",
+      "line": 121
+    },
+    {
+      "from": "drain_arrival",
+      "to": "pop",
+      "depth": 3,
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "line": 114,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "transition_to",
+      "to": "can_transition",
+      "depth": 3,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 410
+    },
+    {
+      "from": "take",
+      "to": "remove",
+      "depth": 4,
+      "file": "crates/beamr/src/io/bridge.rs",
+      "line": 61
+    },
+    {
+      "from": "intern",
+      "to": "clone",
+      "depth": 4,
+      "file": "crates/beamr/src/atom/table.rs",
+      "line": 231
+    },
+    {
+      "from": "intern",
+      "to": "get",
+      "depth": 4,
+      "file": "crates/beamr/src/atom/table.rs",
+      "line": 231
+    },
+    {
+      "from": "intern",
+      "to": "insert",
+      "depth": 4,
+      "file": "crates/beamr/src/atom/table.rs",
+      "line": 231
+    },
+    {
+      "from": "intern",
+      "to": "key",
+      "depth": 4,
+      "file": "crates/beamr/src/atom/table.rs",
+      "line": 231
+    },
+    {
+      "from": "intern",
+      "to": "new",
+      "depth": 4,
+      "file": "crates/beamr/src/atom/table.rs",
+      "line": 231
+    },
+    {
+      "from": "from_slice",
+      "to": "contains",
+      "depth": 4,
+      "file": "crates/beamr/src/native/capability.rs",
+      "line": 81
+    },
+    {
+      "from": "from_slice",
+      "to": "new",
+      "depth": 4,
+      "file": "crates/beamr/src/native/capability.rs",
+      "line": 81
+    },
+    {
+      "from": "from_slice",
+      "to": "push",
+      "depth": 4,
+      "file": "crates/beamr/src/native/capability.rs",
+      "line": 81
+    },
+    {
+      "from": "list_ptr",
+      "to": "tagged_ptr",
+      "depth": 4,
+      "file": "crates/beamr/src/term/mod.rs",
+      "line": 234
+    },
+    {
+      "from": "record_gc_collection",
+      "to": "add",
+      "depth": 4,
+      "file": "crates/beamr/src/telemetry/metrics.rs",
+      "line": 183,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "record_gc_collection",
+      "to": "instruments",
+      "depth": 4,
+      "file": "crates/beamr/src/telemetry/metrics.rs",
+      "line": 183
+    },
+    {
+      "from": "record_gc_collection",
+      "to": "new",
+      "depth": 4,
+      "file": "crates/beamr/src/telemetry/metrics.rs",
+      "line": 183
+    },
+    {
+      "from": "record_gc_collection",
+      "to": "record",
+      "depth": 4,
+      "file": "crates/beamr/src/telemetry/metrics.rs",
+      "line": 183
+    },
+    {
+      "from": "grow_young_to",
+      "to": "new",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 535
+    },
+    {
+      "from": "grow_young_to",
+      "to": "young_capacity",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 535
+    },
+    {
+      "from": "next_capacity",
+      "to": "young_capacity",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 528
+    },
+    {
+      "from": "total_capacity",
+      "to": "old_capacity",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 404
+    },
+    {
+      "from": "total_capacity",
+      "to": "young_capacity",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 404
+    },
+    {
+      "from": "total_used",
+      "to": "used",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 381
+    },
+    {
+      "from": "next",
+      "to": "clone",
+      "depth": 4,
+      "file": "crates/beamr/src/ets/ordered_set.rs",
+      "line": 68
+    },
+    {
+      "from": "next",
+      "to": "key",
+      "depth": 4,
+      "file": "crates/beamr/src/ets/ordered_set.rs",
+      "line": 68
+    },
+    {
+      "from": "tag",
+      "to": "from_bits",
+      "depth": 4,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 77
+    },
+    {
+      "from": "encode_big_bytes",
+      "to": "from",
+      "depth": 4,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 355
+    },
+    {
+      "from": "encode_big_bytes",
+      "to": "iter",
+      "depth": 4,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 355
+    },
+    {
+      "from": "encode_big_bytes",
+      "to": "len",
+      "depth": 4,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 355
+    },
+    {
+      "from": "encode_big_bytes",
+      "to": "push",
+      "depth": 4,
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "line": 355
+    },
+    {
+      "from": "is_negative",
+      "to": "is_zero",
+      "depth": 4,
+      "file": "crates/beamr/src/term/bigint_math.rs",
+      "line": 67,
+      "terminated": true,
+      "stopped_at": "interpreter/scheduler deopt boundary"
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "cmp",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "compare_binaries",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "compare_closures_raw",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "compare_lists_raw",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "compare_maps_raw",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "compare_numbers",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "compare_tuples_raw",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "pid_key",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "raw",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "compare_same_rank_raw",
+      "to": "reference_key",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 193
+    },
+    {
+      "from": "rank",
+      "to": "is_atom",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 125
+    },
+    {
+      "from": "rank",
+      "to": "is_list",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 125
+    },
+    {
+      "from": "rank",
+      "to": "is_nil",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 125
+    },
+    {
+      "from": "rank",
+      "to": "is_small_int",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 125
+    },
+    {
+      "from": "rank",
+      "to": "new",
+      "depth": 4,
+      "file": "crates/beamr/src/term/compare/mod.rs",
+      "line": 125
+    },
+    {
+      "from": "write_map",
+      "to": "boxed_ptr",
+      "depth": 4,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 225
+    },
+    {
+      "from": "write_map",
+      "to": "iter",
+      "depth": 4,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 225
+    },
+    {
+      "from": "write_map",
+      "to": "iter_mut",
+      "depth": 4,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 225
+    },
+    {
+      "from": "write_map",
+      "to": "len",
+      "depth": 4,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 225
+    },
+    {
+      "from": "write_map",
+      "to": "new",
+      "depth": 4,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 225
+    },
+    {
+      "from": "write_map",
+      "to": "raw",
+      "depth": 4,
+      "file": "crates/beamr/src/term/boxed/mod.rs",
+      "line": 225
+    },
+    {
+      "from": "compacted_old_capacity_after_major",
+      "to": "fibonacci_capacity_for",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 541
+    },
+    {
+      "from": "compacted_old_capacity_after_major",
+      "to": "old_capacity",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 541
+    },
+    {
+      "from": "copy_any_term",
+      "to": "alloc_in_region",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "alloc_in_region_maybe_refcounted",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "contains",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "copy_words_from_ptr",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "get",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "heap",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "heap_ptr",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "insert",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "is_boxed",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "object_size",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "record_copy",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "retain_refcounted_resource_arc",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "term_from_ptr_like",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "copy_any_term",
+      "to": "write_words",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/major.rs",
+      "line": 68
+    },
+    {
+      "from": "finish_stats",
+      "to": "finish",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 182
+    },
+    {
+      "from": "fresh_old_region",
+      "to": "new",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 364
+    },
+    {
+      "from": "new_stats",
+      "to": "new",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 178
+    },
+    {
+      "from": "release_all_refcounted_resources_in_compacted_sources",
+      "to": "decrease_virtual_binary_heap",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 336
+    },
+    {
+      "from": "release_all_refcounted_resources_in_compacted_sources",
+      "to": "heap",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 336
+    },
+    {
+      "from": "release_all_refcounted_resources_in_compacted_sources",
+      "to": "release_fd_inner_arc",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 336
+    },
+    {
+      "from": "release_all_refcounted_resources_in_compacted_sources",
+      "to": "release_proc_bin_arc",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 336
+    },
+    {
+      "from": "release_all_refcounted_resources_in_compacted_sources",
+      "to": "visit_boxed_objects",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 336
+    },
+    {
+      "from": "replace_roots",
+      "to": "replace_roots_with_live_x",
+      "depth": 4,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 664
+    },
+    {
+      "from": "reset_young",
+      "to": "reset",
+      "depth": 4,
+      "file": "crates/beamr/src/process/heap.rs",
+      "line": 508
+    },
+    {
+      "from": "rewrite_copied_object",
+      "to": "heap_ptr",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 215
+    },
+    {
+      "from": "rewrite_copied_object",
+      "to": "is_list",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 215
+    },
+    {
+      "from": "rewrite_copied_object",
+      "to": "read_raw_word",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 215
+    },
+    {
+      "from": "rewrite_copied_object",
+      "to": "rewrite_word",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 215
+    },
+    {
+      "from": "rewrite_copied_object",
+      "to": "size",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 215
+    },
+    {
+      "from": "rewrite_copied_object",
+      "to": "tag",
+      "depth": 4,
+      "file": "crates/beamr/src/gc/mod.rs",
+      "line": 215
+    },
+    {
+      "from": "roots",
+      "to": "roots_with_live_x",
+      "depth": 4,
+      "file": "crates/beamr/src/process/mod.rs",
+      "line": 626
+    },
+    {
+      "from": "rebase_boxed_block_terms",
+      "to": "first",
+      "depth": 4,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 209
+    },
+    {
+      "from": "rebase_boxed_block_terms",
+      "to": "get",
+      "depth": 4,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 209
+    },
+    {
+      "from": "rebase_boxed_block_terms",
+      "to": "iter_mut",
+      "depth": 4,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 209
+    },
+    {
+      "from": "rebase_boxed_block_terms",
+      "to": "rebase_term_word",
+      "depth": 4,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 209
+    },
+    {
+      "from": "rebase_boxed_block_terms",
+      "to": "size",
+      "depth": 4,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 209
+    },
+    {
+      "from": "rebase_boxed_block_terms",
+      "to": "tag",
+      "depth": 4,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 209
+    },
+    {
+      "from": "rebase_boxed_block_terms",
+      "to": "take",
+      "depth": 4,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 209
+    },
+    {
+      "from": "rebase_term_word",
+      "to": "raw",
+      "depth": 4,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 256
+    },
+    {
+      "from": "rebase_term_word",
+      "to": "rebase_pool_pointer",
+      "depth": 4,
+      "file": "crates/beamr/src/constant_pool/mod.rs",
+      "line": 256
+    }
+  ]
+}

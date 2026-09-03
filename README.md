@@ -16,9 +16,9 @@ class fixed in `0.16.3` is present in **every version from at least `0.4.4`**:
 `crates/beamr/src/native/stdlib_stubs/string_bifs.rs` is byte-identical
 (blob `d405462`) across all 29 tags from `v0.4.4` to `v0.15.2` and at the
 `0.16.2` commit, with all five affected BIFs (`trim`, `split`, `find`, `pad`,
-`slice`) present throughout. The two classes fixed in `0.16.2` have **not**
-had their introduction point measured — treat them the same way until they
-have.
+`slice`) present throughout. The two classes fixed in `0.16.2` are now measured as well; the introduction
+commits, affected tag and published populations, and the `0.16.2` correction
+are recorded in the CHANGELOG advisory linked below.
 
 **Your options are `0.17.0` or `0.16.3`.** Both carry the fixes. `0.17.0` is
 the current line and the one to prefer; note it is a breaking change

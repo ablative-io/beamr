@@ -1,0 +1,746 @@
+{
+  "instrument": "Explicit byte-level RF-006 rulings at 43d87819; no program-derived verdicts",
+  "rulings": [
+    {
+      "file": "crates/beamr/src/distribution/control.rs",
+      "fn": "alloc_spawn_request",
+      "var": "args",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-A",
+      "reason": "argument to the alloc_tuple that could collect; callee roots it",
+      "lines_read": {
+        "bind": 517,
+        "call": 518,
+        "use": 521
+      }
+    },
+    {
+      "file": "crates/beamr/src/distribution/control.rs",
+      "fn": "alloc_spawn_request",
+      "var": "mfa",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-ROOTED",
+      "reason": "`mfa` is installed in with_rooted before spawn_options_to_list, then re-read from the native root stack after that collecting call before the final tuple allocation.",
+      "lines_read": {
+        "bind": 518,
+        "call": 535,
+        "use": 540
+      }
+    },
+    {
+      "file": "crates/beamr/src/distribution/control.rs",
+      "fn": "alloc_spawn_request",
+      "var": "opt_list",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-A",
+      "reason": "argument to alloc_tuple; nothing collects between bind and use",
+      "lines_read": {
+        "bind": 528,
+        "call": 535,
+        "use": 541
+      }
+    },
+    {
+      "file": "crates/beamr/src/distribution/control.rs",
+      "fn": "alloc_spawn_request",
+      "var": "op",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-C",
+      "reason": "Term::try_small_int, immediate",
+      "lines_read": {
+        "bind": 529,
+        "call": 535,
+        "use": 536
+      }
+    },
+    {
+      "file": "crates/beamr/src/distribution/control.rs",
+      "fn": "alloc_spawn_request",
+      "var": "req_id",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-C",
+      "reason": "Term::try_small_int, immediate",
+      "lines_read": {
+        "bind": 530,
+        "call": 535,
+        "use": 537
+      }
+    },
+    {
+      "file": "crates/beamr/src/distribution/etf.rs",
+      "fn": "decode_one",
+      "var": "elements",
+      "call_name": "alloc_list",
+      "verdict": "SAFE-C",
+      "reason": "Vec of Term::small_int immediates",
+      "lines_read": {
+        "bind": 632,
+        "call": 639,
+        "use": 647
+      }
+    },
+    {
+      "file": "crates/beamr/src/etf/decode.rs",
+      "fn": "decode_after_tag",
+      "var": "elements",
+      "call_name": "alloc_list",
+      "verdict": "SAFE-C",
+      "reason": "Vec of Term::small_int immediates",
+      "lines_read": {
+        "bind": 170,
+        "call": 175,
+        "use": 184
+      }
+    },
+    {
+      "file": "crates/beamr/src/interpreter/opcodes/binary/construction/segments.rs",
+      "fn": "allocate_binary",
+      "var": "words",
+      "call_name": "ensure_space",
+      "verdict": "FP-D",
+      "reason": "usize from alloc_binary_word_count; RHS_HINT matched the alloc_ prefix",
+      "lines_read": {
+        "bind": 367,
+        "call": 370,
+        "use": 375
+      }
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "fn": "jit_box_float",
+      "var": "heap",
+      "call_name": "alloc_words",
+      "verdict": "FP-F",
+      "reason": "the alloc_words( match is inside a SAFETY comment",
+      "lines_read": {
+        "bind": 50,
+        "call": 55,
+        "use": 56
+      }
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime.rs",
+      "fn": "alloc_words_rooted",
+      "var": "indices",
+      "call_name": "alloc_words",
+      "verdict": "FP-D",
+      "reason": "`indices` is a Rust Vec<usize> of native-root stack indices, not a heap Term; allocation cannot stale its integer elements.",
+      "lines_read": {
+        "bind": 455,
+        "call": 460,
+        "use": 466
+      }
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "jit_bs_start_match",
+      "var": "source",
+      "call_name": "alloc_words_rooted",
+      "verdict": "SAFE-FIXED",
+      "reason": "rooted by this lane (H3)",
+      "lines_read": {
+        "bind": 20,
+        "call": 31,
+        "use": 35
+      }
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "jit_bs_get_binary",
+      "var": "source",
+      "call_name": "alloc_words_rooted",
+      "verdict": "SAFE-FIXED",
+      "reason": "rooted by this lane (H4 / sharing arm)",
+      "lines_read": {
+        "bind": 108,
+        "call": 127,
+        "use": 131
+      }
+    },
+    {
+      "file": "crates/beamr/src/jit/runtime_binary_match.rs",
+      "fn": "allocate_binary",
+      "var": "words",
+      "call_name": "alloc_words",
+      "verdict": "FP-D",
+      "reason": "usize",
+      "lines_read": {
+        "bind": 301,
+        "call": 302,
+        "use": 311
+      }
+    },
+    {
+      "file": "crates/beamr/src/mailbox/mod.rs",
+      "fn": "copy_proc_bin",
+      "var": "words",
+      "call_name": "alloc_binary",
+      "verdict": "FP-E",
+      "reason": "early return at :483; the use at :488 is a shadowing rebind on the other branch",
+      "lines_read": {
+        "bind": 487,
+        "call": 488,
+        "use": 493
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/actor_clients.rs",
+      "fn": "handle",
+      "var": "reference",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-C",
+      "reason": "try_small_int immediate; the use is also a fresh binding from decode_reply",
+      "lines_read": {
+        "bind": 83,
+        "call": 90,
+        "use": 97
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/actor_cooperative.rs",
+      "fn": "handle",
+      "var": "reference",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-C",
+      "reason": "try_small_int immediate; use is a fresh binding",
+      "lines_read": {
+        "bind": 297,
+        "call": 304,
+        "use": 315
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/actor_dynamic_tests.rs",
+      "fn": "noop",
+      "var": "element",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-C",
+      "reason": "immediate, and a detached ProcessContext never collects",
+      "lines_read": {
+        "bind": 66,
+        "call": 68,
+        "use": 75
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/context/mod.rs",
+      "fn": "entries_to_list",
+      "var": "tuples",
+      "call_name": "alloc_tuple",
+      "verdict": "UNRULED-PRERESERVE",
+      "reason": "The helper accumulates boxed tuple Terms, but its contract states callers reserve the complete list budget first; retained under the RF-006 pre-reservation verdict pending a direct reservation proof per caller.",
+      "lines_read": {
+        "bind": 1548,
+        "call": 1550,
+        "use": 1552
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/ets_bifs.rs",
+      "fn": "bif_info_1",
+      "var": "entries",
+      "call_name": "alloc_tuple",
+      "verdict": "UNRULED-PRERESERVE",
+      "reason": "ensure_heap_space for the whole proplist at :561",
+      "lines_read": {
+        "bind": 562,
+        "call": 564,
+        "use": 566
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/ets_bifs.rs",
+      "fn": "finish_paged_results",
+      "var": "results",
+      "call_name": "alloc_match_continuation",
+      "verdict": "SAFE-ROOTED",
+      "reason": "rooted_push :903, re-read :916",
+      "lines_read": {
+        "bind": 902,
+        "call": 906,
+        "use": 916
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/ets_bifs.rs",
+      "fn": "finish_paged_results",
+      "var": "pattern_or_spec",
+      "call_name": "alloc_match_continuation",
+      "verdict": "SAFE-ROOTED",
+      "reason": "read from roots :904; continuation_tag allocates nothing",
+      "lines_read": {
+        "bind": 904,
+        "call": 906,
+        "use": 911
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/ets_bifs.rs",
+      "fn": "alloc_match_continuation",
+      "var": "tag",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-C",
+      "reason": "continuation_tag returns Term::atom, immediate",
+      "lines_read": {
+        "bind": 929,
+        "call": 930,
+        "use": 931
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/file_bifs_tests.rs",
+      "fn": "file_seek_rejects_unrepresentable_position_without_mutating_offset",
+      "var": "base",
+      "call_name": "alloc_fd_resource",
+      "verdict": "FP-D",
+      "reason": "u64, not a Term",
+      "lines_read": {
+        "bind": 468,
+        "call": 471,
+        "use": 480
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/file_meta_bifs.rs",
+      "fn": "finish_list_dir",
+      "var": "list",
+      "call_name": "alloc_binary",
+      "verdict": "FP-E",
+      "reason": "The candidate alloc_binary call is inside the RHS that produces `list`; the `list` binding does not exist until with_accumulator has completed.",
+      "lines_read": {
+        "bind": 171,
+        "call": 173,
+        "use": 178
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/gate3_bifs/type_conversion_tests.rs",
+      "fn": "float_to_binary_badarg_malformed_options",
+      "var": "float",
+      "call_name": "alloc_list",
+      "verdict": "SAFE-OFFHEAP",
+      "reason": "write_float into a STACK array, not the process heap",
+      "lines_read": {
+        "bind": 501,
+        "call": 503,
+        "use": 506
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/process_info_bifs.rs",
+      "fn": "bif_process_info_1",
+      "var": "tuples",
+      "call_name": "alloc_value",
+      "verdict": "UNRULED-PRERESERVE",
+      "reason": "ensure_heap_space for the full budget at :198",
+      "lines_read": {
+        "bind": 200,
+        "call": 203,
+        "use": 204
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/process_info_bifs.rs",
+      "fn": "bif_process_info_1",
+      "var": "item_atom",
+      "call_name": "alloc_value",
+      "verdict": "FP-D",
+      "reason": "an Atom, not a Term; immediate when wrapped",
+      "lines_read": {
+        "bind": 202,
+        "call": 203,
+        "use": 204
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/process_info_bifs.rs",
+      "fn": "alloc_monitor_list",
+      "var": "terms",
+      "call_name": "alloc_tuple",
+      "verdict": "UNRULED-PRERESERVE",
+      "reason": "covered by the caller's :198 budget",
+      "lines_read": {
+        "bind": 312,
+        "call": 316,
+        "use": 319
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/io_bifs.rs",
+      "fn": "bif_io_format_2",
+      "var": "target",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-C",
+      "reason": "group_leader returns an immediate local pid",
+      "lines_read": {
+        "bind": 41,
+        "call": 43,
+        "use": 44
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/io_bifs.rs",
+      "fn": "bif_io_get_line_1",
+      "var": "target",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-C",
+      "reason": "group_leader returns an immediate local pid",
+      "lines_read": {
+        "bind": 51,
+        "call": 53,
+        "use": 55
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
+      "fn": "unexpected_sequence",
+      "var": "tag",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-C",
+      "reason": "Term::atom, immediate",
+      "lines_read": {
+        "bind": 257,
+        "call": 258,
+        "use": 263
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
+      "fn": "parse_string",
+      "var": "out",
+      "call_name": "alloc_binary",
+      "verdict": "FP-D",
+      "reason": "`out` is an off-heap Rust byte buffer, not a process-heap Term, so collection cannot stale it.",
+      "lines_read": {
+        "bind": 394,
+        "call": 406,
+        "use": 414
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/json_bifs.rs",
+      "fn": "parse_number",
+      "var": "text",
+      "call_name": "alloc_float",
+      "verdict": "FP-D",
+      "reason": "&str; if self.bytes points into the heap this is an as_bytes-class hazard, AUDIT.md's lane",
+      "lines_read": {
+        "bind": 538,
+        "call": 541,
+        "use": 543
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/lists_bifs.rs",
+      "fn": "bif_lists_unzip",
+      "var": "elements",
+      "call_name": "alloc_tuple",
+      "verdict": "SAFE-REREAD",
+      "reason": "stashes list in x_reg(0), reserves, re-reads and re-derives at :184",
+      "lines_read": {
+        "bind": 167,
+        "call": 177,
+        "use": 183
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+      "fn": "bif_next_grapheme",
+      "var": "codepoints",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-C",
+      "reason": "Vec of try_small_int immediates",
+      "lines_read": {
+        "bind": 134,
+        "call": 139,
+        "use": 141
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+      "fn": "bif_next_grapheme",
+      "var": "rest",
+      "call_name": "alloc_list",
+      "verdict": "SAFE-ROOTED",
+      "reason": "rooted_push :132, re-read :140",
+      "lines_read": {
+        "bind": 139,
+        "call": 144,
+        "use": 148
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+      "fn": "bif_pad",
+      "var": "target_len",
+      "call_name": "alloc_binary",
+      "verdict": "FP-D",
+      "reason": "usize",
+      "lines_read": {
+        "bind": 158,
+        "call": 169,
+        "use": 172
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+      "fn": "bif_pad",
+      "var": "direction",
+      "call_name": "alloc_binary",
+      "verdict": "FP-D",
+      "reason": "&str",
+      "lines_read": {
+        "bind": 159,
+        "call": 169,
+        "use": 173
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+      "fn": "bif_pad",
+      "var": "pad",
+      "call_name": "alloc_binary",
+      "verdict": "FP-D",
+      "reason": "&[u8]; as_bytes class, and the alloc at :161 is a return",
+      "lines_read": {
+        "bind": 160,
+        "call": 169,
+        "use": 179
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+      "fn": "bif_slice",
+      "var": "text",
+      "call_name": "alloc_binary",
+      "verdict": "FP-D",
+      "reason": "&str; author already owns the bytes before allocating (:217)",
+      "lines_read": {
+        "bind": 214,
+        "call": 218,
+        "use": 220
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+      "fn": "bif_slice",
+      "var": "offset",
+      "call_name": "alloc_binary",
+      "verdict": "FP-D",
+      "reason": "usize",
+      "lines_read": {
+        "bind": 215,
+        "call": 218,
+        "use": 220
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/string_bifs.rs",
+      "fn": "bif_slice",
+      "var": "length",
+      "call_name": "alloc_binary",
+      "verdict": "FP-D",
+      "reason": "usize",
+      "lines_read": {
+        "bind": 216,
+        "call": 218,
+        "use": 224
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+      "fn": "bif_uri_string_parse",
+      "var": "key",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-C",
+      "reason": "The line-70 key is an immediate atom, and line 76 begins a distinct shadowing key binding after the first block ends.",
+      "lines_read": {
+        "bind": 70,
+        "call": 72,
+        "use": 76
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+      "fn": "bif_uri_string_parse",
+      "var": "value",
+      "call_name": "alloc_binary",
+      "verdict": "FP-E",
+      "reason": "The line-72 value is pushed into the rooted accumulator and its binding ends; lines 78-79 are a distinct shadowing value, so no same-local crossing exists.",
+      "lines_read": {
+        "bind": 72,
+        "call": 78,
+        "use": 79
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+      "fn": "bif_uri_string_dissect_query",
+      "var": "tuple",
+      "call_name": "alloc_binary",
+      "verdict": "FP-E",
+      "reason": "The alloc_binary call is inside the RHS closure that produces `tuple`; the tuple binding exists only after the rooted closure returns.",
+      "lines_read": {
+        "bind": 161,
+        "call": 162,
+        "use": 174
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+      "fn": "bif_uri_string_dissect_query",
+      "var": "key",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-ROOTED",
+      "reason": "The boxed key is pushed to the native root stack before the value allocation and explicitly re-read from roots afterwards.",
+      "lines_read": {
+        "bind": 162,
+        "call": 165,
+        "use": 168
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+      "fn": "error_tuple",
+      "var": "error",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-C",
+      "reason": "Term::atom immediate",
+      "lines_read": {
+        "bind": 297,
+        "call": 302,
+        "use": 303
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/stdlib_stubs/uri_bifs.rs",
+      "fn": "error_tuple",
+      "var": "reason",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-C",
+      "reason": "atom(context,..) returns Term::atom, immediate",
+      "lines_read": {
+        "bind": 298,
+        "call": 302,
+        "use": 303
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/system_info_bifs.rs",
+      "fn": "bif_memory_0",
+      "var": "entries",
+      "call_name": "alloc_tuple",
+      "verdict": "UNRULED-PRERESERVE",
+      "reason": "ensure_heap_space at :186",
+      "lines_read": {
+        "bind": 187,
+        "call": 189,
+        "use": 191
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "finish_tcp_recv",
+      "var": "read_bytes",
+      "call_name": "alloc_binary",
+      "verdict": "FP-D",
+      "reason": "&[u8]; as_bytes class, and different match arms",
+      "lines_read": {
+        "bind": 418,
+        "call": 419,
+        "use": 423
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/tcp_bifs.rs",
+      "fn": "finish_tcp_recv",
+      "var": "binary",
+      "call_name": "alloc_binary",
+      "verdict": "FP-E",
+      "reason": "bind and use are in different match arms",
+      "lines_read": {
+        "bind": 419,
+        "call": 428,
+        "use": 429
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/udp_bifs.rs",
+      "fn": "finish_udp_recv",
+      "var": "ip",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-ROOTED",
+      "reason": "The boxed IP tuple is passed to with_rooted, then re-read from the native root stack after alloc_binary before tuple construction.",
+      "lines_read": {
+        "bind": 245,
+        "call": 252,
+        "use": 253
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/udp_bifs.rs",
+      "fn": "finish_udp_recv",
+      "var": "port",
+      "call_name": "alloc_binary",
+      "verdict": "SAFE-C",
+      "reason": "try_small_int immediate",
+      "lines_read": {
+        "bind": 246,
+        "call": 252,
+        "use": 256
+      }
+    },
+    {
+      "file": "crates/beamr/src/native/udp_bifs.rs",
+      "fn": "finish_udp_recv",
+      "var": "payload",
+      "call_name": "alloc_binary",
+      "verdict": "FP-E",
+      "reason": "The alloc_binary call is inside the RHS rooted closure that produces `payload`; payload is not bound until the closure returns.",
+      "lines_read": {
+        "bind": 251,
+        "call": 252,
+        "use": 258
+      }
+    },
+    {
+      "file": "crates/beamr/src/scheduler/execution.rs",
+      "fn": "build_tcp_active_message_for_process",
+      "var": "binary_words",
+      "call_name": "ensure_space",
+      "verdict": "FP-D",
+      "reason": "usize",
+      "lines_read": {
+        "bind": 715,
+        "call": 718,
+        "use": 735
+      }
+    },
+    {
+      "file": "crates/beamr/src/scheduler/execution.rs",
+      "fn": "build_udp_active_message_for_process",
+      "var": "binary_words",
+      "call_name": "ensure_space",
+      "verdict": "FP-D",
+      "reason": "usize",
+      "lines_read": {
+        "bind": 786,
+        "call": 788,
+        "use": 816
+      }
+    },
+    {
+      "file": "crates/beamr/src/scheduler/execution.rs",
+      "fn": "build_udp_active_message_for_process",
+      "var": "heap",
+      "call_name": "alloc_binary",
+      "verdict": "FP-D",
+      "reason": "&mut [u64] slice, rebound",
+      "lines_read": {
+        "bind": 808,
+        "call": 818,
+        "use": 823
+      }
+    }
+  ]
+}

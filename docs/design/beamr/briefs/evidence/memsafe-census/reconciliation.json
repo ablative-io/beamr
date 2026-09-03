@@ -1,0 +1,32 @@
+{
+  "instrument": "ast-grep scan using archived cambium sgconfig.yml and four rules",
+  "cambium_pin": "c09ddde2043e8e5104e1c5e2b6edddf8358adace",
+  "pack_rules": {
+    "mod-rs-declarations-only": 1054,
+    "no-let-underscore-on-results": 277,
+    "no-lint-bypass-attributes": 16,
+    "no-std-mutex-in-async": 0
+  },
+  "pack_total": 1347,
+  "unused_suppression": 7,
+  "grand_total": 1354,
+  "brief_grand_total": 1356,
+  "difference": "four-rule pack reproduces 1,347 exactly; ast-grep's version-specific unused-suppression diagnostic measured 7 rather than 9, so grand total is 1,354",
+  "unsafe_population": 200,
+  "populations": "orthogonal: the four-rule pack does not read unsafe; reconcile by name, never subtraction",
+  "lint_bypasses": {
+    "total": 16,
+    "clippy_allows": 14,
+    "bare_dead_code": [
+      "crates/beamr/src/interpreter/pattern.rs:8",
+      "crates/beamr/src/term/compare/mod.rs:100"
+    ],
+    "allow_unsafe_code_product": 0,
+    "positive_control_hits": 1
+  },
+  "let_underscore_raw": 277,
+  "let_underscore_fixture": 79,
+  "let_underscore_fixture_path": "gate-logs/13/census-instrument.rs",
+  "let_underscore_product": 198,
+  "gap": "The estate pack has no unsafe-site or SAFETY-comment rule; propose an unsafe-block plus four-line SAFETY-presence rule for future review, without editing cambium."
+}

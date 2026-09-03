@@ -94,9 +94,19 @@ through `v0.15.2`, and at `67f89c4`** (the `0.16.2` commit). The launder's
 signature is present from `v0.2.0`. So the class fixed in `0.16.3` spans
 essentially the crate's whole published history, not one minor line.
 
-**The two classes fixed in `0.16.2` have NOT had their introduction point
-measured.** They are stated here as unmeasured rather than assumed narrow.
-Until someone measures them, treat any version below `0.16.3` as affected.
+**The two classes fixed in `0.16.2` are now measured.** C1, the GC
+refcount-release walk, was introduced by `2c064ed` on 2026-06-08; C2, ETS
+storage of borrowed caller-heap terms, was introduced by `487aae5` on
+2026-06-08 at 08:32:32 +1000. Both mechanisms are absent through `v0.3.15`
+and present at `v0.4.0`. The affected tag population is 33 tags,
+`v0.4.0` through `v0.15.2`; 18 tags (`v0.1.0` through `v0.3.15`) predate
+both, and 12 beamr-versioned tags contain the fix. The crates.io population
+is different in both directions: five published versions are untagged
+(`0.15.3`, `0.15.4`, `0.16.0`, `0.16.1`, `0.16.2`) and two tags were not
+published (`v0.8.3`, `v0.12.1`). Reading every served crate pin below
+`0.16.3` measures 35 affected published versions (33 live and two yanked).
+Published `0.16.2` is not affected: its pin `5206e7af` contains the
+`67f89c4` fix.
 
 The original wording was not wrong about `0.16.0`/`0.16.1` — it was wrong
 about everything it left out. A version enumeration in a disclosure is a
