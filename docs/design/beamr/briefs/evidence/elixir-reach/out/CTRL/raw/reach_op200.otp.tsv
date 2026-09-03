@@ -1,0 +1,12 @@
+module	reach_opbase
+instset	0
+opcode_max_header	181
+walk	refused	200	offset	10
+op	1	label/1	2
+op	2	func_info/3	1
+op	153	line/1	1
+impt	erlang:*/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	lists:sum/1
+disasm	failed	{'EXIT',{beam_disasm,363,badarg}}

@@ -1,0 +1,44 @@
+beamr lane head=dc26cec76e21ebc13b3769a5d19097918d89650e
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 35.36s
+== native census from the registry (venue) ==
+rc=0 mfas=330 modules=31
+== CTRL tier through the driver ==
+CTRL	wport9_conformance	loaded	None	ok
+CTRL	reach_lc	loaded	None	ok
+CTRL	reach_lc	loaded	None	ok
+CTRL	reach_lc	loaded	None	ok
+CTRL	reach_zzz	loaded	None	ok
+CTRL	reach_op191	decode-failed	191	ok
+CTRL	reach_op200	decode-failed	200	ok
+CTRL	supervisor	loaded	None	ok
+tier=CTRL modules=0 done=2026-09-03T03:18:51Z
+== control 2: wport9 runnable seven under the beamr CLI ==
+entry=wake_send rc=0 last=#{<<"child_value">> => 42, <<"entry">> => <<"wake_send">>, <<"spawned">> => true}
+entry=wake_cast rc=124 last=
+entry=wake_receive_timeout rc=0 last=#{<<"entry">> => <<"wake_receive_timeout">>, <<"outcome">> => <<"timed_out">>}
+entry=wake_timer_deadline rc=0 last=#{<<"cancelled_had_remaining">> => true, <<"entry">> => <<"wake_timer_deadline">>, <<"tick">> => true}
+entry=bif_supported rc=0 last=#{<<"entry">> => <<"bif_supported">>, <<"keys">> => [<<"a">>, <<"b">>, <<"c">>], <<"ordered">> => true, <<"self_is_pid">> => true, <<"sum">> => 6}
+entry=bif_unsupported rc=0 last=#{<<"entry">> => <<"bif_unsupported">>, <<"refusal">> => <<"badarg_caught">>}
+entry=output_entry rc=0 last=wport9 output line one wport9 output line two #{<<"entry">> => <<"output_entry">>, <<"wrote">> => 2}
+-- process_error/0 (recorded, not asserted)
+rc=1 last=beamr: undefined function wport9_missing_module:missing_fn/0
+== control 4/5: line_coverage (183, expect rc 0) and beam_debug_info (184, expect UnknownOpcode 184) ==
+reach_plain rc=1 out=beamr: undefined function lists:sum/1
+reach_linecov rc=1 out=beamr: undefined function lists:sum/1
+reach_debuginfo rc=1 out=beamr: unknown opcode 184
+== control 3: CLI imports on op191 / op200 (expect non-zero quoting unsupported opcode N) ==
+reach_op191 rc=2 out=beamr: load: failed to decode BEAM data: unsupported opcode 191
+reach_op200 rc=2 out=beamr: load: failed to decode BEAM data: unsupported opcode 200
+== control 6: reach_zzz imports ==
+erlang:no_such_bif_zzz/0
+rc=0
+== per-control merged summary ==
+reach_lc loaded None gen= 0 0 2 agree= ok C= 0u/0d/0x eq=True unres= []
+reach_lc loaded None gen= 0 1 0 agree= ok C= 0u/0d/0x eq=True unres= []
+reach_op191 decode-failed 191 gen= 0 0 0 agree= ok C= unmeasurable: load unres= 
+reach_op200 decode-failed 200 gen= 0 0 0 agree= ok C= unmeasurable: load unres= 
+reach_lc loaded None gen= 0 0 0 agree= ok C= 0u/0d/0x eq=True unres= []
+reach_zzz loaded None gen= 0 0 0 agree= ok C= 1u/0d/0x eq=True unres= ['erlang:no_such_bif_zzz/0x1']
+supervisor loaded None gen= 0 0 0 agree= ok C= 0u/2d/0x eq=True unres= []
+wport9_conformance loaded None gen= 0 0 0 agree= ok C= 0u/6d/0x eq=True unres= []
+done=2026-09-03T03:20:52Z

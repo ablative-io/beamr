@@ -1,0 +1,26 @@
+== T1 compile with the zip's elixirc ==
+
+Elixir 1.20.4 (compiled with Erlang/OTP 29)
+-rw-rw-r-- 1 aion aion 1968 Sep  3 03:07 Elixir.T1EnumMap.beam
+-rw-rw-r-- 1 aion aion 1584 Sep  3 03:07 Elixir.T1Hello.beam
+-rw-rw-r-- 1 aion aion 1964 Sep  3 03:07 Elixir.T1Process.beam
+-rw-rw-r-- 1 aion aion 1776 Sep  3 03:07 Elixir.T1String.beam
+-rw-rw-r-- 1 aion aion 3036 Sep  3 03:07 Elixir.T1Struct.beam
+-rw-rw-r-- 1 aion aion 1772 Sep  3 03:07 Elixir.T1Task.beam
+== OTP module index (path-defined) ==
+1320 /home/aion/reach/elixir-reach-20260903/otp-modules.tsv
+== T3 scan: ImpT of every T2 module ==
+t2 files=271 impt rows=2223
+distinct imported modules=216
+depth1 OTP modules=57
+depth2 OTP modules (new)=76
+T3-REACH rows=142 by depth:      57 1      76 2       9 always 
+apps reached:      60 stdlib-8.0.3      47 kernel-11.0.3      23 compiler-10.0.3      11 erts-17.0.5       1 crypto-5.9.2 
+== T4 corpus: iex + mix ebin, plus their OTP reach beyond T3 ==
+iex=31 mix=102
+T4 OTP modules beyond T3=15: cover cprof digraph digraph_utils eprof erl_tar fprof httpc inets leex public_key systools tprof yecc zip 
+== non-OTP, non-Elixir imported modules referenced by T2 (should be empty or named) ==
+Dict
+HashDict
+HashSet
+done=2026-09-03T03:08:12Z

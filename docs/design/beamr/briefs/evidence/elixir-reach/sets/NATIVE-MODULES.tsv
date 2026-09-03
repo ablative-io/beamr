@@ -1,0 +1,15 @@
+# NATIVE-MODULES — modules with >=1 native (M,F,A) registration tuple in crates/beamr/src/native at beamr 43d87819ed37515695a697b7416d47c6740502e2
+# command: grep -rhoE '\(\s*"[a-z_0-9.]+",\s*"[^"]+",\s*[0-9]+' crates/beamr/src/native | sed -E 's/^\(\s*"([^"]+)".*/\1/' | sort | uniq -c
+binary	1
+erlang	25
+json	2
+lists	30
+logger	1
+maps	33
+math	10
+os	5
+rand	1
+string	4
+sys	1
+timer	2
+unicode	2

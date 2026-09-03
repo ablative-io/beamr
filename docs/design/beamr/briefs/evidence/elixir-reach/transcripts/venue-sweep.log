@@ -1,0 +1,4 @@
+== sweep ALL OTP ebin (self-test: every module walks ok; opcode max seen vs header) ==
+swept=1320 not_ok=0
+header==max_seen: 544  header!=max_seen: 776
+modules whose max opcode > 184 (beamr ceiling): 10 of 1320

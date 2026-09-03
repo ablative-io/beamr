@@ -1,0 +1,48 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [
+    191
+   ],
+   "names": {
+    "191": "get_record_field/5"
+   },
+   "total": 1
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": null,
+  "walker": "ok"
+ },
+ "B": "unmeasurable: load",
+ "C": "unmeasurable: load",
+ "D": "unmeasurable: load",
+ "bytes": 756,
+ "dirs": 41,
+ "first_refused_opcode": 191,
+ "impt_modules": [
+  "erlang",
+  "lists"
+ ],
+ "load_error": "failed to decode BEAM data: unsupported opcode 191",
+ "load_status": "decode-failed",
+ "module": "reach_op191",
+ "path": "/home/aion/reach/elixir-reach-20260903/controls191/reach_op191.beam",
+ "registration_deviation": [],
+ "sha256": "3fa3171068472acc0cc5d5c5af4fc943e66c182172079da8e4d6df6ac92e18e1",
+ "skipped_in_dirs": 14,
+ "tier": "CTRL"
+}
