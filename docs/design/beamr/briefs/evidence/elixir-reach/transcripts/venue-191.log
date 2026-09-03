@@ -1,0 +1,48 @@
+== offsets in reach_opbase.beam (first allocate=12 is main/0's first real instruction) ==
+off	0	1
+off	2	153
+off	4	2
+off	8	1
+off	10	12
+off	13	64
+off	17	7
+off	20	125
+off	27	16
+off	30	164
+off	36	18
+off	38	19
+patch offset (code-relative)=10
+wrote reach_op191.beam opcode byte 191 at file offset 130
+wrote reach_op200.beam opcode byte 200 at file offset 130
+== walker on reach_op191 ==
+module	reach_opbase
+walk	ok
+op	191	get_record_field/5	1
+== beam_disasm on reach_op191 ==
+disasm_ok
+  {label,1}
+  {line,[{location,[...],...}]}
+  {func_info,{atom,reach_opbase},{atom,main},0}
+  {label,2}
+  {test,get_record_field,0,0,{...},...}
+  {call_ext,1,{extfunc,lists,...}}
+  {gc_bif,'*',{f,0},1,[...],...}
+  {test_heap,3,1}
+  {put_tuple2,{x,0},{list,[...]}}
+  {deallocate,0}
+  return
+== walker on reach_op200 ==
+module	reach_opbase
+walk	refused	200	offset	10
+== beam_disasm on reach_op200 ==
+disasm_failed {'EXIT',{beam_disasm,363,badarg}}
+total 36
+drwxrwxr-x 2 aion aion 4096 Sep  3 03:09 .
+drwxrwxr-x 8 aion aion 4096 Sep  3 03:08 ..
+-rw-rw-r-- 1 aion aion 1075 Sep  3 03:08 reach_op191.S
+-rw-rw-r-- 1 aion aion 1001 Sep  3 03:08 reach_op191.S.orig
+-rw-rw-r-- 1 aion aion  756 Sep  3 03:09 reach_op191.beam
+-rw-r--r-- 1 aion aion   95 Sep  3 03:08 reach_op191.erl
+-rw-rw-r-- 1 aion aion  756 Sep  3 03:09 reach_op200.beam
+-rw-rw-r-- 1 aion aion  756 Sep  3 03:09 reach_opbase.beam
+-rw-r--r-- 1 aion aion   96 Sep  3 03:09 reach_opbase.erl

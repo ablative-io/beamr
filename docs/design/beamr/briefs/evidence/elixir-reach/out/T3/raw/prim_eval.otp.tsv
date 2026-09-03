@@ -1,0 +1,29 @@
+module	prim_eval
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	13
+op	2	func_info/3	5
+op	3	int_code_end/0	1
+op	4	call/2	1
+op	5	call_last/3	1
+op	7	call_ext/2	1
+op	12	allocate/2	2
+op	18	deallocate/1	2
+op	19	return/0	3
+op	21	remove_message/0	1
+op	22	timeout/0	1
+op	23	loop_rec/2	1
+op	24	loop_rec_end/1	1
+op	26	wait_timeout/2	1
+op	44	is_ne_exact/3	1
+op	64	move/2	16
+op	75	call_fun/1	1
+op	78	call_ext_only/2	2
+impt	erlang:bump_reductions/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+disasm	ok
+callext	erlang:bump_reductions/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1

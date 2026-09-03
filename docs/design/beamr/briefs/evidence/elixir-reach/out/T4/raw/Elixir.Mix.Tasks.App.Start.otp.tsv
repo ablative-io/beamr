@@ -1,0 +1,83 @@
+module	Elixir.Mix.Tasks.App.Start
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	51
+op	2	func_info/3	10
+op	3	int_code_end/0	1
+op	4	call/2	4
+op	5	call_last/3	1
+op	6	call_only/2	1
+op	7	call_ext/2	22
+op	8	call_ext_last/3	2
+op	12	allocate/2	5
+op	13	allocate_heap/3	1
+op	16	test_heap/2	3
+op	18	deallocate/1	8
+op	19	return/0	14
+op	43	is_eq_exact/3	1
+op	53	is_binary/2	1
+op	57	is_tuple/2	4
+op	58	test_arity/3	4
+op	59	select_val/3	10
+op	61	jump/1	4
+op	64	move/2	64
+op	66	get_tuple_element/3	7
+op	69	put_list/3	5
+op	72	badmatch/1	1
+op	74	case_end/1	2
+op	78	call_ext_only/2	3
+op	112	apply/1	1
+op	136	trim/2	4
+op	153	line/1	34
+op	156	is_map/2	1
+op	158	get_map_elements/3	1
+op	164	put_tuple2/2	2
+op	171	make_fun3/3	1
+op	172	init_yregs/1	12
+op	177	bs_create_bin/6	1
+impt	Elixir.Access:get/2
+impt	Elixir.Application:ensure_all_started/2
+impt	Elixir.Application:format_error/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Logger.App:stop/0
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix.Dep.Umbrella:cached/0
+impt	Elixir.Mix.Project:config/0
+impt	Elixir.Mix.Project:get!/0
+impt	Elixir.Mix.Project:umbrella?/1
+impt	Elixir.Mix.Task:reenable/1
+impt	Elixir.Mix.Task:run/2
+impt	Elixir.OptionParser:parse/2
+impt	Elixir.Process:sleep/1
+impt	Elixir.String.Chars:to_string/1
+impt	Elixir.System:stop/1
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+disasm	ok
+callext	Elixir.Access:get/2	5
+callext	Elixir.Application:ensure_all_started/2	1
+callext	Elixir.Application:format_error/1	1
+callext	Elixir.Enum:__in__/2	1
+callext	Elixir.Enum:map/2	1
+callext	Elixir.Logger.App:stop/0	1
+callext	Elixir.Mix:raise/1	1
+callext	Elixir.Mix:shell/0	1
+callext	Elixir.Mix.Dep.Umbrella:cached/0	1
+callext	Elixir.Mix.Project:config/0	1
+callext	Elixir.Mix.Project:get!/0	1
+callext	Elixir.Mix.Project:umbrella?/1	1
+callext	Elixir.Mix.Task:reenable/1	1
+callext	Elixir.Mix.Task:run/2	1
+callext	Elixir.OptionParser:parse/2	1
+callext	Elixir.Process:sleep/1	1
+callext	Elixir.String.Chars:to_string/1	1
+callext	Elixir.System:stop/1	1
+callext	elixir_erl_pass:no_parens_remote/2	1
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

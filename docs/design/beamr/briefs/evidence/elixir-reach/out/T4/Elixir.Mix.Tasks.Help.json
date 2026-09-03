@@ -1,0 +1,102 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 1174,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "code",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 23880,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.Application",
+  "Elixir.Code",
+  "Elixir.Enum",
+  "Elixir.IEx.Introspection",
+  "Elixir.IO",
+  "Elixir.IO.ANSI",
+  "Elixir.IO.ANSI.Docs",
+  "Elixir.Kernel",
+  "Elixir.Keyword",
+  "Elixir.List",
+  "Elixir.Map",
+  "Elixir.Mix",
+  "Elixir.Mix.Project",
+  "Elixir.Mix.Task",
+  "Elixir.Path",
+  "Elixir.String",
+  "Elixir.String.Chars",
+  "code",
+  "elixir_erl_pass",
+  "erlang",
+  "io",
+  "lists"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.Mix.Tasks.Help",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/mix/ebin/Elixir.Mix.Tasks.Help.beam",
+ "registration_deviation": [],
+ "sha256": "db46958e075fd972dce6e9423e2e0c10bc126c38cd60eef56490ee25cae41667",
+ "skipped_in_dirs": 14,
+ "tier": "T4"
+}

@@ -1,0 +1,176 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 16430,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 2,
+  "deferred_names": [
+   "erl_eval:new_bindings/0",
+   "erl_eval:partial_eval/1"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "cerl",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "cerl_trees",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "core_lib",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_anno",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_bits",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_eval",
+   "status": "absent",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "erl_internal",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_lint",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_parse",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "eval_bits",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "gb_sets",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "gb_trees",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "ordsets",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "sets",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 226416,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "cerl",
+  "cerl_trees",
+  "core_lib",
+  "erl_anno",
+  "erl_bits",
+  "erl_eval",
+  "erl_internal",
+  "erl_lint",
+  "erl_parse",
+  "erlang",
+  "eval_bits",
+  "gb_sets",
+  "gb_trees",
+  "io",
+  "io_lib",
+  "lists",
+  "maps",
+  "ordsets",
+  "sets"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "v3_core",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/compiler-10.0.3/ebin/v3_core.beam",
+ "registration_deviation": [],
+ "sha256": "c7c9b6fb52d3c9baa965b8f8ab6b3b75541d1ba53cc62a79b926e93082848dbc",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

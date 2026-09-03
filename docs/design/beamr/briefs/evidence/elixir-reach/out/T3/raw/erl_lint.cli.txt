@@ -1,0 +1,2 @@
+io_lib:latin1_char_list/1
+erl_eval:partial_eval/1

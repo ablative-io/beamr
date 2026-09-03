@@ -1,0 +1,167 @@
+module	Elixir.Registry
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	375
+op	2	func_info/3	78
+op	3	int_code_end/0	1
+op	4	call/2	94
+op	5	call_last/3	8
+op	6	call_only/2	14
+op	7	call_ext/2	112
+op	8	call_ext_last/3	48
+op	9	bif0/2	6
+op	11	bif2/5	5
+op	12	allocate/2	52
+op	13	allocate_heap/3	5
+op	16	test_heap/2	73
+op	18	deallocate/1	53
+op	19	return/0	81
+op	40	is_ge/3	1
+op	43	is_eq_exact/3	83
+op	44	is_ne_exact/3	2
+op	45	is_integer/2	1
+op	48	is_atom/2	27
+op	49	is_pid/2	1
+op	52	is_nil/2	7
+op	55	is_list/2	6
+op	56	is_nonempty_list/2	4
+op	57	is_tuple/2	58
+op	58	test_arity/3	41
+op	59	select_val/3	32
+op	60	select_tuple_arity/3	4
+op	61	jump/1	25
+op	64	move/2	553
+op	65	get_list/3	4
+op	66	get_tuple_element/3	125
+op	69	put_list/3	51
+op	72	badmatch/1	23
+op	74	case_end/1	15
+op	75	call_fun/1	1
+op	78	call_ext_only/2	9
+op	104	try/2	10
+op	105	try_end/1	10
+op	106	try_case/1	10
+op	107	try_case_end/1	1
+op	108	raise/2	10
+op	114	is_boolean/2	1
+op	115	is_function2/3	3
+op	125	gc_bif2/6	10
+op	136	trim/2	58
+op	153	line/1	320
+op	154	put_map_assoc/5	1
+op	159	is_tagged_tuple/4	8
+op	164	put_tuple2/2	110
+op	169	swap/2	12
+op	170	bs_start_match4/4	1
+op	171	make_fun3/3	20
+op	172	init_yregs/1	65
+op	177	bs_create_bin/6	13
+op	178	call_fun2/3	1
+op	182	bs_match/3	2
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Enum:all?/2
+impt	Elixir.Enum:each/2
+impt	Elixir.Enum:flat_map/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:reject/2
+impt	Elixir.Enum:sum_by/2
+impt	Elixir.Enum:uniq/1
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:fetch/2
+impt	Elixir.Keyword:get/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.Keyword:keyword?/1
+impt	Elixir.List:duplicate/2
+impt	Elixir.List:wrap/1
+impt	Elixir.Range:new/2
+impt	Elixir.Registry:send/2
+impt	Elixir.Registry.Partition:lock/3
+impt	Elixir.Registry.Supervisor:start_link/6
+impt	Elixir.String.Chars:to_string/1
+impt	Elixir.Task:async/1
+impt	Elixir.Task:await/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:apply/3
+impt	erlang:atom_to_binary/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_process_alive/1
+impt	erlang:link/1
+impt	erlang:phash2/2
+impt	erlang:self/0
+impt	erlang:send/2
+impt	erlang:setelement/3
+impt	erlang:unique_integer/0
+impt	erlang:unlink/1
+impt	ets:delete/2
+impt	ets:delete_object/2
+impt	ets:info/2
+impt	ets:insert/2
+impt	ets:insert_new/2
+impt	ets:lookup/2
+impt	ets:lookup_element/3
+impt	ets:match_delete/2
+impt	ets:member/2
+impt	ets:select/2
+impt	ets:select_count/2
+impt	ets:select_delete/2
+impt	lists:reverse/1
+disasm	ok
+callext	Elixir.ArgumentError:exception/1	15
+callext	Elixir.Enum:all?/2	1
+callext	Elixir.Enum:each/2	1
+callext	Elixir.Enum:flat_map/2	2
+callext	Elixir.Enum:map/2	3
+callext	Elixir.Enum:reduce/3	9
+callext	Elixir.Enum:reject/2	1
+callext	Elixir.Enum:sum_by/2	3
+callext	Elixir.Enum:uniq/1	1
+callext	Elixir.Kernel:inspect/1	13
+callext	Elixir.Keyword:fetch/2	1
+callext	Elixir.Keyword:get/2	1
+callext	Elixir.Keyword:get/3	6
+callext	Elixir.Keyword:keyword?/1	1
+callext	Elixir.List:duplicate/2	2
+callext	Elixir.List:wrap/1	1
+callext	Elixir.Range:new/2	7
+callext	Elixir.Registry:send/2	1
+callext	Elixir.Registry.Partition:lock/3	1
+callext	Elixir.Registry.Supervisor:start_link/6	1
+callext	Elixir.String.Chars:to_string/1	2
+callext	Elixir.Task:async/1	1
+callext	Elixir.Task:await/2	1
+callext	erlang:++/2	1
+callext	erlang:apply/3	1
+callext	erlang:atom_to_binary/1	6
+callext	erlang:error/1	18
+callext	erlang:error/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:is_process_alive/1	2
+callext	erlang:link/1	1
+callext	erlang:phash2/2	7
+callext	erlang:send/2	4
+callext	erlang:setelement/3	1
+callext	erlang:unique_integer/0	2
+callext	erlang:unlink/1	2
+callext	ets:delete/2	1
+callext	ets:delete_object/2	4
+callext	ets:info/2	1
+callext	ets:insert/2	6
+callext	ets:insert_new/2	1
+callext	ets:lookup/2	2
+callext	ets:lookup_element/3	8
+callext	ets:match_delete/2	2
+callext	ets:member/2	1
+callext	ets:select/2	6
+callext	ets:select_count/2	5
+callext	ets:select_delete/2	3
+callext	lists:reverse/1	5

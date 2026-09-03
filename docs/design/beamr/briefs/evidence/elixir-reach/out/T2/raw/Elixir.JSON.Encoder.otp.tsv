@@ -1,0 +1,96 @@
+module	Elixir.JSON.Encoder
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	76
+op	2	func_info/3	15
+op	3	int_code_end/0	1
+op	4	call/2	3
+op	6	call_only/2	3
+op	7	call_ext/2	42
+op	8	call_ext_last/3	7
+op	12	allocate/2	18
+op	16	test_heap/2	8
+op	18	deallocate/1	6
+op	19	return/0	20
+op	45	is_integer/2	1
+op	46	is_float/2	1
+op	48	is_atom/2	2
+op	49	is_pid/2	1
+op	50	is_reference/2	1
+op	51	is_port/2	1
+op	52	is_nil/2	3
+op	55	is_list/2	1
+op	57	is_tuple/2	16
+op	58	test_arity/3	15
+op	59	select_val/3	19
+op	61	jump/1	4
+op	64	move/2	83
+op	66	get_tuple_element/3	18
+op	69	put_list/3	17
+op	72	badmatch/1	1
+op	74	case_end/1	2
+op	77	is_function/2	1
+op	78	call_ext_only/2	3
+op	113	apply_last/2	1
+op	124	gc_bif1/5	1
+op	129	is_bitstr/2	1
+op	136	trim/2	7
+op	153	line/1	44
+op	156	is_map/2	3
+op	158	get_map_elements/3	2
+op	164	put_tuple2/2	10
+op	169	swap/2	2
+op	171	make_fun3/3	2
+op	172	init_yregs/1	9
+op	177	bs_create_bin/6	2
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Code:ensure_compiled/1
+impt	Elixir.Enum:flat_map_reduce/3
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:zip/2
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:get/2
+impt	Elixir.Macro:generate_arguments/2
+impt	Elixir.Macro:struct_info!/2
+impt	Elixir.Protocol:__concat__/2
+impt	Elixir.Protocol.UndefinedError:exception/1
+impt	elixir_env:to_caller/1
+impt	elixir_erl_pass:no_parens_remote/2
+impt	elixir_quote:list/2
+impt	elixir_quote:unquote/1
+impt	elixir_quote:validate_quote/1
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:atom_to_binary/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:iolist_to_binary/1
+impt	erlang:length/1
+impt	json:encode_binary/1
+disasm	ok
+callext	Elixir.ArgumentError:exception/1	2
+callext	Elixir.Code:ensure_compiled/1	12
+callext	Elixir.Enum:flat_map_reduce/3	1
+callext	Elixir.Enum:map/2	1
+callext	Elixir.Enum:zip/2	1
+callext	Elixir.Kernel:inspect/1	4
+callext	Elixir.Keyword:get/2	2
+callext	Elixir.Macro:generate_arguments/2	1
+callext	Elixir.Macro:struct_info!/2	1
+callext	Elixir.Protocol:__concat__/2	1
+callext	Elixir.Protocol.UndefinedError:exception/1	1
+callext	elixir_env:to_caller/1	1
+callext	elixir_erl_pass:no_parens_remote/2	1
+callext	elixir_quote:list/2	1
+callext	elixir_quote:unquote/1	3
+callext	elixir_quote:validate_quote/1	2
+callext	erlang:++/2	1
+callext	erlang:--/2	6
+callext	erlang:atom_to_binary/1	1
+callext	erlang:error/1	4
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:iolist_to_binary/1	1
+callext	json:encode_binary/1	1

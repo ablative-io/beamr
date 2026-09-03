@@ -1,0 +1,209 @@
+module	Elixir.System
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	311
+op	2	func_info/3	83
+op	3	int_code_end/0	1
+op	4	call/2	32
+op	5	call_last/3	12
+op	6	call_only/2	17
+op	7	call_ext/2	92
+op	8	call_ext_last/3	37
+op	11	bif2/5	1
+op	12	allocate/2	47
+op	13	allocate_heap/3	6
+op	16	test_heap/2	39
+op	18	deallocate/1	36
+op	19	return/0	53
+op	21	remove_message/0	6
+op	22	timeout/0	1
+op	23	loop_rec/2	3
+op	24	loop_rec_end/1	3
+op	25	wait/1	2
+op	40	is_ge/3	2
+op	43	is_eq_exact/3	29
+op	44	is_ne_exact/3	1
+op	45	is_integer/2	4
+op	52	is_nil/2	2
+op	53	is_binary/2	13
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	3
+op	57	is_tuple/2	23
+op	58	test_arity/3	23
+op	59	select_val/3	31
+op	61	jump/1	15
+op	64	move/2	285
+op	65	get_list/3	2
+op	66	get_tuple_element/3	50
+op	69	put_list/3	28
+op	72	badmatch/1	5
+op	74	case_end/1	7
+op	75	call_fun/1	5
+op	78	call_ext_only/2	24
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	107	try_case_end/1	1
+op	108	raise/2	1
+op	114	is_boolean/2	2
+op	115	is_function2/3	2
+op	136	trim/2	19
+op	153	line/1	222
+op	154	put_map_assoc/5	1
+op	156	is_map/2	3
+op	158	get_map_elements/3	3
+op	159	is_tagged_tuple/4	6
+op	161	raw_raise/0	1
+op	162	get_hd/2	1
+op	164	put_tuple2/2	28
+op	169	swap/2	5
+op	171	make_fun3/3	10
+op	172	init_yregs/1	30
+op	177	bs_create_bin/6	9
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Collectable:into/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:all?/2
+impt	Elixir.Enum:any?/2
+impt	Elixir.Enum:each/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reverse/1
+impt	Elixir.File:cwd/0
+impt	Elixir.File:stat/1
+impt	Elixir.IO:chardata_to_string/1
+impt	Elixir.IO:warn_once/3
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:pop/3
+impt	Elixir.List:to_charlist/1
+impt	Elixir.List:to_string/1
+impt	Elixir.List.Chars:to_charlist/1
+impt	Elixir.Map:new/2
+impt	Elixir.Path:type/1
+impt	Elixir.Process:sleep/1
+impt	Elixir.RuntimeError:exception/1
+impt	Elixir.String:to_charlist/1
+impt	Elixir.String:trim/1
+impt	Elixir.String.Chars:to_string/1
+impt	Elixir.System:get_env/1
+impt	Elixir.System.EnvError:exception/1
+impt	Elixir.Version:parse/1
+impt	binary:match/2
+impt	elixir_config:get/1
+impt	elixir_config:put/2
+impt	elixir_config:serial/1
+impt	elixir_config:update/2
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:++/2
+impt	erlang:=:=/2
+impt	erlang:convert_time_unit/3
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:error/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:halt/1
+impt	erlang:iolist_to_binary/1
+impt	erlang:list_to_binary/1
+impt	erlang:make_ref/0
+impt	erlang:monotonic_time/0
+impt	erlang:monotonic_time/1
+impt	erlang:open_port/2
+impt	erlang:system_info/1
+impt	erlang:system_time/0
+impt	erlang:system_time/1
+impt	erlang:time_offset/0
+impt	erlang:time_offset/1
+impt	erlang:unique_integer/1
+impt	file:native_name_encoding/0
+impt	gen_event:add_handler/3
+impt	gen_event:delete_handler/3
+impt	gen_event:which_handlers/1
+impt	init:get_argument/1
+impt	init:restart/0
+impt	init:stop/1
+impt	os:env/0
+impt	os:find_executable/1
+impt	os:getenv/1
+impt	os:getpid/0
+impt	os:putenv/2
+impt	os:set_signal/2
+impt	os:system_time/0
+impt	os:system_time/1
+impt	os:type/0
+impt	os:unsetenv/1
+impt	string:find/2
+impt	unicode:characters_to_binary/3
+disasm	ok
+callext	Elixir.ArgumentError:exception/1	8
+callext	Elixir.Collectable:into/1	1
+callext	Elixir.Enum:__in__/2	1
+callext	Elixir.Enum:all?/2	1
+callext	Elixir.Enum:any?/2	1
+callext	Elixir.Enum:each/2	1
+callext	Elixir.Enum:map/2	1
+callext	Elixir.Enum:reverse/1	2
+callext	Elixir.File:cwd/0	3
+callext	Elixir.File:stat/1	1
+callext	Elixir.IO:chardata_to_string/1	3
+callext	Elixir.IO:warn_once/3	1
+callext	Elixir.Kernel:inspect/1	8
+callext	Elixir.Keyword:pop/3	2
+callext	Elixir.List:to_charlist/1	1
+callext	Elixir.List:to_string/1	4
+callext	Elixir.List.Chars:to_charlist/1	3
+callext	Elixir.Map:new/2	1
+callext	Elixir.Path:type/1	1
+callext	Elixir.Process:sleep/1	2
+callext	Elixir.RuntimeError:exception/1	3
+callext	Elixir.String:to_charlist/1	13
+callext	Elixir.String:trim/1	1
+callext	Elixir.String.Chars:to_string/1	1
+callext	Elixir.System:get_env/1	1
+callext	Elixir.System.EnvError:exception/1	1
+callext	Elixir.Version:parse/1	1
+callext	binary:match/2	2
+callext	elixir_config:get/1	2
+callext	elixir_config:put/2	2
+callext	elixir_config:serial/1	2
+callext	elixir_config:update/2	1
+callext	elixir_erl_pass:no_parens_remote/2	3
+callext	erlang:++/2	3
+callext	erlang:convert_time_unit/3	1
+callext	erlang:error/1	13
+callext	erlang:error/2	2
+callext	erlang:error/3	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:halt/1	2
+callext	erlang:iolist_to_binary/1	4
+callext	erlang:list_to_binary/1	1
+callext	erlang:make_ref/0	1
+callext	erlang:monotonic_time/0	1
+callext	erlang:monotonic_time/1	1
+callext	erlang:open_port/2	2
+callext	erlang:system_info/1	4
+callext	erlang:system_time/0	1
+callext	erlang:system_time/1	1
+callext	erlang:time_offset/0	1
+callext	erlang:time_offset/1	1
+callext	erlang:unique_integer/1	1
+callext	file:native_name_encoding/0	1
+callext	gen_event:add_handler/3	1
+callext	gen_event:delete_handler/3	1
+callext	gen_event:which_handlers/1	1
+callext	init:get_argument/1	1
+callext	init:restart/0	1
+callext	init:stop/1	2
+callext	os:env/0	1
+callext	os:find_executable/1	3
+callext	os:getenv/1	3
+callext	os:getpid/0	2
+callext	os:putenv/2	2
+callext	os:set_signal/2	2
+callext	os:system_time/0	1
+callext	os:system_time/1	1
+callext	os:type/0	1
+callext	os:unsetenv/1	2
+callext	string:find/2	1
+callext	unicode:characters_to_binary/3	1

@@ -1,0 +1,155 @@
+module	os
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	179
+op	2	func_info/3	42
+op	3	int_code_end/0	1
+op	4	call/2	28
+op	5	call_last/3	17
+op	6	call_only/2	5
+op	7	call_ext/2	39
+op	8	call_ext_last/3	16
+op	12	allocate/2	31
+op	13	allocate_heap/3	2
+op	16	test_heap/2	32
+op	18	deallocate/1	34
+op	19	return/0	44
+op	21	remove_message/0	6
+op	22	timeout/0	1
+op	23	loop_rec/2	3
+op	24	loop_rec_end/1	3
+op	25	wait/1	2
+op	39	is_lt/3	2
+op	40	is_ge/3	1
+op	43	is_eq_exact/3	39
+op	44	is_ne_exact/3	3
+op	45	is_integer/2	1
+op	48	is_atom/2	1
+op	52	is_nil/2	5
+op	55	is_list/2	4
+op	56	is_nonempty_list/2	9
+op	57	is_tuple/2	13
+op	58	test_arity/3	4
+op	59	select_val/3	4
+op	60	select_tuple_arity/3	3
+op	61	jump/1	6
+op	64	move/2	244
+op	65	get_list/3	9
+op	66	get_tuple_element/3	38
+op	69	put_list/3	38
+op	72	badmatch/1	2
+op	74	case_end/1	2
+op	78	call_ext_only/2	17
+op	104	try/2	7
+op	105	try_end/1	7
+op	106	try_case/1	7
+op	108	raise/2	6
+op	124	gc_bif1/5	4
+op	125	gc_bif2/6	7
+op	136	trim/2	7
+op	153	line/1	133
+op	154	put_map_assoc/5	2
+op	156	is_map/2	1
+op	158	get_map_elements/3	1
+op	159	is_tagged_tuple/4	14
+op	164	put_tuple2/2	17
+op	165	bs_get_tail/3	1
+op	169	swap/2	3
+op	170	bs_start_match4/4	1
+op	172	init_yregs/1	16
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	3
+op	175	recv_marker_reserve/1	1
+op	182	bs_match/3	1
+impt	application:get_env/2
+impt	binary:match/2
+impt	binary:part/2
+impt	binary:part/3
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:atom_to_list/1
+impt	erlang:band/2
+impt	erlang:binary_to_integer/1
+impt	erlang:binary_to_list/1
+impt	erlang:byte_size/1
+impt	erlang:convert_time_unit/3
+impt	erlang:demonitor/2
+impt	erlang:error/1
+impt	erlang:error/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:iolist_to_binary/1
+impt	erlang:monitor/2
+impt	erlang:nif_error/1
+impt	erlang:open_port/2
+impt	erlang:port_close/1
+impt	erlang:port_command/2
+impt	erlang:system_info/1
+impt	erlang:throw/1
+impt	file:get_cwd/0
+impt	file:read_file_info/1
+impt	file:read_file_info/2
+impt	filename:join/2
+impt	filename:pathtype/1
+impt	lists:concat/1
+impt	lists:flatten/1
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:suffix/2
+impt	os:env/0
+impt	os:getenv/1
+impt	os:getenv/2
+impt	os:perf_counter/0
+impt	os:type/0
+impt	persistent_term:get/1
+impt	persistent_term:put/2
+impt	string:lowercase/1
+impt	string:trim/3
+impt	unicode:characters_to_binary/1
+impt	unicode:characters_to_list/1
+disasm	ok
+callext	application:get_env/2	1
+callext	binary:match/2	1
+callext	binary:part/2	1
+callext	binary:part/3	2
+callext	erlang:++/2	3
+callext	erlang:atom_to_list/1	1
+callext	erlang:binary_to_integer/1	1
+callext	erlang:binary_to_list/1	1
+callext	erlang:convert_time_unit/3	1
+callext	erlang:demonitor/2	1
+callext	erlang:error/1	3
+callext	erlang:error/3	7
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:iolist_to_binary/1	1
+callext	erlang:monitor/2	1
+callext	erlang:nif_error/1	10
+callext	erlang:open_port/2	1
+callext	erlang:port_close/1	1
+callext	erlang:port_command/2	1
+callext	erlang:system_info/1	2
+callext	erlang:throw/1	4
+callext	file:get_cwd/0	1
+callext	file:read_file_info/1	1
+callext	file:read_file_info/2	2
+callext	filename:join/2	1
+callext	filename:pathtype/1	1
+callext	lists:concat/1	1
+callext	lists:flatten/1	1
+callext	lists:reverse/1	2
+callext	lists:reverse/2	1
+callext	lists:suffix/2	1
+callext	os:env/0	1
+callext	os:getenv/1	2
+callext	os:getenv/2	1
+callext	os:perf_counter/0	1
+callext	os:type/0	2
+callext	persistent_term:get/1	2
+callext	persistent_term:put/2	1
+callext	string:lowercase/1	1
+callext	string:trim/3	1
+callext	unicode:characters_to_binary/1	1
+callext	unicode:characters_to_list/1	1

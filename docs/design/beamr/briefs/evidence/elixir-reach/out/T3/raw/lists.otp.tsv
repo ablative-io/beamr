@@ -1,0 +1,92 @@
+module	lists
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	1256
+op	2	func_info/3	247
+op	3	int_code_end/0	1
+op	4	call/2	104
+op	5	call_last/3	117
+op	6	call_only/2	437
+op	7	call_ext/2	21
+op	8	call_ext_last/3	24
+op	11	bif2/5	69
+op	12	allocate/2	140
+op	13	allocate_heap/3	6
+op	16	test_heap/2	478
+op	18	deallocate/1	60
+op	19	return/0	251
+op	39	is_lt/3	44
+op	40	is_ge/3	146
+op	41	is_eq/3	70
+op	43	is_eq_exact/3	32
+op	44	is_ne_exact/3	5
+op	45	is_integer/2	27
+op	46	is_float/2	1
+op	48	is_atom/2	1
+op	52	is_nil/2	295
+op	55	is_list/2	18
+op	56	is_nonempty_list/2	333
+op	57	is_tuple/2	34
+op	58	test_arity/3	24
+op	59	select_val/3	55
+op	61	jump/1	4
+op	64	move/2	2024
+op	65	get_list/3	274
+op	66	get_tuple_element/3	56
+op	69	put_list/3	652
+op	72	badmatch/1	2
+op	74	case_end/1	53
+op	75	call_fun/1	12
+op	78	call_ext_only/2	54
+op	115	is_function2/3	32
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	37
+op	136	trim/2	25
+op	153	line/1	562
+op	154	put_map_assoc/5	2
+op	157	has_map_fields/3	2
+op	159	is_tagged_tuple/4	21
+op	162	get_hd/2	2
+op	163	get_tl/2	5
+op	164	put_tuple2/2	35
+op	169	swap/2	128
+op	171	make_fun3/3	1
+op	172	init_yregs/1	5
+op	178	call_fun2/3	57
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_list/1
+impt	erlang:div/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:error/3
+impt	erlang:float_to_list/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_list/1
+impt	erlang:length/1
+impt	erlang:nif_error/1
+impt	erlang:setelement/3
+impt	lists:reverse/1
+impt	lists:reverse/2
+disasm	ok
+callext	erlang:++/2	3
+callext	erlang:--/2	1
+callext	erlang:atom_to_list/1	1
+callext	erlang:error/1	12
+callext	erlang:error/2	2
+callext	erlang:error/3	1
+callext	erlang:float_to_list/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	1
+callext	erlang:nif_error/1	5
+callext	erlang:setelement/3	1
+callext	lists:reverse/1	1
+callext	lists:reverse/2	68

@@ -1,0 +1,250 @@
+module	beam_core_to_ssa
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	1607
+op	2	func_info/3	343
+op	3	int_code_end/0	1
+op	4	call/2	590
+op	5	call_last/3	66
+op	6	call_only/2	147
+op	7	call_ext/2	274
+op	8	call_ext_last/3	25
+op	10	bif1/4	2
+op	11	bif2/5	22
+op	12	allocate/2	317
+op	13	allocate_heap/3	24
+op	16	test_heap/2	649
+op	18	deallocate/1	339
+op	19	return/0	552
+op	39	is_lt/3	1
+op	40	is_ge/3	16
+op	43	is_eq_exact/3	231
+op	44	is_ne_exact/3	8
+op	45	is_integer/2	34
+op	46	is_float/2	1
+op	48	is_atom/2	13
+op	52	is_nil/2	144
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	238
+op	57	is_tuple/2	137
+op	58	test_arity/3	75
+op	59	select_val/3	75
+op	60	select_tuple_arity/3	31
+op	61	jump/1	101
+op	64	move/2	2442
+op	65	get_list/3	180
+op	66	get_tuple_element/3	1591
+op	69	put_list/3	408
+op	72	badmatch/1	51
+op	73	if_end/0	1
+op	74	case_end/1	33
+op	78	call_ext_only/2	69
+op	104	try/2	7
+op	105	try_end/1	7
+op	106	try_case/1	7
+op	107	try_case_end/1	1
+op	108	raise/2	5
+op	117	bs_get_integer2/7	3
+op	124	gc_bif1/5	26
+op	125	gc_bif2/6	28
+op	129	is_bitstr/2	1
+op	136	trim/2	154
+op	153	line/1	1280
+op	154	put_map_assoc/5	23
+op	155	put_map_exact/5	4
+op	156	is_map/2	14
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	14
+op	159	is_tagged_tuple/4	311
+op	161	raw_raise/0	1
+op	162	get_hd/2	30
+op	163	get_tl/2	19
+op	164	put_tuple2/2	652
+op	169	swap/2	163
+op	170	bs_start_match4/4	3
+op	171	make_fun3/3	58
+op	172	init_yregs/1	278
+op	177	bs_create_bin/6	7
+op	178	call_fun2/3	2
+op	180	badrecord/1	30
+op	181	update_record/5	91
+op	182	bs_match/3	3
+impt	beam_ssa:clobbers_xregs/1
+impt	beam_ssa:normalize/1
+impt	beam_ssa:trim_unreachable/1
+impt	beam_ssa_codegen:is_original_variable/1
+impt	beam_types:make_type_from_value/1
+impt	cerl:concrete/1
+impt	cerl:data_es/1
+impt	cerl:data_type/1
+impt	cerl:make_list/1
+impt	cerl_trees:next_free_variable_name/1
+impt	erl_bifs:is_safe/3
+impt	erl_eval:exprs/2
+impt	erl_eval:new_bindings/0
+impt	erl_internal:comp_op/2
+impt	erl_internal:guard_bif/2
+impt	erl_internal:new_type_test/2
+impt	erl_internal:op_type/2
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:</2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:atom_to_list/1
+impt	erlang:bit_size/1
+impt	erlang:bitstring_to_list/1
+impt	erlang:bor/2
+impt	erlang:bsl/2
+impt	erlang:div/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_list/1
+impt	erlang:is_map_key/2
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_bitstring/1
+impt	erlang:list_to_tuple/1
+impt	erlang:map_get/2
+impt	erlang:map_size/1
+impt	erlang:max/2
+impt	erlang:min/2
+impt	erlang:not/1
+impt	erlang:raise/3
+impt	erlang:rem/2
+impt	erlang:tuple_size/1
+impt	erlang:tuple_to_list/1
+impt	erts_internal:cmp_term/2
+impt	erts_internal:mc_iterator/1
+impt	erts_internal:mc_refill/1
+impt	eval_bits:expr_grp/3
+impt	eval_bits:match_bits/6
+impt	io:fwrite/2
+impt	io_lib:format/2
+impt	lists:all/2
+impt	lists:append/1
+impt	lists:concat/1
+impt	lists:droplast/1
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:foldr/3
+impt	lists:keyfind/3
+impt	lists:keysort/2
+impt	lists:last/1
+impt	lists:map/2
+impt	lists:mapfoldl/3
+impt	lists:member/2
+impt	lists:partition/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:sort/1
+impt	lists:sort/2
+impt	lists:splitwith/2
+impt	maps:from_list/1
+impt	maps:groups_from_list/2
+impt	maps:iterator/2
+impt	maps:remove/2
+impt	maps:take/2
+impt	maps:to_list/1
+impt	maps:without/2
+impt	ordsets:add_element/2
+impt	ordsets:del_element/2
+impt	ordsets:from_list/1
+impt	ordsets:intersection/2
+impt	ordsets:new/0
+impt	ordsets:subtract/2
+impt	ordsets:union/1
+impt	ordsets:union/2
+impt	proplists:get_bool/2
+impt	sets:add_element/2
+impt	sets:from_list/1
+impt	sets:intersection/1
+impt	sets:is_element/2
+impt	sets:is_empty/1
+impt	sets:new/0
+impt	sets:new/1
+impt	sets:union/1
+disasm	ok
+callext	beam_ssa:clobbers_xregs/1	1
+callext	beam_ssa:normalize/1	1
+callext	beam_ssa:trim_unreachable/1	1
+callext	beam_ssa_codegen:is_original_variable/1	1
+callext	beam_types:make_type_from_value/1	1
+callext	cerl:concrete/1	6
+callext	cerl:data_es/1	1
+callext	cerl:data_type/1	1
+callext	cerl:make_list/1	1
+callext	cerl_trees:next_free_variable_name/1	1
+callext	erl_bifs:is_safe/3	1
+callext	erl_eval:exprs/2	1
+callext	erl_eval:new_bindings/0	2
+callext	erl_internal:comp_op/2	1
+callext	erl_internal:guard_bif/2	1
+callext	erl_internal:new_type_test/2	1
+callext	erl_internal:op_type/2	1
+callext	erlang:++/2	99
+callext	erlang:atom_to_list/1	2
+callext	erlang:bitstring_to_list/1	2
+callext	erlang:error/1	51
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	3
+callext	erlang:list_to_atom/1	2
+callext	erlang:list_to_bitstring/1	1
+callext	erlang:list_to_tuple/1	1
+callext	erlang:raise/3	15
+callext	erlang:tuple_to_list/1	1
+callext	erts_internal:cmp_term/2	2
+callext	erts_internal:mc_iterator/1	5
+callext	erts_internal:mc_refill/1	5
+callext	eval_bits:expr_grp/3	1
+callext	eval_bits:match_bits/6	1
+callext	io:fwrite/2	1
+callext	io_lib:format/2	1
+callext	lists:all/2	6
+callext	lists:append/1	4
+callext	lists:concat/1	1
+callext	lists:droplast/1	1
+callext	lists:flatten/1	1
+callext	lists:foldl/3	8
+callext	lists:foldr/3	8
+callext	lists:keyfind/3	4
+callext	lists:keysort/2	1
+callext	lists:last/1	1
+callext	lists:map/2	4
+callext	lists:mapfoldl/3	10
+callext	lists:member/2	7
+callext	lists:partition/2	2
+callext	lists:reverse/1	14
+callext	lists:reverse/2	1
+callext	lists:sort/1	9
+callext	lists:sort/2	2
+callext	lists:splitwith/2	5
+callext	maps:from_list/1	3
+callext	maps:groups_from_list/2	3
+callext	maps:iterator/2	1
+callext	maps:remove/2	2
+callext	maps:take/2	1
+callext	maps:to_list/1	2
+callext	maps:without/2	1
+callext	ordsets:add_element/2	4
+callext	ordsets:del_element/2	1
+callext	ordsets:from_list/1	2
+callext	ordsets:intersection/2	1
+callext	ordsets:new/0	2
+callext	ordsets:subtract/2	8
+callext	ordsets:union/1	1
+callext	ordsets:union/2	15
+callext	proplists:get_bool/2	1
+callext	sets:add_element/2	3
+callext	sets:from_list/1	2
+callext	sets:intersection/1	1
+callext	sets:is_element/2	3
+callext	sets:is_empty/1	1
+callext	sets:new/0	1
+callext	sets:new/1	1
+callext	sets:union/1	1

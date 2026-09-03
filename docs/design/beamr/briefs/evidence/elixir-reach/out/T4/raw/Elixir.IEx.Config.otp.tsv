@@ -1,0 +1,120 @@
+module	Elixir.IEx.Config
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	109
+op	2	func_info/3	36
+op	3	int_code_end/0	1
+op	4	call/2	9
+op	5	call_last/3	3
+op	6	call_only/2	1
+op	7	call_ext/2	23
+op	8	call_ext_last/3	7
+op	11	bif2/5	5
+op	12	allocate/2	13
+op	13	allocate_heap/3	2
+op	16	test_heap/2	9
+op	18	deallocate/1	11
+op	19	return/0	28
+op	43	is_eq_exact/3	2
+op	45	is_integer/2	1
+op	52	is_nil/2	1
+op	53	is_binary/2	1
+op	55	is_list/2	2
+op	57	is_tuple/2	6
+op	58	test_arity/3	5
+op	59	select_val/3	9
+op	61	jump/1	1
+op	64	move/2	121
+op	66	get_tuple_element/3	9
+op	69	put_list/3	8
+op	72	badmatch/1	1
+op	74	case_end/1	3
+op	78	call_ext_only/2	20
+op	114	is_boolean/2	1
+op	125	gc_bif2/6	1
+op	136	trim/2	4
+op	153	line/1	82
+op	154	put_map_assoc/5	1
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	5
+op	169	swap/2	1
+op	171	make_fun3/3	6
+op	172	init_yregs/1	5
+op	177	bs_create_bin/6	1
+impt	Elixir.Agent:start_link/4
+impt	Elixir.Agent:update/4
+impt	Elixir.Application:fetch_env!/2
+impt	Elixir.Application:get_all_env/1
+impt	Elixir.Application:get_env/2
+impt	Elixir.Application:get_env/3
+impt	Elixir.Application:put_env/3
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Enum:each/2
+impt	Elixir.Enum:split_while/2
+impt	Elixir.IO.ANSI:syntax_colors/0
+impt	Elixir.IO.ANSI.Docs:default_options/0
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:fetch/2
+impt	Elixir.Keyword:fetch!/2
+impt	Elixir.Keyword:get_lazy/3
+impt	Elixir.Keyword:merge/2
+impt	Elixir.Keyword:merge/3
+impt	Elixir.Keyword:put_new_lazy/3
+impt	Elixir.Keyword:take/2
+impt	Elixir.Keyword:update/4
+impt	Elixir.List:duplicate/2
+impt	Elixir.List:wrap/1
+impt	Elixir.Process:whereis/1
+impt	Elixir.Supervisor:child_spec/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:/=/2
+impt	erlang:=/=/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:max/2
+impt	erlang:min/2
+impt	ets:insert_new/2
+impt	ets:lookup_element/3
+impt	ets:new/2
+impt	ets:update_element/3
+impt	io:columns/0
+impt	shell:prompt_width/1
+disasm	ok
+callext	Elixir.Agent:start_link/4	1
+callext	Elixir.Agent:update/4	2
+callext	Elixir.Application:fetch_env!/2	4
+callext	Elixir.Application:get_all_env/1	1
+callext	Elixir.Application:get_env/2	2
+callext	Elixir.Application:get_env/3	5
+callext	Elixir.Application:put_env/3	1
+callext	Elixir.ArgumentError:exception/1	1
+callext	Elixir.Enum:each/2	2
+callext	Elixir.Enum:split_while/2	1
+callext	Elixir.IO.ANSI:syntax_colors/0	1
+callext	Elixir.IO.ANSI.Docs:default_options/0	1
+callext	Elixir.Kernel:inspect/1	1
+callext	Elixir.Keyword:fetch/2	1
+callext	Elixir.Keyword:fetch!/2	1
+callext	Elixir.Keyword:get_lazy/3	1
+callext	Elixir.Keyword:merge/2	2
+callext	Elixir.Keyword:merge/3	1
+callext	Elixir.Keyword:put_new_lazy/3	1
+callext	Elixir.Keyword:take/2	1
+callext	Elixir.Keyword:update/4	1
+callext	Elixir.List:duplicate/2	2
+callext	Elixir.List:wrap/1	1
+callext	Elixir.Process:whereis/1	1
+callext	Elixir.Supervisor:child_spec/2	1
+callext	erlang:++/2	2
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	ets:insert_new/2	1
+callext	ets:lookup_element/3	1
+callext	ets:new/2	1
+callext	ets:update_element/3	1
+callext	io:columns/0	1
+callext	shell:prompt_width/1	2

@@ -1,0 +1,209 @@
+module	logger
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	484
+op	2	func_info/3	132
+op	3	int_code_end/0	1
+op	4	call/2	74
+op	5	call_last/3	40
+op	6	call_only/2	56
+op	7	call_ext/2	99
+op	8	call_ext_last/3	22
+op	9	bif0/2	2
+op	10	bif1/4	6
+op	11	bif2/5	7
+op	12	allocate/2	79
+op	13	allocate_heap/3	1
+op	16	test_heap/2	78
+op	18	deallocate/1	61
+op	19	return/0	87
+op	39	is_lt/3	1
+op	43	is_eq_exact/3	40
+op	44	is_ne_exact/3	5
+op	48	is_atom/2	10
+op	52	is_nil/2	22
+op	53	is_binary/2	4
+op	55	is_list/2	10
+op	56	is_nonempty_list/2	19
+op	57	is_tuple/2	33
+op	58	test_arity/3	15
+op	59	select_val/3	21
+op	60	select_tuple_arity/3	1
+op	61	jump/1	17
+op	64	move/2	570
+op	65	get_list/3	19
+op	66	get_tuple_element/3	60
+op	69	put_list/3	60
+op	72	badmatch/1	10
+op	74	case_end/1	21
+op	77	is_function/2	2
+op	78	call_ext_only/2	52
+op	104	try/2	8
+op	105	try_end/1	8
+op	106	try_case/1	8
+op	108	raise/2	4
+op	112	apply/1	1
+op	115	is_function2/3	1
+op	136	trim/2	9
+op	153	line/1	352
+op	154	put_map_assoc/5	9
+op	156	is_map/2	22
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	9
+op	159	is_tagged_tuple/4	24
+op	164	put_tuple2/2	59
+op	169	swap/2	10
+op	171	make_fun3/3	2
+op	172	init_yregs/1	32
+op	178	call_fun2/3	1
+impt	application:get_env/2
+impt	application:get_env/3
+impt	application:get_key/2
+impt	application:set_env/4
+impt	erlang:++/2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:atom_to_list/1
+impt	erlang:display/1
+impt	erlang:display_string/1
+impt	erlang:element/2
+impt	erlang:erase/1
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:group_leader/0
+impt	erlang:hd/1
+impt	erlang:is_map_key/2
+impt	erlang:map_get/2
+impt	erlang:node/0
+impt	erlang:node/1
+impt	erlang:put/2
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	erlang:throw/1
+impt	erlang:tuple_size/1
+impt	ets:whereis/1
+impt	io:format/1
+impt	io:format/2
+impt	io:getopts/0
+impt	io_lib:printable_unicode_list/1
+impt	lists:all/2
+impt	lists:flatten/1
+impt	lists:join/2
+impt	lists:keyfind/3
+impt	lists:keyreplace/4
+impt	lists:keysort/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	lists:sort/2
+impt	logger:add_handler/3
+impt	logger:add_handlers/1
+impt	logger:add_primary_filter/2
+impt	logger:allow/2
+impt	logger:get_handler_ids/0
+impt	logger:macro_log/4
+impt	logger:remove_handler/1
+impt	logger:set_handler_config/3
+impt	logger:set_module_level/2
+impt	logger:set_primary_config/2
+impt	logger:unset_module_level/0
+impt	logger_backend:log_allowed/3
+impt	logger_config:allow/1
+impt	logger_config:allow/2
+impt	logger_config:get/1
+impt	logger_config:get/2
+impt	logger_config:get_module_level/0
+impt	logger_config:level_to_int/1
+impt	logger_proxy:log/1
+impt	logger_server:add_filter/2
+impt	logger_server:add_handler/3
+impt	logger_server:remove_filter/2
+impt	logger_server:remove_handler/1
+impt	logger_server:set_config/2
+impt	logger_server:set_config/3
+impt	logger_server:set_module_level/2
+impt	logger_server:unset_module_level/0
+impt	logger_server:unset_module_level/1
+impt	logger_server:update_config/2
+impt	logger_server:update_config/3
+impt	logger_server:update_formatter_config/2
+impt	maps:find/2
+impt	maps:merge/2
+impt	maps:remove/2
+impt	maps:to_list/1
+impt	maps:without/2
+impt	os:system_time/1
+disasm	ok
+callext	application:get_env/2	2
+callext	application:get_env/3	4
+callext	application:get_key/2	2
+callext	application:set_env/4	1
+callext	erlang:++/2	16
+callext	erlang:atom_to_list/1	2
+callext	erlang:display/1	1
+callext	erlang:display_string/1	1
+callext	erlang:erase/1	1
+callext	erlang:error/1	12
+callext	erlang:error/2	4
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:group_leader/0	1
+callext	erlang:put/2	1
+callext	erlang:raise/3	11
+callext	erlang:throw/1	1
+callext	ets:whereis/1	1
+callext	io:format/1	4
+callext	io:format/2	14
+callext	io:getopts/0	1
+callext	io_lib:printable_unicode_list/1	1
+callext	lists:all/2	1
+callext	lists:flatten/1	3
+callext	lists:join/2	1
+callext	lists:keyfind/3	3
+callext	lists:keyreplace/4	2
+callext	lists:keysort/2	2
+callext	lists:member/2	2
+callext	lists:reverse/1	2
+callext	lists:sort/1	1
+callext	lists:sort/2	1
+callext	logger:add_handler/3	2
+callext	logger:add_handlers/1	1
+callext	logger:add_primary_filter/2	1
+callext	logger:allow/2	3
+callext	logger:get_handler_ids/0	1
+callext	logger:macro_log/4	3
+callext	logger:remove_handler/1	2
+callext	logger:set_handler_config/3	1
+callext	logger:set_module_level/2	1
+callext	logger:set_primary_config/2	4
+callext	logger:unset_module_level/0	1
+callext	logger_backend:log_allowed/3	3
+callext	logger_config:allow/1	1
+callext	logger_config:allow/2	2
+callext	logger_config:get/1	1
+callext	logger_config:get/2	5
+callext	logger_config:get_module_level/0	1
+callext	logger_config:level_to_int/1	2
+callext	logger_proxy:log/1	1
+callext	logger_server:add_filter/2	2
+callext	logger_server:add_handler/3	2
+callext	logger_server:remove_filter/2	2
+callext	logger_server:remove_handler/1	2
+callext	logger_server:set_config/2	3
+callext	logger_server:set_config/3	2
+callext	logger_server:set_module_level/2	1
+callext	logger_server:unset_module_level/0	1
+callext	logger_server:unset_module_level/1	1
+callext	logger_server:update_config/2	3
+callext	logger_server:update_config/3	1
+callext	logger_server:update_formatter_config/2	2
+callext	maps:find/2	1
+callext	maps:merge/2	8
+callext	maps:remove/2	1
+callext	maps:to_list/1	2
+callext	maps:without/2	1
+callext	os:system_time/1	1

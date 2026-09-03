@@ -1,0 +1,115 @@
+module	filename
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	461
+op	2	func_info/3	75
+op	3	int_code_end/0	1
+op	4	call/2	85
+op	5	call_last/3	72
+op	6	call_only/2	85
+op	7	call_ext/2	64
+op	8	call_ext_last/3	16
+op	12	allocate/2	97
+op	13	allocate_heap/3	3
+op	16	test_heap/2	78
+op	18	deallocate/1	43
+op	19	return/0	83
+op	40	is_ge/3	40
+op	43	is_eq_exact/3	89
+op	44	is_ne_exact/3	6
+op	45	is_integer/2	26
+op	48	is_atom/2	14
+op	52	is_nil/2	48
+op	53	is_binary/2	29
+op	55	is_list/2	18
+op	56	is_nonempty_list/2	76
+op	57	is_tuple/2	7
+op	58	test_arity/3	6
+op	59	select_val/3	36
+op	61	jump/1	17
+op	64	move/2	554
+op	65	get_list/3	58
+op	66	get_tuple_element/3	22
+op	69	put_list/3	93
+op	72	badmatch/1	8
+op	74	case_end/1	9
+op	78	call_ext_only/2	32
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	119	bs_get_binary2/7	1
+op	120	bs_skip_bits2/5	3
+op	124	gc_bif1/5	3
+op	125	gc_bif2/6	10
+op	136	trim/2	11
+op	153	line/1	267
+op	156	is_map/2	1
+op	158	get_map_elements/3	4
+op	159	is_tagged_tuple/4	9
+op	162	get_hd/2	15
+op	163	get_tl/2	2
+op	164	put_tuple2/2	9
+op	165	bs_get_tail/3	12
+op	166	bs_start_match3/4	4
+op	167	bs_get_position/3	10
+op	168	bs_set_position/2	17
+op	169	swap/2	11
+op	170	bs_start_match4/4	7
+op	172	init_yregs/1	18
+op	177	bs_create_bin/6	10
+op	182	bs_match/3	26
+impt	binary:match/2
+impt	binary:matches/2
+impt	binary:replace/4
+impt	binary:split/3
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:atom_to_list/1
+impt	erlang:binary_to_list/1
+impt	erlang:byte_size/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:list_to_binary/1
+impt	erlang:raise/3
+impt	file:get_cwd/0
+impt	file:get_cwd/1
+impt	file:native_name_encoding/0
+impt	filename:join/1
+impt	filename:join/2
+impt	init:get_argument/1
+impt	lists:last/1
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	os:getenv/1
+impt	os:type/0
+impt	string:lexemes/2
+impt	unicode:characters_to_binary/3
+disasm	ok
+callext	binary:match/2	1
+callext	binary:matches/2	1
+callext	binary:replace/4	1
+callext	binary:split/3	8
+callext	erlang:++/2	16
+callext	erlang:atom_to_list/1	10
+callext	erlang:binary_to_list/1	3
+callext	erlang:error/1	9
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_binary/1	3
+callext	erlang:raise/3	6
+callext	file:get_cwd/0	1
+callext	file:get_cwd/1	2
+callext	file:native_name_encoding/0	2
+callext	filename:join/1	8
+callext	filename:join/2	2
+callext	init:get_argument/1	1
+callext	lists:last/1	2
+callext	lists:reverse/1	17
+callext	lists:reverse/2	2
+callext	os:getenv/1	3
+callext	os:type/0	9
+callext	string:lexemes/2	2
+callext	unicode:characters_to_binary/3	1

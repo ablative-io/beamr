@@ -1,0 +1,61 @@
+module	gb_trees
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	201
+op	2	func_info/3	63
+op	3	int_code_end/0	1
+op	4	call/2	49
+op	5	call_last/3	10
+op	6	call_only/2	30
+op	7	call_ext/2	1
+op	8	call_ext_last/3	1
+op	11	bif2/5	4
+op	12	allocate/2	44
+op	16	test_heap/2	61
+op	18	deallocate/1	41
+op	19	return/0	79
+op	39	is_lt/3	20
+op	40	is_ge/3	10
+op	43	is_eq_exact/3	34
+op	45	is_integer/2	11
+op	52	is_nil/2	3
+op	56	is_nonempty_list/2	8
+op	57	is_tuple/2	54
+op	58	test_arity/3	54
+op	59	select_val/3	6
+op	61	jump/1	1
+op	64	move/2	148
+op	65	get_list/3	6
+op	66	get_tuple_element/3	167
+op	69	put_list/3	11
+op	72	badmatch/1	4
+op	78	call_ext_only/2	4
+op	115	is_function2/3	1
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	25
+op	136	trim/2	3
+op	153	line/1	136
+op	162	get_hd/2	2
+op	164	put_tuple2/2	65
+op	169	swap/2	2
+op	172	init_yregs/1	7
+op	178	call_fun2/3	1
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:bsl/2
+impt	erlang:bsr/2
+impt	erlang:div/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	erlang:max/2
+impt	orddict:from_list/1
+disasm	ok
+callext	erlang:error/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	orddict:from_list/1	1

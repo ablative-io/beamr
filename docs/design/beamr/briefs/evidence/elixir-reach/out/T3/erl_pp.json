@@ -1,0 +1,136 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 6223,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 4,
+  "deferred_names": [
+   "io_lib:write/1",
+   "io_lib:write_string/2",
+   "io_lib:write_string_as_latin1/2",
+   "io_lib_pretty:print/2"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "epp",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_anno",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_internal",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_parse",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "io_lib_format",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib_pretty",
+   "status": "absent",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "proplists",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "string",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 77448,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "epp",
+  "erl_anno",
+  "erl_internal",
+  "erl_parse",
+  "erlang",
+  "io_lib",
+  "io_lib_format",
+  "io_lib_pretty",
+  "lists",
+  "maps",
+  "proplists",
+  "string"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "erl_pp",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/erl_pp.beam",
+ "registration_deviation": [],
+ "sha256": "1979229a171c84b82cd520b95a014714bd14f4084414284daf2d0173f5bd8fa3",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

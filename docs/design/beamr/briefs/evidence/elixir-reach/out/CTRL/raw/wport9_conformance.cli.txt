@@ -1,0 +1,6 @@
+wasm_fetch:request/1
+wasm_kv:put/2
+wasm_kv:get/1
+wasm_kv:list_by_prefix/1
+wasm_kv:delete/1
+wport9_missing_module:missing_fn/0

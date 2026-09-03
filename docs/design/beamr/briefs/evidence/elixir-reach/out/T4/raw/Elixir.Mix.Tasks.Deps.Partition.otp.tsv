@@ -1,0 +1,225 @@
+module	Elixir.Mix.Tasks.Deps.Partition
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	256
+op	2	func_info/3	35
+op	3	int_code_end/0	1
+op	4	call/2	14
+op	5	call_last/3	12
+op	6	call_only/2	1
+op	7	call_ext/2	141
+op	8	call_ext_last/3	21
+op	10	bif1/4	1
+op	11	bif2/5	16
+op	12	allocate/2	25
+op	13	allocate_heap/3	5
+op	16	test_heap/2	30
+op	18	deallocate/1	21
+op	19	return/0	35
+op	21	remove_message/0	8
+op	22	timeout/0	2
+op	23	loop_rec/2	3
+op	24	loop_rec_end/1	3
+op	25	wait/1	1
+op	26	wait_timeout/2	1
+op	43	is_eq_exact/3	10
+op	52	is_nil/2	7
+op	53	is_binary/2	14
+op	56	is_nonempty_list/2	4
+op	57	is_tuple/2	33
+op	58	test_arity/3	29
+op	59	select_val/3	36
+op	60	select_tuple_arity/3	1
+op	61	jump/1	36
+op	64	move/2	351
+op	65	get_list/3	4
+op	66	get_tuple_element/3	79
+op	69	put_list/3	36
+op	72	badmatch/1	9
+op	74	case_end/1	16
+op	78	call_ext_only/2	4
+op	104	try/2	3
+op	105	try_end/1	3
+op	106	try_case/1	3
+op	108	raise/2	2
+op	112	apply/1	3
+op	136	trim/2	19
+op	153	line/1	156
+op	154	put_map_assoc/5	1
+op	156	is_map/2	21
+op	158	get_map_elements/3	21
+op	159	is_tagged_tuple/4	7
+op	164	put_tuple2/2	13
+op	169	swap/2	8
+op	171	make_fun3/3	16
+op	172	init_yregs/1	54
+op	177	bs_create_bin/6	15
+op	178	call_fun2/3	1
+impt	Elixir.Access:get/2
+impt	Elixir.Application:put_all_env/2
+impt	Elixir.Base:encode32/1
+impt	Elixir.Base:url_decode64!/1
+impt	Elixir.Base:url_encode64/1
+impt	Elixir.Enum:all?/2
+impt	Elixir.Enum:any?/2
+impt	Elixir.Enum:each/2
+impt	Elixir.Enum:find/2
+impt	Elixir.Enum:join/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:map_join/3
+impt	Elixir.Enum:reject/2
+impt	Elixir.Enum:split_while/2
+impt	Elixir.File:mkdir_p/1
+impt	Elixir.File:read!/1
+impt	Elixir.File:write/2
+impt	Elixir.IO:gets/1
+impt	Elixir.IO:puts/1
+impt	Elixir.IO:write/1
+impt	Elixir.IO.ANSI:enabled?/0
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:fetch!/2
+impt	Elixir.Keyword:get/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.Keyword:take/2
+impt	Elixir.Map:get/3
+impt	Elixir.Map:new/2
+impt	Elixir.Mix:debug?/0
+impt	Elixir.Mix:env/0
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix:start/0
+impt	Elixir.Mix:target/0
+impt	Elixir.Mix.CLI:main/2
+impt	Elixir.Mix.Dep:load_and_cache/0
+impt	Elixir.Mix.Project:deps_config/0
+impt	Elixir.Mix.ProjectStack:peek/0
+impt	Elixir.Mix.ProjectStack:push/3
+impt	Elixir.Mix.Tasks.Deps.Compile:compile_single/3
+impt	Elixir.OptionParser:parse!/2
+impt	Elixir.OptionParser:to_argv/1
+impt	Elixir.Path:join/2
+impt	Elixir.Range:new/3
+impt	Elixir.RuntimeError:exception/1
+impt	Elixir.String:split/2
+impt	Elixir.String:to_charlist/1
+impt	Elixir.String:trim/1
+impt	Elixir.String.Chars:to_string/1
+impt	Elixir.System:argv/0
+impt	Elixir.System:find_executable/1
+impt	Elixir.System:get_env/1
+impt	Elixir.System:halt/1
+impt	Elixir.System:tmp_dir/0
+impt	crypto:strong_rand_bytes/1
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:++/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:==/2
+impt	erlang:atom_to_list/1
+impt	erlang:binary_to_atom/1
+impt	erlang:binary_to_integer/1
+impt	erlang:binary_to_term/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_binary/1
+impt	erlang:integer_to_list/1
+impt	erlang:map_get/2
+impt	erlang:not/1
+impt	erlang:open_port/2
+impt	erlang:port_close/1
+impt	erlang:spawn/1
+impt	erlang:term_to_binary/1
+impt	gen_tcp:accept/2
+impt	gen_tcp:close/1
+impt	gen_tcp:connect/3
+impt	gen_tcp:listen/2
+impt	gen_tcp:recv/3
+impt	gen_tcp:send/2
+impt	inet:setopts/2
+impt	inet:sockname/1
+impt	maps:update/3
+disasm	ok
+callext	Elixir.Access:get/2	1
+callext	Elixir.Application:put_all_env/2	1
+callext	Elixir.Base:encode32/1	1
+callext	Elixir.Base:url_decode64!/1	1
+callext	Elixir.Base:url_encode64/1	1
+callext	Elixir.Enum:all?/2	1
+callext	Elixir.Enum:any?/2	1
+callext	Elixir.Enum:each/2	1
+callext	Elixir.Enum:find/2	3
+callext	Elixir.Enum:join/2	1
+callext	Elixir.Enum:map/2	2
+callext	Elixir.Enum:map_join/3	1
+callext	Elixir.Enum:reject/2	1
+callext	Elixir.Enum:split_while/2	1
+callext	Elixir.File:mkdir_p/1	1
+callext	Elixir.File:read!/1	1
+callext	Elixir.File:write/2	1
+callext	Elixir.IO:gets/1	1
+callext	Elixir.IO:puts/1	3
+callext	Elixir.IO:write/1	2
+callext	Elixir.IO.ANSI:enabled?/0	1
+callext	Elixir.Kernel:inspect/1	5
+callext	Elixir.Keyword:fetch!/2	4
+callext	Elixir.Keyword:get/2	1
+callext	Elixir.Keyword:get/3	1
+callext	Elixir.Keyword:take/2	1
+callext	Elixir.Map:get/3	1
+callext	Elixir.Map:new/2	2
+callext	Elixir.Mix:debug?/0	5
+callext	Elixir.Mix:env/0	1
+callext	Elixir.Mix:raise/1	2
+callext	Elixir.Mix:shell/0	3
+callext	Elixir.Mix:start/0	1
+callext	Elixir.Mix:target/0	1
+callext	Elixir.Mix.CLI:main/2	1
+callext	Elixir.Mix.Dep:load_and_cache/0	1
+callext	Elixir.Mix.Project:deps_config/0	1
+callext	Elixir.Mix.ProjectStack:peek/0	1
+callext	Elixir.Mix.ProjectStack:push/3	1
+callext	Elixir.Mix.Tasks.Deps.Compile:compile_single/3	1
+callext	Elixir.OptionParser:parse!/2	2
+callext	Elixir.OptionParser:to_argv/1	1
+callext	Elixir.Path:join/2	2
+callext	Elixir.Range:new/3	2
+callext	Elixir.RuntimeError:exception/1	2
+callext	Elixir.String:split/2	1
+callext	Elixir.String:to_charlist/1	4
+callext	Elixir.String:trim/1	3
+callext	Elixir.String.Chars:to_string/1	13
+callext	Elixir.System:argv/0	1
+callext	Elixir.System:find_executable/1	1
+callext	Elixir.System:get_env/1	1
+callext	Elixir.System:halt/1	1
+callext	Elixir.System:tmp_dir/0	1
+callext	crypto:strong_rand_bytes/1	1
+callext	elixir_erl_pass:no_parens_remote/2	18
+callext	erlang:++/2	4
+callext	erlang:atom_to_list/1	2
+callext	erlang:binary_to_atom/1	1
+callext	erlang:binary_to_integer/1	1
+callext	erlang:binary_to_term/1	1
+callext	erlang:error/1	14
+callext	erlang:error/3	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:integer_to_binary/1	1
+callext	erlang:integer_to_list/1	2
+callext	erlang:open_port/2	1
+callext	erlang:port_close/1	1
+callext	erlang:spawn/1	1
+callext	erlang:term_to_binary/1	1
+callext	gen_tcp:accept/2	1
+callext	gen_tcp:close/1	5
+callext	gen_tcp:connect/3	1
+callext	gen_tcp:listen/2	1
+callext	gen_tcp:recv/3	2
+callext	gen_tcp:send/2	3
+callext	inet:setopts/2	1
+callext	inet:sockname/1	1
+callext	maps:update/3	1

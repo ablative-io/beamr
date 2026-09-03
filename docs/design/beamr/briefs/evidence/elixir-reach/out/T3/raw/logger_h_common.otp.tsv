@@ -1,0 +1,136 @@
+module	logger_h_common
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	144
+op	2	func_info/3	33
+op	3	int_code_end/0	1
+op	4	call/2	16
+op	5	call_last/3	3
+op	6	call_only/2	9
+op	7	call_ext/2	56
+op	8	call_ext_last/3	2
+op	9	bif0/2	1
+op	11	bif2/5	4
+op	12	allocate/2	21
+op	13	allocate_heap/3	4
+op	16	test_heap/2	29
+op	18	deallocate/1	35
+op	19	return/0	42
+op	21	remove_message/0	1
+op	23	loop_rec/2	1
+op	24	loop_rec_end/1	1
+op	25	wait/1	1
+op	41	is_eq/3	1
+op	43	is_eq_exact/3	26
+op	45	is_integer/2	2
+op	48	is_atom/2	1
+op	53	is_binary/2	1
+op	56	is_nonempty_list/2	1
+op	57	is_tuple/2	14
+op	58	test_arity/3	8
+op	59	select_val/3	4
+op	60	select_tuple_arity/3	2
+op	61	jump/1	12
+op	64	move/2	270
+op	65	get_list/3	1
+op	66	get_tuple_element/3	36
+op	69	put_list/3	33
+op	72	badmatch/1	9
+op	74	case_end/1	3
+op	78	call_ext_only/2	8
+op	104	try/2	4
+op	105	try_end/1	4
+op	106	try_case/1	4
+op	108	raise/2	1
+op	112	apply/1	15
+op	125	gc_bif2/6	1
+op	136	trim/2	17
+op	153	line/1	132
+op	154	put_map_assoc/5	24
+op	156	is_map/2	26
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	30
+op	159	is_tagged_tuple/4	10
+op	160	build_stacktrace/0	2
+op	164	put_tuple2/2	38
+op	169	swap/2	7
+op	171	make_fun3/3	2
+op	172	init_yregs/1	31
+impt	erlang:-/2
+impt	erlang:cancel_timer/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_process_alive/1
+impt	erlang:list_to_atom/1
+impt	erlang:map_get/2
+impt	erlang:process_flag/2
+impt	erlang:self/0
+impt	erlang:spawn/1
+impt	erlang:start_timer/3
+impt	erlang:throw/1
+impt	erlang:whereis/1
+impt	lists:concat/1
+impt	logger:add_handler/3
+impt	logger:allow/2
+impt	logger:filter_stacktrace/2
+impt	logger:get_handler_config/1
+impt	logger:internal_log/2
+impt	logger:remove_handler/1
+impt	logger:timestamp/0
+impt	logger_handler_watcher:register_handler/2
+impt	logger_olp:call/2
+impt	logger_olp:cast/2
+impt	logger_olp:get_default_opts/0
+impt	logger_olp:get_opts/1
+impt	logger_olp:get_pid/1
+impt	logger_olp:load/2
+impt	logger_olp:set_opts/2
+impt	logger_olp:stop/1
+impt	logger_server:do_internal_log/4
+impt	maps:merge/2
+impt	maps:take/2
+impt	maps:to_list/1
+impt	maps:with/2
+impt	maps:without/2
+impt	supervisor:start_child/2
+impt	unicode:characters_to_binary/1
+disasm	ok
+callext	erlang:cancel_timer/1	1
+callext	erlang:error/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:is_process_alive/1	1
+callext	erlang:list_to_atom/1	3
+callext	erlang:process_flag/2	1
+callext	erlang:spawn/1	1
+callext	erlang:start_timer/3	1
+callext	erlang:throw/1	1
+callext	erlang:whereis/1	1
+callext	lists:concat/1	3
+callext	logger:add_handler/3	1
+callext	logger:allow/2	2
+callext	logger:filter_stacktrace/2	1
+callext	logger:get_handler_config/1	2
+callext	logger:internal_log/2	1
+callext	logger:remove_handler/1	1
+callext	logger:timestamp/0	1
+callext	logger_handler_watcher:register_handler/2	1
+callext	logger_olp:call/2	1
+callext	logger_olp:cast/2	1
+callext	logger_olp:get_default_opts/0	1
+callext	logger_olp:get_opts/1	1
+callext	logger_olp:get_pid/1	1
+callext	logger_olp:load/2	1
+callext	logger_olp:set_opts/2	1
+callext	logger_olp:stop/1	1
+callext	logger_server:do_internal_log/4	2
+callext	maps:merge/2	10
+callext	maps:take/2	1
+callext	maps:to_list/1	1
+callext	maps:with/2	10
+callext	maps:without/2	4
+callext	supervisor:start_child/2	1
+callext	unicode:characters_to_binary/1	1

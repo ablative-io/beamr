@@ -1,0 +1,48 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [
+    185
+   ],
+   "names": {
+    "185": "bif3/6"
+   },
+   "total": 3
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": null,
+  "walker": "ok"
+ },
+ "B": "unmeasurable: load",
+ "C": "unmeasurable: load",
+ "D": "unmeasurable: load",
+ "bytes": 19380,
+ "dirs": 41,
+ "first_refused_opcode": 185,
+ "impt_modules": [
+  "erlang",
+  "lists"
+ ],
+ "load_error": "failed to decode BEAM data: unsupported opcode 185",
+ "load_status": "decode-failed",
+ "module": "io_lib_fread",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/io_lib_fread.beam",
+ "registration_deviation": [],
+ "sha256": "9dc0d1c425d25631fd88403a79907e859207b39c43d5773c195010f0834ef5e1",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

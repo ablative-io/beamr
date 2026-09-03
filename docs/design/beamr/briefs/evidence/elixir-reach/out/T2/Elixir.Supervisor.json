@@ -1,0 +1,89 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 512,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "supervisor",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 36132,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.ArgumentError",
+  "Elixir.Code",
+  "Elixir.Enum",
+  "Elixir.Exception",
+  "Elixir.GenServer",
+  "Elixir.IO",
+  "Elixir.Kernel",
+  "Elixir.Kernel.Utils",
+  "Elixir.Keyword",
+  "Elixir.Supervisor",
+  "elixir_quote",
+  "erlang",
+  "maps",
+  "supervisor"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.Supervisor",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/elixir/ebin/Elixir.Supervisor.beam",
+ "registration_deviation": [],
+ "sha256": "2ee918b6966a5cf11df46fc01c9bcb97f7175fc22b1f1e3458ec78a08087c4fb",
+ "skipped_in_dirs": 14,
+ "tier": "T2"
+}

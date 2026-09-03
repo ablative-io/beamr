@@ -1,0 +1,48 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [
+    200
+   ],
+   "names": {
+    "200": "walker-refused"
+   },
+   "total": 1
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": null,
+  "walker": "refused"
+ },
+ "B": "unmeasurable: load",
+ "C": "unmeasurable: load",
+ "D": "unmeasurable: load",
+ "bytes": 756,
+ "dirs": 41,
+ "first_refused_opcode": 200,
+ "impt_modules": [
+  "erlang",
+  "lists"
+ ],
+ "load_error": "failed to decode BEAM data: unsupported opcode 200",
+ "load_status": "decode-failed",
+ "module": "reach_op200",
+ "path": "/home/aion/reach/elixir-reach-20260903/controls191/reach_op200.beam",
+ "registration_deviation": [],
+ "sha256": "45468003d57cdcf7afa14f1f0c00111305523f370a3c5e7947fcfdeb0d7e3c44",
+ "skipped_in_dirs": 14,
+ "tier": "CTRL"
+}

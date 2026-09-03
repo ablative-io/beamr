@@ -1,0 +1,84 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 284,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 6,
+  "deferred_names": [
+   "wasm_fetch:request/1",
+   "wasm_kv:delete/1",
+   "wasm_kv:get/1",
+   "wasm_kv:list_by_prefix/1",
+   "wasm_kv:put/2",
+   "wport9_missing_module:missing_fn/0"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": null
+  },
+  {
+   "module": "io",
+   "status": null
+  },
+  {
+   "module": "maps",
+   "status": null
+  }
+ ],
+ "bytes": 3620,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "erlang",
+  "io",
+  "maps",
+  "wasm_fetch",
+  "wasm_kv",
+  "wport9_missing_module"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "wport9_conformance",
+ "path": "/home/aion/reach/elixir-reach-20260903/beamr/conformance/workload/wport9_conformance.beam",
+ "registration_deviation": [],
+ "sha256": "02913cc63c9a3b778d698562f122301d204aa4205716c00c3cb546d7477bf7db",
+ "skipped_in_dirs": 14,
+ "tier": "CTRL"
+}

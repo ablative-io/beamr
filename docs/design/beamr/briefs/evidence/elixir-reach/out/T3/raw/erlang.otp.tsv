@@ -1,0 +1,263 @@
+module	erlang
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	1323
+op	2	func_info/3	399
+op	3	int_code_end/0	1
+op	4	call/2	71
+op	5	call_last/3	45
+op	6	call_only/2	32
+op	7	call_ext/2	115
+op	8	call_ext_last/3	99
+op	9	bif0/2	13
+op	11	bif2/5	7
+op	12	allocate/2	108
+op	13	allocate_heap/3	12
+op	16	test_heap/2	200
+op	18	deallocate/1	102
+op	19	return/0	164
+op	20	send/0	2
+op	21	remove_message/0	28
+op	22	timeout/0	1
+op	23	loop_rec/2	22
+op	24	loop_rec_end/1	22
+op	25	wait/1	22
+op	26	wait_timeout/2	1
+op	39	is_lt/3	6
+op	40	is_ge/3	12
+op	42	is_ne/3	2
+op	43	is_eq_exact/3	151
+op	44	is_ne_exact/3	2
+op	45	is_integer/2	10
+op	48	is_atom/2	42
+op	49	is_pid/2	2
+op	50	is_reference/2	19
+op	51	is_port/2	1
+op	52	is_nil/2	28
+op	53	is_binary/2	1
+op	55	is_list/2	8
+op	56	is_nonempty_list/2	46
+op	57	is_tuple/2	71
+op	58	test_arity/3	56
+op	59	select_val/3	36
+op	60	select_tuple_arity/3	6
+op	61	jump/1	45
+op	64	move/2	1297
+op	65	get_list/3	28
+op	66	get_tuple_element/3	202
+op	69	put_list/3	329
+op	72	badmatch/1	5
+op	74	case_end/1	36
+op	77	is_function/2	4
+op	78	call_ext_only/2	319
+op	104	try/2	50
+op	105	try_end/1	49
+op	106	try_case/1	50
+op	107	try_case_end/1	1
+op	108	raise/2	35
+op	113	apply_last/2	1
+op	115	is_function2/3	9
+op	119	bs_get_binary2/7	2
+op	124	gc_bif1/5	1
+op	125	gc_bif2/6	57
+op	136	trim/2	9
+op	153	line/1	1064
+op	159	is_tagged_tuple/4	22
+op	160	build_stacktrace/0	13
+op	162	get_hd/2	15
+op	163	get_tl/2	3
+op	164	put_tuple2/2	46
+op	165	bs_get_tail/3	8
+op	166	bs_start_match3/4	1
+op	167	bs_get_position/3	3
+op	168	bs_set_position/2	4
+op	169	swap/2	33
+op	170	bs_start_match4/4	4
+op	172	init_yregs/1	50
+op	173	recv_marker_bind/2	4
+op	174	recv_marker_clear/1	4
+op	175	recv_marker_reserve/1	4
+op	176	recv_marker_use/1	4
+op	181	update_record/5	20
+op	182	bs_match/3	4
+impt	auth:get_cookie/0
+impt	auth:get_cookie/1
+impt	auth:set_cookie/1
+impt	auth:set_cookie/2
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:alias/1
+impt	erlang:apply/2
+impt	erlang:apply/3
+impt	erlang:atom_to_binary/2
+impt	erlang:band/2
+impt	erlang:binary_to_atom/2
+impt	erlang:binary_to_existing_atom/2
+impt	erlang:byte_size/1
+impt	erlang:display_string/2
+impt	erlang:div/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:error/3
+impt	erlang:finish_loading/1
+impt	erlang:fun_info/2
+impt	erlang:garbage_collect/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:halt/2
+impt	erlang:hibernate/0
+impt	erlang:list_to_binary/1
+impt	erlang:localtime_to_universaltime/2
+impt	erlang:make_ref/0
+impt	erlang:module_loaded/1
+impt	erlang:monitor_node/3
+impt	erlang:nif_error/1
+impt	erlang:node/0
+impt	erlang:prepare_loading/2
+impt	erlang:raise/3
+impt	erlang:rem/2
+impt	erlang:self/0
+impt	erlang:send/3
+impt	erlang:spawn/1
+impt	erlang:spawn/3
+impt	erlang:spawn/4
+impt	erlang:spawn_link/3
+impt	erlang:spawn_monitor/3
+impt	erlang:spawn_monitor/4
+impt	erlang:spawn_opt/2
+impt	erlang:spawn_opt/4
+impt	erlang:spawn_opt/5
+impt	erlang:spawn_request/4
+impt	erlang:spawn_request/5
+impt	erlang:system_flag/2
+impt	erlang:system_info/1
+impt	erlang:throw/1
+impt	erlang:yield/0
+impt	erts_code_purger:purge/1
+impt	erts_internal:binary_to_integer/2
+impt	erts_internal:check_process_code/3
+impt	erts_internal:create_dist_channel/3
+impt	erts_internal:dist_spawn_request/4
+impt	erts_internal:dynamic_node_name/0
+impt	erts_internal:garbage_collect/1
+impt	erts_internal:group_leader/2
+impt	erts_internal:group_leader/3
+impt	erts_internal:list_to_integer/2
+impt	erts_internal:no_aux_work_threads/0
+impt	erts_internal:open_port/2
+impt	erts_internal:perf_counter_unit/0
+impt	erts_internal:port_call/3
+impt	erts_internal:port_close/1
+impt	erts_internal:port_command/3
+impt	erts_internal:port_connect/2
+impt	erts_internal:port_control/3
+impt	erts_internal:port_info/1
+impt	erts_internal:port_info/2
+impt	erts_internal:prepare_loading/2
+impt	erts_internal:process_display/2
+impt	erts_internal:process_flag/3
+impt	erts_internal:processes_next/1
+impt	erts_internal:request_system_task/3
+impt	erts_internal:spawn_request/4
+impt	erts_internal:suspend_process/2
+impt	erts_internal:system_monitor/1
+impt	erts_internal:system_monitor/3
+impt	erts_internal:time_unit/0
+impt	erts_internal:trace/3
+impt	erts_internal:trace_pattern/3
+impt	lists:keyfind/3
+impt	lists:member/2
+impt	net_kernel:disconnect/1
+impt	net_kernel:passive_cnct/1
+impt	zlib:gunzip/1
+disasm	ok
+callext	auth:get_cookie/0	1
+callext	auth:get_cookie/1	1
+callext	auth:set_cookie/1	1
+callext	auth:set_cookie/2	1
+callext	erlang:++/2	1
+callext	erlang:--/2	3
+callext	erlang:alias/1	1
+callext	erlang:apply/2	1
+callext	erlang:apply/3	1
+callext	erlang:atom_to_binary/2	1
+callext	erlang:binary_to_atom/2	1
+callext	erlang:binary_to_existing_atom/2	1
+callext	erlang:display_string/2	1
+callext	erlang:error/1	2
+callext	erlang:error/2	4
+callext	erlang:error/3	120
+callext	erlang:finish_loading/1	1
+callext	erlang:fun_info/2	1
+callext	erlang:garbage_collect/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:halt/2	2
+callext	erlang:hibernate/0	1
+callext	erlang:list_to_binary/1	2
+callext	erlang:localtime_to_universaltime/2	1
+callext	erlang:make_ref/0	4
+callext	erlang:module_loaded/1	1
+callext	erlang:monitor_node/3	1
+callext	erlang:nif_error/1	264
+callext	erlang:prepare_loading/2	1
+callext	erlang:raise/3	1
+callext	erlang:send/3	1
+callext	erlang:spawn/1	1
+callext	erlang:spawn/3	3
+callext	erlang:spawn/4	2
+callext	erlang:spawn_link/3	2
+callext	erlang:spawn_monitor/3	1
+callext	erlang:spawn_monitor/4	1
+callext	erlang:spawn_opt/2	1
+callext	erlang:spawn_opt/4	7
+callext	erlang:spawn_opt/5	4
+callext	erlang:spawn_request/4	4
+callext	erlang:spawn_request/5	4
+callext	erlang:system_flag/2	1
+callext	erlang:system_info/1	8
+callext	erlang:throw/1	1
+callext	erlang:yield/0	2
+callext	erts_code_purger:purge/1	1
+callext	erts_internal:binary_to_integer/2	4
+callext	erts_internal:check_process_code/3	2
+callext	erts_internal:create_dist_channel/3	1
+callext	erts_internal:dist_spawn_request/4	2
+callext	erts_internal:dynamic_node_name/0	1
+callext	erts_internal:garbage_collect/1	2
+callext	erts_internal:group_leader/2	1
+callext	erts_internal:group_leader/3	1
+callext	erts_internal:list_to_integer/2	2
+callext	erts_internal:no_aux_work_threads/0	2
+callext	erts_internal:open_port/2	1
+callext	erts_internal:perf_counter_unit/0	2
+callext	erts_internal:port_call/3	2
+callext	erts_internal:port_close/1	1
+callext	erts_internal:port_command/3	2
+callext	erts_internal:port_connect/2	1
+callext	erts_internal:port_control/3	1
+callext	erts_internal:port_info/1	1
+callext	erts_internal:port_info/2	1
+callext	erts_internal:prepare_loading/2	1
+callext	erts_internal:process_display/2	1
+callext	erts_internal:process_flag/3	1
+callext	erts_internal:processes_next/1	1
+callext	erts_internal:request_system_task/3	2
+callext	erts_internal:spawn_request/4	1
+callext	erts_internal:suspend_process/2	2
+callext	erts_internal:system_monitor/1	1
+callext	erts_internal:system_monitor/3	3
+callext	erts_internal:time_unit/0	2
+callext	erts_internal:trace/3	1
+callext	erts_internal:trace_pattern/3	2
+callext	lists:keyfind/3	12
+callext	lists:member/2	1
+callext	net_kernel:disconnect/1	1
+callext	net_kernel:passive_cnct/1	1
+callext	zlib:gunzip/1	2

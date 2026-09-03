@@ -1,0 +1,69 @@
+module	gen_tcp
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	91
+op	2	func_info/3	19
+op	3	int_code_end/0	1
+op	4	call/2	2
+op	5	call_last/3	2
+op	6	call_only/2	2
+op	7	call_ext/2	23
+op	8	call_ext_last/3	6
+op	12	allocate/2	24
+op	18	deallocate/1	15
+op	19	return/0	16
+op	43	is_eq_exact/3	7
+op	48	is_atom/2	10
+op	51	is_port/2	7
+op	52	is_nil/2	1
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	1
+op	57	is_tuple/2	13
+op	58	test_arity/3	12
+op	59	select_val/3	7
+op	61	jump/1	3
+op	62	catch/2	2
+op	63	catch_end/1	2
+op	64	move/2	175
+op	65	get_list/3	1
+op	66	get_tuple_element/3	42
+op	72	badmatch/1	4
+op	74	case_end/1	4
+op	78	call_ext_only/2	3
+op	112	apply/1	4
+op	113	apply_last/2	23
+op	136	trim/2	1
+op	153	line/1	85
+op	156	is_map/2	1
+op	158	get_map_elements/3	1
+op	159	is_tagged_tuple/4	19
+op	169	swap/2	1
+op	172	init_yregs/1	16
+impt	erlang:exit/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	inet:ensure_sockaddr/1
+impt	inet:gen_tcp_module/1
+impt	inet:start_timer/1
+impt	inet:stop_timer/1
+impt	inet:tcp_close/1
+impt	inet:tcp_controlling_process/2
+impt	inet:tcp_module/1
+impt	inet:tcp_module/2
+impt	inet:timeout/1
+impt	inet_db:lookup_socket/1
+disasm	ok
+callext	erlang:exit/1	5
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	inet:ensure_sockaddr/1	1
+callext	inet:gen_tcp_module/1	4
+callext	inet:start_timer/1	2
+callext	inet:stop_timer/1	2
+callext	inet:tcp_close/1	1
+callext	inet:tcp_controlling_process/2	1
+callext	inet:tcp_module/1	2
+callext	inet:tcp_module/2	2
+callext	inet:timeout/1	2
+callext	inet_db:lookup_socket/1	8

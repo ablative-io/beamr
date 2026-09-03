@@ -1,0 +1,105 @@
+== compile controls ==
+-rw-rw-r-- 1 aion aion 968 Sep  3 03:06 reach_debuginfo.beam
+-rw-rw-r-- 1 aion aion 980 Sep  3 03:06 reach_lc.S.orig
+-rw-rw-r-- 1 aion aion 776 Sep  3 03:06 reach_linecov.beam
+-rw-rw-r-- 1 aion aion 740 Sep  3 03:06 reach_plain.beam
+-rw-rw-r-- 1 aion aion 684 Sep  3 03:06 reach_zzz.beam
+== instrument on wport9 (full to wport9.otp.tsv) ==
+module	wport9_conformance
+walk	ok
+callext	erlang:cancel_timer/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:send_after/3	2
+callext	erlang:spawn/3	1
+callext	erlang:statistics/1	1
+callext	io:put_chars/1	2
+callext	maps:fold/3	1
+callext	maps:from_list/1	1
+callext	maps:keys/1	1
+callext	wasm_fetch:request/1	1
+callext	wasm_kv:delete/1	1
+callext	wasm_kv:get/1	2
+callext	wasm_kv:list_by_prefix/1	1
+callext	wasm_kv:put/2	1
+callext	wport9_missing_module:missing_fn/0	1
+40
+== instrument on the three controls ==
+-- reach_plain
+module	reach_lc
+walk	ok
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	lists:sum/1	1
+-- reach_linecov
+module	reach_lc
+walk	ok
+op	183	executable_line/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	lists:sum/1	1
+-- reach_debuginfo
+module	reach_lc
+walk	ok
+op	184	debug_line/4	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	lists:sum/1	1
+-- reach_zzz
+module	reach_zzz
+walk	ok
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:no_such_bif_zzz/0	1
+== instrument sweep over stdlib+kernel ebin (self-test: every module walks ok, max seen <= header) ==
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/beam_lib.beam -> refused
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/dets.beam -> refused
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/erl_scan.beam -> refused
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/gb_sets.beam -> refused
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/rand.beam -> refused
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/random.beam -> refused
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/string.beam -> refused
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/zip.beam -> refused
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/kernel-11.0.3/ebin/gen_udp_socket.beam -> refused
+NOT OK: /usr/local/lib/otp-29.0.5/lib/erlang/lib/kernel-11.0.3/ebin/inet_dns.beam -> refused
+swept=202 not_ok=10
+== supervisor.beam (control 1 OTP side) ==
+walk	ok
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:and/2
+impt	erlang:apply/3
+impt	erlang:cancel_timer/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:exit/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_map_key/2
+impt	erlang:is_process_alive/1
+impt	erlang:length/1
+impt	erlang:make_ref/0
+impt	erlang:map_get/2
+impt	erlang:map_size/1
+impt	erlang:min/2
+impt	erlang:monitor/2
+impt	erlang:monotonic_time/1
+impt	erlang:process_flag/2
+impt	erlang:process_info/2
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	erlang:start_timer/3
+impt	erlang:throw/1
+impt	erlang:unlink/1
+impt	error_logger:get_format_depth/0
+== max opcode across sweep ==
+     44 177
+     69 178
+      2 179
+     57 180
+     68 181
+     53 182
+      3 185
+      3 186

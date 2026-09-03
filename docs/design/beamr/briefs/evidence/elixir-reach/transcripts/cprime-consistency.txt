@@ -1,0 +1,4 @@
+T1 n 6 load_status {'loaded': 6} load/refused diffs 0 non-erts-deferred diffs 0 | primary deferred 0 unresolved 0 | C deferred 0 (erts-target 0 ) unresolved 0
+T2 n 271 load_status {'loaded': 271} load/refused diffs 0 non-erts-deferred diffs 0 | primary deferred 23 unresolved 0 | C deferred 275 (erts-target 252 ) unresolved 0
+T3 n 142 load_status {'loaded': 136, 'decode-failed': 6} load/refused diffs 0 non-erts-deferred diffs 0 | primary deferred 145 unresolved 0 | C deferred 858 (erts-target 713 ) unresolved 0
+T4 n 148 load_status {'loaded': 148} load/refused diffs 0 non-erts-deferred diffs 0 | primary deferred 31 unresolved 0 | C deferred 193 (erts-target 162 ) unresolved 0

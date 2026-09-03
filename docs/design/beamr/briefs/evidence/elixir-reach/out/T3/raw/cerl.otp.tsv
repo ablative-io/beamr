@@ -1,0 +1,112 @@
+module	cerl
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	1105
+op	2	func_info/3	310
+op	3	int_code_end/0	1
+op	4	call/2	166
+op	5	call_last/3	54
+op	6	call_only/2	41
+op	7	call_ext/2	24
+op	8	call_ext_last/3	7
+op	10	bif1/4	8
+op	11	bif2/5	53
+op	12	allocate/2	67
+op	13	allocate_heap/3	4
+op	16	test_heap/2	270
+op	18	deallocate/1	84
+op	19	return/0	454
+op	40	is_ge/3	9
+op	43	is_eq_exact/3	43
+op	45	is_integer/2	9
+op	46	is_float/2	2
+op	48	is_atom/2	5
+op	52	is_nil/2	100
+op	56	is_nonempty_list/2	149
+op	57	is_tuple/2	39
+op	58	test_arity/3	16
+op	59	select_val/3	27
+op	60	select_tuple_arity/3	17
+op	61	jump/1	40
+op	64	move/2	454
+op	65	get_list/3	144
+op	66	get_tuple_element/3	315
+op	69	put_list/3	210
+op	72	badmatch/1	3
+op	74	case_end/1	2
+op	77	is_function/2	1
+op	78	call_ext_only/2	18
+op	124	gc_bif1/5	12
+op	125	gc_bif2/6	3
+op	129	is_bitstr/2	1
+op	136	trim/2	15
+op	153	line/1	634
+op	154	put_map_assoc/5	2
+op	156	is_map/2	5
+op	157	has_map_fields/3	1
+op	159	is_tagged_tuple/4	181
+op	162	get_hd/2	2
+op	163	get_tl/2	4
+op	164	put_tuple2/2	210
+op	169	swap/2	29
+op	172	init_yregs/1	35
+op	180	badrecord/1	106
+op	181	update_record/5	3
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:atom_to_list/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:float_to_list/1
+impt	erlang:fun_info/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:integer_to_list/1
+impt	erlang:is_atom/1
+impt	erlang:is_float/1
+impt	erlang:is_integer/1
+impt	erlang:is_map/1
+impt	erlang:is_tuple/1
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_tuple/1
+impt	erlang:map_size/1
+impt	erlang:setelement/3
+impt	erlang:tuple_size/1
+impt	erlang:tuple_to_list/1
+impt	erts_internal:mc_iterator/1
+impt	erts_internal:mc_refill/1
+impt	io_lib:write_char/1
+impt	io_lib:write_string/1
+impt	io_lib:write_string/2
+impt	lists:delete/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	maps:to_list/1
+disasm	ok
+callext	erlang:++/2	1
+callext	erlang:atom_to_list/1	2
+callext	erlang:error/1	12
+callext	erlang:float_to_list/1	1
+callext	erlang:fun_info/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	1
+callext	erlang:list_to_atom/1	2
+callext	erlang:list_to_tuple/1	6
+callext	erlang:setelement/3	6
+callext	erlang:tuple_to_list/1	6
+callext	erts_internal:mc_iterator/1	1
+callext	erts_internal:mc_refill/1	1
+callext	io_lib:write_char/1	1
+callext	io_lib:write_string/1	1
+callext	io_lib:write_string/2	1
+callext	lists:delete/2	1
+callext	lists:member/2	1
+callext	lists:reverse/1	1
+callext	maps:to_list/1	1

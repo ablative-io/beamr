@@ -1,0 +1,154 @@
+module	logger_formatter
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	257
+op	2	func_info/3	45
+op	3	int_code_end/0	1
+op	4	call/2	57
+op	5	call_last/3	21
+op	6	call_only/2	15
+op	7	call_ext/2	58
+op	8	call_ext_last/3	7
+op	10	bif1/4	4
+op	11	bif2/5	13
+op	12	allocate/2	38
+op	13	allocate_heap/3	4
+op	16	test_heap/2	41
+op	18	deallocate/1	33
+op	19	return/0	91
+op	39	is_lt/3	2
+op	40	is_ge/3	3
+op	41	is_eq/3	1
+op	42	is_ne/3	2
+op	43	is_eq_exact/3	36
+op	44	is_ne_exact/3	6
+op	45	is_integer/2	7
+op	48	is_atom/2	9
+op	49	is_pid/2	1
+op	50	is_reference/2	1
+op	52	is_nil/2	11
+op	53	is_binary/2	2
+op	55	is_list/2	14
+op	56	is_nonempty_list/2	13
+op	57	is_tuple/2	12
+op	58	test_arity/3	9
+op	59	select_val/3	12
+op	61	jump/1	24
+op	64	move/2	394
+op	65	get_list/3	11
+op	66	get_tuple_element/3	36
+op	69	put_list/3	57
+op	72	badmatch/1	3
+op	74	case_end/1	2
+op	78	call_ext_only/2	12
+op	104	try/2	5
+op	105	try_end/1	5
+op	106	try_case/1	5
+op	114	is_boolean/2	3
+op	115	is_function2/3	6
+op	124	gc_bif1/5	1
+op	125	gc_bif2/6	6
+op	136	trim/2	13
+op	153	line/1	167
+op	154	put_map_assoc/5	10
+op	155	put_map_exact/5	1
+op	156	is_map/2	11
+op	157	has_map_fields/3	3
+op	158	get_map_elements/3	18
+op	159	is_tagged_tuple/4	3
+op	160	build_stacktrace/0	2
+op	161	raw_raise/0	1
+op	163	get_tl/2	2
+op	164	put_tuple2/2	28
+op	169	swap/2	4
+op	171	make_fun3/3	2
+op	172	init_yregs/1	29
+op	178	call_fun2/3	2
+impt	application:get_env/2
+impt	calendar:system_time_to_rfc3339/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_list/1
+impt	erlang:div/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:integer_to_list/1
+impt	erlang:is_atom/1
+impt	erlang:is_map_key/2
+impt	erlang:length/1
+impt	erlang:map_get/2
+impt	erlang:max/2
+impt	erlang:pid_to_list/1
+impt	erlang:posixtime_to_universaltime/1
+impt	erlang:raise/3
+impt	erlang:ref_to_list/1
+impt	erlang:rem/2
+impt	erlang:universaltime_to_localtime/1
+impt	error_logger:get_format_depth/0
+impt	io_lib:build_text/2
+impt	io_lib:chars_length/1
+impt	io_lib:format/2
+impt	io_lib:fread/2
+impt	io_lib:fwrite/2
+impt	io_lib:printable_latin1_list/1
+impt	io_lib:printable_list/1
+impt	io_lib:printable_unicode_list/1
+impt	io_lib:scan_format/2
+impt	lists:all/2
+impt	lists:flatten/1
+impt	lists:reverse/1
+impt	lists:splitwith/2
+impt	lists:sublist/3
+impt	logger:filter_stacktrace/2
+impt	maps:find/2
+impt	maps:merge/2
+impt	maps:remove/2
+impt	maps:to_list/1
+impt	maps:with/2
+impt	re:replace/4
+impt	string:uppercase/1
+impt	unicode:characters_to_list/1
+impt	unicode:characters_to_list/2
+disasm	ok
+callext	application:get_env/2	2
+callext	calendar:system_time_to_rfc3339/2	1
+callext	erlang:++/2	22
+callext	erlang:atom_to_list/1	2
+callext	erlang:error/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	1
+callext	erlang:pid_to_list/1	1
+callext	erlang:posixtime_to_universaltime/1	1
+callext	erlang:raise/3	1
+callext	erlang:ref_to_list/1	1
+callext	erlang:universaltime_to_localtime/1	1
+callext	error_logger:get_format_depth/0	1
+callext	io_lib:build_text/2	1
+callext	io_lib:chars_length/1	2
+callext	io_lib:format/2	3
+callext	io_lib:fread/2	2
+callext	io_lib:fwrite/2	1
+callext	io_lib:printable_latin1_list/1	1
+callext	io_lib:printable_list/1	1
+callext	io_lib:printable_unicode_list/1	1
+callext	io_lib:scan_format/2	1
+callext	lists:all/2	1
+callext	lists:flatten/1	4
+callext	lists:reverse/1	5
+callext	lists:splitwith/2	1
+callext	lists:sublist/3	2
+callext	logger:filter_stacktrace/2	2
+callext	maps:find/2	1
+callext	maps:merge/2	1
+callext	maps:remove/2	2
+callext	maps:to_list/1	1
+callext	maps:with/2	1
+callext	re:replace/4	1
+callext	string:uppercase/1	1
+callext	unicode:characters_to_list/1	1
+callext	unicode:characters_to_list/2	1

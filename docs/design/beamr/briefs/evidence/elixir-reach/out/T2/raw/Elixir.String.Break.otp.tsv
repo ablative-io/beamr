@@ -1,0 +1,49 @@
+module	Elixir.String.Break
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	82
+op	2	func_info/3	13
+op	3	int_code_end/0	1
+op	4	call/2	1
+op	5	call_last/3	1
+op	6	call_only/2	14
+op	12	allocate/2	1
+op	16	test_heap/2	1
+op	18	deallocate/1	1
+op	19	return/0	39
+op	40	is_ge/3	1
+op	43	is_eq_exact/3	20
+op	53	is_binary/2	2
+op	59	select_val/3	8
+op	61	jump/1	1
+op	64	move/2	50
+op	74	case_end/1	1
+op	78	call_ext_only/2	5
+op	124	gc_bif1/5	1
+op	125	gc_bif2/6	1
+op	152	gc_bif3/7	2
+op	153	line/1	22
+op	156	is_map/2	1
+op	158	get_map_elements/3	1
+op	165	bs_get_tail/3	2
+op	166	bs_start_match3/4	1
+op	167	bs_get_position/3	10
+op	168	bs_set_position/2	33
+op	169	swap/2	1
+op	170	bs_start_match4/4	2
+op	171	make_fun3/3	1
+op	177	bs_create_bin/6	7
+op	182	bs_match/3	57
+impt	Elixir.Enum:map/2
+impt	binary:split/3
+impt	erlang:+/2
+impt	erlang:binary_part/3
+impt	erlang:byte_size/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+disasm	ok
+callext	Elixir.Enum:map/2	1
+callext	binary:split/3	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2

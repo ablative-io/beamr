@@ -1,0 +1,248 @@
+module	group
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	551
+op	2	func_info/3	72
+op	3	int_code_end/0	1
+op	4	call/2	144
+op	5	call_last/3	42
+op	6	call_only/2	50
+op	7	call_ext/2	189
+op	8	call_ext_last/3	8
+op	9	bif0/2	18
+op	10	bif1/4	5
+op	11	bif2/5	15
+op	12	allocate/2	83
+op	13	allocate_heap/3	20
+op	16	test_heap/2	173
+op	18	deallocate/1	107
+op	19	return/0	148
+op	20	send/0	9
+op	21	remove_message/0	6
+op	22	timeout/0	4
+op	23	loop_rec/2	5
+op	24	loop_rec_end/1	5
+op	25	wait/1	1
+op	26	wait_timeout/2	4
+op	39	is_lt/3	1
+op	40	is_ge/3	3
+op	43	is_eq_exact/3	133
+op	44	is_ne_exact/3	6
+op	48	is_atom/2	6
+op	49	is_pid/2	6
+op	52	is_nil/2	35
+op	53	is_binary/2	6
+op	55	is_list/2	6
+op	56	is_nonempty_list/2	32
+op	57	is_tuple/2	53
+op	58	test_arity/3	34
+op	59	select_val/3	42
+op	60	select_tuple_arity/3	16
+op	61	jump/1	42
+op	62	catch/2	5
+op	63	catch_end/1	5
+op	64	move/2	862
+op	65	get_list/3	30
+op	66	get_tuple_element/3	380
+op	69	put_list/3	80
+op	72	badmatch/1	22
+op	73	if_end/0	2
+op	74	case_end/1	15
+op	75	call_fun/1	2
+op	77	is_function/2	2
+op	78	call_ext_only/2	6
+op	104	try/2	3
+op	105	try_end/1	3
+op	106	try_case/1	3
+op	112	apply/1	4
+op	113	apply_last/2	2
+op	114	is_boolean/2	4
+op	115	is_function2/3	3
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	2
+op	136	trim/2	53
+op	153	line/1	436
+op	154	put_map_assoc/5	3
+op	156	is_map/2	3
+op	158	get_map_elements/3	2
+op	159	is_tagged_tuple/4	96
+op	160	build_stacktrace/0	1
+op	162	get_hd/2	1
+op	163	get_tl/2	1
+op	164	put_tuple2/2	160
+op	169	swap/2	23
+op	171	make_fun3/3	12
+op	172	init_yregs/1	83
+op	178	call_fun2/3	3
+op	180	badrecord/1	20
+op	181	update_record/5	47
+impt	application:get_env/3
+impt	c:h1/1
+impt	c:h1/2
+impt	edlin:current_line/1
+impt	edlin:edit_line/2
+impt	edlin:edit_line1/2
+impt	edlin:erase_line/0
+impt	edlin:init/0
+impt	edlin:over_word/3
+impt	edlin:prompt/1
+impt	edlin:redraw_line/1
+impt	edlin:start/1
+impt	edlin:start/2
+impt	edlin_context:get_context/1
+impt	edlin_expand:format_matches/2
+impt	erl_scan:string/1
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:and/2
+impt	erlang:apply/3
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:exit/1
+impt	erlang:exit/2
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:group_leader/0
+impt	erlang:group_leader/2
+impt	erlang:length/1
+impt	erlang:link/1
+impt	erlang:map_get/2
+impt	erlang:node/0
+impt	erlang:node/1
+impt	erlang:not/1
+impt	erlang:process_flag/2
+impt	erlang:process_info/2
+impt	erlang:put/2
+impt	erlang:self/0
+impt	erlang:tl/1
+impt	erlang:tuple_size/1
+impt	erpc:call/4
+impt	file:del_dir_r/1
+impt	file:read_file/1
+impt	file:write_file/2
+impt	gen_statem:start/3
+impt	gen_statem:start/4
+impt	group_history:add/1
+impt	group_history:load/0
+impt	io_lib:format/2
+impt	io_lib:format_prompt/2
+impt	lists:duplicate/2
+impt	lists:flatten/1
+impt	lists:foldr/3
+impt	lists:join/2
+impt	lists:member/2
+impt	lists:nthtail/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:sublist/3
+impt	logger:allow/2
+impt	logger:macro_log/3
+impt	logger:macro_log/4
+impt	maps:to_list/1
+impt	os:cmd/1
+impt	os:type/0
+impt	proc_lib:get_label/1
+impt	proc_lib:set_label/1
+impt	proplists:get_value/2
+impt	proplists:get_value/3
+impt	proplists:substitute_negations/2
+impt	proplists:unfold/1
+impt	queue:in/2
+impt	queue:new/0
+impt	queue:out/1
+impt	shell:format_shell_func/1
+impt	shell:prompt_width/1
+impt	string:chomp/1
+impt	string:find/2
+impt	string:replace/3
+impt	string:split/3
+impt	string:to_graphemes/1
+impt	string:trim/2
+impt	string:trim/3
+impt	unicode:characters_to_binary/1
+impt	unicode:characters_to_binary/2
+impt	unicode:characters_to_binary/3
+impt	unicode:characters_to_list/2
+impt	user_drv:whereis_group/0
+disasm	ok
+callext	application:get_env/3	1
+callext	c:h1/1	3
+callext	c:h1/2	2
+callext	edlin:current_line/1	5
+callext	edlin:edit_line/2	9
+callext	edlin:edit_line1/2	3
+callext	edlin:erase_line/0	6
+callext	edlin:init/0	1
+callext	edlin:over_word/3	1
+callext	edlin:prompt/1	6
+callext	edlin:redraw_line/1	5
+callext	edlin:start/1	5
+callext	edlin:start/2	2
+callext	edlin_context:get_context/1	1
+callext	edlin_expand:format_matches/2	1
+callext	erl_scan:string/1	7
+callext	erlang:++/2	7
+callext	erlang:apply/3	4
+callext	erlang:error/1	1
+callext	erlang:exit/1	2
+callext	erlang:exit/2	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:group_leader/0	3
+callext	erlang:group_leader/2	5
+callext	erlang:link/1	4
+callext	erlang:process_flag/2	1
+callext	erlang:process_info/2	2
+callext	erlang:put/2	4
+callext	erpc:call/4	1
+callext	file:del_dir_r/1	1
+callext	file:read_file/1	1
+callext	file:write_file/2	1
+callext	gen_statem:start/3	1
+callext	gen_statem:start/4	1
+callext	group_history:add/1	1
+callext	group_history:load/0	1
+callext	io_lib:format/2	1
+callext	io_lib:format_prompt/2	1
+callext	lists:duplicate/2	1
+callext	lists:flatten/1	1
+callext	lists:foldr/3	1
+callext	lists:join/2	1
+callext	lists:member/2	5
+callext	lists:nthtail/2	1
+callext	lists:reverse/1	16
+callext	lists:reverse/2	1
+callext	lists:sublist/3	2
+callext	logger:allow/2	2
+callext	logger:macro_log/3	1
+callext	logger:macro_log/4	1
+callext	maps:to_list/1	1
+callext	os:cmd/1	3
+callext	os:type/0	1
+callext	proc_lib:get_label/1	1
+callext	proc_lib:set_label/1	3
+callext	proplists:get_value/2	3
+callext	proplists:get_value/3	8
+callext	proplists:substitute_negations/2	1
+callext	proplists:unfold/1	1
+callext	queue:in/2	1
+callext	queue:new/0	1
+callext	queue:out/1	1
+callext	shell:format_shell_func/1	1
+callext	shell:prompt_width/1	1
+callext	string:chomp/1	2
+callext	string:find/2	2
+callext	string:replace/3	1
+callext	string:split/3	2
+callext	string:to_graphemes/1	3
+callext	string:trim/2	4
+callext	string:trim/3	4
+callext	unicode:characters_to_binary/1	7
+callext	unicode:characters_to_binary/2	3
+callext	unicode:characters_to_binary/3	1
+callext	unicode:characters_to_list/2	7
+callext	user_drv:whereis_group/0	1

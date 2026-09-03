@@ -1,0 +1,37 @@
+module	Elixir.T1Process
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	22
+op	2	func_info/3	6
+op	3	int_code_end/0	1
+op	6	call_only/2	1
+op	7	call_ext/2	1
+op	9	bif0/2	2
+op	13	allocate_heap/3	1
+op	16	test_heap/2	1
+op	18	deallocate/1	2
+op	19	return/0	7
+op	21	remove_message/0	1
+op	22	timeout/0	1
+op	23	loop_rec/2	1
+op	24	loop_rec_end/1	1
+op	26	wait_timeout/2	1
+op	59	select_val/3	1
+op	61	jump/1	1
+op	64	move/2	12
+op	78	call_ext_only/2	4
+op	153	line/1	7
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	1
+op	171	make_fun3/3	1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:self/0
+impt	erlang:send/2
+impt	erlang:spawn/1
+disasm	ok
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:send/2	1
+callext	erlang:spawn/1	1

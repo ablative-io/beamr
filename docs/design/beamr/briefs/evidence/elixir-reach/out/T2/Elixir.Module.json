@@ -1,0 +1,105 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 3358,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "ets",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 88336,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.ArgumentError",
+  "Elixir.Code",
+  "Elixir.Enum",
+  "Elixir.IO",
+  "Elixir.Kernel",
+  "Elixir.Kernel.Typespec",
+  "Elixir.Keyword",
+  "Elixir.List",
+  "Elixir.Macro",
+  "Elixir.Macro.Env",
+  "Elixir.Module.Behaviour",
+  "Elixir.String",
+  "Elixir.String.Chars",
+  "elixir",
+  "elixir_aliases",
+  "elixir_def",
+  "elixir_env",
+  "elixir_erl_pass",
+  "elixir_module",
+  "elixir_overridable",
+  "elixir_quote",
+  "erlang",
+  "ets",
+  "lists",
+  "maps"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.Module",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/elixir/ebin/Elixir.Module.beam",
+ "registration_deviation": [],
+ "sha256": "ad4331a0335fbe9272a539c2c3f50bb1d30297d538aecf57f9bdcb19209cf1fc",
+ "skipped_in_dirs": 14,
+ "tier": "T2"
+}

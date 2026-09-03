@@ -1,0 +1,48 @@
+module	logger_filters
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	52
+op	2	func_info/3	12
+op	3	int_code_end/0	1
+op	4	call/2	4
+op	5	call_last/3	4
+op	6	call_only/2	2
+op	7	call_ext/2	2
+op	9	bif0/2	1
+op	10	bif1/4	1
+op	11	bif2/5	1
+op	12	allocate/2	6
+op	16	test_heap/2	4
+op	18	deallocate/1	4
+op	19	return/0	13
+op	43	is_eq_exact/3	4
+op	44	is_ne_exact/3	3
+op	55	is_list/2	3
+op	57	is_tuple/2	3
+op	58	test_arity/3	3
+op	59	select_val/3	13
+op	61	jump/1	1
+op	64	move/2	54
+op	66	get_tuple_element/3	8
+op	69	put_list/3	8
+op	78	call_ext_only/2	6
+op	153	line/1	23
+op	156	is_map/2	10
+op	158	get_map_elements/3	10
+op	159	is_tagged_tuple/4	1
+op	169	swap/2	2
+impt	erlang:error/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_map_key/2
+impt	erlang:node/0
+impt	erlang:node/1
+impt	lists:prefix/2
+impt	logger:compare_levels/2
+disasm	ok
+callext	erlang:error/2	4
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	lists:prefix/2	1
+callext	logger:compare_levels/2	1

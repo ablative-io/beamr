@@ -1,0 +1,56 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [
+    186
+   ],
+   "names": {
+    "186": "is_any_native_record/2"
+   },
+   "total": 3
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": null,
+  "walker": "ok"
+ },
+ "B": "unmeasurable: load",
+ "C": "unmeasurable: load",
+ "D": "unmeasurable: load",
+ "bytes": 97984,
+ "dirs": 41,
+ "first_refused_opcode": 186,
+ "impt_modules": [
+  "binary",
+  "epp",
+  "erlang",
+  "io",
+  "io_lib",
+  "lists",
+  "maps",
+  "records",
+  "string",
+  "unicode"
+ ],
+ "load_error": "failed to decode BEAM data: unsupported opcode 186",
+ "load_status": "decode-failed",
+ "module": "io_lib_pretty",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/io_lib_pretty.beam",
+ "registration_deviation": [],
+ "sha256": "2654e295438ce5ff45adb981e43b556ff51f767eb770b3c519f346f0e5e49236",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

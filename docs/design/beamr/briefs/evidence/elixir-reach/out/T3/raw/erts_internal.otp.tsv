@@ -1,0 +1,132 @@
+module	erts_internal
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	326
+op	2	func_info/3	112
+op	3	int_code_end/0	1
+op	4	call/2	11
+op	5	call_last/3	15
+op	6	call_only/2	7
+op	7	call_ext/2	38
+op	8	call_ext_last/3	7
+op	9	bif0/2	4
+op	11	bif2/5	3
+op	12	allocate/2	32
+op	13	allocate_heap/3	2
+op	16	test_heap/2	14
+op	18	deallocate/1	28
+op	19	return/0	36
+op	20	send/0	3
+op	21	remove_message/0	22
+op	22	timeout/0	1
+op	23	loop_rec/2	17
+op	24	loop_rec_end/1	16
+op	25	wait/1	16
+op	40	is_ge/3	1
+op	43	is_eq_exact/3	43
+op	44	is_ne_exact/3	1
+op	45	is_integer/2	1
+op	50	is_reference/2	5
+op	52	is_nil/2	6
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	8
+op	57	is_tuple/2	15
+op	58	test_arity/3	14
+op	59	select_val/3	2
+op	61	jump/1	4
+op	64	move/2	281
+op	65	get_list/3	7
+op	66	get_tuple_element/3	30
+op	69	put_list/3	21
+op	72	badmatch/1	1
+op	74	case_end/1	2
+op	78	call_ext_only/2	81
+op	104	try/2	7
+op	105	try_end/1	6
+op	106	try_case/1	7
+op	108	raise/2	5
+op	114	is_boolean/2	1
+op	125	gc_bif2/6	11
+op	136	trim/2	8
+op	153	line/1	250
+op	156	is_map/2	1
+op	159	is_tagged_tuple/4	1
+op	160	build_stacktrace/0	2
+op	163	get_tl/2	1
+op	164	put_tuple2/2	14
+op	169	swap/2	11
+op	171	make_fun3/3	1
+op	172	init_yregs/1	13
+op	173	recv_marker_bind/2	6
+op	174	recv_marker_clear/1	6
+op	175	recv_marker_reserve/1	6
+op	176	recv_marker_use/1	6
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:apply/3
+impt	erlang:dist_ctrl_put_data/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:exit/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:iolist_to_binary/1
+impt	erlang:make_ref/0
+impt	erlang:nif_error/1
+impt	erlang:process_info/2
+impt	erlang:processes/0
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	erlang:system_flag/2
+impt	erlang:system_info/1
+impt	error_logger:warning_msg/2
+impt	erts_debug:get_internal_state/1
+impt	erts_internal:check_process_code/1
+impt	erts_internal:ets_lookup_binary_info/2
+impt	erts_internal:ets_raw_first/1
+impt	erts_internal:ets_raw_next/2
+impt	erts_internal:ets_super_user/1
+impt	erts_internal:is_process_alive/2
+impt	erts_internal:map_next/3
+impt	erts_internal:request_system_task/3
+impt	erts_literal_area_collector:release_area_switch/0
+impt	ets:safe_fixtable/2
+impt	kernel_refc:scheduler_wall_time/1
+impt	persistent_term:erase/1
+impt	persistent_term:get/2
+impt	persistent_term:put/2
+disasm	ok
+callext	erlang:++/2	2
+callext	erlang:apply/3	2
+callext	erlang:dist_ctrl_put_data/2	1
+callext	erlang:error/1	2
+callext	erlang:exit/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:iolist_to_binary/1	1
+callext	erlang:make_ref/0	6
+callext	erlang:nif_error/1	71
+callext	erlang:process_info/2	1
+callext	erlang:processes/0	1
+callext	erlang:raise/3	3
+callext	erlang:system_flag/2	3
+callext	erlang:system_info/1	3
+callext	error_logger:warning_msg/2	2
+callext	erts_debug:get_internal_state/1	1
+callext	erts_internal:check_process_code/1	1
+callext	erts_internal:ets_lookup_binary_info/2	1
+callext	erts_internal:ets_raw_first/1	1
+callext	erts_internal:ets_raw_next/2	1
+callext	erts_internal:ets_super_user/1	3
+callext	erts_internal:is_process_alive/2	1
+callext	erts_internal:map_next/3	4
+callext	erts_internal:request_system_task/3	2
+callext	erts_literal_area_collector:release_area_switch/0	1
+callext	ets:safe_fixtable/2	3
+callext	kernel_refc:scheduler_wall_time/1	1
+callext	persistent_term:erase/1	1
+callext	persistent_term:get/2	1
+callext	persistent_term:put/2	1

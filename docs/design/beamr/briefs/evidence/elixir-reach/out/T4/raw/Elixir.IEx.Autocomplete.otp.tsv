@@ -1,0 +1,227 @@
+module	Elixir.IEx.Autocomplete
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	543
+op	2	func_info/3	129
+op	3	int_code_end/0	1
+op	4	call/2	68
+op	5	call_last/3	72
+op	6	call_only/2	22
+op	7	call_ext/2	175
+op	8	call_ext_last/3	46
+op	10	bif1/4	4
+op	11	bif2/5	9
+op	12	allocate/2	85
+op	13	allocate_heap/3	6
+op	16	test_heap/2	84
+op	18	deallocate/1	70
+op	19	return/0	127
+op	40	is_ge/3	18
+op	43	is_eq_exact/3	63
+op	44	is_ne_exact/3	6
+op	45	is_integer/2	2
+op	48	is_atom/2	7
+op	52	is_nil/2	23
+op	53	is_binary/2	5
+op	55	is_list/2	6
+op	56	is_nonempty_list/2	48
+op	57	is_tuple/2	56
+op	58	test_arity/3	47
+op	59	select_val/3	51
+op	60	select_tuple_arity/3	3
+op	61	jump/1	28
+op	64	move/2	625
+op	65	get_list/3	27
+op	66	get_tuple_element/3	127
+op	69	put_list/3	45
+op	72	badmatch/1	5
+op	74	case_end/1	17
+op	78	call_ext_only/2	13
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	112	apply/1	4
+op	124	gc_bif1/5	9
+op	125	gc_bif2/6	5
+op	136	trim/2	42
+op	152	gc_bif3/7	4
+op	153	line/1	362
+op	154	put_map_assoc/5	14
+op	156	is_map/2	20
+op	158	get_map_elements/3	20
+op	159	is_tagged_tuple/4	24
+op	162	get_hd/2	11
+op	163	get_tl/2	6
+op	164	put_tuple2/2	18
+op	165	bs_get_tail/3	1
+op	166	bs_start_match3/4	3
+op	167	bs_get_position/3	2
+op	168	bs_set_position/2	2
+op	169	swap/2	15
+op	170	bs_start_match4/4	3
+op	171	make_fun3/3	46
+op	172	init_yregs/1	68
+op	177	bs_create_bin/6	4
+op	178	call_fun2/3	1
+op	182	bs_match/3	7
+impt	Elixir.Access:get/2
+impt	Elixir.Code:ensure_all_loaded/1
+impt	Elixir.Code:ensure_loaded?/1
+impt	Elixir.Code:fetch_docs/1
+impt	Elixir.Code.Fragment:container_cursor_to_quoted/1
+impt	Elixir.Code.Fragment:cursor_context/1
+impt	Elixir.Code.Typespec:fetch_callbacks/1
+impt	Elixir.Code.Typespec:fetch_types/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:filter/2
+impt	Elixir.Enum:find/2
+impt	Elixir.Enum:flat_map/2
+impt	Elixir.Enum:group_by/2
+impt	Elixir.Enum:join/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:reverse/1
+impt	Elixir.Enum:sort/1
+impt	Elixir.Enum:sort_by/2
+impt	Elixir.Enum:split/2
+impt	Elixir.Enum:take/2
+impt	Elixir.File:dir?/1
+impt	Elixir.File:ls/1
+impt	Elixir.IEx.Broker:evaluator/1
+impt	Elixir.IEx.Evaluator:fields_from_env/3
+impt	Elixir.IEx.Evaluator:value_from_binding/4
+impt	Elixir.IEx.Evaluator:variables_from_binding/3
+impt	Elixir.IEx.Introspection:translate_callback_name_arity/1
+impt	Elixir.Keyword:fetch/2
+impt	Elixir.Keyword:keyword?/1
+impt	Elixir.List:keymember?/3
+impt	Elixir.List:last/1
+impt	Elixir.List:to_charlist/1
+impt	Elixir.List:to_string/1
+impt	Elixir.List.Chars:to_charlist/1
+impt	Elixir.Macro:classify_atom/1
+impt	Elixir.Macro:path/2
+impt	Elixir.Map:from_struct/1
+impt	Elixir.Map:get/3
+impt	Elixir.Module:concat/1
+impt	Elixir.Module:concat/2
+impt	Elixir.Module:split/1
+impt	Elixir.Path:basename/1
+impt	Elixir.Path:dirname/1
+impt	Elixir.Path:join/2
+impt	Elixir.Range:new/2
+impt	Elixir.String:split/2
+impt	Elixir.String:starts_with?/2
+impt	Elixir.String:to_charlist/1
+impt	Elixir.String.Chars:to_string/1
+impt	application:get_key/2
+impt	binary:longest_common_prefix/1
+impt	binary:match/2
+impt	code:get_mode/0
+impt	elixir_erl_pass:no_parens_remote/2
+impt	elixir_erl_pass:parens_map_field/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_binary/1
+impt	erlang:binary_part/3
+impt	erlang:binary_to_atom/1
+impt	erlang:byte_size/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:function_exported/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_map/1
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:loaded/0
+impt	erlang:map_size/1
+impt	erlang:not/1
+impt	erpc:call/4
+impt	ets:match/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:usort/1
+impt	maps:keys/1
+impt	maps:remove/2
+impt	maps:to_list/1
+impt	shell:whereis/0
+disasm	ok
+callext	Elixir.Access:get/2	2
+callext	Elixir.Code:ensure_all_loaded/1	1
+callext	Elixir.Code:ensure_loaded?/1	1
+callext	Elixir.Code:fetch_docs/1	1
+callext	Elixir.Code.Fragment:container_cursor_to_quoted/1	1
+callext	Elixir.Code.Fragment:cursor_context/1	1
+callext	Elixir.Code.Typespec:fetch_callbacks/1	1
+callext	Elixir.Code.Typespec:fetch_types/1	1
+callext	Elixir.Enum:__in__/2	3
+callext	Elixir.Enum:filter/2	5
+callext	Elixir.Enum:find/2	1
+callext	Elixir.Enum:flat_map/2	3
+callext	Elixir.Enum:group_by/2	1
+callext	Elixir.Enum:join/2	1
+callext	Elixir.Enum:map/2	11
+callext	Elixir.Enum:reduce/3	19
+callext	Elixir.Enum:reverse/1	2
+callext	Elixir.Enum:sort/1	2
+callext	Elixir.Enum:sort_by/2	4
+callext	Elixir.Enum:split/2	2
+callext	Elixir.Enum:take/2	1
+callext	Elixir.File:dir?/1	1
+callext	Elixir.File:ls/1	1
+callext	Elixir.IEx.Broker:evaluator/1	4
+callext	Elixir.IEx.Evaluator:fields_from_env/3	2
+callext	Elixir.IEx.Evaluator:value_from_binding/4	1
+callext	Elixir.IEx.Evaluator:variables_from_binding/3	1
+callext	Elixir.IEx.Introspection:translate_callback_name_arity/1	1
+callext	Elixir.Keyword:fetch/2	1
+callext	Elixir.Keyword:keyword?/1	2
+callext	Elixir.List:keymember?/3	1
+callext	Elixir.List:last/1	3
+callext	Elixir.List:to_charlist/1	3
+callext	Elixir.List:to_string/1	17
+callext	Elixir.List.Chars:to_charlist/1	1
+callext	Elixir.Macro:classify_atom/1	1
+callext	Elixir.Macro:path/2	1
+callext	Elixir.Map:from_struct/1	1
+callext	Elixir.Map:get/3	1
+callext	Elixir.Module:concat/1	2
+callext	Elixir.Module:concat/2	1
+callext	Elixir.Module:split/1	2
+callext	Elixir.Path:basename/1	2
+callext	Elixir.Path:dirname/1	1
+callext	Elixir.Path:join/2	1
+callext	Elixir.Range:new/2	1
+callext	Elixir.String:split/2	4
+callext	Elixir.String:starts_with?/2	14
+callext	Elixir.String:to_charlist/1	3
+callext	Elixir.String.Chars:to_string/1	5
+callext	application:get_key/2	1
+callext	binary:longest_common_prefix/1	1
+callext	binary:match/2	1
+callext	code:get_mode/0	1
+callext	elixir_erl_pass:no_parens_remote/2	9
+callext	elixir_erl_pass:parens_map_field/2	1
+callext	erlang:++/2	14
+callext	erlang:--/2	3
+callext	erlang:atom_to_binary/1	9
+callext	erlang:binary_to_atom/1	2
+callext	erlang:error/1	11
+callext	erlang:function_exported/3	4
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:list_to_atom/1	5
+callext	erlang:loaded/0	1
+callext	erpc:call/4	1
+callext	ets:match/2	1
+callext	lists:member/2	1
+callext	lists:reverse/1	16
+callext	lists:usort/1	1
+callext	maps:keys/1	1
+callext	maps:remove/2	1
+callext	maps:to_list/1	1
+callext	shell:whereis/0	2

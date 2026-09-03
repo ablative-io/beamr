@@ -1,0 +1,7 @@
+tiers-parallel start 2026-09-03T03:31:52Z
+todo: T2=264 T3=142 T4=148
+filled D status in 561 files; native modules=31; t3 rows=142
+T2 merged=271 of 271
+T3 merged=142 of 142
+T4 merged=148 of 148
+tiers-parallel done 2026-09-03T04:23:53Z

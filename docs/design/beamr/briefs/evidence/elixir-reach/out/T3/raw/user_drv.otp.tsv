@@ -1,0 +1,261 @@
+module	user_drv
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	464
+op	2	func_info/3	49
+op	3	int_code_end/0	1
+op	4	call/2	91
+op	5	call_last/3	35
+op	6	call_only/2	15
+op	7	call_ext/2	188
+op	8	call_ext_last/3	14
+op	9	bif0/2	29
+op	10	bif1/4	1
+op	11	bif2/5	16
+op	12	allocate/2	75
+op	13	allocate_heap/3	18
+op	16	test_heap/2	148
+op	18	deallocate/1	96
+op	19	return/0	113
+op	20	send/0	21
+op	21	remove_message/0	3
+op	22	timeout/0	3
+op	23	loop_rec/2	3
+op	24	loop_rec_end/1	3
+op	26	wait_timeout/2	3
+op	40	is_ge/3	1
+op	43	is_eq_exact/3	96
+op	44	is_ne_exact/3	14
+op	48	is_atom/2	5
+op	52	is_nil/2	10
+op	53	is_binary/2	1
+op	56	is_nonempty_list/2	15
+op	57	is_tuple/2	56
+op	58	test_arity/3	35
+op	59	select_val/3	48
+op	60	select_tuple_arity/3	12
+op	61	jump/1	49
+op	64	move/2	616
+op	65	get_list/3	15
+op	66	get_tuple_element/3	283
+op	69	put_list/3	60
+op	72	badmatch/1	25
+op	73	if_end/0	1
+op	74	case_end/1	28
+op	78	call_ext_only/2	8
+op	104	try/2	6
+op	105	try_end/1	6
+op	106	try_case/1	6
+op	108	raise/2	3
+op	115	is_function2/3	2
+op	125	gc_bif2/6	1
+op	136	trim/2	51
+op	139	bs_skip_utf8/4	1
+op	153	line/1	385
+op	154	put_map_assoc/5	6
+op	156	is_map/2	8
+op	158	get_map_elements/3	10
+op	159	is_tagged_tuple/4	73
+op	164	put_tuple2/2	171
+op	165	bs_get_tail/3	1
+op	166	bs_start_match3/4	1
+op	167	bs_get_position/3	1
+op	168	bs_set_position/2	2
+op	169	swap/2	17
+op	171	make_fun3/3	4
+op	172	init_yregs/1	73
+op	177	bs_create_bin/6	1
+op	178	call_fun2/3	1
+op	180	badrecord/1	8
+op	181	update_record/5	36
+op	182	bs_match/3	5
+impt	application:get_env/3
+impt	edlin:edit_line/2
+impt	edlin:init/1
+impt	edlin:start/1
+impt	erl_scan:string/1
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:atom_to_binary/1
+impt	erlang:atom_to_list/1
+impt	erlang:demonitor/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:exit/2
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:halt/0
+impt	erlang:halt/1
+impt	erlang:halt/2
+impt	erlang:is_alive/0
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_binary/1
+impt	erlang:list_to_integer/1
+impt	erlang:map_get/2
+impt	erlang:node/0
+impt	erlang:open_port/2
+impt	erlang:process_flag/2
+impt	erlang:process_info/2
+impt	erlang:put/2
+impt	erlang:self/0
+impt	erlang:system_info/1
+impt	erlang:whereis/1
+impt	erpc:call/2
+impt	erpc:call/4
+impt	file:del_dir_r/1
+impt	file:read_file/1
+impt	file:write_file/2
+impt	filelib:is_file/1
+impt	gen_statem:call/2
+impt	gen_statem:call/3
+impt	gen_statem:reply/2
+impt	gen_statem:start/4
+impt	group:start/2
+impt	group:start/3
+impt	init:get_argument/1
+impt	io:format/3
+impt	io:setopts/2
+impt	io_ansi:format/3
+impt	io_lib:bformat/2
+impt	lists:flatmap/2
+impt	lists:keydelete/3
+impt	lists:keyfind/3
+impt	lists:keystore/4
+impt	logger:allow/2
+impt	logger:macro_log/4
+impt	net_kernel:connect_node/1
+impt	net_kernel:get_state/0
+impt	net_kernel:nodename/0
+impt	net_kernel:set_net_ticktime/1
+impt	net_kernel:start/1
+impt	os:cmd/1
+impt	os:find_executable/1
+impt	os:getenv/2
+impt	os:type/0
+impt	pool:get_node/0
+impt	prim_tty:disable_reader/1
+impt	prim_tty:enable_reader/1
+impt	prim_tty:handle_request/2
+impt	prim_tty:handle_signal/2
+impt	prim_tty:handles/1
+impt	prim_tty:init/1
+impt	prim_tty:is_reader/2
+impt	prim_tty:is_writer/2
+impt	prim_tty:isatty/1
+impt	prim_tty:load/0
+impt	prim_tty:output_mode/1
+impt	prim_tty:read/1
+impt	prim_tty:read/2
+impt	prim_tty:reinit/2
+impt	prim_tty:unicode/1
+impt	prim_tty:unicode/2
+impt	prim_tty:window_size/1
+impt	prim_tty:write/2
+impt	prim_tty:write/3
+impt	proplists:get_value/2
+impt	queue:in/2
+impt	queue:new/0
+impt	queue:out/1
+impt	queue:peek/1
+impt	string:chomp/1
+impt	string:find/2
+impt	string:split/3
+impt	unicode:characters_to_binary/1
+impt	unicode:characters_to_binary/2
+impt	unicode:characters_to_list/1
+impt	unicode:characters_to_list/2
+disasm	ok
+callext	application:get_env/3	3
+callext	edlin:edit_line/2	1
+callext	edlin:init/1	1
+callext	edlin:start/1	1
+callext	erl_scan:string/1	1
+callext	erlang:++/2	12
+callext	erlang:atom_to_binary/1	1
+callext	erlang:atom_to_list/1	1
+callext	erlang:demonitor/2	2
+callext	erlang:error/1	7
+callext	erlang:exit/2	4
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:halt/0	1
+callext	erlang:halt/1	2
+callext	erlang:halt/2	1
+callext	erlang:is_alive/0	2
+callext	erlang:list_to_atom/1	2
+callext	erlang:list_to_binary/1	1
+callext	erlang:list_to_integer/1	1
+callext	erlang:open_port/2	2
+callext	erlang:process_flag/2	1
+callext	erlang:process_info/2	1
+callext	erlang:put/2	6
+callext	erlang:system_info/1	3
+callext	erlang:whereis/1	2
+callext	erpc:call/2	1
+callext	erpc:call/4	7
+callext	file:del_dir_r/1	1
+callext	file:read_file/1	1
+callext	file:write_file/2	1
+callext	filelib:is_file/1	1
+callext	gen_statem:call/2	1
+callext	gen_statem:call/3	1
+callext	gen_statem:reply/2	5
+callext	gen_statem:start/4	1
+callext	group:start/2	2
+callext	group:start/3	6
+callext	init:get_argument/1	1
+callext	io:format/3	4
+callext	io:setopts/2	2
+callext	io_ansi:format/3	1
+callext	io_lib:bformat/2	3
+callext	lists:flatmap/2	1
+callext	lists:keydelete/3	1
+callext	lists:keyfind/3	2
+callext	lists:keystore/4	1
+callext	logger:allow/2	5
+callext	logger:macro_log/4	5
+callext	net_kernel:connect_node/1	2
+callext	net_kernel:get_state/0	2
+callext	net_kernel:nodename/0	1
+callext	net_kernel:set_net_ticktime/1	2
+callext	net_kernel:start/1	1
+callext	os:cmd/1	2
+callext	os:find_executable/1	1
+callext	os:getenv/2	2
+callext	os:type/0	3
+callext	pool:get_node/0	1
+callext	prim_tty:disable_reader/1	1
+callext	prim_tty:enable_reader/1	2
+callext	prim_tty:handle_request/2	18
+callext	prim_tty:handle_signal/2	1
+callext	prim_tty:handles/1	2
+callext	prim_tty:init/1	3
+callext	prim_tty:is_reader/2	1
+callext	prim_tty:is_writer/2	1
+callext	prim_tty:isatty/1	10
+callext	prim_tty:load/0	1
+callext	prim_tty:output_mode/1	1
+callext	prim_tty:read/1	1
+callext	prim_tty:read/2	1
+callext	prim_tty:reinit/2	3
+callext	prim_tty:unicode/1	5
+callext	prim_tty:unicode/2	1
+callext	prim_tty:window_size/1	2
+callext	prim_tty:write/2	1
+callext	prim_tty:write/3	2
+callext	proplists:get_value/2	1
+callext	queue:in/2	1
+callext	queue:new/0	1
+callext	queue:out/1	1
+callext	queue:peek/1	1
+callext	string:chomp/1	2
+callext	string:find/2	2
+callext	string:split/3	1
+callext	unicode:characters_to_binary/1	5
+callext	unicode:characters_to_binary/2	2
+callext	unicode:characters_to_list/1	1
+callext	unicode:characters_to_list/2	3

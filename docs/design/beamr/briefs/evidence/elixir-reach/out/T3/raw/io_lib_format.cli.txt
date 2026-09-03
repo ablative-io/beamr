@@ -1,0 +1,6 @@
+io_lib:chars_length/1
+io_lib:deep_char_list/1
+io_lib:write/5
+io_lib:write_bin/5
+io_lib_pretty:print/2
+io_lib_pretty:print_bin/2

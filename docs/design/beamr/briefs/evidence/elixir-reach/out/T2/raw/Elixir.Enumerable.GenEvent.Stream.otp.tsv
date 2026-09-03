@@ -1,0 +1,69 @@
+module	Elixir.Enumerable.GenEvent.Stream
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	81
+op	2	func_info/3	21
+op	3	int_code_end/0	1
+op	4	call/2	2
+op	5	call_last/3	3
+op	6	call_only/2	6
+op	7	call_ext/2	11
+op	8	call_ext_last/3	3
+op	9	bif0/2	2
+op	12	allocate/2	6
+op	13	allocate_heap/3	4
+op	16	test_heap/2	14
+op	18	deallocate/1	13
+op	19	return/0	24
+op	21	remove_message/0	8
+op	22	timeout/0	2
+op	23	loop_rec/2	3
+op	24	loop_rec_end/1	3
+op	25	wait/1	1
+op	26	wait_timeout/2	1
+op	43	is_eq_exact/3	19
+op	57	is_tuple/2	14
+op	58	test_arity/3	11
+op	59	select_val/3	5
+op	60	select_tuple_arity/3	3
+op	61	jump/1	3
+op	64	move/2	76
+op	66	get_tuple_element/3	40
+op	69	put_list/3	8
+op	72	badmatch/1	1
+op	75	call_fun/1	4
+op	78	call_ext_only/2	3
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	108	raise/2	2
+op	136	trim/2	6
+op	153	line/1	39
+op	156	is_map/2	2
+op	158	get_map_elements/3	2
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	24
+op	169	swap/2	6
+op	171	make_fun3/3	4
+op	172	init_yregs/1	2
+impt	Elixir.Stream:resource/3
+impt	erlang:demonitor/2
+impt	erlang:exit/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:monitor/2
+impt	erlang:self/0
+impt	erlang:send/2
+impt	gen:call/4
+impt	gen_event:delete_handler/3
+disasm	ok
+callext	Elixir.Stream:resource/3	1
+callext	erlang:demonitor/2	2
+callext	erlang:exit/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:monitor/2	1
+callext	erlang:send/2	5
+callext	gen:call/4	1
+callext	gen_event:delete_handler/3	1

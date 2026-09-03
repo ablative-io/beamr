@@ -1,0 +1,96 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 1485,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "proc_lib",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 25316,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.Enum",
+  "Elixir.Exception",
+  "Elixir.IEx",
+  "Elixir.IEx.Autocomplete",
+  "Elixir.IEx.Broker",
+  "Elixir.IEx.Config",
+  "Elixir.IO",
+  "Elixir.IO.ANSI",
+  "Elixir.Kernel",
+  "Elixir.Keyword",
+  "Elixir.List",
+  "Elixir.Map",
+  "Elixir.Node",
+  "Elixir.Process",
+  "Elixir.String",
+  "Elixir.String.Chars",
+  "Elixir.System",
+  "elixir_erl_pass",
+  "erlang",
+  "io",
+  "proc_lib"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.IEx.Server",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/iex/ebin/Elixir.IEx.Server.beam",
+ "registration_deviation": [],
+ "sha256": "f7d62dd400b87762745ced74cae6648e5d15f621ac9a1a99b9b8855d00d152c0",
+ "skipped_in_dirs": 14,
+ "tier": "T4"
+}

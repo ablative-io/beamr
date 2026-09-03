@@ -1,0 +1,330 @@
+module	qlc
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	1752
+op	2	func_info/3	398
+op	3	int_code_end/0	1
+op	4	call/2	413
+op	5	call_last/3	144
+op	6	call_only/2	164
+op	7	call_ext/2	224
+op	8	call_ext_last/3	65
+op	9	bif0/2	19
+op	10	bif1/4	13
+op	11	bif2/5	33
+op	12	allocate/2	311
+op	13	allocate_heap/3	30
+op	16	test_heap/2	476
+op	18	deallocate/1	292
+op	19	return/0	506
+op	20	send/0	8
+op	21	remove_message/0	17
+op	22	timeout/0	2
+op	23	loop_rec/2	8
+op	24	loop_rec_end/1	7
+op	25	wait/1	6
+op	26	wait_timeout/2	1
+op	39	is_lt/3	18
+op	40	is_ge/3	14
+op	41	is_eq/3	10
+op	43	is_eq_exact/3	270
+op	44	is_ne_exact/3	39
+op	45	is_integer/2	15
+op	48	is_atom/2	3
+op	49	is_pid/2	2
+op	50	is_reference/2	1
+op	51	is_port/2	1
+op	52	is_nil/2	129
+op	55	is_list/2	43
+op	56	is_nonempty_list/2	217
+op	57	is_tuple/2	132
+op	58	test_arity/3	88
+op	59	select_val/3	63
+op	60	select_tuple_arity/3	17
+op	61	jump/1	81
+op	62	catch/2	2
+op	63	catch_end/1	2
+op	64	move/2	2724
+op	65	get_list/3	182
+op	66	get_tuple_element/3	767
+op	69	put_list/3	299
+op	72	badmatch/1	53
+op	73	if_end/0	8
+op	74	case_end/1	45
+op	75	call_fun/1	44
+op	77	is_function/2	13
+op	78	call_ext_only/2	83
+op	104	try/2	17
+op	105	try_end/1	17
+op	106	try_case/1	17
+op	108	raise/2	6
+op	112	apply/1	1
+op	113	apply_last/2	2
+op	114	is_boolean/2	1
+op	115	is_function2/3	4
+op	119	bs_get_binary2/7	2
+op	124	gc_bif1/5	16
+op	125	gc_bif2/6	37
+op	136	trim/2	115
+op	153	line/1	1232
+op	156	is_map/2	1
+op	159	is_tagged_tuple/4	132
+op	160	build_stacktrace/0	6
+op	161	raw_raise/0	4
+op	162	get_hd/2	15
+op	163	get_tl/2	13
+op	164	put_tuple2/2	405
+op	165	bs_get_tail/3	1
+op	166	bs_start_match3/4	3
+op	167	bs_get_position/3	1
+op	168	bs_set_position/2	1
+op	169	swap/2	130
+op	170	bs_start_match4/4	1
+op	171	make_fun3/3	96
+op	172	init_yregs/1	161
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	3
+op	175	recv_marker_reserve/1	1
+op	177	bs_create_bin/6	2
+op	178	call_fun2/3	43
+op	180	badrecord/1	12
+op	181	update_record/5	37
+op	182	bs_match/3	5
+impt	erl_anno:line/1
+impt	erl_anno:new/1
+impt	erl_error:format_stacktrace/4
+impt	erl_eval:exprs/2
+impt	erl_eval:extended_parse_exprs/1
+impt	erl_eval:fun_data/1
+impt	erl_eval:new_bindings/0
+impt	erl_parse:abstract/2
+impt	erl_pp:expr/3
+impt	erl_scan:string/3
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/1
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:and/2
+impt	erlang:binary_to_term/1
+impt	erlang:byte_size/1
+impt	erlang:demonitor/2
+impt	erlang:element/2
+impt	erlang:erase/1
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:exit/1
+impt	erlang:external_size/1
+impt	erlang:fun_info/2
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_function/2
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_binary/1
+impt	erlang:list_to_tuple/1
+impt	erlang:make_ref/0
+impt	erlang:max/2
+impt	erlang:monitor/2
+impt	erlang:node/0
+impt	erlang:not/1
+impt	erlang:phash2/1
+impt	erlang:process_flag/2
+impt	erlang:process_info/2
+impt	erlang:put/2
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	erlang:spawn_opt/2
+impt	erlang:split_binary/2
+impt	erlang:system_flag/2
+impt	erlang:term_to_binary/1
+impt	erlang:throw/1
+impt	erlang:tuple_size/1
+impt	erlang:tuple_to_list/1
+impt	erlang:unique_integer/0
+impt	erlang:unlink/1
+impt	error_logger:error_msg/2
+impt	erts_internal:mc_iterator/1
+impt	erts_internal:mc_refill/1
+impt	ets:delete/1
+impt	ets:delete_all_objects/1
+impt	ets:insert/2
+impt	ets:lookup/2
+impt	ets:match_spec_compile/1
+impt	ets:match_spec_run/2
+impt	ets:member/2
+impt	ets:new/2
+impt	file:close/1
+impt	file:delete/1
+impt	file:format_error/1
+impt	file:get_cwd/0
+impt	file:open/2
+impt	file:position/2
+impt	file:read/2
+impt	file:truncate/1
+impt	file:write/2
+impt	file_sorter:keysort/4
+impt	file_sorter:sort/3
+impt	filename:absname/1
+impt	filename:join/2
+impt	gb_sets:from_list/1
+impt	gb_sets:is_member/2
+impt	io_lib:char_list/1
+impt	io_lib:deep_char_list/1
+impt	io_lib:format/2
+impt	io_lib:print/4
+impt	io_lib:write/1
+impt	lists:all/2
+impt	lists:append/1
+impt	lists:concat/1
+impt	lists:delete/2
+impt	lists:flatmap/2
+impt	lists:flatten/1
+impt	lists:foldr/3
+impt	lists:foreach/2
+impt	lists:keydelete/3
+impt	lists:keyfind/3
+impt	lists:keymember/3
+impt	lists:keyreplace/4
+impt	lists:keysearch/3
+impt	lists:keysort/2
+impt	lists:map/2
+impt	lists:mapfoldl/3
+impt	lists:member/2
+impt	lists:nth/2
+impt	lists:partition/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:sort/1
+impt	lists:sort/2
+impt	lists:split/2
+impt	lists:sublist/2
+impt	lists:takewhile/2
+impt	lists:ukeysort/2
+impt	lists:usort/1
+impt	lists:usort/2
+impt	ordsets:from_list/1
+impt	ordsets:to_list/1
+impt	os:getpid/0
+impt	qlc_pt:parse_transform/2
+impt	qlc_pt:transform_expression/2
+impt	qlc_pt:transform_from_evaluator/2
+impt	sofs:family_union/1
+impt	sofs:relation/1
+impt	sofs:relation/2
+impt	sofs:relation_to_family/1
+impt	sofs:to_external/1
+disasm	ok
+callext	erl_anno:line/1	2
+callext	erl_anno:new/1	1
+callext	erl_error:format_stacktrace/4	1
+callext	erl_eval:exprs/2	1
+callext	erl_eval:extended_parse_exprs/1	2
+callext	erl_eval:fun_data/1	1
+callext	erl_eval:new_bindings/0	1
+callext	erl_parse:abstract/2	2
+callext	erl_pp:expr/3	1
+callext	erl_scan:string/3	2
+callext	erlang:++/2	16
+callext	erlang:binary_to_term/1	6
+callext	erlang:demonitor/2	1
+callext	erlang:erase/1	3
+callext	erlang:error/1	42
+callext	erlang:error/2	25
+callext	erlang:exit/1	6
+callext	erlang:external_size/1	1
+callext	erlang:fun_info/2	4
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_atom/1	1
+callext	erlang:list_to_binary/1	2
+callext	erlang:list_to_tuple/1	6
+callext	erlang:make_ref/0	2
+callext	erlang:monitor/2	3
+callext	erlang:phash2/1	1
+callext	erlang:process_flag/2	1
+callext	erlang:process_info/2	1
+callext	erlang:put/2	5
+callext	erlang:raise/3	6
+callext	erlang:spawn_opt/2	1
+callext	erlang:split_binary/2	1
+callext	erlang:system_flag/2	4
+callext	erlang:term_to_binary/1	12
+callext	erlang:throw/1	1
+callext	erlang:tuple_to_list/1	5
+callext	erlang:unique_integer/0	1
+callext	erlang:unlink/1	1
+callext	error_logger:error_msg/2	1
+callext	erts_internal:mc_iterator/1	1
+callext	erts_internal:mc_refill/1	1
+callext	ets:delete/1	2
+callext	ets:delete_all_objects/1	2
+callext	ets:insert/2	7
+callext	ets:lookup/2	4
+callext	ets:match_spec_compile/1	3
+callext	ets:match_spec_run/2	3
+callext	ets:member/2	4
+callext	ets:new/2	5
+callext	file:close/1	5
+callext	file:delete/1	3
+callext	file:format_error/1	1
+callext	file:get_cwd/0	1
+callext	file:open/2	3
+callext	file:position/2	3
+callext	file:read/2	1
+callext	file:truncate/1	1
+callext	file:write/2	2
+callext	file_sorter:keysort/4	1
+callext	file_sorter:sort/3	1
+callext	filename:absname/1	1
+callext	filename:join/2	1
+callext	gb_sets:from_list/1	1
+callext	gb_sets:is_member/2	1
+callext	io_lib:char_list/1	1
+callext	io_lib:deep_char_list/1	1
+callext	io_lib:format/2	16
+callext	io_lib:print/4	1
+callext	io_lib:write/1	1
+callext	lists:all/2	1
+callext	lists:append/1	6
+callext	lists:concat/1	2
+callext	lists:delete/2	4
+callext	lists:flatmap/2	4
+callext	lists:flatten/1	6
+callext	lists:foldr/3	1
+callext	lists:foreach/2	2
+callext	lists:keydelete/3	4
+callext	lists:keyfind/3	7
+callext	lists:keymember/3	5
+callext	lists:keyreplace/4	1
+callext	lists:keysearch/3	2
+callext	lists:keysort/2	5
+callext	lists:map/2	3
+callext	lists:mapfoldl/3	5
+callext	lists:member/2	5
+callext	lists:nth/2	2
+callext	lists:partition/2	1
+callext	lists:reverse/1	15
+callext	lists:reverse/2	5
+callext	lists:sort/1	5
+callext	lists:sort/2	1
+callext	lists:split/2	1
+callext	lists:sublist/2	1
+callext	lists:takewhile/2	1
+callext	lists:ukeysort/2	3
+callext	lists:usort/1	7
+callext	lists:usort/2	1
+callext	ordsets:from_list/1	1
+callext	ordsets:to_list/1	1
+callext	os:getpid/0	1
+callext	qlc_pt:parse_transform/2	1
+callext	qlc_pt:transform_expression/2	1
+callext	qlc_pt:transform_from_evaluator/2	1
+callext	sofs:family_union/1	1
+callext	sofs:relation/1	1
+callext	sofs:relation/2	1
+callext	sofs:relation_to_family/1	2
+callext	sofs:to_external/1	2

@@ -1,0 +1,6 @@
+/home/aion/reach/elixir-reach-20260903/t1/Elixir.T1EnumMap.beam
+/home/aion/reach/elixir-reach-20260903/t1/Elixir.T1Hello.beam
+/home/aion/reach/elixir-reach-20260903/t1/Elixir.T1Process.beam
+/home/aion/reach/elixir-reach-20260903/t1/Elixir.T1String.beam
+/home/aion/reach/elixir-reach-20260903/t1/Elixir.T1Struct.beam
+/home/aion/reach/elixir-reach-20260903/t1/Elixir.T1Task.beam

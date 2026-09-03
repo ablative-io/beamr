@@ -1,0 +1,286 @@
+module	c
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	490
+op	2	func_info/3	140
+op	3	int_code_end/0	1
+op	4	call/2	83
+op	5	call_last/3	54
+op	6	call_only/2	30
+op	7	call_ext/2	182
+op	8	call_ext_last/3	36
+op	9	bif0/2	4
+op	10	bif1/4	3
+op	11	bif2/5	2
+op	12	allocate/2	94
+op	13	allocate_heap/3	8
+op	16	test_heap/2	117
+op	18	deallocate/1	87
+op	19	return/0	113
+op	21	remove_message/0	1
+op	22	timeout/0	1
+op	23	loop_rec/2	1
+op	39	is_lt/3	3
+op	40	is_ge/3	3
+op	43	is_eq_exact/3	41
+op	44	is_ne_exact/3	13
+op	48	is_atom/2	4
+op	49	is_pid/2	1
+op	51	is_port/2	1
+op	52	is_nil/2	16
+op	53	is_binary/2	3
+op	55	is_list/2	13
+op	56	is_nonempty_list/2	29
+op	57	is_tuple/2	38
+op	58	test_arity/3	32
+op	59	select_val/3	21
+op	60	select_tuple_arity/3	1
+op	61	jump/1	11
+op	62	catch/2	2
+op	63	catch_end/1	2
+op	64	move/2	683
+op	65	get_list/3	25
+op	66	get_tuple_element/3	124
+op	69	put_list/3	133
+op	72	badmatch/1	10
+op	74	case_end/1	24
+op	75	call_fun/1	1
+op	77	is_function/2	1
+op	78	call_ext_only/2	24
+op	104	try/2	4
+op	105	try_end/1	4
+op	106	try_case/1	4
+op	108	raise/2	2
+op	112	apply/1	1
+op	124	gc_bif1/5	5
+op	125	gc_bif2/6	17
+op	136	trim/2	41
+op	152	gc_bif3/7	7
+op	153	line/1	428
+op	159	is_tagged_tuple/4	47
+op	160	build_stacktrace/0	1
+op	162	get_hd/2	4
+op	164	put_tuple2/2	43
+op	166	bs_start_match3/4	1
+op	169	swap/2	36
+op	171	make_fun3/3	18
+op	172	init_yregs/1	58
+op	178	call_fun2/3	2
+op	182	bs_match/3	1
+impt	beam_lib:chunks/2
+impt	calendar:seconds_to_daystime/1
+impt	code:all_loaded/0
+impt	code:get_doc/1
+impt	code:get_object_code/1
+impt	code:is_loaded/1
+impt	code:load_abs/2
+impt	code:load_file/1
+impt	code:modified_modules/0
+impt	code:objfile_extension/0
+impt	code:purge/1
+impt	code:where_is_file/1
+impt	code:which/1
+impt	compile:file/2
+impt	compile:output_generated/1
+impt	erl_anno:new/1
+impt	erl_parse:parse_term/1
+impt	erl_scan:string/1
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:apply/3
+impt	erlang:atom_to_list/1
+impt	erlang:binary_part/3
+impt	erlang:binary_to_list/1
+impt	erlang:div/2
+impt	erlang:error/1
+impt	erlang:fun_info/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:halt/1
+impt	erlang:integer_to_list/1
+impt	erlang:is_alive/0
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_pid/1
+impt	erlang:max/2
+impt	erlang:memory/0
+impt	erlang:memory/1
+impt	erlang:min/2
+impt	erlang:module_loaded/1
+impt	erlang:node/0
+impt	erlang:node/1
+impt	erlang:nodes/0
+impt	erlang:port_info/2
+impt	erlang:port_to_list/1
+impt	erlang:process_display/2
+impt	erlang:process_info/1
+impt	erlang:process_info/2
+impt	erlang:processes/0
+impt	erlang:raise/3
+impt	erlang:registered/0
+impt	erlang:statistics/1
+impt	erlang:system_info/1
+impt	erlang:whereis/1
+impt	error_logger:error_msg/2
+impt	file:delete/1
+impt	file:format_error/1
+impt	file:get_cwd/0
+impt	file:list_dir/1
+impt	file:path_eval/2
+impt	file:read_file/1
+impt	file:rename/2
+impt	file:set_cwd/1
+impt	filelib:find_source/1
+impt	filelib:is_file/1
+impt	filename:basedir/2
+impt	filename:basename/2
+impt	filename:dirname/1
+impt	filename:extension/1
+impt	filename:join/2
+impt	filename:rootname/2
+impt	init:get_argument/1
+impt	init:stop/0
+impt	io:format/1
+impt	io:format/2
+impt	io:get_line/1
+impt	io:getopts/0
+impt	io:nl/0
+impt	io:put_chars/1
+impt	io:rows/0
+impt	io_lib:format/2
+impt	io_lib:write/1
+impt	lists:filter/2
+impt	lists:flatmap/2
+impt	lists:flatten/1
+impt	lists:foreach/2
+impt	lists:keyfind/3
+impt	lists:keysort/2
+impt	lists:keytake/3
+impt	lists:member/2
+impt	lists:partition/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	lists:sublist/3
+impt	proc_lib:translate_initial_call/1
+impt	proplists:get_value/2
+impt	proplists:get_value/3
+impt	re:run/3
+impt	rpc:call/4
+impt	rpc:eval_everywhere/3
+impt	shell_docs:render/2
+impt	shell_docs:render/3
+impt	shell_docs:render/4
+impt	shell_docs:render_callback/2
+impt	shell_docs:render_callback/3
+impt	shell_docs:render_callback/4
+impt	shell_docs:render_type/2
+impt	shell_docs:render_type/3
+impt	shell_docs:render_type/4
+impt	unicode:characters_to_binary/1
+impt	unicode:characters_to_list/1
+disasm	ok
+callext	beam_lib:chunks/2	2
+callext	calendar:seconds_to_daystime/1	1
+callext	code:all_loaded/0	1
+callext	code:get_doc/1	7
+callext	code:get_object_code/1	1
+callext	code:is_loaded/1	1
+callext	code:load_abs/2	1
+callext	code:load_file/1	1
+callext	code:modified_modules/0	1
+callext	code:objfile_extension/0	2
+callext	code:purge/1	2
+callext	code:where_is_file/1	1
+callext	code:which/1	1
+callext	compile:file/2	4
+callext	compile:output_generated/1	1
+callext	erl_anno:new/1	1
+callext	erl_parse:parse_term/1	1
+callext	erl_scan:string/1	1
+callext	erlang:++/2	13
+callext	erlang:apply/3	1
+callext	erlang:atom_to_list/1	6
+callext	erlang:binary_to_list/1	1
+callext	erlang:error/1	2
+callext	erlang:fun_info/2	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:halt/1	4
+callext	erlang:integer_to_list/1	5
+callext	erlang:is_alive/0	6
+callext	erlang:list_to_atom/1	2
+callext	erlang:list_to_pid/1	1
+callext	erlang:memory/0	1
+callext	erlang:memory/1	1
+callext	erlang:module_loaded/1	2
+callext	erlang:nodes/0	2
+callext	erlang:port_info/2	1
+callext	erlang:port_to_list/1	1
+callext	erlang:process_display/2	1
+callext	erlang:process_info/1	1
+callext	erlang:process_info/2	1
+callext	erlang:processes/0	2
+callext	erlang:raise/3	3
+callext	erlang:registered/0	2
+callext	erlang:statistics/1	1
+callext	erlang:system_info/1	1
+callext	erlang:whereis/1	1
+callext	error_logger:error_msg/2	1
+callext	file:delete/1	1
+callext	file:format_error/1	3
+callext	file:get_cwd/0	1
+callext	file:list_dir/1	1
+callext	file:path_eval/2	1
+callext	file:read_file/1	1
+callext	file:rename/2	2
+callext	file:set_cwd/1	1
+callext	filelib:find_source/1	1
+callext	filelib:is_file/1	3
+callext	filename:basedir/2	1
+callext	filename:basename/2	2
+callext	filename:dirname/1	1
+callext	filename:extension/1	2
+callext	filename:join/2	2
+callext	filename:rootname/2	1
+callext	init:get_argument/1	1
+callext	init:stop/0	1
+callext	io:format/1	2
+callext	io:format/2	28
+callext	io:get_line/1	1
+callext	io:getopts/0	1
+callext	io:nl/0	2
+callext	io:put_chars/1	3
+callext	io:rows/0	1
+callext	io_lib:format/2	13
+callext	io_lib:write/1	1
+callext	lists:filter/2	1
+callext	lists:flatmap/2	1
+callext	lists:flatten/1	3
+callext	lists:foreach/2	5
+callext	lists:keyfind/3	8
+callext	lists:keysort/2	1
+callext	lists:keytake/3	2
+callext	lists:member/2	1
+callext	lists:partition/2	2
+callext	lists:reverse/1	9
+callext	lists:sort/1	3
+callext	lists:sublist/3	2
+callext	proc_lib:translate_initial_call/1	1
+callext	proplists:get_value/2	1
+callext	proplists:get_value/3	2
+callext	re:run/3	1
+callext	rpc:call/4	6
+callext	rpc:eval_everywhere/3	2
+callext	shell_docs:render/2	2
+callext	shell_docs:render/3	2
+callext	shell_docs:render/4	2
+callext	shell_docs:render_callback/2	1
+callext	shell_docs:render_callback/3	1
+callext	shell_docs:render_callback/4	1
+callext	shell_docs:render_type/2	1
+callext	shell_docs:render_type/3	1
+callext	shell_docs:render_type/4	1
+callext	unicode:characters_to_binary/1	1
+callext	unicode:characters_to_list/1	1

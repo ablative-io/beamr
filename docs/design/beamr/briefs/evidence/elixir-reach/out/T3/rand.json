@@ -1,0 +1,52 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [
+    185
+   ],
+   "names": {
+    "185": "bif3/6"
+   },
+   "total": 3
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": null,
+  "walker": "ok"
+ },
+ "B": "unmeasurable: load",
+ "C": "unmeasurable: load",
+ "D": "unmeasurable: load",
+ "bytes": 100012,
+ "dirs": 41,
+ "first_refused_opcode": 185,
+ "impt_modules": [
+  "erlang",
+  "io",
+  "io_lib",
+  "lists",
+  "math",
+  "re"
+ ],
+ "load_error": "failed to decode BEAM data: unsupported opcode 185",
+ "load_status": "decode-failed",
+ "module": "rand",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/rand.beam",
+ "registration_deviation": [],
+ "sha256": "e815b72b7d57a337c322287dd7adeecfff7ade9d15e034b777b498cf50d07378",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

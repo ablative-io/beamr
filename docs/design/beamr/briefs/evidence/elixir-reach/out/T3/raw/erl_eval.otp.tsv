@@ -1,0 +1,269 @@
+module	erl_eval
+instset	0
+opcode_max_header	186
+walk	ok
+op	1	label/1	1117
+op	2	func_info/3	220
+op	3	int_code_end/0	1
+op	4	call/2	260
+op	5	call_last/3	192
+op	6	call_only/2	119
+op	7	call_ext/2	202
+op	8	call_ext_last/3	29
+op	9	bif0/2	60
+op	10	bif1/4	5
+op	11	bif2/5	79
+op	12	allocate/2	184
+op	13	allocate_heap/3	19
+op	16	test_heap/2	327
+op	18	deallocate/1	112
+op	19	return/0	209
+op	39	is_lt/3	2
+op	40	is_ge/3	2
+op	43	is_eq_exact/3	142
+op	44	is_ne_exact/3	18
+op	45	is_integer/2	2
+op	46	is_float/2	1
+op	47	is_number/2	1
+op	48	is_atom/2	5
+op	52	is_nil/2	62
+op	53	is_binary/2	1
+op	55	is_list/2	15
+op	56	is_nonempty_list/2	115
+op	57	is_tuple/2	98
+op	58	test_arity/3	43
+op	59	select_val/3	70
+op	60	select_tuple_arity/3	17
+op	61	jump/1	68
+op	64	move/2	2739
+op	65	get_list/3	98
+op	66	get_tuple_element/3	566
+op	69	put_list/3	551
+op	72	badmatch/1	51
+op	74	case_end/1	42
+op	75	call_fun/1	3
+op	77	is_function/2	2
+op	78	call_ext_only/2	49
+op	104	try/2	17
+op	105	try_end/1	17
+op	106	try_case/1	17
+op	107	try_case_end/1	4
+op	108	raise/2	8
+op	112	apply/1	2
+op	113	apply_last/2	3
+op	115	is_function2/3	2
+op	124	gc_bif1/5	14
+op	125	gc_bif2/6	5
+op	129	is_bitstr/2	3
+op	136	trim/2	92
+op	153	line/1	820
+op	154	put_map_assoc/5	4
+op	156	is_map/2	18
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	5
+op	159	is_tagged_tuple/4	153
+op	160	build_stacktrace/0	2
+op	161	raw_raise/0	1
+op	162	get_hd/2	11
+op	163	get_tl/2	7
+op	164	put_tuple2/2	231
+op	165	bs_get_tail/3	1
+op	166	bs_start_match3/4	1
+op	169	swap/2	145
+op	171	make_fun3/3	101
+op	172	init_yregs/1	126
+op	177	bs_create_bin/6	1
+op	178	call_fun2/3	8
+op	186	is_any_native_record/2	3
+impt	erl_anno:is_anno/1
+impt	erl_anno:line/1
+impt	erl_anno:location/1
+impt	erl_anno:new/1
+impt	erl_anno:set_text/2
+impt	erl_anno:text/1
+impt	erl_eval:new_bindings/0
+impt	erl_features:enabled/0
+impt	erl_internal:bif/2
+impt	erl_internal:bif/3
+impt	erl_lint:exprs_opt/3
+impt	erl_lint:is_guard_expr/1
+impt	erl_lint:is_guard_test/1
+impt	erl_lint:used_vars/2
+impt	erl_parse:anno_to_term/1
+impt	erl_parse:map_anno/2
+impt	erl_parse:parse_exprs/1
+impt	erl_scan:string/1
+impt	erl_scan:tokens/3
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/1
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:apply/2
+impt	erlang:apply/3
+impt	erlang:binary_to_list/1
+impt	erlang:element/2
+impt	erlang:erase/1
+impt	erlang:error/1
+impt	erlang:fun_info/2
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:is_number/1
+impt	erlang:is_record/2
+impt	erlang:is_record/3
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_pid/1
+impt	erlang:list_to_port/1
+impt	erlang:list_to_ref/1
+impt	erlang:list_to_tuple/1
+impt	erlang:make_fun/3
+impt	erlang:map_get/2
+impt	erlang:process_info/2
+impt	erlang:put/2
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	erlang:setelement/3
+impt	erlang:throw/1
+impt	erlang:tuple_size/1
+impt	erlang:tuple_to_list/1
+impt	erts_internal:mc_iterator/1
+impt	erts_internal:mc_refill/1
+impt	eval_bits:bin_gen/7
+impt	eval_bits:expr_grp/3
+impt	eval_bits:expr_grp/4
+impt	eval_bits:match_bits/7
+impt	io_lib:format/2
+impt	lists:all/2
+impt	lists:any/2
+impt	lists:append/1
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:keyfind/3
+impt	lists:map/2
+impt	lists:member/2
+impt	lists:partition/2
+impt	lists:reverse/1
+impt	lists:seq/2
+impt	maps:filter/2
+impt	maps:find/2
+impt	maps:foreach/2
+impt	maps:from_list/1
+impt	maps:iterator/1
+impt	maps:keys/1
+impt	maps:merge/2
+impt	maps:merge_with/3
+impt	maps:next/1
+impt	maps:put/3
+impt	maps:remove/2
+impt	maps:to_list/1
+impt	maps:update/3
+impt	orddict:erase/2
+impt	orddict:filter/2
+impt	orddict:find/2
+impt	orddict:new/0
+impt	orddict:store/3
+impt	orddict:to_list/1
+impt	ordsets:add_element/2
+impt	prim_eval:receive/2
+impt	qlc:transform_from_evaluator/2
+impt	records:create/4
+impt	records:get/2
+impt	records:get_definition/2
+impt	records:get_module/1
+impt	records:get_name/1
+impt	records:update/4
+impt	sets:from_list/1
+impt	sets:to_list/1
+disasm	ok
+callext	erl_anno:is_anno/1	1
+callext	erl_anno:line/1	2
+callext	erl_anno:location/1	5
+callext	erl_anno:new/1	2
+callext	erl_anno:set_text/2	1
+callext	erl_anno:text/1	2
+callext	erl_eval:new_bindings/0	1
+callext	erl_features:enabled/0	1
+callext	erl_internal:bif/2	3
+callext	erl_internal:bif/3	1
+callext	erl_lint:exprs_opt/3	1
+callext	erl_lint:is_guard_expr/1	1
+callext	erl_lint:is_guard_test/1	2
+callext	erl_lint:used_vars/2	1
+callext	erl_parse:anno_to_term/1	1
+callext	erl_parse:map_anno/2	2
+callext	erl_parse:parse_exprs/1	3
+callext	erl_scan:string/1	1
+callext	erl_scan:tokens/3	1
+callext	erlang:++/2	2
+callext	erlang:apply/2	4
+callext	erlang:apply/3	3
+callext	erlang:binary_to_list/1	1
+callext	erlang:erase/1	1
+callext	erlang:error/1	12
+callext	erlang:fun_info/2	6
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:is_record/3	2
+callext	erlang:list_to_atom/1	1
+callext	erlang:list_to_pid/1	1
+callext	erlang:list_to_port/1	1
+callext	erlang:list_to_ref/1	1
+callext	erlang:list_to_tuple/1	9
+callext	erlang:make_fun/3	4
+callext	erlang:process_info/2	60
+callext	erlang:put/2	2
+callext	erlang:raise/3	3
+callext	erlang:setelement/3	1
+callext	erlang:throw/1	20
+callext	erlang:tuple_to_list/1	3
+callext	erts_internal:mc_iterator/1	1
+callext	erts_internal:mc_refill/1	1
+callext	eval_bits:bin_gen/7	3
+callext	eval_bits:expr_grp/3	1
+callext	eval_bits:expr_grp/4	1
+callext	eval_bits:match_bits/7	1
+callext	io_lib:format/2	6
+callext	lists:all/2	1
+callext	lists:any/2	1
+callext	lists:append/1	1
+callext	lists:flatten/1	6
+callext	lists:foldl/3	5
+callext	lists:keyfind/3	3
+callext	lists:map/2	1
+callext	lists:member/2	3
+callext	lists:partition/2	1
+callext	lists:reverse/1	11
+callext	lists:seq/2	1
+callext	maps:filter/2	1
+callext	maps:find/2	1
+callext	maps:foreach/2	2
+callext	maps:from_list/1	6
+callext	maps:iterator/1	2
+callext	maps:keys/1	1
+callext	maps:merge/2	1
+callext	maps:merge_with/3	1
+callext	maps:next/1	3
+callext	maps:put/3	3
+callext	maps:remove/2	1
+callext	maps:to_list/1	2
+callext	maps:update/3	1
+callext	orddict:erase/2	1
+callext	orddict:filter/2	1
+callext	orddict:find/2	4
+callext	orddict:new/0	2
+callext	orddict:store/3	5
+callext	orddict:to_list/1	4
+callext	ordsets:add_element/2	1
+callext	prim_eval:receive/2	1
+callext	qlc:transform_from_evaluator/2	1
+callext	records:create/4	2
+callext	records:get/2	4
+callext	records:get_definition/2	1
+callext	records:get_module/1	2
+callext	records:get_name/1	2
+callext	records:update/4	3
+callext	sets:from_list/1	1
+callext	sets:to_list/1	1

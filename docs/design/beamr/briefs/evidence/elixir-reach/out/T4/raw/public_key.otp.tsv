@@ -1,0 +1,324 @@
+module	public_key
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	832
+op	2	func_info/3	153
+op	3	int_code_end/0	1
+op	4	call/2	146
+op	5	call_last/3	81
+op	6	call_only/2	48
+op	7	call_ext/2	155
+op	8	call_ext_last/3	41
+op	11	bif2/5	10
+op	12	allocate/2	150
+op	13	allocate_heap/3	20
+op	16	test_heap/2	172
+op	18	deallocate/1	114
+op	19	return/0	260
+op	39	is_lt/3	1
+op	40	is_ge/3	5
+op	41	is_eq/3	12
+op	42	is_ne/3	24
+op	43	is_eq_exact/3	189
+op	44	is_ne_exact/3	8
+op	45	is_integer/2	11
+op	48	is_atom/2	16
+op	52	is_nil/2	19
+op	53	is_binary/2	47
+op	55	is_list/2	24
+op	56	is_nonempty_list/2	47
+op	57	is_tuple/2	85
+op	58	test_arity/3	55
+op	59	select_val/3	62
+op	60	select_tuple_arity/3	20
+op	61	jump/1	15
+op	64	move/2	965
+op	65	get_list/3	38
+op	66	get_tuple_element/3	474
+op	69	put_list/3	86
+op	72	badmatch/1	38
+op	73	if_end/0	2
+op	74	case_end/1	13
+op	75	call_fun/1	5
+op	77	is_function/2	2
+op	78	call_ext_only/2	35
+op	104	try/2	21
+op	105	try_end/1	21
+op	106	try_case/1	21
+op	107	try_case_end/1	4
+op	108	raise/2	10
+op	112	apply/1	2
+op	124	gc_bif1/5	5
+op	125	gc_bif2/6	5
+op	133	bs_init_writable/0	1
+op	136	trim/2	28
+op	153	line/1	576
+op	154	put_map_assoc/5	3
+op	155	put_map_exact/5	1
+op	156	is_map/2	5
+op	158	get_map_elements/3	6
+op	159	is_tagged_tuple/4	161
+op	162	get_hd/2	6
+op	163	get_tl/2	2
+op	164	put_tuple2/2	174
+op	165	bs_get_tail/3	1
+op	166	bs_start_match3/4	2
+op	167	bs_get_position/3	1
+op	168	bs_set_position/2	1
+op	169	swap/2	31
+op	170	bs_start_match4/4	1
+op	171	make_fun3/3	23
+op	172	init_yregs/1	63
+op	177	bs_create_bin/6	1
+op	178	call_fun2/3	2
+op	180	badrecord/1	17
+op	181	update_record/5	11
+op	182	bs_match/3	6
+impt	OTP-PKIX:enc_HashRDNSequence/2
+impt	OTP-PKIX:encode/2
+impt	PKCS-FRAME:decode/2
+impt	PKCS-FRAME:encode/2
+impt	PKIX1Explicit-2009:decode/2
+impt	PKIX1Explicit-2009:encode/2
+impt	PKIXAlgs-2009:decode/2
+impt	PKIXAlgs-2009:encode/2
+impt	crypto:bytes_to_integer/1
+impt	crypto:compute_key/4
+impt	crypto:generate_key/2
+impt	crypto:hash/2
+impt	crypto:private_decrypt/4
+impt	crypto:private_encrypt/4
+impt	crypto:public_decrypt/4
+impt	crypto:public_encrypt/4
+impt	crypto:sign/5
+impt	crypto:verify/6
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:==/2
+impt	erlang:binary_to_list/1
+impt	erlang:bit_size/1
+impt	erlang:bor/2
+impt	erlang:bsl/2
+impt	erlang:bsr/2
+impt	erlang:byte_size/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_list/2
+impt	erlang:iolist_to_binary/1
+impt	erlang:length/1
+impt	erlang:list_to_tuple/1
+impt	inet:parse_address/1
+impt	inet:parse_ipv4strict_address/1
+impt	inet:parse_ipv6strict_address/1
+impt	io_lib:format/2
+impt	lists:any/2
+impt	lists:dropwhile/2
+impt	lists:filter/2
+impt	lists:flatmap/2
+impt	lists:foldl/3
+impt	lists:keyfind/3
+impt	lists:map/2
+impt	lists:member/2
+impt	lists:partition/2
+impt	lists:reverse/1
+impt	maps:merge/2
+impt	maps:to_list/1
+impt	proplists:delete/2
+impt	proplists:get_value/2
+impt	proplists:get_value/3
+impt	pubkey_cert:apply_fun/5
+impt	pubkey_cert:distribution_points/1
+impt	pubkey_cert:extensions_list/1
+impt	pubkey_cert:gen_test_certs/1
+impt	pubkey_cert:init_validation_state/3
+impt	pubkey_cert:is_fixed_dh_cert/1
+impt	pubkey_cert:is_issuer/2
+impt	pubkey_cert:is_self_signed/1
+impt	pubkey_cert:issuer_id/2
+impt	pubkey_cert:normalize_general_name/1
+impt	pubkey_cert:prepare_for_next_cert/2
+impt	pubkey_cert:root_cert/2
+impt	pubkey_cert:select_extension/2
+impt	pubkey_cert:subject_id/1
+impt	pubkey_cert:time_str_2_gregorian_sec/1
+impt	pubkey_cert:validate_extensions/4
+impt	pubkey_cert:validate_issuer/4
+impt	pubkey_cert:validate_names/6
+impt	pubkey_cert:validate_signature/6
+impt	pubkey_cert:validate_time/3
+impt	pubkey_cert:verify_data/1
+impt	pubkey_cert:verify_fun/4
+impt	pubkey_cert:x509_pkix_sign_types/1
+impt	pubkey_cert_records:decode_cert/2
+impt	pubkey_cert_records:decode_extensions/1
+impt	pubkey_cert_records:encode_extensions/1
+impt	pubkey_cert_records:encode_supportedPublicKey/1
+impt	pubkey_cert_records:ext_oid/1
+impt	pubkey_cert_records:ml_kem_algo_to_oid/1
+impt	pubkey_cert_records:mldsa_algo_to_oid/1
+impt	pubkey_cert_records:namedCurves/1
+impt	pubkey_cert_records:oid_to_ml_dsa_algo/1
+impt	pubkey_cert_records:oid_to_ml_kem_algo/1
+impt	pubkey_cert_records:oid_to_slh_dsa_algo/1
+impt	pubkey_cert_records:slh_dsa_algo_to_oid/1
+impt	pubkey_cert_records:supportedCurvesTypes/1
+impt	pubkey_cert_records:supportedPublicKeyAlgorithms/1
+impt	pubkey_cert_records:transform/2
+impt	pubkey_crl:combines/2
+impt	pubkey_crl:fresh_crl/3
+impt	pubkey_crl:init_revokation_state/0
+impt	pubkey_crl:is_delta_crl/1
+impt	pubkey_crl:match_one/2
+impt	pubkey_crl:validate/7
+impt	pubkey_crl:verify_crl_signature/4
+impt	pubkey_ocsp:decode_response/1
+impt	pubkey_ocsp:find_single_response/3
+impt	pubkey_ocsp:get_nonce_extn/1
+impt	pubkey_ocsp:status/2
+impt	pubkey_ocsp:verify_response/5
+impt	pubkey_os_cacerts:clear/0
+impt	pubkey_os_cacerts:get/0
+impt	pubkey_os_cacerts:load/0
+impt	pubkey_os_cacerts:load/1
+impt	pubkey_pem:cipher/3
+impt	pubkey_pem:decipher/2
+impt	pubkey_pem:decode/1
+impt	pubkey_pem:encode/1
+impt	pubkey_policy_tree:collect_qualifiers/2
+impt	pubkey_policy_tree:constrained_policy_node_set/1
+impt	pubkey_ssh:dh_gex_group/4
+impt	pubkey_ssh:dh_gex_group_sizes/0
+impt	pubkey_translation:decode/1
+impt	pubkey_translation:encode/1
+impt	re:replace/4
+impt	string:right/3
+impt	string:split/2
+impt	string:to_lower/1
+impt	unicode:characters_to_binary/1
+impt	unicode:characters_to_list/1
+impt	uri_string:normalize/2
+disasm	ok
+callext	OTP-PKIX:enc_HashRDNSequence/2	1
+callext	OTP-PKIX:encode/2	1
+callext	PKCS-FRAME:decode/2	3
+callext	PKCS-FRAME:encode/2	2
+callext	PKIX1Explicit-2009:decode/2	1
+callext	PKIX1Explicit-2009:encode/2	1
+callext	PKIXAlgs-2009:decode/2	4
+callext	PKIXAlgs-2009:encode/2	2
+callext	crypto:bytes_to_integer/1	11
+callext	crypto:compute_key/4	3
+callext	crypto:generate_key/2	5
+callext	crypto:hash/2	1
+callext	crypto:private_decrypt/4	1
+callext	crypto:private_encrypt/4	1
+callext	crypto:public_decrypt/4	1
+callext	crypto:public_encrypt/4	1
+callext	crypto:sign/5	1
+callext	crypto:verify/6	1
+callext	erlang:++/2	1
+callext	erlang:--/2	2
+callext	erlang:binary_to_list/1	1
+callext	erlang:error/1	22
+callext	erlang:error/2	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/2	1
+callext	erlang:iolist_to_binary/1	2
+callext	erlang:list_to_tuple/1	2
+callext	inet:parse_address/1	1
+callext	inet:parse_ipv4strict_address/1	1
+callext	inet:parse_ipv6strict_address/1	1
+callext	io_lib:format/2	4
+callext	lists:any/2	4
+callext	lists:dropwhile/2	1
+callext	lists:filter/2	1
+callext	lists:flatmap/2	1
+callext	lists:foldl/3	3
+callext	lists:keyfind/3	1
+callext	lists:map/2	5
+callext	lists:member/2	1
+callext	lists:partition/2	1
+callext	lists:reverse/1	3
+callext	maps:merge/2	3
+callext	maps:to_list/1	1
+callext	proplists:delete/2	2
+callext	proplists:get_value/2	2
+callext	proplists:get_value/3	10
+callext	pubkey_cert:apply_fun/5	2
+callext	pubkey_cert:distribution_points/1	1
+callext	pubkey_cert:extensions_list/1	1
+callext	pubkey_cert:gen_test_certs/1	2
+callext	pubkey_cert:init_validation_state/3	1
+callext	pubkey_cert:is_fixed_dh_cert/1	1
+callext	pubkey_cert:is_issuer/2	2
+callext	pubkey_cert:is_self_signed/1	1
+callext	pubkey_cert:issuer_id/2	1
+callext	pubkey_cert:normalize_general_name/1	1
+callext	pubkey_cert:prepare_for_next_cert/2	1
+callext	pubkey_cert:root_cert/2	1
+callext	pubkey_cert:select_extension/2	2
+callext	pubkey_cert:subject_id/1	1
+callext	pubkey_cert:time_str_2_gregorian_sec/1	2
+callext	pubkey_cert:validate_extensions/4	1
+callext	pubkey_cert:validate_issuer/4	1
+callext	pubkey_cert:validate_names/6	1
+callext	pubkey_cert:validate_signature/6	1
+callext	pubkey_cert:validate_time/3	2
+callext	pubkey_cert:verify_data/1	7
+callext	pubkey_cert:verify_fun/4	2
+callext	pubkey_cert:x509_pkix_sign_types/1	1
+callext	pubkey_cert_records:decode_cert/2	1
+callext	pubkey_cert_records:decode_extensions/1	1
+callext	pubkey_cert_records:encode_extensions/1	1
+callext	pubkey_cert_records:encode_supportedPublicKey/1	1
+callext	pubkey_cert_records:ext_oid/1	2
+callext	pubkey_cert_records:ml_kem_algo_to_oid/1	2
+callext	pubkey_cert_records:mldsa_algo_to_oid/1	2
+callext	pubkey_cert_records:namedCurves/1	2
+callext	pubkey_cert_records:oid_to_ml_dsa_algo/1	2
+callext	pubkey_cert_records:oid_to_ml_kem_algo/1	2
+callext	pubkey_cert_records:oid_to_slh_dsa_algo/1	2
+callext	pubkey_cert_records:slh_dsa_algo_to_oid/1	2
+callext	pubkey_cert_records:supportedCurvesTypes/1	1
+callext	pubkey_cert_records:supportedPublicKeyAlgorithms/1	1
+callext	pubkey_cert_records:transform/2	8
+callext	pubkey_crl:combines/2	1
+callext	pubkey_crl:fresh_crl/3	2
+callext	pubkey_crl:init_revokation_state/0	2
+callext	pubkey_crl:is_delta_crl/1	1
+callext	pubkey_crl:match_one/2	1
+callext	pubkey_crl:validate/7	1
+callext	pubkey_crl:verify_crl_signature/4	1
+callext	pubkey_ocsp:decode_response/1	1
+callext	pubkey_ocsp:find_single_response/3	1
+callext	pubkey_ocsp:get_nonce_extn/1	1
+callext	pubkey_ocsp:status/2	1
+callext	pubkey_ocsp:verify_response/5	1
+callext	pubkey_os_cacerts:clear/0	1
+callext	pubkey_os_cacerts:get/0	1
+callext	pubkey_os_cacerts:load/0	1
+callext	pubkey_os_cacerts:load/1	1
+callext	pubkey_pem:cipher/3	1
+callext	pubkey_pem:decipher/2	1
+callext	pubkey_pem:decode/1	1
+callext	pubkey_pem:encode/1	1
+callext	pubkey_policy_tree:collect_qualifiers/2	1
+callext	pubkey_policy_tree:constrained_policy_node_set/1	1
+callext	pubkey_ssh:dh_gex_group/4	1
+callext	pubkey_ssh:dh_gex_group_sizes/0	1
+callext	pubkey_translation:decode/1	5
+callext	pubkey_translation:encode/1	2
+callext	re:replace/4	3
+callext	string:right/3	1
+callext	string:split/2	2
+callext	string:to_lower/1	1
+callext	unicode:characters_to_binary/1	1
+callext	unicode:characters_to_list/1	1
+callext	uri_string:normalize/2	1

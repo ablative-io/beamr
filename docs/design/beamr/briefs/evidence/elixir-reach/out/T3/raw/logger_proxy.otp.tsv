@@ -1,0 +1,82 @@
+module	logger_proxy
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	56
+op	2	func_info/3	13
+op	3	int_code_end/0	1
+op	4	call/2	4
+op	7	call_ext/2	24
+op	8	call_ext_last/3	3
+op	9	bif0/2	3
+op	11	bif2/5	2
+op	12	allocate/2	11
+op	13	allocate_heap/3	3
+op	16	test_heap/2	7
+op	18	deallocate/1	17
+op	19	return/0	21
+op	43	is_eq_exact/3	14
+op	44	is_ne_exact/3	1
+op	52	is_nil/2	1
+op	57	is_tuple/2	6
+op	58	test_arity/3	1
+op	59	select_val/3	4
+op	60	select_tuple_arity/3	3
+op	61	jump/1	1
+op	64	move/2	82
+op	66	get_tuple_element/3	23
+op	69	put_list/3	20
+op	74	case_end/1	4
+op	78	call_ext_only/2	2
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	136	trim/2	2
+op	153	line/1	40
+op	154	put_map_assoc/5	1
+op	156	is_map/2	1
+op	160	build_stacktrace/0	1
+op	164	put_tuple2/2	8
+op	169	swap/2	1
+op	172	init_yregs/1	4
+impt	erlang:apply/3
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:process_flag/2
+impt	erlang:self/0
+impt	erlang:send/3
+impt	erlang:system_flag/2
+impt	erlang:whereis/1
+impt	logger:allow/2
+impt	logger:get_proxy_config/0
+impt	logger_olp:get_default_opts/0
+impt	logger_olp:get_pid/1
+impt	logger_olp:get_ref/0
+impt	logger_olp:load/2
+impt	logger_olp:start_link/4
+impt	logger_server:do_internal_log/4
+impt	persistent_term:get/2
+impt	persistent_term:put/2
+impt	supervisor:start_child/2
+disasm	ok
+callext	erlang:apply/3	1
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:process_flag/2	1
+callext	erlang:send/3	1
+callext	erlang:system_flag/2	5
+callext	erlang:whereis/1	1
+callext	logger:allow/2	4
+callext	logger:get_proxy_config/0	1
+callext	logger_olp:get_default_opts/0	1
+callext	logger_olp:get_pid/1	1
+callext	logger_olp:get_ref/0	1
+callext	logger_olp:load/2	1
+callext	logger_olp:start_link/4	1
+callext	logger_server:do_internal_log/4	4
+callext	persistent_term:get/2	1
+callext	persistent_term:put/2	1
+callext	supervisor:start_child/2	1

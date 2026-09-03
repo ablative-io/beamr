@@ -1,0 +1,3 @@
+HashSet:size/1
+HashSet:member?/2
+HashSet:reduce/3

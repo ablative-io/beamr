@@ -1,0 +1,137 @@
+module	Elixir.URI
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	300
+op	2	func_info/3	54
+op	3	int_code_end/0	1
+op	4	call/2	35
+op	5	call_last/3	15
+op	6	call_only/2	28
+op	7	call_ext/2	56
+op	8	call_ext_last/3	18
+op	11	bif2/5	3
+op	12	allocate/2	36
+op	13	allocate_heap/3	1
+op	16	test_heap/2	24
+op	18	deallocate/1	29
+op	19	return/0	60
+op	40	is_ge/3	20
+op	41	is_eq/3	1
+op	43	is_eq_exact/3	34
+op	44	is_ne_exact/3	6
+op	45	is_integer/2	3
+op	48	is_atom/2	1
+op	52	is_nil/2	9
+op	53	is_binary/2	20
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	26
+op	57	is_tuple/2	22
+op	58	test_arity/3	18
+op	59	select_val/3	29
+op	61	jump/1	37
+op	64	move/2	275
+op	65	get_list/3	16
+op	66	get_tuple_element/3	52
+op	69	put_list/3	10
+op	72	badmatch/1	2
+op	74	case_end/1	15
+op	78	call_ext_only/2	10
+op	115	is_function2/3	1
+op	117	bs_get_integer2/7	1
+op	125	gc_bif2/6	12
+op	133	bs_init_writable/0	4
+op	136	trim/2	6
+op	153	line/1	165
+op	154	put_map_assoc/5	4
+op	155	put_map_exact/5	16
+op	156	is_map/2	12
+op	158	get_map_elements/3	36
+op	159	is_tagged_tuple/4	2
+op	163	get_tl/2	10
+op	164	put_tuple2/2	14
+op	165	bs_get_tail/3	2
+op	166	bs_start_match3/4	7
+op	167	bs_get_position/3	3
+op	168	bs_set_position/2	5
+op	169	swap/2	5
+op	170	bs_start_match4/4	2
+op	171	make_fun3/3	7
+op	172	init_yregs/1	27
+op	177	bs_create_bin/6	18
+op	178	call_fun2/3	1
+op	182	bs_match/3	19
+impt	Dict:put/3
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Enum:join/2
+impt	Elixir.Enum:map_join/3
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:reverse/1
+impt	Elixir.IO:warn/1
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Kernel.Utils:destructure/2
+impt	Elixir.Regex:run/2
+impt	Elixir.Stream:unfold/2
+impt	Elixir.String:downcase/1
+impt	Elixir.String:downcase/2
+impt	Elixir.String:ends_with?/2
+impt	Elixir.String:split/2
+impt	Elixir.String:trim_leading/2
+impt	Elixir.String:trim_trailing/2
+impt	Elixir.String.Chars:to_string/1
+impt	Elixir.String.Chars.URI:to_string/1
+impt	Elixir.URI.Error:exception/1
+impt	binary:last/1
+impt	binary:split/2
+impt	elixir_config:get/2
+impt	elixir_config:put/2
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=:=/2
+impt	erlang:band/2
+impt	erlang:binary_to_integer/1
+impt	erlang:bsl/2
+impt	erlang:bsr/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:map_get/2
+impt	maps:merge/2
+impt	re:import/1
+impt	uri_string:parse/1
+disasm	ok
+callext	Dict:put/3	1
+callext	Elixir.ArgumentError:exception/1	5
+callext	Elixir.Enum:join/2	1
+callext	Elixir.Enum:map_join/3	1
+callext	Elixir.Enum:reduce/3	1
+callext	Elixir.Enum:reverse/1	1
+callext	Elixir.IO:warn/1	2
+callext	Elixir.Kernel:inspect/1	4
+callext	Elixir.Kernel.Utils:destructure/2	2
+callext	Elixir.Regex:run/2	2
+callext	Elixir.Stream:unfold/2	1
+callext	Elixir.String:downcase/1	1
+callext	Elixir.String:downcase/2	1
+callext	Elixir.String:ends_with?/2	1
+callext	Elixir.String:split/2	1
+callext	Elixir.String:trim_leading/2	1
+callext	Elixir.String:trim_trailing/2	1
+callext	Elixir.String.Chars:to_string/1	6
+callext	Elixir.String.Chars.URI:to_string/1	1
+callext	Elixir.URI.Error:exception/1	1
+callext	binary:last/1	1
+callext	binary:split/2	2
+callext	elixir_config:get/2	1
+callext	elixir_config:put/2	1
+callext	elixir_erl_pass:no_parens_remote/2	16
+callext	erlang:++/2	1
+callext	erlang:binary_to_integer/1	1
+callext	erlang:error/1	18
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	maps:merge/2	1
+callext	re:import/1	2
+callext	uri_string:parse/1	2

@@ -1,0 +1,3 @@
+HashDict:size/1
+HashDict:fetch/2
+HashDict:reduce/3

@@ -1,0 +1,158 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 3560,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "beam_lib",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "binary",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "c",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "code",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "compile",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erpc",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "file",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 67484,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.Application",
+  "Elixir.ArgumentError",
+  "Elixir.Code",
+  "Elixir.CompileError",
+  "Elixir.Enum",
+  "Elixir.Exception",
+  "Elixir.File",
+  "Elixir.GenServer",
+  "Elixir.IEx",
+  "Elixir.IEx.Autocomplete",
+  "Elixir.IEx.History",
+  "Elixir.IEx.Info",
+  "Elixir.IEx.Introspection",
+  "Elixir.IEx.MixListener",
+  "Elixir.IEx.Pry",
+  "Elixir.IO",
+  "Elixir.IO.ANSI",
+  "Elixir.Kernel",
+  "Elixir.Kernel.ParallelCompiler",
+  "Elixir.Keyword",
+  "Elixir.List",
+  "Elixir.Macro",
+  "Elixir.Map",
+  "Elixir.MapSet",
+  "Elixir.Mix",
+  "Elixir.Mix.Project",
+  "Elixir.Mix.Task",
+  "Elixir.Mix.Task.Compiler",
+  "Elixir.Path",
+  "Elixir.Port",
+  "Elixir.Process",
+  "Elixir.Protocol",
+  "Elixir.String",
+  "Elixir.String.Chars",
+  "Elixir.System",
+  "beam_lib",
+  "binary",
+  "c",
+  "code",
+  "compile",
+  "elixir_env",
+  "elixir_erl_pass",
+  "elixir_quote",
+  "erlang",
+  "erpc",
+  "file",
+  "lists",
+  "maps"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.IEx.Helpers",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/iex/ebin/Elixir.IEx.Helpers.beam",
+ "registration_deviation": [],
+ "sha256": "85498262e71982a77ce696046c1ce1708bc47d000ac781752583b50128794e2c",
+ "skipped_in_dirs": 14,
+ "tier": "T4"
+}

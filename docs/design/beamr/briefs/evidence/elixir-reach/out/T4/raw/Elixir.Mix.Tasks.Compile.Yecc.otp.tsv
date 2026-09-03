@@ -1,0 +1,82 @@
+module	Elixir.Mix.Tasks.Compile.Yecc
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	41
+op	2	func_info/3	11
+op	3	int_code_end/0	1
+op	4	call/2	3
+op	6	call_only/2	2
+op	7	call_ext/2	20
+op	8	call_ext_last/3	5
+op	12	allocate/2	6
+op	16	test_heap/2	4
+op	18	deallocate/1	2
+op	19	return/0	7
+op	53	is_binary/2	1
+op	55	is_list/2	1
+op	57	is_tuple/2	1
+op	58	test_arity/3	1
+op	59	select_val/3	3
+op	61	jump/1	4
+op	64	move/2	48
+op	66	get_tuple_element/3	1
+op	69	put_list/3	6
+op	72	badmatch/1	2
+op	78	call_ext_only/2	3
+op	112	apply/1	1
+op	136	trim/2	2
+op	153	line/1	31
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	2
+op	169	swap/2	1
+op	171	make_fun3/3	2
+op	172	init_yregs/1	6
+op	177	bs_create_bin/6	2
+impt	Elixir.Access:get/2
+impt	Elixir.Application:ensure_all_started/1
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:zip/2
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.List:wrap/1
+impt	Elixir.Mix:ensure_application!/1
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:shell/0
+impt	Elixir.Mix.Compilers.Erlang:assert_valid_erlc_paths/1
+impt	Elixir.Mix.Compilers.Erlang:clean/1
+impt	Elixir.Mix.Compilers.Erlang:compile/6
+impt	Elixir.Mix.Compilers.Erlang:to_erl_file/1
+impt	Elixir.Mix.Project:config/0
+impt	Elixir.Mix.Project:manifest_path/0
+impt	Elixir.OptionParser:parse/2
+impt	Elixir.Path:join/2
+impt	Elixir.String.Chars:to_string/1
+impt	erlang:++/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	yecc:file/2
+disasm	ok
+callext	Elixir.Access:get/2	4
+callext	Elixir.Application:ensure_all_started/1	1
+callext	Elixir.Enum:__in__/2	1
+callext	Elixir.Enum:zip/2	1
+callext	Elixir.Kernel:inspect/1	1
+callext	Elixir.List:wrap/1	1
+callext	Elixir.Mix:ensure_application!/1	1
+callext	Elixir.Mix:raise/1	1
+callext	Elixir.Mix:shell/0	1
+callext	Elixir.Mix.Compilers.Erlang:assert_valid_erlc_paths/1	1
+callext	Elixir.Mix.Compilers.Erlang:clean/1	1
+callext	Elixir.Mix.Compilers.Erlang:compile/6	1
+callext	Elixir.Mix.Compilers.Erlang:to_erl_file/1	2
+callext	Elixir.Mix.Project:config/0	1
+callext	Elixir.Mix.Project:manifest_path/0	1
+callext	Elixir.OptionParser:parse/2	1
+callext	Elixir.Path:join/2	1
+callext	Elixir.String.Chars:to_string/1	1
+callext	erlang:++/2	1
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	yecc:file/2	1

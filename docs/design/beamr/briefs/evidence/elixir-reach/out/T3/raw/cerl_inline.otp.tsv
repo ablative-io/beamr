@@ -1,0 +1,413 @@
+module	cerl_inline
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	777
+op	2	func_info/3	181
+op	3	int_code_end/0	1
+op	4	call/2	235
+op	5	call_last/3	95
+op	6	call_only/2	41
+op	7	call_ext/2	424
+op	8	call_ext_last/3	30
+op	9	bif0/2	2
+op	10	bif1/4	10
+op	11	bif2/5	11
+op	12	allocate/2	132
+op	13	allocate_heap/3	11
+op	16	test_heap/2	206
+op	18	deallocate/1	148
+op	19	return/0	177
+op	20	send/0	1
+op	21	remove_message/0	1
+op	23	loop_rec/2	1
+op	24	loop_rec_end/1	1
+op	25	wait/1	1
+op	39	is_lt/3	8
+op	40	is_ge/3	5
+op	43	is_eq_exact/3	61
+op	44	is_ne_exact/3	5
+op	45	is_integer/2	2
+op	52	is_nil/2	35
+op	56	is_nonempty_list/2	47
+op	57	is_tuple/2	40
+op	58	test_arity/3	28
+op	59	select_val/3	63
+op	61	jump/1	28
+op	64	move/2	1883
+op	65	get_list/3	44
+op	66	get_tuple_element/3	421
+op	69	put_list/3	47
+op	72	badmatch/1	7
+op	74	case_end/1	61
+op	78	call_ext_only/2	15
+op	104	try/2	5
+op	105	try_end/1	5
+op	106	try_case/1	5
+op	108	raise/2	5
+op	124	gc_bif1/5	19
+op	125	gc_bif2/6	14
+op	136	trim/2	164
+op	153	line/1	837
+op	154	put_map_assoc/5	1
+op	156	is_map/2	6
+op	158	get_map_elements/3	5
+op	159	is_tagged_tuple/4	62
+op	162	get_hd/2	1
+op	163	get_tl/2	3
+op	164	put_tuple2/2	147
+op	169	swap/2	83
+op	171	make_fun3/3	33
+op	172	init_yregs/1	187
+op	180	badrecord/1	41
+op	181	update_record/5	24
+impt	cerl:abstract/1
+impt	cerl:alias_pat/1
+impt	cerl:alias_var/1
+impt	cerl:ann_c_let/4
+impt	cerl:apply_args/1
+impt	cerl:apply_op/1
+impt	cerl:atom_name/1
+impt	cerl:atom_val/1
+impt	cerl:binary_segments/1
+impt	cerl:bitstr_flags/1
+impt	cerl:bitstr_size/1
+impt	cerl:bitstr_type/1
+impt	cerl:bitstr_unit/1
+impt	cerl:bitstr_val/1
+impt	cerl:c_fun/2
+impt	cerl:c_int/1
+impt	cerl:c_let/3
+impt	cerl:c_seq/2
+impt	cerl:c_tuple/1
+impt	cerl:c_values/1
+impt	cerl:c_var/1
+impt	cerl:call_args/1
+impt	cerl:call_module/1
+impt	cerl:call_name/1
+impt	cerl:case_arg/1
+impt	cerl:case_arity/1
+impt	cerl:case_clauses/1
+impt	cerl:catch_body/1
+impt	cerl:clause_body/1
+impt	cerl:clause_guard/1
+impt	cerl:clause_pats/1
+impt	cerl:clause_vars/1
+impt	cerl:concrete/1
+impt	cerl:cons_hd/1
+impt	cerl:cons_tl/1
+impt	cerl:data_arity/1
+impt	cerl:data_es/1
+impt	cerl:data_type/1
+impt	cerl:fname_arity/1
+impt	cerl:from_records/1
+impt	cerl:fun_body/1
+impt	cerl:fun_vars/1
+impt	cerl:get_ann/1
+impt	cerl:int_val/1
+impt	cerl:is_c_atom/1
+impt	cerl:is_c_cons/1
+impt	cerl:is_c_fname/1
+impt	cerl:is_c_int/1
+impt	cerl:is_c_list/1
+impt	cerl:is_c_seq/1
+impt	cerl:is_c_tuple/1
+impt	cerl:is_c_var/1
+impt	cerl:is_data/1
+impt	cerl:is_literal/1
+impt	cerl:is_literal_term/1
+impt	cerl:let_arg/1
+impt	cerl:let_body/1
+impt	cerl:let_vars/1
+impt	cerl:letrec_body/1
+impt	cerl:letrec_defs/1
+impt	cerl:list_elements/1
+impt	cerl:list_length/1
+impt	cerl:make_data_skel/2
+impt	cerl:make_list/1
+impt	cerl:map_arg/1
+impt	cerl:map_es/1
+impt	cerl:map_pair_key/1
+impt	cerl:map_pair_op/1
+impt	cerl:map_pair_val/1
+impt	cerl:module_attrs/1
+impt	cerl:module_defs/1
+impt	cerl:module_exports/1
+impt	cerl:module_name/1
+impt	cerl:primop_args/1
+impt	cerl:primop_name/1
+impt	cerl:receive_action/1
+impt	cerl:receive_clauses/1
+impt	cerl:receive_timeout/1
+impt	cerl:record_arg/1
+impt	cerl:record_es/1
+impt	cerl:record_id/1
+impt	cerl:record_pair_key/1
+impt	cerl:record_pair_val/1
+impt	cerl:seq_arg/1
+impt	cerl:seq_body/1
+impt	cerl:set_ann/2
+impt	cerl:to_records/1
+impt	cerl:try_arg/1
+impt	cerl:try_body/1
+impt	cerl:try_evars/1
+impt	cerl:try_handler/1
+impt	cerl:try_vars/1
+impt	cerl:tuple_arity/1
+impt	cerl:tuple_es/1
+impt	cerl:type/1
+impt	cerl:update_c_alias/3
+impt	cerl:update_c_apply/3
+impt	cerl:update_c_binary/2
+impt	cerl:update_c_bitstr/6
+impt	cerl:update_c_call/4
+impt	cerl:update_c_case/3
+impt	cerl:update_c_catch/2
+impt	cerl:update_c_clause/4
+impt	cerl:update_c_let/4
+impt	cerl:update_c_letrec/3
+impt	cerl:update_c_map/3
+impt	cerl:update_c_map_pair/4
+impt	cerl:update_c_module/5
+impt	cerl:update_c_primop/3
+impt	cerl:update_c_receive/4
+impt	cerl:update_c_record/4
+impt	cerl:update_c_record_pair/3
+impt	cerl:update_c_seq/3
+impt	cerl:update_c_try/6
+impt	cerl:update_c_values/2
+impt	cerl:update_data/3
+impt	cerl:values_es/1
+impt	cerl:var_name/1
+impt	cerl_clauses:any_catchall/1
+impt	cerl_clauses:match_list/2
+impt	cerl_clauses:reduce/2
+impt	cerl_trees:variables/1
+impt	erl_bifs:is_pure/3
+impt	erl_bifs:is_safe/3
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/1
+impt	erlang:-/2
+impt	erlang:</2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:apply/3
+impt	erlang:atom_to_list/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:exit/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:integer_to_list/1
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_tuple/1
+impt	erlang:max/2
+impt	erlang:not/1
+impt	erlang:self/0
+impt	erlang:setelement/3
+impt	erlang:spawn_link/1
+impt	erlang:throw/1
+impt	erlang:tuple_size/1
+impt	erlang:tuple_to_list/1
+impt	ets:insert/2
+impt	ets:lookup/2
+impt	ets:lookup_element/3
+impt	ets:new/2
+impt	ets:update_counter/3
+impt	io:fwrite/2
+impt	io:put_chars/1
+impt	io_lib:fwrite/2
+impt	lists:all/2
+impt	lists:foldl/3
+impt	lists:foldr/3
+impt	lists:mapfoldl/3
+impt	lists:member/2
+impt	lists:reverse/1
+impt	maps:find/2
+impt	maps:put/3
+impt	maps:remove/2
+impt	ordsets:add_element/2
+impt	ordsets:is_element/2
+impt	ordsets:union/2
+impt	proplists:get_bool/2
+impt	proplists:get_value/2
+impt	rec_env:bind/3
+impt	rec_env:bind_recursive/4
+impt	rec_env:empty/0
+impt	rec_env:get/2
+impt	rec_env:is_defined/2
+impt	rec_env:lookup/2
+impt	rec_env:new_key/1
+impt	rec_env:new_key/2
+disasm	ok
+callext	cerl:abstract/1	10
+callext	cerl:alias_pat/1	1
+callext	cerl:alias_var/1	1
+callext	cerl:ann_c_let/4	1
+callext	cerl:apply_args/1	1
+callext	cerl:apply_op/1	1
+callext	cerl:atom_name/1	1
+callext	cerl:atom_val/1	10
+callext	cerl:binary_segments/1	2
+callext	cerl:bitstr_flags/1	2
+callext	cerl:bitstr_size/1	2
+callext	cerl:bitstr_type/1	2
+callext	cerl:bitstr_unit/1	2
+callext	cerl:bitstr_val/1	2
+callext	cerl:c_fun/2	1
+callext	cerl:c_int/1	2
+callext	cerl:c_let/3	4
+callext	cerl:c_seq/2	3
+callext	cerl:c_tuple/1	4
+callext	cerl:c_values/1	6
+callext	cerl:c_var/1	11
+callext	cerl:call_args/1	2
+callext	cerl:call_module/1	2
+callext	cerl:call_name/1	2
+callext	cerl:case_arg/1	1
+callext	cerl:case_arity/1	1
+callext	cerl:case_clauses/1	1
+callext	cerl:catch_body/1	2
+callext	cerl:clause_body/1	8
+callext	cerl:clause_guard/1	4
+callext	cerl:clause_pats/1	6
+callext	cerl:clause_vars/1	1
+callext	cerl:concrete/1	3
+callext	cerl:cons_hd/1	2
+callext	cerl:cons_tl/1	2
+callext	cerl:data_arity/1	2
+callext	cerl:data_es/1	7
+callext	cerl:data_type/1	6
+callext	cerl:fname_arity/1	1
+callext	cerl:from_records/1	1
+callext	cerl:fun_body/1	2
+callext	cerl:fun_vars/1	2
+callext	cerl:get_ann/1	9
+callext	cerl:int_val/1	3
+callext	cerl:is_c_atom/1	4
+callext	cerl:is_c_cons/1	2
+callext	cerl:is_c_fname/1	2
+callext	cerl:is_c_int/1	3
+callext	cerl:is_c_list/1	2
+callext	cerl:is_c_seq/1	6
+callext	cerl:is_c_tuple/1	5
+callext	cerl:is_c_var/1	3
+callext	cerl:is_data/1	5
+callext	cerl:is_literal/1	7
+callext	cerl:is_literal_term/1	1
+callext	cerl:let_arg/1	3
+callext	cerl:let_body/1	4
+callext	cerl:let_vars/1	1
+callext	cerl:letrec_body/1	2
+callext	cerl:letrec_defs/1	1
+callext	cerl:list_elements/1	1
+callext	cerl:list_length/1	1
+callext	cerl:make_data_skel/2	1
+callext	cerl:make_list/1	1
+callext	cerl:map_arg/1	2
+callext	cerl:map_es/1	2
+callext	cerl:map_pair_key/1	2
+callext	cerl:map_pair_op/1	2
+callext	cerl:map_pair_val/1	2
+callext	cerl:module_attrs/1	2
+callext	cerl:module_defs/1	1
+callext	cerl:module_exports/1	1
+callext	cerl:module_name/1	2
+callext	cerl:primop_args/1	1
+callext	cerl:primop_name/1	1
+callext	cerl:receive_action/1	1
+callext	cerl:receive_clauses/1	1
+callext	cerl:receive_timeout/1	1
+callext	cerl:record_arg/1	1
+callext	cerl:record_es/1	2
+callext	cerl:record_id/1	2
+callext	cerl:record_pair_key/1	2
+callext	cerl:record_pair_val/1	2
+callext	cerl:seq_arg/1	6
+callext	cerl:seq_body/1	9
+callext	cerl:set_ann/2	5
+callext	cerl:to_records/1	1
+callext	cerl:try_arg/1	2
+callext	cerl:try_body/1	2
+callext	cerl:try_evars/1	1
+callext	cerl:try_handler/1	1
+callext	cerl:try_vars/1	1
+callext	cerl:tuple_arity/1	1
+callext	cerl:tuple_es/1	3
+callext	cerl:type/1	9
+callext	cerl:update_c_alias/3	1
+callext	cerl:update_c_apply/3	2
+callext	cerl:update_c_binary/2	2
+callext	cerl:update_c_bitstr/6	2
+callext	cerl:update_c_call/4	1
+callext	cerl:update_c_case/3	2
+callext	cerl:update_c_catch/2	1
+callext	cerl:update_c_clause/4	4
+callext	cerl:update_c_let/4	1
+callext	cerl:update_c_letrec/3	1
+callext	cerl:update_c_map/3	2
+callext	cerl:update_c_map_pair/4	2
+callext	cerl:update_c_module/5	1
+callext	cerl:update_c_primop/3	1
+callext	cerl:update_c_receive/4	1
+callext	cerl:update_c_record/4	2
+callext	cerl:update_c_record_pair/3	2
+callext	cerl:update_c_seq/3	1
+callext	cerl:update_c_try/6	1
+callext	cerl:update_c_values/2	1
+callext	cerl:update_data/3	3
+callext	cerl:values_es/1	3
+callext	cerl:var_name/1	17
+callext	cerl_clauses:any_catchall/1	1
+callext	cerl_clauses:match_list/2	1
+callext	cerl_clauses:reduce/2	1
+callext	cerl_trees:variables/1	2
+callext	erl_bifs:is_pure/3	1
+callext	erl_bifs:is_safe/3	2
+callext	erlang:++/2	4
+callext	erlang:apply/3	1
+callext	erlang:atom_to_list/1	1
+callext	erlang:error/1	19
+callext	erlang:exit/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	2
+callext	erlang:list_to_atom/1	2
+callext	erlang:list_to_tuple/1	2
+callext	erlang:setelement/3	3
+callext	erlang:spawn_link/1	1
+callext	erlang:throw/1	3
+callext	erlang:tuple_to_list/1	3
+callext	ets:insert/2	7
+callext	ets:lookup/2	4
+callext	ets:lookup_element/3	5
+callext	ets:new/2	3
+callext	ets:update_counter/3	4
+callext	io:fwrite/2	1
+callext	io:put_chars/1	3
+callext	io_lib:fwrite/2	1
+callext	lists:all/2	1
+callext	lists:foldl/3	3
+callext	lists:foldr/3	1
+callext	lists:mapfoldl/3	24
+callext	lists:member/2	1
+callext	lists:reverse/1	4
+callext	maps:find/2	2
+callext	maps:put/3	1
+callext	maps:remove/2	1
+callext	ordsets:add_element/2	1
+callext	ordsets:is_element/2	1
+callext	ordsets:union/2	1
+callext	proplists:get_bool/2	1
+callext	proplists:get_value/2	3
+callext	rec_env:bind/3	5
+callext	rec_env:bind_recursive/4	1
+callext	rec_env:empty/0	1
+callext	rec_env:get/2	5
+callext	rec_env:is_defined/2	1
+callext	rec_env:lookup/2	5
+callext	rec_env:new_key/1	3
+callext	rec_env:new_key/2	2

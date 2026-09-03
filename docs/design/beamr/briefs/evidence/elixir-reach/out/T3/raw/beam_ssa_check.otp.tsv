@@ -1,0 +1,102 @@
+module	beam_ssa_check
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	177
+op	2	func_info/3	29
+op	3	int_code_end/0	1
+op	4	call/2	38
+op	5	call_last/3	23
+op	6	call_only/2	17
+op	7	call_ext/2	17
+op	8	call_ext_last/3	7
+op	11	bif2/5	3
+op	12	allocate/2	30
+op	13	allocate_heap/3	10
+op	16	test_heap/2	16
+op	18	deallocate/1	13
+op	19	return/0	40
+op	39	is_lt/3	2
+op	43	is_eq_exact/3	38
+op	44	is_ne_exact/3	6
+op	45	is_integer/2	2
+op	46	is_float/2	2
+op	48	is_atom/2	1
+op	52	is_nil/2	32
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	36
+op	57	is_tuple/2	21
+op	58	test_arity/3	12
+op	59	select_val/3	9
+op	60	select_tuple_arity/3	8
+op	61	jump/1	7
+op	64	move/2	291
+op	65	get_list/3	35
+op	66	get_tuple_element/3	129
+op	69	put_list/3	22
+op	72	badmatch/1	14
+op	78	call_ext_only/2	8
+op	96	fmove/2	2
+op	97	fconv/2	1
+op	99	fsub/4	1
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	108	raise/2	1
+op	124	gc_bif1/5	3
+op	125	gc_bif2/6	1
+op	129	is_bitstr/2	1
+op	133	bs_init_writable/0	3
+op	136	trim/2	12
+op	153	line/1	97
+op	154	put_map_assoc/5	2
+op	156	is_map/2	3
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	2
+op	159	is_tagged_tuple/4	52
+op	164	put_tuple2/2	27
+op	169	swap/2	15
+op	171	make_fun3/3	1
+op	172	init_yregs/1	2
+op	177	bs_create_bin/6	2
+impt	beam_ssa:get_anno/2
+impt	beam_ssa:get_anno/3
+impt	beam_ssa:rpo/1
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:abs/1
+impt	erlang:atom_to_list/1
+impt	erlang:error/1
+impt	erlang:fun_info_mfa/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:list_to_tuple/1
+impt	erlang:map_get/2
+impt	erlang:map_size/1
+impt	erlang:tuple_to_list/1
+impt	io:format/2
+impt	io_lib:format/2
+impt	lists:flatten/1
+impt	lists:foldr/3
+impt	lists:reverse/1
+impt	maps:from_list/1
+impt	maps:remove/2
+disasm	ok
+callext	beam_ssa:get_anno/2	5
+callext	beam_ssa:get_anno/3	1
+callext	beam_ssa:rpo/1	1
+callext	erlang:++/2	4
+callext	erlang:atom_to_list/1	1
+callext	erlang:error/1	7
+callext	erlang:fun_info_mfa/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_tuple/1	1
+callext	erlang:tuple_to_list/1	2
+callext	io:format/2	1
+callext	io_lib:format/2	1
+callext	lists:flatten/1	1
+callext	lists:foldr/3	1
+callext	lists:reverse/1	1
+callext	maps:from_list/1	1
+callext	maps:remove/2	1

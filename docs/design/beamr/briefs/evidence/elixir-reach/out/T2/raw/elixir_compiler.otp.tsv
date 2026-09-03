@@ -1,0 +1,169 @@
+module	elixir_compiler
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	114
+op	2	func_info/3	34
+op	3	int_code_end/0	1
+op	4	call/2	21
+op	5	call_last/3	5
+op	6	call_only/2	7
+op	7	call_ext/2	62
+op	8	call_ext_last/3	3
+op	10	bif1/4	3
+op	11	bif2/5	4
+op	12	allocate/2	17
+op	13	allocate_heap/3	1
+op	16	test_heap/2	25
+op	18	deallocate/1	12
+op	19	return/0	27
+op	43	is_eq_exact/3	7
+op	44	is_ne_exact/3	1
+op	45	is_integer/2	1
+op	48	is_atom/2	1
+op	52	is_nil/2	4
+op	53	is_binary/2	1
+op	56	is_nonempty_list/2	10
+op	57	is_tuple/2	14
+op	58	test_arity/3	13
+op	59	select_val/3	2
+op	61	jump/1	8
+op	64	move/2	213
+op	65	get_list/3	9
+op	66	get_tuple_element/3	35
+op	69	put_list/3	31
+op	72	badmatch/1	13
+op	74	case_end/1	1
+op	75	call_fun/1	1
+op	78	call_ext_only/2	7
+op	104	try/2	4
+op	105	try_end/1	4
+op	106	try_case/1	4
+op	108	raise/2	2
+op	112	apply/1	1
+op	120	bs_skip_bits2/5	1
+op	124	gc_bif1/5	1
+op	125	gc_bif2/6	3
+op	136	trim/2	11
+op	153	line/1	124
+op	155	put_map_exact/5	3
+op	156	is_map/2	4
+op	158	get_map_elements/3	4
+op	159	is_tagged_tuple/4	8
+op	160	build_stacktrace/0	2
+op	163	get_tl/2	1
+op	164	put_tuple2/2	27
+op	165	bs_get_tail/3	3
+op	166	bs_start_match3/4	1
+op	167	bs_get_position/3	2
+op	168	bs_set_position/2	3
+op	169	swap/2	13
+op	170	bs_start_match4/4	1
+op	171	make_fun3/3	7
+op	172	init_yregs/1	30
+op	182	bs_match/3	6
+impt	Elixir.File.Error:exception/1
+impt	Elixir.Macro:expand/2
+impt	Elixir.Macro.Env:stacktrace/1
+impt	application:ensure_all_started/1
+impt	code:load_binary/3
+impt	elixir:erl_eval/3
+impt	elixir:string_to_quoted!/5
+impt	elixir_aliases:expand_or_concat/4
+impt	elixir_code_server:call/1
+impt	elixir_code_server:cast/1
+impt	elixir_config:get/1
+impt	elixir_config:is_bootstrap/0
+impt	elixir_config:put/2
+impt	elixir_config:static/1
+impt	elixir_env:check_unused_vars/2
+impt	elixir_env:env_to_ex/1
+impt	elixir_env:new/0
+impt	elixir_erl:elixir_to_erl/1
+impt	elixir_erl_compiler:noenv_forms/3
+impt	elixir_erl_compiler:spawn/1
+impt	elixir_erl_pass:translate/3
+impt	elixir_erl_var:from_env/1
+impt	elixir_expand:expand/3
+impt	elixir_lexical:run/3
+impt	elixir_module:compile/6
+impt	elixir_utils:characters_to_list/1
+impt	elixir_utils:get_line/1
+impt	elixir_utils:relative_to_cwd/1
+impt	erl_anno:new/1
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang://2
+impt	erlang:=:=/2
+impt	erlang:atom_to_list/1
+impt	erlang:error/1
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:halt/1
+impt	erlang:list_to_tuple/1
+impt	erlang:map_get/2
+impt	erlang:not/1
+impt	erlang:put/2
+impt	erlang:raise/3
+impt	erlang:trunc/1
+impt	file:get_cwd/0
+impt	file:read_file/1
+impt	file:write_file/2
+impt	filename:join/2
+impt	io:format/2
+impt	lists:all/2
+impt	lists:foldl/3
+impt	lists:reverse/1
+impt	lists:zipwith/3
+impt	maps:from_list/1
+disasm	ok
+callext	Elixir.File.Error:exception/1	1
+callext	Elixir.Macro:expand/2	2
+callext	Elixir.Macro.Env:stacktrace/1	1
+callext	application:ensure_all_started/1	1
+callext	code:load_binary/3	1
+callext	elixir:erl_eval/3	1
+callext	elixir:string_to_quoted!/5	1
+callext	elixir_aliases:expand_or_concat/4	1
+callext	elixir_code_server:call/1	1
+callext	elixir_code_server:cast/1	1
+callext	elixir_config:get/1	2
+callext	elixir_config:is_bootstrap/0	1
+callext	elixir_config:put/2	7
+callext	elixir_config:static/1	1
+callext	elixir_env:check_unused_vars/2	2
+callext	elixir_env:env_to_ex/1	2
+callext	elixir_env:new/0	1
+callext	elixir_erl:elixir_to_erl/1	1
+callext	elixir_erl_compiler:noenv_forms/3	1
+callext	elixir_erl_compiler:spawn/1	1
+callext	elixir_erl_pass:translate/3	2
+callext	elixir_erl_var:from_env/1	2
+callext	elixir_expand:expand/3	2
+callext	elixir_lexical:run/3	1
+callext	elixir_module:compile/6	1
+callext	elixir_utils:characters_to_list/1	2
+callext	elixir_utils:get_line/1	1
+callext	elixir_utils:relative_to_cwd/1	1
+callext	erl_anno:new/1	3
+callext	erlang:++/2	2
+callext	erlang:atom_to_list/1	1
+callext	erlang:error/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:halt/1	1
+callext	erlang:list_to_tuple/1	1
+callext	erlang:put/2	3
+callext	erlang:raise/3	1
+callext	file:get_cwd/0	1
+callext	file:read_file/1	1
+callext	file:write_file/2	1
+callext	filename:join/2	3
+callext	io:format/2	2
+callext	lists:all/2	1
+callext	lists:foldl/3	1
+callext	lists:reverse/1	1
+callext	lists:zipwith/3	1
+callext	maps:from_list/1	1

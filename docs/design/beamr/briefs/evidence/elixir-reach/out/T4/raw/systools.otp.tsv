@@ -1,0 +1,49 @@
+module	systools
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	28
+op	2	func_info/3	12
+op	3	int_code_end/0	1
+op	4	call/2	1
+op	6	call_only/2	2
+op	7	call_ext/2	10
+op	8	call_ext_last/3	1
+op	12	allocate/2	3
+op	16	test_heap/2	4
+op	18	deallocate/1	4
+op	19	return/0	5
+op	48	is_atom/2	1
+op	56	is_nonempty_list/2	1
+op	64	move/2	29
+op	65	get_list/3	1
+op	66	get_tuple_element/3	4
+op	69	put_list/3	4
+op	78	call_ext_only/2	7
+op	153	line/1	25
+op	159	is_tagged_tuple/4	3
+op	164	put_tuple2/2	1
+op	169	swap/2	2
+op	172	init_yregs/1	2
+op	180	badrecord/1	1
+impt	erlang:++/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	io:format/2
+impt	systools_lib:file_term2binary/2
+impt	systools_make:format_error/1
+impt	systools_make:make_script/2
+impt	systools_make:make_script/3
+impt	systools_make:make_tar/2
+impt	systools_relup:mk_relup/4
+disasm	ok
+callext	erlang:++/2	4
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	io:format/2	2
+callext	systools_lib:file_term2binary/2	2
+callext	systools_make:format_error/1	2
+callext	systools_make:make_script/2	2
+callext	systools_make:make_script/3	1
+callext	systools_make:make_tar/2	1
+callext	systools_relup:mk_relup/4	2

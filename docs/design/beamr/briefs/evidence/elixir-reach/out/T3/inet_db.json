@@ -1,0 +1,59 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [
+    185
+   ],
+   "names": {
+    "185": "bif3/6"
+   },
+   "total": 1
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": null,
+  "walker": "ok"
+ },
+ "B": "unmeasurable: load",
+ "C": "unmeasurable: load",
+ "D": "unmeasurable: load",
+ "bytes": 72620,
+ "dirs": 41,
+ "first_refused_opcode": 185,
+ "impt_modules": [
+  "application",
+  "crypto",
+  "erl_prim_loader",
+  "erlang",
+  "ets",
+  "file",
+  "filename",
+  "gen_server",
+  "inet_config",
+  "inet_parse",
+  "lists",
+  "maps",
+  "persistent_term"
+ ],
+ "load_error": "failed to decode BEAM data: unsupported opcode 185",
+ "load_status": "decode-failed",
+ "module": "inet_db",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/kernel-11.0.3/ebin/inet_db.beam",
+ "registration_deviation": [],
+ "sha256": "cda8fd0eb2027f538f5eaaba876ff4c9530210662cb1e97337084680ebc8f7b7",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

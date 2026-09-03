@@ -1,0 +1,95 @@
+module	Elixir.IEx.History
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	76
+op	2	func_info/3	22
+op	3	int_code_end/0	1
+op	4	call/2	10
+op	5	call_last/3	5
+op	6	call_only/2	5
+op	7	call_ext/2	13
+op	8	call_ext_last/3	4
+op	10	bif1/4	1
+op	11	bif2/5	1
+op	12	allocate/2	13
+op	16	test_heap/2	4
+op	18	deallocate/1	6
+op	19	return/0	18
+op	39	is_lt/3	4
+op	40	is_ge/3	4
+op	43	is_eq_exact/3	10
+op	53	is_binary/2	3
+op	56	is_nonempty_list/2	1
+op	57	is_tuple/2	3
+op	58	test_arity/3	2
+op	59	select_val/3	1
+op	61	jump/1	6
+op	64	move/2	68
+op	65	get_list/3	1
+op	66	get_tuple_element/3	7
+op	72	badmatch/1	1
+op	78	call_ext_only/2	8
+op	104	try/2	2
+op	105	try_end/1	2
+op	106	try_case/1	2
+op	108	raise/2	1
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	12
+op	136	trim/2	2
+op	153	line/1	47
+op	154	put_map_assoc/5	1
+op	155	put_map_exact/5	4
+op	156	is_map/2	4
+op	158	get_map_elements/3	11
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	3
+op	169	swap/2	1
+op	171	make_fun3/3	1
+op	172	init_yregs/1	6
+op	177	bs_create_bin/6	2
+impt	Elixir.Enum:each/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Process:whereis/1
+impt	Elixir.RuntimeError:exception/1
+impt	Elixir.String.Chars:to_string/1
+impt	erlang:+/2
+impt	erlang:-/2
+impt	erlang:abs/1
+impt	erlang:byte_size/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/3
+impt	erlang:garbage_collect/0
+impt	erlang:garbage_collect/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:group_leader/0
+impt	erlang:raise/3
+impt	erlang:tuple_size/1
+impt	queue:head/1
+impt	queue:in/2
+impt	queue:out/1
+impt	queue:reverse/1
+impt	queue:tail/1
+impt	queue:to_list/1
+disasm	ok
+callext	Elixir.Enum:each/2	1
+callext	Elixir.Enum:reduce/3	1
+callext	Elixir.Process:whereis/1	1
+callext	Elixir.RuntimeError:exception/1	2
+callext	Elixir.String.Chars:to_string/1	4
+callext	erlang:error/1	1
+callext	erlang:error/3	2
+callext	erlang:garbage_collect/0	1
+callext	erlang:garbage_collect/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:group_leader/0	1
+callext	erlang:raise/3	1
+callext	queue:head/1	1
+callext	queue:in/2	1
+callext	queue:out/1	1
+callext	queue:reverse/1	1
+callext	queue:tail/1	1
+callext	queue:to_list/1	1

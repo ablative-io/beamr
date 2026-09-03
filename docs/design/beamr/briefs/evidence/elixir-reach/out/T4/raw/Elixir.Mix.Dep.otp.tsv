@@ -1,0 +1,154 @@
+module	Elixir.Mix.Dep
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	293
+op	2	func_info/3	49
+op	3	int_code_end/0	1
+op	4	call/2	32
+op	5	call_last/3	3
+op	6	call_only/2	6
+op	7	call_ext/2	105
+op	8	call_ext_last/3	18
+op	10	bif1/4	2
+op	11	bif2/5	8
+op	12	allocate/2	38
+op	13	allocate_heap/3	4
+op	16	test_heap/2	33
+op	18	deallocate/1	45
+op	19	return/0	74
+op	41	is_eq/3	1
+op	43	is_eq_exact/3	20
+op	44	is_ne_exact/3	2
+op	52	is_nil/2	2
+op	53	is_binary/2	16
+op	57	is_tuple/2	21
+op	58	test_arity/3	18
+op	59	select_val/3	35
+op	60	select_tuple_arity/3	2
+op	61	jump/1	41
+op	64	move/2	341
+op	66	get_tuple_element/3	43
+op	69	put_list/3	17
+op	72	badmatch/1	2
+op	74	case_end/1	11
+op	78	call_ext_only/2	11
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	108	raise/2	1
+op	112	apply/1	4
+op	136	trim/2	13
+op	153	line/1	170
+op	155	put_map_exact/5	6
+op	156	is_map/2	31
+op	158	get_map_elements/3	44
+op	159	is_tagged_tuple/4	3
+op	164	put_tuple2/2	20
+op	169	swap/2	13
+op	171	make_fun3/3	12
+op	172	init_yregs/1	54
+op	177	bs_create_bin/6	20
+impt	Elixir.Access:get/2
+impt	Elixir.Enum:__in__/2
+impt	Elixir.Enum:any?/2
+impt	Elixir.Enum:each/2
+impt	Elixir.Enum:filter/2
+impt	Elixir.Enum:map/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:uniq/1
+impt	Elixir.Kernel:inspect/1
+impt	Elixir.Keyword:delete/2
+impt	Elixir.Keyword:drop/2
+impt	Elixir.Keyword:fetch!/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.Keyword:has_key?/2
+impt	Elixir.Keyword:merge/2
+impt	Elixir.Keyword:pop/2
+impt	Elixir.Keyword:put/3
+impt	Elixir.MapSet:put/2
+impt	Elixir.Mix:env/0
+impt	Elixir.Mix:env/1
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix:target/0
+impt	Elixir.Mix.Dep.Converger:converge/1
+impt	Elixir.Mix.Project:deps_config/0
+impt	Elixir.Mix.Project:get/0
+impt	Elixir.Mix.Project:in_project/4
+impt	Elixir.Mix.ProjectStack:top_and_bottom/0
+impt	Elixir.Mix.State:delete_cache/1
+impt	Elixir.Mix.State:read_cache/1
+impt	Elixir.Mix.State:write_cache/2
+impt	Elixir.Path:basename/1
+impt	Elixir.Path:dirname/1
+impt	Elixir.Path:join/1
+impt	Elixir.Path:relative_to_cwd/1
+impt	Elixir.Path:rootname/1
+impt	Elixir.RuntimeError:exception/1
+impt	Elixir.String.Chars:to_string/1
+impt	application:load/1
+impt	elixir_erl_pass:no_parens_remote/2
+impt	elixir_erl_pass:parens_map_field/2
+impt	erlang:++/2
+impt	erlang:=:=/2
+impt	erlang:==/2
+impt	erlang:atom_to_binary/1
+impt	erlang:binary_to_atom/1
+impt	erlang:error/1
+impt	erlang:error/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:tl/1
+impt	erlang:tuple_size/1
+impt	lists:reverse/1
+impt	maps:from_list/1
+disasm	ok
+callext	Elixir.Access:get/2	9
+callext	Elixir.Enum:__in__/2	2
+callext	Elixir.Enum:any?/2	1
+callext	Elixir.Enum:each/2	1
+callext	Elixir.Enum:filter/2	1
+callext	Elixir.Enum:map/2	2
+callext	Elixir.Enum:reduce/3	7
+callext	Elixir.Enum:uniq/1	2
+callext	Elixir.Kernel:inspect/1	10
+callext	Elixir.Keyword:delete/2	1
+callext	Elixir.Keyword:drop/2	1
+callext	Elixir.Keyword:fetch!/2	1
+callext	Elixir.Keyword:get/3	1
+callext	Elixir.Keyword:has_key?/2	2
+callext	Elixir.Keyword:merge/2	1
+callext	Elixir.Keyword:pop/2	1
+callext	Elixir.Keyword:put/3	3
+callext	Elixir.MapSet:put/2	1
+callext	Elixir.Mix:env/0	6
+callext	Elixir.Mix:env/1	3
+callext	Elixir.Mix:raise/1	1
+callext	Elixir.Mix:target/0	2
+callext	Elixir.Mix.Dep.Converger:converge/1	1
+callext	Elixir.Mix.Project:deps_config/0	1
+callext	Elixir.Mix.Project:get/0	2
+callext	Elixir.Mix.Project:in_project/4	1
+callext	Elixir.Mix.ProjectStack:top_and_bottom/0	1
+callext	Elixir.Mix.State:delete_cache/1	1
+callext	Elixir.Mix.State:read_cache/1	2
+callext	Elixir.Mix.State:write_cache/2	1
+callext	Elixir.Path:basename/1	1
+callext	Elixir.Path:dirname/1	1
+callext	Elixir.Path:join/1	1
+callext	Elixir.Path:relative_to_cwd/1	6
+callext	Elixir.Path:rootname/1	1
+callext	Elixir.RuntimeError:exception/1	1
+callext	Elixir.String.Chars:to_string/1	15
+callext	application:load/1	1
+callext	elixir_erl_pass:no_parens_remote/2	11
+callext	elixir_erl_pass:parens_map_field/2	2
+callext	erlang:++/2	3
+callext	erlang:atom_to_binary/1	1
+callext	erlang:binary_to_atom/1	1
+callext	erlang:error/1	12
+callext	erlang:error/3	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	lists:reverse/1	3
+callext	maps:from_list/1	1

@@ -1,0 +1,19 @@
+module	logger_handler
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	11
+op	2	func_info/3	4
+op	3	int_code_end/0	1
+op	6	call_only/2	1
+op	19	return/0	2
+op	59	select_val/3	1
+op	61	jump/1	1
+op	64	move/2	5
+op	78	call_ext_only/2	2
+op	153	line/1	4
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+disasm	ok
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1

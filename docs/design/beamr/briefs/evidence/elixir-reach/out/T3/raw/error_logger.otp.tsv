@@ -1,0 +1,114 @@
+module	error_logger
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	159
+op	2	func_info/3	45
+op	3	int_code_end/0	1
+op	4	call/2	17
+op	5	call_last/3	3
+op	6	call_only/2	15
+op	7	call_ext/2	28
+op	8	call_ext_last/3	12
+op	11	bif2/5	1
+op	12	allocate/2	25
+op	16	test_heap/2	19
+op	18	deallocate/1	24
+op	19	return/0	44
+op	43	is_eq_exact/3	24
+op	44	is_ne_exact/3	1
+op	45	is_integer/2	1
+op	48	is_atom/2	3
+op	49	is_pid/2	4
+op	52	is_nil/2	2
+op	53	is_binary/2	1
+op	55	is_list/2	6
+op	57	is_tuple/2	3
+op	58	test_arity/3	2
+op	59	select_val/3	8
+op	61	jump/1	12
+op	64	move/2	180
+op	66	get_tuple_element/3	12
+op	69	put_list/3	13
+op	72	badmatch/1	1
+op	74	case_end/1	4
+op	78	call_ext_only/2	6
+op	104	try/2	3
+op	105	try_end/1	3
+op	106	try_case/1	3
+op	115	is_function2/3	2
+op	136	trim/2	1
+op	153	line/1	107
+op	154	put_map_assoc/5	15
+op	156	is_map/2	17
+op	157	has_map_fields/3	2
+op	158	get_map_elements/3	22
+op	159	is_tagged_tuple/4	7
+op	160	build_stacktrace/0	1
+op	164	put_tuple2/2	18
+op	169	swap/2	3
+op	171	make_fun3/3	2
+op	172	init_yregs/1	12
+op	178	call_fun2/3	2
+impt	application:get_env/3
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:max/2
+impt	erlang:nif_error/1
+impt	erlang:whereis/1
+impt	error_logger:warning_map/0
+impt	gen_event:add_handler/3
+impt	gen_event:call/3
+impt	gen_event:delete_handler/3
+impt	gen_event:notify/2
+impt	gen_event:start_link/2
+impt	gen_event:stop/3
+impt	gen_event:which_handlers/1
+impt	io_lib:limit_term/2
+impt	io_lib:printable_list/1
+impt	io_lib:scan_format/2
+impt	lists:flatten/1
+impt	lists:member/2
+impt	logger:add_handler/3
+impt	logger:add_handler_filter/3
+impt	logger:format_otp_report/1
+impt	logger:get_handler_config/1
+impt	logger:log/3
+impt	logger:log/4
+impt	logger:remove_handler/1
+impt	logger:remove_handler_filter/2
+impt	logger_handler_watcher:register_handler/2
+impt	supervisor:delete_child/2
+impt	supervisor:start_child/2
+disasm	ok
+callext	application:get_env/3	1
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:nif_error/1	1
+callext	erlang:whereis/1	6
+callext	error_logger:warning_map/0	1
+callext	gen_event:add_handler/3	1
+callext	gen_event:call/3	1
+callext	gen_event:delete_handler/3	2
+callext	gen_event:notify/2	1
+callext	gen_event:start_link/2	1
+callext	gen_event:stop/3	1
+callext	gen_event:which_handlers/1	2
+callext	io_lib:limit_term/2	1
+callext	io_lib:printable_list/1	1
+callext	io_lib:scan_format/2	1
+callext	lists:flatten/1	1
+callext	lists:member/2	2
+callext	logger:add_handler/3	2
+callext	logger:add_handler_filter/3	1
+callext	logger:format_otp_report/1	1
+callext	logger:get_handler_config/1	2
+callext	logger:log/3	6
+callext	logger:log/4	1
+callext	logger:remove_handler/1	2
+callext	logger:remove_handler_filter/2	1
+callext	logger_handler_watcher:register_handler/2	1
+callext	supervisor:delete_child/2	1
+callext	supervisor:start_child/2	1

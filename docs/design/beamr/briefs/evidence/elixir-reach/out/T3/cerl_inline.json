@@ -1,0 +1,124 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 6932,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 1,
+  "deferred_names": [
+   "io_lib:fwrite/2"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "cerl",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "cerl_trees",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "ets",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "ordsets",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "proplists",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 81480,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "cerl",
+  "cerl_clauses",
+  "cerl_trees",
+  "erl_bifs",
+  "erlang",
+  "ets",
+  "io",
+  "io_lib",
+  "lists",
+  "maps",
+  "ordsets",
+  "proplists",
+  "rec_env"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "cerl_inline",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/compiler-10.0.3/ebin/cerl_inline.beam",
+ "registration_deviation": [],
+ "sha256": "fd8c8a6636ece79803edbc5d386d0d47c6f9b30111c0701487515e6736556453",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

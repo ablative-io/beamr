@@ -1,0 +1,164 @@
+module	Elixir.Task.Supervised
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	257
+op	2	func_info/3	46
+op	3	int_code_end/0	1
+op	4	call/2	33
+op	5	call_last/3	24
+op	6	call_only/2	4
+op	7	call_ext/2	54
+op	8	call_ext_last/3	22
+op	9	bif0/2	9
+op	10	bif1/4	3
+op	11	bif2/5	1
+op	12	allocate/2	30
+op	13	allocate_heap/3	4
+op	16	test_heap/2	53
+op	18	deallocate/1	22
+op	19	return/0	49
+op	21	remove_message/0	23
+op	22	timeout/0	3
+op	23	loop_rec/2	11
+op	24	loop_rec_end/1	9
+op	25	wait/1	8
+op	26	wait_timeout/2	1
+op	40	is_ge/3	2
+op	42	is_ne/3	1
+op	43	is_eq_exact/3	66
+op	44	is_ne_exact/3	2
+op	45	is_integer/2	3
+op	48	is_atom/2	3
+op	50	is_reference/2	1
+op	52	is_nil/2	3
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	5
+op	57	is_tuple/2	34
+op	58	test_arity/3	24
+op	59	select_val/3	18
+op	60	select_tuple_arity/3	10
+op	61	jump/1	13
+op	64	move/2	458
+op	65	get_list/3	4
+op	66	get_tuple_element/3	113
+op	69	put_list/3	28
+op	72	badmatch/1	11
+op	74	case_end/1	5
+op	75	call_fun/1	4
+op	77	is_function/2	3
+op	78	call_ext_only/2	7
+op	104	try/2	4
+op	105	try_end/1	4
+op	106	try_case/1	4
+op	107	try_case_end/1	1
+op	115	is_function2/3	2
+op	124	gc_bif1/5	3
+op	125	gc_bif2/6	8
+op	136	trim/2	28
+op	153	line/1	172
+op	154	put_map_assoc/5	10
+op	155	put_map_exact/5	1
+op	156	is_map/2	10
+op	158	get_map_elements/3	20
+op	159	is_tagged_tuple/4	7
+op	160	build_stacktrace/0	1
+op	161	raw_raise/0	4
+op	162	get_hd/2	1
+op	164	put_tuple2/2	55
+op	169	swap/2	3
+op	171	make_fun3/3	9
+op	172	init_yregs/1	31
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	3
+op	175	recv_marker_reserve/1	1
+op	178	call_fun2/3	3
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Code:loaded?/1
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enumerable:reduce/3
+impt	Elixir.Keyword:get/3
+impt	Elixir.Keyword:get_lazy/3
+impt	Elixir.Map:pop/2
+impt	Elixir.Process:get/1
+impt	Elixir.Process:info/2
+impt	Elixir.Process:put/2
+impt	Elixir.Process:send_after/3
+impt	Elixir.RuntimeError:exception/1
+impt	elixir_erl_pass:no_parens_remote/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:apply/3
+impt	erlang:cancel_timer/2
+impt	erlang:demonitor/2
+impt	erlang:error/1
+impt	erlang:error/3
+impt	erlang:exit/1
+impt	erlang:exit/2
+impt	erlang:fun_info_mfa/1
+impt	erlang:function_exported/3
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:is_map_key/2
+impt	erlang:length/1
+impt	erlang:make_fun/3
+impt	erlang:make_ref/0
+impt	erlang:monitor/2
+impt	erlang:node/0
+impt	erlang:not/1
+impt	erlang:process_flag/2
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	erlang:send/2
+impt	erlang:spawn/1
+impt	erlang:spawn/3
+impt	erlang:spawn_link/3
+impt	erlang:spawn_opt/2
+impt	erlang:unlink/1
+impt	logger:error/2
+impt	maps:put/3
+impt	maps:remove/2
+impt	proc_lib:get_label/1
+disasm	ok
+callext	Elixir.ArgumentError:exception/1	3
+callext	Elixir.Code:loaded?/1	1
+callext	Elixir.Enum:reduce/3	3
+callext	Elixir.Enumerable:reduce/3	1
+callext	Elixir.Keyword:get/3	4
+callext	Elixir.Keyword:get_lazy/3	1
+callext	Elixir.Map:pop/2	1
+callext	Elixir.Process:get/1	1
+callext	Elixir.Process:info/2	1
+callext	Elixir.Process:put/2	3
+callext	Elixir.Process:send_after/3	1
+callext	Elixir.RuntimeError:exception/1	1
+callext	elixir_erl_pass:no_parens_remote/2	2
+callext	erlang:++/2	1
+callext	erlang:apply/3	1
+callext	erlang:cancel_timer/2	1
+callext	erlang:demonitor/2	1
+callext	erlang:error/1	6
+callext	erlang:error/3	1
+callext	erlang:exit/1	9
+callext	erlang:exit/2	4
+callext	erlang:fun_info_mfa/1	1
+callext	erlang:function_exported/3	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:make_fun/3	1
+callext	erlang:make_ref/0	1
+callext	erlang:monitor/2	4
+callext	erlang:process_flag/2	2
+callext	erlang:raise/3	1
+callext	erlang:send/2	9
+callext	erlang:spawn/1	1
+callext	erlang:spawn/3	1
+callext	erlang:spawn_link/3	2
+callext	erlang:spawn_opt/2	1
+callext	erlang:unlink/1	1
+callext	logger:error/2	1
+callext	maps:put/3	2
+callext	maps:remove/2	2
+callext	proc_lib:get_label/1	1

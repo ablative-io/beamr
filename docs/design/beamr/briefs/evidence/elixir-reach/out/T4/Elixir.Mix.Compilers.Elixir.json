@@ -1,0 +1,129 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 4893,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "code",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "crypto",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "ordsets",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 71496,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.Application",
+  "Elixir.Code",
+  "Elixir.Collectable",
+  "Elixir.Enum",
+  "Elixir.Exception",
+  "Elixir.File",
+  "Elixir.IO",
+  "Elixir.Kernel",
+  "Elixir.Kernel.LexicalTracker",
+  "Elixir.Kernel.ParallelCompiler",
+  "Elixir.Keyword",
+  "Elixir.List",
+  "Elixir.Map",
+  "Elixir.Mix",
+  "Elixir.Mix.AppLoader",
+  "Elixir.Mix.Compilers.Protocol",
+  "Elixir.Mix.Dep",
+  "Elixir.Mix.Dep.ElixirSCM",
+  "Elixir.Mix.Dep.Lock",
+  "Elixir.Mix.Project",
+  "Elixir.Mix.ProjectStack",
+  "Elixir.Mix.Task.Compiler",
+  "Elixir.Mix.Tasks.Loadconfig",
+  "Elixir.Mix.Utils",
+  "Elixir.Module",
+  "Elixir.Path",
+  "Elixir.Process",
+  "Elixir.Record",
+  "Elixir.String.Chars",
+  "Elixir.System",
+  "Elixir.Task",
+  "code",
+  "crypto",
+  "elixir_env",
+  "elixir_erl_pass",
+  "erlang",
+  "lists",
+  "maps",
+  "ordsets"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.Mix.Compilers.Elixir",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/mix/ebin/Elixir.Mix.Compilers.Elixir.beam",
+ "registration_deviation": [],
+ "sha256": "606711d165d36e3017751036f681ecb26dbf0e6b60adb4979bdab5002f43c9fa",
+ "skipped_in_dirs": 14,
+ "tier": "T4"
+}

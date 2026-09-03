@@ -1,0 +1,125 @@
+module	Elixir.Process
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	118
+op	2	func_info/3	46
+op	3	int_code_end/0	1
+op	5	call_last/3	1
+op	6	call_only/2	6
+op	7	call_ext/2	13
+op	8	call_ext_last/3	6
+op	9	bif0/2	2
+op	10	bif1/4	2
+op	12	allocate/2	14
+op	16	test_heap/2	2
+op	18	deallocate/1	15
+op	19	return/0	22
+op	22	timeout/0	2
+op	26	wait_timeout/2	2
+op	40	is_ge/3	2
+op	43	is_eq_exact/3	12
+op	44	is_ne_exact/3	1
+op	45	is_integer/2	1
+op	48	is_atom/2	2
+op	52	is_nil/2	1
+op	59	select_val/3	2
+op	61	jump/1	3
+op	64	move/2	37
+op	69	put_list/3	4
+op	78	call_ext_only/2	27
+op	104	try/2	1
+op	105	try_end/1	1
+op	106	try_case/1	1
+op	108	raise/2	1
+op	125	gc_bif2/6	1
+op	136	trim/2	1
+op	153	line/1	65
+op	169	swap/2	4
+op	177	bs_create_bin/6	2
+impt	Elixir.ArgumentError:exception/1
+impt	Elixir.Kernel:inspect/1
+impt	erlang:-/2
+impt	erlang:alias/0
+impt	erlang:alias/1
+impt	erlang:cancel_timer/2
+impt	erlang:demonitor/2
+impt	erlang:erase/1
+impt	erlang:error/2
+impt	erlang:exit/2
+impt	erlang:get/0
+impt	erlang:get/1
+impt	erlang:get_keys/0
+impt	erlang:get_keys/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:group_leader/0
+impt	erlang:group_leader/2
+impt	erlang:hibernate/3
+impt	erlang:is_process_alive/1
+impt	erlang:link/1
+impt	erlang:monitor/2
+impt	erlang:monitor/3
+impt	erlang:node/0
+impt	erlang:node/1
+impt	erlang:process_flag/2
+impt	erlang:process_flag/3
+impt	erlang:process_info/1
+impt	erlang:process_info/2
+impt	erlang:processes/0
+impt	erlang:put/2
+impt	erlang:read_timer/1
+impt	erlang:register/2
+impt	erlang:registered/0
+impt	erlang:self/0
+impt	erlang:send/3
+impt	erlang:send_after/4
+impt	erlang:spawn_opt/2
+impt	erlang:spawn_opt/4
+impt	erlang:unalias/1
+impt	erlang:unlink/1
+impt	erlang:unregister/1
+impt	erlang:whereis/1
+impt	proc_lib:get_label/1
+impt	proc_lib:set_label/1
+disasm	ok
+callext	Elixir.ArgumentError:exception/1	2
+callext	Elixir.Kernel:inspect/1	3
+callext	erlang:alias/0	1
+callext	erlang:alias/1	1
+callext	erlang:cancel_timer/2	1
+callext	erlang:demonitor/2	1
+callext	erlang:erase/1	1
+callext	erlang:error/2	2
+callext	erlang:exit/2	1
+callext	erlang:get/0	1
+callext	erlang:get_keys/0	1
+callext	erlang:get_keys/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:group_leader/0	1
+callext	erlang:group_leader/2	1
+callext	erlang:hibernate/3	1
+callext	erlang:is_process_alive/1	1
+callext	erlang:link/1	1
+callext	erlang:monitor/2	1
+callext	erlang:monitor/3	1
+callext	erlang:process_flag/2	1
+callext	erlang:process_flag/3	1
+callext	erlang:process_info/1	1
+callext	erlang:process_info/2	2
+callext	erlang:processes/0	1
+callext	erlang:put/2	1
+callext	erlang:read_timer/1	1
+callext	erlang:register/2	1
+callext	erlang:registered/0	1
+callext	erlang:send/3	1
+callext	erlang:send_after/4	1
+callext	erlang:spawn_opt/2	1
+callext	erlang:spawn_opt/4	1
+callext	erlang:unalias/1	1
+callext	erlang:unlink/1	1
+callext	erlang:unregister/1	1
+callext	erlang:whereis/1	1
+callext	proc_lib:get_label/1	1
+callext	proc_lib:set_label/1	1

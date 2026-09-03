@@ -1,0 +1,18 @@
+{
+  "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin/gen_server.beam",
+  "dirs": ["/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/eex/ebin", "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/elixir/ebin", "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/ex_unit/ebin", "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/iex/ebin", "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/logger/ebin", "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/mix/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/asn1-5.5/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/common_test-1.31.1/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/compiler-10.0.3/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/crypto-5.9.2/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/debugger-7.0/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/dialyzer-6.0.2/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/diameter-2.7.2/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/edoc-1.5/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/eldap-1.3/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/erl_interface-5.8.1/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/erts-17.0.5/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/et-1.8/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/eunit-2.11/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/ftp-1.2.6/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/inets-9.7.1/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/kernel-11.0.3/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/megaco-4.9.1/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/mnesia-4.26.1/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/observer-2.19/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/odbc-2.17/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/os_mon-2.12/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/parsetools-2.8/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/public_key-1.21.4/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/reltool-1.1/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/runtime_tools-2.4/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/sasl-4.4/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/snmp-5.20.4/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/ssh-6.0.4/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/ssl-11.7.4/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/stdlib-8.0.3/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/syntax_tools-4.1/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/tftp-1.3/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/tools-4.2.1/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/wx-2.6/ebin", "/usr/local/lib/otp-29.0.5/lib/erlang/lib/xmerl-2.2/ebin"],
+  "skipped_in_dirs": 14,
+  "registration_deviation": [],
+  "load_status": "loaded",
+  "load_error": null,
+  "first_refused_opcode": null,
+  "module": "gen_server",
+  "instruction_count": 4212,
+  "generic": {"set_tuple_element": 0, "executable_line": 0, "debug_line": 0, "other": 0},
+  "unresolved_count": 0,
+  "unresolved": [],
+  "deferred_count": 2,
+  "deferred": ["io_lib:format/3", "io_lib:limit_term/2"],
+  "denied_count": 0,
+  "denied": []
+}

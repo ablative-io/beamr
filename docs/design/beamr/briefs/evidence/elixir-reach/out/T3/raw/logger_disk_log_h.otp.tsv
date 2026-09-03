@@ -1,0 +1,92 @@
+module	logger_disk_log_h
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	88
+op	2	func_info/3	25
+op	3	int_code_end/0	1
+op	4	call/2	6
+op	5	call_last/3	4
+op	6	call_only/2	6
+op	7	call_ext/2	12
+op	8	call_ext_last/3	1
+op	9	bif0/2	1
+op	11	bif2/5	1
+op	12	allocate/2	10
+op	13	allocate_heap/3	1
+op	16	test_heap/2	11
+op	18	deallocate/1	10
+op	19	return/0	16
+op	40	is_ge/3	1
+op	43	is_eq_exact/3	11
+op	44	is_ne_exact/3	1
+op	45	is_integer/2	1
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	1
+op	57	is_tuple/2	4
+op	58	test_arity/3	3
+op	59	select_val/3	7
+op	61	jump/1	5
+op	64	move/2	92
+op	65	get_list/3	1
+op	66	get_tuple_element/3	13
+op	69	put_list/3	5
+op	72	badmatch/1	2
+op	73	if_end/0	1
+op	74	case_end/1	2
+op	78	call_ext_only/2	13
+op	136	trim/2	3
+op	153	line/1	57
+op	154	put_map_assoc/5	6
+op	156	is_map/2	4
+op	158	get_map_elements/3	3
+op	159	is_tagged_tuple/4	2
+op	164	put_tuple2/2	18
+op	172	init_yregs/1	4
+impt	disk_log:balog/2
+impt	disk_log:blog/2
+impt	disk_log:close/1
+impt	disk_log:open/1
+impt	disk_log:sync/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:map_get/2
+impt	erlang:self/0
+impt	file:get_cwd/0
+impt	filelib:ensure_dir/1
+impt	filename:join/2
+impt	logger_h_common:adding_handler/1
+impt	logger_h_common:changing_config/3
+impt	logger_h_common:error_notify/1
+impt	logger_h_common:filesync/2
+impt	logger_h_common:filter_config/1
+impt	logger_h_common:log/2
+impt	logger_h_common:removing_handler/1
+impt	logger_server:diff_maps/2
+impt	maps:merge/2
+impt	maps:to_list/1
+impt	maps:with/2
+disasm	ok
+callext	disk_log:balog/2	1
+callext	disk_log:blog/2	1
+callext	disk_log:close/1	1
+callext	disk_log:open/1	1
+callext	disk_log:sync/1	2
+callext	erlang:error/1	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	file:get_cwd/0	1
+callext	filelib:ensure_dir/1	1
+callext	filename:join/2	1
+callext	logger_h_common:adding_handler/1	1
+callext	logger_h_common:changing_config/3	1
+callext	logger_h_common:error_notify/1	1
+callext	logger_h_common:filesync/2	1
+callext	logger_h_common:filter_config/1	1
+callext	logger_h_common:log/2	1
+callext	logger_h_common:removing_handler/1	1
+callext	logger_server:diff_maps/2	1
+callext	maps:merge/2	2
+callext	maps:to_list/1	1
+callext	maps:with/2	2

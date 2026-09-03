@@ -1,0 +1,3 @@
+rand:uniform/1
+inet_db:gethostname/0
+inet_db:res_option/1

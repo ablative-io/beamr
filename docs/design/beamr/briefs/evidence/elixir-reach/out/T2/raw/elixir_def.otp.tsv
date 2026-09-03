@@ -1,0 +1,159 @@
+module	elixir_def
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	238
+op	2	func_info/3	52
+op	3	int_code_end/0	1
+op	4	call/2	39
+op	5	call_last/3	18
+op	6	call_only/2	13
+op	7	call_ext/2	83
+op	8	call_ext_last/3	17
+op	9	bif0/2	1
+op	11	bif2/5	8
+op	12	allocate/2	45
+op	13	allocate_heap/3	4
+op	16	test_heap/2	95
+op	18	deallocate/1	29
+op	19	return/0	51
+op	39	is_lt/3	8
+op	40	is_ge/3	2
+op	42	is_ne/3	2
+op	43	is_eq_exact/3	28
+op	44	is_ne_exact/3	3
+op	45	is_integer/2	1
+op	48	is_atom/2	6
+op	52	is_nil/2	24
+op	53	is_binary/2	2
+op	55	is_list/2	2
+op	56	is_nonempty_list/2	31
+op	57	is_tuple/2	48
+op	58	test_arity/3	44
+op	59	select_val/3	5
+op	60	select_tuple_arity/3	1
+op	61	jump/1	9
+op	64	move/2	623
+op	65	get_list/3	23
+op	66	get_tuple_element/3	129
+op	69	put_list/3	89
+op	72	badmatch/1	17
+op	74	case_end/1	5
+op	78	call_ext_only/2	28
+op	104	try/2	3
+op	105	try_end/1	3
+op	106	try_case/1	3
+op	107	try_case_end/1	1
+op	108	raise/2	2
+op	112	apply/1	1
+op	114	is_boolean/2	1
+op	124	gc_bif1/5	6
+op	125	gc_bif2/6	6
+op	136	trim/2	22
+op	153	line/1	226
+op	155	put_map_exact/5	3
+op	156	is_map/2	8
+op	158	get_map_elements/3	8
+op	159	is_tagged_tuple/4	10
+op	163	get_tl/2	8
+op	164	put_tuple2/2	86
+op	169	swap/2	20
+op	171	make_fun3/3	3
+op	172	init_yregs/1	26
+op	178	call_fun2/3	2
+op	180	badrecord/1	1
+op	181	update_record/5	1
+impt	Elixir.Macro:to_string/1
+impt	Elixir.Module:delete_attribute/2
+impt	elixir_clauses:def/3
+impt	elixir_env:env_to_ex/1
+impt	elixir_env:trace/2
+impt	elixir_erl:definition_to_anonymous/5
+impt	elixir_errors:file_error/4
+impt	elixir_errors:file_warn/4
+impt	elixir_errors:module_error/4
+impt	elixir_expand:expand/3
+impt	elixir_lexical:with_file/3
+impt	elixir_module:data_tables/1
+impt	elixir_module:get_cached_env/1
+impt	elixir_module:read_cache/2
+impt	elixir_quote:linify/3
+impt	elixir_utils:erl_fa_to_elixir_fa/2
+impt	elixir_utils:extract_guards/1
+impt	elixir_utils:get_line/1
+impt	elixir_utils:meta_keep/1
+impt	elixir_utils:relative_to_cwd/1
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:</2
+impt	erlang:=/=/2
+impt	erlang:and/2
+impt	erlang:apply/2
+impt	erlang:apply/3
+impt	erlang:atom_to_list/1
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:integer_to_list/1
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:map_get/2
+impt	erlang:max/2
+impt	erlang:process_info/2
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	ets:delete_object/2
+impt	ets:insert/2
+impt	ets:lookup/2
+impt	ets:lookup_element/3
+impt	ets:take/2
+impt	filename:absname/1
+impt	io_lib:format/2
+impt	lists:keyfind/3
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:sort/1
+disasm	ok
+callext	Elixir.Macro:to_string/1	1
+callext	Elixir.Module:delete_attribute/2	2
+callext	elixir_clauses:def/3	1
+callext	elixir_env:env_to_ex/1	2
+callext	elixir_env:trace/2	2
+callext	elixir_erl:definition_to_anonymous/5	1
+callext	elixir_errors:file_error/4	10
+callext	elixir_errors:file_warn/4	5
+callext	elixir_errors:module_error/4	3
+callext	elixir_expand:expand/3	1
+callext	elixir_lexical:with_file/3	1
+callext	elixir_module:data_tables/1	9
+callext	elixir_module:get_cached_env/1	2
+callext	elixir_module:read_cache/2	1
+callext	elixir_quote:linify/3	3
+callext	elixir_utils:erl_fa_to_elixir_fa/2	1
+callext	elixir_utils:extract_guards/1	1
+callext	elixir_utils:get_line/1	3
+callext	elixir_utils:meta_keep/1	1
+callext	elixir_utils:relative_to_cwd/1	6
+callext	erlang:++/2	5
+callext	erlang:apply/2	1
+callext	erlang:apply/3	1
+callext	erlang:atom_to_list/1	1
+callext	erlang:error/1	5
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	2
+callext	erlang:list_to_atom/1	1
+callext	erlang:process_info/2	1
+callext	erlang:raise/3	1
+callext	ets:delete_object/2	2
+callext	ets:insert/2	7
+callext	ets:lookup/2	5
+callext	ets:lookup_element/3	4
+callext	ets:take/2	3
+callext	filename:absname/1	3
+callext	io_lib:format/2	15
+callext	lists:keyfind/3	5
+callext	lists:member/2	1
+callext	lists:reverse/1	6
+callext	lists:sort/1	1

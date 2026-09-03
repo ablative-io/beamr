@@ -1,0 +1,130 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 1691,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 9,
+  "deferred_names": [
+   "calendar:system_time_to_rfc3339/2",
+   "io_lib:build_text/2",
+   "io_lib:chars_length/1",
+   "io_lib:fread/2",
+   "io_lib:fwrite/2",
+   "io_lib:printable_latin1_list/1",
+   "io_lib:printable_list/1",
+   "io_lib:printable_unicode_list/1",
+   "io_lib:scan_format/2"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "application",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "error_logger",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "logger",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "re",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "string",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "unicode",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 29664,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "application",
+  "calendar",
+  "erlang",
+  "error_logger",
+  "io_lib",
+  "lists",
+  "logger",
+  "maps",
+  "re",
+  "string",
+  "unicode"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "logger_formatter",
+ "path": "/usr/local/lib/otp-29.0.5/lib/erlang/lib/kernel-11.0.3/ebin/logger_formatter.beam",
+ "registration_deviation": [],
+ "sha256": "00c70fb8e951987d1e1c72d9c2658073c226a61d4c3c3ba2026cb459afaa3acc",
+ "skipped_in_dirs": 14,
+ "tier": "T3"
+}

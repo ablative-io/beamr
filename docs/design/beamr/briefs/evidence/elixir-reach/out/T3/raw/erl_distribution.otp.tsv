@@ -1,0 +1,67 @@
+module	erl_distribution
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	30
+op	2	func_info/3	8
+op	3	int_code_end/0	1
+op	5	call_last/3	3
+op	6	call_only/2	1
+op	7	call_ext/2	15
+op	8	call_ext_last/3	1
+op	12	allocate/2	3
+op	16	test_heap/2	10
+op	18	deallocate/1	3
+op	19	return/0	4
+op	43	is_eq_exact/3	2
+op	49	is_pid/2	1
+op	52	is_nil/2	2
+op	56	is_nonempty_list/2	3
+op	59	select_val/3	2
+op	61	jump/1	1
+op	64	move/2	41
+op	65	get_list/3	3
+op	66	get_tuple_element/3	3
+op	69	put_list/3	9
+op	74	case_end/1	2
+op	78	call_ext_only/2	5
+op	136	trim/2	4
+op	153	line/1	27
+op	154	put_map_assoc/5	6
+op	156	is_map/2	1
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	6
+op	172	init_yregs/1	8
+impt	erlang:++/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:list_to_atom/1
+impt	erlang:whereis/1
+impt	init:get_argument/1
+impt	lists:join/2
+impt	logger:allow/2
+impt	logger:macro_log/4
+impt	net_kernel:epmd_module/0
+impt	net_kernel:protocol_childspecs/0
+impt	supervisor:delete_child/2
+impt	supervisor:start_child/2
+impt	supervisor:start_link/3
+impt	supervisor:terminate_child/2
+disasm	ok
+callext	erlang:++/2	2
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_atom/1	2
+callext	erlang:whereis/1	1
+callext	init:get_argument/1	2
+callext	lists:join/2	1
+callext	logger:allow/2	2
+callext	logger:macro_log/4	2
+callext	net_kernel:epmd_module/0	1
+callext	net_kernel:protocol_childspecs/0	1
+callext	supervisor:delete_child/2	1
+callext	supervisor:start_child/2	1
+callext	supervisor:start_link/3	1
+callext	supervisor:terminate_child/2	1

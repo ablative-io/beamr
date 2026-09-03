@@ -1,0 +1,71 @@
+module	Elixir.Mix.Dep.Lock
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	46
+op	2	func_info/3	12
+op	3	int_code_end/0	1
+op	4	call/2	4
+op	5	call_last/3	2
+op	6	call_only/2	2
+op	7	call_ext/2	17
+op	8	call_ext_last/3	2
+op	12	allocate/2	5
+op	13	allocate_heap/3	1
+op	16	test_heap/2	2
+op	18	deallocate/1	4
+op	19	return/0	11
+op	42	is_ne/3	1
+op	44	is_ne_exact/3	1
+op	53	is_binary/2	3
+op	57	is_tuple/2	2
+op	58	test_arity/3	2
+op	59	select_val/3	4
+op	61	jump/1	4
+op	64	move/2	52
+op	66	get_tuple_element/3	5
+op	69	put_list/3	4
+op	78	call_ext_only/2	3
+op	136	trim/2	1
+op	153	line/1	29
+op	156	is_map/2	1
+op	159	is_tagged_tuple/4	2
+op	164	put_tuple2/2	1
+op	171	make_fun3/3	1
+op	172	init_yregs/1	12
+op	177	bs_create_bin/6	3
+impt	Elixir.Access:get/2
+impt	Elixir.Code:eval_quoted/3
+impt	Elixir.Code:string_to_quoted/2
+impt	Elixir.Enum:reduce/3
+impt	Elixir.Enum:sort/1
+impt	Elixir.File:read/1
+impt	Elixir.File:write!/2
+impt	Elixir.Kernel:inspect/2
+impt	Elixir.Keyword:get/3
+impt	Elixir.Mix:raise/1
+impt	Elixir.Mix.Project:config/0
+impt	Elixir.Mix.Task:run/1
+impt	Elixir.String:contains?/2
+impt	Elixir.String.Chars:to_string/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	lists:reverse/1
+disasm	ok
+callext	Elixir.Access:get/2	2
+callext	Elixir.Code:eval_quoted/3	1
+callext	Elixir.Code:string_to_quoted/2	1
+callext	Elixir.Enum:reduce/3	1
+callext	Elixir.Enum:sort/1	1
+callext	Elixir.File:read/1	1
+callext	Elixir.File:write!/2	1
+callext	Elixir.Kernel:inspect/2	1
+callext	Elixir.Keyword:get/3	1
+callext	Elixir.Mix:raise/1	2
+callext	Elixir.Mix.Project:config/0	1
+callext	Elixir.Mix.Task:run/1	1
+callext	Elixir.String:contains?/2	1
+callext	Elixir.String.Chars:to_string/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	lists:reverse/1	1

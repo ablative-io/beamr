@@ -1,0 +1,30 @@
+== control 4/5 again WITH --dir stdlib ebin (so lists:sum/1 can resolve as bytecode) ==
+reach_plain rc=0 out={ok, 12}  skipped_line=7 
+reach_linecov rc=0 out={ok, 12}  skipped_line=7 
+reach_debuginfo rc=1 out=beamr: unknown opcode 184  skipped_line=7 
+-- does lists.beam itself load? 
+lists.beam loaded None None
+== rerun CTRL with the merge columns ==
+tier=CTRL modules=8 done=2026-09-03T03:24:15Z
+== T1 ==
+T1	Elixir.T1EnumMap	loaded	None	ok
+T1	Elixir.T1Hello	loaded	None	ok
+T1	Elixir.T1Process	loaded	None	ok
+T1	Elixir.T1String	loaded	None	ok
+T1	Elixir.T1Struct	loaded	None	ok
+T1	Elixir.T1Task	loaded	None	ok
+tier=T1 modules=6 done=2026-09-03T03:26:09Z
+Elixir.T1EnumMap loaded None gen= 0 0 0 skipped= 14 C= 0u/0d/0x eq=True [] D= 1
+Elixir.T1Hello loaded None gen= 0 0 0 skipped= 14 C= 0u/0d/0x eq=True [] D= 1
+Elixir.T1Process loaded None gen= 0 0 0 skipped= 14 C= 0u/0d/0x eq=True [] D= 1
+Elixir.T1String loaded None gen= 0 0 0 skipped= 14 C= 0u/0d/0x eq=True [] D= 1
+Elixir.T1Struct loaded None gen= 0 0 0 skipped= 14 C= 0u/0d/0x eq=True [] D= 1
+Elixir.T1Task loaded None gen= 0 0 0 skipped= 14 C= 0u/0d/0x eq=True [] D= 1
+== T1 run under the CLI (Elixir.T1Hello main/0 etc., with all DIRS) ==
+T1Hello rc=0 out=hello from beamr ok 
+T1EnumMap rc=0 out=4 
+T1String rc=134 out= thread 'beamr-sched-0' (1006666) has overflowed its stack fatal runtime error: stack overflow, aborting 
+T1Struct rc=0 out={big, 3} 
+T1Process rc=1 out=beamr: error: badarg   stacktrace (captured at raise):     Elixir.T1Process:main/0     Elixir.T1Process:main/0 line 4 
+T1Task rc=1 out=beamr: bad argument 
+done=2026-09-03T03:27:18Z

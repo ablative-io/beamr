@@ -1,0 +1,6 @@
+io_lib:fwrite/2
+io_lib:write_string/1
+io_lib:write_char/1
+io_lib:write_atom/1
+erl_eval:new_bindings/0
+erl_eval:exprs/3

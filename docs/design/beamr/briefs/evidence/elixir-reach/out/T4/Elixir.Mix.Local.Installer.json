@@ -1,0 +1,96 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 1259,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "code",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "crypto",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 24116,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.Base",
+  "Elixir.Enum",
+  "Elixir.File",
+  "Elixir.Kernel",
+  "Elixir.Keyword",
+  "Elixir.List",
+  "Elixir.Mix",
+  "Elixir.Mix.Project",
+  "Elixir.Mix.ProjectStack",
+  "Elixir.Mix.Task",
+  "Elixir.Mix.Tasks.Loadconfig",
+  "Elixir.Mix.Utils",
+  "Elixir.OptionParser",
+  "Elixir.Path",
+  "Elixir.String.Chars",
+  "Elixir.System",
+  "Elixir.URI",
+  "code",
+  "crypto",
+  "elixir_erl_pass",
+  "erlang"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.Mix.Local.Installer",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/mix/ebin/Elixir.Mix.Local.Installer.beam",
+ "registration_deviation": [],
+ "sha256": "96d478fa109036f547dbdc48d722dc84c8639286c098d89aa2a88b1f6e618bbc",
+ "skipped_in_dirs": 14,
+ "tier": "T4"
+}

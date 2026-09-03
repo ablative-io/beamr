@@ -1,0 +1,115 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 7691,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "binary",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "math",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 170304,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.Application",
+  "Elixir.ArgumentError",
+  "Elixir.Collectable",
+  "Elixir.Enum",
+  "Elixir.Exception",
+  "Elixir.IO",
+  "Elixir.Inspect.Algebra",
+  "Elixir.Inspect.Opts",
+  "Elixir.Kernel",
+  "Elixir.Kernel.LexicalTracker",
+  "Elixir.List",
+  "Elixir.Macro",
+  "Elixir.Macro.Env",
+  "Elixir.Module",
+  "Elixir.Protocol",
+  "Elixir.Regex",
+  "Elixir.String",
+  "Elixir.String.Chars",
+  "binary",
+  "elixir_aliases",
+  "elixir_env",
+  "elixir_erl_pass",
+  "elixir_interpolation",
+  "elixir_module",
+  "elixir_quote",
+  "elixir_utils",
+  "erlang",
+  "lists",
+  "maps",
+  "math"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.Kernel",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/elixir/ebin/Elixir.Kernel.beam",
+ "registration_deviation": [],
+ "sha256": "cb4d5481064a5bd5759a6e8baed06a024aabacc7403d087f92708d3b55b6e75f",
+ "skipped_in_dirs": 14,
+ "tier": "T2"
+}

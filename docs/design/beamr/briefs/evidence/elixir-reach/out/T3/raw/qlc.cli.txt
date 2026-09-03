@@ -1,0 +1,8 @@
+io_lib:deep_char_list/1
+io_lib:char_list/1
+io_lib:write/1
+io_lib:print/4
+erl_eval:new_bindings/0
+erl_eval:extended_parse_exprs/1
+erl_eval:exprs/2
+erl_eval:fun_data/1

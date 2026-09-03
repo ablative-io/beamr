@@ -1,0 +1,59 @@
+module	elixir_bootstrap
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	37
+op	2	func_info/3	15
+op	3	int_code_end/0	1
+op	4	call/2	1
+op	5	call_last/3	1
+op	6	call_only/2	7
+op	7	call_ext/2	8
+op	8	call_ext_last/3	1
+op	11	bif2/5	1
+op	12	allocate/2	3
+op	16	test_heap/2	5
+op	18	deallocate/1	2
+op	19	return/0	6
+op	43	is_eq_exact/3	1
+op	52	is_nil/2	1
+op	56	is_nonempty_list/2	1
+op	57	is_tuple/2	2
+op	58	test_arity/3	2
+op	59	select_val/3	2
+op	61	jump/1	1
+op	64	move/2	47
+op	65	get_list/3	1
+op	66	get_tuple_element/3	4
+op	69	put_list/3	9
+op	74	case_end/1	1
+op	78	call_ext_only/2	2
+op	136	trim/2	1
+op	153	line/1	27
+op	155	put_map_exact/5	1
+op	156	is_map/2	1
+op	158	get_map_elements/3	1
+op	159	is_tagged_tuple/4	1
+op	164	put_tuple2/2	5
+op	171	make_fun3/3	1
+op	172	init_yregs/1	5
+impt	elixir_module:cache_env/1
+impt	elixir_module:write_cache/3
+impt	elixir_quote:escape/3
+impt	elixir_quote:has_unquotes/1
+impt	erlang:apply/3
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:module_loaded/1
+impt	erlang:or/2
+impt	erlang:unique_integer/0
+disasm	ok
+callext	elixir_module:cache_env/1	1
+callext	elixir_module:write_cache/3	1
+callext	elixir_quote:escape/3	2
+callext	elixir_quote:has_unquotes/1	2
+callext	erlang:apply/3	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:module_loaded/1	1
+callext	erlang:unique_integer/0	1

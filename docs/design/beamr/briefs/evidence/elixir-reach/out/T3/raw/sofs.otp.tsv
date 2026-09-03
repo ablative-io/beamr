@@ -1,0 +1,136 @@
+module	sofs
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	1241
+op	2	func_info/3	255
+op	3	int_code_end/0	1
+op	4	call/2	228
+op	5	call_last/3	78
+op	6	call_only/2	219
+op	7	call_ext/2	136
+op	8	call_ext_last/3	104
+op	10	bif1/4	26
+op	11	bif2/5	40
+op	12	allocate/2	185
+op	13	allocate_heap/3	10
+op	16	test_heap/2	302
+op	18	deallocate/1	150
+op	19	return/0	288
+op	39	is_lt/3	42
+op	40	is_ge/3	8
+op	41	is_eq/3	55
+op	42	is_ne/3	3
+op	43	is_eq_exact/3	172
+op	44	is_ne_exact/3	47
+op	45	is_integer/2	10
+op	48	is_atom/2	28
+op	52	is_nil/2	150
+op	55	is_list/2	21
+op	56	is_nonempty_list/2	194
+op	57	is_tuple/2	141
+op	58	test_arity/3	117
+op	59	select_val/3	25
+op	61	jump/1	67
+op	64	move/2	1552
+op	65	get_list/3	188
+op	66	get_tuple_element/3	438
+op	69	put_list/3	202
+op	72	badmatch/1	4
+op	74	case_end/1	11
+op	75	call_fun/1	10
+op	78	call_ext_only/2	94
+op	104	try/2	36
+op	105	try_end/1	36
+op	106	try_case/1	36
+op	108	raise/2	13
+op	124	gc_bif1/5	2
+op	125	gc_bif2/6	11
+op	136	trim/2	75
+op	153	line/1	799
+op	159	is_tagged_tuple/4	92
+op	162	get_hd/2	4
+op	163	get_tl/2	19
+op	164	put_tuple2/2	226
+op	169	swap/2	71
+op	171	make_fun3/3	16
+op	172	init_yregs/1	93
+op	178	call_fun2/3	6
+op	180	badrecord/1	4
+impt	digraph:add_edge/3
+impt	digraph:add_vertex/2
+impt	digraph:delete/1
+impt	digraph:new/0
+impt	digraph:new/1
+impt	digraph:out_neighbours/2
+impt	digraph:vertices/1
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:</2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:==/2
+impt	erlang:>=/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:length/1
+impt	erlang:list_to_tuple/1
+impt	erlang:make_tuple/2
+impt	erlang:max/2
+impt	erlang:raise/3
+impt	erlang:throw/1
+impt	erlang:tuple_size/1
+impt	erlang:tuple_to_list/1
+impt	lists:any/2
+impt	lists:append/1
+impt	lists:flatten/1
+impt	lists:foreach/2
+impt	lists:keysort/2
+impt	lists:last/1
+impt	lists:map/2
+impt	lists:mapfoldl/3
+impt	lists:member/2
+impt	lists:merge/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:sort/1
+impt	lists:umerge/1
+impt	lists:umerge/2
+impt	lists:usort/1
+disasm	ok
+callext	digraph:add_edge/3	1
+callext	digraph:add_vertex/2	2
+callext	digraph:delete/1	1
+callext	digraph:new/0	2
+callext	digraph:new/1	1
+callext	digraph:out_neighbours/2	1
+callext	digraph:vertices/1	1
+callext	erlang:++/2	4
+callext	erlang:error/1	131
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_tuple/1	15
+callext	erlang:make_tuple/2	2
+callext	erlang:raise/3	1
+callext	erlang:throw/1	1
+callext	erlang:tuple_to_list/1	19
+callext	lists:any/2	1
+callext	lists:append/1	2
+callext	lists:flatten/1	1
+callext	lists:foreach/2	2
+callext	lists:keysort/2	5
+callext	lists:last/1	3
+callext	lists:map/2	5
+callext	lists:mapfoldl/3	1
+callext	lists:member/2	1
+callext	lists:merge/2	1
+callext	lists:reverse/1	62
+callext	lists:reverse/2	22
+callext	lists:sort/1	24
+callext	lists:umerge/1	1
+callext	lists:umerge/2	2
+callext	lists:usort/1	17

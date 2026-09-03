@@ -1,0 +1,25 @@
+module	Elixir.Function
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	23
+op	2	func_info/3	8
+op	3	int_code_end/0	1
+op	6	call_only/2	1
+op	19	return/0	6
+op	59	select_val/3	1
+op	61	jump/1	1
+op	64	move/2	10
+op	78	call_ext_only/2	6
+op	153	line/1	9
+impt	erlang:fun_info/1
+impt	erlang:fun_info/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:make_fun/3
+disasm	ok
+callext	erlang:fun_info/1	1
+callext	erlang:fun_info/2	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	2
+callext	erlang:make_fun/3	1

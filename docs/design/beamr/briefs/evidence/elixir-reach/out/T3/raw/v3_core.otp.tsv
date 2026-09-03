@@ -1,0 +1,302 @@
+module	v3_core
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	1595
+op	2	func_info/3	312
+op	3	int_code_end/0	1
+op	4	call/2	776
+op	5	call_last/3	86
+op	6	call_only/2	95
+op	7	call_ext/2	419
+op	8	call_ext_last/3	28
+op	10	bif1/4	9
+op	11	bif2/5	21
+op	12	allocate/2	346
+op	13	allocate_heap/3	47
+op	16	test_heap/2	783
+op	18	deallocate/1	398
+op	19	return/0	575
+op	39	is_lt/3	2
+op	40	is_ge/3	7
+op	43	is_eq_exact/3	209
+op	44	is_ne_exact/3	20
+op	45	is_integer/2	10
+op	47	is_number/2	1
+op	48	is_atom/2	3
+op	52	is_nil/2	145
+op	55	is_list/2	12
+op	56	is_nonempty_list/2	184
+op	57	is_tuple/2	113
+op	58	test_arity/3	49
+op	59	select_val/3	104
+op	60	select_tuple_arity/3	40
+op	61	jump/1	80
+op	64	move/2	3117
+op	65	get_list/3	151
+op	66	get_tuple_element/3	1954
+op	69	put_list/3	616
+op	72	badmatch/1	42
+op	74	case_end/1	36
+op	75	call_fun/1	1
+op	78	call_ext_only/2	57
+op	104	try/2	10
+op	105	try_end/1	10
+op	106	try_case/1	10
+op	107	try_case_end/1	2
+op	108	raise/2	9
+op	114	is_boolean/2	2
+op	117	bs_get_integer2/7	1
+op	124	gc_bif1/5	15
+op	125	gc_bif2/6	23
+op	129	is_bitstr/2	2
+op	136	trim/2	200
+op	153	line/1	1556
+op	154	put_map_assoc/5	1
+op	155	put_map_exact/5	1
+op	156	is_map/2	2
+op	158	get_map_elements/3	1
+op	159	is_tagged_tuple/4	267
+op	161	raw_raise/0	1
+op	162	get_hd/2	7
+op	163	get_tl/2	19
+op	164	put_tuple2/2	989
+op	169	swap/2	178
+op	170	bs_start_match4/4	1
+op	171	make_fun3/3	63
+op	172	init_yregs/1	410
+op	178	call_fun2/3	2
+op	180	badrecord/1	54
+op	181	update_record/5	150
+op	182	bs_match/3	1
+impt	cerl:ann_c_call/4
+impt	cerl:ann_c_case/3
+impt	cerl:ann_c_clause/3
+impt	cerl:ann_c_clause/4
+impt	cerl:ann_c_cons/3
+impt	cerl:ann_c_map/3
+impt	cerl:ann_c_map_pair/4
+impt	cerl:ann_c_record/4
+impt	cerl:ann_c_record_pair/3
+impt	cerl:ann_c_tuple/2
+impt	cerl:ann_make_data/3
+impt	cerl:c_atom/1
+impt	cerl:c_int/1
+impt	cerl:c_let/3
+impt	cerl:c_try/5
+impt	cerl:c_tuple/1
+impt	cerl:c_var/1
+impt	cerl:concrete/1
+impt	cerl:cons_hd/1
+impt	cerl:cons_tl/1
+impt	cerl:data_es/1
+impt	cerl:data_type/1
+impt	cerl:get_ann/1
+impt	cerl:is_c_atom/1
+impt	cerl:is_data/1
+impt	cerl:is_literal/1
+impt	cerl:make_data/2
+impt	cerl:make_list/1
+impt	cerl:set_ann/2
+impt	cerl:update_c_cons_skel/3
+impt	cerl:update_c_tuple_skel/2
+impt	cerl_trees:free_variables/1
+impt	cerl_trees:mapfold/4
+impt	core_lib:make_values/1
+impt	erl_anno:generated/1
+impt	erl_anno:location/1
+impt	erl_anno:record/1
+impt	erl_anno:set_generated/2
+impt	erl_bits:as_list/1
+impt	erl_bits:set_bit_type/2
+impt	erl_eval:new_bindings/0
+impt	erl_eval:partial_eval/1
+impt	erl_internal:add_predefined_functions/1
+impt	erl_internal:bool_op/2
+impt	erl_internal:comp_op/2
+impt	erl_internal:new_type_test/2
+impt	erl_lint:is_guard_test/3
+impt	erl_parse:first_anno/1
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:abs/1
+impt	erlang:atom_to_list/1
+impt	erlang:bit_size/1
+impt	erlang:bor/2
+impt	erlang:bsl/2
+impt	erlang:bsr/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:float/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:integer_to_list/1
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:map_size/1
+impt	erlang:not/1
+impt	erlang:raise/3
+impt	erlang:rem/2
+impt	erlang:setelement/3
+impt	erlang:throw/1
+impt	eval_bits:expr_grp/3
+impt	gb_sets:add/2
+impt	gb_sets:empty/0
+impt	gb_sets:is_member/2
+impt	gb_trees:empty/0
+impt	gb_trees:get/2
+impt	gb_trees:insert/3
+impt	gb_trees:lookup/2
+impt	io:fwrite/2
+impt	io_lib:format/2
+impt	lists:all/2
+impt	lists:any/2
+impt	lists:append/1
+impt	lists:droplast/1
+impt	lists:duplicate/2
+impt	lists:foldl/3
+impt	lists:foldr/3
+impt	lists:keydelete/3
+impt	lists:keyfind/3
+impt	lists:keymember/3
+impt	lists:last/1
+impt	lists:map/2
+impt	lists:mapfoldl/3
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:sort/1
+impt	lists:split/2
+impt	lists:splitwith/2
+impt	lists:zip/2
+impt	maps:to_list/1
+impt	ordsets:add_element/2
+impt	ordsets:del_element/2
+impt	ordsets:from_list/1
+impt	ordsets:intersection/2
+impt	ordsets:is_disjoint/2
+impt	ordsets:is_element/2
+impt	ordsets:new/0
+impt	ordsets:subtract/2
+impt	ordsets:union/1
+impt	ordsets:union/2
+impt	sets:add_element/2
+impt	sets:from_list/1
+impt	sets:from_list/2
+impt	sets:is_element/2
+impt	sets:new/0
+impt	sets:to_list/1
+impt	sets:union/2
+disasm	ok
+callext	cerl:ann_c_call/4	5
+callext	cerl:ann_c_case/3	1
+callext	cerl:ann_c_clause/3	1
+callext	cerl:ann_c_clause/4	1
+callext	cerl:ann_c_cons/3	10
+callext	cerl:ann_c_map/3	1
+callext	cerl:ann_c_map_pair/4	1
+callext	cerl:ann_c_record/4	1
+callext	cerl:ann_c_record_pair/3	1
+callext	cerl:ann_c_tuple/2	11
+callext	cerl:ann_make_data/3	1
+callext	cerl:c_atom/1	9
+callext	cerl:c_int/1	2
+callext	cerl:c_let/3	3
+callext	cerl:c_try/5	1
+callext	cerl:c_tuple/1	12
+callext	cerl:c_var/1	6
+callext	cerl:concrete/1	1
+callext	cerl:cons_hd/1	1
+callext	cerl:cons_tl/1	1
+callext	cerl:data_es/1	4
+callext	cerl:data_type/1	4
+callext	cerl:get_ann/1	3
+callext	cerl:is_c_atom/1	1
+callext	cerl:is_data/1	2
+callext	cerl:is_literal/1	1
+callext	cerl:make_data/2	2
+callext	cerl:make_list/1	1
+callext	cerl:set_ann/2	2
+callext	cerl:update_c_cons_skel/3	1
+callext	cerl:update_c_tuple_skel/2	1
+callext	cerl_trees:free_variables/1	1
+callext	cerl_trees:mapfold/4	2
+callext	core_lib:make_values/1	9
+callext	erl_anno:generated/1	3
+callext	erl_anno:location/1	3
+callext	erl_anno:record/1	1
+callext	erl_anno:set_generated/2	6
+callext	erl_bits:as_list/1	5
+callext	erl_bits:set_bit_type/2	3
+callext	erl_eval:new_bindings/0	1
+callext	erl_eval:partial_eval/1	4
+callext	erl_internal:add_predefined_functions/1	1
+callext	erl_internal:bool_op/2	3
+callext	erl_internal:comp_op/2	1
+callext	erl_internal:new_type_test/2	1
+callext	erl_lint:is_guard_test/3	1
+callext	erl_parse:first_anno/1	1
+callext	erlang:++/2	110
+callext	erlang:--/2	4
+callext	erlang:atom_to_list/1	2
+callext	erlang:error/1	29
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:integer_to_list/1	5
+callext	erlang:list_to_atom/1	4
+callext	erlang:raise/3	6
+callext	erlang:setelement/3	4
+callext	erlang:throw/1	4
+callext	eval_bits:expr_grp/3	1
+callext	gb_sets:add/2	1
+callext	gb_sets:empty/0	1
+callext	gb_sets:is_member/2	1
+callext	gb_trees:empty/0	1
+callext	gb_trees:get/2	1
+callext	gb_trees:insert/3	1
+callext	gb_trees:lookup/2	1
+callext	io:fwrite/2	1
+callext	io_lib:format/2	2
+callext	lists:all/2	6
+callext	lists:any/2	3
+callext	lists:append/1	3
+callext	lists:droplast/1	6
+callext	lists:duplicate/2	2
+callext	lists:foldl/3	18
+callext	lists:foldr/3	9
+callext	lists:keydelete/3	2
+callext	lists:keyfind/3	2
+callext	lists:keymember/3	1
+callext	lists:last/1	6
+callext	lists:map/2	2
+callext	lists:mapfoldl/3	9
+callext	lists:member/2	13
+callext	lists:reverse/1	11
+callext	lists:reverse/2	5
+callext	lists:sort/1	1
+callext	lists:split/2	1
+callext	lists:splitwith/2	2
+callext	lists:zip/2	1
+callext	maps:to_list/1	1
+callext	ordsets:add_element/2	5
+callext	ordsets:del_element/2	3
+callext	ordsets:from_list/1	3
+callext	ordsets:intersection/2	12
+callext	ordsets:is_disjoint/2	1
+callext	ordsets:is_element/2	3
+callext	ordsets:new/0	1
+callext	ordsets:subtract/2	8
+callext	ordsets:union/1	5
+callext	ordsets:union/2	30
+callext	sets:add_element/2	1
+callext	sets:from_list/1	1
+callext	sets:from_list/2	1
+callext	sets:is_element/2	2
+callext	sets:new/0	3
+callext	sets:to_list/1	1
+callext	sets:union/2	1

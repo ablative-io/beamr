@@ -1,0 +1,296 @@
+module	net_kernel
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	810
+op	2	func_info/3	150
+op	3	int_code_end/0	1
+op	4	call/2	147
+op	5	call_last/3	52
+op	6	call_only/2	48
+op	7	call_ext/2	228
+op	8	call_ext_last/3	48
+op	9	bif0/2	38
+op	10	bif1/4	6
+op	11	bif2/5	11
+op	12	allocate/2	119
+op	13	allocate_heap/3	21
+op	16	test_heap/2	267
+op	18	deallocate/1	153
+op	19	return/0	214
+op	20	send/0	26
+op	21	remove_message/0	8
+op	22	timeout/0	4
+op	23	loop_rec/2	6
+op	24	loop_rec_end/1	6
+op	25	wait/1	5
+op	26	wait_timeout/2	4
+op	39	is_lt/3	8
+op	40	is_ge/3	15
+op	41	is_eq/3	2
+op	43	is_eq_exact/3	155
+op	44	is_ne_exact/3	20
+op	45	is_integer/2	14
+op	47	is_number/2	1
+op	48	is_atom/2	16
+op	49	is_pid/2	9
+op	51	is_port/2	1
+op	52	is_nil/2	36
+op	55	is_list/2	9
+op	56	is_nonempty_list/2	46
+op	57	is_tuple/2	68
+op	58	test_arity/3	29
+op	59	select_val/3	40
+op	60	select_tuple_arity/3	12
+op	61	jump/1	57
+op	62	catch/2	6
+op	63	catch_end/1	6
+op	64	move/2	1386
+op	65	get_list/3	37
+op	66	get_tuple_element/3	363
+op	69	put_list/3	103
+op	72	badmatch/1	17
+op	73	if_end/0	1
+op	74	case_end/1	30
+op	78	call_ext_only/2	20
+op	104	try/2	11
+op	105	try_end/1	11
+op	106	try_case/1	11
+op	107	try_case_end/1	1
+op	108	raise/2	5
+op	112	apply/1	12
+op	113	apply_last/2	1
+op	114	is_boolean/2	5
+op	124	gc_bif1/5	6
+op	125	gc_bif2/6	34
+op	136	trim/2	80
+op	153	line/1	681
+op	154	put_map_assoc/5	24
+op	156	is_map/2	23
+op	158	get_map_elements/3	7
+op	159	is_tagged_tuple/4	109
+op	162	get_hd/2	6
+op	163	get_tl/2	2
+op	164	put_tuple2/2	269
+op	169	swap/2	19
+op	171	make_fun3/3	13
+op	172	init_yregs/1	82
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	2
+op	175	recv_marker_reserve/1	1
+op	178	call_fun2/3	2
+op	180	badrecord/1	29
+op	181	update_record/5	40
+impt	application:get_env/2
+impt	application:set_env/3
+impt	auth:sync_cookie/0
+impt	binary:decode_unsigned/1
+impt	crypto:strong_rand_bytes/1
+impt	erl_distribution:start/1
+impt	erl_distribution:stop/0
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:apply/3
+impt	erlang:atom_to_list/1
+impt	erlang:band/2
+impt	erlang:cancel_timer/2
+impt	erlang:demonitor/2
+impt	erlang:display/1
+impt	erlang:display_string/1
+impt	erlang:display_string/2
+impt	erlang:div/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:exit/1
+impt	erlang:exit/2
+impt	erlang:get/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:group_leader/2
+impt	erlang:halt/1
+impt	erlang:hd/1
+impt	erlang:integer_to_list/1
+impt	erlang:integer_to_list/2
+impt	erlang:is_map_key/2
+impt	erlang:length/1
+impt	erlang:link/1
+impt	erlang:list_to_atom/1
+impt	erlang:make_ref/0
+impt	erlang:map_get/2
+impt	erlang:map_size/1
+impt	erlang:monitor/2
+impt	erlang:nif_error/1
+impt	erlang:node/0
+impt	erlang:node/1
+impt	erlang:nodes/1
+impt	erlang:process_flag/2
+impt	erlang:put/2
+impt	erlang:raise/3
+impt	erlang:rem/2
+impt	erlang:round/1
+impt	erlang:self/0
+impt	erlang:send/2
+impt	erlang:send_after/3
+impt	erlang:setnode/2
+impt	erlang:spawn/3
+impt	erlang:spawn_link/1
+impt	erlang:spawn_link/3
+impt	erlang:spawn_opt/4
+impt	erlang:unlink/1
+impt	erlang:whereis/1
+impt	error_logger:error_msg/2
+impt	error_logger:info_msg/1
+impt	error_logger:info_report/1
+impt	erts_internal:abort_pending_connection/2
+impt	erts_internal:dynamic_node_name/0
+impt	erts_internal:dynamic_node_name/1
+impt	erts_internal:new_connection/1
+impt	ets:delete/2
+impt	ets:insert/2
+impt	ets:lookup/2
+impt	ets:new/2
+impt	ets:select/2
+impt	gen_server:call/3
+impt	gen_server:cast/2
+impt	gen_server:reply/2
+impt	gen_server:start_link/4
+impt	global_group:publish/2
+impt	inet_config:do_load_resolv/2
+impt	inet_db:gethostname/0
+impt	inet_db:res_option/1
+impt	inet_parse:ntoa/1
+impt	init:get_argument/1
+impt	io:format/2
+impt	io_lib:format/2
+impt	lists:concat/1
+impt	lists:filter/2
+impt	lists:flatten/1
+impt	lists:foldl/3
+impt	lists:foreach/2
+impt	lists:keyfind/3
+impt	lists:keymember/3
+impt	lists:keyreplace/4
+impt	lists:keysearch/3
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:splitwith/2
+impt	lists:uniq/1
+impt	logger:allow/2
+impt	logger:macro_log/4
+impt	maps:find/2
+impt	maps:foreach/2
+impt	maps:remove/2
+impt	maps:take/2
+impt	net_kernel:ticker_loop/2
+impt	os:type/0
+impt	persistent_term:erase/1
+impt	persistent_term:get/2
+impt	persistent_term:put/2
+impt	rand:uniform/1
+impt	re:compile/2
+impt	re:run/2
+impt	string:split/3
+impt	supervisor:restart_child/2
+impt	supervisor:terminate_child/2
+disasm	ok
+callext	application:get_env/2	8
+callext	application:set_env/3	3
+callext	auth:sync_cookie/0	2
+callext	binary:decode_unsigned/1	1
+callext	crypto:strong_rand_bytes/1	1
+callext	erl_distribution:start/1	1
+callext	erl_distribution:stop/0	1
+callext	erlang:++/2	20
+callext	erlang:apply/3	2
+callext	erlang:atom_to_list/1	8
+callext	erlang:cancel_timer/2	1
+callext	erlang:demonitor/2	3
+callext	erlang:display/1	1
+callext	erlang:display_string/1	1
+callext	erlang:display_string/2	1
+callext	erlang:error/1	22
+callext	erlang:error/2	3
+callext	erlang:exit/1	1
+callext	erlang:exit/2	5
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:group_leader/2	2
+callext	erlang:halt/1	1
+callext	erlang:integer_to_list/1	6
+callext	erlang:integer_to_list/2	1
+callext	erlang:link/1	2
+callext	erlang:list_to_atom/1	7
+callext	erlang:make_ref/0	1
+callext	erlang:monitor/2	3
+callext	erlang:nif_error/1	1
+callext	erlang:nodes/1	1
+callext	erlang:process_flag/2	8
+callext	erlang:put/2	1
+callext	erlang:raise/3	14
+callext	erlang:send/2	1
+callext	erlang:send_after/3	1
+callext	erlang:setnode/2	1
+callext	erlang:spawn/3	1
+callext	erlang:spawn_link/1	2
+callext	erlang:spawn_link/3	3
+callext	erlang:spawn_opt/4	1
+callext	erlang:unlink/1	2
+callext	erlang:whereis/1	3
+callext	error_logger:error_msg/2	9
+callext	error_logger:info_msg/1	4
+callext	error_logger:info_report/1	1
+callext	erts_internal:abort_pending_connection/2	5
+callext	erts_internal:dynamic_node_name/0	2
+callext	erts_internal:dynamic_node_name/1	3
+callext	erts_internal:new_connection/1	4
+callext	ets:delete/2	1
+callext	ets:insert/2	12
+callext	ets:lookup/2	12
+callext	ets:new/2	1
+callext	ets:select/2	3
+callext	gen_server:call/3	1
+callext	gen_server:cast/2	1
+callext	gen_server:reply/2	5
+callext	gen_server:start_link/4	1
+callext	global_group:publish/2	1
+callext	inet_config:do_load_resolv/2	1
+callext	inet_db:gethostname/0	2
+callext	inet_db:res_option/1	1
+callext	inet_parse:ntoa/1	2
+callext	init:get_argument/1	4
+callext	io:format/2	2
+callext	io_lib:format/2	2
+callext	lists:concat/1	1
+callext	lists:filter/2	1
+callext	lists:flatten/1	2
+callext	lists:foldl/3	3
+callext	lists:foreach/2	2
+callext	lists:keyfind/3	3
+callext	lists:keymember/3	1
+callext	lists:keyreplace/4	1
+callext	lists:keysearch/3	2
+callext	lists:member/2	3
+callext	lists:reverse/1	1
+callext	lists:splitwith/2	1
+callext	lists:uniq/1	1
+callext	logger:allow/2	1
+callext	logger:macro_log/4	1
+callext	maps:find/2	10
+callext	maps:foreach/2	3
+callext	maps:remove/2	10
+callext	maps:take/2	2
+callext	net_kernel:ticker_loop/2	2
+callext	os:type/0	1
+callext	persistent_term:erase/1	2
+callext	persistent_term:get/2	1
+callext	persistent_term:put/2	1
+callext	rand:uniform/1	2
+callext	re:compile/2	2
+callext	re:run/2	2
+callext	string:split/3	2
+callext	supervisor:restart_child/2	1
+callext	supervisor:terminate_child/2	1

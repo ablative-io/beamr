@@ -1,0 +1,148 @@
+module	application
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	179
+op	2	func_info/3	53
+op	3	int_code_end/0	1
+op	4	call/2	19
+op	5	call_last/3	11
+op	6	call_only/2	16
+op	7	call_ext/2	26
+op	8	call_ext_last/3	13
+op	12	allocate/2	23
+op	16	test_heap/2	25
+op	18	deallocate/1	28
+op	19	return/0	36
+op	40	is_ge/3	3
+op	43	is_eq_exact/3	23
+op	44	is_ne_exact/3	2
+op	45	is_integer/2	3
+op	48	is_atom/2	6
+op	49	is_pid/2	1
+op	52	is_nil/2	5
+op	55	is_list/2	6
+op	56	is_nonempty_list/2	4
+op	57	is_tuple/2	13
+op	58	test_arity/3	8
+op	59	select_val/3	5
+op	60	select_tuple_arity/3	3
+op	61	jump/1	1
+op	64	move/2	154
+op	65	get_list/3	4
+op	66	get_tuple_element/3	48
+op	69	put_list/3	13
+op	72	badmatch/1	5
+op	74	case_end/1	11
+op	78	call_ext_only/2	22
+op	114	is_boolean/2	1
+op	124	gc_bif1/5	1
+op	136	trim/2	8
+op	153	line/1	136
+op	154	put_map_assoc/5	2
+op	157	has_map_fields/3	1
+op	158	get_map_elements/3	1
+op	159	is_tagged_tuple/4	16
+op	164	put_tuple2/2	26
+op	169	swap/2	1
+op	172	init_yregs/1	12
+impt	application_controller:get_all_env/1
+impt	application_controller:get_all_key/1
+impt	application_controller:get_application/1
+impt	application_controller:get_application_module/1
+impt	application_controller:get_env/2
+impt	application_controller:get_env/3
+impt	application_controller:get_key/2
+impt	application_controller:get_master/1
+impt	application_controller:get_pid_all_env/1
+impt	application_controller:get_pid_all_key/1
+impt	application_controller:get_pid_env/2
+impt	application_controller:get_pid_key/2
+impt	application_controller:info/0
+impt	application_controller:is_running/1
+impt	application_controller:load_application/1
+impt	application_controller:loaded_applications/0
+impt	application_controller:permit_application/2
+impt	application_controller:set_env/2
+impt	application_controller:set_env/3
+impt	application_controller:set_env/4
+impt	application_controller:start_application/2
+impt	application_controller:start_application_request/2
+impt	application_controller:start_boot_application/2
+impt	application_controller:start_type/1
+impt	application_controller:stop_application/1
+impt	application_controller:unload_application/1
+impt	application_controller:unset_env/2
+impt	application_controller:unset_env/3
+impt	application_controller:which_applications/0
+impt	application_controller:which_applications/1
+impt	application_master:get_child/1
+impt	dist_ac:load_application/2
+impt	dist_ac:permit_application/2
+impt	dist_ac:permit_only_loaded_application/2
+impt	dist_ac:takeover_application/2
+impt	erlang:--/2
+impt	erlang:error/2
+impt	erlang:exit/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:group_leader/0
+impt	erlang:map_size/1
+impt	erlang:process_info/2
+impt	gen_server:reqids_add/3
+impt	gen_server:reqids_new/0
+impt	gen_server:reqids_size/1
+impt	gen_server:wait_response/3
+impt	lists:member/2
+impt	lists:reverse/1
+impt	maps:to_list/1
+disasm	ok
+callext	application_controller:get_all_env/1	1
+callext	application_controller:get_all_key/1	1
+callext	application_controller:get_application/1	2
+callext	application_controller:get_application_module/1	1
+callext	application_controller:get_env/2	1
+callext	application_controller:get_env/3	1
+callext	application_controller:get_key/2	1
+callext	application_controller:get_master/1	1
+callext	application_controller:get_pid_all_env/1	1
+callext	application_controller:get_pid_all_key/1	1
+callext	application_controller:get_pid_env/2	1
+callext	application_controller:get_pid_key/2	1
+callext	application_controller:info/0	1
+callext	application_controller:is_running/1	1
+callext	application_controller:load_application/1	1
+callext	application_controller:loaded_applications/0	1
+callext	application_controller:permit_application/2	1
+callext	application_controller:set_env/2	1
+callext	application_controller:set_env/3	1
+callext	application_controller:set_env/4	1
+callext	application_controller:start_application/2	2
+callext	application_controller:start_application_request/2	1
+callext	application_controller:start_boot_application/2	1
+callext	application_controller:start_type/1	1
+callext	application_controller:stop_application/1	1
+callext	application_controller:unload_application/1	2
+callext	application_controller:unset_env/2	1
+callext	application_controller:unset_env/3	1
+callext	application_controller:which_applications/0	1
+callext	application_controller:which_applications/1	2
+callext	application_master:get_child/1	1
+callext	dist_ac:load_application/2	1
+callext	dist_ac:permit_application/2	1
+callext	dist_ac:permit_only_loaded_application/2	1
+callext	dist_ac:takeover_application/2	1
+callext	erlang:--/2	1
+callext	erlang:error/2	1
+callext	erlang:exit/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:group_leader/0	6
+callext	erlang:process_info/2	1
+callext	gen_server:reqids_add/3	1
+callext	gen_server:reqids_new/0	1
+callext	gen_server:reqids_size/1	1
+callext	gen_server:wait_response/3	1
+callext	lists:member/2	1
+callext	lists:reverse/1	2
+callext	maps:to_list/1	1

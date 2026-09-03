@@ -1,0 +1,129 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 977,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "application",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "code",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_anno",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "file",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "filename",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "maps",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 17168,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.File.Error",
+  "Elixir.Macro",
+  "Elixir.Macro.Env",
+  "application",
+  "code",
+  "elixir",
+  "elixir_aliases",
+  "elixir_code_server",
+  "elixir_config",
+  "elixir_env",
+  "elixir_erl",
+  "elixir_erl_compiler",
+  "elixir_erl_pass",
+  "elixir_erl_var",
+  "elixir_expand",
+  "elixir_lexical",
+  "elixir_module",
+  "elixir_utils",
+  "erl_anno",
+  "erlang",
+  "file",
+  "filename",
+  "io",
+  "lists",
+  "maps"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "elixir_compiler",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/elixir/ebin/elixir_compiler.beam",
+ "registration_deviation": [],
+ "sha256": "17e87fc274a7df33cdf1ec2f9d64d95da5890429ea0b01e1c4aac97d1cdeb61a",
+ "skipped_in_dirs": 14,
+ "tier": "T2"
+}

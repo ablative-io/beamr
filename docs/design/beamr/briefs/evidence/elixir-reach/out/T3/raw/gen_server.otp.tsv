@@ -1,0 +1,234 @@
+module	gen_server
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	507
+op	2	func_info/3	97
+op	3	int_code_end/0	1
+op	4	call/2	67
+op	5	call_last/3	51
+op	6	call_only/2	30
+op	7	call_ext/2	148
+op	8	call_ext_last/3	24
+op	9	bif0/2	25
+op	10	bif1/4	4
+op	11	bif2/5	25
+op	12	allocate/2	81
+op	13	allocate_heap/3	4
+op	16	test_heap/2	148
+op	18	deallocate/1	74
+op	19	return/0	114
+op	20	send/0	1
+op	21	remove_message/0	10
+op	22	timeout/0	4
+op	23	loop_rec/2	7
+op	24	loop_rec_end/1	3
+op	25	wait/1	3
+op	26	wait_timeout/2	2
+op	40	is_ge/3	5
+op	43	is_eq_exact/3	111
+op	44	is_ne_exact/3	6
+op	45	is_integer/2	6
+op	48	is_atom/2	22
+op	49	is_pid/2	2
+op	52	is_nil/2	22
+op	55	is_list/2	17
+op	56	is_nonempty_list/2	44
+op	57	is_tuple/2	32
+op	58	test_arity/3	16
+op	59	select_val/3	29
+op	60	select_tuple_arity/3	17
+op	61	jump/1	35
+op	62	catch/2	3
+op	63	catch_end/1	3
+op	64	move/2	1146
+op	65	get_list/3	33
+op	66	get_tuple_element/3	166
+op	69	put_list/3	208
+op	72	badmatch/1	2
+op	74	case_end/1	14
+op	75	call_fun/1	1
+op	78	call_ext_only/2	27
+op	104	try/2	25
+op	105	try_end/1	25
+op	106	try_case/1	25
+op	108	raise/2	16
+op	112	apply/1	4
+op	113	apply_last/2	1
+op	114	is_boolean/2	1
+op	124	gc_bif1/5	2
+op	136	trim/2	48
+op	153	line/1	366
+op	154	put_map_assoc/5	11
+op	155	put_map_exact/5	1
+op	156	is_map/2	5
+op	158	get_map_elements/3	20
+op	159	is_tagged_tuple/4	21
+op	160	build_stacktrace/0	7
+op	162	get_hd/2	2
+op	163	get_tl/2	12
+op	164	put_tuple2/2	98
+op	169	swap/2	36
+op	171	make_fun3/3	6
+op	172	init_yregs/1	69
+op	173	recv_marker_bind/2	1
+op	174	recv_marker_clear/1	4
+op	175	recv_marker_reserve/1	1
+op	176	recv_marker_use/1	3
+op	178	call_fun2/3	4
+op	181	update_record/5	2
+impt	code:is_loaded/1
+impt	erlang:++/2
+impt	erlang:=:=/2
+impt	erlang:alias/0
+impt	erlang:cancel_timer/1
+impt	erlang:cancel_timer/2
+impt	erlang:demonitor/1
+impt	erlang:demonitor/2
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:error/2
+impt	erlang:exit/1
+impt	erlang:function_exported/3
+impt	erlang:garbage_collect/0
+impt	erlang:get/0
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:hibernate/0
+impt	erlang:length/1
+impt	erlang:make_fun/3
+impt	erlang:make_ref/0
+impt	erlang:map_get/2
+impt	erlang:monitor/3
+impt	erlang:node/0
+impt	erlang:node/1
+impt	erlang:nodes/0
+impt	erlang:process_info/2
+impt	erlang:raise/3
+impt	erlang:self/0
+impt	erlang:send/2
+impt	erlang:send/3
+impt	erlang:start_timer/3
+impt	erlang:start_timer/4
+impt	erlang:unalias/1
+impt	error_logger:get_format_depth/0
+impt	gen:call/3
+impt	gen:call/4
+impt	gen:check_response/2
+impt	gen:check_response/3
+impt	gen:debug_options/2
+impt	gen:format_status/4
+impt	gen:format_status_header/2
+impt	gen:get_parent/0
+impt	gen:get_proc_name/1
+impt	gen:hibernate_after/1
+impt	gen:name/1
+impt	gen:receive_response/2
+impt	gen:receive_response/3
+impt	gen:reply/2
+impt	gen:reqids_add/3
+impt	gen:reqids_new/0
+impt	gen:reqids_size/1
+impt	gen:reqids_to_list/1
+impt	gen:send_request/3
+impt	gen:send_request/5
+impt	gen:start/5
+impt	gen:start/6
+impt	gen:stop/1
+impt	gen:stop/3
+impt	gen:unregister_name/1
+impt	gen:wait_response/2
+impt	gen:wait_response/3
+impt	global:send/2
+impt	io:format/3
+impt	io_lib:format/3
+impt	io_lib:limit_term/2
+impt	lists:append/1
+impt	lists:duplicate/2
+impt	lists:flatmap/2
+impt	lists:join/2
+impt	lists:sublist/2
+impt	logger:allow/2
+impt	logger:macro_log/4
+impt	maps:merge/2
+impt	proc_lib:get_label/1
+impt	proc_lib:init_ack/2
+impt	proc_lib:init_fail/3
+impt	sys:get_log/1
+impt	sys:handle_debug/4
+impt	sys:handle_system_msg/7
+disasm	ok
+callext	code:is_loaded/1	1
+callext	erlang:++/2	23
+callext	erlang:alias/0	1
+callext	erlang:cancel_timer/1	1
+callext	erlang:cancel_timer/2	1
+callext	erlang:demonitor/1	1
+callext	erlang:demonitor/2	1
+callext	erlang:error/1	3
+callext	erlang:error/2	17
+callext	erlang:exit/1	6
+callext	erlang:function_exported/3	4
+callext	erlang:garbage_collect/0	2
+callext	erlang:get/0	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:hibernate/0	1
+callext	erlang:make_fun/3	16
+callext	erlang:make_ref/0	3
+callext	erlang:monitor/3	1
+callext	erlang:nodes/0	2
+callext	erlang:process_info/2	13
+callext	erlang:raise/3	3
+callext	erlang:send/2	1
+callext	erlang:send/3	1
+callext	erlang:start_timer/3	2
+callext	erlang:start_timer/4	1
+callext	erlang:unalias/1	5
+callext	error_logger:get_format_depth/0	1
+callext	gen:call/3	1
+callext	gen:call/4	1
+callext	gen:check_response/2	1
+callext	gen:check_response/3	1
+callext	gen:debug_options/2	2
+callext	gen:format_status/4	4
+callext	gen:format_status_header/2	1
+callext	gen:get_parent/0	1
+callext	gen:get_proc_name/1	1
+callext	gen:hibernate_after/1	2
+callext	gen:name/1	1
+callext	gen:receive_response/2	1
+callext	gen:receive_response/3	1
+callext	gen:reply/2	1
+callext	gen:reqids_add/3	1
+callext	gen:reqids_new/0	1
+callext	gen:reqids_size/1	1
+callext	gen:reqids_to_list/1	1
+callext	gen:send_request/3	1
+callext	gen:send_request/5	1
+callext	gen:start/5	3
+callext	gen:start/6	3
+callext	gen:stop/1	1
+callext	gen:stop/3	1
+callext	gen:unregister_name/1	7
+callext	gen:wait_response/2	1
+callext	gen:wait_response/3	1
+callext	global:send/2	1
+callext	io:format/3	6
+callext	io_lib:format/3	1
+callext	io_lib:limit_term/2	7
+callext	lists:append/1	4
+callext	lists:duplicate/2	1
+callext	lists:flatmap/2	1
+callext	lists:join/2	1
+callext	lists:sublist/2	1
+callext	logger:allow/2	2
+callext	logger:macro_log/4	2
+callext	maps:merge/2	1
+callext	proc_lib:get_label/1	1
+callext	proc_lib:init_ack/2	2
+callext	proc_lib:init_fail/3	2
+callext	sys:get_log/1	2
+callext	sys:handle_debug/4	5
+callext	sys:handle_system_msg/7	1

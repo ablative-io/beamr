@@ -1,0 +1,105 @@
+module	eval_bits
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	230
+op	2	func_info/3	39
+op	3	int_code_end/0	1
+op	4	call/2	31
+op	5	call_last/3	14
+op	6	call_only/2	8
+op	7	call_ext/2	18
+op	8	call_ext_last/3	3
+op	9	bif0/2	3
+op	11	bif2/5	3
+op	12	allocate/2	33
+op	13	allocate_heap/3	2
+op	16	test_heap/2	62
+op	18	deallocate/1	40
+op	19	return/0	87
+op	43	is_eq_exact/3	33
+op	44	is_ne_exact/3	1
+op	52	is_nil/2	15
+op	56	is_nonempty_list/2	35
+op	57	is_tuple/2	16
+op	58	test_arity/3	10
+op	59	select_val/3	17
+op	60	select_tuple_arity/3	4
+op	61	jump/1	1
+op	62	catch/2	8
+op	63	catch_end/1	8
+op	64	move/2	392
+op	65	get_list/3	34
+op	66	get_tuple_element/3	96
+op	69	put_list/3	6
+op	72	badmatch/1	32
+op	74	case_end/1	5
+op	75	call_fun/1	6
+op	78	call_ext_only/2	8
+op	104	try/2	3
+op	105	try_end/1	3
+op	106	try_case/1	3
+op	108	raise/2	2
+op	115	is_function2/3	5
+op	117	bs_get_integer2/7	6
+op	118	bs_get_float2/7	3
+op	119	bs_get_binary2/7	3
+op	124	gc_bif1/5	5
+op	125	gc_bif2/6	18
+op	129	is_bitstr/2	3
+op	133	bs_init_writable/0	3
+op	136	trim/2	16
+op	138	bs_get_utf8/5	1
+op	140	bs_get_utf16/5	3
+op	142	bs_get_utf32/5	3
+op	153	line/1	167
+op	154	put_map_assoc/5	1
+op	156	is_map/2	1
+op	159	is_tagged_tuple/4	31
+op	160	build_stacktrace/0	2
+op	163	get_tl/2	1
+op	164	put_tuple2/2	58
+op	165	bs_get_tail/3	19
+op	166	bs_start_match3/4	19
+op	169	swap/2	10
+op	171	make_fun3/3	9
+op	172	init_yregs/1	21
+op	177	bs_create_bin/6	20
+op	178	call_fun2/3	13
+impt	erl_bits:as_list/1
+impt	erl_bits:set_bit_type/2
+impt	erl_eval:partial_eval/1
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:band/2
+impt	erlang:bit_size/1
+impt	erlang:byte_size/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:float/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	erlang:list_to_binary/1
+impt	erlang:process_info/2
+impt	erlang:raise/3
+impt	erlang:rem/2
+impt	erlang:self/0
+impt	erlang:throw/1
+impt	lists:keytake/3
+impt	lists:reverse/1
+disasm	ok
+callext	erl_bits:as_list/1	4
+callext	erl_bits:set_bit_type/2	2
+callext	erl_eval:partial_eval/1	4
+callext	erlang:++/2	1
+callext	erlang:error/1	3
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:list_to_binary/1	4
+callext	erlang:process_info/2	3
+callext	erlang:raise/3	2
+callext	erlang:throw/1	2
+callext	lists:keytake/3	1
+callext	lists:reverse/1	1

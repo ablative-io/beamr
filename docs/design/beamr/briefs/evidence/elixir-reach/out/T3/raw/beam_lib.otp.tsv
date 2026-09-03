@@ -1,0 +1,224 @@
+module	beam_lib
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	528
+op	2	func_info/3	118
+op	3	int_code_end/0	1
+op	4	call/2	139
+op	5	call_last/3	55
+op	6	call_only/2	30
+op	7	call_ext/2	101
+op	8	call_ext_last/3	6
+op	10	bif1/4	1
+op	11	bif2/5	5
+op	12	allocate/2	107
+op	13	allocate_heap/3	2
+op	16	test_heap/2	165
+op	18	deallocate/1	103
+op	19	return/0	164
+op	39	is_lt/3	1
+op	40	is_ge/3	3
+op	43	is_eq_exact/3	76
+op	44	is_ne_exact/3	1
+op	48	is_atom/2	7
+op	52	is_nil/2	22
+op	53	is_binary/2	10
+op	55	is_list/2	6
+op	56	is_nonempty_list/2	27
+op	57	is_tuple/2	36
+op	58	test_arity/3	26
+op	59	select_val/3	15
+op	60	select_tuple_arity/3	3
+op	61	jump/1	24
+op	62	catch/2	13
+op	63	catch_end/1	13
+op	64	move/2	702
+op	65	get_list/3	25
+op	66	get_tuple_element/3	159
+op	69	put_list/3	95
+op	72	badmatch/1	25
+op	74	case_end/1	10
+op	75	call_fun/1	2
+op	77	is_function/2	2
+op	78	call_ext_only/2	35
+op	96	fmove/2	2
+op	97	fconv/2	1
+op	101	fdiv/4	1
+op	104	try/2	20
+op	105	try_end/1	20
+op	106	try_case/1	20
+op	107	try_case_end/1	1
+op	108	raise/2	11
+op	112	apply/1	1
+op	113	apply_last/2	1
+op	115	is_function2/3	2
+op	119	bs_get_binary2/7	6
+op	120	bs_skip_bits2/5	1
+op	124	gc_bif1/5	8
+op	125	gc_bif2/6	16
+op	136	trim/2	44
+op	153	line/1	414
+op	159	is_tagged_tuple/4	36
+op	162	get_hd/2	2
+op	164	put_tuple2/2	148
+op	165	bs_get_tail/3	16
+op	166	bs_start_match3/4	11
+op	167	bs_get_position/3	13
+op	168	bs_set_position/2	18
+op	169	swap/2	21
+op	170	bs_start_match4/4	10
+op	171	make_fun3/3	4
+op	172	init_yregs/1	53
+op	177	bs_create_bin/6	3
+op	178	call_fun2/3	1
+op	180	badrecord/1	3
+op	181	update_record/5	2
+op	182	bs_match/3	33
+impt	application:start/1
+impt	crypto:crypto_one_time/5
+impt	epp:restore_typed_record_fields/1
+impt	erl_parse:anno_from_term/1
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:--/2
+impt	erlang:=:=/2
+impt	erlang:binary_to_atom/2
+impt	erlang:binary_to_list/1
+impt	erlang:binary_to_term/1
+impt	erlang:bor/2
+impt	erlang:bsl/2
+impt	erlang:byte_size/1
+impt	erlang:element/2
+impt	erlang:error/1
+impt	erlang:garbage_collect/0
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:hd/1
+impt	erlang:iolist_to_binary/1
+impt	erlang:length/1
+impt	erlang:list_to_atom/1
+impt	erlang:list_to_binary/1
+impt	erlang:md5/1
+impt	erlang:raise/3
+impt	erlang:rem/2
+impt	erlang:throw/1
+impt	erlang:trunc/1
+impt	erlang:yield/0
+impt	error_logger:error_msg/2
+impt	ets:delete/1
+impt	ets:insert/2
+impt	ets:lookup/2
+impt	ets:lookup_element/3
+impt	ets:new/2
+impt	ets:tab2list/1
+impt	file:close/1
+impt	file:format_error/1
+impt	file:open/2
+impt	file:path_script/2
+impt	file:read/2
+impt	file:write/2
+impt	filelib:is_dir/1
+impt	filelib:wildcard/1
+impt	filename:basedir/2
+impt	filename:basename/1
+impt	filename:join/2
+impt	filename:rootname/2
+impt	gen_server:call/3
+impt	gen_server:reply/2
+impt	gen_server:start/4
+impt	init:get_argument/1
+impt	io:format/2
+impt	io_lib:format/2
+impt	lists:append/1
+impt	lists:delete/2
+impt	lists:duplicate/2
+impt	lists:enumerate/2
+impt	lists:foreach/2
+impt	lists:keyfind/3
+impt	lists:keysort/2
+impt	lists:member/2
+impt	lists:reverse/1
+impt	lists:sort/1
+impt	lists:splitwith/2
+impt	lists:usort/1
+impt	proplists:get_value/3
+impt	sofs:domain/1
+impt	sofs:image/2
+impt	sofs:relation/1
+impt	sofs:restriction/2
+impt	sofs:symmetric_partition/2
+impt	sofs:to_external/1
+impt	zlib:gunzip/1
+impt	zlib:gzip/1
+impt	zlib:uncompress/1
+disasm	ok
+callext	application:start/1	1
+callext	crypto:crypto_one_time/5	1
+callext	epp:restore_typed_record_fields/1	1
+callext	erl_parse:anno_from_term/1	1
+callext	erlang:++/2	2
+callext	erlang:--/2	1
+callext	erlang:binary_to_atom/2	4
+callext	erlang:binary_to_list/1	1
+callext	erlang:binary_to_term/1	7
+callext	erlang:error/1	7
+callext	erlang:garbage_collect/0	2
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	erlang:iolist_to_binary/1	4
+callext	erlang:list_to_atom/1	1
+callext	erlang:list_to_binary/1	2
+callext	erlang:md5/1	3
+callext	erlang:raise/3	1
+callext	erlang:throw/1	1
+callext	erlang:yield/0	1
+callext	error_logger:error_msg/2	1
+callext	ets:delete/1	3
+callext	ets:insert/2	4
+callext	ets:lookup/2	1
+callext	ets:lookup_element/3	1
+callext	ets:new/2	2
+callext	ets:tab2list/1	1
+callext	file:close/1	4
+callext	file:format_error/1	3
+callext	file:open/2	2
+callext	file:path_script/2	1
+callext	file:read/2	1
+callext	file:write/2	1
+callext	filelib:is_dir/1	1
+callext	filelib:wildcard/1	2
+callext	filename:basedir/2	1
+callext	filename:basename/1	1
+callext	filename:join/2	2
+callext	filename:rootname/2	1
+callext	gen_server:call/3	1
+callext	gen_server:reply/2	2
+callext	gen_server:start/4	1
+callext	init:get_argument/1	1
+callext	io:format/2	2
+callext	io_lib:format/2	13
+callext	lists:append/1	1
+callext	lists:delete/2	1
+callext	lists:duplicate/2	1
+callext	lists:enumerate/2	1
+callext	lists:foreach/2	2
+callext	lists:keyfind/3	4
+callext	lists:keysort/2	1
+callext	lists:member/2	3
+callext	lists:reverse/1	9
+callext	lists:sort/1	2
+callext	lists:splitwith/2	1
+callext	lists:usort/1	1
+callext	proplists:get_value/3	2
+callext	sofs:domain/1	2
+callext	sofs:image/2	2
+callext	sofs:relation/1	2
+callext	sofs:restriction/2	2
+callext	sofs:symmetric_partition/2	1
+callext	sofs:to_external/1	4
+callext	zlib:gunzip/1	2
+callext	zlib:gzip/1	1
+callext	zlib:uncompress/1	1

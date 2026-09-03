@@ -1,0 +1,29 @@
+# COMMANDS — elixir-reach measurement, numbered; every cell in README.md cites one of these
+
+Venue: `aion-workflows` (192.168.50.205), Ubuntu, 16 cores; run root `/home/aion/reach/elixir-reach-20260903/` (`$ROOT`).
+Pins: beamr base `43d87819ed37515695a697b7416d47c6740502e2` (= `origin/main` at 2026-09-03T03:02Z) · lane
+`elixir-reach-20260903` (probe) · Elixir **1.20.4** `elixir-otp-29.zip` sha256
+`7863c546cda13fecc949e562e326042451dacf8fd8698a36783cb71eeb223b46` (= release `.sha256sum` asset, `sha256sum -c` OK) ·
+OTP **29.0.5** at `/usr/local/lib/otp-29.0.5/lib/erlang/lib` (`$OTP`, 35 applications, 1320 `.beam`) · cargo 1.97.1 / rustc 1.97.1.
+No `2>/dev/null` anywhere; every script is committed under `tools/` and `controls/`.
+
+| # | Command (verbatim from the committed script) | Produces |
+|---|---|---|
+| C1 | `tools/venue-setup.sh` (on venue): clone from the local mirror, `git checkout --detach 43d8781…`, `curl` zip + `.sha256sum`, `sha256sum -c`, `unzip` | `transcripts/venue-setup.log` |
+| C2 | `grep -E '^\s+[0-9]{1,3} *(\|\|=>)' crates/beamr/src/loader/decode/code.rs \| grep -oE '[0-9]+' \| sort -n -u` at the base | `sets/DECODER-SET.txt` (127 arms → **129 distinct numbers**, max 184; the brief's prior 127 counted arms) |
+| C3 | python over `instruction.rs` (`pub enum Instruction`) minus `Instruction::X` names in `opcodes/mod.rs:135-455` | `sets/EXECUTED-SET.txt` (75 variants, 73 executed, complement `Badrecord`, `NifStart`) |
+| C4 | `target/debug/examples/elixir_reach_probe --natives` (registry's own `registered_mfas()`) | `sets/NATIVE-MFAS.txt` (330 MFAs, 31 modules; identical on Mac and venue) |
+| C5 | multi-line static grep of `(\"mod\", \"fn\", N,` tuples under `crates/beamr/src/native` | `sets/NATIVE-MODULES.tsv` (26 modules — UNDER-COUNTS vs C4 by 5: `ets`, `global`, `pg`, `gleam_erlang_ffi`, `meridian_ffi` use other table shapes; C4 is the census of record) |
+| C6 | `escript tools/reach_otp.escript <beam>` — raw `Code` chunk walked opcode-by-opcode via `beam_opcodes:opname/1`, compact-term operands skipped per `beam_asm.erl:726-857`; plus `beam_lib:chunks(F,[imports])` and `beam_disasm` `call_ext*` counts | per-module `*.otp.tsv` |
+| C7 | `tools/venue-sweep.sh`: C6 over all 1320 OTP `.beam` and the 271 T2 `.beam` (instrument self-test: every module must walk `ok`) | `transcripts/venue-sweep.log`, `sweep-maxop.txt` |
+| C8 | `tools/venue-t1-t3.sh`: `elixirc` (zip's `bin/`) on `t1/*.ex`; OTP module index by path; `escript tools/impt.escript` over T2 → depth 1 → depth 2; always-list; T4 corpus | `t1/`, `otp-modules.tsv`, `t2-impt.tsv`, `t3-depth{1,2}.tsv`, `T3-REACH.tsv`, `t4-otp-beyond-t3.tsv`, `transcripts/venue-t1-t3.log` |
+| C9 | `tools/venue-controls.sh`: `erlc reach_lc.erl` (plain), `erlc +line_coverage` (opcode 183), `erlc +beam_debug_info` (opcode 184), `erlc reach_zzz.erl` (fabricated `erlang:no_such_bif_zzz/0`) | `controls/`, `transcripts/venue-controls.log` |
+| C10 | `tools/venue-191b.sh`: byte-patch the first `allocate` (12) opcode byte of `reach_opbase.beam`'s `main/0` to **191** (`get_record_field/5`, real OTP 29) and to **200** (unknown to OTP too); `beam_disasm` on both | `controls191/`, `transcripts/venue-191.log` (the `.S` route was tried first: `erlc` from `.S` rejects an unknown instruction at the validator — recorded) |
+| C11 | `tools/venue-lists.sh`: `DIRS.txt` (6 Elixir + 35 OTP ebin dirs = 41), tier lists, `MANIFEST.tsv` (`sha256sum` of file bytes) | `DIRS.txt`, `lists/`, `MANIFEST.tsv` (575 rows) |
+| C12 | `tools/run-tier.sh <tier> <list>`: per module — `elixir_reach_probe <beam> --dir …×41` → `raw/<m>.probe.json`; C6 → `raw/<m>.otp.tsv`; `beamr imports <beam> --dir …×41` → `raw/<m>.cli.txt` + rc; `python3 tools/merge.py …` → `<m>.json` (R4 schema) | `out/<tier>/` |
+| C13 | `tools/venue-controls2.sh`: C12 over `lists/CTRL.txt`; `beamr conformance/workload/wport9_conformance.beam --entry wport9_conformance:<F>/0 --dir conformance/workload` for the runnable seven + `process_error/0`; `beamr controls/<m>.beam --entry reach_lc:main/0`; `beamr imports controls191/reach_op{191,200}.beam`; `beamr imports controls/reach_zzz.beam` | `transcripts/venue-controls2.log` |
+| C14 | `tools/venue-t1.sh`: C13's control 4/5 again with `--dir $OTP/stdlib-8.0.3/ebin`; C12 over T1; `beamr t1/Elixir.<M>.beam --entry Elixir.<M>:main/0 --dir …×41` | `transcripts/venue-t1.log`, `out/T1/` |
+| C15 | `tools/tiers-detached.sh` (nohup): C12 over T2, T3, T4; `python3 tools/status.py out sets/NATIVE-MFAS.txt` (fills D status: `native-stub` if the module has ≥1 registry MFA, `loaded-bytecode` if its own T3 row is `loaded`, else `absent`) | `out/T{2,3,4}/`, `tiers.log` |
+| C16 | `tools/cprime.sh` (nohup, 205): probe only, `--dir` = `DIRS.txt` minus the `erts-*` line (40 dirs, `DIRS-noerts.txt`), six parallel runners over CTRL/T1/T2(×2)/T3/T4 → `outC/<tier>/<m>.probe.{json,err,rc}`; then `python3 tools/cprime-report.py outC out erts-modules.txt` → README *Supplementary C* + `SUPPLEMENTARY-C-MFAS.md`; row-by-row comparison against `out/<tier>/raw/` → `transcripts/cprime-consistency.txt` | `outC/`, `transcripts/venue-cprime.log`, `transcripts/cprime-consistency.txt`, `SUPPLEMENTARY-C-MFAS.md` |
+
+Merge rules (`tools/merge.py`): `load_status` from the probe; **A agreement**: `loaded` ⇔ walker's undecoded set (opcodes ∉ DECODER-SET) empty AND walker counts of 67/183/184 = probe's generic counts; `decode-failed` ⇔ walker undecoded set non-empty AND the probe's first refused N ∈ it; anything else is a disagreement row. **C**: `unresolved`/`deferred`/`denied` from the probe's three buckets; `calls` = C6 `call_ext*` count for that MFA; `cli_stream_equal` = CLI lines == unresolved ∪ deferred as sets. **B**: complement variants are never built by any decoder arm at this base, so 0 by construction. **D**: `impt` modules ∩ T3-REACH.

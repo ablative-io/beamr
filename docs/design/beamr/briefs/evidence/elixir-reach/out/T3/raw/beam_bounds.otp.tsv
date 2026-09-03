@@ -1,0 +1,67 @@
+module	beam_bounds
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	269
+op	2	func_info/3	31
+op	3	int_code_end/0	1
+op	4	call/2	62
+op	5	call_last/3	17
+op	6	call_only/2	46
+op	7	call_ext/2	4
+op	11	bif2/5	18
+op	12	allocate/2	26
+op	13	allocate_heap/3	5
+op	16	test_heap/2	60
+op	18	deallocate/1	21
+op	19	return/0	63
+op	39	is_lt/3	5
+op	40	is_ge/3	33
+op	43	is_eq_exact/3	108
+op	44	is_ne_exact/3	30
+op	45	is_integer/2	36
+op	56	is_nonempty_list/2	4
+op	57	is_tuple/2	51
+op	58	test_arity/3	60
+op	59	select_val/3	15
+op	61	jump/1	46
+op	64	move/2	267
+op	65	get_list/3	4
+op	66	get_tuple_element/3	123
+op	69	put_list/3	10
+op	72	badmatch/1	1
+op	78	call_ext_only/2	2
+op	124	gc_bif1/5	70
+op	125	gc_bif2/6	165
+op	136	trim/2	17
+op	153	line/1	179
+op	159	is_tagged_tuple/4	2
+op	164	put_tuple2/2	60
+op	169	swap/2	11
+op	172	init_yregs/1	11
+impt	erlang:*/2
+impt	erlang:+/2
+impt	erlang:-/1
+impt	erlang:-/2
+impt	erlang:</2
+impt	erlang:=:=/2
+impt	erlang:>=/2
+impt	erlang:abs/1
+impt	erlang:band/2
+impt	erlang:bnot/1
+impt	erlang:bor/2
+impt	erlang:bsl/2
+impt	erlang:bsr/2
+impt	erlang:bxor/2
+impt	erlang:div/2
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:max/2
+impt	erlang:min/2
+impt	lists:max/1
+impt	lists:min/1
+disasm	ok
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	lists:max/1	2
+callext	lists:min/1	2

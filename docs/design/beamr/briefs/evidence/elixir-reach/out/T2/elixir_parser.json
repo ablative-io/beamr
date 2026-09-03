@@ -1,0 +1,97 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 27209,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 5,
+  "deferred_names": [
+   "io_lib:deep_char_list/1",
+   "io_lib:write/1",
+   "io_lib:write_atom/1",
+   "io_lib:write_char/1",
+   "io_lib:write_string/1"
+  ],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "erl_anno",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_scan",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "io_lib",
+   "status": "native-stub",
+   "t3_load_status": "decode-failed"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 1008532,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "elixir_tokenizer",
+  "elixir_utils",
+  "erl_anno",
+  "erl_scan",
+  "erlang",
+  "io_lib",
+  "lists"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "elixir_parser",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/elixir/ebin/elixir_parser.beam",
+ "registration_deviation": [],
+ "sha256": "3c8c627a11b620dd2cf53031346683b30e29aca4ef06f3b26d3906df7952de8e",
+ "skipped_in_dirs": 14,
+ "tier": "T2"
+}

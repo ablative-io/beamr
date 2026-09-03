@@ -1,0 +1,83 @@
+module	sys_core_inline
+instset	0
+opcode_max_header	181
+walk	ok
+op	1	label/1	73
+op	2	func_info/3	21
+op	3	int_code_end/0	1
+op	4	call/2	19
+op	5	call_last/3	1
+op	6	call_only/2	2
+op	7	call_ext/2	12
+op	8	call_ext_last/3	1
+op	12	allocate/2	12
+op	13	allocate_heap/3	4
+op	16	test_heap/2	28
+op	18	deallocate/1	18
+op	19	return/0	31
+op	39	is_lt/3	1
+op	40	is_ge/3	2
+op	43	is_eq_exact/3	6
+op	45	is_integer/2	2
+op	52	is_nil/2	4
+op	55	is_list/2	1
+op	56	is_nonempty_list/2	6
+op	57	is_tuple/2	14
+op	58	test_arity/3	11
+op	59	select_val/3	1
+op	60	select_tuple_arity/3	1
+op	61	jump/1	1
+op	64	move/2	68
+op	65	get_list/3	5
+op	66	get_tuple_element/3	58
+op	69	put_list/3	9
+op	72	badmatch/1	2
+op	74	case_end/1	1
+op	78	call_ext_only/2	6
+op	125	gc_bif2/6	1
+op	136	trim/2	5
+op	153	line/1	52
+op	159	is_tagged_tuple/4	15
+op	162	get_hd/2	1
+op	164	put_tuple2/2	18
+op	169	swap/2	2
+op	171	make_fun3/3	7
+op	172	init_yregs/1	9
+op	180	badrecord/1	2
+op	181	update_record/5	6
+impt	cerl:get_ann/1
+impt	cerl:set_ann/2
+impt	cerl_trees:fold/3
+impt	cerl_trees:map/2
+impt	cerl_trees:mapfold/3
+impt	core_lib:make_values/1
+impt	erlang:+/2
+impt	erlang:++/2
+impt	erlang:--/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	io:format/2
+impt	lists:foldl/3
+impt	lists:map/2
+impt	lists:mapfoldl/3
+impt	lists:member/2
+impt	proplists:get_bool/2
+disasm	ok
+callext	cerl:get_ann/1	1
+callext	cerl:set_ann/2	1
+callext	cerl_trees:fold/3	1
+callext	cerl_trees:map/2	2
+callext	cerl_trees:mapfold/3	1
+callext	core_lib:make_values/1	2
+callext	erlang:++/2	1
+callext	erlang:--/2	1
+callext	erlang:error/1	1
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	io:format/2	1
+callext	lists:foldl/3	1
+callext	lists:map/2	1
+callext	lists:mapfoldl/3	1
+callext	lists:member/2	1
+callext	proplists:get_bool/2	1

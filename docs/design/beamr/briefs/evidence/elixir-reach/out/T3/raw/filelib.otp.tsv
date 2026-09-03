@@ -1,0 +1,144 @@
+module	filelib
+instset	0
+opcode_max_header	182
+walk	ok
+op	1	label/1	373
+op	2	func_info/3	91
+op	3	int_code_end/0	1
+op	4	call/2	81
+op	5	call_last/3	50
+op	6	call_only/2	43
+op	7	call_ext/2	65
+op	8	call_ext_last/3	11
+op	11	bif2/5	4
+op	12	allocate/2	83
+op	13	allocate_heap/3	3
+op	16	test_heap/2	62
+op	18	deallocate/1	68
+op	19	return/0	106
+op	40	is_ge/3	2
+op	43	is_eq_exact/3	54
+op	44	is_ne_exact/3	4
+op	45	is_integer/2	4
+op	48	is_atom/2	9
+op	52	is_nil/2	33
+op	53	is_binary/2	1
+op	55	is_list/2	10
+op	56	is_nonempty_list/2	47
+op	57	is_tuple/2	14
+op	58	test_arity/3	8
+op	59	select_val/3	18
+op	60	select_tuple_arity/3	2
+op	61	jump/1	9
+op	64	move/2	549
+op	65	get_list/3	43
+op	66	get_tuple_element/3	49
+op	69	put_list/3	59
+op	72	badmatch/1	3
+op	74	case_end/1	7
+op	75	call_fun/1	1
+op	78	call_ext_only/2	12
+op	104	try/2	6
+op	105	try_end/1	6
+op	106	try_case/1	6
+op	107	try_case_end/1	1
+op	108	raise/2	4
+op	113	apply_last/2	3
+op	124	gc_bif1/5	5
+op	125	gc_bif2/6	4
+op	136	trim/2	15
+op	153	line/1	248
+op	159	is_tagged_tuple/4	26
+op	163	get_tl/2	2
+op	164	put_tuple2/2	34
+op	166	bs_start_match3/4	1
+op	167	bs_get_position/3	1
+op	168	bs_set_position/2	1
+op	169	swap/2	4
+op	171	make_fun3/3	1
+op	172	init_yregs/1	32
+op	180	badrecord/1	2
+op	182	bs_match/3	3
+impt	application:get_env/2
+impt	erl_prim_loader:list_dir/1
+impt	erl_prim_loader:read_file_info/1
+impt	erl_prim_loader:read_link_info/1
+impt	erlang:++/2
+impt	erlang:-/2
+impt	erlang:=/=/2
+impt	erlang:=:=/2
+impt	erlang:error/1
+impt	erlang:get_module_info/1
+impt	erlang:get_module_info/2
+impt	erlang:length/1
+impt	file:list_dir/1
+impt	file:make_dir/1
+impt	file:read_file_info/1
+impt	file:read_link/1
+impt	file:read_link_info/1
+impt	filename:basename/1
+impt	filename:dirname/1
+impt	filename:extension/1
+impt	filename:join/1
+impt	filename:join/2
+impt	filename:pathtype/1
+impt	filename:rootname/2
+impt	filename:split/1
+impt	gb_sets:from_ordset/1
+impt	gb_sets:is_element/2
+impt	lists:droplast/1
+impt	lists:filter/2
+impt	lists:nthtail/2
+impt	lists:reverse/1
+impt	lists:reverse/2
+impt	lists:sort/1
+impt	lists:sublist/3
+impt	lists:suffix/2
+impt	ordsets:add_element/2
+impt	ordsets:new/0
+impt	os:type/0
+impt	re:compile/2
+impt	re:run/3
+impt	sets:add_element/2
+impt	sets:is_element/2
+impt	sets:new/0
+disasm	ok
+callext	application:get_env/2	1
+callext	erl_prim_loader:list_dir/1	1
+callext	erl_prim_loader:read_file_info/1	1
+callext	erl_prim_loader:read_link_info/1	1
+callext	erlang:++/2	8
+callext	erlang:error/1	12
+callext	erlang:get_module_info/1	1
+callext	erlang:get_module_info/2	1
+callext	file:list_dir/1	1
+callext	file:make_dir/1	1
+callext	file:read_file_info/1	1
+callext	file:read_link/1	1
+callext	file:read_link_info/1	1
+callext	filename:basename/1	1
+callext	filename:dirname/1	3
+callext	filename:extension/1	1
+callext	filename:join/1	4
+callext	filename:join/2	12
+callext	filename:pathtype/1	2
+callext	filename:rootname/2	1
+callext	filename:split/1	4
+callext	gb_sets:from_ordset/1	1
+callext	gb_sets:is_element/2	1
+callext	lists:droplast/1	2
+callext	lists:filter/2	1
+callext	lists:nthtail/2	1
+callext	lists:reverse/1	6
+callext	lists:reverse/2	2
+callext	lists:sort/1	1
+callext	lists:sublist/3	1
+callext	lists:suffix/2	1
+callext	ordsets:add_element/2	4
+callext	ordsets:new/0	1
+callext	os:type/0	1
+callext	re:compile/2	1
+callext	re:run/3	1
+callext	sets:add_element/2	1
+callext	sets:is_element/2	1
+callext	sets:new/0	2

@@ -1,0 +1,3 @@
+rand:seed/2
+rand:uniform/1
+rand:seed/1

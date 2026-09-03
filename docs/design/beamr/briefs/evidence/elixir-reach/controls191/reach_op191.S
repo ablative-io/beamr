@@ -1,0 +1,42 @@
+{module, reach_op191}.  %% version = 0
+
+{exports, [{main,0},{module_info,0},{module_info,1}]}.
+
+{attributes, []}.
+
+{labels, 7}.
+
+
+{function, main, 0, 2}.
+  {label,1}.
+    {line,[{location,"reach_op191.erl",3}]}.
+    {func_info,{atom,reach_op191},{atom,main},0}.
+  {label,2}.
+    {get_record_field,{x,0},{atom,reach},{atom,field},{integer,1},{x,1}}.
+    {allocate,0,0}.
+    {move,{literal,[1,2,3]},{x,0}}.
+    {call_ext,1,{extfunc,lists,sum,1}}.
+    {gc_bif,'*',{f,0},1,[{x,0},{integer,2}],{x,0}}.
+    {test_heap,3,1}.
+    {put_tuple2,{x,0},{list,[{atom,ok},{x,0}]}}.
+    {deallocate,0}.
+    return.
+
+
+{function, module_info, 0, 4}.
+  {label,3}.
+    {line,[]}.
+    {func_info,{atom,reach_op191},{atom,module_info},0}.
+  {label,4}.
+    {move,{atom,reach_op191},{x,0}}.
+    {call_ext_only,1,{extfunc,erlang,get_module_info,1}}.
+
+
+{function, module_info, 1, 6}.
+  {label,5}.
+    {line,[]}.
+    {func_info,{atom,reach_op191},{atom,module_info},1}.
+  {label,6}.
+    {move,{x,0},{x,1}}.
+    {move,{atom,reach_op191},{x,0}}.
+    {call_ext_only,2,{extfunc,erlang,get_module_info,2}}.

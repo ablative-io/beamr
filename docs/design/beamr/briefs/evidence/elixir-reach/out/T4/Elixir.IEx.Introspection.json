@@ -1,0 +1,130 @@
+{
+ "A": {
+  "agreement": "ok",
+  "disasm_undecoded": {
+   "distinct": [],
+   "names": {},
+   "total": 0
+  },
+  "generic": {
+   "debug_line": {
+    "at_execute": "raises",
+    "count": 0
+   },
+   "executable_line": {
+    "at_execute": "no-op",
+    "count": 0
+   },
+   "set_tuple_element": {
+    "at_execute": "raises",
+    "count": 0
+   }
+  },
+  "instruction_count": 3361,
+  "walker": "ok"
+ },
+ "B": {
+  "by_variant": {
+   "Badrecord": 0,
+   "NifStart": 0
+  },
+  "note": "complement variants are never produced by the decoder at this base (no numeric arm builds Badrecord/NifStart); counted 0 by construction",
+  "total": 0
+ },
+ "C": {
+  "cli_only": [],
+  "cli_rc": 0,
+  "cli_stream_equal": true,
+  "deferred": 0,
+  "deferred_names": [],
+  "denied": [],
+  "probe_only": [],
+  "unresolved": []
+ },
+ "D": [
+  {
+   "module": "application",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "beam_lib",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "binary",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "code",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erl_anno",
+   "status": "loaded-bytecode",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "erlang",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "lists",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  },
+  {
+   "module": "os",
+   "status": "native-stub",
+   "t3_load_status": "loaded"
+  }
+ ],
+ "bytes": 54512,
+ "dirs": 41,
+ "first_refused_opcode": null,
+ "impt_modules": [
+  "Elixir.Access",
+  "Elixir.Application",
+  "Elixir.Code",
+  "Elixir.Code.Typespec",
+  "Elixir.Enum",
+  "Elixir.Exception",
+  "Elixir.File",
+  "Elixir.IEx",
+  "Elixir.IEx.Config",
+  "Elixir.IO",
+  "Elixir.IO.ANSI.Docs",
+  "Elixir.Inspect.Algebra",
+  "Elixir.Kernel",
+  "Elixir.Kernel.SpecialForms",
+  "Elixir.Keyword",
+  "Elixir.List",
+  "Elixir.Macro",
+  "Elixir.Path",
+  "Elixir.Stream",
+  "Elixir.String",
+  "Elixir.String.Chars",
+  "Elixir.System",
+  "application",
+  "beam_lib",
+  "binary",
+  "code",
+  "elixir_erl_pass",
+  "erl_anno",
+  "erlang",
+  "lists",
+  "os"
+ ],
+ "load_error": null,
+ "load_status": "loaded",
+ "module": "Elixir.IEx.Introspection",
+ "path": "/home/aion/reach/elixir-reach-20260903/corpus/elixir-1.20.4/lib/iex/ebin/Elixir.IEx.Introspection.beam",
+ "registration_deviation": [],
+ "sha256": "f63348d23d32b3afe57b8635190b724c9673a424612f377e7f0ab5b79019386b",
+ "skipped_in_dirs": 14,
+ "tier": "T4"
+}
