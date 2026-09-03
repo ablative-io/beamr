@@ -39,7 +39,7 @@ use beamr::native::{
 };
 use beamr::term::{Term, format::format_term};
 
-const USAGE: &str = "Usage:\n  cargo run -p beamr --example elixir_reach_probe -- <module.beam> [--dir <ebin-dir>]...";
+const USAGE: &str = "Usage:\n  cargo run -p beamr --example elixir_reach_probe -- <module.beam> [--dir <ebin-dir>]...\n  cargo run -p beamr --example elixir_reach_probe -- --natives";
 
 /// Native registrations from the CLI's `load_context` that this probe could
 /// NOT replicate because the function is not public from the `beamr` library
@@ -93,6 +93,32 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
 }
 
 fn run() -> Result<String, String> {
+    // `--natives` mode: print the registry's own registered MFAs (one
+    // `module:function/arity` per line, sorted) and exit — the native census
+    // for axis D, read from the registry rather than from source tables.
+    if std::env::args().nth(1).as_deref() == Some("--natives") {
+        let atom_table = Arc::new(AtomTable::with_common_atoms());
+        let bif_registry = build_registry(&atom_table)?;
+        let mut lines: Vec<String> = bif_registry
+            .registered_mfas()
+            .into_iter()
+            .map(|(module, function, arity, _)| {
+                format!(
+                    "{}:{}/{arity}",
+                    format_term(Term::atom(module), &atom_table),
+                    format_term(Term::atom(function), &atom_table)
+                )
+            })
+            .collect();
+        lines.sort();
+        lines.dedup();
+        let mut out = String::new();
+        for line in lines {
+            out.push_str(&line);
+            out.push('\n');
+        }
+        return Ok(out);
+    }
     let args = parse_args(std::env::args().skip(1))?;
 
     // Read the target BEFORE building the registry: an unreadable target is a
@@ -102,15 +128,7 @@ fn run() -> Result<String, String> {
 
     // ── native registry, in the CLI's exact order (main.rs:380-432) ───────
     let atom_table = Arc::new(AtomTable::with_common_atoms());
-    let bif_registry = Arc::new(BifRegistryImpl::new());
-    register_gate1_bifs(&bif_registry, &atom_table).map_err(registration_failure)?;
-    register_gate2_bifs(&bif_registry, &atom_table).map_err(registration_failure)?;
-    register_gate3_bifs(&bif_registry, &atom_table).map_err(registration_failure)?;
-    register_stdlib_stubs(&bif_registry, &atom_table).map_err(registration_failure)?;
-    register_gleam_ffi_bifs(&bif_registry, &atom_table).map_err(registration_failure)?;
-    register_meridian_ffi(&bif_registry, &atom_table).map_err(registration_failure)?;
-    init_otp_atoms(&atom_table);
-    register_otp_stubs(&bif_registry, &atom_table).map_err(registration_failure)?;
+    let bif_registry = build_registry(&atom_table)?;
     let module_registry = ModuleRegistry::new();
 
     // Directories load first so the target's imports can resolve against them.
@@ -140,6 +158,21 @@ fn registration_failure(error: beamr::native::NativeRegistrationError) -> String
 /// not needed — but every skip is reported on stderr (never stdout: the JSON
 /// object on stdout must stay parseable) with the file and reason, plus an
 /// aggregate count. Returns the number skipped.
+/// The CLI's native registry, built in `load_context`'s exact order
+/// (main.rs:380-395).
+fn build_registry(atom_table: &Arc<AtomTable>) -> Result<Arc<BifRegistryImpl>, String> {
+    let bif_registry = Arc::new(BifRegistryImpl::new());
+    register_gate1_bifs(&bif_registry, atom_table).map_err(registration_failure)?;
+    register_gate2_bifs(&bif_registry, atom_table).map_err(registration_failure)?;
+    register_gate3_bifs(&bif_registry, atom_table).map_err(registration_failure)?;
+    register_stdlib_stubs(&bif_registry, atom_table).map_err(registration_failure)?;
+    register_gleam_ffi_bifs(&bif_registry, atom_table).map_err(registration_failure)?;
+    register_meridian_ffi(&bif_registry, atom_table).map_err(registration_failure)?;
+    init_otp_atoms(atom_table);
+    register_otp_stubs(&bif_registry, atom_table).map_err(registration_failure)?;
+    Ok(bif_registry)
+}
+
 fn load_beam_dir(
     dir: &Path,
     atom_table: &AtomTable,
