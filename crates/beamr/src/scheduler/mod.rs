@@ -309,6 +309,20 @@ pub struct SchedulerConfig {
     pub node_name: Option<String>,
     pub creation: Option<u32>,
     pub distribution: Option<DistributionConfig>,
+    /// Hot-call count at which a function is submitted for compilation
+    /// (`None` = [`DEFAULT_JIT_THRESHOLD`]).
+    ///
+    /// **This is a tuning knob, not an off-switch.** The hotness counter
+    /// increments with `saturating_add` and trips on `count >= threshold`, so
+    /// no value forbids compilation outright: `Some(u32::MAX)` merely defers it
+    /// until the counter saturates at `u32::MAX` recorded calls *to that MFA*,
+    /// which is beyond any realistic workload but is deferral, not refusal.
+    ///
+    /// Two things it cannot do at all, which is why
+    /// [`Scheduler::set_jit_enabled`] exists: it is fixed at construction, so
+    /// it cannot be changed on a live scheduler; and it governs only whether
+    /// code is *compiled*, never whether **already-compiled code is entered** —
+    /// once a function is in the cache the threshold is irrelevant to it.
     pub jit_threshold: Option<u32>,
     /// Minimum interval between per-process telemetry samples at scheduler slice boundaries.
     pub telemetry_sample_interval: Option<Duration>,
@@ -361,6 +375,14 @@ pub(super) struct SharedState {
     jit_profiler: Arc<JitProfiler>,
     jit_compiler: Arc<JitCompiler>,
     jit_cache: Arc<JitCache>,
+    /// Operator-set JIT master switch (`true` at construction, preserving the
+    /// historical always-on behaviour). Read once per slice when the native
+    /// services are assembled: `false` withholds BOTH the cache and the
+    /// profiling handle from the call edges, so compiled code is neither
+    /// produced nor entered. Never written by the engine itself — an engine
+    /// that disabled its own JIT on a detected fault would be a silent
+    /// fallback, which is a design decision and not this switch's job.
+    jit_enabled: AtomicBool,
     next_pid: AtomicU64,
     wait_set: Mutex<WaitSet>,
     wake_condvar: Condvar,
@@ -582,6 +604,14 @@ impl Drop for TeardownAdmission {
 
 #[cfg(feature = "threads")]
 impl SharedState {
+    /// The operator JIT switch, read once per native-services assembly.
+    ///
+    /// Set only through [`Scheduler::set_jit_enabled`] — the engine never
+    /// writes it.
+    pub(in crate::scheduler) fn jit_enabled(&self) -> bool {
+        self.jit_enabled.load(Ordering::Acquire)
+    }
+
     /// Reserve admission for one dirty submission, refused once intake is
     /// closed. Closure and reservation share ONE lock, so a reservation
     /// cannot slip behind the shutdown drain: the drain marks `closed` and
@@ -1595,6 +1625,7 @@ impl Scheduler {
                 jit_profiler,
                 jit_compiler,
                 jit_cache,
+                jit_enabled: AtomicBool::new(true),
                 next_pid: AtomicU64::new(1),
                 wait_set: Mutex::new(WaitSet::default()),
                 wake_condvar: Condvar::new(),
@@ -1988,6 +2019,47 @@ impl Scheduler {
     pub fn try_dirty_io_pool(&self) -> Option<&DirtyPool> {
         self.shared.dirty_io.service()
     }
+    /// Turns the JIT on or off for this scheduler at runtime, returning the
+    /// previous setting.
+    ///
+    /// **This is an operator control, not an engine behaviour.** Nothing inside
+    /// beamr ever calls it: a runtime that disabled its own JIT on a detected
+    /// fault would be a silent fallback, and that is a design decision for an
+    /// embedder to make explicitly rather than a switch the engine may flip
+    /// behind an operator's back.
+    ///
+    /// Disabling withholds both the JIT cache and the profiling handle from the
+    /// call edges for every subsequent slice, which is the engine's established
+    /// disable mechanism (see `build_native_services`). Two consequences worth
+    /// stating separately, because a switch that only did the first would be a
+    /// false comfort while cached code kept running:
+    /// - no function is compiled while the switch is off, and
+    /// - **already-compiled code is not entered** — the cache survives, is not
+    ///   consulted, and becomes live again if the switch is turned back on.
+    ///
+    /// The switch takes effect at the next slice boundary, so a call already
+    /// executing compiled code runs to its yield. To guarantee that nothing is
+    /// ever compiled, disable immediately after constructing the scheduler and
+    /// before spawning any process.
+    ///
+    /// Note that [`SchedulerConfig::jit_threshold`] cannot serve as this
+    /// control. A very large threshold does defer compilation past any
+    /// realistic workload, so it works as a *workaround* on a scheduler not yet
+    /// built — but it is fixed at construction and, decisively, it says nothing
+    /// about entering code that is **already compiled**: once a function is in
+    /// the cache, no threshold keeps execution out of it. That is the case this
+    /// switch exists for, and it is the case an operator actually meets, since
+    /// by the time a JIT fault is diagnosed the code is already cached.
+    pub fn set_jit_enabled(&self, enabled: bool) -> bool {
+        self.shared.jit_enabled.swap(enabled, Ordering::AcqRel)
+    }
+
+    /// Whether the JIT is currently enabled for this scheduler.
+    #[must_use]
+    pub fn jit_enabled(&self) -> bool {
+        self.shared.jit_enabled.load(Ordering::Acquire)
+    }
+
     #[must_use]
     pub fn jit_profiler(&self) -> &Arc<JitProfiler> {
         &self.shared.jit_profiler

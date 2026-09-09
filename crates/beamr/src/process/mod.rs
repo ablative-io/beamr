@@ -204,6 +204,15 @@ pub struct Process {
     /// aborts the slice exactly like the interpreter's own `Err(ExecError)`,
     /// never re-executing the function.
     jit_exec_error: Option<crate::error::ExecError>,
+    /// Scheduler-level transfer produced by a nested interpreted run inside a
+    /// JIT helper. Rides the process for the same reason `jit_exec_error` does:
+    /// compiled code can only return a word, and a transfer is not a value.
+    ///
+    /// The helper that parks one here must leave the resume position the nested
+    /// run established IN PLACE, and `call_native` checks this field before
+    /// treating the status as a restartable deopt. Boxed because the transfer
+    /// is a rare, transient occupant of a struct that is allocated per process.
+    jit_transfer: Option<Box<crate::interpreter::ExecutionResult>>,
     #[cfg(feature = "telemetry")]
     receive_wait_started: Option<crate::telemetry::spans::ReceiveWaitStarted>,
     #[cfg(feature = "telemetry")]
@@ -261,6 +270,7 @@ impl Clone for Process {
             jit_runtime_context: self.jit_runtime_context,
             jit_status: self.jit_status,
             jit_exec_error: self.jit_exec_error.clone(),
+            jit_transfer: self.jit_transfer.clone(),
             #[cfg(feature = "telemetry")]
             receive_wait_started: self.receive_wait_started,
             #[cfg(feature = "telemetry")]
@@ -329,6 +339,7 @@ impl Process {
             jit_runtime_context: None,
             jit_status: None,
             jit_exec_error: None,
+            jit_transfer: None,
             #[cfg(feature = "telemetry")]
             receive_wait_started: None,
             #[cfg(feature = "telemetry")]
@@ -1155,6 +1166,24 @@ impl Process {
     /// Take and clear the current JIT status.
     pub fn take_jit_status(&mut self) -> Option<JitStatus> {
         self.jit_status.take()
+    }
+
+    /// Park a scheduler-level transfer produced by a nested interpreted run.
+    ///
+    /// The caller's contract, and the whole point of the channel: the resume
+    /// position the nested run established must be LEFT IN PLACE. A transfer is
+    /// not a value, so it cannot ride the return word out of compiled code, and
+    /// the deopt return it rides instead means "restart this function
+    /// interpreted from its entry" — which would re-execute the tail external
+    /// call that produced the transfer. `call_native` therefore takes this
+    /// BEFORE it reads the status, exactly as it does the pending exec error.
+    pub fn set_jit_transfer(&mut self, transfer: crate::interpreter::ExecutionResult) {
+        self.jit_transfer = Some(Box::new(transfer));
+    }
+
+    /// Take and clear the parked scheduler-level transfer.
+    pub fn take_jit_transfer(&mut self) -> Option<crate::interpreter::ExecutionResult> {
+        self.jit_transfer.take().map(|transfer| *transfer)
     }
 
     /// Park an execution error raised inside a JIT runtime helper.

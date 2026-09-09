@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use crate::atom::{Atom, AtomTable};
 use crate::error::ExecError;
 use crate::gc::{GcError, ensure_space};
+#[cfg(feature = "jit")]
+use crate::interpreter::ExecutionResult;
 use crate::interpreter::InstructionOutcome;
 use crate::interpreter::NativeServices;
 #[cfg(feature = "jit")]
@@ -887,6 +889,40 @@ fn call_native(
     // here matches the interpreter failing on the same instruction.
     if let Some(error) = process.take_jit_exec_error() {
         return Err(error);
+    }
+    // A parked TRANSFER outranks the status for the same reason the error does,
+    // and must be read before it: a nested interpreted run inside a JIT helper
+    // ended in a scheduler-level transfer rather than a value, and its resume
+    // position is already on the process. The helper routed to the deopt return
+    // only as a way OUT of compiled code; turning that deopt into an
+    // interpreted restart would re-execute the compiled function's tail
+    // external call, and for `Waiting` would run a process parked with a live
+    // suspension. Handing the transfer straight to the run loop is what the
+    // interpreted path does with the identical outcome.
+    if let Some(transfer) = process.take_jit_transfer() {
+        return Ok(Some(match transfer {
+            ExecutionResult::Waiting => InstructionOutcome::Waiting,
+            ExecutionResult::DirtyCall {
+                entry,
+                args,
+                module,
+                function,
+                arity,
+                kind,
+            } => InstructionOutcome::DirtyCall {
+                entry,
+                args,
+                module,
+                function,
+                arity,
+                kind,
+            },
+            // No helper parks these today — they still take the value and yield
+            // returns in `jit_call_interpreted`. Mapped so the channel stays
+            // total if one ever does.
+            ExecutionResult::Exited(reason) => InstructionOutcome::Exit(reason),
+            ExecutionResult::Yielded => InstructionOutcome::Yield,
+        }));
     }
     match process.take_jit_status() {
         Some(JitStatus::Yield) => return Ok(Some(InstructionOutcome::Yield)),

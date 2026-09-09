@@ -267,6 +267,67 @@ fn replay_and_disabled_dirty_cpu_compose_the_jit_handle_away() {
     minimal.shutdown();
 }
 
+/// The operator switch composes BOTH JIT handles away — the half that matters
+/// twice over.
+///
+/// Withholding the profiling handle is what stops compilation. Withholding the
+/// CACHE is what stops already-compiled code being ENTERED, and that is the
+/// half a switch could plausibly get wrong while still looking like it worked:
+/// a scheduler that stopped compiling but kept dispatching into code compiled
+/// before the switch was thrown would leave an operator convinced the JIT was
+/// off while the defect they were escaping ran on. Cache PRESENCE is exactly
+/// the variable that distinguishes those two worlds, so it is asserted
+/// directly at the composition point rather than inferred from behaviour.
+///
+/// The enabled arm is the positive control: it proves this test can see the
+/// handles at all, so the disabled arm's absence is a measurement and not a
+/// dead instrument.
+#[test]
+fn the_operator_switch_composes_away_both_the_cache_and_the_profiling_handle() {
+    let scheduler = Scheduler::new(
+        SchedulerConfig::default(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    )
+    .expect("scheduler starts");
+
+    // Positive control: on by default, both handles present.
+    assert!(scheduler.jit_enabled(), "the switch defaults to on");
+    let services =
+        supervision_integration::build_native_services(&scheduler.shared, NamespaceId::DEFAULT);
+    assert!(
+        services.jit_cache.is_some() && services.jit_profiling.is_some(),
+        "control: an enabled scheduler must offer BOTH handles, or this test \
+         cannot detect their absence"
+    );
+
+    let previous = scheduler.set_jit_enabled(false);
+    assert!(previous, "the setter returns the previous setting");
+    assert!(!scheduler.jit_enabled());
+    let services =
+        supervision_integration::build_native_services(&scheduler.shared, NamespaceId::DEFAULT);
+    assert!(
+        services.jit_profiling.is_none(),
+        "the switch composes the profiling handle away: nothing may compile"
+    );
+    assert!(
+        services.jit_cache.is_none(),
+        "the switch composes the CACHE away: already-compiled code may not be \
+         entered, not merely no new code produced"
+    );
+
+    // Reversible: the switch withholds the handles, it does not destroy them.
+    let previous = scheduler.set_jit_enabled(true);
+    assert!(!previous);
+    let services =
+        supervision_integration::build_native_services(&scheduler.shared, NamespaceId::DEFAULT);
+    assert!(
+        services.jit_cache.is_some() && services.jit_profiling.is_some(),
+        "re-enabling restores both handles"
+    );
+    scheduler.shutdown();
+}
+
 #[test]
 fn failing_jit_compiler_construction_surfaces_from_the_scheduler_constructor() {
     INJECT_JIT_COMPILER_FAILURE.with(|flag| flag.set(true));
@@ -1551,6 +1612,7 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
                 .expect("host JIT compiler should initialize"),
         ),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
+        jit_enabled: AtomicBool::new(true),
         replay_driver: None,
         replay_mode: false,
         nif_private_data: None,
@@ -2068,6 +2130,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
                 .expect("host JIT compiler should initialize"),
         ),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
+        jit_enabled: AtomicBool::new(true),
         replay_driver: None,
         replay_mode: false,
         nif_private_data: None,

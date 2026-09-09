@@ -161,7 +161,70 @@ same commit. That is this commit — see the `0.18.1` entry.)*
 
 ## Unreleased
 
+### Added
+- **`Scheduler::set_jit_enabled` / `Scheduler::jit_enabled` — a runtime
+  off-switch for the JIT** (#26). Until now the JIT could not be turned off in
+  a running system. `SchedulerConfig::jit_threshold` is a tuning knob and not a
+  substitute: it is fixed at construction, and it governs only whether code is
+  *compiled*, never whether already-compiled code is *entered* — so once a
+  function is cached it offers nothing, which is precisely the state an
+  operator is in by the time a JIT fault has been diagnosed. (A very large
+  threshold does defer compilation past any realistic workload and is a usable
+  workaround before a scheduler is built; it is not a control.) Otherwise the
+  only disable was the compile-time `jit` cargo feature, which is on by
+  default, so an embedder meeting a JIT defect had no lever short of rebuilding
+  beamr. The switch is **operator-set only** — nothing inside beamr ever writes
+  it, because a runtime that disabled its own JIT on a detected fault would be
+  a silent fallback rather than a control. Disabling withholds both the JIT
+  cache and the profiling handle from the call edges (the engine's established
+  disable mechanism), which means not only that nothing new compiles but that
+  **already-compiled code is no longer entered** — the cache survives
+  untouched and goes live again if the switch is turned back on. It takes
+  effect at the next slice boundary; disable immediately after construction to
+  guarantee nothing is ever compiled. Default behaviour is unchanged: on.
+  `jit_threshold`'s saturation semantics are now documented where the field is
+  declared.
+
 ### Fixed
+- **A process that suspended inside JIT-compiled code kept running, and its
+  host call was replayed.** When compiled code called out to interpreted code
+  and that nested run suspended — a `receive`, or a host await from an embedder
+  — the helper restored the *caller's* code position over the position the
+  nested run had just parked at, then reported the suspension as a deopt. A
+  deopt means "restart this function interpreted from its entry", so the
+  compiled function's prefix ran again while the process was already parked
+  with a live suspension: the external call in that prefix was re-executed,
+  producing a duplicate host request, and the second park superseded the first
+  so the embedder's answer to the call id it had been handed was refused. Where
+  the native was re-entrant instead, the answer published successfully and the
+  process exited carrying the *replayed* call's value, so the awaited result
+  went nowhere. Both faces reproduced; the mechanism is pinned to the compiled
+  *caller* by an arm in which the callee still compiles and the caller does
+  not.
+
+  **The same replay happened on an ordinary yield, with no suspension
+  involved.** A process whose nested interpreted run simply used up its time
+  slice mid-body had that resume position overwritten too, and re-entered the
+  compiled function from its entry on its next slice — so any work the compiled
+  prefix had already done was done again. This needs no `receive` and no
+  embedder: a callee long enough to exhaust a slice is sufficient, which makes
+  it the face most likely to be met by ordinary hot code. It was found by a
+  probe that asserts an observable effect performed before the yield happens
+  exactly once, and it is fixed.
+
+  The contract is now explicit: **once the nested run has begun, no outcome
+  that is a transfer rather than a value may have the caller's position
+  restored over it.** A scheduler-level transfer — a suspension, a dirty call,
+  a yield — keeps the resume position the nested run established and is handed
+  to the run loop as the outcome it already is, exactly what the interpreted
+  path does with the identical outcome. Every deopt taken *before* the nested
+  run starts is unchanged and remains correct: nothing has been committed at
+  that point and restart-from-entry is the right answer.
+
+  This affected **both** nested-run helpers — the external-call path and the
+  closure-call path (`CallFun`/`CallFun2`), which carried the same defect
+  independently — and both are fixed on all three outcomes. Reported against
+  aion as aion#85.
 - **`==` returned `false` for arithmetically-equal bignum/float pairs**
   (#15, fixed by PR #20 — Matthew Bright). `numeric_eq` lacked the
   `BigInt↔Float` match arms and fell through to exact equality, so a bignum

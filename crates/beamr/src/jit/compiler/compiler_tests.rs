@@ -3903,3 +3903,47 @@ fn coverage_walk_agrees_with_prepass_and_dispatch_for_all_75_variants() {
         "Supported count derived from the coverage table"
     );
 }
+
+/// The closure TAIL-CALL shape must be admissible, or the suspend probe's
+/// closure arm cannot witness `jit_dispatch_closure` at all.
+///
+/// This is an instrument guard, not a behaviour test: the probe's closure arm
+/// asserts a live `JitCache` entry before it reads anything, so a tier that
+/// refuses this shape turns that arm into a permanent UNWITNESSED failure and
+/// the second nested-run helper goes untested. If this test fails, the reason
+/// it prints is the reason the probe arm cannot run.
+#[test]
+fn closure_tail_call_shape_is_admitted_by_the_tier() {
+    let compiler = JitCompiler::new(JitSettings).unwrap();
+    let lambdas = vec![test_lambda(Atom::OK, 1, 3, 0, 0xfeed)];
+    let result = compiler.compile_module_function(
+        &[
+            Instruction::Label { label: 2 },
+            Instruction::Move {
+                source: Operand::X(0),
+                destination: Operand::X(1),
+            },
+            Instruction::MakeFun {
+                operands: vec![Operand::Unsigned(0)],
+            },
+            Instruction::Swap {
+                left: Operand::X(0),
+                right: Operand::X(1),
+            },
+            Instruction::CallFun {
+                arity: Operand::Unsigned(1),
+            },
+            Instruction::Return,
+        ],
+        Atom::MODULE,
+        Atom::OK,
+        1,
+        ModuleCompileMetadata {
+            lambdas: &lambdas,
+            generation: 9,
+        },
+    );
+    if let Err(error) = &result {
+        panic!("closure tail-call shape REFUSED by the tier: {error:?}");
+    }
+}

@@ -378,6 +378,7 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
                 .expect("host JIT compiler should initialize"),
         ),
         jit_cache: Arc::new(crate::jit::JitCache::new()),
+        jit_enabled: AtomicBool::new(true),
         replay_driver: None,
         replay_mode: false,
         nif_private_data: None,
