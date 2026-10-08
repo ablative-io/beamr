@@ -212,8 +212,11 @@ impl SharedState {
             return false;
         };
         crate::scheduler::teardown_admission_tests::record_live_operation(0);
-        if self.suspension_results.get(&pid)
-            .is_some_and(|result| result.call_id == mirror.call_id) {
+        if self
+            .suspension_results
+            .get(&pid)
+            .is_some_and(|result| result.call_id == mirror.call_id)
+        {
             return true;
         }
         match mirror.kind {
@@ -228,7 +231,8 @@ impl SharedState {
             SuspensionKind::DirtyCall => false,
             SuspensionKind::Hook => {
                 crate::scheduler::teardown_admission_tests::record_live_operation(0);
-                self.pending_resumes.get(&pid)
+                self.pending_resumes
+                    .get(&pid)
                     .is_some_and(|resume| *resume == RESUME_ANY_HOOK || *resume == mirror.call_id)
             }
         }

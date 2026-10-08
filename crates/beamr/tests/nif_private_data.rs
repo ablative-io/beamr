@@ -100,7 +100,10 @@ fn scheduler_with_private_value(registry: &Arc<ModuleRegistry>, value: i64) -> S
 }
 
 fn run_and_take_result(scheduler: &Scheduler, module: &Arc<Module>) -> Term {
-    let pid = match scheduler.spawn_process(module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
+    let pid = match scheduler.spawn_process(module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     let (reason, result) = scheduler.run_until_exit(pid);
     assert_eq!(reason, ExitReason::Normal);
     result.root()

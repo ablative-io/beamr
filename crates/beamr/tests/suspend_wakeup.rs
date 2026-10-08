@@ -105,7 +105,10 @@ fn marker_delivered_while_executing_resumes_the_suspending_process() {
     )
     .expect("scheduler starts");
 
-    let pid = match scheduler.spawn_process(&awaiting) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
+    let pid = match scheduler.spawn_process(&awaiting) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     while PHASE.load(Ordering::Acquire) != 1 {
         std::thread::yield_now();
     }
@@ -190,7 +193,10 @@ fn delivery_during_in_flight_dirty_call_does_not_resume_the_process() {
     )
     .expect("scheduler starts");
 
-    let pid = match scheduler.spawn_process(&awaiting) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
+    let pid = match scheduler.spawn_process(&awaiting) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     while DIRTY_PHASE.load(Ordering::Acquire) != 1 {
         std::thread::yield_now();
     }

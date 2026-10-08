@@ -435,10 +435,7 @@ impl Scheduler {
         })
     }
 
-    fn enqueue_spawn_with_trap_exit(
-        &self,
-        enqueue: EnqueueSpawnRequest,
-    ) -> Result<u64, ExecError> {
+    fn enqueue_spawn_with_trap_exit(&self, enqueue: EnqueueSpawnRequest) -> Result<u64, ExecError> {
         let admission = self
             .shared
             .try_reserve_teardown_admission()

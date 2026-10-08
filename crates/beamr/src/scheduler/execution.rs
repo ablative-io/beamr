@@ -146,8 +146,14 @@ impl Scheduler {
                 let pid = request.pid;
                 drop(request);
                 #[cfg(test)]
-                self.shared.terminal_spawn_visits.fetch_add(1, Ordering::Relaxed);
-                let reason = self.shared.exit_tombstones.get(&pid).unwrap_or(ExitReason::Killed);
+                self.shared
+                    .terminal_spawn_visits
+                    .fetch_add(1, Ordering::Relaxed);
+                let reason = self
+                    .shared
+                    .exit_tombstones
+                    .get(&pid)
+                    .unwrap_or(ExitReason::Killed);
                 cleanup_exited_process(&self.shared, pid, reason);
             }
         }
@@ -159,8 +165,14 @@ impl Scheduler {
             .collect();
         for pid in remaining_pids {
             #[cfg(test)]
-            self.shared.terminal_body_visits.fetch_add(1, Ordering::Relaxed);
-            let reason = self.shared.exit_tombstones.get(&pid).unwrap_or(ExitReason::Killed);
+            self.shared
+                .terminal_body_visits
+                .fetch_add(1, Ordering::Relaxed);
+            let reason = self
+                .shared
+                .exit_tombstones
+                .get(&pid)
+                .unwrap_or(ExitReason::Killed);
             cleanup_exited_process(&self.shared, pid, reason);
         }
     }

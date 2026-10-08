@@ -281,7 +281,10 @@ fn external_pair(
 }
 
 fn run_to_value(scheduler: &Scheduler, module: &Arc<Module>) -> Term {
-    let pid = match scheduler.spawn_process(module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
+    let pid = match scheduler.spawn_process(module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     let (reason, result) = scheduler.run_until_exit(pid);
     assert_eq!(reason, ExitReason::Normal, "program must exit normally");
     result.root()
@@ -477,7 +480,10 @@ fn replay_composition_submits_nothing_and_outputs_match() {
     )
     .expect("replay scheduler starts");
 
-    let pid = match replay.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
+    let pid = match replay.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     // Bounded wait, never a bare sleep: the empty log's exhaustion discipline
     // terminates the run (pre-existing replay semantics); depending on when
     // the fail lands relative to spawn materialization the process is either
