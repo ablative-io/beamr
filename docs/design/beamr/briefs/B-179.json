@@ -24,7 +24,7 @@
         "Run N=128 and N=256 live-message workloads separately for Present, Executing, and result-gated-suspended targets, with identical worker count, payload, preallocation, and release signals on published baseline and candidate. Count actual map/table probes, slot/wait-set lock acquisitions, lifecycle/admission atomic reads, heap/message allocations, term copies, mailbox pushes, wake calls/notifications, and whole-state clones at call sites. Assert each candidate component per N <= its measured published baseline and delivered == N after resumption. Do not hide a new per-message lifecycle check in an uncounted helper. Report full before/after vectors and N; no counts were measured in this authoring box.",
         "Place any necessary extra work on the one terminal transition under existing admission ownership instead of new per-message polling, callbacks, history scans, or locks. Count cleanup visits/released requests separately; bound them by currently owned processes/queued requests, not all historical pids. Introduce no per-message disk sync or downstream copied runtime.",
         "After joined shutdown, direct bytecode spawning and trap-exit spawning return ExecError::SchedulerTerminated. Observe unchanged next_pid, no new process-table/body entry and no new tombstone. Also rendezvous a publisher holding the existing admission reservation against shutdown: close waits until publication completes, and terminal cleanup leaves no admitting body. The published behavioral red uses the existing spawn surface and records a returned pid/admitting body before cleanup; the new error surface is candidate-only, and a missing symbol or exhaustive-match compiler error is never a red. No minted pid with a Normal tombstone stands in for refusal.",
-        "Change enqueue_spawn_with_trap_exit and its two private wrappers to Result<u64, ExecError>, propagating through the existing Result-returning public spawn entrypoints; both test-support scaffolds return Result too. Document SchedulerTerminated in error.rs and its Display mapping. ExecError is exhaustive, so CHANGELOG names the breaking variant and scaffold return change. Caller Result handling and exhaustive matches require their separately owned follow-up, with explicit variant arms rather than a wildcard bypass. Existing bool and MailboxSendError surfaces remain."
+        "Change enqueue_spawn_with_trap_exit and its two private wrappers to Result<u64, ExecError>, propagating through the existing Result-returning public spawn entrypoints; both test-support scaffolds return Result too. Document SchedulerTerminated in error.rs and its Display mapping. ExecError is exhaustive, so CHANGELOG names the breaking variant and scaffold return change. Caller Result handling and exhaustive matches require their separately owned follow-up, with explicit variant arms rather than a wildcard bypass. Existing bool and MailboxSendError surfaces remain. Add the explicit SchedulerTerminated => scheduler_terminated arm to the exhaustive Wasm reason mapping, preserve every existing label, and name this additive wire-visible reason in CHANGELOG."
       ],
       "files": {
         "create": [],
@@ -47,7 +47,8 @@
           "crates/beamr/tests/dirty_scheduler.rs",
           "crates/beamr/tests/bif_registry_replacement.rs",
           "crates/beamr/tests/jit_nested_run_handler_leak.rs",
-          "crates/beamr/tests/sleep_forever_parks.rs"
+          "crates/beamr/tests/sleep_forever_parks.rs",
+          "crates/beamr-wasm/src/reasons.rs"
         ],
         "delete": []
       },

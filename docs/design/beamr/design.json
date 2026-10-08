@@ -100,7 +100,6 @@
     "Deterministic replay in this cluster (deferred to B-140 through B-143)."
   ],
   "structure": {
-    "crates/beamr-wasm/src/reasons.rs": "B-180 future allocator implementation; ownership released after B-179 R1 where shared.",
     "crates/beamr/src/native/process_bifs/mod.rs": "B-180 future allocator implementation; ownership released after B-179 R1 where shared.",
     "crates/beamr/src/native/process_bifs/tests.rs": "B-180 future allocator implementation; ownership released after B-179 R1 where shared.",
     "crates/beamr/src/native/spawn.rs": "B-180 future allocator implementation; ownership released after B-179 R1 where shared.",
@@ -115,6 +114,7 @@
     "crates/beamr/src/scheduler/test_helpers.rs": "B-180 future allocator implementation; ownership released after B-179 R1 where shared.",
     "crates/beamr/src/scheduler/wasm.rs": "B-180 future allocator implementation; ownership released after B-179 R1 where shared.",
     "crates/beamr/src/scheduler/wasm_native.rs": "B-180 future allocator implementation; ownership released after B-179 R1 where shared.",
+    "crates/beamr-wasm/src/reasons.rs": "B-179",
     "crates/beamr/src/scheduler/tests.rs": "B-179",
     "crates/beamr/src/scheduler/readiness_contract_tests.rs": "B-179",
     "crates/beamr/tests/supervision_integration.rs": "B-179",
