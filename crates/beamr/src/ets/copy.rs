@@ -18,16 +18,29 @@ use crate::term::heap_borrow::HeapBorrow;
 pub struct OwnedTerm {
     root: Term,
     allocations: Vec<Box<[u64]>>,
+    #[cfg(all(test, feature = "readiness"))]
+    reply_witness: Option<std::sync::mpsc::Sender<()>>,
 }
 
 impl OwnedTerm {
+    #[cfg(all(test, feature = "readiness"))]
+    pub(crate) fn with_reply_witness(mut self, reply: std::sync::mpsc::Sender<()>) -> Self {
+        self.reply_witness = Some(reply);
+        self
+    }
+
     /// Build an owned term from already-detached heap allocations.
     ///
     /// This is used by dirty native calls whose `ProcessContext` allocated
     /// return terms without an attached process heap. The caller must provide a
     /// root term that points only into these allocations or is immediate.
     pub(crate) fn from_allocations(root: Term, allocations: Vec<Box<[u64]>>) -> Self {
-        Self { root, allocations }
+        Self {
+            root,
+            allocations,
+            #[cfg(all(test, feature = "readiness"))]
+            reply_witness: None,
+        }
     }
 
     /// Wraps an immediate term (small int, atom, nil, pid) that owns no
@@ -46,6 +59,8 @@ impl OwnedTerm {
         Self {
             root: term,
             allocations: Vec::new(),
+            #[cfg(all(test, feature = "readiness"))]
+            reply_witness: None,
         }
     }
 
@@ -114,6 +129,8 @@ pub fn copy_term_to_ets(term: Term) -> Result<OwnedTerm, EtsError> {
     Ok(OwnedTerm {
         root,
         allocations: copier.allocations,
+        #[cfg(all(test, feature = "readiness"))]
+        reply_witness: None,
     })
 }
 

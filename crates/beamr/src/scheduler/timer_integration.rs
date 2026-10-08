@@ -162,7 +162,10 @@ pub(super) fn deliver_term_to_mailbox(
     };
     let mut slot = lock_or_recover(&entry);
     if shared.exit_tombstones.contains_key(&pid) {
-        return Err(MailboxSendError::ProcessTerminated);
+        return Err(refused_process_error(
+            shared,
+            MailboxSendError::ProcessTerminated,
+        ));
     }
     match &mut *slot {
         ProcessSlot::Present(ScheduledProcess(process)) => {
@@ -193,7 +196,10 @@ pub(super) fn deliver_term_to_mailbox(
     let mut slot = lock_or_recover(&entry);
     crate::scheduler::teardown_admission_tests::record_live_operation(0);
     if shared.exit_tombstones.contains_key(&pid) {
-        return Err(MailboxSendError::ProcessTerminated);
+        return Err(refused_process_error(
+            shared,
+            MailboxSendError::ProcessTerminated,
+        ));
     }
     match &mut *slot {
         ProcessSlot::Present(ScheduledProcess(process)) => {
@@ -225,7 +231,10 @@ pub(super) fn deliver_owned_term_to_mailbox(
     }
     let mut slot = lock_or_recover(&entry);
     if shared.exit_tombstones.contains_key(&pid) {
-        return Err(MailboxSendError::ProcessTerminated);
+        return Err(refused_process_error(
+            shared,
+            MailboxSendError::ProcessTerminated,
+        ));
     }
     match &mut *slot {
         ProcessSlot::Present(ScheduledProcess(process)) => copy_owned_message(process, &message),
@@ -271,8 +280,22 @@ pub(super) fn copy_owned_message(
     Ok(())
 }
 
+fn refused_process_error(shared: &SharedState, open_error: MailboxSendError) -> MailboxSendError {
+    #[cfg(all(test, feature = "readiness"))]
+    crate::scheduler::teardown_admission_tests::record_live_operation(3);
+    if shared.shutdown.load(std::sync::atomic::Ordering::Acquire) {
+        MailboxSendError::SchedulerTerminated
+    } else {
+        open_error
+    }
+}
+
 fn missing_process_error(shared: &SharedState, pid: u64) -> MailboxSendError {
-    if shared.exit_tombstones.contains_key(&pid) {
+    #[cfg(all(test, feature = "readiness"))]
+    crate::scheduler::teardown_admission_tests::record_live_operation(3);
+    if shared.shutdown.load(std::sync::atomic::Ordering::Acquire) {
+        MailboxSendError::SchedulerTerminated
+    } else if shared.exit_tombstones.contains_key(&pid) {
         MailboxSendError::ProcessTerminated
     } else {
         MailboxSendError::NoSuchProcess
@@ -280,7 +303,11 @@ fn missing_process_error(shared: &SharedState, pid: u64) -> MailboxSendError {
 }
 
 fn slot_refusal_error(shared: &SharedState, pid: u64) -> MailboxSendError {
-    if shared.exit_tombstones.contains_key(&pid) {
+    #[cfg(all(test, feature = "readiness"))]
+    crate::scheduler::teardown_admission_tests::record_live_operation(3);
+    if shared.shutdown.load(std::sync::atomic::Ordering::Acquire) {
+        MailboxSendError::SchedulerTerminated
+    } else if shared.exit_tombstones.contains_key(&pid) {
         MailboxSendError::ProcessTerminated
     } else {
         MailboxSendError::ProcessSlotUnavailable

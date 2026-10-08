@@ -40,6 +40,8 @@ pub enum MailboxSendError {
     HeapAllocationFailed,
     /// The owned value does not contain a valid, copyable BEAM term.
     InvalidMessage,
+    /// Mailbox admission has closed during scheduler shutdown.
+    SchedulerTerminated,
 }
 
 #[cfg(feature = "threads")]
@@ -51,6 +53,7 @@ impl std::fmt::Display for MailboxSendError {
             Self::ProcessSlotUnavailable => "process slot unavailable for mailbox admission",
             Self::HeapAllocationFailed => "target heap cannot admit mailbox message",
             Self::InvalidMessage => "invalid owned mailbox message",
+            Self::SchedulerTerminated => "scheduler has shut down",
         })
     }
 }

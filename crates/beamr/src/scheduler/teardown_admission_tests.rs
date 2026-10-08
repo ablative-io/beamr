@@ -162,11 +162,20 @@ struct TerminalCommand {
 struct TerminalConsumer {
     commands: Arc<Mutex<VecDeque<TerminalCommand>>>,
     executed: Arc<AtomicUsize>,
+    received: Arc<Mutex<Vec<(Term, Term)>>>,
 }
 
 impl NativeHandler for TerminalConsumer {
     fn handle(&mut self, context: &mut NativeContext<'_>) -> NativeOutcome {
-        while context.recv().is_some() {}
+        while let Some(message) = context.recv() {
+            if let Some(tuple) = crate::term::boxed::Tuple::new(message) {
+                let tag = tuple
+                    .get(0)
+                    .unwrap_or_else(|| panic!("message tag missing"));
+                let id = tuple.get(1).unwrap_or_else(|| panic!("message id missing"));
+                lock_or_recover(&self.received).push((tag, id));
+            }
+        }
         loop {
             let command = lock_or_recover(&self.commands).pop_front();
             let Some(command) = command else {
@@ -187,6 +196,7 @@ struct TerminalFixture {
     pid: u64,
     commands: Arc<Mutex<VecDeque<TerminalCommand>>>,
     executed: Arc<AtomicUsize>,
+    received: Arc<Mutex<Vec<(Term, Term)>>>,
 }
 
 impl TerminalFixture {
@@ -214,6 +224,8 @@ impl TerminalFixture {
         }));
         let commands = Arc::new(Mutex::new(VecDeque::new()));
         let executed = Arc::new(AtomicUsize::new(0));
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let factory_received = Arc::clone(&received);
         let factory_commands = Arc::clone(&commands);
         let factory_executed = Arc::clone(&executed);
         let pid = scheduler
@@ -221,6 +233,7 @@ impl TerminalFixture {
                 Box::new(TerminalConsumer {
                     commands: Arc::clone(&factory_commands),
                     executed: Arc::clone(&factory_executed),
+                    received: Arc::clone(&factory_received),
                 })
             }))
             .unwrap_or_else(|error| panic!("terminal consumer: {error}"));
@@ -234,6 +247,7 @@ impl TerminalFixture {
             pid,
             commands,
             executed,
+            received,
         }
     }
 
@@ -250,6 +264,100 @@ impl TerminalFixture {
         assert_eq!(command.id, id);
         drop(command);
     }
+}
+
+fn owned_tagged_message(id: i64) -> OwnedTerm {
+    let mut heap = crate::process::heap::Heap::new(DEFAULT_HEAP_SIZE);
+    let words = heap
+        .alloc_slice(3)
+        .unwrap_or_else(|error| panic!("tuple storage: {error}"));
+    let root = crate::term::boxed::write_tuple(words, &[Term::atom(Atom::OK), Term::small_int(id)])
+        .unwrap_or_else(|| panic!("tuple construction"));
+    crate::ets::copy_term_to_ets(root).unwrap_or_else(|error| panic!("owned tuple: {error}"))
+}
+
+fn retained_mailbox_length(scheduler: &Scheduler, pid: u64) -> usize {
+    scheduler
+        .shared
+        .process_bodies
+        .get(&pid)
+        .map_or(0, |entry| match &*lock_or_recover(&entry) {
+            ProcessSlot::Present(ScheduledProcess(process)) => process.mailbox().message_count(),
+            ProcessSlot::Executing(metadata) => metadata.pending_io_messages.len(),
+            ProcessSlot::Absent => 0,
+        })
+}
+
+#[test]
+fn joined_shutdown_refuses_owned_tuple_and_closes_reply_sender() {
+    let fixture = TerminalFixture::new();
+    fixture.scheduler.shutdown();
+    let before = retained_mailbox_length(&fixture.scheduler, fixture.pid);
+    let (reply, response) = mpsc::channel();
+    let message = owned_tagged_message(17).with_reply_witness(reply);
+    let measurement = LiveMeasurement::start();
+    let result = fixture.scheduler.send_to_mailbox(fixture.pid, message);
+    let vector = measurement.finish();
+    let after = retained_mailbox_length(&fixture.scheduler, fixture.pid);
+    let closed = response.recv();
+    assert_eq!(
+        result.map_err(|error| error.to_string()),
+        Err("scheduler has shut down".to_owned())
+    );
+    assert_eq!(after, before);
+    assert_eq!(vector[5], 0, "refusal copied into the target heap");
+    assert_eq!(vector[6], 0, "refusal copied the owned term");
+    assert_eq!(vector[8], 0, "refusal woke the target");
+    assert_eq!(closed, Err(mpsc::RecvError));
+}
+
+#[test]
+fn joined_shutdown_refuses_drained_and_never_spawned_pids() {
+    let fixture = TerminalFixture::new();
+    fixture.scheduler.shutdown();
+    for pid in [fixture.pid, u64::MAX] {
+        assert_eq!(
+            fixture
+                .scheduler
+                .send_to_mailbox(pid, owned_tagged_message(19)),
+            Err(MailboxSendError::SchedulerTerminated)
+        );
+        assert!(!fixture.scheduler.enqueue_atom_message(pid, Atom::OK));
+    }
+}
+
+#[test]
+fn owned_tuple_reaches_live_parked_process_and_preserves_missing_pid_errors() {
+    let fixture = TerminalFixture::new();
+    let replied = fixture.command(23);
+    let result = fixture
+        .scheduler
+        .send_to_mailbox(fixture.pid, owned_tagged_message(23));
+    let observed = replied
+        .recv()
+        .unwrap_or_else(|error| panic!("live reply: {error}"));
+    let received = lock_or_recover(&fixture.received).clone();
+    let unknown = fixture
+        .scheduler
+        .send_to_mailbox(u64::MAX, owned_tagged_message(24));
+    fixture.scheduler.shared.process_table.spawn_with_pid(701);
+    fixture.scheduler.shared.process_bodies.insert(
+        701,
+        Mutex::new(ProcessSlot::Present(ScheduledProcess(Process::new(
+            701,
+            DEFAULT_HEAP_SIZE,
+        )))),
+    );
+    execution::cleanup_exited_process(&fixture.scheduler.shared, 701, ExitReason::Killed);
+    let removed = fixture
+        .scheduler
+        .send_to_mailbox(701, owned_tagged_message(25));
+    fixture.scheduler.shutdown();
+    assert_eq!(result, Ok(()));
+    assert_eq!(observed, 23);
+    assert_eq!(received, [(Term::atom(Atom::OK), Term::small_int(23))]);
+    assert_eq!(unknown, Err(MailboxSendError::NoSuchProcess));
+    assert_eq!(removed, Err(MailboxSendError::ProcessTerminated));
 }
 
 #[test]
@@ -394,7 +502,7 @@ fn admission_contending_with_terminal_cleanup_releases_owned_completion() {
         retained, 0,
         "terminal stop retained a scheduler-owned completion"
     );
-    assert_eq!(abandoned, Err(MailboxSendError::ProcessTerminated));
+    assert_eq!(abandoned, Err(MailboxSendError::SchedulerTerminated));
     assert!(!accepted_after);
     assert_eq!(last_reply, Err(mpsc::TryRecvError::Disconnected));
     assert_eq!(executed, 1);
@@ -503,6 +611,80 @@ impl NativeHandler for BlockingSpawnHandler {
         }
         NativeOutcome::Wait
     }
+}
+
+#[test]
+fn shutdown_joins_native_slice_before_recording_or_removing_its_body() {
+    let fixture = TerminalFixture::new();
+    let (entered, inside) = mpsc::channel();
+    let release = Arc::new(Barrier::new(2));
+    let worker_release = Arc::clone(&release);
+    let pid = fixture
+        .scheduler
+        .spawn_native(Box::new(move || {
+            Box::new(BlockingSpawnHandler {
+                entered: Some(entered.clone()),
+                release: Arc::clone(&worker_release),
+            })
+        }))
+        .unwrap_or_else(|error| panic!("held native spawn: {error}"));
+    inside
+        .recv()
+        .unwrap_or_else(|error| panic!("native slice entry: {error}"));
+    let (dispatch, closing) = mpsc::channel();
+    fixture
+        .scheduler
+        .shared
+        .shutdown_dispatch_hook
+        .set(Box::new(move || {
+            dispatch
+                .send(())
+                .unwrap_or_else(|error| panic!("shutdown dispatch: {error}"));
+        }))
+        .unwrap_or_else(|_| panic!("shutdown dispatch hook already installed"));
+    let (stored, store_back) = mpsc::channel();
+    let shared = Arc::downgrade(&fixture.scheduler.shared);
+    fixture
+        .scheduler
+        .shared
+        .terminal_admission_hook
+        .set(Box::new(move || {
+            let shared = shared
+                .upgrade()
+                .unwrap_or_else(|| panic!("scheduler owner missing"));
+            let present = shared
+                .process_bodies
+                .get(&pid)
+                .is_some_and(|entry| matches!(&*lock_or_recover(&entry), ProcessSlot::Present(_)));
+            stored
+                .send((
+                    present,
+                    shared.exit_tombstones.contains_key(&pid),
+                    shared.process_table.get(pid).is_some(),
+                ))
+                .unwrap_or_else(|error| panic!("joined store-back: {error}"));
+        }))
+        .unwrap_or_else(|_| panic!("terminal admission hook already installed"));
+    let scheduler = Arc::clone(&fixture.scheduler);
+    let closer = std::thread::spawn(move || scheduler.shutdown());
+    closing
+        .recv()
+        .unwrap_or_else(|error| panic!("shutdown admission closed: {error}"));
+    let before_release = (
+        fixture.scheduler.shared.exit_tombstones.contains_key(&pid),
+        fixture.scheduler.shared.process_table.get(pid).is_some(),
+    );
+    release.wait();
+    let joined = store_back
+        .recv()
+        .unwrap_or_else(|error| panic!("joined body observation: {error}"));
+    closer
+        .join()
+        .unwrap_or_else(|_| panic!("shutdown panicked"));
+    assert_eq!(before_release, (false, true));
+    assert_eq!(joined, (true, false, true));
+    assert!(fixture.scheduler.shared.process_table.get(pid).is_none());
+    assert!(fixture.scheduler.shared.exit_tombstones.contains_key(&pid));
 }
 
 fn reserved_publisher_cleanup(prior_reason: Option<ExitReason>) {
@@ -993,16 +1175,16 @@ fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
         release: Arc::clone(&release),
     });
     if mode != LiveTargetMode::Executing {
-        let shared = Arc::clone(&scheduler.shared);
         let signalled = AtomicBool::new(false);
-        *lock_or_recover(&scheduler.shared.park_gap_hook) = Some(Arc::new(move |pid, gap| {
-            if gap == ParkGap::WaitRegistered && !signalled.swap(true, Ordering::SeqCst) {
-                let call_id = shared.suspensions.get(&pid).map(|mirror| mirror.call_id);
-                ready
-                    .send((pid, call_id))
-                    .unwrap_or_else(|error| panic!("parked signal: {error}"));
-            }
-        }));
+        *lock_or_recover(&scheduler.shared.park_gap_hook) =
+            Some(Box::new(move |shared, gap, pid| {
+                if gap == ParkGap::WaitRegistered && !signalled.swap(true, Ordering::SeqCst) {
+                    let call_id = shared.suspensions.get(&pid).map(|mirror| mirror.call_id);
+                    ready
+                        .send((pid, call_id))
+                        .unwrap_or_else(|error| panic!("parked signal: {error}"));
+                }
+            }));
     }
     let (module, function) = live_message_module(&scheduler);
     let pid = scheduler
@@ -1055,7 +1237,7 @@ fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
     let vector = measurement.finish();
     let before_release = received.try_recv();
     let finished = AtomicBool::new(false);
-    *lock_or_recover(&scheduler.shared.park_gap_hook) = Some(Arc::new(move |target, gap| {
+    *lock_or_recover(&scheduler.shared.park_gap_hook) = Some(Box::new(move |_, gap, target| {
         if target == pid && gap == ParkGap::WaitRegistered && !finished.swap(true, Ordering::SeqCst)
         {
             let observed = lock_or_recover(&LIVE_NATIVE_STATE)

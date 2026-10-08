@@ -180,6 +180,13 @@ same commit. That is this commit — see the `0.18.1` entry.)*
 
 ## Unreleased
 
+### Changed (breaking) — terminal host-mailbox admission
+
+The exhaustive MailboxSendError enum gains SchedulerTerminated, displayed as
+"scheduler has shut down". Host mailbox delivery refuses a drained or unknown
+pid after shutdown before copying or waking and drops the caller-owned message.
+Running schedulers retain their existing mailbox errors and delivery behavior.
+
 ### Changed (breaking) — terminal direct-spawn admission
 
 Direct bytecode spawning reserves the existing teardown admission through process
