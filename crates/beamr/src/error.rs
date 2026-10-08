@@ -213,9 +213,6 @@ fn render_guard_bif_unavailable(
 /// Failures that can occur while executing BEAM code.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecError {
-    /// Direct process spawning was refused because scheduler admission is closed.
-    /// No process identifier or terminal record is created by this refusal.
-    SchedulerTerminated,
     /// A pattern match failed.
     Badmatch,
     /// No function clause matched the provided arguments.
@@ -304,6 +301,9 @@ pub enum ExecError {
     },
     /// Replay mode reached a decision point that does not match the recorded log.
     ReplayMismatch(String),
+    /// Direct process spawning was refused because scheduler admission is closed.
+    /// No process identifier or terminal record is created by this refusal.
+    SchedulerTerminated,
 }
 
 impl fmt::Display for ExecError {
