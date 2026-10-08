@@ -1175,10 +1175,15 @@ fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
         release: Arc::clone(&release),
     });
     if mode != LiveTargetMode::Executing {
+        let ready_gap = if mode == LiveTargetMode::ResultGated {
+            ParkGap::SuspendStored
+        } else {
+            ParkGap::WaitRegistered
+        };
         let signalled = AtomicBool::new(false);
         *lock_or_recover(&scheduler.shared.park_gap_hook) =
             Some(Box::new(move |shared, gap, pid| {
-                if gap == ParkGap::WaitRegistered && !signalled.swap(true, Ordering::SeqCst) {
+                if gap == ready_gap && !signalled.swap(true, Ordering::SeqCst) {
                     let call_id = shared.suspensions.get(&pid).map(|mirror| mirror.call_id);
                     ready
                         .send((pid, call_id))
