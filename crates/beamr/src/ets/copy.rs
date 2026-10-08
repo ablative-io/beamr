@@ -21,6 +21,23 @@ pub struct OwnedTerm {
 }
 
 impl OwnedTerm {
+    #[cfg(all(test, feature = "readiness"))]
+    pub(crate) fn with_reply_witness(self, reply: std::sync::mpsc::Sender<()>) -> Self {
+        assert!(self.root.heap_ptr().is_some());
+        let mut witnesses = REPLY_WITNESSES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match witnesses.entry(self.root.raw()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(reply);
+            }
+            std::collections::btree_map::Entry::Occupied(_) => {
+                panic!("owned term already has a reply witness");
+            }
+        }
+        self
+    }
+
     /// Build an owned term from already-detached heap allocations.
     ///
     /// This is used by dirty native calls whose `ProcessContext` allocated
@@ -81,8 +98,15 @@ impl OwnedTerm {
 
     /// Split into the root term and the backing allocations, for callers that
     /// adopt the allocations into their own storage (detached native contexts).
+    #[cfg(not(all(test, feature = "readiness")))]
     pub(crate) fn into_raw_parts(self) -> (Term, Vec<Box<[u64]>>) {
         (self.root, self.allocations)
+    }
+
+    #[cfg(all(test, feature = "readiness"))]
+    pub(crate) fn into_raw_parts(mut self) -> (Term, Vec<Box<[u64]>>) {
+        let allocations = std::mem::take(&mut self.allocations);
+        (self.root, allocations)
     }
 
     /// Total heap words `copy_to_heap` will allocate for this term: the
@@ -94,6 +118,22 @@ impl OwnedTerm {
             .iter()
             .map(|allocation| allocation.len())
             .sum()
+    }
+}
+
+#[cfg(all(test, feature = "readiness"))]
+static REPLY_WITNESSES: std::sync::Mutex<
+    std::collections::BTreeMap<u64, std::sync::mpsc::Sender<()>>,
+> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+#[cfg(all(test, feature = "readiness"))]
+impl Drop for OwnedTerm {
+    fn drop(&mut self) {
+        let reply = REPLY_WITNESSES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.root.raw());
+        drop(reply);
     }
 }
 
@@ -119,6 +159,11 @@ pub fn copy_term_to_ets(term: Term) -> Result<OwnedTerm, EtsError> {
 
 /// Deep-copy any term into a process heap.
 pub fn copy_term_to_heap(term: Term, heap: &mut Heap) -> Result<Term, EtsError> {
+    #[cfg(all(test, feature = "readiness"))]
+    if term.is_list() || term.is_boxed() {
+        #[cfg(all(test, feature = "readiness"))]
+        crate::scheduler::teardown_admission_tests::record_live_operation(6);
+    }
     if term.is_list() {
         copy_cons_to_heap(term, heap)
     } else if term.is_boxed() {
@@ -134,6 +179,11 @@ struct EtsCopier {
 
 impl EtsCopier {
     fn copy_term(&mut self, term: Term, heap: HeapBorrow<'_>) -> Result<Term, EtsError> {
+        #[cfg(all(test, feature = "readiness"))]
+        if term.is_list() || term.is_boxed() {
+            #[cfg(all(test, feature = "readiness"))]
+            crate::scheduler::teardown_admission_tests::record_live_operation(6);
+        }
         if term.is_list() {
             self.copy_cons(term, heap)
         } else if term.is_boxed() {

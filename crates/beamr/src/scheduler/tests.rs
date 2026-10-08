@@ -808,7 +808,10 @@ fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
         }
     });
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(2_000, || calls.load(Ordering::Acquire) == 1);
     std::thread::sleep(std::time::Duration::from_millis(25));
     assert_eq!(
@@ -1182,7 +1185,6 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
         Arc::new(BifRegistryImpl::new()),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
-    scheduler.shutdown();
 
     // Register the process in the scheduler's table so the alive-process
     // gauge (`process_count() == process_table.len()`) reflects a real live
@@ -1207,6 +1209,15 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
     let SliceOutcome::Requeue(_) = execute_slice(&scheduler.shared, &mut process) else {
         panic!("looping process should yield after consuming its slice");
     };
+
+    scheduler.shared.process_bodies.insert(
+        55,
+        Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
+    );
+    // A direct slice bypasses the worker loop's execution-health sample.
+    scheduler
+        .shared
+        .record_scheduler_executing(std::time::Duration::ZERO);
 
     crate::telemetry::metrics::record_gc_collection("minor", std::time::Duration::from_micros(50));
     crate::telemetry::metrics::record_message_sent();
@@ -1293,6 +1304,27 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
         .force_flush()
         .expect("metrics flush after workflow finish");
 
+    scheduler.shutdown();
+    assert_eq!(scheduler.shared.process_count(), 0);
+    provider.force_flush().expect("metrics flush after drain");
+    let drained_metrics = exporter
+        .get_finished_metrics()
+        .expect("finished drain metrics");
+    let latest = drained_metrics.last().expect("drain sample exists");
+    let metric = find_metric(std::slice::from_ref(latest), "beamr.processes.alive")
+        .expect("drain sample contains live gauge");
+    let AggregatedMetrics::U64(MetricData::Gauge(gauge)) = metric.data() else {
+        panic!("live-process metric must be an unsigned gauge");
+    };
+    let mut points = gauge.data_points();
+    assert_eq!(
+        points
+            .next()
+            .map(opentelemetry_sdk::metrics::data::GaugeDataPoint::value),
+        Some(0)
+    );
+    assert!(points.all(|point| point.value() == 0));
+
     provider.shutdown().expect("provider shutdown");
 }
 
@@ -1332,7 +1364,10 @@ fn hook_fires_when_process_blocks_on_receive() {
         HookDecision::Continue
     });
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(2_000, || {
         !events
             .lock()
@@ -1456,7 +1491,10 @@ fn single_process_runs_to_completion_and_is_removed() {
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
 
     wait_until(2_000, || scheduler.process_table().get(pid).is_none());
     scheduler.shutdown();
@@ -1558,6 +1596,7 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         wake_condvar: Condvar::new(),
         process_bodies: DashMap::new(),
         exit_tombstones: exit_tombstones::BoundedTombstones::new(),
+        exit_completion_watches: Arc::new(exit_events::ExitCompletionRegistry::new()),
         exit_results: DashMap::new(),
         exit_errors: DashMap::new(),
         exit_exceptions: DashMap::new(),
@@ -1588,6 +1627,13 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         suspension_mirror_registrations: AtomicU64::new(0),
         dirty_suspension_allocations: AtomicU64::new(0),
         park_gap_hook: Mutex::new(None),
+        mailbox_admission_hook: std::sync::OnceLock::new(),
+        terminal_admission_hook: std::sync::OnceLock::new(),
+        terminal_spawn_visits: AtomicUsize::new(0),
+        terminal_body_visits: AtomicUsize::new(0),
+        spawn_admission_hook: std::sync::OnceLock::new(),
+        teardown_wait_hook: std::sync::OnceLock::new(),
+        shutdown_dispatch_hook: std::sync::OnceLock::new(),
         file_io_ring: super::service::ServiceMode::Disabled,
         file_io_pending: DashMap::new(),
         file_io_orphans: DashMap::new(),
@@ -2070,6 +2116,7 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         wake_condvar: Condvar::new(),
         process_bodies: DashMap::new(),
         exit_tombstones: exit_tombstones::BoundedTombstones::new(),
+        exit_completion_watches: Arc::new(exit_events::ExitCompletionRegistry::new()),
         exit_results: DashMap::new(),
         exit_errors: DashMap::new(),
         exit_exceptions: DashMap::new(),
@@ -2100,6 +2147,13 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         suspension_mirror_registrations: AtomicU64::new(0),
         dirty_suspension_allocations: AtomicU64::new(0),
         park_gap_hook: Mutex::new(None),
+        mailbox_admission_hook: std::sync::OnceLock::new(),
+        terminal_admission_hook: std::sync::OnceLock::new(),
+        terminal_spawn_visits: AtomicUsize::new(0),
+        terminal_body_visits: AtomicUsize::new(0),
+        spawn_admission_hook: std::sync::OnceLock::new(),
+        teardown_wait_hook: std::sync::OnceLock::new(),
+        shutdown_dispatch_hook: std::sync::OnceLock::new(),
         dirty_cpu: super::service::ServiceMode::Owned(crate::scheduler::dirty::DirtyPool::new(
             "test-cpu", 1,
         )),
@@ -2204,7 +2258,10 @@ fn yielded_process_is_rescheduled() {
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     std::thread::sleep(std::time::Duration::from_millis(75));
 
     assert!(scheduler.process_table().get(pid).is_some());
@@ -2227,7 +2284,12 @@ fn multiple_processes_fairly_complete() {
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
-    let pids: Vec<_> = (0..20).map(|_| scheduler.spawn_process(&module)).collect();
+    let pids: Vec<_> = (0..20)
+        .map(|_| match scheduler.spawn_process(&module) {
+            Ok(pid) => pid,
+            Err(error) => panic!("scaffold spawn refused: {error}"),
+        })
+        .collect();
 
     wait_until(3_000, || {
         pids.iter()
@@ -2485,7 +2547,10 @@ fn delivery_in_the_wait_park_gap_is_not_a_lost_wakeup() {
         execution::wake_process(shared, pid);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -2531,7 +2596,10 @@ fn delivery_after_wait_registration_schedules_the_process_once() {
         execution::wake_process(shared, pid);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -2560,11 +2628,7 @@ fn suspend_park_gap_native(
     Ok(Term::small_int(99))
 }
 
-#[test]
-fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
-    let atoms = AtomTable::new();
-    let module_name = atoms.intern("suspend_park_gap");
-    let registry = Arc::new(ModuleRegistry::new());
+fn suspend_park_gap_module(module_name: Atom) -> Module {
     let mut module = test_module(
         module_name,
         vec![
@@ -2585,7 +2649,15 @@ fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
             capability: Capability::Pure,
         }),
     });
-    let module = registry.insert(module);
+    module
+}
+
+#[test]
+fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("suspend_park_gap");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = registry.insert(suspend_park_gap_module(module_name));
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),
@@ -2644,7 +2716,10 @@ fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
         );
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut completed = false;
     while std::time::Instant::now() < deadline {
@@ -2767,7 +2842,10 @@ fn disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler() 
         .dirty_completion_spawns
         .load(Ordering::Acquire);
 
-    let dirty_pid = scheduler.spawn_process(&dirty_module);
+    let dirty_pid = match scheduler.spawn_process(&dirty_module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
 
     // The refused process exits PROMPTLY — a park-forever bug would hang this
     // bounded wait instead of tombstoning.
@@ -2822,7 +2900,10 @@ fn disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler() 
     assert_eq!(DISABLED_DIRTY_PROBE_RUNS.load(Ordering::Acquire), 0);
 
     // An unrelated process on the SAME scheduler keeps making progress.
-    let peer_pid = scheduler.spawn_process(&peer_module);
+    let peer_pid = match scheduler.spawn_process(&peer_module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     let (peer_reason, _peer_result) = scheduler.run_until_exit(peer_pid);
     assert_eq!(peer_reason, ExitReason::Normal);
     assert_eq!(DISABLED_PEER_PROGRESS.load(Ordering::Acquire), 1);
@@ -3081,7 +3162,10 @@ fn timer_expiry_in_the_wait_park_gap_is_not_a_lost_timeout() {
         fire_receive_timer_in_gap(shared);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -3239,7 +3323,10 @@ fn timer_expiry_after_wait_registration_schedules_the_process_once() {
         fire_receive_timer_in_gap(shared);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -3363,7 +3450,10 @@ fn stale_result_for_a_superseded_await_is_dropped_not_applied() {
     let module = native_call_module(&registry, module_name, reentry_timed_await_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     // Let the await time out and re-submit under a new call id.
     wait_until(10_000, || REENTRY_SECOND_ID.load(Ordering::Acquire) != 0);
     let first_id = REENTRY_FIRST_ID.load(Ordering::Acquire);
@@ -3438,7 +3528,10 @@ fn terminate_while_executing_finalizes_without_resurrecting_the_body() {
     let module = native_call_module(&registry, module_name, exec_terminate_blocking_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || {
         EXEC_TERMINATE_ENTERED.load(Ordering::Acquire) == 1
     });
@@ -3494,7 +3587,10 @@ fn message_delivery_does_not_wake_or_reexecute_a_gated_await() {
     let module = native_call_module(&registry, module_name, guarded_await_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || GUARD_PARKED.load(Ordering::Acquire));
     // Ensure the park completed (slot stored back as Present).
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
@@ -3550,7 +3646,10 @@ fn host_results_and_resumes_cannot_touch_an_in_flight_dirty_call() {
     );
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || CROSS_DIRTY_RUNS.load(Ordering::Acquire) == 1);
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
 
@@ -3612,7 +3711,10 @@ fn completion_published_while_executing_is_not_a_lost_wakeup() {
     let module = native_call_module(&registry, module_name, prepark_await_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || PREPARK_ID.load(Ordering::Acquire) != 0);
     let call_id = PREPARK_ID.load(Ordering::Acquire);
     // The slot is Executing: the mirror published by request_await_suspend
@@ -3689,7 +3791,10 @@ fn hook_resume_in_the_suspend_park_gap_is_sticky_not_lost() {
         let _resumed_in_gap = lock_or_recover(&done_rx).recv();
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     // The sticky resume must let the process run again (hook called at
     // least twice) instead of sleeping forever.
     wait_until(10_000, || hook_calls.load(Ordering::Acquire) >= 2);
@@ -3723,7 +3828,10 @@ fn cleanup_exited_process_purges_all_suspension_state() {
     let module = native_call_module(&registry, module_name, purge_await_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || PURGE_PARKED.load(Ordering::Acquire));
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
     assert!(scheduler.shared.suspensions.contains_key(&pid));
@@ -3798,7 +3906,10 @@ fn result_beats_timeout_and_clears_the_timed_await_metadata() {
         timer_integration::tick_timers(shared);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -3910,7 +4021,10 @@ fn hook_suspend_does_not_stomp_an_await_parked_slice() {
         }
     });
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || hook_suspended.load(Ordering::Acquire));
     wait_until(10_000, || {
         lock_or_recover(&scheduler.shared.wait_set)
@@ -3977,7 +4091,10 @@ fn dirty_native_can_resuspend_as_a_gated_host_await() {
     );
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || DIRTY_RESUSPEND_PARKED.load(Ordering::Acquire));
     // Wait for the re-suspension to become current: a HostAwait mirror
     // replaces the DirtyCall mirror once the owning thread applies the
@@ -4084,7 +4201,10 @@ fn dirty_native_can_trampoline_a_closure() {
     let module = registry.insert(module);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -4121,7 +4241,10 @@ fn peek_exit_reason_returns_none_for_live_and_unknown_pids() {
     let module = native_call_module(&registry, module_name, peek_park_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     // Wait until the process has parked (live, no tombstone).
     wait_until(10_000, || PEEK_PARKED.load(Ordering::Acquire));
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
@@ -4150,7 +4273,10 @@ fn peek_exit_reason_observes_external_termination_without_consuming() {
     let module = native_call_module(&registry, module_name, peek_park_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || PEEK_PARKED.load(Ordering::Acquire));
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
     assert_eq!(scheduler.peek_exit_reason(pid), None, "live before kill");
@@ -4201,7 +4327,10 @@ fn run_until_exit_correct_under_tombstone_cap_pressure() {
     let module = native_call_module(&registry, module_name, peek_park_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || PEEK_PARKED.load(Ordering::Acquire));
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
 
@@ -4708,7 +4837,10 @@ fn top_level_group_leader_is_process_zero_when_owned_and_sentinel_when_disabled(
 
     // Legacy/default profile: standard ring Owned, process 0 registered.
     let owned = single_thread_scheduler(&registry);
-    let _owned_pid = owned.spawn_process(&module);
+    let _owned_pid = match owned.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || GL_PROBE_SEEN.load(Ordering::Acquire) == 1);
     assert_eq!(
         GL_PROBE_LEADER.load(Ordering::Acquire),
@@ -4736,7 +4868,10 @@ fn top_level_group_leader_is_process_zero_when_owned_and_sentinel_when_disabled(
         NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("minimal scheduler starts: {error}"));
-    let _minimal_pid = minimal.spawn_process(&module);
+    let _minimal_pid = match minimal.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || GL_PROBE_SEEN.load(Ordering::Acquire) == 2);
     assert_eq!(
         GL_PROBE_LEADER.load(Ordering::Acquire),
@@ -4852,7 +4987,10 @@ fn shutdown_drains_completion_bridges_while_a_shared_pool_job_is_still_running()
     .unwrap_or_else(|error| panic!("scheduler B starts: {error}"));
 
     // A's dirty job enters the shared pool and BLOCKS there.
-    let blocked_pid = scheduler_a.spawn_process(&blocking_module);
+    let blocked_pid = match scheduler_a.spawn_process(&blocking_module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     let entered_deadline = std::time::Instant::now() + Duration::from_secs(5);
     while SHARED_DRAIN_ENTERED.load(Ordering::Acquire) != 1 {
         if std::time::Instant::now() >= entered_deadline {
@@ -4890,7 +5028,10 @@ fn shutdown_drains_completion_bridges_while_a_shared_pool_job_is_still_running()
     drop(scheduler_a);
 
     // The pool is untouched: B still submits and completes dirty work.
-    let b_pid = scheduler_b.spawn_process(&quick_module);
+    let b_pid = match scheduler_b.spawn_process(&quick_module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_until(10_000, || {
         scheduler_b.shared.exit_tombstones.contains_key(&b_pid)
     });
@@ -5063,16 +5204,81 @@ fn every_spawn_facility_method_refuses_after_teardown() {
     );
 }
 
-/// Round-4 major: spawn admission is LINEARIZED with teardown, not a
-/// snapshot. A spawn HELD immediately after admission (test barrier) forces
-/// the interleaving Sol found: shutdown must WAIT for the admitted spawn (its
-/// mutation lands before shutdown returns), and the next spawn refuses. In no
-/// case does process state change after shutdown has returned.
-#[test]
-fn shutdown_waits_for_an_admitted_spawn_and_refuses_the_next() {
-    use crate::native::SpawnFacility as _;
-    use crate::native::spawn::SpawnError;
+struct AdmittedSpawnObservation {
+    body_present: bool,
+    table_present: bool,
+    record_present: bool,
+    completion: ExitCompletionWatchState,
+}
 
+struct AdmittedSpawnProbe {
+    admitted: std::sync::mpsc::Receiver<()>,
+    publisher_release: Arc<std::sync::Barrier>,
+    waiting: std::sync::mpsc::Receiver<()>,
+    before_drain: std::sync::mpsc::Receiver<AdmittedSpawnObservation>,
+    drain_release: Arc<std::sync::Barrier>,
+}
+
+fn admitted_spawn_probe(scheduler: &Arc<Scheduler>, pid: u64) -> AdmittedSpawnProbe {
+    let (admitted_tx, admitted) = std::sync::mpsc::channel();
+    let publisher_release = Arc::new(std::sync::Barrier::new(2));
+    let release = Arc::clone(&publisher_release);
+    scheduler
+        .shared
+        .spawn_admission_hook
+        .set(Box::new(move || {
+            admitted_tx
+                .send(())
+                .unwrap_or_else(|error| panic!("admission signal: {error}"));
+            release.wait();
+        }))
+        .unwrap_or_else(|_| panic!("admission hook already installed"));
+    let (waiting_tx, waiting) = std::sync::mpsc::channel();
+    scheduler
+        .shared
+        .teardown_wait_hook
+        .set(Box::new(move || {
+            waiting_tx
+                .send(())
+                .unwrap_or_else(|error| panic!("drain wait signal: {error}"));
+        }))
+        .unwrap_or_else(|_| panic!("drain wait hook already installed"));
+    let (stored_tx, before_drain) = std::sync::mpsc::channel();
+    let drain_release = Arc::new(std::sync::Barrier::new(2));
+    let release = Arc::clone(&drain_release);
+    let weak = Arc::downgrade(scheduler);
+    let observed = AtomicBool::new(false);
+    scheduler
+        .shared
+        .terminal_admission_hook
+        .set(Box::new(move || {
+            if observed.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            let scheduler = weak
+                .upgrade()
+                .unwrap_or_else(|| panic!("scheduler owner remains live"));
+            stored_tx
+                .send(AdmittedSpawnObservation {
+                    body_present: scheduler.shared.process_bodies.contains_key(&pid),
+                    table_present: scheduler.process_table().get(pid).is_some(),
+                    record_present: scheduler.shared.exit_tombstones.contains_key(&pid),
+                    completion: scheduler.watch_exit_completion(pid),
+                })
+                .unwrap_or_else(|error| panic!("publication observation: {error}"));
+            release.wait();
+        }))
+        .unwrap_or_else(|_| panic!("terminal drain hook already installed"));
+    AdmittedSpawnProbe {
+        admitted,
+        publisher_release,
+        waiting,
+        before_drain,
+        drain_release,
+    }
+}
+
+fn admitted_spawn_scheduler() -> (Arc<Scheduler>, Atom, Atom) {
     let atoms = AtomTable::new();
     let module_name = atoms.intern("admitted_spawn");
     let function = atoms.intern("main");
@@ -5089,71 +5295,79 @@ fn shutdown_waits_for_an_admitted_spawn_and_refuses_the_next() {
     let registry = Arc::new(ModuleRegistry::new());
     let _module = registry.insert(module);
     let scheduler = Arc::new(
-        Scheduler::new(
+        Scheduler::with_services(
             SchedulerConfig {
                 thread_count: Some(1),
                 ..SchedulerConfig::default()
             },
-            Arc::clone(&registry),
+            SchedulerServices::minimal(),
+            registry,
             NativeBifs::none(),
         )
         .unwrap_or_else(|error| panic!("scheduler starts: {error}")),
     );
+    (scheduler, module_name, function)
+}
 
-    // RAII reset: the hold target is cleared even if an assertion below
-    // unwinds, so a failure here cannot park other tests' spawns.
-    struct HoldReset;
-    impl Drop for HoldReset {
-        fn drop(&mut self) {
-            supervision_integration::SPAWN_HOLD_TARGET.store(0, Ordering::Release);
-        }
-    }
-    let _hold_reset = HoldReset;
-    supervision_integration::SPAWN_HELD_AT_GATE.store(false, Ordering::Release);
-    supervision_integration::SPAWN_HOLD_TARGET
-        .store(Arc::as_ptr(&scheduler.shared) as usize, Ordering::Release);
+#[test]
+fn shutdown_waits_for_an_admitted_spawn_and_refuses_the_next() {
+    use crate::native::spawn::SpawnError;
 
+    let (scheduler, module_name, function) = admitted_spawn_scheduler();
+    let expected_pid = scheduler.shared.next_pid.load(Ordering::Relaxed);
+    let probe = admitted_spawn_probe(&scheduler, expected_pid);
     let facility = supervision_integration::SchedulerSpawnFacility {
         shared: Arc::clone(&scheduler.shared),
         namespace_id: NamespaceId::DEFAULT,
     };
     let spawn_thread =
         std::thread::spawn(move || facility.spawn(1, module_name, function, Vec::new(), None));
-    wait_until(10_000, || {
-        supervision_integration::SPAWN_HELD_AT_GATE.load(Ordering::Acquire)
-    });
-
-    // Shutdown starts while the ADMITTED spawn is held at the barrier: the
-    // drain must wait for it, not return around it.
+    probe
+        .admitted
+        .recv()
+        .unwrap_or_else(|error| panic!("spawn is admitted: {error}"));
     let shutdown_done = Arc::new(AtomicBool::new(false));
-    let (shutdown_scheduler, shutdown_flag) = (Arc::clone(&scheduler), Arc::clone(&shutdown_done));
+    let closing = Arc::clone(&scheduler);
+    let completed = Arc::clone(&shutdown_done);
     let shutdown_thread = std::thread::spawn(move || {
-        shutdown_scheduler.shutdown();
-        shutdown_flag.store(true, Ordering::Release);
+        closing.shutdown();
+        completed.store(true, Ordering::Release);
     });
-    std::thread::sleep(Duration::from_millis(300));
-    assert!(
-        !shutdown_done.load(Ordering::Acquire),
-        "shutdown must WAIT for the admitted spawn, not return around it"
-    );
-
-    // Release the admitted spawn: it completes (its mutation lands BEFORE
-    // shutdown returns), then shutdown finishes.
-    supervision_integration::SPAWN_HOLD_TARGET.store(0, Ordering::Release);
-    let spawned = spawn_thread
-        .join()
-        .unwrap_or_else(|_| panic!("spawn thread joins"))
-        .unwrap_or_else(|error| panic!("the admitted spawn completes: {error:?}"));
+    probe
+        .waiting
+        .recv()
+        .unwrap_or_else(|error| panic!("shutdown waits for publisher: {error}"));
+    let premature_close = shutdown_done.load(Ordering::Acquire);
+    probe.publisher_release.wait();
+    let spawn_result = spawn_thread.join();
+    let before_drain = probe
+        .before_drain
+        .recv()
+        .unwrap_or_else(|error| panic!("joined publication observation: {error}"));
+    probe.drain_release.wait();
     shutdown_thread
         .join()
         .unwrap_or_else(|_| panic!("shutdown thread joins"));
+    let spawned = spawn_result
+        .unwrap_or_else(|_| panic!("spawn thread joins"))
+        .unwrap_or_else(|error| panic!("the admitted spawn completes: {error:?}"));
+    assert!(!premature_close, "shutdown waits for the admitted spawn");
     assert!(shutdown_done.load(Ordering::Acquire));
-    assert!(
-        scheduler.shared.process_bodies.contains_key(&spawned),
-        "the admitted spawn's process exists — its mutation preceded shutdown's return"
-    );
-
-    // And the NEXT spawn refuses: intake is closed.
+    assert_eq!(spawned, expected_pid);
+    assert!(before_drain.body_present);
+    assert!(before_drain.table_present);
+    assert!(!before_drain.record_present);
+    assert!(!scheduler.shared.process_bodies.contains_key(&spawned));
+    assert!(scheduler.process_table().get(spawned).is_none());
+    let outcome = scheduler
+        .take_exit_outcome(spawned)
+        .unwrap_or_else(|| panic!("joined drain retains the genuine outcome"));
+    assert_eq!(outcome.0, ExitReason::Killed);
+    let completion = match before_drain.completion {
+        ExitCompletionWatchState::Live(watch) => watch,
+        other => panic!("published process has a live completion watch: {other:?}"),
+    };
+    assert_eq!(completion.recv(), Ok((spawned, outcome.0)));
     let facility = supervision_integration::SchedulerSpawnFacility {
         shared: Arc::clone(&scheduler.shared),
         namespace_id: NamespaceId::DEFAULT,

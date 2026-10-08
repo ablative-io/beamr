@@ -1,11 +1,11 @@
 //! Bounded, single-subscriber process-exit event delivery, plus the
 //! notification-only per-pid one-shot exit watches (EXIT-001).
 
+use std::collections::HashMap;
 use std::sync::Arc;
-#[cfg(test)]
-use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, TrySendError};
@@ -464,5 +464,229 @@ mod tests {
                 reason: ExitReason::Normal,
             })
         );
+    }
+}
+
+/// The registration answer for a process-table removal watch.
+#[derive(Debug)]
+pub enum ExitCompletionWatchState {
+    /// The process was still present after the watch was armed.
+    Live(ExitCompletionWatch),
+    /// The table no longer holds this process; its retained exit reason remains available.
+    AlreadyRemoved(u64, ExitReason),
+    /// Neither a live process nor an authoritative retained record exists.
+    NoRecord,
+}
+
+/// A one-shot removal notification; disconnection never proves removal.
+pub struct ExitCompletionWatch {
+    pid: u64,
+    key: Arc<()>,
+    receiver: Receiver<(u64, ExitReason)>,
+    registry: Arc<ExitCompletionRegistry>,
+}
+
+impl std::fmt::Debug for ExitCompletionWatch {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ExitCompletionWatch")
+            .field("pid", &self.pid)
+            .finish_non_exhaustive()
+    }
+}
+
+impl ExitCompletionWatch {
+    /// Wait for genuine table removal or publisher disconnection, without a deadline.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExitEventRecvError::Disconnected`] if the publisher drops its sender.
+    pub fn recv(&self) -> Result<(u64, ExitReason), ExitEventRecvError> {
+        self.receiver
+            .recv()
+            .map_err(|_| ExitEventRecvError::Disconnected)
+    }
+
+    #[cfg(test)]
+    pub(super) fn try_recv(&self) -> Result<(u64, ExitReason), crossbeam_channel::TryRecvError> {
+        self.receiver.try_recv()
+    }
+}
+
+impl Drop for ExitCompletionWatch {
+    fn drop(&mut self) {
+        let mut state = super::lock_or_recover(&self.registry.state);
+        if let std::collections::hash_map::Entry::Occupied(mut entry) =
+            state.watches.entry(self.pid)
+        {
+            entry
+                .get_mut()
+                .retain(|(key, _)| !Arc::ptr_eq(key, &self.key));
+            if entry.get().is_empty() {
+                entry.remove();
+            }
+        }
+    }
+}
+
+type CompletionSlot = (Arc<()>, Sender<(u64, ExitReason)>);
+
+struct CompletionState {
+    closed: bool,
+    watches: HashMap<u64, Vec<CompletionSlot>>,
+    firing: usize,
+    disconnected: usize,
+    #[cfg(test)]
+    lookups: usize,
+    #[cfg(test)]
+    sends: usize,
+}
+
+pub(super) struct ExitCompletionRegistry {
+    state: Mutex<CompletionState>,
+    settled: Condvar,
+    #[cfg(test)]
+    shutdown_gate: Mutex<Option<ExitEventPublicationGate>>,
+}
+
+impl ExitCompletionRegistry {
+    pub(super) fn new() -> Self {
+        Self {
+            state: Mutex::new(CompletionState {
+                closed: false,
+                watches: HashMap::new(),
+                firing: 0,
+                disconnected: 0,
+                #[cfg(test)]
+                lookups: 0,
+                #[cfg(test)]
+                sends: 0,
+            }),
+            settled: Condvar::new(),
+            #[cfg(test)]
+            shutdown_gate: Mutex::new(None),
+        }
+    }
+
+    pub(super) fn register(self: &Arc<Self>, pid: u64) -> ExitCompletionWatch {
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+        let key = Arc::new(());
+        let mut state = super::lock_or_recover(&self.state);
+        if !state.closed {
+            state
+                .watches
+                .entry(pid)
+                .or_default()
+                .push((Arc::clone(&key), sender));
+        }
+        ExitCompletionWatch {
+            pid,
+            key,
+            receiver,
+            registry: Arc::clone(self),
+        }
+    }
+
+    pub(super) fn fire(&self, pid: u64, reason: ExitReason) {
+        let mut state = super::lock_or_recover(&self.state);
+        #[cfg(test)]
+        {
+            state.lookups += 1;
+        }
+        let Some(watches) = state.watches.remove(&pid) else {
+            return;
+        };
+        state.firing += 1;
+        #[cfg(test)]
+        {
+            state.sends += watches.len();
+        }
+        drop(state);
+        for (key, sender) in watches {
+            drop(key);
+            // The registry removes each sender once. A dropped receiver has abandoned its answer.
+            match sender.send((pid, reason)) {
+                Ok(()) | Err(crossbeam_channel::SendError(_)) => {}
+            }
+        }
+        let mut state = super::lock_or_recover(&self.state);
+        state.firing -= 1;
+        if state.firing == 0 {
+            self.settled.notify_all();
+        }
+    }
+
+    pub(super) fn settle_shutdown(&self) {
+        let mut state = super::lock_or_recover(&self.state);
+        state.closed = true;
+        while state.firing != 0 {
+            state = match self.settled.wait(state) {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+        }
+        let watches = std::mem::take(&mut state.watches);
+        state.disconnected += watches.values().map(Vec::len).sum::<usize>();
+        drop(state);
+        drop(watches);
+        #[cfg(test)]
+        self.wait_at_shutdown_gate();
+    }
+
+    #[cfg(test)]
+    pub(super) fn watch_count(&self) -> usize {
+        super::lock_or_recover(&self.state)
+            .watches
+            .values()
+            .map(Vec::len)
+            .sum()
+    }
+
+    #[cfg(test)]
+    pub(super) fn fire_counts(&self) -> (usize, usize) {
+        let state = super::lock_or_recover(&self.state);
+        (state.lookups, state.sends)
+    }
+
+    #[cfg(test)]
+    pub(super) fn disconnected_count(&self) -> usize {
+        super::lock_or_recover(&self.state).disconnected
+    }
+
+    #[cfg(test)]
+    pub(super) fn install_shutdown_gate(&self) -> ExitEventPublicationObserver {
+        let (published, observed_publication) = crossbeam_channel::bounded(0);
+        let (observation, observed) = crossbeam_channel::bounded(0);
+        *super::lock_or_recover(&self.shutdown_gate) = Some(ExitEventPublicationGate {
+            published,
+            observed,
+        });
+        ExitEventPublicationObserver {
+            published: observed_publication,
+            observed: observation,
+        }
+    }
+
+    #[cfg(test)]
+    fn wait_at_shutdown_gate(&self) {
+        let gate = super::lock_or_recover(&self.shutdown_gate).take();
+        if let Some(gate) = gate
+            && gate.published.send(()).is_ok()
+        {
+            let _ = gate.observed.recv();
+        }
+    }
+}
+
+#[cfg(test)]
+impl ExitEventPublicationObserver {
+    pub(super) fn wait_for_publication_blocking(&self) {
+        self.published.recv().expect("publisher reaches rendezvous");
+    }
+
+    pub(super) fn release_publication_blocking(&self) {
+        self.observed
+            .send(())
+            .expect("publisher remains at rendezvous");
     }
 }

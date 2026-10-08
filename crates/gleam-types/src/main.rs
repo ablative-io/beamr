@@ -64,7 +64,13 @@ fn run(args: impl IntoIterator<Item = OsString>) -> Result<(), CliError> {
             );
         }
         let sidecar_path = beam_path.with_extension("gleam_types");
-        fs::write(&sidecar_path, sidecar.serialize()).map_err(|error| CliError::WriteSidecar {
+        let bytes = sidecar
+            .serialize()
+            .map_err(|error| CliError::SerializeSidecar {
+                path: sidecar_path.clone(),
+                source: error,
+            })?;
+        fs::write(&sidecar_path, bytes).map_err(|error| CliError::WriteSidecar {
             path: sidecar_path,
             source: error,
         })?;
@@ -134,6 +140,10 @@ enum CliError {
         path: PathBuf,
         source: io::Error,
     },
+    SerializeSidecar {
+        path: PathBuf,
+        source: gleam_types::TypeError,
+    },
     WriteSidecar {
         path: PathBuf,
         source: io::Error,
@@ -154,6 +164,13 @@ impl fmt::Display for CliError {
                 write!(
                     f,
                     "failed to read Gleam source {}: {source}",
+                    path.display()
+                )
+            }
+            Self::SerializeSidecar { path, source } => {
+                write!(
+                    f,
+                    "failed to encode type sidecar {}: {source}",
                     path.display()
                 )
             }
@@ -178,6 +195,7 @@ impl std::error::Error for CliError {
             Self::Io(error) => Some(error),
             Self::ReadSource { source, .. } | Self::WriteSidecar { source, .. } => Some(source),
             Self::ExtractModule { source, .. } => Some(source),
+            Self::SerializeSidecar { source, .. } => Some(source),
             Self::Usage(_) | Self::InvalidPath(_) => None,
         }
     }

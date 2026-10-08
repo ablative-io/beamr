@@ -301,11 +301,15 @@ pub enum ExecError {
     },
     /// Replay mode reached a decision point that does not match the recorded log.
     ReplayMismatch(String),
+    /// Direct process spawning was refused because scheduler admission is closed.
+    /// No process identifier or terminal record is created by this refusal.
+    SchedulerTerminated,
 }
 
 impl fmt::Display for ExecError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::SchedulerTerminated => formatter.write_str("scheduler spawn admission is closed"),
             Self::Badmatch => formatter.write_str("pattern match failed"),
             Self::FunctionClause => formatter.write_str("no matching function clause"),
             Self::Undef {

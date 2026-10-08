@@ -581,7 +581,10 @@ fn c2_gated_suspension_retains_marker_and_observes_at_completion() {
         }),
     });
     let module = registry.insert(module);
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
 
     // The native has requested the await AND the process has completed its
     // park (wait-set registration), not merely stored its slot. `trap_exit`

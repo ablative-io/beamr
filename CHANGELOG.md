@@ -180,6 +180,44 @@ same commit. That is this commit — see the `0.18.1` entry.)*
 
 ## Unreleased
 
+### Changed (breaking) — checked Gleam sidecar serialization
+
+GleamTypes::serialize returns Result<Vec<u8>, TypeError>. The exhaustive TypeError
+enum gains LengthTooLarge { what, len }, which reports an unrepresentable wire
+length. The CLI propagates serialization failures before writing a sidecar.
+Valid sidecars keep the existing format, magic and version; no stored shape changes.
+
+### Changed (breaking) — terminal host-mailbox admission
+
+The exhaustive MailboxSendError enum gains SchedulerTerminated, displayed as
+"scheduler has shut down". Host mailbox delivery refuses a drained or unknown
+pid after shutdown before copying or waking and drops the caller-owned message.
+Running schedulers retain their existing mailbox errors and delivery behavior.
+
+### Changed (breaking) — terminal direct-spawn admission
+
+Direct bytecode spawning reserves the existing teardown admission through process
+publication. Once admission closes it returns `ExecError::SchedulerTerminated`
+before allocating a pid or publishing a body, table entry, or tombstone. A racing
+publisher retains its reservation until publication finishes, so shutdown waits
+for that publisher through the existing drain.
+
+`ExecError` is exhaustive: downstream matches must handle the new
+`SchedulerTerminated` variant. The two `test-support` scaffold entrypoints,
+`spawn_process` and `spawn_process_with_trace_context`, now return
+`Result<u64, ExecError>`. The existing public resolved-entry spawn methods retain
+their `Result<u64, ExecError>` surface; bool and `MailboxSendError` are unchanged.
+The Wasm refusal mapping adds the wire-visible `scheduler_terminated` reason
+without changing any existing label.
+
+After joined worker shutdown, terminal cleanup releases currently queued spawn
+requests and finalizes currently owned bodies with the existing killed reason.
+Earlier terminal reasons are preserved. No process-history ledger is scanned.
+
+This source lane is unqualified. Behavioral reds/greens, live-message count
+vectors and compiler/test qualification remain outstanding; no release or
+installed behavior is claimed.
+
 ### Fixed (record) — class closures unrecorded at their cut
 
 <!-- fixed: asbytes-0.16.3 in 0.16.3 -->

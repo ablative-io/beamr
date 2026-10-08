@@ -1682,10 +1682,9 @@ pub(in crate::scheduler) fn finalize_exited_process(
     if shared.process_table.remove(pid).is_none() {
         return;
     }
+    shared.exit_completion_watches.fire(pid, reason);
     #[cfg(feature = "telemetry")]
     crate::telemetry::lifecycle::record_process_exited(&shared.atom_table, pid, reason);
-    #[cfg(not(feature = "telemetry"))]
-    let _ = reason;
     #[cfg(feature = "readiness")]
     shared.purge_readiness_state(pid);
     if let Some((_pid, slot_mutex)) = shared.process_bodies.remove(&pid) {

@@ -15,6 +15,16 @@ use super::{NativeBifs, Scheduler, SchedulerConfig, dirty, execution, inventory}
 use super::thread_probe;
 use crate::module::ModuleRegistry;
 
+const EXPECTED_SERVICE_LABELS: [&str; 7] = [
+    inventory::DIRTY_CPU,
+    inventory::DIRTY_IO,
+    inventory::FILE_IO_RING,
+    inventory::STANDARD_IO_RING,
+    inventory::GENERIC_IO_RING,
+    inventory::DISTRIBUTION,
+    inventory::READINESS,
+];
+
 fn new_default_scheduler() -> Scheduler {
     Scheduler::new(
         SchedulerConfig::default(),
@@ -54,17 +64,10 @@ fn default_profile_pins_as_built_service_inventory() {
         .iter()
         .map(|entry| entry.service)
         .collect();
+    let expected_count = 6 + usize::from(cfg!(feature = "readiness"));
     assert_eq!(
-        labels,
-        vec![
-            inventory::DIRTY_CPU,
-            inventory::DIRTY_IO,
-            inventory::FILE_IO_RING,
-            inventory::STANDARD_IO_RING,
-            inventory::GENERIC_IO_RING,
-            inventory::DISTRIBUTION,
-            inventory::READINESS,
-        ],
+        labels.as_slice(),
+        &EXPECTED_SERVICE_LABELS[..expected_count],
         "the inventory enumerates exactly the service set, in order"
     );
 
@@ -107,15 +110,20 @@ fn default_profile_pins_as_built_service_inventory() {
     );
 
     // Readiness has no legacy config knob, so FromConfig is Disabled.
-    let readiness = &by_service[inventory::READINESS];
-    assert_eq!(readiness.mode, ServiceModeLabel::Disabled);
-    assert_eq!((readiness.configured, readiness.actual), (0, 0));
-    assert!(readiness.thread_names.is_empty());
-    assert!(readiness.fd_classes.is_empty());
-    assert_eq!(
-        readiness.instance,
-        super::service::ServiceInstanceId::DISABLED
-    );
+    #[cfg(feature = "readiness")]
+    {
+        let readiness = &by_service[inventory::READINESS];
+        assert_eq!(readiness.mode, ServiceModeLabel::Disabled);
+        assert_eq!((readiness.configured, readiness.actual), (0, 0));
+        assert!(readiness.thread_names.is_empty());
+        assert!(readiness.fd_classes.is_empty());
+        assert_eq!(
+            readiness.instance,
+            super::service::ServiceInstanceId::DISABLED
+        );
+    }
+    #[cfg(not(feature = "readiness"))]
+    assert!(!by_service.contains_key(inventory::READINESS));
 
     // The heartbeat is a task-class policy line (spec §3.7), Disabled here since
     // distribution is off — never a thread line.

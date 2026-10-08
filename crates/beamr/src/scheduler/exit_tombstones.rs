@@ -305,6 +305,11 @@ mod tests {
     #[test]
     fn finalized_outcome_residue_is_size_bounded_and_payload_free_after_take() {
         const PINNED_RETAINED_VALUE_BYTES: usize = 40;
+        let retained_bytes = core::mem::size_of::<FinalizedOutcome>();
+        let owned_term_bytes = core::mem::size_of::<OwnedTerm>();
+        println!("B179_RETAINED_BYTES retained={retained_bytes} owned_term={owned_term_bytes}");
+        #[cfg(feature = "readiness")]
+        assert_eq!(retained_bytes, 40);
 
         // Measured size on the supported 64-bit layout is 40 bytes. Pin that
         // ceiling so the permanent exactly-once token cannot silently grow.
