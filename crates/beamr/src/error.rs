@@ -213,6 +213,9 @@ fn render_guard_bif_unavailable(
 /// Failures that can occur while executing BEAM code.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecError {
+    /// Direct process spawning was refused because scheduler admission is closed.
+    /// No process identifier or terminal record is created by this refusal.
+    SchedulerTerminated,
     /// A pattern match failed.
     Badmatch,
     /// No function clause matched the provided arguments.
@@ -306,6 +309,7 @@ pub enum ExecError {
 impl fmt::Display for ExecError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::SchedulerTerminated => formatter.write_str("scheduler spawn admission is closed"),
             Self::Badmatch => formatter.write_str("pattern match failed"),
             Self::FunctionClause => formatter.write_str("no matching function clause"),
             Self::Undef {

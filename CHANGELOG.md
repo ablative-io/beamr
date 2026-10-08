@@ -180,6 +180,24 @@ same commit. That is this commit — see the `0.18.1` entry.)*
 
 ## Unreleased
 
+### Changed (breaking) — terminal direct-spawn admission
+
+Direct bytecode spawning reserves the existing teardown admission through process
+publication. Once admission closes it returns `ExecError::SchedulerTerminated`
+before allocating a pid or publishing a body, table entry, or tombstone. A racing
+publisher retains its reservation until publication finishes, so shutdown waits
+for that publisher through the existing drain.
+
+`ExecError` is exhaustive: downstream matches must handle the new
+`SchedulerTerminated` variant. The two `test-support` scaffold entrypoints,
+`spawn_process` and `spawn_process_with_trace_context`, now return
+`Result<u64, ExecError>`. The existing public resolved-entry spawn methods retain
+their `Result<u64, ExecError>` surface; bool and `MailboxSendError` are unchanged.
+
+This source lane is unqualified. Terminal body/request cleanup, caller and
+exhaustive-match adaptations, behavioral reds/greens and live-message count
+vectors remain outstanding; no release or installed behavior is claimed.
+
 ### Fixed (record) — class closures unrecorded at their cut
 
 <!-- fixed: asbytes-0.16.3 in 0.16.3 -->
