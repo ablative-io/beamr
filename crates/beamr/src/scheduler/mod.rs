@@ -125,7 +125,7 @@ mod exit_tombstones;
 mod inventory;
 #[cfg(feature = "threads")]
 pub use exit_events::{
-    EXIT_EVENT_CAPACITY, ExitEvent, ExitEventRecvError, ExitEventSubscription, ExitWatch,
+    EXIT_EVENT_CAPACITY, ExitCompletionWatch, ExitCompletionWatchState, ExitEvent, ExitEventRecvError, ExitEventSubscription, ExitWatch,
     ExitWatchState,
 };
 #[cfg(feature = "readiness")]
@@ -388,6 +388,7 @@ pub(super) struct SharedState {
     wake_condvar: Condvar,
     process_bodies: DashMap<u64, Mutex<ProcessSlot>>,
     exit_tombstones: exit_tombstones::BoundedTombstones,
+    exit_completion_watches: Arc<exit_events::ExitCompletionRegistry>,
     exit_results: DashMap<u64, OwnedTerm>,
     exit_errors: DashMap<u64, ExecError>,
     exit_exceptions: DashMap<u64, OwnedException>,
@@ -1631,6 +1632,7 @@ impl Scheduler {
                 wake_condvar: Condvar::new(),
                 process_bodies: DashMap::new(),
                 exit_tombstones: exit_tombstones::BoundedTombstones::new(),
+                exit_completion_watches: Arc::new(exit_events::ExitCompletionRegistry::new()),
                 exit_results: DashMap::new(),
                 exit_errors: DashMap::new(),
                 exit_exceptions: DashMap::new(),

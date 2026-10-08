@@ -585,3 +585,232 @@ fn wall1b_ordering_tripwire_outcome_installed_before_exit_publication() {
     );
     scheduler.shutdown();
 }
+
+
+#[test]
+fn completion_watch_waits_for_table_removal_and_preserves_outcome() {
+    let scheduler = test_scheduler(1);
+    let subscription = scheduler.subscribe_exit_events().expect("first subscription");
+    let pid = scheduler.spawn_native(Box::new(|| Box::new(WaitForTermination))).expect("spawn");
+    let before = match scheduler.watch_exit_completion(pid) {
+        ExitCompletionWatchState::Live(watch) => watch,
+        other => panic!("expected live completion watch: {other:?}"),
+    };
+    let dropped = match scheduler.watch_exit_completion(pid) {
+        ExitCompletionWatchState::Live(watch) => watch,
+        other => panic!("expected live completion watch: {other:?}"),
+    };
+    drop(dropped);
+    let observer = scheduler.shared.exit_tombstones.install_event_publication_gate();
+    let observations = std::thread::scope(|scope| {
+        let killer = scope.spawn(|| scheduler.terminate_process(pid, ExitReason::Kill));
+        observer.wait_for_publication_blocking();
+        let present = scheduler.process_table().get(pid).is_some();
+        let pending_before = before.try_recv();
+        let during = scheduler.watch_exit_completion(pid);
+        let pending_during = match &during {
+            ExitCompletionWatchState::Live(watch) => Some(watch.try_recv()),
+            _ => None,
+        };
+        let slots = scheduler.shared.exit_completion_watches.watch_count();
+        observer.release_publication_blocking();
+        killer.join().expect("finalizer joins");
+        scheduler.shared.exit_tombstones.clear_event_publication_gate();
+        (present, pending_before, during, pending_during, slots)
+    });
+    let (present, pending_before, during, pending_during, slots) = observations;
+    let before_result = before.recv();
+    let during_result = match during {
+        ExitCompletionWatchState::Live(watch) => Some(watch.recv()),
+        _ => None,
+    };
+    let absent = scheduler.process_table().get(pid).is_none();
+    let retained = scheduler.take_exit_outcome(pid);
+    let second = scheduler.take_exit_outcome(pid);
+    let already = scheduler.watch_exit_completion(pid);
+    let event = subscription.recv();
+    let remaining = scheduler.shared.exit_completion_watches.watch_count();
+    scheduler.shutdown();
+    assert!(present);
+    assert_eq!(pending_before, Err(crossbeam_channel::TryRecvError::Empty));
+    assert_eq!(pending_during, Some(Err(crossbeam_channel::TryRecvError::Empty)));
+    assert_eq!(slots, 2);
+    assert_eq!(before_result, Ok((pid, ExitReason::Kill)));
+    assert_eq!(during_result, Some(Ok((pid, ExitReason::Kill))));
+    assert!(absent);
+    assert_eq!(retained.expect("outcome remains owned").0, ExitReason::Kill);
+    assert!(second.is_none());
+    assert!(matches!(already, ExitCompletionWatchState::AlreadyRemoved(found, ExitReason::Kill) if found == pid));
+    assert_eq!(event, Ok(ExitEvent::Exited { pid, reason: ExitReason::Kill }));
+    assert_eq!(remaining, 0);
+}
+
+#[test]
+fn completion_watch_unknown_drop_and_duplicate_finalizers_retain_no_slots() {
+    let scheduler = test_scheduler(1);
+    let unknown = scheduler.watch_exit_completion(u64::MAX);
+    let pid = scheduler.spawn_native(Box::new(|| Box::new(WaitForTermination))).expect("spawn");
+    let watch = match scheduler.watch_exit_completion(pid) {
+        ExitCompletionWatchState::Live(watch) => watch,
+        other => panic!("expected live completion watch: {other:?}"),
+    };
+    let initial = scheduler.shared.exit_completion_watches.watch_count();
+    let start = Barrier::new(3);
+    std::thread::scope(|scope| {
+        let first = scope.spawn(|| { start.wait(); scheduler.terminate_process(pid, ExitReason::Kill); });
+        let second = scope.spawn(|| { start.wait(); scheduler.terminate_process(pid, ExitReason::Kill); });
+        start.wait();
+        first.join().expect("first finalizer joins");
+        second.join().expect("second finalizer joins");
+    });
+    let result = watch.recv();
+    let duplicate = watch.try_recv();
+    let counts = scheduler.shared.exit_completion_watches.fire_counts();
+    let remaining = scheduler.shared.exit_completion_watches.watch_count();
+    scheduler.shutdown();
+    assert!(matches!(unknown, ExitCompletionWatchState::NoRecord));
+    assert_eq!(initial, 1);
+    assert_eq!(result, Ok((pid, ExitReason::Kill)));
+    assert_eq!(duplicate, Err(crossbeam_channel::TryRecvError::Disconnected));
+    assert_eq!(counts, (1, 1));
+    assert_eq!(remaining, 0);
+}
+
+struct CompletionParked {
+    ready: mpsc::Sender<()>,
+}
+
+impl NativeHandler for CompletionParked {
+    fn handle(&mut self, context: &mut NativeContext<'_>) -> NativeOutcome {
+        if context.recv().is_some() {
+            return NativeOutcome::Stop(ExitReason::Normal);
+        }
+        self.ready.send(()).expect("receiver owns readiness");
+        NativeOutcome::Wait
+    }
+}
+
+#[test]
+fn completion_watch_joined_shutdown_proves_removal_without_disconnection() {
+    let scheduler = test_scheduler(1);
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let pid = scheduler.spawn_native(Box::new(move || Box::new(CompletionParked { ready: ready_tx.clone() }))).expect("spawn");
+    ready_rx.recv().expect("process reaches receive");
+    let watch = match scheduler.watch_exit_completion(pid) {
+        ExitCompletionWatchState::Live(watch) => watch,
+        other => panic!("expected live completion watch: {other:?}"),
+    };
+    std::thread::scope(|scope| scope.spawn(|| scheduler.shutdown()).join().expect("shutdown joins"));
+    let removed_at_return = scheduler.process_table().get(pid).is_none();
+    if !removed_at_return {
+        scheduler.terminate_process(pid, ExitReason::Kill);
+    }
+    let result = watch.recv();
+    let retained_reason = scheduler.shared.exit_tombstones.finalized_reason(&pid);
+    let after = scheduler.watch_exit_completion(pid);
+    let unknown = scheduler.watch_exit_completion(u64::MAX);
+    let disconnected = scheduler.shared.exit_completion_watches.disconnected_count();
+    assert!(removed_at_return, "joined shutdown must remove the parked process");
+    assert_eq!(result, retained_reason.map(|reason| (pid, reason)).ok_or(ExitEventRecvError::Disconnected));
+    assert!(matches!(after, ExitCompletionWatchState::AlreadyRemoved(found, reason) if found == pid && Some(reason) == retained_reason));
+    assert!(matches!(unknown, ExitCompletionWatchState::NoRecord));
+    assert_eq!(disconnected, 0);
+}
+
+
+#[test]
+fn completion_registry_disconnects_leftovers_outside_removal_contract() {
+    let registry = Arc::new(super::exit_events::ExitCompletionRegistry::new());
+    let watch = registry.register(41);
+    let gate = registry.install_shutdown_gate();
+    let disconnected = std::thread::scope(|scope| {
+        let stop = scope.spawn(|| registry.settle_shutdown());
+        gate.wait_for_publication_blocking();
+        let disconnected = watch.recv();
+        gate.release_publication_blocking();
+        stop.join().expect("settle joins");
+        disconnected
+    });
+    assert_eq!(disconnected, Err(ExitEventRecvError::Disconnected));
+    assert_eq!(registry.disconnected_count(), 1);
+    assert_eq!(registry.watch_count(), 0);
+}
+
+#[test]
+fn completion_fire_visits_only_the_exiting_pids_watches() {
+    let registry = Arc::new(super::exit_events::ExitCompletionRegistry::new());
+    let unrelated: Vec<_> = (1..=128).map(|pid| registry.register(pid)).collect();
+    let first = registry.register(129);
+    let second = registry.register(129);
+    let count_before = registry.watch_count();
+    registry.fire(129, ExitReason::Kill);
+    let first_result = first.recv();
+    let second_result = second.recv();
+    let counts = registry.fire_counts();
+    let count_after = registry.watch_count();
+    drop(unrelated);
+    let remaining = registry.watch_count();
+    registry.settle_shutdown();
+    assert_eq!(count_before, 130);
+    assert_eq!(first_result, Ok((129, ExitReason::Kill)));
+    assert_eq!(second_result, Ok((129, ExitReason::Kill)));
+    assert_eq!(counts, (1, 2));
+    assert_eq!(count_after, 128);
+    assert_eq!(remaining, 0);
+}
+
+#[test]
+fn completion_registration_survives_outcome_consumption_and_tombstone_eviction() {
+    let scheduler = test_scheduler(1);
+    let pid = scheduler.spawn_native(Box::new(|| Box::new(WaitForTermination))).expect("spawn");
+    scheduler.terminate_process(pid, ExitReason::Kill);
+    let outcome = scheduler.take_exit_outcome(pid);
+    for offset in 0..=TOMBSTONE_CAPACITY {
+        publish_synthetic_exit(&scheduler, 9_000_000 + u64::try_from(offset).expect("offset fits"), Term::NIL);
+    }
+    let tombstone = scheduler.peek_exit_reason(pid);
+    let registration = scheduler.watch_exit_completion(pid);
+    let remaining = scheduler.shared.exit_completion_watches.watch_count();
+    scheduler.shutdown();
+    assert_eq!(outcome.expect("one outcome").0, ExitReason::Kill);
+    assert!(tombstone.is_none());
+    assert!(matches!(registration, ExitCompletionWatchState::AlreadyRemoved(found, ExitReason::Kill) if found == pid));
+    assert_eq!(remaining, 0);
+}
+
+fn completion_probe_immediate(scheduler: &Scheduler, pid: u64) -> bool {
+    matches!(scheduler.watch_exit_completion(pid), ExitCompletionWatchState::AlreadyRemoved(_, _))
+}
+
+#[test]
+fn completion_probe_rejects_early_exit_record() {
+    let scheduler = test_scheduler(1);
+    let subscription = scheduler.subscribe_exit_events().expect("first subscription");
+    let pid = scheduler.spawn_native(Box::new(|| Box::new(WaitForTermination))).expect("spawn");
+    let observer = scheduler.shared.exit_tombstones.install_event_publication_gate();
+    let (present_at_gap, immediate) = std::thread::scope(|scope| {
+        let killer = scope.spawn(|| scheduler.terminate_process(pid, ExitReason::Kill));
+        observer.wait_for_publication_blocking();
+        let observed = (scheduler.process_table().get(pid).is_some(), completion_probe_immediate(&scheduler, pid));
+        observer.release_publication_blocking();
+        killer.join().expect("finalizer joins");
+        scheduler.shared.exit_tombstones.clear_event_publication_gate();
+        observed
+    });
+    drop(subscription);
+    scheduler.shutdown();
+    assert!(present_at_gap);
+    assert!(!immediate, "an immediate completion answer must imply table absence");
+}
+
+#[test]
+fn completion_probe_joined_shutdown_removes_parked_process() {
+    let scheduler = test_scheduler(1);
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let pid = scheduler.spawn_native(Box::new(move || Box::new(CompletionParked { ready: ready_tx.clone() }))).expect("spawn");
+    ready_rx.recv().expect("process reaches receive");
+    std::thread::scope(|scope| scope.spawn(|| scheduler.shutdown()).join().expect("shutdown joins"));
+    let removed_at_return = scheduler.process_table().get(pid).is_none();
+    if !removed_at_return { scheduler.terminate_process(pid, ExitReason::Kill); }
+    assert!(removed_at_return, "joined shutdown must remove the parked process");
+}
