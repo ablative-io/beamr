@@ -15,6 +15,16 @@ use super::{NativeBifs, Scheduler, SchedulerConfig, dirty, execution, inventory}
 use super::thread_probe;
 use crate::module::ModuleRegistry;
 
+const EXPECTED_SERVICE_LABELS: [&str; 7] = [
+    inventory::DIRTY_CPU,
+    inventory::DIRTY_IO,
+    inventory::FILE_IO_RING,
+    inventory::STANDARD_IO_RING,
+    inventory::GENERIC_IO_RING,
+    inventory::DISTRIBUTION,
+    inventory::READINESS,
+];
+
 fn new_default_scheduler() -> Scheduler {
     Scheduler::new(
         SchedulerConfig::default(),
@@ -54,19 +64,10 @@ fn default_profile_pins_as_built_service_inventory() {
         .iter()
         .map(|entry| entry.service)
         .collect();
-    let expected_labels = [
-        inventory::DIRTY_CPU,
-        inventory::DIRTY_IO,
-        inventory::FILE_IO_RING,
-        inventory::STANDARD_IO_RING,
-        inventory::GENERIC_IO_RING,
-        inventory::DISTRIBUTION,
-        inventory::READINESS,
-    ];
     let expected_count = 6 + usize::from(cfg!(feature = "readiness"));
     assert_eq!(
         labels.as_slice(),
-        &expected_labels[..expected_count],
+        &EXPECTED_SERVICE_LABELS[..expected_count],
         "the inventory enumerates exactly the service set, in order"
     );
 

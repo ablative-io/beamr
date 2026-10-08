@@ -1317,7 +1317,12 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
         panic!("live-process metric must be an unsigned gauge");
     };
     let mut points = gauge.data_points();
-    assert_eq!(points.next().map(|point| point.value()), Some(0));
+    assert_eq!(
+        points
+            .next()
+            .map(opentelemetry_sdk::metrics::data::GaugeDataPoint::value),
+        Some(0)
+    );
     assert!(points.all(|point| point.value() == 0));
 
     provider.shutdown().expect("provider shutdown");
