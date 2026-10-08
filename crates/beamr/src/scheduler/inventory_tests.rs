@@ -54,17 +54,19 @@ fn default_profile_pins_as_built_service_inventory() {
         .iter()
         .map(|entry| entry.service)
         .collect();
+    let expected_labels = [
+        inventory::DIRTY_CPU,
+        inventory::DIRTY_IO,
+        inventory::FILE_IO_RING,
+        inventory::STANDARD_IO_RING,
+        inventory::GENERIC_IO_RING,
+        inventory::DISTRIBUTION,
+        inventory::READINESS,
+    ];
+    let expected_count = 6 + usize::from(cfg!(feature = "readiness"));
     assert_eq!(
-        labels,
-        vec![
-            inventory::DIRTY_CPU,
-            inventory::DIRTY_IO,
-            inventory::FILE_IO_RING,
-            inventory::STANDARD_IO_RING,
-            inventory::GENERIC_IO_RING,
-            inventory::DISTRIBUTION,
-            inventory::READINESS,
-        ],
+        labels.as_slice(),
+        &expected_labels[..expected_count],
         "the inventory enumerates exactly the service set, in order"
     );
 
