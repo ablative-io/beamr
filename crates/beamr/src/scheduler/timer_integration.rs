@@ -151,6 +151,7 @@ pub(super) fn expire_timers_for_test(
 /// `Deliver`-timer branch so the slot dispatch lives in exactly one place.
 ///
 /// [`Scheduler::enqueue_atom_message`]: super::Scheduler::enqueue_atom_message
+#[cfg(not(all(test, feature = "readiness")))]
 pub(super) fn deliver_term_to_mailbox(
     shared: &SharedState,
     pid: u64,
@@ -169,6 +170,38 @@ pub(super) fn deliver_term_to_mailbox(
             Ok(())
         }
         ProcessSlot::Executing(metadata) => {
+            metadata
+                .pending_io_messages
+                .push(PendingMailboxMessage::TargetOwned(term));
+            Ok(())
+        }
+        ProcessSlot::Absent => Err(slot_refusal_error(shared, pid)),
+    }
+}
+
+#[cfg(all(test, feature = "readiness"))]
+pub(super) fn deliver_term_to_mailbox(
+    shared: &SharedState,
+    pid: u64,
+    term: Term,
+) -> Result<(), MailboxSendError> {
+    crate::scheduler::teardown_admission_tests::record_live_operation(0);
+    let Some(entry) = shared.process_bodies.get(&pid) else {
+        return Err(missing_process_error(shared, pid));
+    };
+    crate::scheduler::teardown_admission_tests::record_live_operation(1);
+    let mut slot = lock_or_recover(&entry);
+    crate::scheduler::teardown_admission_tests::record_live_operation(0);
+    if shared.exit_tombstones.contains_key(&pid) {
+        return Err(MailboxSendError::ProcessTerminated);
+    }
+    match &mut *slot {
+        ProcessSlot::Present(ScheduledProcess(process)) => {
+            process.mailbox_mut().push_owned(term);
+            Ok(())
+        }
+        ProcessSlot::Executing(metadata) => {
+            crate::scheduler::teardown_admission_tests::record_live_operation(7);
             metadata
                 .pending_io_messages
                 .push(PendingMailboxMessage::TargetOwned(term));

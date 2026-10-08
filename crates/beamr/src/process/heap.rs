@@ -127,6 +127,8 @@ impl HeapRegion {
             return Err(HeapFull::new(words, self.available()));
         }
 
+        #[cfg(all(test, feature = "readiness"))]
+        crate::scheduler::teardown_admission_tests::record_live_operation(5);
         let start = self.used;
         let ptr = self.words.as_mut_ptr().wrapping_add(start);
         self.used = end;
@@ -156,6 +158,8 @@ impl HeapRegion {
             return Err(HeapFull::new(words, self.available()));
         }
 
+        #[cfg(all(test, feature = "readiness"))]
+        crate::scheduler::teardown_admission_tests::record_live_operation(5);
         let start = self.used;
         self.used = end;
         self.high_water_mark = self.high_water_mark.max(self.used);
@@ -251,13 +255,28 @@ impl HeapRegion {
 }
 
 /// Generational bump allocator for one process heap.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
+#[cfg_attr(not(all(test, feature = "readiness")), derive(Clone))]
 pub struct Heap {
     young: HeapRegion,
     old: HeapRegion,
     initial_capacity: usize,
     previous_capacity: usize,
     max_capacity: usize,
+}
+
+#[cfg(all(test, feature = "readiness"))]
+impl Clone for Heap {
+    fn clone(&self) -> Self {
+        crate::scheduler::teardown_admission_tests::record_live_operation(10);
+        Self {
+            young: self.young.clone(),
+            old: self.old.clone(),
+            initial_capacity: self.initial_capacity,
+            previous_capacity: self.previous_capacity,
+            max_capacity: self.max_capacity,
+        }
+    }
 }
 
 impl Heap {

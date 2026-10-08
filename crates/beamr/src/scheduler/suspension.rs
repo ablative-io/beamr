@@ -180,6 +180,7 @@ impl SharedState {
     ///
     /// Used by the wake gate and the park-time rechecks. A process *without*
     /// a mirror is plain-receive parked and is always wakeable.
+    #[cfg(not(all(test, feature = "readiness")))]
     pub(super) fn has_consumable_suspension_event(&self, pid: u64) -> bool {
         let Some(mirror) = self.suspensions.get(&pid).map(|mirror| *mirror) else {
             return false;
@@ -204,10 +205,50 @@ impl SharedState {
         }
     }
 
+    #[cfg(all(test, feature = "readiness"))]
+    pub(super) fn has_consumable_suspension_event(&self, pid: u64) -> bool {
+        crate::scheduler::teardown_admission_tests::record_live_operation(0);
+        let Some(mirror) = self.suspensions.get(&pid).map(|mirror| *mirror) else {
+            return false;
+        };
+        crate::scheduler::teardown_admission_tests::record_live_operation(0);
+        if self.suspension_results.get(&pid)
+            .is_some_and(|result| result.call_id == mirror.call_id) {
+            return true;
+        }
+        match mirror.kind {
+            SuspensionKind::HostAwait => {
+                crate::scheduler::teardown_admission_tests::record_live_operation(0);
+                if self.file_io_results.contains_key(&pid) {
+                    return true;
+                }
+                crate::scheduler::teardown_admission_tests::record_live_operation(0);
+                self.expired_receive_timers.contains_key(&pid)
+            }
+            SuspensionKind::DirtyCall => false,
+            SuspensionKind::Hook => {
+                crate::scheduler::teardown_admission_tests::record_live_operation(0);
+                self.pending_resumes.get(&pid)
+                    .is_some_and(|resume| *resume == RESUME_ANY_HOOK || *resume == mirror.call_id)
+            }
+        }
+    }
+
     /// True when `pid` is parked under a result-gated suspension that plain
     /// message arrivals must not wake (no consumable event pending).
     /// Message-wakeable suspensions (select, marker awaits) never block.
+    #[cfg(not(all(test, feature = "readiness")))]
     pub(super) fn suspension_blocks_wake(&self, pid: u64) -> bool {
+        let gated = self
+            .suspensions
+            .get(&pid)
+            .is_some_and(|mirror| !mirror.wake_on_message);
+        gated && !self.has_consumable_suspension_event(pid)
+    }
+
+    #[cfg(all(test, feature = "readiness"))]
+    pub(super) fn suspension_blocks_wake(&self, pid: u64) -> bool {
+        crate::scheduler::teardown_admission_tests::record_live_operation(0);
         let gated = self
             .suspensions
             .get(&pid)

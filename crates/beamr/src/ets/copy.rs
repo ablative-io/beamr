@@ -119,6 +119,10 @@ pub fn copy_term_to_ets(term: Term) -> Result<OwnedTerm, EtsError> {
 
 /// Deep-copy any term into a process heap.
 pub fn copy_term_to_heap(term: Term, heap: &mut Heap) -> Result<Term, EtsError> {
+    #[cfg(all(test, feature = "readiness"))]
+    if term.is_list() || term.is_boxed() {
+        crate::scheduler::teardown_admission_tests::record_live_operation(6);
+    }
     if term.is_list() {
         copy_cons_to_heap(term, heap)
     } else if term.is_boxed() {
@@ -134,6 +138,10 @@ struct EtsCopier {
 
 impl EtsCopier {
     fn copy_term(&mut self, term: Term, heap: HeapBorrow<'_>) -> Result<Term, EtsError> {
+        #[cfg(all(test, feature = "readiness"))]
+        if term.is_list() || term.is_boxed() {
+            crate::scheduler::teardown_admission_tests::record_live_operation(6);
+        }
         if term.is_list() {
             self.copy_cons(term, heap)
         } else if term.is_boxed() {

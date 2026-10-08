@@ -542,3 +542,308 @@ fn candidate_reserved_publisher_is_drained_before_terminal_completion() {
 fn candidate_terminal_drain_preserves_prior_queued_spawn_reason() {
     reserved_publisher_cleanup(Some(ExitReason::Error));
 }
+
+const LIVE_COMPONENTS: [&str; 11] = [
+    "map_table_probes", "slot_locks", "wait_set_locks", "lifecycle_admission_atomic_reads",
+    "allocator_calls", "heap_allocations", "deep_term_copies", "mailbox_or_pending_pushes",
+    "wake_calls", "notifications", "heap_or_mailbox_clones",
+];
+
+std::thread_local! {
+    static LIVE_COUNTS: std::cell::Cell<Option<[usize; 11]>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+pub(crate) fn record_live_operation(component: usize) {
+    LIVE_COUNTS.with(|counts| {
+        if let Some(mut vector) = counts.get() {
+            vector[component] += 1;
+            counts.set(Some(vector));
+        }
+    });
+}
+
+struct LiveAllocator;
+
+#[global_allocator]
+static LIVE_ALLOCATOR: LiveAllocator = LiveAllocator;
+
+// SAFETY: allocation and deallocation delegate to the same system allocator.
+unsafe impl std::alloc::GlobalAlloc for LiveAllocator {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        record_live_operation(4);
+        // SAFETY: the caller supplies the allocator contract's valid layout.
+        unsafe { std::alloc::GlobalAlloc::alloc(&std::alloc::System, layout) }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        record_live_operation(4);
+        // SAFETY: the caller supplies the allocator contract's valid layout.
+        unsafe { std::alloc::GlobalAlloc::alloc_zeroed(&std::alloc::System, layout) }
+    }
+
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: std::alloc::Layout) {
+        // SAFETY: the allocation originated in this same system allocator.
+        unsafe { std::alloc::GlobalAlloc::dealloc(&std::alloc::System, pointer, layout) };
+    }
+
+    unsafe fn realloc(&self, pointer: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
+        record_live_operation(4);
+        // SAFETY: the original allocation and replacement size satisfy the caller's contract.
+        unsafe { std::alloc::GlobalAlloc::realloc(&std::alloc::System, pointer, layout, size) }
+    }
+}
+
+struct LiveMeasurement;
+
+impl LiveMeasurement {
+    fn start() -> Self {
+        LIVE_COUNTS.with(|counts| {
+            assert!(counts.replace(Some([0; 11])).is_none(), "nested measurement");
+        });
+        Self
+    }
+
+    fn finish(self) -> [usize; 11] {
+        LIVE_COUNTS.with(|counts| counts.take())
+            .unwrap_or_else(|| panic!("measurement not armed"))
+    }
+}
+
+impl Drop for LiveMeasurement {
+    fn drop(&mut self) {
+        LIVE_COUNTS.with(|counts| counts.set(None));
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LiveTargetMode {
+    Present,
+    Executing,
+    ResultGated,
+}
+
+impl LiveTargetMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Present => "present",
+            Self::Executing => "executing",
+            Self::ResultGated => "result_gated",
+        }
+    }
+}
+
+struct LiveNativeState {
+    mode: LiveTargetMode,
+    expected: usize,
+    received: usize,
+    ready: mpsc::Sender<(u64, Option<u64>)>,
+    received_all: mpsc::Sender<usize>,
+    release: Arc<Barrier>,
+}
+
+static LIVE_NATIVE_STATE: Mutex<Option<LiveNativeState>> = Mutex::new(None);
+
+fn live_message_entry(args: &[Term], context: &mut ProcessContext<'_>) -> Result<Term, Term> {
+    if !args.is_empty() {
+        return Err(Term::atom(Atom::BADARG));
+    }
+    let pid = context.pid().unwrap_or_else(|| panic!("native process pid missing"));
+    let (mode, ready, release) = {
+        let state = lock_or_recover(&LIVE_NATIVE_STATE);
+        let state = state.as_ref().unwrap_or_else(|| panic!("native fixture missing"));
+        (state.mode, state.ready.clone(), Arc::clone(&state.release))
+    };
+    match mode {
+        LiveTargetMode::Executing => {
+            ready.send((pid, None)).unwrap_or_else(|error| panic!("executing signal: {error}"));
+            release.wait();
+        }
+        LiveTargetMode::ResultGated => {
+            assert!(context.request_await_suspend(None).is_some(), "host await identity missing");
+        }
+        LiveTargetMode::Present => {}
+    }
+    Ok(Term::NIL)
+}
+
+fn live_message_received(args: &[Term], context: &mut ProcessContext<'_>) -> Result<Term, Term> {
+    if args != [Term::atom(Atom::OK)] || context.pid().is_none() {
+        return Err(Term::atom(Atom::BADARG));
+    }
+    let mut state = lock_or_recover(&LIVE_NATIVE_STATE);
+    let state = state.as_mut().unwrap_or_else(|| panic!("native fixture missing"));
+    state.received += 1;
+    assert!(state.received <= state.expected, "duplicate delivery");
+    if state.received == state.expected {
+        state.received_all.send(state.received)
+            .unwrap_or_else(|error| panic!("received signal: {error}"));
+    }
+    Ok(Term::NIL)
+}
+
+fn live_message_module(scheduler: &Scheduler) -> (Atom, Atom) {
+    use crate::loader::Instruction;
+    use crate::loader::decode::compact::Operand;
+    use crate::module::{Module, ModuleOrigin, ResolvedImport, ResolvedImportTarget};
+    use crate::native::{Capability, NativeEntry};
+    let name = scheduler.shared.atom_table.intern("live_message_counts");
+    let function = scheduler.shared.atom_table.intern("entry");
+    let code = vec![
+        Instruction::Label { label: 1 },
+        Instruction::CallExt { arity: Operand::Unsigned(0), import: Operand::Unsigned(0) },
+        Instruction::Label { label: 2 },
+        Instruction::LoopRec { fail: Operand::Label(3), destination: Operand::X(0) },
+        Instruction::RemoveMessage,
+        Instruction::CallExt { arity: Operand::Unsigned(1), import: Operand::Unsigned(1) },
+        Instruction::Jump { target: Operand::Label(2) },
+        Instruction::Label { label: 3 },
+        Instruction::Wait { fail: Operand::Label(2) },
+    ];
+    let label_index = code.iter().enumerate().filter_map(|(index, instruction)| {
+        match instruction {
+            Instruction::Label { label } => Some((*label, index)),
+            _ => None,
+        }
+    }).collect();
+    let resolved_imports = [(0, live_message_entry as crate::native::NativeFn), (1, live_message_received as crate::native::NativeFn)]
+        .into_iter().map(|(arity, native)| ResolvedImport {
+            module: name,
+            function,
+            arity,
+            target: ResolvedImportTarget::Native(NativeEntry {
+                function: native,
+                dirty_kind: None,
+                capability: Capability::Pure,
+            }),
+        }).collect();
+    drop(scheduler.shared.module_registry.insert(Module {
+        name,
+        generation: 0,
+        origin: ModuleOrigin::Preloaded,
+        exports: std::collections::HashMap::from([((function, 0), 1)]),
+        label_index,
+        code,
+        literals: Vec::new(),
+        constant_pool: Default::default(),
+        resolved_imports,
+        lambdas: Vec::new(),
+        string_table: Vec::new(),
+        function_table: Vec::new(),
+        line_table: Vec::new(),
+        line_info: Vec::new(),
+    }));
+    (name, function)
+}
+
+fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
+    let scheduler = Arc::new(Scheduler::with_services(
+        SchedulerConfig { thread_count: Some(1), ..SchedulerConfig::default() },
+        SchedulerServices::minimal(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    ).unwrap_or_else(|error| panic!("live scheduler starts: {error}")));
+    let (ready, registered) = mpsc::channel();
+    let (received_all, received) = mpsc::channel();
+    let release = Arc::new(Barrier::new(2));
+    *lock_or_recover(&LIVE_NATIVE_STATE) = Some(LiveNativeState {
+        mode, expected: count, received: 0, ready: ready.clone(), received_all,
+        release: Arc::clone(&release),
+    });
+    if mode != LiveTargetMode::Executing {
+        let shared = Arc::clone(&scheduler.shared);
+        let signalled = AtomicBool::new(false);
+        *lock_or_recover(&scheduler.shared.park_gap_hook) = Some(Arc::new(move |pid, gap| {
+            if gap == ParkGap::WaitRegistered && !signalled.swap(true, Ordering::SeqCst) {
+                let call_id = shared.suspensions.get(&pid).map(|mirror| mirror.call_id);
+                ready.send((pid, call_id)).unwrap_or_else(|error| panic!("parked signal: {error}"));
+            }
+        }));
+    }
+    let (module, function) = live_message_module(&scheduler);
+    let pid = scheduler.spawn(module, function, Vec::new())
+        .unwrap_or_else(|error| panic!("live process spawn: {error}"));
+    let (ready_pid, call_id) = registered.recv()
+        .unwrap_or_else(|error| panic!("live ready signal: {error}"));
+    assert_eq!(ready_pid, pid);
+    *lock_or_recover(&scheduler.shared.park_gap_hook) = None;
+    if mode == LiveTargetMode::Present {
+        let (entered, blocked) = mpsc::channel();
+        let worker_release = Arc::clone(&release);
+        scheduler.spawn_native(Box::new(move || Box::new(BlockingSpawnHandler {
+            entered: Some(entered.clone()),
+            release: Arc::clone(&worker_release),
+        }))).unwrap_or_else(|error| panic!("blocking process spawn: {error}"));
+        blocked.recv().unwrap_or_else(|error| panic!("worker blocked signal: {error}"));
+    }
+    {
+        let entry = scheduler.shared.process_bodies.get(&pid)
+            .unwrap_or_else(|| panic!("live process slot missing"));
+        let slot = lock_or_recover(&entry);
+        match (&*slot, mode) {
+            (ProcessSlot::Executing(_), LiveTargetMode::Executing) => {}
+            (ProcessSlot::Present(_), LiveTargetMode::Present | LiveTargetMode::ResultGated) => {}
+            _ => panic!("target not at measured slot boundary"),
+        }
+    }
+    if mode == LiveTargetMode::ResultGated {
+        assert!(call_id.is_some());
+        assert!(scheduler.shared.suspension_blocks_wake(pid));
+    } else {
+        assert!(call_id.is_none());
+    }
+    let measurement = LiveMeasurement::start();
+    for _ in 0..count {
+        assert!(scheduler.enqueue_atom_message(pid, Atom::OK), "live admission refused");
+    }
+    let vector = measurement.finish();
+    let before_release = received.try_recv();
+    if mode == LiveTargetMode::ResultGated {
+        assert!(scheduler.wake_with_result_for(
+            pid, call_id.unwrap_or_else(|| panic!("await identity missing")), Term::NIL,
+        ));
+    } else {
+        release.wait();
+    }
+    let delivered = received.recv().unwrap_or_else(|error| panic!("received all signal: {error}"));
+    scheduler.shutdown();
+    let received_count = lock_or_recover(&LIVE_NATIVE_STATE).take()
+        .unwrap_or_else(|| panic!("native fixture missing")).received;
+    assert_eq!(before_release, Err(mpsc::TryRecvError::Empty));
+    assert_eq!(delivered, count);
+    assert_eq!(received_count, count);
+    println!("B179_VECTOR mode={} n={} delivered={} vector={:?}", mode.label(), count, delivered, vector);
+    vector
+}
+
+#[test]
+fn live_message_count_vectors_for_present_executing_and_result_gated_targets() {
+    println!("B179_COMPONENTS {:?}", LIVE_COMPONENTS);
+    for mode in [LiveTargetMode::Present, LiveTargetMode::Executing, LiveTargetMode::ResultGated] {
+        for count in [128, 256] {
+            let vector = count_live_messages(mode, count);
+            assert_eq!(vector[7], count);
+            assert_eq!(vector[8], count);
+        }
+    }
+}
+
+#[test]
+fn live_message_allocation_and_clone_observers_have_positive_controls() {
+    let mut heap = crate::process::heap::Heap::new(32);
+    let mut mailbox = crate::mailbox::Mailbox::new();
+    let measurement = LiveMeasurement::start();
+    let allocation = Box::new([0_u64; 1024]);
+    std::hint::black_box(&allocation);
+    assert!(heap.alloc_slice(2).is_ok());
+    mailbox.push_owned(Term::atom(Atom::OK));
+    drop(std::hint::black_box(heap.clone()));
+    drop(std::hint::black_box(mailbox.clone()));
+    drop(allocation);
+    let vector = measurement.finish();
+    assert!(vector[4] > 0);
+    assert_eq!(vector[5], 1);
+    assert_eq!(vector[7], 1);
+    assert_eq!(vector[10], 2);
+}

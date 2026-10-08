@@ -178,7 +178,7 @@ mod supervision_integration;
 #[cfg(feature = "threads")]
 mod suspension;
 #[cfg(all(test, feature = "readiness"))]
-mod teardown_admission_tests;
+pub(crate) mod teardown_admission_tests;
 #[cfg(feature = "threads")]
 mod test_helpers;
 #[cfg(feature = "threads")]
