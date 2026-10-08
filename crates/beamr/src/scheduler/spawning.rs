@@ -443,6 +443,10 @@ impl Scheduler {
             .shared
             .try_reserve_teardown_admission()
             .ok_or(ExecError::SchedulerTerminated)?;
+        #[cfg(test)]
+        if let Some(hook) = self.shared.spawn_admission_hook.get() {
+            hook();
+        }
         let pid = self.shared.next_pid.fetch_add(1, Ordering::Relaxed);
         self.shared.process_table.spawn_with_pid(pid);
         let index =

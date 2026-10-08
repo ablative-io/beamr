@@ -124,6 +124,10 @@ impl Scheduler {
         #[cfg(feature = "readiness")]
         self.shared.readiness.shutdown_owned();
         self.shared.shutdown.store(true, Ordering::Release);
+        #[cfg(test)]
+        if let Some(hook) = self.shared.shutdown_dispatch_hook.get() {
+            hook();
+        }
         self.shared.wake_condvar.notify_all();
         let mut threads = lock_or_recover(&self.threads);
         for handle in threads.drain(..) {

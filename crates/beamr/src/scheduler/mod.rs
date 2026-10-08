@@ -520,6 +520,12 @@ pub(super) struct SharedState {
     terminal_spawn_visits: AtomicUsize,
     #[cfg(test)]
     terminal_body_visits: AtomicUsize,
+    #[cfg(test)]
+    spawn_admission_hook: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    teardown_wait_hook: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    shutdown_dispatch_hook: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
 }
 
 #[cfg(feature = "threads")]
@@ -662,6 +668,10 @@ impl SharedState {
         drop(lock_or_recover(&self.dirty_completion_shutdown_tx).take());
         let mut registry = lock_or_recover(&self.dirty_completions);
         while registry.reserved > 0 {
+            #[cfg(test)]
+            if let Some(hook) = self.teardown_wait_hook.get() {
+                hook();
+            }
             registry = self
                 .dirty_completions_changed
                 .wait(registry)
@@ -1708,6 +1718,12 @@ impl Scheduler {
                 terminal_spawn_visits: AtomicUsize::new(0),
                 #[cfg(test)]
                 terminal_body_visits: AtomicUsize::new(0),
+                #[cfg(test)]
+                spawn_admission_hook: std::sync::OnceLock::new(),
+                #[cfg(test)]
+                teardown_wait_hook: std::sync::OnceLock::new(),
+                #[cfg(test)]
+                shutdown_dispatch_hook: std::sync::OnceLock::new(),
             }
         });
         #[cfg(feature = "readiness")]
