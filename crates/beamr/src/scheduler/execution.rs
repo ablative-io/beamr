@@ -135,6 +135,32 @@ impl Scheduler {
         if let Some(hook) = self.shared.terminal_admission_hook.get() {
             hook();
         }
+        // Closed admission and joined workers leave no publisher or consumer
+        // that can race the current request/body drain.
+        for inject in &self.inject_queues {
+            while let Some(request) = inject.pop() {
+                let pid = request.pid;
+                drop(request);
+                #[cfg(test)]
+                self.shared.terminal_spawn_visits.fetch_add(1, Ordering::Relaxed);
+                cleanup_exited_process(&self.shared, pid, ExitReason::Killed);
+            }
+        }
+        let remaining_pids: Vec<_> = self
+            .shared
+            .process_bodies
+            .iter()
+            .map(|entry| *entry.key())
+            .collect();
+        for pid in remaining_pids {
+            #[cfg(test)]
+            self.shared.terminal_body_visits.fetch_add(1, Ordering::Relaxed);
+            let reason = match self.shared.exit_tombstones.get(&pid) {
+                Some(reason) => reason,
+                None => ExitReason::Killed,
+            };
+            cleanup_exited_process(&self.shared, pid, reason);
+        }
     }
 
     /// Block until the given process exits, returning its exit reason and

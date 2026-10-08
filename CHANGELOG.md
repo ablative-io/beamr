@@ -193,10 +193,16 @@ for that publisher through the existing drain.
 `spawn_process` and `spawn_process_with_trace_context`, now return
 `Result<u64, ExecError>`. The existing public resolved-entry spawn methods retain
 their `Result<u64, ExecError>` surface; bool and `MailboxSendError` are unchanged.
+The Wasm refusal mapping adds the wire-visible `scheduler_terminated` reason
+without changing any existing label.
 
-This source lane is unqualified. Terminal body/request cleanup, caller and
-exhaustive-match adaptations, behavioral reds/greens and live-message count
-vectors remain outstanding; no release or installed behavior is claimed.
+After joined worker shutdown, terminal cleanup releases currently queued spawn
+requests and finalizes currently owned bodies with the existing killed reason.
+Earlier terminal reasons are preserved. No process-history ledger is scanned.
+
+This source lane is unqualified. Behavioral reds/greens, live-message count
+vectors and compiler/test qualification remain outstanding; no release or
+installed behavior is claimed.
 
 ### Fixed (record) — class closures unrecorded at their cut
 

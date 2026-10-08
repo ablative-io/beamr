@@ -516,6 +516,10 @@ pub(super) struct SharedState {
     mailbox_admission_hook: std::sync::OnceLock<MailboxAdmissionHook>,
     #[cfg(test)]
     terminal_admission_hook: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    terminal_spawn_visits: AtomicUsize,
+    #[cfg(test)]
+    terminal_body_visits: AtomicUsize,
 }
 
 #[cfg(feature = "threads")]
@@ -1700,6 +1704,10 @@ impl Scheduler {
                 mailbox_admission_hook: std::sync::OnceLock::new(),
                 #[cfg(test)]
                 terminal_admission_hook: std::sync::OnceLock::new(),
+                #[cfg(test)]
+                terminal_spawn_visits: AtomicUsize::new(0),
+                #[cfg(test)]
+                terminal_body_visits: AtomicUsize::new(0),
             }
         });
         #[cfg(feature = "readiness")]

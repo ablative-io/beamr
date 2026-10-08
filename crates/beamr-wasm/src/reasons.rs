@@ -47,6 +47,7 @@ pub(crate) fn exec_error_to_reason(error: &ExecError, atom_table: &AtomTable) ->
 /// Stable snake_case name for every [`ExecError`] variant.
 fn variant_name(error: &ExecError) -> &'static str {
     match error {
+        ExecError::SchedulerTerminated => "scheduler_terminated",
         ExecError::Badmatch => "badmatch",
         ExecError::FunctionClause => "function_clause",
         ExecError::Undef { .. } => "undef",
