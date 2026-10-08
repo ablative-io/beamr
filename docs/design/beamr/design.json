@@ -100,6 +100,7 @@
     "Deterministic replay in this cluster (deferred to B-140 through B-143)."
   ],
   "structure": {
+    "crates/beamr-wasm/src/reasons.rs": "B-179",
     "crates/beamr/src/scheduler/tests.rs": "B-179",
     "crates/beamr/src/scheduler/readiness_contract_tests.rs": "B-179",
     "crates/beamr/tests/supervision_integration.rs": "B-179",
