@@ -940,33 +940,31 @@ fn completion_shutdown_closes_admission_before_removal_watch_fires() {
         ExitCompletionWatchState::Live(watch) => watch,
         other => panic!("expected live completion watch: {other:?}"),
     };
-    let (closed_tx, closed_rx) = mpsc::channel();
-    let release = Arc::new(Barrier::new(2));
-    let hook_release = Arc::clone(&release);
-    let observed = std::sync::atomic::AtomicBool::new(false);
-    scheduler
+    let subscription = scheduler
+        .subscribe_exit_events()
+        .expect("first subscription");
+    let observer = scheduler
         .shared
-        .terminal_admission_hook
-        .set(Box::new(move || {
-            if !observed.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                closed_tx.send(()).expect("observer owns closure signal");
-                hook_release.wait();
-            }
-        }))
-        .unwrap_or_else(|_| panic!("terminal rendezvous already installed"));
+        .exit_tombstones
+        .install_event_publication_gate();
     let (present, pending, atom_admitted, owned_admitted) = std::thread::scope(|scope| {
         let shutdown = scope.spawn(|| scheduler.shutdown());
-        closed_rx.recv().expect("shutdown closes admission");
+        observer.wait_for_publication_blocking();
         let observations = (
             scheduler.process_table().get(pid).is_some(),
             watch.try_recv(),
             scheduler.enqueue_atom_message(pid, Atom::OK),
             scheduler.send_to_mailbox(pid, OwnedTerm::immediate(Term::NIL)),
         );
-        release.wait();
+        observer.release_publication_blocking();
         shutdown.join().expect("shutdown joins");
         observations
     });
+    scheduler
+        .shared
+        .exit_tombstones
+        .clear_event_publication_gate();
+    drop(subscription);
     let completion = watch.recv();
     let reason = scheduler.shared.exit_tombstones.finalized_reason(&pid);
     assert!(present);
