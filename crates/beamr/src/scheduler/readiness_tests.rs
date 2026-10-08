@@ -98,6 +98,32 @@ fn socket_pair() -> (UnixStream, UnixStream) {
     pair
 }
 
+fn await_queued_markers(scheduler: &Scheduler, pid: u64, expected: usize) {
+    loop {
+        let count = {
+            let entry = scheduler
+                .shared
+                .process_bodies
+                .get(&pid)
+                .unwrap_or_else(|| panic!("pid {pid} body exists"));
+            let slot = lock_or_recover(&entry);
+            match &*slot {
+                ProcessSlot::Executing(metadata) => metadata
+                    .pending_io_messages
+                    .iter()
+                    .filter(|message| matches!(message, PendingMailboxMessage::TargetOwned(_)))
+                    .count(),
+                _ => panic!("readiness process remains checked out"),
+            }
+        };
+        if count >= expected {
+            assert_eq!(count, expected);
+            return;
+        }
+        std::thread::yield_now();
+    }
+}
+
 #[test]
 fn shared_routes_home_survives_peer_shutdown_and_refuses_straggler() {
     let shared = SharedReadiness::new().unwrap_or_else(|error| panic!("shared poller: {error}"));
@@ -109,6 +135,10 @@ fn shared_routes_home_survives_peer_shutdown_and_refuses_straggler() {
     let (reader_b, mut writer_b) = socket_pair();
     let marker_a = Atom::new(401);
     let marker_b = Atom::new(402);
+    let removal = match scheduler_a.watch_exit_completion(11) {
+        ExitCompletionWatchState::Live(watch) => watch,
+        other => panic!("expected live removal watch: {other:?}"),
+    };
     let token_a = scheduler_a
         .shared
         .readiness_register(reader_a.as_raw_fd(), Interest::READABLE, 11, marker_a)
@@ -123,8 +153,8 @@ fn shared_routes_home_survives_peer_shutdown_and_refuses_straggler() {
     writer_b
         .write_all(&[1])
         .unwrap_or_else(|error| panic!("fire B: {error}"));
-    wait_for_marker_count(&scheduler_a, 11, 1);
-    wait_for_marker_count(&scheduler_b, 22, 1);
+    await_queued_markers(&scheduler_a, 11, 1);
+    await_queued_markers(&scheduler_b, 22, 1);
     assert_eq!(
         pending_markers(&scheduler_a, 11),
         vec![Term::atom(marker_a)]
@@ -164,9 +194,14 @@ fn shared_routes_home_survives_peer_shutdown_and_refuses_straggler() {
     writer_b
         .write_all(&[2])
         .unwrap_or_else(|error| panic!("refire B: {error}"));
-    wait_for_marker_count(&scheduler_b, 22, 2);
-    std::thread::sleep(Duration::from_millis(20));
-    assert_eq!(pending_markers(&scheduler_a, 11).len(), 1);
+    await_queued_markers(&scheduler_b, 22, 2);
+    assert!(!scheduler_a.shared.process_bodies.contains_key(&11));
+    assert!(scheduler_a.process_table().get(11).is_none());
+    let outcome = scheduler_a
+        .take_exit_outcome(11)
+        .unwrap_or_else(|| panic!("drained process retains its outcome"));
+    assert_eq!(outcome.0, ExitReason::Killed);
+    assert_eq!(removal.recv(), Ok((11, outcome.0)));
     scheduler_b.shutdown();
     drop(shared);
 }

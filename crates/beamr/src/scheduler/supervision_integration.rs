@@ -1590,6 +1590,9 @@ impl SchedulerSpawnFacility {
     /// so parallel tests neither stall here nor satisfy the acknowledgment.
     #[cfg(test)]
     fn admission_test_gate(&self) {
+        if let Some(hook) = self.shared.spawn_admission_hook.get() {
+            hook();
+        }
         let me = std::sync::Arc::as_ptr(&self.shared) as usize;
         if SPAWN_HOLD_TARGET.load(std::sync::atomic::Ordering::Acquire) == me {
             SPAWN_HELD_AT_GATE.store(true, std::sync::atomic::Ordering::Release);
