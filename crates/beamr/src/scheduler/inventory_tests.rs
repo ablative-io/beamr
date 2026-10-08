@@ -109,15 +109,20 @@ fn default_profile_pins_as_built_service_inventory() {
     );
 
     // Readiness has no legacy config knob, so FromConfig is Disabled.
-    let readiness = &by_service[inventory::READINESS];
-    assert_eq!(readiness.mode, ServiceModeLabel::Disabled);
-    assert_eq!((readiness.configured, readiness.actual), (0, 0));
-    assert!(readiness.thread_names.is_empty());
-    assert!(readiness.fd_classes.is_empty());
-    assert_eq!(
-        readiness.instance,
-        super::service::ServiceInstanceId::DISABLED
-    );
+    #[cfg(feature = "readiness")]
+    {
+        let readiness = &by_service[inventory::READINESS];
+        assert_eq!(readiness.mode, ServiceModeLabel::Disabled);
+        assert_eq!((readiness.configured, readiness.actual), (0, 0));
+        assert!(readiness.thread_names.is_empty());
+        assert!(readiness.fd_classes.is_empty());
+        assert_eq!(
+            readiness.instance,
+            super::service::ServiceInstanceId::DISABLED
+        );
+    }
+    #[cfg(not(feature = "readiness"))]
+    assert!(!by_service.contains_key(inventory::READINESS));
 
     // The heartbeat is a task-class policy line (spec §3.7), Disabled here since
     // distribution is off — never a thread line.
