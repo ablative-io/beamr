@@ -1,11 +1,11 @@
 //! Bounded, single-subscriber process-exit event delivery, plus the
 //! notification-only per-pid one-shot exit watches (EXIT-001).
 
-use std::sync::Arc;
 use std::collections::HashMap;
-use std::sync::{Condvar, Mutex};
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, TrySendError};
@@ -467,7 +467,6 @@ mod tests {
     }
 }
 
-
 /// The registration answer for a process-table removal watch.
 #[derive(Debug)]
 pub enum ExitCompletionWatchState {
@@ -489,14 +488,19 @@ pub struct ExitCompletionWatch {
 
 impl std::fmt::Debug for ExitCompletionWatch {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_struct("ExitCompletionWatch").field("pid", &self.pid).finish_non_exhaustive()
+        formatter
+            .debug_struct("ExitCompletionWatch")
+            .field("pid", &self.pid)
+            .finish_non_exhaustive()
     }
 }
 
 impl ExitCompletionWatch {
     /// Wait for genuine table removal or publisher disconnection, without a deadline.
     pub fn recv(&self) -> Result<(u64, ExitReason), ExitEventRecvError> {
-        self.receiver.recv().map_err(|_| ExitEventRecvError::Disconnected)
+        self.receiver
+            .recv()
+            .map_err(|_| ExitEventRecvError::Disconnected)
     }
 
     #[cfg(test)]
@@ -508,9 +512,15 @@ impl ExitCompletionWatch {
 impl Drop for ExitCompletionWatch {
     fn drop(&mut self) {
         let mut state = super::lock_or_recover(&self.registry.state);
-        if let std::collections::hash_map::Entry::Occupied(mut entry) = state.watches.entry(self.pid) {
-            entry.get_mut().retain(|(key, _)| !Arc::ptr_eq(key, &self.key));
-            if entry.get().is_empty() { entry.remove(); }
+        if let std::collections::hash_map::Entry::Occupied(mut entry) =
+            state.watches.entry(self.pid)
+        {
+            entry
+                .get_mut()
+                .retain(|(key, _)| !Arc::ptr_eq(key, &self.key));
+            if entry.get().is_empty() {
+                entry.remove();
+            }
         }
     }
 }
@@ -539,7 +549,10 @@ impl ExitCompletionRegistry {
     pub(super) fn new() -> Self {
         Self {
             state: Mutex::new(CompletionState {
-                closed: false, watches: HashMap::new(), firing: 0, disconnected: 0,
+                closed: false,
+                watches: HashMap::new(),
+                firing: 0,
+                disconnected: 0,
                 #[cfg(test)]
                 lookups: 0,
                 #[cfg(test)]
@@ -556,19 +569,34 @@ impl ExitCompletionRegistry {
         let key = Arc::new(());
         let mut state = super::lock_or_recover(&self.state);
         if !state.closed {
-            state.watches.entry(pid).or_default().push((Arc::clone(&key), sender));
+            state
+                .watches
+                .entry(pid)
+                .or_default()
+                .push((Arc::clone(&key), sender));
         }
-        ExitCompletionWatch { pid, key, receiver, registry: Arc::clone(self) }
+        ExitCompletionWatch {
+            pid,
+            key,
+            receiver,
+            registry: Arc::clone(self),
+        }
     }
 
     pub(super) fn fire(&self, pid: u64, reason: ExitReason) {
         let mut state = super::lock_or_recover(&self.state);
         #[cfg(test)]
-        { state.lookups += 1; }
-        let Some(watches) = state.watches.remove(&pid) else { return; };
+        {
+            state.lookups += 1;
+        }
+        let Some(watches) = state.watches.remove(&pid) else {
+            return;
+        };
         state.firing += 1;
         #[cfg(test)]
-        { state.sends += watches.len(); }
+        {
+            state.sends += watches.len();
+        }
         drop(state);
         for (key, sender) in watches {
             drop(key);
@@ -579,7 +607,9 @@ impl ExitCompletionRegistry {
         }
         let mut state = super::lock_or_recover(&self.state);
         state.firing -= 1;
-        if state.firing == 0 { self.settled.notify_all(); }
+        if state.firing == 0 {
+            self.settled.notify_all();
+        }
     }
 
     pub(super) fn settle_shutdown(&self) {
@@ -601,7 +631,11 @@ impl ExitCompletionRegistry {
 
     #[cfg(test)]
     pub(super) fn watch_count(&self) -> usize {
-        super::lock_or_recover(&self.state).watches.values().map(Vec::len).sum()
+        super::lock_or_recover(&self.state)
+            .watches
+            .values()
+            .map(Vec::len)
+            .sum()
     }
 
     #[cfg(test)]
@@ -619,15 +653,23 @@ impl ExitCompletionRegistry {
     pub(super) fn install_shutdown_gate(&self) -> ExitEventPublicationObserver {
         let (published, observed_publication) = crossbeam_channel::bounded(0);
         let (observation, observed) = crossbeam_channel::bounded(0);
-        *super::lock_or_recover(&self.shutdown_gate) = Some(ExitEventPublicationGate { published, observed });
-        ExitEventPublicationObserver { published: observed_publication, observed: observation }
+        *super::lock_or_recover(&self.shutdown_gate) = Some(ExitEventPublicationGate {
+            published,
+            observed,
+        });
+        ExitEventPublicationObserver {
+            published: observed_publication,
+            observed: observation,
+        }
     }
 
     #[cfg(test)]
     fn wait_at_shutdown_gate(&self) {
         let gate = super::lock_or_recover(&self.shutdown_gate).take();
         if let Some(gate) = gate {
-            if gate.published.send(()).is_ok() { let _ = gate.observed.recv(); }
+            if gate.published.send(()).is_ok() {
+                let _ = gate.observed.recv();
+            }
         }
     }
 }
@@ -639,6 +681,8 @@ impl ExitEventPublicationObserver {
     }
 
     pub(super) fn release_publication_blocking(&self) {
-        self.observed.send(()).expect("publisher remains at rendezvous");
+        self.observed
+            .send(())
+            .expect("publisher remains at rendezvous");
     }
 }
