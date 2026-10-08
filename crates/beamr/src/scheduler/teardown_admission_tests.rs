@@ -1023,6 +1023,18 @@ pub(super) enum LiveTargetMode {
 }
 
 impl LiveTargetMode {
+    fn baseline_vector(self, count: usize) -> [usize; 11] {
+        match (self, count) {
+            (Self::Present, 128) => [512, 128, 128, 0, 6, 0, 0, 128, 128, 1, 0],
+            (Self::Present, 256) => [1024, 256, 256, 0, 7, 0, 0, 256, 256, 1, 0],
+            (Self::Executing, 128) => [512, 128, 128, 0, 6, 0, 0, 128, 128, 0, 0],
+            (Self::Executing, 256) => [1024, 256, 256, 0, 7, 0, 0, 256, 256, 0, 0],
+            (Self::ResultGated, 128) => [896, 128, 0, 0, 6, 0, 0, 128, 128, 0, 0],
+            (Self::ResultGated, 256) => [1792, 256, 0, 0, 7, 0, 0, 256, 256, 0, 0],
+            _ => panic!("unsupported message-count fixture"),
+        }
+    }
+
     const fn label(self) -> &'static str {
         match self {
             Self::Present => "present",
@@ -1304,6 +1316,17 @@ pub(super) fn count_live_messages_with_setup<T>(
     assert_eq!(accepted, count, "live admission refused");
     assert_eq!(delivered, count);
     assert_eq!(received_count, count);
+    for (component, (actual, ceiling)) in vector
+        .into_iter()
+        .zip(mode.baseline_vector(count))
+        .enumerate()
+    {
+        assert!(
+            actual <= ceiling,
+            "{} increased: {actual} > {ceiling}",
+            LIVE_COMPONENTS[component]
+        );
+    }
     println!(
         "B179_ADMISSION_VECTOR mode={} n={} delivered={} vector={:?}",
         mode.label(),
