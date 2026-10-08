@@ -926,7 +926,16 @@ fn completion_probe_joined_shutdown_removes_parked_process() {
 
 #[test]
 fn completion_shutdown_closes_admission_before_removal_watch_fires() {
-    let scheduler = test_scheduler(1);
+    let scheduler = Scheduler::with_services(
+        SchedulerConfig {
+            thread_count: Some(1),
+            ..SchedulerConfig::default()
+        },
+        SchedulerServices::minimal(),
+        Arc::new(ModuleRegistry::new()),
+        NativeBifs::none(),
+    )
+    .expect("scheduler starts");
     let (ready_tx, ready_rx) = mpsc::channel();
     let pid = scheduler
         .spawn_native(Box::new(move || {
@@ -956,6 +965,10 @@ fn completion_shutdown_closes_admission_before_removal_watch_fires() {
             scheduler.enqueue_atom_message(pid, Atom::OK),
             scheduler.send_to_mailbox(pid, OwnedTerm::immediate(Term::NIL)),
         );
+        scheduler
+            .shared
+            .exit_tombstones
+            .clear_event_publication_gate();
         observer.release_publication_blocking();
         shutdown.join().expect("shutdown joins");
         observations
@@ -1000,18 +1013,26 @@ fn completion_watches_preserve_all_live_message_count_components() {
             let mut without_watches = None;
             for unrelated_count in [0, 128] {
                 let (vector, watches) = count_live_messages_with_setup(mode, count, |scheduler| {
-                    (0..unrelated_count)
+                    if unrelated_count == 0 {
+                        return Vec::new();
+                    }
+                    let pid = scheduler
+                        .spawn_native(Box::new(|| Box::new(WaitForTermination)))
+                        .expect("unrelated process");
+                    let watches = (0..unrelated_count)
                         .map(|_| {
-                            let pid = scheduler
-                                .spawn_native(Box::new(|| Box::new(WaitForTermination)))
-                                .expect("unrelated process");
                             let watch = match scheduler.watch_exit_completion(pid) {
                                 ExitCompletionWatchState::Live(watch) => watch,
                                 other => panic!("unrelated process must remain live: {other:?}"),
                             };
                             (pid, watch)
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        scheduler.shared.exit_completion_watches.watch_count(),
+                        unrelated_count
+                    );
+                    watches
                 });
                 let receipts: Vec<_> = watches
                     .iter()
