@@ -2599,11 +2599,7 @@ fn suspend_park_gap_native(
     Ok(Term::small_int(99))
 }
 
-#[test]
-fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
-    let atoms = AtomTable::new();
-    let module_name = atoms.intern("suspend_park_gap");
-    let registry = Arc::new(ModuleRegistry::new());
+fn suspend_park_gap_module(module_name: Atom) -> Module {
     let mut module = test_module(
         module_name,
         vec![
@@ -2624,7 +2620,15 @@ fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
             capability: Capability::Pure,
         }),
     });
-    let module = registry.insert(module);
+    module
+}
+
+#[test]
+fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
+    let atoms = AtomTable::new();
+    let module_name = atoms.intern("suspend_park_gap");
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = registry.insert(suspend_park_gap_module(module_name));
     let scheduler = Scheduler::new(
         SchedulerConfig {
             thread_count: Some(1),

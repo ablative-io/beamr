@@ -18,14 +18,23 @@ use crate::term::heap_borrow::HeapBorrow;
 pub struct OwnedTerm {
     root: Term,
     allocations: Vec<Box<[u64]>>,
-    #[cfg(all(test, feature = "readiness"))]
-    reply_witness: Option<std::sync::mpsc::Sender<()>>,
 }
 
 impl OwnedTerm {
     #[cfg(all(test, feature = "readiness"))]
-    pub(crate) fn with_reply_witness(mut self, reply: std::sync::mpsc::Sender<()>) -> Self {
-        self.reply_witness = Some(reply);
+    pub(crate) fn with_reply_witness(self, reply: std::sync::mpsc::Sender<()>) -> Self {
+        assert!(self.root.heap_ptr().is_some());
+        let mut witnesses = REPLY_WITNESSES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match witnesses.entry(self.root.raw()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(reply);
+            }
+            std::collections::btree_map::Entry::Occupied(_) => {
+                panic!("owned term already has a reply witness");
+            }
+        }
         self
     }
 
@@ -35,12 +44,7 @@ impl OwnedTerm {
     /// return terms without an attached process heap. The caller must provide a
     /// root term that points only into these allocations or is immediate.
     pub(crate) fn from_allocations(root: Term, allocations: Vec<Box<[u64]>>) -> Self {
-        Self {
-            root,
-            allocations,
-            #[cfg(all(test, feature = "readiness"))]
-            reply_witness: None,
-        }
+        Self { root, allocations }
     }
 
     /// Wraps an immediate term (small int, atom, nil, pid) that owns no
@@ -59,8 +63,6 @@ impl OwnedTerm {
         Self {
             root: term,
             allocations: Vec::new(),
-            #[cfg(all(test, feature = "readiness"))]
-            reply_witness: None,
         }
     }
 
@@ -96,8 +98,15 @@ impl OwnedTerm {
 
     /// Split into the root term and the backing allocations, for callers that
     /// adopt the allocations into their own storage (detached native contexts).
+    #[cfg(not(all(test, feature = "readiness")))]
     pub(crate) fn into_raw_parts(self) -> (Term, Vec<Box<[u64]>>) {
         (self.root, self.allocations)
+    }
+
+    #[cfg(all(test, feature = "readiness"))]
+    pub(crate) fn into_raw_parts(mut self) -> (Term, Vec<Box<[u64]>>) {
+        let allocations = std::mem::take(&mut self.allocations);
+        (self.root, allocations)
     }
 
     /// Total heap words `copy_to_heap` will allocate for this term: the
@@ -109,6 +118,22 @@ impl OwnedTerm {
             .iter()
             .map(|allocation| allocation.len())
             .sum()
+    }
+}
+
+#[cfg(all(test, feature = "readiness"))]
+static REPLY_WITNESSES: std::sync::Mutex<
+    std::collections::BTreeMap<u64, std::sync::mpsc::Sender<()>>,
+> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+#[cfg(all(test, feature = "readiness"))]
+impl Drop for OwnedTerm {
+    fn drop(&mut self) {
+        let reply = REPLY_WITNESSES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.root.raw());
+        drop(reply);
     }
 }
 
@@ -129,8 +154,6 @@ pub fn copy_term_to_ets(term: Term) -> Result<OwnedTerm, EtsError> {
     Ok(OwnedTerm {
         root,
         allocations: copier.allocations,
-        #[cfg(all(test, feature = "readiness"))]
-        reply_witness: None,
     })
 }
 
