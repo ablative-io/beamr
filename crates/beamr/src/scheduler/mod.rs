@@ -511,6 +511,11 @@ pub(super) struct SharedState {
 
     #[cfg(test)]
     park_gap_hook: Mutex<Option<ParkGapHook>>,
+
+    #[cfg(test)]
+    mailbox_admission_hook: std::sync::OnceLock<MailboxAdmissionHook>,
+    #[cfg(test)]
+    terminal_admission_hook: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
 }
 
 #[cfg(feature = "threads")]
@@ -1012,6 +1017,16 @@ pub(super) enum ParkGap {
 #[cfg(feature = "threads")]
 #[cfg(test)]
 type ParkGapHook = Box<dyn Fn(&SharedState, ParkGap, u64) + Send + Sync>;
+
+#[cfg(all(test, feature = "threads"))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum MailboxAdmissionPoint {
+    BeforeSlot,
+    Queued,
+}
+
+#[cfg(all(test, feature = "threads"))]
+type MailboxAdmissionHook = Box<dyn Fn(u64, MailboxAdmissionPoint) + Send + Sync>;
 #[cfg(feature = "threads")]
 pub(super) struct ScheduledProcess(Process);
 // SAFETY: Process is not Send at the public API boundary. The scheduler is the
@@ -1681,6 +1696,10 @@ impl Scheduler {
                 dirty_suspension_allocations: AtomicU64::new(0),
                 #[cfg(test)]
                 park_gap_hook: Mutex::new(None),
+                #[cfg(test)]
+                mailbox_admission_hook: std::sync::OnceLock::new(),
+                #[cfg(test)]
+                terminal_admission_hook: std::sync::OnceLock::new(),
             }
         });
         #[cfg(feature = "readiness")]

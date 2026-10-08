@@ -186,6 +186,10 @@ pub(super) fn deliver_owned_term_to_mailbox(
     let Some(entry) = shared.process_bodies.get(&pid) else {
         return Err(missing_process_error(shared, pid));
     };
+    #[cfg(test)]
+    if let Some(hook) = shared.mailbox_admission_hook.get() {
+        hook(pid, super::MailboxAdmissionPoint::BeforeSlot);
+    }
     let mut slot = lock_or_recover(&entry);
     if shared.exit_tombstones.contains_key(&pid) {
         return Err(MailboxSendError::ProcessTerminated);
@@ -200,6 +204,10 @@ pub(super) fn deliver_owned_term_to_mailbox(
                     message,
                     completion,
                 });
+            #[cfg(test)]
+            if let Some(hook) = shared.mailbox_admission_hook.get() {
+                hook(pid, super::MailboxAdmissionPoint::Queued);
+            }
             drop(slot);
             drop(entry);
             result

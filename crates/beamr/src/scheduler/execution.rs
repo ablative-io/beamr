@@ -131,6 +131,10 @@ impl Scheduler {
                 std::panic::resume_unwind(payload);
             }
         }
+        #[cfg(test)]
+        if let Some(hook) = self.shared.terminal_admission_hook.get() {
+            hook();
+        }
     }
 
     /// Block until the given process exits, returning its exit reason and
