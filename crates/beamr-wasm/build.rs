@@ -1,5 +1,5 @@
 use std::env;
-use std::fmt::Write;
+use std::fmt::{self, Write};
 use std::fs;
 use std::io::{self, Cursor};
 use std::path::{Path, PathBuf};
@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let archive = archive_pack(&modules)?;
     fs::write(bundle_dir.join("modules.bin"), archive)?;
-    fs::write(bundle_dir.join("manifest.json"), manifest_json(&modules))?;
+    fs::write(bundle_dir.join("manifest.json"), manifest_json(&modules)?)?;
     let bootstrap_path = bundle_dir.join("bootstrap.js");
     fs::write(&bootstrap_path, bootstrap_js(&modules)?)?;
     println!(
@@ -140,7 +140,7 @@ fn write_entry(output: &mut Vec<u8>, name: &str, compressed: &[u8]) -> io::Resul
     Ok(())
 }
 
-fn manifest_json(modules: &[BeamModule]) -> String {
+fn manifest_json(modules: &[BeamModule]) -> Result<String, fmt::Error> {
     let mut output = String::from(
         "{\n  \"format\": \"beamr-wasm-bundle\",\n  \"version\": 1,\n  \"wasm\": \"beamr_wasm_bg.wasm\",\n  \"bootstrap\": \"bootstrap.js\",\n  \"archive\": \"modules.bin\",\n  \"modules\": [",
     );
@@ -151,20 +151,20 @@ fn manifest_json(modules: &[BeamModule]) -> String {
             output.push_str(",\n");
         }
         output.push_str("    { \"name\": ");
-        push_json_string(&mut output, &module.name);
+        push_json_string(&mut output, &module.name)?;
         output.push_str(", \"file\": ");
         let file = module
             .path
             .file_name()
             .and_then(|name| name.to_str())
             .map_or("<unknown>", |name| name);
-        push_json_string(&mut output, file);
+        push_json_string(&mut output, file)?;
         output.push_str(", \"bytes\": ");
         output.push_str(&module.bytes.len().to_string());
         output.push_str(" }");
     }
     output.push_str("\n  ]\n}\n");
-    output
+    Ok(output)
 }
 
 fn bootstrap_js(modules: &[BeamModule]) -> Result<String, Box<dyn std::error::Error>> {
@@ -178,7 +178,7 @@ fn bootstrap_js(modules: &[BeamModule]) -> Result<String, Box<dyn std::error::Er
     writeln!(
         output,
         "import init, {{ create_vm, WasmVm }} from {};",
-        js_string(&wasm_import)
+        js_string(&wasm_import)?
     )?;
     writeln!(output)?;
     writeln!(output, "const MODULES = [")?;
@@ -186,8 +186,8 @@ fn bootstrap_js(modules: &[BeamModule]) -> Result<String, Box<dyn std::error::Er
         writeln!(
             output,
             "  {{ name: {}, base64: {} }},",
-            js_string(&module.name),
-            js_string(&base64_encode(&module.bytes))
+            js_string(&module.name)?,
+            js_string(&base64_encode(&module.bytes))?
         )?;
     }
     writeln!(output, "];\n")?;
@@ -195,7 +195,7 @@ fn bootstrap_js(modules: &[BeamModule]) -> Result<String, Box<dyn std::error::Er
     Ok(output)
 }
 
-fn js_string(value: &str) -> String {
+fn js_string(value: &str) -> Result<String, fmt::Error> {
     let mut output = String::from("\"");
     for character in value.chars() {
         match character {
@@ -206,17 +206,18 @@ fn js_string(value: &str) -> String {
             '\t' => output.push_str("\\t"),
             character if character.is_control() => {
                 output.push_str("\\u");
-                output.push_str(&format!("{:04x}", character as u32));
+                write!(output, "{:04x}", u32::from(character))?;
             }
             character => output.push(character),
         }
     }
     output.push('"');
-    output
+    Ok(output)
 }
 
-fn push_json_string(output: &mut String, value: &str) {
-    output.push_str(&js_string(value));
+fn push_json_string(output: &mut String, value: &str) -> fmt::Result {
+    output.push_str(&js_string(value)?);
+    Ok(())
 }
 
 fn base64_encode(bytes: &[u8]) -> String {

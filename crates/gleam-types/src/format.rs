@@ -70,6 +70,7 @@ impl GleamTypes {
         });
     }
 
+    #[must_use]
     pub fn serialize(&self) -> Vec<u8> {
         let mut output = Vec::new();
         output.extend_from_slice(MAGIC);
@@ -88,6 +89,15 @@ impl GleamTypes {
         output
     }
 
+    /// Reads a complete type sidecar.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TypeError::InvalidMagic`] for an invalid header and
+    /// [`TypeError::UnsupportedVersion`] for an unsupported format version.
+    /// Returns [`TypeError::Malformed`] for invalid lengths, truncated data,
+    /// invalid UTF-8, unknown type tags, inconsistent parameter counts,
+    /// or trailing bytes.
     pub fn deserialize(bytes: &[u8]) -> Result<Self, TypeError> {
         let mut reader = Reader::new(bytes);
         let magic = reader.read_exact(MAGIC.len())?;

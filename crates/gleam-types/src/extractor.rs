@@ -32,14 +32,28 @@ pub enum ExtractError {
 }
 
 impl GleamTypeExtractor {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
 
+    /// Parses annotated public function signatures from source.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExtractError::Parse`] for malformed declarations,
+    /// [`ExtractError::MissingAnnotation`] for missing argument or return annotations,
+    /// and [`ExtractError::UnsupportedType`] for annotations that cannot be represented.
     pub fn parse_module(source: &str) -> Result<ParsedModule, ExtractError> {
         parse_public_functions(source).map(|functions| ParsedModule { functions })
     }
 
+    /// Converts parsed signatures into sidecar function descriptors.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExtractError::ArityTooLarge`] when a function argument count
+    /// does not fit in `u8`.
     pub fn type_check(parsed: ParsedModule) -> Result<TypedModule, ExtractError> {
         let functions = parsed
             .functions
@@ -62,6 +76,7 @@ impl GleamTypeExtractor {
         Ok(TypedModule { functions })
     }
 
+    #[must_use]
     pub fn extract_signatures(typed: TypedModule) -> Vec<FunctionSignature> {
         typed.functions
     }
