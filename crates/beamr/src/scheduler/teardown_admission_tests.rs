@@ -420,23 +420,7 @@ fn admission_contending_with_terminal_cleanup_releases_owned_completion() {
             }
         }))
         .unwrap_or_else(|_| panic!("admission hook already installed"));
-    let (closing, at_close) = mpsc::channel();
-    let release = Arc::new(Barrier::new(2));
-    let close_release = Arc::clone(&release);
-    let close_observed = AtomicBool::new(false);
-    fixture
-        .scheduler
-        .shared
-        .terminal_admission_hook
-        .set(Box::new(move || {
-            if !close_observed.swap(true, Ordering::SeqCst) {
-                closing
-                    .send(())
-                    .unwrap_or_else(|error| panic!("terminal boundary: {error}"));
-                close_release.wait();
-            }
-        }))
-        .unwrap_or_else(|_| panic!("terminal hook already installed"));
+    let (at_close, release) = terminal_close_gate(&fixture.scheduler);
     let entry = fixture
         .scheduler
         .shared
@@ -509,6 +493,26 @@ fn admission_contending_with_terminal_cleanup_releases_owned_completion() {
     assert_eq!(executed + 2, 3);
 }
 
+fn terminal_close_gate(scheduler: &Scheduler) -> (mpsc::Receiver<()>, Arc<Barrier>) {
+    let (closing, at_close) = mpsc::channel();
+    let release = Arc::new(Barrier::new(2));
+    let close_release = Arc::clone(&release);
+    let close_observed = AtomicBool::new(false);
+    scheduler
+        .shared
+        .terminal_admission_hook
+        .set(Box::new(move || {
+            if !close_observed.swap(true, Ordering::SeqCst) {
+                closing
+                    .send(())
+                    .unwrap_or_else(|error| panic!("terminal boundary: {error}"));
+                close_release.wait();
+            }
+        }))
+        .unwrap_or_else(|_| panic!("terminal hook already installed"));
+    (at_close, release)
+}
+
 fn direct_spawn_module(scheduler: &Scheduler) -> (Atom, Atom) {
     let name = scheduler.shared.atom_table.intern("terminal_spawn");
     let function = scheduler.shared.atom_table.intern("entry");
@@ -523,7 +527,7 @@ fn direct_spawn_module(scheduler: &Scheduler) -> (Atom, Atom) {
             crate::loader::Instruction::Return,
         ],
         literals: Vec::new(),
-        constant_pool: Default::default(),
+        constant_pool: crate::constant_pool::ConstantPool::default(),
         resolved_imports: Vec::new(),
         lambdas: Vec::new(),
         string_table: Vec::new(),
@@ -577,10 +581,8 @@ fn joined_shutdown_refuses_direct_spawns_without_allocating_identity() {
             drop(request);
         }
     }
-    for result in &results {
-        if let Ok(pid) = result {
-            execution::cleanup_exited_process(shared, *pid, ExitReason::Killed);
-        }
+    for pid in results.iter().flatten() {
+        execution::cleanup_exited_process(shared, *pid, ExitReason::Killed);
     }
     for result in &results {
         assert!(result.is_err(), "joined scheduler admitted a direct spawn");
@@ -708,6 +710,121 @@ fn reserved_publisher_cleanup(prior_reason: Option<ExitReason>) {
         .unwrap_or_else(|error| panic!("publisher scheduler: {error}")),
     );
     let (module, function) = direct_spawn_module(&scheduler);
+    let PublisherGates {
+        admitted_rx,
+        publisher_release,
+        waiting_rx,
+        stopped_rx,
+    } = publisher_gates(&scheduler);
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let worker_release = Arc::new(Barrier::new(2));
+    let release = Arc::clone(&worker_release);
+    let native_pid = scheduler
+        .spawn_native(Box::new(move || {
+            Box::new(BlockingSpawnHandler {
+                entered: Some(entered_tx.clone()),
+                release: Arc::clone(&release),
+            })
+        }))
+        .unwrap_or_else(|error| panic!("blocking worker: {error}"));
+    entered_rx
+        .recv()
+        .unwrap_or_else(|error| panic!("worker signal: {error}"));
+    let next_pid = scheduler.shared.next_pid.load(Ordering::Relaxed);
+    let publishing = Arc::clone(&scheduler);
+    let publishing_thread =
+        std::thread::spawn(move || publishing.spawn(module, function, Vec::new()));
+    admitted_rx
+        .recv()
+        .unwrap_or_else(|error| panic!("admission signal: {error}"));
+    let held_next_pid = scheduler.shared.next_pid.load(Ordering::Relaxed);
+    let closing = Arc::clone(&scheduler);
+    let (done_tx, done_rx) = mpsc::channel();
+    let closer = std::thread::spawn(move || {
+        closing.shutdown();
+        done_tx
+            .send(())
+            .unwrap_or_else(|error| panic!("joined close: {error}"));
+    });
+    waiting_rx
+        .recv()
+        .unwrap_or_else(|error| panic!("waiting signal: {error}"));
+    let held = {
+        let registry = lock_or_recover(&scheduler.shared.dirty_completions);
+        (registry.closed, registry.reserved)
+    };
+    let premature_close = done_rx.try_recv();
+    publisher_release.wait();
+    let published = publishing_thread
+        .join()
+        .unwrap_or_else(|_| panic!("publisher panicked"));
+    stopped_rx
+        .recv()
+        .unwrap_or_else(|error| panic!("stop signal: {error}"));
+    let prior_termination = if let Some(reason) = prior_reason {
+        if let Ok(pid) = &published {
+            scheduler.terminate_process(*pid, reason);
+            Some(())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    worker_release.wait();
+    done_rx
+        .recv()
+        .unwrap_or_else(|error| panic!("close signal: {error}"));
+    closer.join().unwrap_or_else(|_| panic!("closer panicked"));
+    let pid = match published {
+        Ok(pid) => pid,
+        Err(error) => panic!("reserved publication refused: {error}"),
+    };
+    assert_eq!(held_next_pid, next_pid);
+    assert_eq!(held, (true, 1));
+    assert_eq!(premature_close, Err(mpsc::TryRecvError::Empty));
+    assert_eq!(scheduler.shared.process_table.len(), 0);
+    assert_eq!(scheduler.shared.process_bodies.len(), 0);
+    assert!(scheduler.inject_queues.iter().all(|queue| queue.is_empty()));
+    assert_eq!(prior_termination, prior_reason.map(|_| ()));
+    assert_eq!(
+        scheduler.peek_exit_reason(pid),
+        Some(prior_reason.unwrap_or(ExitReason::Killed))
+    );
+    assert_eq!(
+        scheduler.peek_exit_reason(native_pid),
+        Some(ExitReason::Killed)
+    );
+    assert_terminal_visit_counts(&scheduler);
+    scheduler.shutdown();
+    assert_terminal_visit_counts(&scheduler);
+}
+
+fn assert_terminal_visit_counts(scheduler: &Scheduler) {
+    assert_eq!(
+        scheduler
+            .shared
+            .terminal_spawn_visits
+            .load(Ordering::Relaxed),
+        1
+    );
+    assert_eq!(
+        scheduler
+            .shared
+            .terminal_body_visits
+            .load(Ordering::Relaxed),
+        1
+    );
+}
+
+struct PublisherGates {
+    admitted_rx: mpsc::Receiver<()>,
+    publisher_release: Arc<Barrier>,
+    waiting_rx: mpsc::Receiver<()>,
+    stopped_rx: mpsc::Receiver<()>,
+}
+
+fn publisher_gates(scheduler: &Scheduler) -> PublisherGates {
     let (admitted_tx, admitted_rx) = mpsc::channel();
     let publisher_release = Arc::new(Barrier::new(2));
     let gate = Arc::clone(&publisher_release);
@@ -756,112 +873,12 @@ fn reserved_publisher_cleanup(prior_reason: Option<ExitReason>) {
             .is_ok(),
         "dispatch hook already set"
     );
-    let (entered_tx, entered_rx) = mpsc::channel();
-    let worker_release = Arc::new(Barrier::new(2));
-    let release = Arc::clone(&worker_release);
-    let native_pid = scheduler
-        .spawn_native(Box::new(move || {
-            Box::new(BlockingSpawnHandler {
-                entered: Some(entered_tx.clone()),
-                release: Arc::clone(&release),
-            })
-        }))
-        .unwrap_or_else(|error| panic!("blocking worker: {error}"));
-    entered_rx
-        .recv()
-        .unwrap_or_else(|error| panic!("worker signal: {error}"));
-    let next_pid = scheduler.shared.next_pid.load(Ordering::Relaxed);
-    let publishing = Arc::clone(&scheduler);
-    let publisher = std::thread::spawn(move || publishing.spawn(module, function, Vec::new()));
-    admitted_rx
-        .recv()
-        .unwrap_or_else(|error| panic!("admission signal: {error}"));
-    let held_next_pid = scheduler.shared.next_pid.load(Ordering::Relaxed);
-    let closing = Arc::clone(&scheduler);
-    let (done_tx, done_rx) = mpsc::channel();
-    let closer = std::thread::spawn(move || {
-        closing.shutdown();
-        done_tx
-            .send(())
-            .unwrap_or_else(|error| panic!("joined close: {error}"));
-    });
-    waiting_rx
-        .recv()
-        .unwrap_or_else(|error| panic!("waiting signal: {error}"));
-    let held = {
-        let registry = lock_or_recover(&scheduler.shared.dirty_completions);
-        (registry.closed, registry.reserved)
-    };
-    let premature_close = done_rx.try_recv();
-    publisher_release.wait();
-    let published = publisher
-        .join()
-        .unwrap_or_else(|_| panic!("publisher panicked"));
-    stopped_rx
-        .recv()
-        .unwrap_or_else(|error| panic!("stop signal: {error}"));
-    let prior_termination = if let Some(reason) = prior_reason {
-        if let Ok(pid) = &published {
-            Some(scheduler.terminate_process(*pid, reason))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-    worker_release.wait();
-    done_rx
-        .recv()
-        .unwrap_or_else(|error| panic!("close signal: {error}"));
-    closer.join().unwrap_or_else(|_| panic!("closer panicked"));
-    let pid = match published {
-        Ok(pid) => pid,
-        Err(error) => panic!("reserved publication refused: {error}"),
-    };
-    assert_eq!(held_next_pid, next_pid);
-    assert_eq!(held, (true, 1));
-    assert_eq!(premature_close, Err(mpsc::TryRecvError::Empty));
-    assert_eq!(scheduler.shared.process_table.len(), 0);
-    assert_eq!(scheduler.shared.process_bodies.len(), 0);
-    assert!(scheduler.inject_queues.iter().all(|queue| queue.is_empty()));
-    assert_eq!(prior_termination, prior_reason.map(|_| ()));
-    assert_eq!(
-        scheduler.peek_exit_reason(pid),
-        Some(prior_reason.unwrap_or(ExitReason::Killed))
-    );
-    assert_eq!(
-        scheduler.peek_exit_reason(native_pid),
-        Some(ExitReason::Killed)
-    );
-    assert_eq!(
-        scheduler
-            .shared
-            .terminal_spawn_visits
-            .load(Ordering::Relaxed),
-        1
-    );
-    assert_eq!(
-        scheduler
-            .shared
-            .terminal_body_visits
-            .load(Ordering::Relaxed),
-        1
-    );
-    scheduler.shutdown();
-    assert_eq!(
-        scheduler
-            .shared
-            .terminal_spawn_visits
-            .load(Ordering::Relaxed),
-        1
-    );
-    assert_eq!(
-        scheduler
-            .shared
-            .terminal_body_visits
-            .load(Ordering::Relaxed),
-        1
-    );
+    PublisherGates {
+        admitted_rx,
+        publisher_release,
+        waiting_rx,
+        stopped_rx,
+    }
 }
 
 #[test]
@@ -989,7 +1006,9 @@ unsafe impl std::alloc::GlobalAlloc for LiveAllocator {
     }
 }
 
-struct LiveMeasurement;
+struct LiveMeasurement {
+    counts: &'static std::thread::LocalKey<std::cell::Cell<Option<[usize; 11]>>>,
+}
 
 impl LiveMeasurement {
     fn start() -> Self {
@@ -999,19 +1018,21 @@ impl LiveMeasurement {
                 "nested measurement"
             );
         });
-        Self
+        Self {
+            counts: &LIVE_COUNTS,
+        }
     }
 
     fn finish(self) -> [usize; 11] {
-        LIVE_COUNTS
-            .with(|counts| counts.take())
+        self.counts
+            .with(std::cell::Cell::take)
             .unwrap_or_else(|| panic!("measurement not armed"))
     }
 }
 
 impl Drop for LiveMeasurement {
     fn drop(&mut self) {
-        LIVE_COUNTS.with(|counts| counts.set(None));
+        self.counts.with(|counts| counts.set(None));
     }
 }
 
@@ -1160,7 +1181,7 @@ fn live_message_module(scheduler: &Scheduler) -> (Atom, Atom) {
         label_index,
         code,
         literals: Vec::new(),
-        constant_pool: Default::default(),
+        constant_pool: crate::constant_pool::ConstantPool::default(),
         resolved_imports,
         lambdas: Vec::new(),
         string_table: Vec::new(),
@@ -1175,11 +1196,16 @@ fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
     count_live_messages_with_setup(mode, count, |_| ()).0
 }
 
-pub(super) fn count_live_messages_with_setup<T>(
-    mode: LiveTargetMode,
-    count: usize,
-    setup: impl FnOnce(&Scheduler) -> T,
-) -> ([usize; 11], T) {
+struct LiveMessageTarget {
+    scheduler: Arc<Scheduler>,
+    pid: u64,
+    call_id: Option<u64>,
+    release: Arc<Barrier>,
+    received_all: mpsc::Sender<usize>,
+    received: mpsc::Receiver<usize>,
+}
+
+fn live_message_target(mode: LiveTargetMode) -> LiveMessageTarget {
     let scheduler = Arc::new(
         Scheduler::with_services(
             SchedulerConfig {
@@ -1245,8 +1271,8 @@ pub(super) fn count_live_messages_with_setup<T>(
             .unwrap_or_else(|| panic!("live process slot missing"));
         let slot = lock_or_recover(&entry);
         match (&*slot, mode) {
-            (ProcessSlot::Executing(_), LiveTargetMode::Executing) => {}
-            (ProcessSlot::Present(_), LiveTargetMode::Present | LiveTargetMode::ResultGated) => {}
+            (ProcessSlot::Executing(_), LiveTargetMode::Executing)
+            | (ProcessSlot::Present(_), LiveTargetMode::Present | LiveTargetMode::ResultGated) => {}
             _ => panic!("target not at measured slot boundary"),
         }
     }
@@ -1256,6 +1282,29 @@ pub(super) fn count_live_messages_with_setup<T>(
     } else {
         assert!(call_id.is_none());
     }
+    LiveMessageTarget {
+        scheduler,
+        pid,
+        call_id,
+        release,
+        received_all,
+        received,
+    }
+}
+
+pub(super) fn count_live_messages_with_setup<T>(
+    mode: LiveTargetMode,
+    count: usize,
+    setup: impl FnOnce(&Scheduler) -> T,
+) -> ([usize; 11], T) {
+    let LiveMessageTarget {
+        scheduler,
+        pid,
+        call_id,
+        release,
+        received_all,
+        received,
+    } = live_message_target(mode);
     let observer_guard = setup(&scheduler);
     let measurement = LiveMeasurement::start();
     let mut accepted = 0;
@@ -1328,11 +1377,8 @@ pub(super) fn count_live_messages_with_setup<T>(
         );
     }
     println!(
-        "B179_ADMISSION_VECTOR mode={} n={} delivered={} vector={:?}",
-        mode.label(),
-        count,
-        delivered,
-        vector
+        "B179_ADMISSION_VECTOR mode={} n={count} delivered={delivered} vector={vector:?}",
+        mode.label()
     );
     (vector, observer_guard)
 }
