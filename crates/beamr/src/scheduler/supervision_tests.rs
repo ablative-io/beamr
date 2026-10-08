@@ -324,6 +324,7 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         wake_condvar: std::sync::Condvar::new(),
         process_bodies: DashMap::new(),
         exit_tombstones: exit_tombstones::BoundedTombstones::new(),
+        exit_completion_watches: Arc::new(exit_events::ExitCompletionRegistry::new()),
         exit_results: DashMap::new(),
         exit_errors: DashMap::new(),
         exit_exceptions: DashMap::new(),
