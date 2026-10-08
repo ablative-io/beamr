@@ -1009,7 +1009,7 @@ impl Drop for LiveMeasurement {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LiveTargetMode {
+pub(super) enum LiveTargetMode {
     Present,
     Executing,
     ResultGated,
@@ -1153,6 +1153,14 @@ fn live_message_module(scheduler: &Scheduler) -> (Atom, Atom) {
 }
 
 fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
+    count_live_messages_with_setup(mode, count, |_| ()).0
+}
+
+pub(super) fn count_live_messages_with_setup<T>(
+    mode: LiveTargetMode,
+    count: usize,
+    setup: impl FnOnce(&Scheduler) -> T,
+) -> ([usize; 11], T) {
     let scheduler = Arc::new(
         Scheduler::with_services(
             SchedulerConfig {
@@ -1234,6 +1242,7 @@ fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
     } else {
         assert!(call_id.is_none());
     }
+    let observer_guard = setup(&scheduler);
     let measurement = LiveMeasurement::start();
     let mut accepted = 0;
     for _ in 0..count {
@@ -1292,7 +1301,7 @@ fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
         delivered,
         vector
     );
-    vector
+    (vector, observer_guard)
 }
 
 #[test]
