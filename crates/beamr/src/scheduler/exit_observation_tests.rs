@@ -741,7 +741,7 @@ fn completion_watch_joined_shutdown_proves_removal_without_disconnection() {
         scope
             .spawn(|| scheduler.shutdown())
             .join()
-            .expect("shutdown joins")
+            .expect("shutdown joins");
     });
     let removed_at_return = scheduler.process_table().get(pid).is_none();
     if !removed_at_return {
@@ -863,7 +863,7 @@ fn completion_probe_rejects_early_exit_record() {
     let (present_at_gap, immediate) = std::thread::scope(|scope| {
         let killer = scope.spawn(|| scheduler.terminate_process(pid, ExitReason::Kill));
         observer.wait_for_publication_blocking();
-        let observed = (
+        let gap_state = (
             scheduler.process_table().get(pid).is_some(),
             completion_probe_immediate(&scheduler, pid),
         );
@@ -873,7 +873,7 @@ fn completion_probe_rejects_early_exit_record() {
             .shared
             .exit_tombstones
             .clear_event_publication_gate();
-        observed
+        gap_state
     });
     drop(subscription);
     scheduler.shutdown();
@@ -904,7 +904,7 @@ fn completion_probe_joined_shutdown_removes_parked_process() {
         scope
             .spawn(|| scheduler.shutdown())
             .join()
-            .expect("shutdown joins")
+            .expect("shutdown joins");
     });
     let removed_at_return = scheduler.process_table().get(pid).is_none();
     if !removed_at_return {
@@ -1077,6 +1077,17 @@ impl NativeHandler for CompletionHeldSlice {
     }
 }
 
+fn assert_completion_shutdown_drained(scheduler: &Scheduler, pid: u64) {
+    assert!(scheduler.process_table().get(pid).is_none());
+    assert_eq!(
+        scheduler
+            .shared
+            .exit_completion_watches
+            .disconnected_count(),
+        0
+    );
+}
+
 #[test]
 fn completion_shutdown_joins_slice_and_store_back_before_firing() {
     let scheduler = test_scheduler(1);
@@ -1175,14 +1186,7 @@ fn completion_shutdown_joins_slice_and_store_back_before_firing() {
         )
     );
     assert_eq!(completed, Ok((pid, ExitReason::Killed)));
-    assert!(scheduler.process_table().get(pid).is_none());
-    assert_eq!(
-        scheduler
-            .shared
-            .exit_completion_watches
-            .disconnected_count(),
-        0
-    );
+    assert_completion_shutdown_drained(&scheduler, pid);
 }
 
 #[test]

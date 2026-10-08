@@ -670,10 +670,10 @@ impl ExitCompletionRegistry {
     #[cfg(test)]
     fn wait_at_shutdown_gate(&self) {
         let gate = super::lock_or_recover(&self.shutdown_gate).take();
-        if let Some(gate) = gate {
-            if gate.published.send(()).is_ok() {
-                let _ = gate.observed.recv();
-            }
+        if let Some(gate) = gate
+            && gate.published.send(()).is_ok()
+        {
+            let _ = gate.observed.recv();
         }
     }
 }
