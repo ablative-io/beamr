@@ -35,7 +35,19 @@
           "crates/beamr/src/scheduler/teardown_admission_tests.rs",
           "crates/beamr/src/scheduler/spawning.rs",
           "crates/beamr/src/error.rs",
-          "CHANGELOG.md"
+          "CHANGELOG.md",
+          "crates/beamr/src/scheduler/tests.rs",
+          "crates/beamr/src/scheduler/readiness_contract_tests.rs",
+          "crates/beamr/tests/supervision_integration.rs",
+          "crates/beamr/tests/jit_operator_switch.rs",
+          "crates/beamr/tests/jit_wireup.rs",
+          "crates/beamr/tests/suspend_wakeup.rs",
+          "crates/beamr/tests/spawn_process_scaffold_only.rs",
+          "crates/beamr/tests/nif_private_data.rs",
+          "crates/beamr/tests/dirty_scheduler.rs",
+          "crates/beamr/tests/bif_registry_replacement.rs",
+          "crates/beamr/tests/jit_nested_run_handler_leak.rs",
+          "crates/beamr/tests/sleep_forever_parks.rs"
         ],
         "delete": []
       },
