@@ -632,23 +632,30 @@ fn shutdown_joins_native_slice_before_recording_or_removing_its_body() {
         .recv()
         .unwrap_or_else(|error| panic!("native slice entry: {error}"));
     let (dispatch, closing) = mpsc::channel();
+    let dispatch_signalled = AtomicBool::new(false);
     fixture
         .scheduler
         .shared
         .shutdown_dispatch_hook
         .set(Box::new(move || {
-            dispatch
-                .send(())
-                .unwrap_or_else(|error| panic!("shutdown dispatch: {error}"));
+            if !dispatch_signalled.swap(true, Ordering::SeqCst) {
+                dispatch
+                    .send(())
+                    .unwrap_or_else(|error| panic!("shutdown dispatch: {error}"));
+            }
         }))
         .unwrap_or_else(|_| panic!("shutdown dispatch hook already installed"));
     let (stored, store_back) = mpsc::channel();
     let shared = Arc::downgrade(&fixture.scheduler.shared);
+    let joined_signalled = AtomicBool::new(false);
     fixture
         .scheduler
         .shared
         .terminal_admission_hook
         .set(Box::new(move || {
+            if joined_signalled.swap(true, Ordering::SeqCst) {
+                return;
+            }
             let shared = shared
                 .upgrade()
                 .unwrap_or_else(|| panic!("scheduler owner missing"));
