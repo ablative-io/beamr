@@ -46,7 +46,10 @@ mod tests {
             vec![TypeDescriptor::Int, TypeDescriptor::Int],
             TypeDescriptor::Int,
         );
-        fs::write(&path, types.serialize()).expect("write sidecar");
+        let bytes = types
+            .serialize()
+            .unwrap_or_else(|error| panic!("encode sidecar: {error}"));
+        fs::write(&path, bytes).expect("write sidecar");
 
         let reader = GleamTypeReader::load(&path).expect("load sidecar");
         let signature = reader

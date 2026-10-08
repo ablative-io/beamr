@@ -180,6 +180,13 @@ same commit. That is this commit — see the `0.18.1` entry.)*
 
 ## Unreleased
 
+### Changed (breaking) — checked Gleam sidecar serialization
+
+GleamTypes::serialize returns Result<Vec<u8>, TypeError>. The exhaustive TypeError
+enum gains LengthTooLarge { what, len }, which reports an unrepresentable wire
+length. The CLI propagates serialization failures before writing a sidecar.
+Valid sidecars keep the existing format, magic and version; no stored shape changes.
+
 ### Changed (breaking) — terminal host-mailbox admission
 
 The exhaustive MailboxSendError enum gains SchedulerTerminated, displayed as
