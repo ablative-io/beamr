@@ -824,7 +824,7 @@ fn reserved_publisher_cleanup(prior_reason: Option<ExitReason>) {
     assert_eq!(scheduler.shared.process_table.len(), 0);
     assert_eq!(scheduler.shared.process_bodies.len(), 0);
     assert!(scheduler.inject_queues.iter().all(|queue| queue.is_empty()));
-    assert_eq!(prior_termination, prior_reason.map(|_| true));
+    assert_eq!(prior_termination, prior_reason.map(|_| ()));
     assert_eq!(
         scheduler.peek_exit_reason(pid),
         Some(prior_reason.unwrap_or(ExitReason::Killed))
@@ -1190,15 +1190,10 @@ pub(super) fn count_live_messages_with_setup<T>(
         release: Arc::clone(&release),
     });
     if mode != LiveTargetMode::Executing {
-        let ready_gap = if mode == LiveTargetMode::ResultGated {
-            ParkGap::SuspendStored
-        } else {
-            ParkGap::WaitRegistered
-        };
         let signalled = AtomicBool::new(false);
         *lock_or_recover(&scheduler.shared.park_gap_hook) =
             Some(Box::new(move |shared, gap, pid| {
-                if gap == ready_gap && !signalled.swap(true, Ordering::SeqCst) {
+                if gap == ParkGap::WaitRegistered && !signalled.swap(true, Ordering::SeqCst) {
                     let call_id = shared.suspensions.get(&pid).map(|mirror| mirror.call_id);
                     ready
                         .send((pid, call_id))
@@ -1259,12 +1254,20 @@ pub(super) fn count_live_messages_with_setup<T>(
     let before_release = received.try_recv();
     let finished = AtomicBool::new(false);
     *lock_or_recover(&scheduler.shared.park_gap_hook) = Some(Box::new(move |_, gap, target| {
-        if target == pid && gap == ParkGap::WaitRegistered && !finished.swap(true, Ordering::SeqCst)
-        {
-            let observed = lock_or_recover(&LIVE_NATIVE_STATE)
-                .as_ref()
-                .unwrap_or_else(|| panic!("native fixture missing"))
-                .received;
+        if target != pid || gap != ParkGap::WaitRegistered {
+            return;
+        }
+        let observed = lock_or_recover(&LIVE_NATIVE_STATE)
+            .as_ref()
+            .unwrap_or_else(|| panic!("native fixture missing"))
+            .received;
+        println!(
+            "B179_RECEIVE_PARK mode={} n={} observed={}",
+            mode.label(),
+            count,
+            observed
+        );
+        if observed >= count && !finished.swap(true, Ordering::SeqCst) {
             received_all
                 .send(observed)
                 .unwrap_or_else(|error| panic!("receive park signal: {error}"));
