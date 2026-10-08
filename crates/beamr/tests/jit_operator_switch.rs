@@ -122,7 +122,7 @@ fn local_hot_module(name: Atom, function: Atom, calls: usize, result: i64) -> Mo
 }
 
 fn run_to_value(scheduler: &Scheduler, module: &Arc<Module>) -> Term {
-    let pid = scheduler.spawn_process(module);
+    let pid = match scheduler.spawn_process(module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (reason, result) = scheduler.run_until_exit(pid);
     assert_eq!(reason, ExitReason::Normal, "program must exit normally");
     result.root()

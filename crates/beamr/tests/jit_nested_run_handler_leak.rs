@@ -811,7 +811,7 @@ fn assert_compiled(rig: &Rig, module: Atom, function: Atom) {
 /// never raises), then check the arm's compile expectations.
 fn warm_through(rig: &Rig, entry: ResolvedImport, calls: usize, check: impl FnOnce(&Rig)) {
     let module = rig.registry.insert(warm_module(&rig.atoms, entry, calls));
-    let pid = rig.scheduler.spawn_process(&module);
+    let pid = match rig.scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (reason, _result) = rig.scheduler.run_until_exit(pid);
     assert_eq!(
         reason,
@@ -830,7 +830,7 @@ fn frame_tally(rig: &Rig, entry: ResolvedImport, k: usize) -> HashMap<String, us
     let module = rig
         .registry
         .insert(leak_driver_module(&rig.atoms, &rig.names, entry, k));
-    let pid = rig.scheduler.spawn_process(&module);
+    let pid = match rig.scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (reason, _result) = rig.scheduler.run_until_exit(pid);
     assert_eq!(
         reason,
@@ -996,7 +996,7 @@ fn caught_exception_value_reaches_the_handler_across_a_compiled_trampoline() {
             &rig.names,
             wrap_import(&rig.names),
         ));
-        let pid = rig.scheduler.spawn_process(&module);
+        let pid = match rig.scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
         let (reason, result) = rig.scheduler.run_until_exit(pid);
         let shape = describe_caught(&rig.atoms, result.root());
         rig.scheduler.shutdown();
@@ -1080,7 +1080,7 @@ fn warm_closure_caller(rig: &Rig, expect_compiled: bool) {
     let module = rig
         .registry
         .insert(closure_warm_module(&rig.atoms, &rig.names));
-    let pid = rig.scheduler.spawn_process(&module);
+    let pid = match rig.scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (reason, _result) = rig.scheduler.run_until_exit(pid);
     assert_eq!(reason, ExitReason::Normal, "closure warming must succeed");
     if expect_compiled {
@@ -1109,7 +1109,7 @@ fn closure_death_observation(threshold: u32) -> (usize, bool) {
     let module = rig
         .registry
         .insert(closure_driver_module(&rig.atoms, &rig.names, 6, true));
-    let pid = rig.scheduler.spawn_process(&module);
+    let pid = match rig.scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (reason, _result) = rig.scheduler.run_until_exit(pid);
     assert_eq!(reason, ExitReason::Error, "the final raise must be fatal");
     let exception = rig
@@ -1157,7 +1157,7 @@ fn interpreted_closure_raise_still_reaches_outer_catch() {
         let module = rig
             .registry
             .insert(closure_driver_module(&rig.atoms, &rig.names, 1, false));
-        let pid = rig.scheduler.spawn_process(&module);
+        let pid = match rig.scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
         let (reason, result) = rig.scheduler.run_until_exit(pid);
         let shape = describe_caught(&rig.atoms, result.root());
         rig.scheduler.shutdown();

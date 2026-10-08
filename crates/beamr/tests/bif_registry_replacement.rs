@@ -210,7 +210,7 @@ fn full_gate3_then_replace_spawn_wrappers_delegate_and_children_complete() {
         .expect("start scheduler with the replaced Gate-3 registry"),
     );
 
-    let parent_pid = scheduler.spawn_process(&module);
+    let parent_pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (parent_reason, parent_value) = run_until_exit_bounded(&scheduler, parent_pid);
     let spawn_child_pid = SPAWN_CHILD_PID.load(Ordering::Acquire);
     let spawn_link_child_pid = SPAWN_LINK_CHILD_PID.load(Ordering::Acquire);

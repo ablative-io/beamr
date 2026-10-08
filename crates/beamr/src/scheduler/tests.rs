@@ -808,7 +808,7 @@ fn hook_records_reduction_yield_metadata_and_can_suspend_then_resume() {
         }
     });
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(2_000, || calls.load(Ordering::Acquire) == 1);
     std::thread::sleep(std::time::Duration::from_millis(25));
     assert_eq!(
@@ -1332,7 +1332,7 @@ fn hook_fires_when_process_blocks_on_receive() {
         HookDecision::Continue
     });
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(2_000, || {
         !events
             .lock()
@@ -1456,7 +1456,7 @@ fn single_process_runs_to_completion_and_is_removed() {
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
 
     wait_until(2_000, || scheduler.process_table().get(pid).is_none());
     scheduler.shutdown();
@@ -2204,7 +2204,7 @@ fn yielded_process_is_rescheduled() {
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     std::thread::sleep(std::time::Duration::from_millis(75));
 
     assert!(scheduler.process_table().get(pid).is_some());
@@ -2227,7 +2227,7 @@ fn multiple_processes_fairly_complete() {
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
 
-    let pids: Vec<_> = (0..20).map(|_| scheduler.spawn_process(&module)).collect();
+    let pids: Vec<_> = (0..20).map(|_| match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), }).collect();
 
     wait_until(3_000, || {
         pids.iter()
@@ -2485,7 +2485,7 @@ fn delivery_in_the_wait_park_gap_is_not_a_lost_wakeup() {
         execution::wake_process(shared, pid);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -2531,7 +2531,7 @@ fn delivery_after_wait_registration_schedules_the_process_once() {
         execution::wake_process(shared, pid);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -2644,7 +2644,7 @@ fn dirty_resume_in_the_suspend_park_gap_is_not_lost() {
         );
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut completed = false;
     while std::time::Instant::now() < deadline {
@@ -2767,7 +2767,7 @@ fn disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler() 
         .dirty_completion_spawns
         .load(Ordering::Acquire);
 
-    let dirty_pid = scheduler.spawn_process(&dirty_module);
+    let dirty_pid = match scheduler.spawn_process(&dirty_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
 
     // The refused process exits PROMPTLY — a park-forever bug would hang this
     // bounded wait instead of tombstoning.
@@ -2822,7 +2822,7 @@ fn disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler() 
     assert_eq!(DISABLED_DIRTY_PROBE_RUNS.load(Ordering::Acquire), 0);
 
     // An unrelated process on the SAME scheduler keeps making progress.
-    let peer_pid = scheduler.spawn_process(&peer_module);
+    let peer_pid = match scheduler.spawn_process(&peer_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (peer_reason, _peer_result) = scheduler.run_until_exit(peer_pid);
     assert_eq!(peer_reason, ExitReason::Normal);
     assert_eq!(DISABLED_PEER_PROGRESS.load(Ordering::Acquire), 1);
@@ -3081,7 +3081,7 @@ fn timer_expiry_in_the_wait_park_gap_is_not_a_lost_timeout() {
         fire_receive_timer_in_gap(shared);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -3239,7 +3239,7 @@ fn timer_expiry_after_wait_registration_schedules_the_process_once() {
         fire_receive_timer_in_gap(shared);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -3363,7 +3363,7 @@ fn stale_result_for_a_superseded_await_is_dropped_not_applied() {
     let module = native_call_module(&registry, module_name, reentry_timed_await_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     // Let the await time out and re-submit under a new call id.
     wait_until(10_000, || REENTRY_SECOND_ID.load(Ordering::Acquire) != 0);
     let first_id = REENTRY_FIRST_ID.load(Ordering::Acquire);
@@ -3438,7 +3438,7 @@ fn terminate_while_executing_finalizes_without_resurrecting_the_body() {
     let module = native_call_module(&registry, module_name, exec_terminate_blocking_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || {
         EXEC_TERMINATE_ENTERED.load(Ordering::Acquire) == 1
     });
@@ -3494,7 +3494,7 @@ fn message_delivery_does_not_wake_or_reexecute_a_gated_await() {
     let module = native_call_module(&registry, module_name, guarded_await_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || GUARD_PARKED.load(Ordering::Acquire));
     // Ensure the park completed (slot stored back as Present).
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
@@ -3550,7 +3550,7 @@ fn host_results_and_resumes_cannot_touch_an_in_flight_dirty_call() {
     );
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || CROSS_DIRTY_RUNS.load(Ordering::Acquire) == 1);
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
 
@@ -3612,7 +3612,7 @@ fn completion_published_while_executing_is_not_a_lost_wakeup() {
     let module = native_call_module(&registry, module_name, prepark_await_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || PREPARK_ID.load(Ordering::Acquire) != 0);
     let call_id = PREPARK_ID.load(Ordering::Acquire);
     // The slot is Executing: the mirror published by request_await_suspend
@@ -3689,7 +3689,7 @@ fn hook_resume_in_the_suspend_park_gap_is_sticky_not_lost() {
         let _resumed_in_gap = lock_or_recover(&done_rx).recv();
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     // The sticky resume must let the process run again (hook called at
     // least twice) instead of sleeping forever.
     wait_until(10_000, || hook_calls.load(Ordering::Acquire) >= 2);
@@ -3723,7 +3723,7 @@ fn cleanup_exited_process_purges_all_suspension_state() {
     let module = native_call_module(&registry, module_name, purge_await_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || PURGE_PARKED.load(Ordering::Acquire));
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
     assert!(scheduler.shared.suspensions.contains_key(&pid));
@@ -3798,7 +3798,7 @@ fn result_beats_timeout_and_clears_the_timed_await_metadata() {
         timer_integration::tick_timers(shared);
     }));
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -3910,7 +3910,7 @@ fn hook_suspend_does_not_stomp_an_await_parked_slice() {
         }
     });
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || hook_suspended.load(Ordering::Acquire));
     wait_until(10_000, || {
         lock_or_recover(&scheduler.shared.wait_set)
@@ -3977,7 +3977,7 @@ fn dirty_native_can_resuspend_as_a_gated_host_await() {
     );
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || DIRTY_RESUSPEND_PARKED.load(Ordering::Acquire));
     // Wait for the re-suspension to become current: a HostAwait mirror
     // replaces the DirtyCall mirror once the owning thread applies the
@@ -4084,7 +4084,7 @@ fn dirty_native_can_trampoline_a_closure() {
     let module = registry.insert(module);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || {
         scheduler.shared.exit_tombstones.contains_key(&pid)
     });
@@ -4121,7 +4121,7 @@ fn peek_exit_reason_returns_none_for_live_and_unknown_pids() {
     let module = native_call_module(&registry, module_name, peek_park_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     // Wait until the process has parked (live, no tombstone).
     wait_until(10_000, || PEEK_PARKED.load(Ordering::Acquire));
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
@@ -4150,7 +4150,7 @@ fn peek_exit_reason_observes_external_termination_without_consuming() {
     let module = native_call_module(&registry, module_name, peek_park_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || PEEK_PARKED.load(Ordering::Acquire));
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
     assert_eq!(scheduler.peek_exit_reason(pid), None, "live before kill");
@@ -4201,7 +4201,7 @@ fn run_until_exit_correct_under_tombstone_cap_pressure() {
     let module = native_call_module(&registry, module_name, peek_park_native, None);
     let scheduler = single_thread_scheduler(&registry);
 
-    let pid = scheduler.spawn_process(&module);
+    let pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || PEEK_PARKED.load(Ordering::Acquire));
     wait_until(10_000, || scheduler.trap_exit(pid).is_some());
 
@@ -4708,7 +4708,7 @@ fn top_level_group_leader_is_process_zero_when_owned_and_sentinel_when_disabled(
 
     // Legacy/default profile: standard ring Owned, process 0 registered.
     let owned = single_thread_scheduler(&registry);
-    let _owned_pid = owned.spawn_process(&module);
+    let _owned_pid = match owned.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || GL_PROBE_SEEN.load(Ordering::Acquire) == 1);
     assert_eq!(
         GL_PROBE_LEADER.load(Ordering::Acquire),
@@ -4736,7 +4736,7 @@ fn top_level_group_leader_is_process_zero_when_owned_and_sentinel_when_disabled(
         NativeBifs::none(),
     )
     .unwrap_or_else(|error| panic!("minimal scheduler starts: {error}"));
-    let _minimal_pid = minimal.spawn_process(&module);
+    let _minimal_pid = match minimal.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || GL_PROBE_SEEN.load(Ordering::Acquire) == 2);
     assert_eq!(
         GL_PROBE_LEADER.load(Ordering::Acquire),
@@ -4852,7 +4852,7 @@ fn shutdown_drains_completion_bridges_while_a_shared_pool_job_is_still_running()
     .unwrap_or_else(|error| panic!("scheduler B starts: {error}"));
 
     // A's dirty job enters the shared pool and BLOCKS there.
-    let blocked_pid = scheduler_a.spawn_process(&blocking_module);
+    let blocked_pid = match scheduler_a.spawn_process(&blocking_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let entered_deadline = std::time::Instant::now() + Duration::from_secs(5);
     while SHARED_DRAIN_ENTERED.load(Ordering::Acquire) != 1 {
         if std::time::Instant::now() >= entered_deadline {
@@ -4890,7 +4890,7 @@ fn shutdown_drains_completion_bridges_while_a_shared_pool_job_is_still_running()
     drop(scheduler_a);
 
     // The pool is untouched: B still submits and completes dirty work.
-    let b_pid = scheduler_b.spawn_process(&quick_module);
+    let b_pid = match scheduler_b.spawn_process(&quick_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(10_000, || {
         scheduler_b.shared.exit_tombstones.contains_key(&b_pid)
     });

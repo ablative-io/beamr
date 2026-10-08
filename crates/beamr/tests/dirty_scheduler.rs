@@ -196,11 +196,11 @@ fn dirty_nif_round_trip_does_not_block_normal_scheduler() {
     let mirrors_before = scheduler.suspension_mirror_registration_count();
     let spawns_before = completion_spawned_total(&scheduler);
 
-    let dirty_pid = scheduler.spawn_process(&dirty_module);
+    let dirty_pid = match scheduler.spawn_process(&dirty_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_for_dirty_started(generation);
     assert!(!dirty_finished_for_generation(generation));
 
-    let normal_pid = scheduler.spawn_process(&normal_module);
+    let normal_pid = match scheduler.spawn_process(&normal_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (normal_reason, normal_result) = scheduler.run_until_exit(normal_pid);
     assert_eq!(normal_reason, ExitReason::Normal);
     assert_eq!(normal_result.root(), Term::small_int(7));
@@ -255,7 +255,7 @@ fn dirty_nif_error_resumes_and_raises_exception() {
     )
     .expect("scheduler starts");
 
-    let pid = scheduler.spawn_process(&dirty_module);
+    let pid = match scheduler.spawn_process(&dirty_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (reason, _result) = scheduler.run_until_exit(pid);
     assert_eq!(reason, ExitReason::Error);
     let exception = scheduler
@@ -470,7 +470,7 @@ fn disabled_dirty_cpu_pool_refuses_call_and_lets_peers_progress() {
     // The refused dirty process exits with the explicit error. run_until_exit
     // would hang forever on a park-forever bug, so its return IS the
     // non-wedging assertion.
-    let dirty_pid = scheduler.spawn_process(&dirty_module);
+    let dirty_pid = match scheduler.spawn_process(&dirty_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (dirty_reason, _dirty_result) = scheduler.run_until_exit(dirty_pid);
     assert_eq!(dirty_reason, ExitReason::Error);
     assert_eq!(
@@ -500,7 +500,7 @@ fn disabled_dirty_cpu_pool_refuses_call_and_lets_peers_progress() {
     );
 
     // A peer on the SAME scheduler makes progress and exits normally.
-    let normal_pid = scheduler.spawn_process(&normal_module);
+    let normal_pid = match scheduler.spawn_process(&normal_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (normal_reason, normal_result) = scheduler.run_until_exit(normal_pid);
     assert_eq!(normal_reason, ExitReason::Normal);
     assert_eq!(normal_result.root(), Term::small_int(7));

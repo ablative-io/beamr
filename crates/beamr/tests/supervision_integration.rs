@@ -106,7 +106,7 @@ fn process_exits_normally_and_is_removed() {
     )
     .unwrap_or_else(|e| panic!("scheduler starts: {e}"));
 
-    let pid = scheduler.spawn_process(&exit_module);
+    let pid = match scheduler.spawn_process(&exit_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(2000, || scheduler.process_table().get(pid).is_none());
 
     scheduler.shutdown();
@@ -131,11 +131,11 @@ fn unlinked_process_survives_normal_exit() {
     )
     .unwrap_or_else(|e| panic!("scheduler starts: {e}"));
 
-    let looper_pid = scheduler.spawn_process(&loop_module);
+    let looper_pid = match scheduler.spawn_process(&loop_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     std::thread::sleep(std::time::Duration::from_millis(50));
     assert!(scheduler.process_table().get(looper_pid).is_some());
 
-    let exit_pid = scheduler.spawn_process(&exit_module);
+    let exit_pid = match scheduler.spawn_process(&exit_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     wait_until(2000, || scheduler.process_table().get(exit_pid).is_none());
 
     // Looper should still be alive (not linked).
@@ -166,7 +166,7 @@ fn multiple_processes_exit_independently() {
     .unwrap_or_else(|e| panic!("scheduler starts: {e}"));
 
     let pids: Vec<_> = (0..10)
-        .map(|_| scheduler.spawn_process(&exit_module))
+        .map(|_| match scheduler.spawn_process(&exit_module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), })
         .collect();
     wait_until(3000, || {
         pids.iter()
@@ -307,7 +307,7 @@ fn waiting_process_stays_alive_without_exit_signal() {
     )
     .unwrap_or_else(|e| panic!("scheduler starts: {e}"));
 
-    let pid = scheduler.spawn_process(&wait_mod);
+    let pid = match scheduler.spawn_process(&wait_mod) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
 
     // Wait a bit then verify it's still alive.
     std::thread::sleep(std::time::Duration::from_millis(100));

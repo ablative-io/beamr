@@ -66,7 +66,7 @@ fn spawn_process_on_a_real_module_dies_on_the_landing_pad_while_spawn_runs_it() 
     // first function's func_info landing pad. The documented shape is
     // specific: Exited(Error, nil) with an error:function_clause exception —
     // not merely "the process died".
-    let pad_pid = scheduler.spawn_process(&module);
+    let pad_pid = match scheduler.spawn_process(&module) { Ok(pid) => pid, Err(error) => panic!("scaffold spawn refused: {error}"), };
     let (pad_reason, pad_result) = scheduler.run_until_exit(pad_pid);
     let pad_exception = scheduler.take_exit_exception(pad_pid);
     scheduler.shutdown();
