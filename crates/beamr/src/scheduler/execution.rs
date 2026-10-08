@@ -124,6 +124,10 @@ impl Scheduler {
         #[cfg(feature = "readiness")]
         self.shared.readiness.shutdown_owned();
         self.shared.shutdown.store(true, Ordering::Release);
+        #[cfg(test)]
+        if let Some(hook) = self.shared.shutdown_dispatch_hook.get() {
+            hook();
+        }
         self.shared.wake_condvar.notify_all();
         let mut threads = lock_or_recover(&self.threads);
         for handle in threads.drain(..) {
@@ -132,6 +136,46 @@ impl Scheduler {
             }
         }
         drop(threads);
+        #[cfg(test)]
+        if let Some(hook) = self.shared.terminal_admission_hook.get() {
+            hook();
+        }
+        // Closed admission and joined workers leave no publisher or consumer
+        // that can race the current request/body drain.
+        for inject in &self.inject_queues {
+            while let Some(request) = inject.pop() {
+                let pid = request.pid;
+                drop(request);
+                #[cfg(test)]
+                self.shared
+                    .terminal_spawn_visits
+                    .fetch_add(1, Ordering::Relaxed);
+                let reason = self
+                    .shared
+                    .exit_tombstones
+                    .get(&pid)
+                    .unwrap_or(ExitReason::Killed);
+                cleanup_exited_process(&self.shared, pid, reason);
+            }
+        }
+        let remaining_pids: Vec<_> = self
+            .shared
+            .process_bodies
+            .iter()
+            .map(|entry| *entry.key())
+            .collect();
+        for pid in remaining_pids {
+            #[cfg(test)]
+            self.shared
+                .terminal_body_visits
+                .fetch_add(1, Ordering::Relaxed);
+            let reason = self
+                .shared
+                .exit_tombstones
+                .get(&pid)
+                .unwrap_or(ExitReason::Killed);
+            cleanup_exited_process(&self.shared, pid, reason);
+        }
         self.shared.exit_completion_watches.settle_shutdown();
     }
 
@@ -462,6 +506,7 @@ pub(in crate::scheduler) use core::{
     SliceOutcome, cleanup_if_tombstoned_after_store, execute_slice, store_runnable_process,
     take_runnable_process,
 };
+#[cfg(not(all(test, feature = "readiness")))]
 pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
     // A process parked under a result-gated suspension (dirty call, host
     // await, hook suspend) must stay parked: waking it schedules a slice
@@ -486,6 +531,43 @@ pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
     let mut wait_set = lock_or_recover(&shared.wait_set);
     if let Some(scheduler_index) = wait_set.waiting.remove(&pid) {
         wait_set.woken.push((pid, scheduler_index));
+        shared.wake_condvar.notify_all();
+    }
+}
+
+#[cfg(all(test, feature = "readiness"))]
+pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
+    // A process parked under a result-gated suspension (dirty call, host
+    // await, hook suspend) must stay parked: waking it schedules a slice
+    // that would re-execute the parked call instruction and repeat its side
+    // effect (double-submitting the dirty call or host request). The
+    // delivery that prompted this wake is already queued; the suspension's
+    // completion resumes the process and the merged mailbox is observed
+    // then. Once a consumable event is published (matching result, file-I/O
+    // completion, fired receive timer, matching resume) the wake is safe:
+    // the slice-start gate consumes the event — and with nothing consumable
+    // the gate re-parks without touching the process, so even a stray wake
+    // is harmless.
+    #[cfg(all(test, feature = "readiness"))]
+    crate::scheduler::teardown_admission_tests::record_live_operation(8);
+    if shared.suspension_blocks_wake(pid) {
+        return;
+    }
+    // The receive timer is deliberately NOT cancelled here. BEAM keeps the
+    // receive-after timer armed across message wakeups: if the message does
+    // not match, the process re-parks and the original deadline must still
+    // fire. The timer is dropped when the receive completes (the
+    // remove_message/timeout opcodes clear the ref, and the eventual stale
+    // fire is discarded by the id check in `apply_expired_receive_timer`).
+    #[cfg(all(test, feature = "readiness"))]
+    crate::scheduler::teardown_admission_tests::record_live_operation(2);
+    let mut wait_set = lock_or_recover(&shared.wait_set);
+    #[cfg(all(test, feature = "readiness"))]
+    crate::scheduler::teardown_admission_tests::record_live_operation(0);
+    if let Some(scheduler_index) = wait_set.waiting.remove(&pid) {
+        wait_set.woken.push((pid, scheduler_index));
+        #[cfg(all(test, feature = "readiness"))]
+        crate::scheduler::teardown_admission_tests::record_live_operation(9);
         shared.wake_condvar.notify_all();
     }
 }

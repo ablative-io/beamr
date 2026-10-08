@@ -209,7 +209,10 @@ fn sleep_forever_parks_consume_no_scheduler_thread_of_either_kind() {
     let dirty_completions_before = completion_spawned_total(&scheduler);
 
     let parked: Vec<u64> = (0..PARKED_PROCESSES)
-        .map(|_| scheduler.spawn_process(&parked_module))
+        .map(|_| match scheduler.spawn_process(&parked_module) {
+            Ok(pid) => pid,
+            Err(error) => panic!("scaffold spawn refused: {error}"),
+        })
         .collect();
     wait_for_parks(&scheduler, mirrors_before, PARKED_PROCESSES as u64);
 
@@ -223,7 +226,10 @@ fn sleep_forever_parks_consume_no_scheduler_thread_of_either_kind() {
 
     // THE PROPERTY: with all of those parked, the single normal scheduler
     // thread is still free to run other work to completion.
-    let progress_pid = scheduler.spawn_process(&progress_module);
+    let progress_pid = match scheduler.spawn_process(&progress_module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     let (reason, result) = run_until_exit_bounded(&scheduler, progress_pid);
     assert_eq!(reason, ExitReason::Normal);
     assert_eq!(result.root(), Term::small_int(7));
@@ -295,7 +301,10 @@ fn a_parked_process_remains_subject_to_exit_signals() {
     let scheduler = scheduler_with_one_normal_thread(&registry);
 
     let mirrors_before = scheduler.suspension_mirror_registration_count();
-    let pid = scheduler.spawn_process(&parked_module);
+    let pid = match scheduler.spawn_process(&parked_module) {
+        Ok(pid) => pid,
+        Err(error) => panic!("scaffold spawn refused: {error}"),
+    };
     wait_for_parks(&scheduler, mirrors_before, 1);
 
     assert!(

@@ -923,3 +923,68 @@ fn completion_probe_joined_shutdown_removes_parked_process() {
             .ok_or(ExitEventRecvError::Disconnected)
     );
 }
+
+#[test]
+fn completion_shutdown_closes_admission_before_removal_watch_fires() {
+    let scheduler = test_scheduler(1);
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let pid = scheduler
+        .spawn_native(Box::new(move || {
+            Box::new(CompletionParked {
+                ready: ready_tx.clone(),
+            })
+        }))
+        .expect("spawn");
+    ready_rx.recv().expect("process reaches receive");
+    let watch = match scheduler.watch_exit_completion(pid) {
+        ExitCompletionWatchState::Live(watch) => watch,
+        other => panic!("expected live completion watch: {other:?}"),
+    };
+    let (closed_tx, closed_rx) = mpsc::channel();
+    let release = Arc::new(Barrier::new(2));
+    let hook_release = Arc::clone(&release);
+    let observed = std::sync::atomic::AtomicBool::new(false);
+    scheduler
+        .shared
+        .terminal_admission_hook
+        .set(Box::new(move || {
+            if !observed.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                closed_tx.send(()).expect("observer owns closure signal");
+                hook_release.wait();
+            }
+        }))
+        .unwrap_or_else(|_| panic!("terminal rendezvous already installed"));
+    let (present, pending, atom_admitted, owned_admitted) = std::thread::scope(|scope| {
+        let shutdown = scope.spawn(|| scheduler.shutdown());
+        closed_rx.recv().expect("shutdown closes admission");
+        let observations = (
+            scheduler.process_table().get(pid).is_some(),
+            watch.try_recv(),
+            scheduler.enqueue_atom_message(pid, Atom::OK),
+            scheduler.send_to_mailbox(pid, OwnedTerm::immediate(Term::NIL)),
+        );
+        release.wait();
+        shutdown.join().expect("shutdown joins");
+        observations
+    });
+    let completion = watch.recv();
+    let reason = scheduler.shared.exit_tombstones.finalized_reason(&pid);
+    assert!(present);
+    assert_eq!(pending, Err(crossbeam_channel::TryRecvError::Empty));
+    assert!(!atom_admitted);
+    assert_eq!(owned_admitted, Err(MailboxSendError::SchedulerTerminated));
+    assert_eq!(
+        completion,
+        reason
+            .map(|reason| (pid, reason))
+            .ok_or(ExitEventRecvError::Disconnected)
+    );
+    assert!(scheduler.process_table().get(pid).is_none());
+    assert_eq!(
+        scheduler
+            .shared
+            .exit_completion_watches
+            .disconnected_count(),
+        0
+    );
+}

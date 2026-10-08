@@ -73,6 +73,8 @@ impl MailboxMessage {
 
 impl Clone for Mailbox {
     fn clone(&self) -> Self {
+        #[cfg(all(test, feature = "readiness"))]
+        crate::scheduler::teardown_admission_tests::record_live_operation(10);
         Self {
             arrival: Arc::new(SegQueue::new()),
             scan_list: self.scan_list.clone(),
@@ -206,6 +208,8 @@ impl Mailbox {
 
     /// Enqueue a term already owned by this process.
     pub(crate) fn push_owned(&mut self, message: Term) {
+        #[cfg(all(test, feature = "readiness"))]
+        crate::scheduler::teardown_admission_tests::record_live_operation(7);
         self.scan_list.push_back(MailboxMessage::owned(message));
     }
 

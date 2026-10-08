@@ -79,8 +79,12 @@ impl Scheduler {
     /// Demoted out of the default public surface at 0.19.0 (#104 ruling:
     /// scaffold-only, zero production callers). Visible to the scaffold
     /// tests via `test-support`, which beamr's dev self-edge enables.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecError::SchedulerTerminated`] once spawn admission is closed.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn spawn_process(&self, module: &Arc<Module>) -> u64 {
+    pub fn spawn_process(&self, module: &Arc<Module>) -> Result<u64, ExecError> {
         self.enqueue_spawn(Arc::clone(module), 0, Vec::new(), Atom::NIL, 0)
     }
 
@@ -90,12 +94,16 @@ impl Scheduler {
     /// Shares [`Self::spawn_process`]'s entry semantics, including its
     /// landing-pad death on loader-produced modules. Demoted with its twin
     /// at 0.19.0 (#104); zero callers existed anywhere at the demotion.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecError::SchedulerTerminated`] once spawn admission is closed.
     #[cfg(all(feature = "telemetry", any(test, feature = "test-support")))]
     pub fn spawn_process_with_trace_context(
         &self,
         module: &Arc<Module>,
         context: &opentelemetry::Context,
-    ) -> u64 {
+    ) -> Result<u64, ExecError> {
         self.enqueue_spawn_with_context(
             Arc::clone(module),
             0,
@@ -132,7 +140,7 @@ impl Scheduler {
         })?;
         let entry = registry.lookup_mfa(entry_module, entry_function, arity)?;
         let instruction_pointer = entry.module.label_ip(entry.label)?;
-        Ok(self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
+        self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
             module_version: entry.module,
             instruction_pointer,
             args,
@@ -143,7 +151,7 @@ impl Scheduler {
             arity,
             #[cfg(feature = "telemetry")]
             trace_context: None,
-        }))
+        })
     }
 
     /// Spawn a process in a namespace under the supplied OpenTelemetry context.
@@ -182,7 +190,7 @@ impl Scheduler {
         })?;
         let entry = registry.lookup_mfa(entry_module, entry_function, arity)?;
         let instruction_pointer = entry.module.label_ip(entry.label)?;
-        Ok(self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
+        self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
             module_version: entry.module,
             instruction_pointer,
             args,
@@ -192,7 +200,7 @@ impl Scheduler {
             function: entry_function,
             arity,
             trace_context,
-        }))
+        })
     }
 
     /// Spawn a process in a namespace with trap-exit set before it is made runnable.
@@ -211,7 +219,7 @@ impl Scheduler {
         })?;
         let entry = registry.lookup_mfa(entry_module, entry_function, arity)?;
         let instruction_pointer = entry.module.label_ip(entry.label)?;
-        Ok(self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
+        self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
             module_version: entry.module,
             instruction_pointer,
             args,
@@ -222,7 +230,7 @@ impl Scheduler {
             arity,
             #[cfg(feature = "telemetry")]
             trace_context: None,
-        }))
+        })
     }
 
     /// Spawn a native process whose body is the handler produced by `factory`.
@@ -389,7 +397,7 @@ impl Scheduler {
         args: Vec<Term>,
         function: Atom,
         arity: u8,
-    ) -> u64 {
+    ) -> Result<u64, ExecError> {
         self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
             module_version,
             instruction_pointer,
@@ -413,7 +421,7 @@ impl Scheduler {
         function: Atom,
         arity: u8,
         trace_context: Option<crate::telemetry::spans::TraceCarrier>,
-    ) -> u64 {
+    ) -> Result<u64, ExecError> {
         self.enqueue_spawn_with_trap_exit(EnqueueSpawnRequest {
             module_version,
             instruction_pointer,
@@ -427,7 +435,15 @@ impl Scheduler {
         })
     }
 
-    fn enqueue_spawn_with_trap_exit(&self, enqueue: EnqueueSpawnRequest) -> u64 {
+    fn enqueue_spawn_with_trap_exit(&self, enqueue: EnqueueSpawnRequest) -> Result<u64, ExecError> {
+        let admission = self
+            .shared
+            .try_reserve_teardown_admission()
+            .ok_or(ExecError::SchedulerTerminated)?;
+        #[cfg(test)]
+        if let Some(hook) = self.shared.spawn_admission_hook.get() {
+            hook();
+        }
         let pid = self.shared.next_pid.fetch_add(1, Ordering::Relaxed);
         self.shared.process_table.spawn_with_pid(pid);
         let index =
@@ -487,7 +503,8 @@ impl Scheduler {
             self.inject_queues[index].push(request);
             self.shared.wake_condvar.notify_all();
         }
-        pid
+        drop(admission);
+        Ok(pid)
     }
 }
 

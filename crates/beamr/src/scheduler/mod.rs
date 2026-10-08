@@ -40,6 +40,8 @@ pub enum MailboxSendError {
     HeapAllocationFailed,
     /// The owned value does not contain a valid, copyable BEAM term.
     InvalidMessage,
+    /// Mailbox admission has closed during scheduler shutdown.
+    SchedulerTerminated,
 }
 
 #[cfg(feature = "threads")]
@@ -51,6 +53,7 @@ impl std::fmt::Display for MailboxSendError {
             Self::ProcessSlotUnavailable => "process slot unavailable for mailbox admission",
             Self::HeapAllocationFailed => "target heap cannot admit mailbox message",
             Self::InvalidMessage => "invalid owned mailbox message",
+            Self::SchedulerTerminated => "scheduler has shut down",
         })
     }
 }
@@ -178,7 +181,7 @@ mod supervision_integration;
 #[cfg(feature = "threads")]
 mod suspension;
 #[cfg(all(test, feature = "readiness"))]
-mod teardown_admission_tests;
+pub(crate) mod teardown_admission_tests;
 #[cfg(feature = "threads")]
 mod test_helpers;
 #[cfg(feature = "threads")]
@@ -512,6 +515,21 @@ pub(super) struct SharedState {
 
     #[cfg(test)]
     park_gap_hook: Mutex<Option<ParkGapHook>>,
+
+    #[cfg(test)]
+    mailbox_admission_hook: std::sync::OnceLock<MailboxAdmissionHook>,
+    #[cfg(test)]
+    terminal_admission_hook: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    terminal_spawn_visits: AtomicUsize,
+    #[cfg(test)]
+    terminal_body_visits: AtomicUsize,
+    #[cfg(test)]
+    spawn_admission_hook: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    teardown_wait_hook: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    shutdown_dispatch_hook: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
 }
 
 #[cfg(feature = "threads")]
@@ -654,6 +672,10 @@ impl SharedState {
         drop(lock_or_recover(&self.dirty_completion_shutdown_tx).take());
         let mut registry = lock_or_recover(&self.dirty_completions);
         while registry.reserved > 0 {
+            #[cfg(test)]
+            if let Some(hook) = self.teardown_wait_hook.get() {
+                hook();
+            }
             registry = self
                 .dirty_completions_changed
                 .wait(registry)
@@ -1013,6 +1035,16 @@ pub(super) enum ParkGap {
 #[cfg(feature = "threads")]
 #[cfg(test)]
 type ParkGapHook = Box<dyn Fn(&SharedState, ParkGap, u64) + Send + Sync>;
+
+#[cfg(all(test, feature = "threads"))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum MailboxAdmissionPoint {
+    BeforeSlot,
+    Queued,
+}
+
+#[cfg(all(test, feature = "threads"))]
+type MailboxAdmissionHook = Box<dyn Fn(u64, MailboxAdmissionPoint) + Send + Sync>;
 #[cfg(feature = "threads")]
 pub(super) struct ScheduledProcess(Process);
 // SAFETY: Process is not Send at the public API boundary. The scheduler is the
@@ -1683,6 +1715,20 @@ impl Scheduler {
                 dirty_suspension_allocations: AtomicU64::new(0),
                 #[cfg(test)]
                 park_gap_hook: Mutex::new(None),
+                #[cfg(test)]
+                mailbox_admission_hook: std::sync::OnceLock::new(),
+                #[cfg(test)]
+                terminal_admission_hook: std::sync::OnceLock::new(),
+                #[cfg(test)]
+                terminal_spawn_visits: AtomicUsize::new(0),
+                #[cfg(test)]
+                terminal_body_visits: AtomicUsize::new(0),
+                #[cfg(test)]
+                spawn_admission_hook: std::sync::OnceLock::new(),
+                #[cfg(test)]
+                teardown_wait_hook: std::sync::OnceLock::new(),
+                #[cfg(test)]
+                shutdown_dispatch_hook: std::sync::OnceLock::new(),
             }
         });
         #[cfg(feature = "readiness")]
