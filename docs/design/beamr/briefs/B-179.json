@@ -48,7 +48,11 @@
           "crates/beamr/tests/bif_registry_replacement.rs",
           "crates/beamr/tests/jit_nested_run_handler_leak.rs",
           "crates/beamr/tests/sleep_forever_parks.rs",
-          "crates/beamr-wasm/src/reasons.rs"
+          "crates/beamr-wasm/src/reasons.rs",
+          "crates/beamr/src/mailbox/mod.rs",
+          "crates/beamr/src/process/heap.rs",
+          "crates/beamr/src/ets/copy.rs",
+          "crates/beamr/src/scheduler/suspension.rs"
         ],
         "delete": []
       },
@@ -95,7 +99,7 @@
     "Build fixtures once per workload variant outside measured loops. Add phase rendezvous/counters identically under test-only compilation at both pins and verify baseline production bodies unchanged. Release/join every producer before red assertions. A red is the intended behavioral assertion, never compilation failure or a hung nextest run."
   ],
   "verification": [
-    "Authoring: validate owned B-179.json against canonical design-system b0570326 scripts/validate.py to exit0, read through the last line. Retain full legacy validation/coverage before/after: baseline2229violations across215documents and1401coverage failures. Do not claim a full design gate or migrate legacy documents. Any increased coverage requires a lead ruling before publication.",
+    "Authoring: validate owned B-179.json against canonical design-system 79d2b4c2 scripts/validate.py to exit0, read through the last line. Retain full legacy validation/coverage before/after: baseline2229violations across215documents and1401coverage failures. Do not claim a full design gate or migrate legacy documents. Any increased coverage requires a lead ruling before publication.",
     "Implementation: use cargo nextest run at exact published/candidate commits under the granted remote build placement; retain each intended red, totals/pass/fail/skip, times, and full count vectors. A focused pass is not a full-suite pass. Doc tests use cargo test --doc.",
     "Qualification: actual formatter leaves no diff; strict workspace/all-target/all-feature Clippy0; ast-grep stays at/below CHANGELOG ceilings; full workspace/all-feature nextest and docs parsed. Every test under2seconds without reducing assertions/workload. Explicitly qualify supported no-telemetry/telemetry and threaded/cooperative contracts.",
     "Release only after lead review including Apollo R1 review, exact-commit full gate, and resolved API/migration decisions if any. Record release SHA/tree/version and remote readback. This documentation does not claim implementation, release, installation, observed runtime red/green, count equality, or consumer adoption."

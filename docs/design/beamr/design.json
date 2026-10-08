@@ -137,6 +137,10 @@
     "crates/beamr/src/scheduler/mod.rs": "B-179",
     "crates/beamr/src/scheduler/teardown_admission_tests.rs": "B-179",
     "crates/beamr/src/scheduler/timer_integration.rs": "B-179",
+    "crates/beamr/src/mailbox/mod.rs": "B-179",
+    "crates/beamr/src/process/heap.rs": "B-179",
+    "crates/beamr/src/ets/copy.rs": "B-179",
+    "crates/beamr/src/scheduler/suspension.rs": "B-179",
     "description": "All JIT/AOT code lives under crates/beamr/src/jit/. Cranelift is always-on — no feature gate.",
     "files": [
       { "path": "crates/beamr/src/jit/mod.rs", "description": "Module root — pub mod + pub use only", "brief": "B-130" },
