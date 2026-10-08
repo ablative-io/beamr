@@ -532,6 +532,7 @@ pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
     // the slice-start gate consumes the event — and with nothing consumable
     // the gate re-parks without touching the process, so even a stray wake
     // is harmless.
+    #[cfg(all(test, feature = "readiness"))]
     crate::scheduler::teardown_admission_tests::record_live_operation(8);
     if shared.suspension_blocks_wake(pid) {
         return;
@@ -542,11 +543,14 @@ pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
     // fire. The timer is dropped when the receive completes (the
     // remove_message/timeout opcodes clear the ref, and the eventual stale
     // fire is discarded by the id check in `apply_expired_receive_timer`).
+    #[cfg(all(test, feature = "readiness"))]
     crate::scheduler::teardown_admission_tests::record_live_operation(2);
     let mut wait_set = lock_or_recover(&shared.wait_set);
+    #[cfg(all(test, feature = "readiness"))]
     crate::scheduler::teardown_admission_tests::record_live_operation(0);
     if let Some(scheduler_index) = wait_set.waiting.remove(&pid) {
         wait_set.woken.push((pid, scheduler_index));
+        #[cfg(all(test, feature = "readiness"))]
         crate::scheduler::teardown_admission_tests::record_live_operation(9);
         shared.wake_condvar.notify_all();
     }

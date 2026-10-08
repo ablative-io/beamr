@@ -207,10 +207,12 @@ impl SharedState {
 
     #[cfg(all(test, feature = "readiness"))]
     pub(super) fn has_consumable_suspension_event(&self, pid: u64) -> bool {
+        #[cfg(all(test, feature = "readiness"))]
         crate::scheduler::teardown_admission_tests::record_live_operation(0);
         let Some(mirror) = self.suspensions.get(&pid).map(|mirror| *mirror) else {
             return false;
         };
+        #[cfg(all(test, feature = "readiness"))]
         crate::scheduler::teardown_admission_tests::record_live_operation(0);
         if self
             .suspension_results
@@ -221,15 +223,18 @@ impl SharedState {
         }
         match mirror.kind {
             SuspensionKind::HostAwait => {
+                #[cfg(all(test, feature = "readiness"))]
                 crate::scheduler::teardown_admission_tests::record_live_operation(0);
                 if self.file_io_results.contains_key(&pid) {
                     return true;
                 }
+                #[cfg(all(test, feature = "readiness"))]
                 crate::scheduler::teardown_admission_tests::record_live_operation(0);
                 self.expired_receive_timers.contains_key(&pid)
             }
             SuspensionKind::DirtyCall => false,
             SuspensionKind::Hook => {
+                #[cfg(all(test, feature = "readiness"))]
                 crate::scheduler::teardown_admission_tests::record_live_operation(0);
                 self.pending_resumes
                     .get(&pid)
@@ -252,6 +257,7 @@ impl SharedState {
 
     #[cfg(all(test, feature = "readiness"))]
     pub(super) fn suspension_blocks_wake(&self, pid: u64) -> bool {
+        #[cfg(all(test, feature = "readiness"))]
         crate::scheduler::teardown_admission_tests::record_live_operation(0);
         let gated = self
             .suspensions

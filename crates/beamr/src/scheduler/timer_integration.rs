@@ -188,12 +188,15 @@ pub(super) fn deliver_term_to_mailbox(
     pid: u64,
     term: Term,
 ) -> Result<(), MailboxSendError> {
+    #[cfg(all(test, feature = "readiness"))]
     crate::scheduler::teardown_admission_tests::record_live_operation(0);
     let Some(entry) = shared.process_bodies.get(&pid) else {
         return Err(missing_process_error(shared, pid));
     };
+    #[cfg(all(test, feature = "readiness"))]
     crate::scheduler::teardown_admission_tests::record_live_operation(1);
     let mut slot = lock_or_recover(&entry);
+    #[cfg(all(test, feature = "readiness"))]
     crate::scheduler::teardown_admission_tests::record_live_operation(0);
     if shared.exit_tombstones.contains_key(&pid) {
         return Err(refused_process_error(
@@ -207,6 +210,7 @@ pub(super) fn deliver_term_to_mailbox(
             Ok(())
         }
         ProcessSlot::Executing(metadata) => {
+            #[cfg(all(test, feature = "readiness"))]
             crate::scheduler::teardown_admission_tests::record_live_operation(7);
             metadata
                 .pending_io_messages

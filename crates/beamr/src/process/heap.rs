@@ -268,6 +268,7 @@ pub struct Heap {
 #[cfg(all(test, feature = "readiness"))]
 impl Clone for Heap {
     fn clone(&self) -> Self {
+        #[cfg(all(test, feature = "readiness"))]
         crate::scheduler::teardown_admission_tests::record_live_operation(10);
         Self {
             young: self.young.clone(),
