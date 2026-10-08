@@ -100,6 +100,9 @@
     "Deterministic replay in this cluster (deferred to B-140 through B-143)."
   ],
   "structure": {
+    "crates/beamr/src/scheduler/spawning.rs": "B-179",
+    "crates/beamr/src/error.rs": "B-179",
+    "CHANGELOG.md": "B-179",
     "crates/beamr/src/scheduler/execution.rs": "B-179",
     "crates/beamr/src/scheduler/execution/core.rs": "B-179",
     "crates/beamr/src/scheduler/exit_events.rs": "B-179",
