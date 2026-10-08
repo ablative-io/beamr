@@ -498,9 +498,11 @@ fn terminal_close_gate(scheduler: &Scheduler) -> (mpsc::Receiver<()>, Arc<Barrie
     let release = Arc::new(Barrier::new(2));
     let close_release = Arc::clone(&release);
     let close_observed = AtomicBool::new(false);
+    // Release the contended body lock before joining workers, whose telemetry
+    // sampling also needs that lock. The terminal drain still follows the joins.
     scheduler
         .shared
-        .terminal_admission_hook
+        .shutdown_dispatch_hook
         .set(Box::new(move || {
             if !close_observed.swap(true, Ordering::SeqCst) {
                 closing

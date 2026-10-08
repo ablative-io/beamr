@@ -1185,7 +1185,6 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
         Arc::new(BifRegistryImpl::new()),
     )
     .unwrap_or_else(|error| panic!("scheduler starts: {error}"));
-    scheduler.shutdown();
 
     // Register the process in the scheduler's table so the alive-process
     // gauge (`process_count() == process_table.len()`) reflects a real live
@@ -1210,6 +1209,15 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
     let SliceOutcome::Requeue(_) = execute_slice(&scheduler.shared, &mut process) else {
         panic!("looping process should yield after consuming its slice");
     };
+
+    scheduler.shared.process_bodies.insert(
+        55,
+        Mutex::new(ProcessSlot::Present(ScheduledProcess(process))),
+    );
+    // A direct slice bypasses the worker loop's execution-health sample.
+    scheduler
+        .shared
+        .record_scheduler_executing(std::time::Duration::ZERO);
 
     crate::telemetry::metrics::record_gc_collection("minor", std::time::Duration::from_micros(50));
     crate::telemetry::metrics::record_message_sent();
@@ -1295,6 +1303,22 @@ fn execute_slice_emits_vm_health_and_process_metrics() {
     provider
         .force_flush()
         .expect("metrics flush after workflow finish");
+
+    scheduler.shutdown();
+    assert_eq!(scheduler.shared.process_count(), 0);
+    provider.force_flush().expect("metrics flush after drain");
+    let drained_metrics = exporter
+        .get_finished_metrics()
+        .expect("finished drain metrics");
+    let latest = drained_metrics.last().expect("drain sample exists");
+    let metric = find_metric(std::slice::from_ref(latest), "beamr.processes.alive")
+        .expect("drain sample contains live gauge");
+    let AggregatedMetrics::U64(MetricData::Gauge(gauge)) = metric.data() else {
+        panic!("live-process metric must be an unsigned gauge");
+    };
+    let mut points = gauge.data_points();
+    assert_eq!(points.next().map(|point| point.value()), Some(0));
+    assert!(points.all(|point| point.value() == 0));
 
     provider.shutdown().expect("provider shutdown");
 }
