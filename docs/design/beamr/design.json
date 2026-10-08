@@ -100,6 +100,18 @@
     "Deterministic replay in this cluster (deferred to B-140 through B-143)."
   ],
   "structure": {
+    "crates/beamr/src/scheduler/tests.rs": "B-179",
+    "crates/beamr/src/scheduler/readiness_contract_tests.rs": "B-179",
+    "crates/beamr/tests/supervision_integration.rs": "B-179",
+    "crates/beamr/tests/jit_operator_switch.rs": "B-179",
+    "crates/beamr/tests/jit_wireup.rs": "B-179",
+    "crates/beamr/tests/suspend_wakeup.rs": "B-179",
+    "crates/beamr/tests/spawn_process_scaffold_only.rs": "B-179",
+    "crates/beamr/tests/nif_private_data.rs": "B-179",
+    "crates/beamr/tests/dirty_scheduler.rs": "B-179",
+    "crates/beamr/tests/bif_registry_replacement.rs": "B-179",
+    "crates/beamr/tests/jit_nested_run_handler_leak.rs": "B-179",
+    "crates/beamr/tests/sleep_forever_parks.rs": "B-179",
     "crates/beamr/src/scheduler/spawning.rs": "B-179",
     "crates/beamr/src/error.rs": "B-179",
     "CHANGELOG.md": "B-179",
