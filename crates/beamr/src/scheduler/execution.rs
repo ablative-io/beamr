@@ -147,7 +147,8 @@ impl Scheduler {
                 drop(request);
                 #[cfg(test)]
                 self.shared.terminal_spawn_visits.fetch_add(1, Ordering::Relaxed);
-                cleanup_exited_process(&self.shared, pid, ExitReason::Killed);
+                let reason = self.shared.exit_tombstones.get(&pid).unwrap_or(ExitReason::Killed);
+                cleanup_exited_process(&self.shared, pid, reason);
             }
         }
         let remaining_pids: Vec<_> = self
@@ -159,10 +160,7 @@ impl Scheduler {
         for pid in remaining_pids {
             #[cfg(test)]
             self.shared.terminal_body_visits.fetch_add(1, Ordering::Relaxed);
-            let reason = match self.shared.exit_tombstones.get(&pid) {
-                Some(reason) => reason,
-                None => ExitReason::Killed,
-            };
+            let reason = self.shared.exit_tombstones.get(&pid).unwrap_or(ExitReason::Killed);
             cleanup_exited_process(&self.shared, pid, reason);
         }
     }

@@ -416,8 +416,7 @@ impl NativeHandler for BlockingSpawnHandler {
     }
 }
 
-#[test]
-fn candidate_reserved_publisher_is_drained_before_terminal_completion() {
+fn reserved_publisher_cleanup(prior_reason: Option<ExitReason>) {
     let scheduler = Arc::new(Scheduler::with_services(
         SchedulerConfig { thread_count: Some(1), ..SchedulerConfig::default() },
         SchedulerServices::minimal(),
@@ -474,6 +473,15 @@ fn candidate_reserved_publisher_is_drained_before_terminal_completion() {
     publisher_release.wait();
     let published = publisher.join().unwrap_or_else(|_| panic!("publisher panicked"));
     stopped_rx.recv().unwrap_or_else(|error| panic!("stop signal: {error}"));
+    let prior_termination = if let Some(reason) = prior_reason {
+        if let Ok(pid) = &published {
+            Some(scheduler.terminate_process(*pid, reason))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     worker_release.wait();
     done_rx.recv().unwrap_or_else(|error| panic!("close signal: {error}"));
     closer.join().unwrap_or_else(|_| panic!("closer panicked"));
@@ -487,7 +495,8 @@ fn candidate_reserved_publisher_is_drained_before_terminal_completion() {
     assert_eq!(scheduler.shared.process_table.len(), 0);
     assert_eq!(scheduler.shared.process_bodies.len(), 0);
     assert!(scheduler.inject_queues.iter().all(|queue| queue.is_empty()));
-    assert_eq!(scheduler.peek_exit_reason(pid), Some(ExitReason::Killed));
+    assert_eq!(prior_termination, prior_reason.map(|_| true));
+    assert_eq!(scheduler.peek_exit_reason(pid), Some(prior_reason.unwrap_or(ExitReason::Killed)));
     assert_eq!(scheduler.peek_exit_reason(native_pid), Some(ExitReason::Killed));
     assert_eq!(scheduler.shared.terminal_spawn_visits.load(Ordering::Relaxed), 1);
     assert_eq!(scheduler.shared.terminal_body_visits.load(Ordering::Relaxed), 1);
@@ -521,4 +530,15 @@ fn terminal_cleanup_visits_only_current_owned_bodies() {
         assert_eq!(fixture.scheduler.shared.terminal_spawn_visits.load(Ordering::Relaxed), 0);
         assert_eq!(fixture.scheduler.peek_exit_reason(100_000), Some(ExitReason::Killed));
     }
+}
+
+
+#[test]
+fn candidate_reserved_publisher_is_drained_before_terminal_completion() {
+    reserved_publisher_cleanup(None);
+}
+
+#[test]
+fn candidate_terminal_drain_preserves_prior_queued_spawn_reason() {
+    reserved_publisher_cleanup(Some(ExitReason::Error));
 }
