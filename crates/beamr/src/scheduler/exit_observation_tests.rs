@@ -896,6 +896,10 @@ fn completion_probe_joined_shutdown_removes_parked_process() {
         }))
         .expect("spawn");
     ready_rx.recv().expect("process reaches receive");
+    let watch = match scheduler.watch_exit(pid) {
+        ExitWatchState::Live(watch) => watch,
+        other => panic!("published adapter must arm a live watch: {other:?}"),
+    };
     std::thread::scope(|scope| {
         scope
             .spawn(|| scheduler.shutdown())
@@ -906,8 +910,16 @@ fn completion_probe_joined_shutdown_removes_parked_process() {
     if !removed_at_return {
         scheduler.terminate_process(pid, ExitReason::Kill);
     }
+    let notification = watch.recv();
+    let retained = scheduler.shared.exit_tombstones.finalized_reason(&pid);
     assert!(
         removed_at_return,
         "joined shutdown must remove the parked process"
+    );
+    assert_eq!(
+        notification,
+        retained
+            .map(|reason| (pid, reason))
+            .ok_or(ExitEventRecvError::Disconnected)
     );
 }
