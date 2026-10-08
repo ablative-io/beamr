@@ -277,9 +277,12 @@ fn admission_contending_with_terminal_cleanup_releases_owned_completion() {
     let (closing, at_close) = mpsc::channel();
     let release = Arc::new(Barrier::new(2));
     let close_release = Arc::clone(&release);
+    let close_observed = AtomicBool::new(false);
     fixture.scheduler.shared.terminal_admission_hook.set(Box::new(move || {
-        closing.send(()).unwrap_or_else(|error| panic!("terminal boundary: {error}"));
-        close_release.wait();
+        if !close_observed.swap(true, Ordering::SeqCst) {
+            closing.send(()).unwrap_or_else(|error| panic!("terminal boundary: {error}"));
+            close_release.wait();
+        }
     })).unwrap_or_else(|_| panic!("terminal hook already installed"));
     let entry = fixture.scheduler.shared.process_bodies.get(&shadow_pid)
         .unwrap_or_else(|| panic!("executing slot missing"));
@@ -304,7 +307,7 @@ fn admission_contending_with_terminal_cleanup_releases_owned_completion() {
             _ => 0,
         }
     });
-    // Release the baseline's retained sender before observing the red.
+    // Release a stranded completion before asserting terminal ownership.
     execution::cleanup_exited_process(&fixture.scheduler.shared, shadow_pid, ExitReason::Normal);
     let abandoned = sender.join().unwrap_or_else(|_| panic!("mailbox sender panicked"));
     let last = fixture.command(3);
