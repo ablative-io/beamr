@@ -636,10 +636,8 @@ impl LiveTargetMode {
 
 struct LiveNativeState {
     mode: LiveTargetMode,
-    expected: usize,
     received: usize,
     ready: mpsc::Sender<(u64, Option<u64>)>,
-    received_all: mpsc::Sender<usize>,
     release: Arc<Barrier>,
 }
 
@@ -675,11 +673,6 @@ fn live_message_received(args: &[Term], context: &mut ProcessContext<'_>) -> Res
     let mut state = lock_or_recover(&LIVE_NATIVE_STATE);
     let state = state.as_mut().unwrap_or_else(|| panic!("native fixture missing"));
     state.received += 1;
-    assert!(state.received <= state.expected, "duplicate delivery");
-    if state.received == state.expected {
-        state.received_all.send(state.received)
-            .unwrap_or_else(|error| panic!("received signal: {error}"));
-    }
     Ok(Term::NIL)
 }
 
@@ -748,7 +741,7 @@ fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
     let (received_all, received) = mpsc::channel();
     let release = Arc::new(Barrier::new(2));
     *lock_or_recover(&LIVE_NATIVE_STATE) = Some(LiveNativeState {
-        mode, expected: count, received: 0, ready: ready.clone(), received_all,
+        mode, received: 0, ready: ready.clone(),
         release: Arc::clone(&release),
     });
     if mode != LiveTargetMode::Executing {
@@ -794,31 +787,53 @@ fn count_live_messages(mode: LiveTargetMode, count: usize) -> [usize; 11] {
         assert!(call_id.is_none());
     }
     let measurement = LiveMeasurement::start();
+    let mut accepted = 0;
     for _ in 0..count {
-        assert!(scheduler.enqueue_atom_message(pid, Atom::OK), "live admission refused");
+        accepted += usize::from(scheduler.enqueue_atom_message(pid, Atom::OK));
     }
     let vector = measurement.finish();
     let before_release = received.try_recv();
-    if mode == LiveTargetMode::ResultGated {
-        assert!(scheduler.wake_with_result_for(
+    let finished = AtomicBool::new(false);
+    *lock_or_recover(&scheduler.shared.park_gap_hook) = Some(Arc::new(move |target, gap| {
+        if target == pid && gap == ParkGap::WaitRegistered
+            && !finished.swap(true, Ordering::SeqCst) {
+            let observed = lock_or_recover(&LIVE_NATIVE_STATE).as_ref()
+                .unwrap_or_else(|| panic!("native fixture missing")).received;
+            received_all.send(observed)
+                .unwrap_or_else(|error| panic!("receive park signal: {error}"));
+        }
+    }));
+    let resumed = if mode == LiveTargetMode::ResultGated {
+        scheduler.wake_with_result_for(
             pid, call_id.unwrap_or_else(|| panic!("await identity missing")), Term::NIL,
-        ));
+        )
     } else {
+        if mode == LiveTargetMode::Present {
+            execution::wake_process(&scheduler.shared, pid);
+        }
         release.wait();
-    }
-    let delivered = received.recv().unwrap_or_else(|error| panic!("received all signal: {error}"));
+        true
+    };
+    let delivered = if resumed {
+        received.recv().unwrap_or_else(|error| panic!("receive park signal: {error}"))
+    } else {
+        0
+    };
+    *lock_or_recover(&scheduler.shared.park_gap_hook) = None;
     scheduler.shutdown();
     let received_count = lock_or_recover(&LIVE_NATIVE_STATE).take()
         .unwrap_or_else(|| panic!("native fixture missing")).received;
     assert_eq!(before_release, Err(mpsc::TryRecvError::Empty));
+    assert!(resumed, "owned await completion refused");
+    assert_eq!(accepted, count, "live admission refused");
     assert_eq!(delivered, count);
     assert_eq!(received_count, count);
-    println!("B179_VECTOR mode={} n={} delivered={} vector={:?}", mode.label(), count, delivered, vector);
+    println!("B179_ADMISSION_VECTOR mode={} n={} delivered={} vector={:?}", mode.label(), count, delivered, vector);
     vector
 }
 
 #[test]
-fn live_message_count_vectors_for_present_executing_and_result_gated_targets() {
+fn sender_admission_count_vectors_for_present_executing_and_result_gated_targets() {
     println!("B179_COMPONENTS {:?}", LIVE_COMPONENTS);
     for mode in [LiveTargetMode::Present, LiveTargetMode::Executing, LiveTargetMode::ResultGated] {
         for count in [128, 256] {
