@@ -135,6 +135,7 @@ impl Scheduler {
                 std::panic::resume_unwind(payload);
             }
         }
+        drop(threads);
         #[cfg(test)]
         if let Some(hook) = self.shared.terminal_admission_hook.get() {
             hook();
@@ -175,6 +176,7 @@ impl Scheduler {
                 .unwrap_or(ExitReason::Killed);
             cleanup_exited_process(&self.shared, pid, reason);
         }
+        self.shared.exit_completion_watches.settle_shutdown();
     }
 
     /// Block until the given process exits, returning its exit reason and
@@ -311,6 +313,20 @@ impl Scheduler {
                     None => super::ExitWatchState::NoRecord,
                 }
             }
+        }
+    }
+
+    /// Arm before checking the table, so removal cannot escape registration.
+    /// An early exit record does not imply removal; outcome ownership is unchanged.
+    pub fn watch_exit_completion(&self, pid: u64) -> super::ExitCompletionWatchState {
+        let watch = self.shared.exit_completion_watches.register(pid);
+        if self.shared.process_table.get(pid).is_some() {
+            return super::ExitCompletionWatchState::Live(watch);
+        }
+        drop(watch);
+        match self.shared.exit_tombstones.finalized_reason(&pid) {
+            Some(reason) => super::ExitCompletionWatchState::AlreadyRemoved(pid, reason),
+            None => super::ExitCompletionWatchState::NoRecord,
         }
     }
 
