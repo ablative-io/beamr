@@ -987,6 +987,7 @@ fn completion_shutdown_closes_admission_before_removal_watch_fires() {
     );
 }
 
+#[cfg(feature = "readiness")]
 #[test]
 fn completion_watches_preserve_all_live_message_count_components() {
     use super::teardown_admission_tests::{LiveTargetMode, count_live_messages_with_setup};

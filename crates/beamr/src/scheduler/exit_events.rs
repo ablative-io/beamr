@@ -497,6 +497,10 @@ impl std::fmt::Debug for ExitCompletionWatch {
 
 impl ExitCompletionWatch {
     /// Wait for genuine table removal or publisher disconnection, without a deadline.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExitEventRecvError::Disconnected`] if the publisher drops its sender.
     pub fn recv(&self) -> Result<(u64, ExitReason), ExitEventRecvError> {
         self.receiver
             .recv()
