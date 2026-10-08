@@ -761,15 +761,12 @@ fn reserved_publisher_cleanup(prior_reason: Option<ExitReason>) {
     stopped_rx
         .recv()
         .unwrap_or_else(|error| panic!("stop signal: {error}"));
-    let prior_termination = if let Some(reason) = prior_reason {
-        if let Ok(pid) = &published {
+    let prior_termination = match (prior_reason, &published) {
+        (Some(reason), Ok(pid)) => {
             scheduler.terminate_process(*pid, reason);
             Some(())
-        } else {
-            None
         }
-    } else {
-        None
+        _ => None,
     };
     worker_release.wait();
     done_rx
@@ -1385,7 +1382,7 @@ pub(super) fn count_live_messages_with_setup<T>(
 
 #[test]
 fn sender_admission_count_vectors_for_present_executing_and_result_gated_targets() {
-    println!("B179_COMPONENTS {:?}", LIVE_COMPONENTS);
+    println!("B179_COMPONENTS {LIVE_COMPONENTS:?}");
     for mode in [
         LiveTargetMode::Present,
         LiveTargetMode::Executing,
