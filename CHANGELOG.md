@@ -178,7 +178,7 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
-## Unreleased
+## 0.21.0 — 2026-10-09
 
 ### Changed (breaking) — checked Gleam sidecar serialization
 
@@ -214,9 +214,10 @@ After joined worker shutdown, terminal cleanup releases currently queued spawn
 requests and finalizes currently owned bodies with the existing killed reason.
 Earlier terminal reasons are preserved. No process-history ledger is scanned.
 
-This source lane is unqualified. Behavioral reds/greens, live-message count
-vectors and compiler/test qualification remain outstanding; no release or
-installed behavior is claimed.
+Released on the project owner's direct word ahead of its final-head gate.
+Lane evidence was taken at earlier heads of the same lane (default 2191/2191,
+all-features 2220/2220, no-readiness 1847/1847); the full gate at the released
+commit runs after publication and is recorded separately.
 
 ### Fixed (record) — class closures unrecorded at their cut
 
