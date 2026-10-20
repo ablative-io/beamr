@@ -102,7 +102,9 @@ fn map_pair_terms(pairs: *const u64, pair_count: u64) -> Option<Vec<(Term, Term)
     };
     Some(
         raw_pairs
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| (Term::from_raw(pair[0]), Term::from_raw(pair[1])))
             .collect(),
     )

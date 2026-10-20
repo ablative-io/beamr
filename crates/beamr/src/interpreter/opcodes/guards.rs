@@ -374,7 +374,9 @@ fn select_pairs<'a>(
         return Err(ExecError::InvalidOperand(context));
     }
     Ok(items
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| Ok((&chunk[0], &chunk[1]))))
 }
 

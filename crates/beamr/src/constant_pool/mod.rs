@@ -197,7 +197,7 @@ fn rebase_block_terms(
 ) {
     match kind {
         BlockKind::List => {
-            for cell in block.chunks_exact_mut(2) {
+            for cell in block.as_chunks_mut::<2>().0 {
                 rebase_term_word(&mut cell[0], mappings);
                 rebase_term_word(&mut cell[1], mappings);
             }

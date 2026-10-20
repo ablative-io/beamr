@@ -82,7 +82,7 @@ fn construct(process: &Process, module: &Module, fields: &[Operand]) -> Result<V
         return Err(ExecError::InvalidOperand("bs_create_bin segment"));
     }
     let mut writer = BitWriter::default();
-    for segment in fields.chunks_exact(SEGMENT_FIELDS) {
+    for segment in fields.as_chunks::<SEGMENT_FIELDS>().0 {
         append_segment(
             process,
             module,

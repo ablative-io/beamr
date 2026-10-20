@@ -163,7 +163,9 @@ pub(crate) fn parse_select_pairs(list: &Operand) -> Result<Vec<(&Operand, &Opera
         });
     }
     Ok(items
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| (&chunk[0], &chunk[1]))
         .collect())
 }

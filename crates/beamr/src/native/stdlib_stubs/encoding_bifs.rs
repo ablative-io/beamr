@@ -33,7 +33,7 @@ pub fn bif_binary_decode_hex(args: &[Term], context: &mut ProcessContext) -> Res
         return Err(badarg());
     }
     let mut out = Vec::with_capacity(hex.len() / 2);
-    for pair in hex.chunks_exact(2) {
+    for pair in hex.as_chunks::<2>().0 {
         let high = hex_value(pair[0])?;
         let low = hex_value(pair[1])?;
         out.push((high << 4) | low);
@@ -129,7 +129,7 @@ fn decode_base64(bytes: &[u8]) -> Result<Vec<u8>, Term> {
         return Err(badarg());
     }
     let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
-    for (chunk_index, chunk) in bytes.chunks_exact(4).enumerate() {
+    for (chunk_index, chunk) in bytes.as_chunks::<4>().0.iter().enumerate() {
         let last_chunk = chunk_index + 1 == bytes.len() / 4;
         let c0 = base64_value(chunk[0])?;
         let c1 = base64_value(chunk[1])?;

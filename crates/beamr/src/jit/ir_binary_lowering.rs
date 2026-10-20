@@ -452,7 +452,7 @@ pub(super) fn immediate_u64(operand: &Operand, context: &'static str) -> Result<
 pub(super) fn flags_to_raw(flags: &Operand) -> u64 {
     match flags {
         Operand::Unsigned(value) => *value,
-        Operand::Integer(value) => u64::try_from(*value).map_or(0, |raw| raw),
+        Operand::Integer(value) => u64::try_from(*value).unwrap_or(0),
         Operand::List(items) => items
             .iter()
             .fold(0_u64, |bits, item| bits | flags_to_raw(item)),

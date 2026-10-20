@@ -212,7 +212,7 @@ impl TermAccumulator {
         }
         let mut keys = Vec::with_capacity(flat.len() / 2);
         let mut values = Vec::with_capacity(flat.len() / 2);
-        for pair in flat.chunks_exact(2) {
+        for pair in flat.as_chunks::<2>().0 {
             keys.push(pair[0]);
             values.push(pair[1]);
         }
@@ -233,7 +233,9 @@ impl TermAccumulator {
             return Err(Term::atom(crate::atom::Atom::BADARG));
         }
         let mut pairs: Vec<(Term, Term)> = flat
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| (pair[0], pair[1]))
             .collect();
         pairs.sort_by_key(|(key, _)| *key);

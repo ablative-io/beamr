@@ -312,7 +312,7 @@ impl TranslationPlan {
                             let (fail, parsed) = parse_get_map_elements_operands(operands)?;
                             validate_label_operand(fail)?;
                             validate_read_operand(parsed.source)?;
-                            for pair in parsed.pairs.chunks_exact(2) {
+                            for pair in parsed.pairs.as_chunks::<2>().0 {
                                 validate_read_operand(&pair[0])?;
                                 validate_write_operand(&pair[1])?;
                             }

@@ -421,7 +421,7 @@ fn get_map_elements(
     };
 
     let mut extracted = Vec::with_capacity(items.len() / 2);
-    for pair in items.chunks_exact(2) {
+    for pair in items.as_chunks::<2>().0 {
         let key = core::read_term(process, module, &pair[0])?;
         let Some(value) = map.get(key) else {
             return jump_label(module, fail);
@@ -480,7 +480,7 @@ fn put_map(
     };
 
     let mut updates = Vec::with_capacity(items.len() / 2);
-    for pair in items.chunks_exact(2) {
+    for pair in items.as_chunks::<2>().0 {
         updates.push((
             core::read_term(process, module, &pair[0])?,
             core::read_term(process, module, &pair[1])?,

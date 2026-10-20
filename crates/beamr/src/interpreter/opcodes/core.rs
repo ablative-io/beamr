@@ -469,7 +469,7 @@ fn parse_update_record_operands(
     let pair_operands = update_record_pair_operands(operands)?;
     let update_count = pair_operands.len() / 2;
     let mut updates = Vec::with_capacity(update_count);
-    for pair in pair_operands.chunks_exact(2) {
+    for pair in pair_operands.as_chunks::<2>().0 {
         updates.push(UpdateRecordPair {
             index: operand_usize(&pair[0], "update_record index")?,
             value: &pair[1],

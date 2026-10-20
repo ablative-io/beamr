@@ -99,7 +99,7 @@ pub(crate) fn translate_get_map_elements(
 
     let map = read_operand_term(builder, context.register_file, op.source)?;
     let mut found = Vec::with_capacity(op.pairs.len() / 2);
-    for pair in op.pairs.chunks_exact(2) {
+    for pair in op.pairs.as_chunks::<2>().0 {
         let key = read_operand_term(builder, context.register_file, &pair[0])?;
         let call = builder.ins().call(helpers.get, &[map, key]);
         let results = builder.inst_results(call).to_vec();
