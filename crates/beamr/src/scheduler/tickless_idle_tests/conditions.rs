@@ -3,6 +3,7 @@
 //! deadline read that does not grow with the armed timers.
 
 use super::*;
+use crate::timer::TimerRef;
 
 /// A native that reports where it started, then blocks until the test
 /// releases it: the "hook the test holds" of C1's red.
@@ -227,19 +228,34 @@ fn the_parked_deadline_read_stays_flat_as_armed_timers_grow() {
         .iter()
         .map(|&count| {
             let mut wheel = TimerWheel::new();
-            for index in 0..count {
-                let offset = Duration::from_millis(u64::try_from(index).unwrap_or(u64::MAX));
-                let _armed = wheel.schedule_at(
-                    start,
-                    FIRST + offset,
-                    7,
-                    Term::atom(Atom::OK),
-                    TimerKind::Deliver,
-                );
-            }
+            let armed: Vec<TimerRef> = (0..count)
+                .map(|index| {
+                    let offset = Duration::from_millis(u64::try_from(index).unwrap_or(u64::MAX));
+                    wheel.schedule_at(
+                        start,
+                        FIRST + offset,
+                        7,
+                        Term::atom(Atom::OK),
+                        TimerKind::Deliver,
+                    )
+                })
+                .collect();
             let before = wheel.deadline_reads();
             assert_eq!(wheel.publish_park(), Some(start + FIRST));
-            wheel.deadline_reads() - before
+            let read = wheel.deadline_reads() - before;
+            // The cancel half of the index (Hermes, 21 Oct): once the
+            // earliest of N is cancelled, the earliest deadline is the next.
+            assert!(
+                wheel.cancel_at(armed[0], start).is_some(),
+                "the earliest of {count} armed timers was not pending to cancel"
+            );
+            assert_eq!(
+                wheel.earliest_deadline(),
+                Some(start + FIRST + Duration::from_millis(1)),
+                "after cancelling the earliest of {count} armed timers, the earliest \
+                 deadline must be the next one's"
+            );
+            read
         })
         .collect();
     assert!(
