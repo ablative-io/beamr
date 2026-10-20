@@ -380,25 +380,37 @@ zero because every wake is accounted for.
 #### 3.8.2 Conditions from the review, binding on R2 and R3
 
 Hermes approved this enumeration on Cambium on 21 October 2026 at 04:50
-(Melbourne), post `1440ba67`, with the conditions below. R2's code starts
+(Melbourne), post `1440ba67`, with the conditions below, C1 completed from
+its second reading (04:54, post `5ecebafd`). R2's code starts
 only with them written here.
 
 **C1. W23's surplus edge uses an idle count, raised before the sequence
 read.** A count of *parked* workers loses a wake: a worker that has made its
 steal attempt but not yet counted itself parked is read as zero by a
 concurrent push, gets no E, and then parks with no bound while the surplus
-waits. So each worker raises an idle count (SeqCst) *before* it reads the
-wake sequence, which is before its checks and its steal, and lowers it when
-it leaves the park. A pusher pushes, then issues a SeqCst fence and reads the idle count, and runs E when the count is
-non-zero and its queue holds surplus. The ordering argument, in the single
-total order SeqCst gives: either the pusher's read follows the worker's
-raise, so the pusher runs E, and then E's advance either precedes the
-worker's sequence read (the worker reads the advanced value, which makes
-the push visible to its steal) or follows it (the worker's park finds the
-sequence changed under the lock and returns at once); or the pusher's read
-precedes the raise, so the push, before the fence, precedes the raise, and
-the worker's steal, after its raise, sees the pushed work. A Requeue after a slice (`core.rs:83`) with
-nothing else in the queue is not surplus. Its red: two workers, the owner
+waits. So each worker raises an idle count with `fetch_add(SeqCst)` and then
+issues `fence(SeqCst)` *before* it reads the wake sequence, which is before
+its checks and its steal. It lowers the count on every way out of that
+window: when it leaves the park, and equally when it finds work without
+parking; a count left high would make every surplus push wake the herd
+for ever, against the signed bound. A pusher pushes, then issues
+`fence(SeqCst)` and reads the idle count, and runs E when the count is
+non-zero and its queue holds surplus. E's advance of the sequence is a
+Release store (or is made under the `wait_set` mutex), and the worker's
+read of it is Acquire or stronger. The ordering argument, in the single
+total order the two SeqCst fences give (a Dekker pattern: it holds only
+with a SeqCst fence on both sides; on ARM64 an Acquire load may compile to
+`ldapr`, which can move ahead of an earlier SeqCst RMW's store, and the
+worker's fence is what keeps its steal after its raise): either the
+pusher's fence follows the worker's, so the pusher reads the raised count
+and runs E, and then E's advance either precedes the worker's sequence
+read (the worker's Acquire read of the Release advance makes the push
+visible to its steal) or follows it (the worker's park finds the sequence
+changed under the lock and returns at once); or the pusher's fence
+precedes the worker's, so the push precedes the worker's fence and the
+steal after it sees the pushed work. A Requeue after a slice (`core.rs:83`) with
+nothing else in the queue is not surplus. Its reds: after a run in which workers find work without parking, the idle
+count equals the number of parked workers; and two workers, the owner
 blocked inside a slice on a hook the test holds, a second process pushed
 behind it; the second process runs on the other worker while the owner is
 still blocked, gated by the hook, never by a clock.
