@@ -1412,6 +1412,8 @@ impl SpawnFacility for SchedulerSpawnFacility {
         {
             let mut ws = lock_or_recover(&self.shared.wait_set);
             ws.woken.push((child_pid, 0));
+            // W9: advance inside the critical section, notify after it.
+            self.shared.advance_wake_sequence(&ws);
         }
         self.shared.wake_condvar.notify_all();
 
@@ -1516,6 +1518,8 @@ impl SpawnFacility for SchedulerSpawnFacility {
         {
             let mut ws = lock_or_recover(&self.shared.wait_set);
             ws.woken.push((child_pid, 0));
+            // W9: advance inside the critical section, notify after it.
+            self.shared.advance_wake_sequence(&ws);
         }
         self.shared.wake_condvar.notify_all();
 
@@ -1665,6 +1669,8 @@ impl SchedulerSpawnFacility {
         {
             let mut ws = lock_or_recover(&self.shared.wait_set);
             ws.woken.push((child_pid, 0));
+            // W9: advance inside the critical section, notify after it.
+            self.shared.advance_wake_sequence(&ws);
         }
         self.shared.wake_condvar.notify_all();
 
@@ -2009,6 +2015,8 @@ impl SchedulerSpawnFacility {
         {
             let mut ws = lock_or_recover(&self.shared.wait_set);
             ws.woken.push((child_pid, 0));
+            // W9: advance inside the critical section, notify after it.
+            self.shared.advance_wake_sequence(&ws);
         }
         self.shared.wake_condvar.notify_all();
     }

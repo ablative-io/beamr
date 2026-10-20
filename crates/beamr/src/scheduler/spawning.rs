@@ -489,7 +489,8 @@ impl Scheduler {
                 .record_scheduler_executing(std::time::Duration::ZERO);
             let mut wait_set = lock_or_recover(&self.shared.wait_set);
             wait_set.woken.push((pid, index));
-            self.shared.wake_condvar.notify_all();
+            // W7: edge E in the same critical section as the push.
+            self.shared.wake_edge_locked(&wait_set);
             #[cfg(feature = "telemetry")]
             crate::telemetry::lifecycle::record_process_spawned(
                 &self.shared.atom_table,
@@ -501,7 +502,8 @@ impl Scheduler {
             );
         } else {
             self.inject_queues[index].push(request);
-            self.shared.wake_condvar.notify_all();
+            // W6: push, then edge E (lock, advance, notify).
+            self.shared.wake_edge();
         }
         drop(admission);
         Ok(pid)
@@ -522,7 +524,8 @@ pub(in crate::scheduler) fn drain_pending_spawns(
     if !woken.is_empty() {
         let mut wait_set = lock_or_recover(&shared.wait_set);
         wait_set.woken.extend(woken);
-        shared.wake_condvar.notify_all();
+        // W8: edge E in the same critical section.
+        shared.wake_edge_locked(&wait_set);
     }
 }
 

@@ -147,6 +147,40 @@ pub struct IoCompletion {
     pub result: io::Result<IoResult>,
 }
 
+/// Called by a ring each time it publishes a completion, so the ring's one
+/// consumer can wait for completions instead of polling for them
+/// (EMBEDDER-COMPOSITION-SPEC §3.8.1 W13, B-181 R3).
+pub type CompletionNotifier = std::sync::Arc<dyn Fn() + Send + Sync>;
+
+/// The notifier a ring holds, shared with the threads that publish its
+/// completions. Installed once; a ring publishes into it after every
+/// completion becomes visible to `poll_completions`.
+#[derive(Clone, Default)]
+pub(crate) struct NotifierSlot(std::sync::Arc<std::sync::OnceLock<CompletionNotifier>>);
+
+impl NotifierSlot {
+    /// Install the notifier. Refused (false) when one is installed already.
+    pub(crate) fn install(&self, notifier: CompletionNotifier) -> bool {
+        self.0.set(notifier).is_ok()
+    }
+
+    /// Tell the consumer a completion was published.
+    pub(crate) fn notify(&self) {
+        if let Some(notifier) = self.0.get() {
+            notifier();
+        }
+    }
+}
+
+impl std::fmt::Debug for NotifierSlot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NotifierSlot")
+            .field("installed", &self.0.get().is_some())
+            .finish()
+    }
+}
+
 /// Completion-ring interface used by platform-specific I/O backends.
 pub trait CompletionRing: Send + Sync {
     /// Submit an operation and return its ring-assigned monotonically increasing operation id.
@@ -177,6 +211,16 @@ pub trait CompletionRing: Send + Sync {
         0
     }
 
+    /// Install the notifier this ring calls after every completion it
+    /// publishes. Returns false when the ring cannot notify (the default, for
+    /// a ring that only supports polling) or a notifier is installed already;
+    /// a consumer that parks waiting for completions must refuse such a ring
+    /// rather than wait on it.
+    fn install_completion_notifier(&self, notifier: CompletionNotifier) -> bool {
+        drop(notifier);
+        false
+    }
+
     /// Stop accepting work and cleanly shut down backend workers.
     fn shutdown(&self);
 }
@@ -188,6 +232,7 @@ pub(crate) struct FailedRing {
     error_kind: io::ErrorKind,
     error_message: String,
     completions: Mutex<VecDeque<IoCompletion>>,
+    notifier: NotifierSlot,
 }
 
 #[cfg(target_os = "linux")]
@@ -198,6 +243,7 @@ impl FailedRing {
             error_kind: error.kind(),
             error_message: error.to_string(),
             completions: Mutex::new(VecDeque::new()),
+            notifier: NotifierSlot::default(),
         }
     }
 }
@@ -219,6 +265,9 @@ impl CompletionRing for FailedRing {
         if let Ok(mut completions) = self.completions.lock() {
             completions.push_back(completion);
         }
+        // W13: the completion is published on the submitting thread, which
+        // may not be the consumer; notify after the push is visible.
+        self.notifier.notify();
         op_id
     }
 
@@ -231,6 +280,10 @@ impl CompletionRing for FailedRing {
 
     fn pending_count(&self) -> usize {
         0
+    }
+
+    fn install_completion_notifier(&self, notifier: CompletionNotifier) -> bool {
+        self.notifier.install(notifier)
     }
 
     fn shutdown(&self) {}

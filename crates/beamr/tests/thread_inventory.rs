@@ -13,14 +13,14 @@
 #![cfg(feature = "threads")]
 
 use std::sync::Arc;
+#[cfg(target_os = "macos")]
 use std::thread;
-use std::time::{Duration, Instant};
+#[cfg(target_os = "macos")]
+use std::time::Duration;
 
 use beamr::module::ModuleRegistry;
 use beamr::scheduler::thread_probe::{process_thread_names, thread_name_multiset};
-use beamr::scheduler::{
-    IDLE_PARK_TIMEOUT, IDLE_WAKES_PER_SEC_PER_WORKER, NativeBifs, Scheduler, SchedulerConfig,
-};
+use beamr::scheduler::{NativeBifs, ObservedParkTimeout, Scheduler, SchedulerConfig};
 
 fn new_scheduler(threads: Option<usize>) -> Scheduler {
     let config = SchedulerConfig {
@@ -99,55 +99,40 @@ fn inventory_matches_os_probe_exactly_and_idle_bound_holds() {
 
     // ---- Phase B: the signed §3.8 idle-wake bound, process-wide shape. ----
     //
-    // The signed formula (Q-F ruling): wakes/sec/worker × total workers
-    // across ALL schedulers in the process, worker counts sourced from the
-    // actually-spawned thread records (`worker_names`), never a config claim.
-    // Two co-resident schedulers pin the aggregation the formula demands.
+    // The bound now signed (B-181, the §3.8 amendment): zero idle wakes for a
+    // scheduler with no armed timer and no IO in flight, over the total
+    // workers across ALL schedulers in the process, worker counts sourced
+    // from the actually-spawned thread records (`worker_names`), never a
+    // config claim. Two co-resident schedulers pin the aggregation.
     //
-    // T1-grade methodology (comment-as-contract):
-    //  - measurement duration: 500 ms wall clock, divided by ACTUAL elapsed.
-    //  - sampling source: each scheduler's `idle_park_count()` (one increment
-    //    per `park_thread` entry).
-    //  - host state: this quiet integration-test process, all workers idle.
-    //  - upper bound: 2× the formula — a ceiling, never an exact match.
-    //  - floor linkage: NOT a wall-clock lower bound (any lower bound is
-    //    load-sensitive — an oversubscribed host can starve workers of
-    //    runnable time). The running code's actual wait duration is instead
-    //    asserted directly via `observed_park_timeout_millis()`, which the
-    //    park primitive writes on every entry — deterministic, and it
-    //    catches a wait duration that decoupled from the signed constant.
+    // Methodology (comment-as-contract):
+    //  - sampling source: the park seams, which record the timeout each park
+    //    actually passed to its wait; `await_all_parked` ends when every
+    //    worker is waiting at once (an event, never a clock).
+    //  - assertion: every worker of both schedulers waits with NO timeout. A
+    //    park with no timeout ends only on a wake edge, and with no timer
+    //    armed and no IO in flight no source runs one, so the aggregate idle
+    //    wake rate is zero × total workers — deterministic, with zero
+    //    sensitivity to host load.
     let second = new_scheduler(Some(4));
     let schedulers = [&scheduler, &second];
     let total_workers: usize = schedulers.iter().map(|s| s.worker_names().len()).sum();
-
-    thread::sleep(Duration::from_millis(50));
-    let starts: Vec<usize> = schedulers.iter().map(|s| s.idle_park_count()).collect();
-    let started_at = Instant::now();
-    thread::sleep(Duration::from_millis(500));
-    let parks: usize = schedulers
-        .iter()
-        .zip(&starts)
-        .map(|(s, start)| s.idle_park_count().saturating_sub(*start))
-        .sum();
-    let elapsed = started_at.elapsed().as_secs_f64();
-
-    let wakes_per_sec = parks as f64 / elapsed;
-    let formula = IDLE_WAKES_PER_SEC_PER_WORKER as f64 * total_workers as f64;
-    assert!(
-        wakes_per_sec <= 2.0 * formula,
-        "aggregate idle wake rate {wakes_per_sec:.1}/s exceeds the signed \
-         ceiling {:.1}/s for {total_workers} workers at a {}ms floor",
-        2.0 * formula,
-        IDLE_PARK_TIMEOUT.as_millis(),
-    );
+    let mut unbounded = 0;
     for scheduler in schedulers {
-        assert_eq!(
-            scheduler.observed_park_timeout_millis(),
-            Some(IDLE_PARK_TIMEOUT.as_millis() as u64),
-            "the park primitive's actual wait duration must equal the \
-             signed IDLE_PARK_TIMEOUT constant"
-        );
+        scheduler.await_all_parked();
+        for worker in 0..scheduler.worker_names().len() {
+            assert_eq!(
+                scheduler.worker_observed_park_timeout(worker),
+                ObservedParkTimeout::Unbounded,
+                "an idle worker must park with no timeout (zero idle wakes)"
+            );
+            unbounded += 1;
+        }
     }
+    assert_eq!(
+        unbounded, total_workers,
+        "the zero-wake bound covers every worker the schedulers spawned"
+    );
 
     second.shutdown();
     scheduler.shutdown();

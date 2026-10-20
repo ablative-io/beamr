@@ -17,7 +17,9 @@ use std::time::Duration;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use io_uring::{IoUring, opcode, types};
 
-use crate::io::ring::{CompletionRing, IoCompletion, IoOp, IoResult, StatxData};
+use crate::io::ring::{
+    CompletionNotifier, CompletionRing, IoCompletion, IoOp, IoResult, NotifierSlot, StatxData,
+};
 
 const DEFAULT_RING_DEPTH: u32 = 256;
 const RING_TICK: Duration = Duration::from_millis(10);
@@ -68,6 +70,25 @@ enum InFlightOp {
     Nop,
 }
 
+/// The ring thread's side of its completion channel: every completion is
+/// sent, then the consumer's notifier runs (EMBEDDER-COMPOSITION-SPEC §3.8.1
+/// W13, B-181 R3), so the consumer never polls for it.
+struct Publisher {
+    sender: Sender<IoCompletion>,
+    notifier: NotifierSlot,
+}
+
+impl Publisher {
+    /// Publish one completion; false when the consumer side is gone.
+    fn publish(&self, completion: IoCompletion) -> bool {
+        if self.sender.send(completion).is_err() {
+            return false;
+        }
+        self.notifier.notify();
+        true
+    }
+}
+
 /// Completion ring backed by Linux io_uring.
 pub struct IoUringRing {
     next_op_id: AtomicU64,
@@ -76,6 +97,7 @@ pub struct IoUringRing {
     op_sender: Sender<RingMessage>,
     completion_receiver: Receiver<IoCompletion>,
     thread: Mutex<Option<JoinHandle<()>>>,
+    notifier: NotifierSlot,
 }
 
 impl IoUringRing {
@@ -93,6 +115,11 @@ impl IoUringRing {
         let shutdown = std::sync::Arc::new(AtomicBool::new(false));
         let thread_pending = std::sync::Arc::clone(&pending);
         let thread_shutdown = std::sync::Arc::clone(&shutdown);
+        let notifier = NotifierSlot::default();
+        let publisher = Publisher {
+            sender: completion_sender,
+            notifier: notifier.clone(),
+        };
 
         let handle = thread::Builder::new()
             .name("beamr-io-uring".to_string())
@@ -104,7 +131,7 @@ impl IoUringRing {
                         ring_loop(
                             ring,
                             op_receiver,
-                            completion_sender,
+                            publisher,
                             thread_pending,
                             thread_shutdown,
                         );
@@ -123,6 +150,7 @@ impl IoUringRing {
                 op_sender,
                 completion_receiver,
                 thread: Mutex::new(Some(handle)),
+                notifier,
             }),
             Ok(Err(error)) => {
                 if let Err(payload) = handle.join() {
@@ -177,6 +205,10 @@ impl CompletionRing for IoUringRing {
         self.pending.load(Ordering::Acquire)
     }
 
+    fn install_completion_notifier(&self, notifier: CompletionNotifier) -> bool {
+        self.notifier.install(notifier)
+    }
+
     fn shutdown(&self) {
         if self.shutdown.swap(true, Ordering::AcqRel) {
             return;
@@ -200,7 +232,7 @@ impl Drop for IoUringRing {
 fn ring_loop(
     mut ring: IoUring,
     op_receiver: Receiver<RingMessage>,
-    completion_sender: Sender<IoCompletion>,
+    completion_sender: Publisher,
     pending: std::sync::Arc<AtomicUsize>,
     shutdown: std::sync::Arc<AtomicBool>,
 ) {
@@ -236,7 +268,7 @@ fn ring_loop(
 fn drain_messages(
     ring: &mut IoUring,
     op_receiver: &Receiver<RingMessage>,
-    completion_sender: &Sender<IoCompletion>,
+    completion_sender: &Publisher,
     pending: &AtomicUsize,
     in_flight: &mut HashMap<u64, InFlightOp>,
     shutting_down: bool,
@@ -252,7 +284,7 @@ fn drain_messages(
 fn handle_message(
     ring: &mut IoUring,
     message: RingMessage,
-    completion_sender: &Sender<IoCompletion>,
+    completion_sender: &Publisher,
     pending: &AtomicUsize,
     in_flight: &mut HashMap<u64, InFlightOp>,
 ) {
@@ -454,7 +486,7 @@ fn build_entry(op_id: u64, op: IoOp) -> io::Result<(io_uring::squeue::Entry, InF
 
 fn drain_cqes(
     ring: &mut IoUring,
-    completion_sender: &Sender<IoCompletion>,
+    completion_sender: &Publisher,
     pending: &AtomicUsize,
     in_flight: &mut HashMap<u64, InFlightOp>,
 ) {
@@ -467,7 +499,7 @@ fn drain_cqes(
         };
         pending.fetch_sub(1, Ordering::AcqRel);
         let completion = decode_completion(op_id, result, op);
-        if completion_sender.send(completion).is_err() {
+        if !completion_sender.publish(completion) {
             break;
         }
     }
@@ -530,13 +562,13 @@ fn decode_completion(op_id: u64, result: i32, op: InFlightOp) -> IoCompletion {
 }
 
 fn complete_error(
-    completion_sender: &Sender<IoCompletion>,
+    completion_sender: &Publisher,
     pending: &AtomicUsize,
     op_id: u64,
     error: io::Error,
 ) {
     pending.fetch_sub(1, Ordering::AcqRel);
-    let _sent = completion_sender.send(IoCompletion {
+    let _sent = completion_sender.publish(IoCompletion {
         op_id,
         result: Err(error),
     });

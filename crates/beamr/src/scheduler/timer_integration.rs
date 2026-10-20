@@ -85,14 +85,18 @@ fn fail_replay_timer(shared: &SharedState, error: crate::replay::ReplayMismatch)
     shared
         .shutdown
         .store(true, std::sync::atomic::Ordering::Release);
-    shared.wake_condvar.notify_all();
+    // W22 (replay failure): the flag, then edge E.
+    shared.wake_edge();
 }
 
 /// Process expired timers: mark each fired timer for its target process and
-/// wake the process if it is parked in the wait set.
-pub(super) fn tick_timers(shared: &SharedState) {
+/// wake the process if it is parked in the wait set. Returns how many timers
+/// the wheel gave up, so worker 0 can count why a deadline woke it.
+pub(super) fn tick_timers(shared: &SharedState) -> usize {
     let expired = lock_or_recover(&shared.timers).tick();
+    let fired = expired.len();
     expire_timers(shared, expired);
+    fired
 }
 
 /// Mark-and-wake for fired timers. The timeout-label jump is NOT applied
@@ -341,7 +345,8 @@ pub(super) fn mark_fired_receive_timer(shared: &SharedState, pid: u64, timer_id:
     let mut wait_set = lock_or_recover(&shared.wait_set);
     if let Some(index) = wait_set.waiting.remove(&pid) {
         wait_set.woken.push((pid, index));
-        shared.wake_condvar.notify_all();
+        // W10: the fire's edge E, in the same critical section.
+        shared.wake_edge_locked(&wait_set);
     }
 }
 
@@ -403,7 +408,8 @@ pub(super) fn resume_suspended(shared: &SharedState, pid: u64) -> bool {
     let mut wait_set = lock_or_recover(&shared.wait_set);
     if let Some(index) = wait_set.waiting.remove(&pid) {
         wait_set.woken.push((pid, index));
-        shared.wake_condvar.notify_all();
+        // W17: edge E in resume_suspended's critical section.
+        shared.wake_edge_locked(&wait_set);
         true
     } else {
         false

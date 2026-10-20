@@ -79,8 +79,37 @@ pub struct ExpiredTimer {
     pub kind: TimerKind,
 }
 
+/// Called by the wheel when a timer is armed earlier than the deadline a
+/// parked worker 0 waits for (§3.8.2 C2): the scheduler's edge E.
+#[cfg(feature = "threads")]
+pub(crate) type ArmNotifier = std::sync::Arc<dyn Fn() + Send + Sync>;
+
+/// The deadline the scheduler's worker 0 has published it parks until.
+#[cfg(feature = "threads")]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum ParkedUntil {
+    /// Worker 0 is not parked: it reads the earliest deadline at its next
+    /// park, so an arming now needs no edge.
+    NotParked,
+    /// Worker 0 is parked with no deadline: every arming is earlier.
+    NoDeadline,
+    /// Worker 0 is parked until this instant.
+    Deadline(Instant),
+}
+
+#[cfg(feature = "threads")]
+impl ParkedUntil {
+    /// Whether a timer expiring at `expires_at` would be overslept.
+    fn is_later_than(self, expires_at: Instant) -> bool {
+        match self {
+            Self::NotParked => false,
+            Self::NoDeadline => true,
+            Self::Deadline(deadline) => expires_at < deadline,
+        }
+    }
+}
+
 /// Millisecond-granularity O(1) timer wheel for one-shot timers.
-#[derive(Debug)]
 pub struct TimerWheel {
     buckets: Vec<Vec<TimerRef>>,
     entries: HashMap<TimerRef, TimerEntry>,
@@ -95,6 +124,29 @@ pub struct TimerWheel {
     /// parked worker 0 for an earlier deadline (§3.8.2 C2 instrument).
     #[cfg(any(test, feature = "test-support"))]
     arm_wake_edges: u64,
+    /// Published by worker 0 under this wheel's lock when it parks, cleared
+    /// when it leaves the park (§3.8.2 C2).
+    #[cfg(feature = "threads")]
+    parked_until: ParkedUntil,
+    #[cfg(feature = "threads")]
+    arm_notifier: Option<ArmNotifier>,
+}
+
+impl std::fmt::Debug for TimerWheel {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = formatter.debug_struct("TimerWheel");
+        debug
+            .field("buckets", &self.buckets)
+            .field("entries", &self.entries)
+            .field("next_ref", &self.next_ref)
+            .field("start", &self.start)
+            .field("current_tick", &self.current_tick);
+        #[cfg(feature = "threads")]
+        debug
+            .field("parked_until", &self.parked_until)
+            .field("arm_notifier", &self.arm_notifier.is_some());
+        debug.finish()
+    }
 }
 
 impl TimerWheel {
@@ -119,6 +171,10 @@ impl TimerWheel {
             bucket_visits: 0,
             #[cfg(any(test, feature = "test-support"))]
             arm_wake_edges: 0,
+            #[cfg(feature = "threads")]
+            parked_until: ParkedUntil::NotParked,
+            #[cfg(feature = "threads")]
+            arm_notifier: None,
         }
     }
 
@@ -182,7 +238,51 @@ impl TimerWheel {
                 slot,
             },
         );
+        #[cfg(feature = "threads")]
+        self.wake_parked_worker_for(expires_at);
         Some(reference)
+    }
+
+    /// W11's edge (§3.8.2 C2): O(1), never a scan. Runs the scheduler's edge
+    /// only when worker 0 is parked past `expires_at`, then records the new,
+    /// earlier deadline so arms between the two need no second edge.
+    #[cfg(feature = "threads")]
+    fn wake_parked_worker_for(&mut self, expires_at: Instant) {
+        if !self.parked_until.is_later_than(expires_at) {
+            return;
+        }
+        let Some(notifier) = self.arm_notifier.as_ref() else {
+            return;
+        };
+        notifier();
+        self.parked_until = ParkedUntil::Deadline(expires_at);
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            self.arm_wake_edges = self.arm_wake_edges.saturating_add(1);
+        }
+    }
+
+    /// Install the scheduler's edge, run when a timer is armed earlier than
+    /// worker 0's published park deadline.
+    #[cfg(feature = "threads")]
+    pub(crate) fn set_arm_notifier(&mut self, notifier: ArmNotifier) {
+        self.arm_notifier = Some(notifier);
+    }
+
+    /// Worker 0, about to park: read the earliest armed deadline (the one
+    /// O(n) read per park) and publish it as the deadline worker 0 parks
+    /// until, both under this wheel's lock.
+    #[cfg(feature = "threads")]
+    pub(crate) fn publish_park(&mut self) -> Option<Instant> {
+        let deadline = self.earliest_deadline();
+        self.parked_until = deadline.map_or(ParkedUntil::NoDeadline, ParkedUntil::Deadline);
+        deadline
+    }
+
+    /// Worker 0 left its park: arming needs no edge until it parks again.
+    #[cfg(feature = "threads")]
+    pub(crate) fn clear_park(&mut self) {
+        self.parked_until = ParkedUntil::NotParked;
     }
 
     /// Deterministic scheduling variant used by tests and scheduler ticks.
@@ -216,21 +316,33 @@ impl TimerWheel {
     }
 
     /// Process timers expired at `now`.
+    ///
+    /// Walks the buckets from `current_tick` to the tick `now` falls in, at
+    /// most one lap (§3.8.2 C4): one lap visits every bucket once, and a
+    /// bucket fires each entry by `expires_at <= now` and leaves later ones in
+    /// place, so a longer walk would only revisit buckets. A tick after a long
+    /// park therefore costs at most one lap and never fires early. The walk
+    /// ends with `current_tick` ON `now`'s tick, so the next walk revisits
+    /// that bucket: a timer due later in the same millisecond is never left
+    /// behind for a lap.
     pub fn tick_at(&mut self, now: Instant) -> Vec<ExpiredTimer> {
         let mut expired = Vec::new();
         let target_tick = self.tick_for(now);
         if target_tick < self.current_tick {
             return expired;
         }
-        while self.current_tick <= target_tick {
-            let bucket_index = (self.current_tick % self.buckets.len() as u128) as usize;
+        let lap = self.buckets.len() as u128;
+        let steps = (target_tick - self.current_tick).saturating_add(1).min(lap);
+        for step in 0..steps {
+            let tick = self.current_tick.saturating_add(step);
+            let bucket_index = (tick % lap) as usize;
             self.expire_bucket(bucket_index, now, &mut expired);
             #[cfg(any(test, feature = "test-support"))]
             {
                 self.bucket_visits = self.bucket_visits.saturating_add(1);
             }
-            self.current_tick = self.current_tick.saturating_add(1);
         }
+        self.current_tick = target_tick;
         expired
     }
 

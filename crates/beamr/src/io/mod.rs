@@ -18,7 +18,7 @@ pub use standard_io::StandardIoServer;
 
 use crate::atom::Atom;
 
-pub use ring::{CompletionRing, IoCompletion, IoOp, IoResult, StatxData};
+pub use ring::{CompletionNotifier, CompletionRing, IoCompletion, IoOp, IoResult, StatxData};
 #[cfg(not(target_os = "linux"))]
 pub use thread_pool::ThreadPoolRing;
 #[cfg(target_os = "linux")]

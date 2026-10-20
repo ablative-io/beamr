@@ -1,6 +1,4 @@
-//! B-181: tickless idle. (Base-run copy: the idle-count red, which needs
-//! R2's idle count, is held out; it is a compile red at the base.)
-//! Every wake source is ordered against the park (R2),
+//! B-181: tickless idle. Every wake source is ordered against the park (R2),
 //! and an idle worker parks with no timeout, or until the earliest armed
 //! timer, while the polled sources wake it (R3).
 //! EMBEDDER-COMPOSITION-SPEC §3.8, §3.8.1 (rows W1-W24) and §3.8.2 (C1-C4).
@@ -528,6 +526,52 @@ fn surplus_behind_a_blocked_owner_runs_on_the_idle_worker() {
     }
     assert_eq!(await_exit(&scheduler, first), ExitReason::Normal);
     assert_eq!(await_exit(&scheduler, second), ExitReason::Normal);
+    scheduler.shutdown();
+}
+
+/// C1's second red: after a run in which workers find work without
+/// parking, the idle count equals the number of parked workers. A count
+/// left raised on the find-work path would read above it.
+#[test]
+fn idle_count_equals_parked_workers_after_work_found_without_parking() {
+    let atoms = AtomTable::new();
+    let registry = Arc::new(ModuleRegistry::new());
+    let module = return_module(&registry, atoms.intern("tickless_idle_count"));
+    let scheduler = scheduler_with_workers(&registry, 4);
+    let workers = scheduler.shared.thread_count;
+    let pids: Vec<u64> = (0..1_000)
+        .map(|_| {
+            scheduler
+                .spawn_process(&module)
+                .unwrap_or_else(|error| panic!("spawn: {error}"))
+        })
+        .collect();
+    for pid in &pids {
+        assert_eq!(await_exit(&scheduler, *pid), ExitReason::Normal);
+    }
+    let events = waiting_events(&scheduler);
+    // Every worker parks once the work is done; the herd from one more spawn
+    // makes each that already parked park again, so each reports.
+    let last = scheduler
+        .spawn_process(&module)
+        .unwrap_or_else(|error| panic!("spawn last: {error}"));
+    assert_eq!(await_exit(&scheduler, last), ExitReason::Normal);
+    loop {
+        let (_worker, timeout) = events
+            .recv()
+            .unwrap_or_else(|error| panic!("waiting events: {error}"));
+        assert_eq!(
+            timeout, None,
+            "an idle worker with no timer parks unbounded"
+        );
+        let wait_set = lock_or_recover(&scheduler.shared.wait_set);
+        let parked = scheduler.parked_worker_count();
+        if parked == workers {
+            assert_eq!(scheduler.idle_worker_count(), parked);
+            drop(wait_set);
+            break;
+        }
+    }
     scheduler.shutdown();
 }
 

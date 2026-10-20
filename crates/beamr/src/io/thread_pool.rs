@@ -19,7 +19,9 @@ use std::time::Duration;
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 
-use crate::io::ring::{CompletionRing, IoCompletion, IoOp, IoResult, StatxData};
+use crate::io::ring::{
+    CompletionNotifier, CompletionRing, IoCompletion, IoOp, IoResult, NotifierSlot, StatxData,
+};
 
 const DEFAULT_POOL_SIZE: usize = 4;
 
@@ -89,6 +91,7 @@ pub struct ThreadPoolRing {
     workers: Mutex<Vec<JoinHandle<()>>>,
     worker_names: Vec<String>,
     requested_workers: usize,
+    notifier: NotifierSlot,
 }
 
 impl ThreadPoolRing {
@@ -114,6 +117,7 @@ impl ThreadPoolRing {
         let (job_sender, job_receiver) = crossbeam_channel::unbounded();
         let (completion_sender, completion_receiver) = crossbeam_channel::unbounded();
         let pending = std::sync::Arc::new(AtomicUsize::new(0));
+        let notifier = NotifierSlot::default();
         let mut workers = Vec::with_capacity(worker_count);
         let mut worker_names = Vec::with_capacity(worker_count);
 
@@ -121,10 +125,11 @@ impl ThreadPoolRing {
             let jobs = job_receiver.clone();
             let completions = completion_sender.clone();
             let pending = std::sync::Arc::clone(&pending);
+            let worker_notifier = notifier.clone();
             let worker_name = format!("{thread_name_prefix}-{worker_index}");
             match thread::Builder::new()
                 .name(worker_name.clone())
-                .spawn(move || worker_loop(jobs, completions, pending))
+                .spawn(move || worker_loop(jobs, completions, pending, worker_notifier))
             {
                 Ok(handle) => {
                     workers.push(handle);
@@ -143,6 +148,7 @@ impl ThreadPoolRing {
             workers: Mutex::new(workers),
             worker_names,
             requested_workers: worker_count,
+            notifier,
         }
     }
 }
@@ -207,6 +213,10 @@ impl CompletionRing for ThreadPoolRing {
         self.requested_workers
     }
 
+    fn install_completion_notifier(&self, notifier: CompletionNotifier) -> bool {
+        self.notifier.install(notifier)
+    }
+
     fn shutdown(&self) {
         if self.shutdown.swap(true, Ordering::AcqRel) {
             return;
@@ -241,6 +251,7 @@ fn worker_loop(
     job_receiver: Receiver<WorkerMessage>,
     completion_sender: Sender<IoCompletion>,
     pending: std::sync::Arc<AtomicUsize>,
+    notifier: NotifierSlot,
 ) {
     while let Ok(message) = job_receiver.recv() {
         match message {
@@ -253,6 +264,9 @@ fn worker_loop(
                 {
                     break;
                 }
+                // W13: published (the send is visible to poll_completions),
+                // then the consumer is told.
+                notifier.notify();
             }
             WorkerMessage::Shutdown => break,
         }

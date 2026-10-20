@@ -81,6 +81,9 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
                 return;
             }
             queue.push_with_priority(pid, priority);
+            // W23: a Requeue with others queued behind it is surplus for an
+            // idle worker (§3.8.2 C1); alone, it is not.
+            super::surplus_edge(shared, queue, false);
         }
         SliceOutcome::Wait(mut process) => {
             timer_integration::register_receive_timer(shared, &mut process);
@@ -173,6 +176,8 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
                 };
                 if self_woke {
                     queue.push_with_priority(pid, priority);
+                    // W23: the self-wake push, same rule as the Requeue.
+                    super::surplus_edge(shared, queue, false);
                 }
             }
         }
@@ -232,7 +237,8 @@ pub(super) fn run_process(shared: &Arc<SharedState>, queue: &RunQueue, pid: u64,
                     && let Some(index) = ws.waiting.remove(&pid)
                 {
                     ws.woken.push((pid, index));
-                    shared.wake_condvar.notify_all();
+                    // W19: edge E in the same critical section.
+                    shared.wake_edge_locked(&ws);
                 }
             }
         }

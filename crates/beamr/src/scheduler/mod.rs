@@ -141,12 +141,8 @@ mod service;
 mod services;
 #[cfg(all(feature = "threads", any(test, feature = "test-support")))]
 pub mod thread_probe;
-#[cfg(feature = "threads")]
-pub use execution::IDLE_PARK_TIMEOUT;
 #[cfg(all(feature = "threads", any(test, feature = "test-support")))]
-pub use execution::IDLE_WAKES_PER_SEC_PER_WORKER;
-#[cfg(all(feature = "threads", any(test, feature = "test-support")))]
-pub use execution::{ObservedParkTimeout, WorkerParkCounts};
+pub use execution::{ObservedParkTimeout, WakeCauses, WorkerParkCounts};
 #[cfg(feature = "threads")]
 pub use inventory::{
     ProcessVmCensus, ServiceInventoryEntry, ServicePolicyLine, deduped_thread_aggregate,
@@ -391,6 +387,9 @@ pub(super) struct SharedState {
     next_pid: AtomicU64,
     wait_set: Mutex<WaitSet>,
     wake_condvar: Condvar,
+    /// The wake sequence edge E advances and the idle count of §3.8.2 C1
+    /// (B-181 R2): what orders every wake against a worker's park.
+    idle_wake: execution::IdleWake,
     process_bodies: DashMap<u64, Mutex<ProcessSlot>>,
     exit_tombstones: exit_tombstones::BoundedTombstones,
     exit_completion_watches: Arc<exit_events::ExitCompletionRegistry>,
@@ -1611,8 +1610,6 @@ impl Scheduler {
         let readiness_error: std::cell::RefCell<Option<ReadinessBuildError>> =
             std::cell::RefCell::new(None);
         let shared = Arc::new_cyclic(|weak_shared| {
-            #[cfg(not(feature = "readiness"))]
-            let _ = weak_shared;
             #[cfg(feature = "readiness")]
             let route_home = RouteHome {
                 scheduler: weak_shared.clone(),
@@ -1667,6 +1664,7 @@ impl Scheduler {
                 next_pid: AtomicU64::new(1),
                 wait_set: Mutex::new(WaitSet::default()),
                 wake_condvar: Condvar::new(),
+                idle_wake: execution::IdleWake::default(),
                 process_bodies: DashMap::new(),
                 exit_tombstones: exit_tombstones::BoundedTombstones::new(),
                 exit_completion_watches: Arc::new(exit_events::ExitCompletionRegistry::new()),
@@ -1686,7 +1684,7 @@ impl Scheduler {
                 hook: Hook::new(),
                 distribution,
                 process_registry: DashMap::new(),
-                timers: Arc::new(Mutex::new(TimerWheel::new())),
+                timers: Arc::new(Mutex::new(armed_wheel(weak_shared))),
                 expired_receive_timers: DashMap::new(),
                 output_sink: Mutex::new(Arc::new(NullSink)),
                 io_ring,
@@ -1741,6 +1739,26 @@ impl Scheduler {
         #[cfg(feature = "readiness")]
         if let Some(error) = readiness_error.into_inner() {
             return Err(error.to_string());
+        }
+        // W13 (B-181 R3): the Owned file ring runs edge E as it publishes each
+        // completion, so worker 0 parks without polling it. A ring that cannot
+        // notify is refused here, never waited on.
+        if let Some(file_ring) = shared.file_io_ring.service() {
+            let weak = Arc::downgrade(&shared);
+            let installed = file_ring
+                .ring()
+                .install_completion_notifier(Arc::new(move || {
+                    if let Some(shared) = weak.upgrade() {
+                        shared.wake_edge();
+                    }
+                }));
+            if !installed {
+                return Err(
+                    "the file-IO ring cannot notify its completions, so a parked worker 0 \
+                     would never drain them"
+                        .to_string(),
+                );
+            }
         }
         // Process 0 is registered exactly when the standard-IO ring is Owned
         // (spec §3.4): a Disabled standard ring (replay today) registers no
@@ -2225,6 +2243,48 @@ impl Scheduler {
     pub fn worker_observed_park_timeout(&self, worker: usize) -> ObservedParkTimeout {
         self.shared.park_seams.observed(worker)
     }
+    /// Why worker 0 woke by the clock, and how many replay cursor edges ran:
+    /// every wake the signed §3.8 bound allows, counted under its cause.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn wake_causes(&self) -> WakeCauses {
+        self.shared.park_seams.causes()
+    }
+    /// Block until worker `worker` waits in a park it entered after `since`
+    /// was read from [`Scheduler::worker_park_counts`], and answer that
+    /// park's timeout. Ends on the worker starting to wait, never a clock.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn await_worker_parked(
+        &self,
+        worker: usize,
+        since: WorkerParkCounts,
+    ) -> ObservedParkTimeout {
+        execution::await_worker_parked(&self.shared, worker, since)
+    }
+    /// Block until every normal worker is waiting at once.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn await_all_parked(&self) {
+        execution::await_all_parked(&self.shared);
+    }
+    /// Workers inside their idle window right now (§3.8.2 C1's idle count).
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn idle_worker_count(&self) -> usize {
+        self.shared.idle_wake.idle_workers()
+    }
+    /// Workers waiting on the wake condvar right now.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn parked_worker_count(&self) -> usize {
+        self.shared.idle_wake.parked_workers()
+    }
+    /// Edges E run to date: every advance of the wake sequence.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn wake_edge_count(&self) -> u64 {
+        self.shared.idle_wake.edges()
+    }
     /// How many times worker `worker` parked, and how those parks ended.
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
@@ -2273,6 +2333,20 @@ impl Drop for Scheduler {
         self.shutdown();
     }
 }
+/// The scheduler's timer wheel, carrying W11's arming edge (§3.8.2 C2): an
+/// arm earlier than the deadline a parked worker 0 published runs edge E.
+#[cfg(feature = "threads")]
+fn armed_wheel(shared: &std::sync::Weak<SharedState>) -> TimerWheel {
+    let mut wheel = TimerWheel::new();
+    let weak = shared.clone();
+    wheel.set_arm_notifier(Arc::new(move || {
+        if let Some(shared) = weak.upgrade() {
+            shared.wake_edge();
+        }
+    }));
+    wheel
+}
+
 #[cfg(feature = "threads")]
 fn configured_thread_count(override_count: Option<usize>) -> usize {
     override_count
@@ -2594,7 +2668,8 @@ impl IoWakeTarget for SharedState {
         if pid == self.standard_io_pid {
             let mut wait_set = lock_or_recover(&self.wait_set);
             wait_set.woken.push((pid, 0));
-            self.wake_condvar.notify_all();
+            // W15: edge E in the same critical section.
+            self.wake_edge_locked(&wait_set);
         } else {
             execution::wake_process(self, pid);
         }

@@ -322,6 +322,7 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         next_pid: AtomicU64::new(100),
         wait_set: std::sync::Mutex::new(WaitSet::default()),
         wake_condvar: std::sync::Condvar::new(),
+        idle_wake: super::execution::IdleWake::default(),
         process_bodies: DashMap::new(),
         exit_tombstones: exit_tombstones::BoundedTombstones::new(),
         exit_completion_watches: Arc::new(exit_events::ExitCompletionRegistry::new()),

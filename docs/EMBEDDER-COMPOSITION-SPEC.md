@@ -444,6 +444,54 @@ W9's advance sits inside its existing critical section with the notify
 after it; the sequence is the guard. W16 needs no edge. W24's replay rule
 stands: the log decides, never the clock.
 
+#### 3.8.3 Amendment to the signed bound (B-181 R4)
+
+The Q-F ruling above stands as written. This amendment replaces the bound it
+signed.
+
+**The 5 ms floor is retired.** Its timed park existed only to poll the timer
+wheel and the file-IO ring. A timed park whose only purpose is to poll is a
+wait of a set length, and Tom's rule forbids every wait of a set length. The
+floor was signed on 2026-07-11, before that rule was given. With the wake
+edges of §3.8.1 and the conditions of §3.8.2 in place, nothing is left for
+the poll to find: every source either wakes a parked worker or is waited for
+by its own deadline. `IDLE_PARK_TIMEOUT` and `IDLE_WAKES_PER_SEC_PER_WORKER`
+are removed with the floor.
+
+**The bound now signed** keeps the formula the signing note asked for, wakes
+per worker times the total workers across every scheduler in the process,
+with total workers what `service_inventory()` reports:
+
+- a scheduler with no armed timer and no IO in flight: **zero idle wakes**.
+  Every normal worker parks with no timeout;
+- with armed timers: **one wake per deadline worker 0 reaches**, whether the
+  timer at that deadline fired or was cancelled before it. Worker 0 parks
+  until the earliest armed deadline and no longer; every other worker parks
+  with no timeout. Arming an earlier timer while worker 0 is parked wakes it
+  once (§3.8.2 C2), and that wake is the new deadline's;
+- in replay: **one wake per cursor advance**. The log decides when a replay
+  worker leaves its park, never the clock (W24).
+
+A wake caused by work (a message, a spawn, an exit, a completion, a surplus
+push) is not an idle wake: it is the work arriving. `notify_all` still wakes
+every parked worker of the scheduler for each such edge, for the reason
+§3.8.1's invariant gives, and the cost of that herd per message is measured,
+not bounded, here.
+
+**Enforced by R3's tests** in `crates/beamr/src/scheduler/tickless_idle_tests.rs`:
+an idle scheduler observes every worker parked unbounded; one armed timer
+costs worker 0 exactly one timed-out park and every other worker none; a
+file completion resumes its process with every worker parked unbounded; an
+earlier arm wakes a parked worker 0 once and a later arm runs no edge; and
+`tick_at`'s one-lap catch-up fires a timer more than a lap out once, at its
+deadline. `crates/beamr/tests/timer_resident_cost.rs` and
+`crates/beamr/tests/thread_inventory.rs` pin the same parks through the public
+seams.
+
+Re-signed: Waffles, 21 October 2026 04:49 (Melbourne), on Cambium, post
+`c38bfbebea87c2c877f87f1eec949b4785a0ba1279ef40fccc020e93f5297ca2`,
+replacing the 04:31 signature (post `8feade12`).
+
 ### 3.9 Readiness service (companion spec)
 
 READINESS-CONTRACT-SPEC §3 shape (b) — now CERTIFIED as the shape of

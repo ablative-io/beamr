@@ -128,7 +128,9 @@ impl Scheduler {
         if let Some(hook) = self.shared.shutdown_dispatch_hook.get() {
             hook();
         }
-        self.shared.wake_condvar.notify_all();
+        // W22: the flag is stored, then edge E, so a worker between its
+        // shutdown check and its wait finds the sequence moved.
+        self.shared.wake_edge();
         let mut threads = lock_or_recover(&self.threads);
         for handle in threads.drain(..) {
             if let Err(payload) = handle.join() {
@@ -425,28 +427,42 @@ pub(in crate::scheduler) fn scheduler_loop(
     inject: &SegQueue<SpawnRequest>,
 ) {
     let mut last_victim = my_index;
+    let mut woke_on_deadline = false;
     loop {
         if shared.shutdown.load(Ordering::Acquire) {
             return;
         }
-        drain_injected(shared, queue, inject);
+        // The idle window opens BEFORE every check (§3.8.2 C1, B-181 R2): a
+        // wake landing anywhere after this read moves the sequence the park
+        // compares under the wait_set lock, so it is never lost.
+        let ticket = park::enter_idle_window(shared);
+        let mut pushed = drain_injected(shared, queue, inject);
         if my_index == 0 {
             if shared.replay_mode {
                 timer_integration::tick_replay_timers(shared);
+                // W24: the tick consumed one recorded timer batch.
+                park::replay_cursor_edge(shared);
             } else {
-                timer_integration::tick_timers(shared);
+                let fired = timer_integration::tick_timers(shared);
+                park::account_deadline_wake(shared, woke_on_deadline, fired);
                 drain_file_io_completions(shared);
             }
         }
-        drain_woken(shared, queue, my_index);
+        woke_on_deadline = false;
+        pushed += drain_woken(shared, queue, my_index);
+        if pushed > 0 && !shared.replay_mode {
+            park::surplus_edge(shared, queue, true);
+        }
         let pid = if shared.replay_mode {
             match next_replay_pid(shared, my_index) {
                 Some(pid) => pid,
                 None => {
                     #[cfg(test)]
                     park::idle_gap(shared, my_index);
-                    let timed_out = park_thread(shared, my_index);
-                    park::report_left_park(shared, my_index, timed_out, inject, stealers);
+                    let exit = park_thread(shared, my_index, ticket);
+                    #[cfg(test)]
+                    park::report_left_park(shared, my_index, exit, ticket, inject, stealers);
+                    woke_on_deadline = exit == ParkExit::Deadline;
                     continue;
                 }
             }
@@ -458,7 +474,12 @@ pub(in crate::scheduler) fn scheduler_loop(
                         steal::try_steal(queue, my_index, stealers, last_victim);
                     last_victim = next_victim;
                     match result {
-                        steal::StealResult::Stolen { .. } => queue.pop(),
+                        steal::StealResult::Stolen { .. } => {
+                            // A steal is a push onto this queue: more than
+                            // one stolen is surplus for another idle worker.
+                            park::surplus_edge(shared, queue, true);
+                            queue.pop()
+                        }
                         steal::StealResult::Empty => None,
                     }
                 }
@@ -468,44 +489,59 @@ pub(in crate::scheduler) fn scheduler_loop(
                 None => {
                     #[cfg(test)]
                     park::idle_gap(shared, my_index);
-                    let timed_out = park_thread(shared, my_index);
-                    park::report_left_park(shared, my_index, timed_out, inject, stealers);
+                    let exit = park_thread(shared, my_index, ticket);
+                    #[cfg(test)]
+                    park::report_left_park(shared, my_index, exit, ticket, inject, stealers);
+                    woke_on_deadline = exit == ParkExit::Deadline;
                     continue;
                 }
             }
         };
+        // Work found without parking: the window closes on this path too.
+        park::leave_idle_window(shared);
         #[cfg(feature = "telemetry")]
         let executing_started = Instant::now();
         run_process(shared, queue, pid, my_index);
+        if shared.replay_mode {
+            // W24: a replay slice consumed its Schedule and every event its
+            // body replayed; one edge, with no driver lock held.
+            park::replay_cursor_edge(shared);
+        }
         #[cfg(feature = "telemetry")]
         shared.record_scheduler_executing(executing_started.elapsed());
     }
 }
 
-fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<SpawnRequest>) {
+/// Move injected spawns onto the run queue; returns how many were pushed.
+fn drain_injected(
+    shared: &SharedState,
+    queue: &RunQueue,
+    inject: &SegQueue<SpawnRequest>,
+) -> usize {
+    let mut pushed = 0;
     while let Some(request) = inject.pop() {
         let pid = materialize_spawn_request(shared, request);
         if let Some(priority) = priority_for_pid(shared, pid) {
             queue.push_with_priority(pid, priority);
+            pushed += 1;
         }
     }
+    pushed
 }
 
 mod core;
 mod native_slice;
 mod park;
 use core::run_process;
-#[cfg(any(test, feature = "test-support"))]
-pub use park::IDLE_WAKES_PER_SEC_PER_WORKER;
-pub use park::IDLE_PARK_TIMEOUT;
+pub(in crate::scheduler) use core::{cleanup_exited_process, finalize_exited_process};
 #[cfg(test)]
 pub(in crate::scheduler) use park::ParkHooks;
+pub(in crate::scheduler) use park::{IdleWake, surplus_edge};
 #[cfg(any(test, feature = "test-support"))]
-pub(in crate::scheduler) use park::ParkSeams;
+pub use park::{ObservedParkTimeout, WakeCauses, WorkerParkCounts};
+use park::{ParkExit, park_thread};
 #[cfg(any(test, feature = "test-support"))]
-pub use park::{ObservedParkTimeout, WorkerParkCounts};
-use park::park_thread;
-pub(in crate::scheduler) use core::{cleanup_exited_process, finalize_exited_process};
+pub(in crate::scheduler) use park::{ParkSeams, await_all_parked, await_worker_parked};
 use std::net::SocketAddr;
 
 use super::process_slot::UdpActiveMessage;
@@ -546,7 +582,8 @@ pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
     let mut wait_set = lock_or_recover(&shared.wait_set);
     if let Some(scheduler_index) = wait_set.waiting.remove(&pid) {
         wait_set.woken.push((pid, scheduler_index));
-        shared.wake_condvar.notify_all();
+        // W1: edge E in the same critical section as the push.
+        shared.wake_edge_locked(&wait_set);
     }
 }
 
@@ -583,7 +620,8 @@ pub(in crate::scheduler) fn wake_process(shared: &SharedState, pid: u64) {
         wait_set.woken.push((pid, scheduler_index));
         #[cfg(all(test, feature = "readiness"))]
         crate::scheduler::teardown_admission_tests::record_live_operation(9);
-        shared.wake_condvar.notify_all();
+        // W1 (the test twin): edge E in the same critical section.
+        shared.wake_edge_locked(&wait_set);
     }
 }
 
@@ -953,7 +991,9 @@ fn next_replay_pid(shared: &SharedState, my_index: usize) -> Option<u64> {
     Some(event.pid)
 }
 
-fn drain_woken(shared: &SharedState, queue: &RunQueue, my_index: usize) {
+/// Move this worker's share of `wait_set.woken` onto its run queue; returns
+/// how many were pushed.
+fn drain_woken(shared: &SharedState, queue: &RunQueue, my_index: usize) -> usize {
     let woken = {
         let mut wait_set = lock_or_recover(&shared.wait_set);
         let mut mine = Vec::new();
@@ -967,11 +1007,14 @@ fn drain_woken(shared: &SharedState, queue: &RunQueue, my_index: usize) {
         });
         mine
     };
+    let mut pushed = 0;
     for pid in woken {
         if shared.process_table.get(pid).is_some() {
             queue.push_with_priority(pid, priority_for_pid(shared, pid).unwrap_or_default());
+            pushed += 1;
         }
     }
+    pushed
 }
 
 pub(in crate::scheduler) fn priority_for_pid(

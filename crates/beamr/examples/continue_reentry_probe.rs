@@ -22,9 +22,11 @@
 //! Mechanism ground the topology grid separates (measured in
 //! gate-logs/106/RUN-RECORD-106.md and scheduler/steal.rs):
 //!
-//!  - The Requeue push (execution/core.rs:83) fires NO notify_all, so a
-//!    parked sibling learns of stealable work only on its ≤5ms timed wake
-//!    (`IDLE_PARK_TIMEOUT`).
+//!  - When this probe was run, the Requeue push (execution/core.rs:83) fired
+//!    NO notify_all, so a parked sibling learned of stealable work only on
+//!    its ≤5ms timed wake (the since-retired `IDLE_PARK_TIMEOUT`). Since
+//!    B-181 a Requeue with work queued behind it runs the surplus edge when
+//!    a worker is idle (EMBEDDER-COMPOSITION-SPEC §3.8.2 C1).
 //!  - A queue holding a SINGLE waiting process is never stolen from
 //!    (steal.rs: `steal_half_from` on a 1-entry queue takes nothing), so a
 //!    victim waiting alone behind a running spinner is unstealable — that

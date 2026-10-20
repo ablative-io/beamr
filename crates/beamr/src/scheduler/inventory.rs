@@ -364,8 +364,10 @@ pub(super) fn build_service_policies(shared: &SharedState) -> Vec<ServicePolicyL
 /// [`Scheduler::service_inventory`](super::Scheduler::service_inventory)
 /// cannot be: it answers "how many VMs does this process hold" without a
 /// handle to any of them, so the signed §3.8 idle bound becomes computable
-/// in-process — `IDLE_WAKES_PER_SEC_PER_WORKER × scheduler_worker_count` —
-/// instead of by decomposing per-index thread names from outside.
+/// in-process over `scheduler_worker_count` — zero idle wakes with no armed
+/// timer and no IO in flight; one per deadline worker 0 reaches; in replay,
+/// one per cursor advance (B-181) — instead of by decomposing per-index
+/// thread names from outside.
 ///
 /// POPULATION HONESTY — read this before trusting the numbers: the census
 /// counts schedulers **constructed and not yet dropped**, not "running". A

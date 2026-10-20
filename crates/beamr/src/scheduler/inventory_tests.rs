@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::service::ServiceModeLabel;
-use super::{NativeBifs, Scheduler, SchedulerConfig, dirty, execution, inventory};
+use super::{NativeBifs, Scheduler, SchedulerConfig, dirty, inventory};
 // Used only by the macOS-gated OS thread probe below.
 #[cfg(target_os = "macos")]
 use super::thread_probe;
@@ -540,62 +540,8 @@ fn generic_io_configured_is_stable_across_shutdown() {
     assert_eq!(after.actual, 0, "ring joined and bridge stopped");
 }
 
-/// Structural pin of the 5ms idle-park floor at its source (Q-F ruling, spec
-/// §3.8): the constant, and the per-worker wake rate derived FROM it, are what
-/// the certifying pair signs. Reading the floor from `IDLE_PARK_TIMEOUT` rather
-/// than a duplicated literal is why the signed number and `park_thread` cannot
-/// drift.
-#[test]
-fn idle_park_floor_is_pinned_at_five_ms() {
-    assert_eq!(execution::IDLE_PARK_TIMEOUT, Duration::from_millis(5));
-    assert_eq!(execution::IDLE_WAKES_PER_SEC_PER_WORKER, 200);
-}
-
-/// Signed idle-wake bound (spec §3.8 / §7): the measured idle wake rate stays
-/// under the formula's ceiling.
-///
-/// T1-grade methodology (comment-as-contract):
-///  - measurement duration: 500 ms of wall-clock idle.
-///  - sampling source: `SharedState::idle_parks`, incremented once per
-///    `park_thread` entry (every worker idle wake).
-///  - host state: a fresh scheduler with no runnable process beyond the parked
-///    standard-IO server — every normal worker parks.
-///  - bound: `<= 2 x IDLE_WAKES_PER_SEC_PER_WORKER x workers`, where `workers`
-///    is the AS-BUILT normal-worker thread count (`worker_names().len()`, the
-///    same actual-thread source the inventory reads — not a config claim, per
-///    the signing note). The 2x margin makes it a ceiling, never an exact
-///    match, so a merely-loaded host does not flake it.
-///
-/// Note: normal workers stay outside `service_inventory()` (spec §2.3), so the
-/// worker multiplier is sourced from `worker_names()`; both are populated from
-/// actually-spawned threads, satisfying "not what a config file claims".
-#[test]
-fn idle_wake_rate_stays_within_signed_bound() {
-    let scheduler = new_default_scheduler();
-    let workers = scheduler.worker_names().len();
-    assert!(workers >= 1, "a scheduler always has at least one worker");
-
-    // Let the workers reach steady-state idle parking.
-    thread::sleep(Duration::from_millis(50));
-
-    let window = Duration::from_millis(500);
-    let start = scheduler.idle_park_count();
-    let started_at = std::time::Instant::now();
-    thread::sleep(window);
-    let parks = scheduler.idle_park_count().saturating_sub(start);
-    // Divide by the ACTUAL elapsed wall time, not the requested sleep: a
-    // loaded host that overslept the test thread must not inflate the rate
-    // (workers kept parking during the oversleep).
-    let elapsed = started_at.elapsed();
-
-    let wakes_per_sec = parks as f64 / elapsed.as_secs_f64();
-    let ceiling = 2.0 * execution::IDLE_WAKES_PER_SEC_PER_WORKER as f64 * workers as f64;
-    assert!(
-        wakes_per_sec <= ceiling,
-        "idle wake rate {wakes_per_sec:.1}/s exceeds signed ceiling {ceiling:.1}/s \
-         for {workers} workers (floor {}ms)",
-        execution::IDLE_PARK_TIMEOUT.as_millis(),
-    );
-
-    scheduler.shutdown();
-}
+// The signed §3.8 idle bound (zero idle wakes with no armed timer and no IO
+// in flight, B-181) is enforced in `tickless_idle_tests.rs`: an idle
+// scheduler parks every worker with no timeout, and one armed timer costs
+// worker 0 exactly one timed-out park. The retired 5 ms floor's two pins
+// (the constant and its 2x wake-rate ceiling) were removed with it.

@@ -178,6 +178,28 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
+## Unreleased
+
+### Changed (breaking) — idle workers no longer wake
+
+An idle scheduler's workers no longer wake. A normal worker with nothing to
+run parks with no timeout; worker 0 parks only until the earliest armed timer
+deadline. Every wake source (sends, spawns, exits, timers, file-IO
+completions, work queued behind a busy worker, shutdown) now wakes a parked
+worker through one wake sequence ordered against the park, so no wake is lost
+in the gap between a worker's last check and its park. A file-IO ring
+notifies the scheduler as each completion is published; the `CompletionRing` trait
+gains `install_completion_notifier`, whose default refuses, and a scheduler
+whose file ring refuses it fails to start. `TimerWheel::tick_at` catches up at
+most one lap of the wheel after a long park. Arming a timer earlier than the
+deadline worker 0 is parked until wakes it once.
+
+The 5 ms constants are gone: `scheduler::IDLE_PARK_TIMEOUT` and
+`scheduler::IDLE_WAKES_PER_SEC_PER_WORKER` are removed with the signed 5 ms
+floor they served (EMBEDDER-COMPOSITION-SPEC §3.8.3). The bound now signed is
+zero idle wakes with no armed timer and no IO in flight; one wake per
+deadline worker 0 reaches; one per cursor advance in replay.
+
 ## 0.21.0 — 2026-10-09
 
 ### Changed (breaking) — checked Gleam sidecar serialization
