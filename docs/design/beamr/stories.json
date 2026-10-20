@@ -178,6 +178,13 @@
         { "id": "S42", "text": "As a compiler developer, I want compiled and interpreted functions to coexist in the same call stack so that partial compilation doesn't break the execution model." },
         { "id": "S43", "text": "As a compiler developer, I want Cranelift always included in every build so that the JIT compiler is available without feature-flag configuration overhead." }
       ]
+    },
+    {
+      "name": "Embedder",
+      "role": "Running beamr under a long-lived host process",
+      "stories": [
+        { "id": "S44", "text": "As an embedder whose process is idle most of the time, I want an idle beamr scheduler to sleep until there is work or an armed timer is due, so that an idle process costs no CPU and no wake-ups, and no wake is ever lost." }
+      ]
     }
   ]
 }

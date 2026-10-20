@@ -1210,6 +1210,31 @@
           "done": false
         }
       ]
+    },
+    {
+      "name": "Tickless idle (B-181)",
+      "items": [
+        {
+          "id": "C222",
+          "text": "\u00a73.8 carries a reviewed wake-edge enumeration of every event that can make an idle worker's work runnable, each with its file, line, today's notify and its edge, written before the code (B-181 R1).",
+          "done": false
+        },
+        {
+          "id": "C223",
+          "text": "A wake sequence advanced under the wait_set lock by every wake source and compared by park_thread under that lock means no wake between a worker's checks and its park is lost (B-181 R2).",
+          "done": false
+        },
+        {
+          "id": "C224",
+          "text": "An idle worker parks with no timeout, or until the earliest armed timer deadline, and file-IO completions and every other polled source wake it; IDLE_PARK_TIMEOUT is gone (B-181 R3).",
+          "done": false
+        },
+        {
+          "id": "C225",
+          "text": "\u00a73.8's amendment retires the 5 ms floor for a bound of zero idle wakes, in its own words with its reason, left for Waffles's re-sign, and the CHANGELOG says so (B-181 R4).",
+          "done": false
+        }
+      ]
     }
   ]
 }
