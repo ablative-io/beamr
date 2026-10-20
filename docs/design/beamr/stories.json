@@ -184,7 +184,8 @@
       "role": "Running beamr under a long-lived host process",
       "stories": [
         { "id": "S44", "text": "As an embedder whose process is idle most of the time, I want an idle beamr scheduler to sleep until there is work or an armed timer is due, so that an idle process costs no CPU and no wake-ups, and no wake is ever lost." },
-        { "id": "S45", "text": "As an embedder whose process waits on IO and on its processes from host threads, I want every beamr thread that waits to be woken by the event it waits for, so that an idle process wakes no thread at all and no completion or exit waits on a tick." }
+        { "id": "S45", "text": "As an embedder whose process waits on IO and on its processes from host threads, I want every beamr thread that waits to be woken by the event it waits for, so that an idle process wakes no thread at all and no completion or exit waits on a tick." },
+        { "id": "S46", "text": "As a beamr maintainer building with no network, I want the default-features tests to need no crate that only an optional feature's tests use, so that the suite builds from what is already on disk." }
       ]
     }
   ]

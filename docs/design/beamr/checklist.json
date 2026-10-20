@@ -1260,6 +1260,21 @@
           "done": false
         }
       ]
+    },
+    {
+      "name": "Offline test builds (B-183)",
+      "items": [
+        {
+          "id": "C230",
+          "text": "opentelemetry_sdk is an optional dependency behind telemetry-testing, not a dev-dependency, so beamr's default-features tests build offline (B-183 R1).",
+          "done": false
+        },
+        {
+          "id": "C231",
+          "text": "Every --all-features gate leg still runs the telemetry tests, and the CHANGELOG says how to run them (B-183 R2).",
+          "done": false
+        }
+      ]
     }
   ]
 }

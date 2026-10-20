@@ -1,0 +1,78 @@
+{
+  "id": "B-183",
+  "cluster": "beamr",
+  "title": "beamr's tests build offline on default features: the OpenTelemetry testing SDK is reached only through the telemetry feature",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": [
+    "C230",
+    "C231"
+  ],
+  "stories": [
+    "S46"
+  ],
+  "design_anchor": [],
+  "purpose": "Found on 21 October 2026 at about 06:05 (Melbourne) while B-181's lane built on Tom's Mac with no network: opentelemetry_sdk 0.32.1 is a plain dev-dependency of crates/beamr (Cargo.toml:78 at beamr main dc88b857, with its `testing` feature, under [dev-dependencies] at :49), so every test build of the crate compiles it, whatever features are selected. Yet every use of it is test code of the optional telemetry feature (telemetry = [\"std\", \"dep:opentelemetry\"], :125): the unit tests in src/telemetry/spans.rs (mod tests, :296-), src/telemetry/lifecycle_tests.rs (included under #[cfg(test)] at lifecycle.rs:333-334) and the #[cfg(feature = \"telemetry\")] items of src/scheduler/tests.rs (:10-17 and 22 cfg sites). With the crate not on disk and no download allowed, no beamr test of any feature set can build, so the whole suite waited on a network window for a dependency that only telemetry's tests use. Waffles ruled at 06:05 (Cambium post c92ad3e1) that this is a beamr row of its own, named today. Cargo cannot make a dev-dependency optional, so the SDK moves to where only the telemetry tests reach it.",
+  "task": "Make opentelemetry_sdk an optional dependency of crates/beamr enabled only by a new telemetry-testing feature that implies telemetry, put every test that uses it under that feature, and remove it from [dev-dependencies]; crates/beamr/Cargo.toml, src/telemetry/spans.rs, src/telemetry/lifecycle.rs and lifecycle_tests.rs, src/scheduler/tests.rs. The release battery and the gate's --all-features legs select it as they select telemetry today; the CHANGELOG says so.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "A default-features test build of beamr needs no OpenTelemetry crate",
+      "spec": "Behavioural. THE SYSTEM SHALL remove opentelemetry_sdk from crates/beamr's [dev-dependencies] and declare it as an optional dependency with its `testing` feature, enabled only by a new feature telemetry-testing = [\"telemetry\", \"dep:opentelemetry_sdk\"]; every test, test module and test helper that names opentelemetry_sdk (src/telemetry/spans.rs's tests, src/telemetry/lifecycle_tests.rs, the telemetry items of src/scheduler/tests.rs) SHALL compile only under cfg(all(test, feature = \"telemetry-testing\")). No non-test code SHALL name opentelemetry_sdk. The feature's comment SHALL say it exists only so the telemetry tests can reach the SDK's in-memory exporters, and that it is for tests, not embedders.",
+      "acceptance": [
+        "`cargo tree -e normal,dev -p beamr --offline` on default features lists no opentelemetry crate, quoted in the handback; today it lists opentelemetry_sdk 0.32.1.",
+        "With the network off and opentelemetry absent from the cargo cache (the state of Tom's Mac on 21 October), `cargo nextest run -p beamr --offline` on default features builds and runs, judged from its parsed summary; today it refuses for want of opentelemetry_sdk, and the handback quotes that refusal from a run at the base.",
+        "Every telemetry test that ran before runs under --features telemetry-testing with the same count, compared from the two runs' parsed lists."
+      ],
+      "files": {
+        "create": [],
+        "modify": [
+          "crates/beamr/Cargo.toml",
+          "crates/beamr/src/telemetry/spans.rs",
+          "crates/beamr/src/telemetry/lifecycle.rs",
+          "crates/beamr/src/telemetry/lifecycle_tests.rs",
+          "crates/beamr/src/scheduler/tests.rs"
+        ],
+        "delete": []
+      },
+      "checklist": [
+        "C230"
+      ],
+      "stories": [
+        "S46"
+      ]
+    },
+    {
+      "id": "R2",
+      "title": "The gate and the release battery still run the telemetry tests, and the CHANGELOG says how",
+      "spec": "Documentary and behavioural. The gate's --all-features legs SHALL select telemetry-testing as they select telemetry, so no telemetry test leaves the battery; CHANGELOG.md SHALL say that opentelemetry_sdk is no longer a dev-dependency and that the telemetry tests run under --features telemetry-testing or --all-features.",
+      "acceptance": [
+        "The handback names every gate or battery file that selects features and shows telemetry-testing reached by each --all-features leg, and quotes the CHANGELOG lines."
+      ],
+      "files": {
+        "create": [],
+        "modify": [
+          "CHANGELOG.md"
+        ],
+        "delete": []
+      },
+      "checklist": [
+        "C231"
+      ],
+      "stories": [
+        "S46"
+      ]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT change what the telemetry feature gives an embedder, or any non-test code.",
+    "SHALL NOT drop, skip or #[ignore] a telemetry test.",
+    "SHALL NOT add a dependency; opentelemetry_sdk moves, it is not added."
+  ],
+  "verification": [
+    "This handwritten brief passes the design gate of this repository, judged by its parsed failures, never by its exit code.",
+    "The default-features nextest of R1 green offline on Tom's Mac; the --all-features legs (clippy, nextest, cargo test --doc) green on the exact final commit in the network window's first hour, judged from parsed output, with df and the swap line in START and END.",
+    "Four-heading handback (BLOCKED ON, CHANGED, FOUND, NOT CONFIRMED).",
+    "Ships in B-181's release; liminal and haematite move their beamr pins the same day (Tom's rule 16)."
+  ]
+}
