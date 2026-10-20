@@ -18,11 +18,13 @@
     {
       "id": "R1",
       "title": "A default-features test build of beamr needs no OpenTelemetry crate",
-      "spec": "Behavioural. THE SYSTEM SHALL remove opentelemetry_sdk from crates/beamr's [dev-dependencies] and declare it as an optional dependency with its `testing` feature, enabled only by a new feature telemetry-testing = [\"telemetry\", \"dep:opentelemetry_sdk\"]; every test, test module and test helper that names opentelemetry_sdk (src/telemetry/spans.rs's tests, src/telemetry/lifecycle_tests.rs, the telemetry items of src/scheduler/tests.rs) SHALL compile only under cfg(all(test, feature = \"telemetry-testing\")). No non-test code SHALL name opentelemetry_sdk. The feature's comment SHALL say it exists only so the telemetry tests can reach the SDK's in-memory exporters, and that it is for tests, not embedders.",
+      "spec": "Behavioural. THE SYSTEM SHALL remove opentelemetry_sdk from crates/beamr's [dev-dependencies] and declare it as an optional dependency with its `testing` feature, enabled only by a new feature telemetry-testing = [\"telemetry\", \"dep:opentelemetry_sdk\"]; every test, test module and test helper that names opentelemetry_sdk (src/telemetry/spans.rs's tests, src/telemetry/lifecycle_tests.rs, the telemetry items of src/scheduler/tests.rs) SHALL compile only under cfg(all(test, feature = \"telemetry-testing\")). No non-test code SHALL name opentelemetry_sdk. The feature's comment SHALL say it exists only so the telemetry tests can reach the SDK's in-memory exporters, and that it is for tests, not embedders. Every cfg that names telemetry-testing SHALL be of the form cfg(all(test, ...)), so an embedder who turns the feature on gets the SDK compiled and nothing else, shown by a search of the workspace quoted in the handback.",
       "acceptance": [
         "`cargo tree -e normal,dev -p beamr --offline` on default features lists no opentelemetry crate, quoted in the handback; today it lists opentelemetry_sdk 0.32.1.",
+        "`cargo tree -e normal,dev --workspace --offline` on default features lists no opentelemetry crate for any member (beamr-cli, beamr-wasm, gleam-types, the benches and beamr's own self dev-dependency at Cargo.toml:72), the line quoted in the handback.",
         "With the network off and opentelemetry absent from the cargo cache (the state of Tom's Mac on 21 October), `cargo nextest run -p beamr --offline` on default features builds and runs, judged from its parsed summary; today it refuses for want of opentelemetry_sdk, and the handback quotes that refusal from a run at the base.",
-        "Every telemetry test that ran before runs under --features telemetry-testing with the same count, compared from the two runs' parsed lists."
+        "Every telemetry test that ran before runs under --features telemetry-testing with the same count, compared from the two runs' parsed lists.",
+        "A search of the workspace for telemetry-testing finds it only in Cargo.toml and in cfg(all(test, ...)) attributes, quoted in the handback."
       ],
       "files": {
         "create": [],
