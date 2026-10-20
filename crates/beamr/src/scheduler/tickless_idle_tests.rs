@@ -889,6 +889,42 @@ fn a_timer_more_than_a_lap_out_fires_once_at_its_deadline() {
     scheduler.shutdown();
 }
 
+/// F1's red, from Hermes's reading of c60b248d: the deadline worker 0 reads
+/// and publishes at every park (`publish_park`, under the timers lock, which
+/// every arm and cancel on the other workers waits for) costs the same with
+/// 10 armed timers as with 10,000. Counted through the wheel's test-only
+/// count of the entries the read examines, never by timing.
+#[test]
+fn the_parked_deadline_read_stays_flat_as_armed_timers_grow() {
+    const SIZES: [usize; 3] = [10, 1_000, 10_000];
+    const FIRST: Duration = Duration::from_millis(1_000);
+    let start = Instant::now();
+    let reads: Vec<u64> = SIZES
+        .iter()
+        .map(|&count| {
+            let mut wheel = TimerWheel::new();
+            for index in 0..count {
+                let offset = Duration::from_millis(u64::try_from(index).unwrap_or(u64::MAX));
+                let _armed = wheel.schedule_at(
+                    start,
+                    FIRST + offset,
+                    7,
+                    Term::atom(Atom::OK),
+                    TimerKind::Deliver,
+                );
+            }
+            let before = wheel.deadline_reads();
+            assert_eq!(wheel.publish_park(), Some(start + FIRST));
+            wheel.deadline_reads() - before
+        })
+        .collect();
+    assert!(
+        reads.iter().all(|read| *read == reads[0]),
+        "worker 0's park read {reads:?} timer entries with {SIZES:?} timers armed: \
+         the read must not grow with the number of armed timers"
+    );
+}
+
 /// R3 red (C2): with worker 0 parked until D, arming a timer after D runs no
 /// edge; arming one before D wakes worker 0 once, it re-parks for the
 /// earlier deadline, and that timer fires at its deadline. Both arms go

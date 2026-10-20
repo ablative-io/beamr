@@ -124,6 +124,10 @@ pub struct TimerWheel {
     /// parked worker 0 for an earlier deadline (§3.8.2 C2 instrument).
     #[cfg(any(test, feature = "test-support"))]
     arm_wake_edges: u64,
+    /// Timer entries examined by `earliest_deadline` to date: the cost of
+    /// the read worker 0 makes at every park, counted, never timed.
+    #[cfg(any(test, feature = "test-support"))]
+    deadline_reads: std::cell::Cell<u64>,
     /// Published by worker 0 under this wheel's lock when it parks, cleared
     /// when it leaves the park (§3.8.2 C2).
     #[cfg(feature = "threads")]
@@ -171,6 +175,8 @@ impl TimerWheel {
             bucket_visits: 0,
             #[cfg(any(test, feature = "test-support"))]
             arm_wake_edges: 0,
+            #[cfg(any(test, feature = "test-support"))]
+            deadline_reads: std::cell::Cell::new(0),
             #[cfg(feature = "threads")]
             parked_until: ParkedUntil::NotParked,
             #[cfg(feature = "threads")]
@@ -397,7 +403,30 @@ impl TimerWheel {
     /// Return the earliest absolute deadline among pending timers.
     #[must_use]
     pub fn earliest_deadline(&self) -> Option<Instant> {
-        self.entries.values().map(|entry| entry.expires_at).min()
+        self.entries
+            .values()
+            .map(|entry| {
+                self.count_deadline_read();
+                entry.expires_at
+            })
+            .min()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    fn count_deadline_read(&self) {
+        self.deadline_reads
+            .set(self.deadline_reads.get().saturating_add(1));
+    }
+
+    #[cfg(not(any(test, feature = "test-support")))]
+    fn count_deadline_read(&self) {}
+
+    /// Timer entries `earliest_deadline` has examined to date: the cost of
+    /// the deadline read worker 0 makes at every park (test instrument).
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn deadline_reads(&self) -> u64 {
+        self.deadline_reads.get()
     }
 
     /// Inspect a pending timer entry.
