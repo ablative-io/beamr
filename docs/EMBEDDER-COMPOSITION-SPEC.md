@@ -268,6 +268,111 @@ inventory API itself (total workers = what `service_inventory()` reports,
 not what a config file claims — Vesper Lynd's sharpening), so the signed
 number and the enforcement mechanism cannot drift apart.
 
+#### 3.8.1 Wake-edge enumeration (B-181 R1; for Hermes's review before R2's code)
+
+Read from `crates/beamr/src` at beamr main `ee8a41ef` (the scheduler, IO
+and timer sources are unchanged from `aeabb126`, the 0.21.0 commit B-181
+cites). Every file:line below was opened and read. This section lists every
+event that can make work runnable on an idle normal worker, what it does to
+`wake_condvar` today, and the edge it gets under B-181.
+
+**Why every source needs an edge, not only a notify.** A worker runs its
+checks in `scheduler_loop` (`scheduler/execution.rs:428-471`): shutdown,
+its injection queue, worker 0's timer tick and file-IO drain, its share of
+`wait_set.woken`, its run queue, then a steal. It takes the `wait_set` lock
+only afterwards, in `park_thread` (`execution.rs:994-1020`, lock at `:1000`,
+`wait_timeout(IDLE_PARK_TIMEOUT)` at `:1012`), and it waits without checking
+anything again. A wake that lands after the checks and before the wait
+notifies a condvar nobody is waiting on yet, so the wake is lost. Today the
+5 ms timeout (`:982`) recovers it. With no timeout, the worker would sleep
+forever. Taking the lock does not help on its own, because the worker does
+not re-check under it. So every source below gets the same edge.
+
+**The edge E (R2).** Every wake source takes the `wait_set` lock, advances a
+wake sequence in `SharedState`, then calls `notify_all` on `wake_condvar`.
+`park_thread` reads the sequence before the worker's checks, and waits only
+while, under the `wait_set` lock, the sequence is unchanged. A source that
+already pushes to `wait_set.woken` under that lock advances the sequence in
+the same critical section. A source that notifies without the lock today
+takes it to advance. "Inherits E" below means the source reaches a
+primitive in the table that carries E, so it needs no change of its own.
+
+A `wake_process` that finds the pid absent from `wait_set.waiting` notifies
+no one, today and under B-181. That is correct. The process is executing,
+or it is in its park gap, so no idle worker owns it. The Wait arm's
+post-registration recheck (`execution/core.rs:92-178`) and the Suspended
+arm's fallback (`core.rs:179-237`) schedule it on the worker that is
+parking it.
+
+**Invariant (Hermes's review, 21 Oct).** Every wake under B-181 is either
+`notify_all` on `wake_condvar` or a wake of worker 0 by name. No source uses
+`notify_one`, and no later targeted wake may reach some worker other than
+worker 0. The reason is that only worker 0 ticks the timer wheel and drains
+file-IO completions (`execution.rs:433-439`). If a single notify reached any
+other worker, that worker would find nothing of its own and park again.
+Worker 0 would stay parked with no bound, and a deadline or a completion
+could be stranded with it. Any narrowing of the herd (see "wakes per
+message", B-181 R3) must keep this invariant.
+
+| # | Event that makes work runnable | Where it happens | `wake_condvar` today (lock) | Edge under B-181 |
+|---|---|---|---|---|
+| W1 | A parked process is woken by a message or signal: the common primitive `wake_process` | `scheduler/execution.rs:510-536`, with its test twin under `cfg(all(test, feature = "readiness"))` at `:538-573`. Waking: `:531-535` / `:564-572` | `notify_all`, under the `wait_set` lock, only when the pid moves from `waiting` to `woken` | E inside the same critical section. Both copies change, because the twin is a second copy of the same code |
+| W2 | Local process-to-process send | `SchedulerLocalSendFacility::send_local`, `scheduler/supervision_integration.rs:928-1083` (wake at `:1081`) | through W1 | inherits E |
+| W3 | Embedder wakes and sends: `Scheduler::wake_process` and `wake_notifier` (mailbox senders call the closure, `mailbox/mod.rs:316-324`), `enqueue_atom_message`, `send_to_mailbox` | `execution.rs:23-31`; `scheduler/mod.rs:2507-2513`, `:2534-2542` | through W1 | inherits E |
+| W4 | Link exit signal to a trapping process; the `exit/2` BIF; a remote exit signal | `process_exit_signal`, `supervision_integration.rs:332` (wakes `:416`, `:467`); `exit_signal`, `:2527-2585` (wakes `:2558`, `:2580`); `process_remote_exit_signal`, `remote_supervision.rs:57` (wakes `:90`, `:110`) | through W1 | inherits E |
+| W5 | Monitor `DOWN` delivery; `ETS-TRANSFER` delivery; a group-leader IO message | `deliver_single_down_and_wake`, `supervision_integration.rs:526-540` (`:539`); `deliver_ets_transfer`, `:138-180` (`:178`); `IoMessageFacility::send_message`, `:1091-1117` (`:1116`) | through W1 | inherits E |
+| W6 | A spawn is injected into a worker's queue | `enqueue_spawn_with_trap_exit`, `scheduler/spawning.rs:438-508`. Non-trap-exit path: `inject_queues[index].push` then `notify_all` at `:503-504` | `notify_all` with **no lock** | E: push, then lock, advance, notify. The target worker drains its queue at the top of the loop (`execution.rs:432`, `:481-488`) |
+| W7 | Trap-exit spawn, placed straight into `woken` | `spawning.rs:490-492` | `notify_all`, under the lock | E in the same critical section |
+| W8 | Pending spawns materialised by a code purge | `drain_pending_spawns`, `spawning.rs:511-527` (`:523-525`), called from `module_management.rs:88`, `:101` | `notify_all`, under the lock | E in the same critical section |
+| W9 | BIF spawns (`spawn`, `spawn_link`, `spawn_monitor`, lambda, native): all go to worker 0's `woken` | `spawn`, `supervision_integration.rs:1341` (`:1412-1416`); `spawn_lambda`, `:1453` (`:1516-1520`); `spawn_native_flagged`, `:1619` (`:1665-1669`); `insert_and_wake`, `:2001-2014` (`:2009-2013`) | `woken` pushed under the lock, then `notify_all` **after the lock is released** | E: advance inside the existing critical section, notify after |
+| W10 | A timer fires: worker 0 ticks the wheel | `tick_timers`, `scheduler/timer_integration.rs:93-96`, then `expire_timers`, `:111-132`. ReceiveTimeout: `mark_fired_receive_timer`, `:327-346`. Deliver: `deliver_term_to_mailbox` then W1, `:126-128` | Firing notifies: `:341-345` under the lock, Deliver through W1. **Reaching** the deadline is polled: nothing wakes worker 0 when a deadline arrives, only its 5 ms timeout | Worker 0 parks until the earliest armed deadline (`TimerWheel::earliest_deadline`, `timer.rs:235-238`, exists already) and parks with no bound when none is armed. Fires inherit E through `mark_fired_receive_timer` and W1 |
+| W11 | A timer is **armed** (not named in the brief). Without an edge here, a parked worker 0 would sleep past a new, earlier deadline | Receive-after: `register_receive_timer`, `timer_integration.rs:40-57`, from the Wait arm `core.rs:85`. Native timers: `ProcessContext::schedule_timer` and its variants, `native/context/mod.rs:1074-1150`; `NativeProcess::send_after`, `native/native_process.rs:353-368`. Raw public access: `Scheduler::timers()`, `scheduler/mod.rs:2124-2126`. All of these funnel into `TimerWheel::schedule_reserved_at`, `timer.rs:142-175` | none | E when the new deadline is earlier than the one worker 0 waits for. **Placement:** the edge must sit in the wheel, as a notifier the wheel holds and calls from `schedule_reserved_at`. The native contexts hold only `Arc<Mutex<TimerWheel>>` (`core.rs:1497`, `execution/native_slice.rs:78`, `supervision_integration.rs:628`) and cannot reach `wait_set`. An embedder scheduling through `timers()` is covered only this way. **Lock order:** the edge takes `wait_set` while holding `timers`, so `park_thread` must read the deadline before it takes `wait_set` and never while holding it. The sequence covers an arming in that gap |
+| W12 | A timer is cancelled | `TimerWheel::cancel` / `cancel_at`, `timer.rs:191-199`; liminal cancels through `timers()` (`liminal-server/src/server/connection/supervisor/runtime_close.rs:42-46`) | none | No edge. A cancelled earliest deadline makes worker 0 time out once with nothing to fire, then park again for the next deadline. This is harmless, but it is a wake that no fired deadline accounts for (see the bound note below the table) |
+| W13 | A file-IO completion is **published** by the ring. This is the polled source | Non-Linux: `ThreadPoolRing` `worker_loop`, `io/thread_pool.rs:240-258` (send `:250-251`). Linux: `IoUringRing` `drain_cqes`, `io/uring.rs:455-474` (send `:470`), and `complete_error`, `:532-545` (`:539`). Linux with io_uring unavailable: `FailedRing::submit`, `io/ring.rs:205-222` (push `:220`), which completes on the **submitting** worker, possibly not worker 0 | none. Worker 0 polls `poll_completions(0 ms)` on every loop iteration (`execution.rs:575-606`, poll at `:581-584`) | E at the publication point in **all three** implementations, through a notifier the ring holds. The scheduler installs it when it builds its Owned file ring (`scheduler/mod.rs:1549-1558`). A Shared file ring is refused by `validate()` (comment at `mod.rs:1540-1544`), so each ring has exactly one consumer. Note: on Linux the ring thread reaps completions on its own 10 ms tick (`uring.rs:23`, `:222`), so publication there is still polled inside the ring. That is outside this brief, and the edge at publication is clean either way |
+| W14 | A file-IO completion is **delivered** to its process: worker 0's drain | `deliver_file_io_result`, `execution.rs:617-628`; active-mode UDP and TCP, `:699`, `:774`, `:800`; the orphan path at registration, `supervision_integration.rs:1200-1210` | through W1 | inherits E |
+| W15 | A generic-IO completion: the bridge thread delivers it | The bridge poller `io/bridge.rs:92-97` (its own thread, 100 ms poll); `dispatch_completion`, `:130-145`; `IoWakeTarget::wake_with_io_result`, `scheduler/mod.rs:2547-2561` (W1); `send_io_message`, `:2563-2584` (W1, or for process 0: `woken` push and `notify_all` under the lock, `:2577-2581`) | through W1; `:2577-2581` under the lock | inherits E; `:2577-2581` gets E in its critical section. (This is the `mod.rs:2580` B-181 cites, and it is the standard-IO pid's delivery, not shutdown) |
+| W16 | A standard-IO completion | Consumed only inside `StandardIoServer::wait_for_completion`, `io/standard_io.rs:216-224` (10 ms `POLL_TIMEOUT`, `:19`), which runs inside a slice. Its only caller, `run_available` (`:91-96`), has **no caller in the repository** (searched: not found) | n/a | No normal-worker wake source, so no edge. Process 0 is woken by its messages through W1 and W15 |
+| W17 | A dirty-call completion resumes the suspended process | The completion bridge thread, `execution/core.rs:1549-1586`: `publish_suspension_result`, then `resume_suspended` at `:1583`, which is `timer_integration.rs:389-414`; embedder `wake_with_dirty_result`, `execution.rs:398-408` | `resume_suspended` calls `notify_all` under the lock, `timer_integration.rs:403-410` | E in `resume_suspended`'s critical section. (The replay arm, `core.rs:1481-1493`, runs on the worker itself, which is busy) |
+| W18 | A host-await completion or a hook resume | `wake_with_result`, `execution.rs:363-376`; `wake_with_result_for`, `:385-394` (both W1); `resume_process`, `:51-67`, which calls `resume_suspended` (W17) | through W1 and W17 | inherits E |
+| W19 | The Suspended arm's fallback unpark (published before registration) | `execution/core.rs:228-237` | `notify_all`, under the lock | E in the same critical section. It runs on the busy worker, which is its own target, but it keeps the rule "every push to `woken` advances the sequence" without exceptions |
+| W20 | Readiness service delivery | The poll thread waits in `poll(&mut events, None)`, `scheduler/readiness/core.rs:379`: already tickless. Delivery is `readiness/core/delivery.rs:66-68`, then `deliver_readiness_marker`, `scheduler/mod.rs:760-770` (W1) | through W1 | inherits E. The poll thread is unchanged (Boundaries) |
+| W21 | Distribution delivery: a remote message to a local pid | The control-frame handler, `supervision_integration.rs:80-112`, then `ControlDelivery::deliver_payload`, `:867-897` (wake at `:895`); remote exit signals are W4 | through W1 | inherits E. No missing edge was found, so the distribution manager is unchanged |
+| W22 | Shutdown | `Scheduler::shutdown`, `execution.rs:126-131` (stores the flag, then `notify_all` at `:131`); replay failure, `fail_replay_timer`, `timer_integration.rs:78-89` (`:86-88`) | `notify_all` with **no lock** | E: store the flag, then lock, advance, notify. `park_thread` already checks `shutdown` before it takes the lock (`execution.rs:997-999`). The sequence closes the gap between that check and the wait |
+| W23 | **Work stealing**: work is queued on a busy worker while another worker is idle | `try_steal`, `scheduler/steal.rs:26-53`, called at `execution.rs:451-469`. Local queue pushes: `execution.rs:485` (injected), `:957` (woken), `core.rs:83` (Requeue after a slice), `core.rs:175` (Wait self-wake) | none, and no push takes `wait_set`. An idle worker finds stealable work only on its 5 ms timeout | **No clean edge**: see the open decision below |
+| W24 | **Replay scheduler park** (`shared.replay_mode`) | `execution.rs:442-449` (`next_replay_pid`, `:928-939`). Worker 0 consumes one recorded `TimerExpiry` per loop iteration (`execution.rs:434-435`, then `timer_integration.rs:59-76`, then `replay/driver.rs:422-433`). The cursor advances in `next_schedule`, `driver.rs:384-403`, and `next_timer_expiry`, through `advance_cursor`, `:486-488` | none. The `replay/` module has no notify. A worker whose recorded turn arrives finds out on its 5 ms timeout | E on every cursor advance, after the driver lock is released, plus W6-W9 and W22. **What determinism needs:** the log, never the clock, decides when a replay worker leaves its park. Worker 0 leaves at once unless the cursor holds a `Schedule` for another worker. It never waits while the cursor holds a `TimerExpiry`, the end of the log, or any other kind, all of which its next tick consumes or refuses exactly as today. Worker i > 0 leaves only when the cursor holds its own `Schedule` whose pid is in the process table. A spurious wake re-checks the cursor under the sequence and parks again without running a loop iteration, because every worker-0 iteration consumes a log event |
+| — | (Not a worker) the host waiter `run_until_exit` | `execution.rs:188-203`, which waits on `wake_condvar` with a 10 ms timeout | No exit notifies it. It polls | Out of scope. It is listed because `notify_all` on `wake_condvar` reaches it too, and because its 10 ms wait is a fixed wait of its own |
+
+**Source without a clean wake edge: W23, work stealing. Open decision, for
+this source only (Q-F ruling's recorded fallback: adaptive backoff).** No
+push onto a worker's run queue notifies anyone. Under the 5 ms timeout an
+idle worker steals within 5 ms. Under an unbounded park it would not steal
+until some unrelated E woke it. The process does not hang, because the owner
+worker runs its own queue. But the work stays serialised behind the owner,
+and that matters most when the owner blocks inside a slice: a synchronous
+distribution send is bounded only by `WRITE_TIMEOUT`
+(`block_on_distribution_send_with_write_deadline`,
+`supervision_integration.rs:803-830`), and an embedder hook or native may
+block too. Three options, decided in the open by the review:
+
+1. **A surplus edge.** A push that leaves a worker's queue holding more than
+   the process it is about to run, while the count of parked workers (kept
+   under `wait_set`) is non-zero, runs E. The cost is one atomic read per
+   push on the hot path, plus a lock and a herd wake only when there is
+   both surplus and an idle worker. This is the recommendation of this
+   enumeration, and it is not decided here.
+2. **Adaptive backoff for stealing only (the Q-F fallback).** A worker other
+   than worker 0, whose last steal found nothing, parks with a timeout that
+   grows from 5 ms to a cap, and parks with no bound only when every queue
+   was empty at its last look. This keeps a poll, and Tom's rule against
+   waits of a set length applies to it.
+3. **No edge.** Accept serialisation behind a blocked owner as the cost of
+   zero idle wakes, and state it in the R4 amendment.
+
+**Bound note for R4.** R4's "one wake per fired deadline" undercounts. W12
+(a cancelled earliest deadline) and W24 (the replay cursor) each cause a
+wake that no fired deadline accounts for. The bound should count deadlines
+that worker 0 reached, or a cancel should re-arm worker 0's park.
+
 ### 3.9 Readiness service (companion spec)
 
 READINESS-CONTRACT-SPEC §3 shape (b) — now CERTIFIED as the shape of
