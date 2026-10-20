@@ -1235,6 +1235,31 @@
           "done": false
         }
       ]
+    },
+    {
+      "name": "Fixed waits off the workers (B-182)",
+      "items": [
+        {
+          "id": "C226",
+          "text": "CompletionRing::wait_completions blocks until a completion or the ring's shutdown, and the generic-IO bridge waits on it with no timeout (B-182 R1).",
+          "done": false
+        },
+        {
+          "id": "C227",
+          "text": "The io_uring ring thread blocks in the kernel until a completion or a new submission, woken by an eventfd; RING_TICK is gone (B-182 R2).",
+          "done": false
+        },
+        {
+          "id": "C228",
+          "text": "A process exit carries B-181's wake edge, and run_until_exit waits with no timeout and never loses an exit (B-182 R3).",
+          "done": false
+        },
+        {
+          "id": "C229",
+          "text": "The standard-IO server's 10 ms poll is removed if nothing reaches it, shown by a quoted search, or blocks on wait_completions if something does (B-182 R4).",
+          "done": false
+        }
+      ]
     }
   ]
 }

@@ -358,8 +358,8 @@ block too. Three options, decided in the open by the review:
    the process it is about to run, while the count of parked workers (kept
    under `wait_set`) is non-zero, runs E. The cost is one atomic read per
    push on the hot path, plus a lock and a herd wake only when there is
-   both surplus and an idle worker. This is the recommendation of this
-   enumeration, and it is not decided here.
+   both surplus and an idle worker. **Decided: this option**, with the
+   idle-count ordering below in place of "the count of parked workers".
 2. **Adaptive backoff for stealing only (the Q-F fallback).** A worker other
    than worker 0, whose last steal found nothing, parks with a timeout that
    grows from 5 ms to a cap, and parks with no bound only when every queue
@@ -368,10 +368,69 @@ block too. Three options, decided in the open by the review:
 3. **No edge.** Accept serialisation behind a blocked owner as the cost of
    zero idle wakes, and state it in the R4 amendment.
 
-**Bound note for R4.** R4's "one wake per fired deadline" undercounts. W12
-(a cancelled earliest deadline) and W24 (the replay cursor) each cause a
-wake that no fired deadline accounts for. The bound should count deadlines
-that worker 0 reached, or a cancel should re-arm worker 0's park.
+**Bound for R4, re-signed.** Waffles re-signed the bound on Cambium on
+21 October 2026 at 04:49 (Melbourne), post `c38bfbeb`, replacing the 04:31
+line: zero idle wakes for a scheduler with no armed timer and no IO in
+flight; with armed timers, one wake per deadline worker 0 reaches, fired or
+cancelled; in replay, one per cursor advance; over the total workers
+`service_inventory()` reports; enforced by R3's tests. R3's measurement
+counts each wake under its cause (fired, cancelled, cursor), so "idle" is
+zero because every wake is accounted for.
+
+#### 3.8.2 Conditions from the review, binding on R2 and R3
+
+Hermes approved this enumeration on Cambium on 21 October 2026 at 04:50
+(Melbourne), post `1440ba67`, with the conditions below. R2's code starts
+only with them written here.
+
+**C1. W23's surplus edge uses an idle count, raised before the sequence
+read.** A count of *parked* workers loses a wake: a worker that has made its
+steal attempt but not yet counted itself parked is read as zero by a
+concurrent push, gets no E, and then parks with no bound while the surplus
+waits. So each worker raises an idle count (SeqCst) *before* it reads the
+wake sequence, which is before its checks and its steal, and lowers it when
+it leaves the park. A pusher pushes, then issues a SeqCst fence and reads the idle count, and runs E when the count is
+non-zero and its queue holds surplus. The ordering argument, in the single
+total order SeqCst gives: either the pusher's read follows the worker's
+raise, so the pusher runs E, and then E's advance either precedes the
+worker's sequence read (the worker reads the advanced value, which makes
+the push visible to its steal) or follows it (the worker's park finds the
+sequence changed under the lock and returns at once); or the pusher's read
+precedes the raise, so the push, before the fence, precedes the raise, and
+the worker's steal, after its raise, sees the pushed work. A Requeue after a slice (`core.rs:83`) with
+nothing else in the queue is not surplus. Its red: two workers, the owner
+blocked inside a slice on a hook the test holds, a second process pushed
+behind it; the second process runs on the other worker while the owner is
+still blocked, gated by the hook, never by a clock.
+
+**C2. W11's edge compares with a published `parked_until`, never a scan.**
+`TimerWheel::earliest_deadline` (`timer.rs:235-238`) is a min over every
+entry, O(n). Worker 0 reads it once per park, which is fine. It is not the
+arming edge's comparison: liminal arms timers per connection, and a scan
+per arm under the timers lock is not acceptable. Worker 0 publishes the
+deadline it parks until into the wheel, `parked_until: Option<Instant>`, set
+under the timers lock when it reads the deadline and cleared when it leaves
+the park. `schedule_reserved_at` runs E only when `parked_until` is set and
+the new deadline is earlier: O(1), and only when worker 0 would otherwise
+oversleep.
+
+**C3. Lock order: timers, then `wait_set`, never the reverse.** No path
+takes the timers lock while holding `wait_set`. The build checks this by a
+search across the scheduler and names every site that takes both, in order.
+`expire_timers` into `mark_fired_receive_timer` already takes timers then
+`wait_set`. `park_thread` reads the deadline and sets `parked_until` before
+it takes `wait_set`, and never while holding it.
+
+**C4. `tick_at`'s one-lap bound keeps every deadline exact.** The bounded
+catch-up is correct only because `expire_bucket` fires an entry by
+`expires_at <= now` and leaves later entries in place. Its red: a timer
+armed more than one lap out, worker 0 parked for longer than a lap before
+the deadline; the timer fires once, at its deadline, never early on the
+bounded walk, and `current_tick` lands on `target_tick` after it.
+
+W9's advance sits inside its existing critical section with the notify
+after it; the sequence is the guard. W16 needs no edge. W24's replay rule
+stands: the log decides, never the clock.
 
 ### 3.9 Readiness service (companion spec)
 
