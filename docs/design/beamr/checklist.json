@@ -1262,16 +1262,16 @@
       ]
     },
     {
-      "name": "Offline test builds (B-183)",
+      "name": "Offline test builds (B-183, withdrawn 21 Oct 2026)",
       "items": [
         {
           "id": "C230",
-          "text": "opentelemetry_sdk is an optional dependency behind telemetry-testing, not a dev-dependency, so beamr's default-features tests build offline (B-183 R1).",
+          "text": "Withdrawn with B-183 (premise disproved; remedy is cargo fetch in the window): opentelemetry_sdk is an optional dependency behind telemetry-testing, not a dev-dependency, so beamr's default-features tests build offline (B-183 R1).",
           "done": false
         },
         {
           "id": "C231",
-          "text": "Every --all-features gate leg still runs the telemetry tests, and the CHANGELOG says how to run them (B-183 R2).",
+          "text": "Withdrawn with B-183 (premise disproved; remedy is cargo fetch in the window): Every --all-features gate leg still runs the telemetry tests, and the CHANGELOG says how to run them (B-183 R2).",
           "done": false
         }
       ]
