@@ -5,7 +5,7 @@
 //! O(1) insertion and cancellation without a sorted list, binary heap, or
 //! priority queue.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::time::Duration;
 
 use web_time::Instant;
@@ -15,7 +15,7 @@ use crate::term::Term;
 const DEFAULT_BUCKETS: usize = 1024;
 
 /// Unique timer reference used for cancellation.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct TimerRef(u64);
 
 impl TimerRef {
@@ -79,40 +79,15 @@ pub struct ExpiredTimer {
     pub kind: TimerKind,
 }
 
-/// Called by the wheel when a timer is armed earlier than the deadline a
-/// parked worker 0 waits for (§3.8.2 C2): the scheduler's edge E.
-#[cfg(feature = "threads")]
-pub(crate) type ArmNotifier = std::sync::Arc<dyn Fn() + Send + Sync>;
-
-/// The deadline the scheduler's worker 0 has published it parks until.
-#[cfg(feature = "threads")]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum ParkedUntil {
-    /// Worker 0 is not parked: it reads the earliest deadline at its next
-    /// park, so an arming now needs no edge.
-    NotParked,
-    /// Worker 0 is parked with no deadline: every arming is earlier.
-    NoDeadline,
-    /// Worker 0 is parked until this instant.
-    Deadline(Instant),
-}
-
-#[cfg(feature = "threads")]
-impl ParkedUntil {
-    /// Whether a timer expiring at `expires_at` would be overslept.
-    fn is_later_than(self, expires_at: Instant) -> bool {
-        match self {
-            Self::NotParked => false,
-            Self::NoDeadline => true,
-            Self::Deadline(deadline) => expires_at < deadline,
-        }
-    }
-}
-
 /// Millisecond-granularity O(1) timer wheel for one-shot timers.
 pub struct TimerWheel {
     buckets: Vec<Vec<TimerRef>>,
     entries: HashMap<TimerRef, TimerEntry>,
+    /// Every pending entry's `(expires_at, reference)`, ordered: the
+    /// earliest deadline is the first, so worker 0's read at every park is
+    /// O(log n), not a scan of `entries` (Hermes's F1 on B-181). Kept in
+    /// step with `entries` on arm, cancel and expire.
+    deadlines: BTreeSet<(Instant, TimerRef)>,
     next_ref: u64,
     start: Instant,
     current_tick: u128,
@@ -168,6 +143,7 @@ impl TimerWheel {
         Self {
             buckets,
             entries: HashMap::new(),
+            deadlines: BTreeSet::new(),
             next_ref: 1,
             start: Instant::now(),
             current_tick: 0,
@@ -233,6 +209,7 @@ impl TimerWheel {
         let bucket = self.bucket_for(expires_at);
         let slot = self.buckets[bucket].len();
         self.buckets[bucket].push(reference);
+        self.deadlines.insert((expires_at, reference));
         self.entries.insert(
             reference,
             TimerEntry {
@@ -247,48 +224,6 @@ impl TimerWheel {
         #[cfg(feature = "threads")]
         self.wake_parked_worker_for(expires_at);
         Some(reference)
-    }
-
-    /// W11's edge (§3.8.2 C2): O(1), never a scan. Runs the scheduler's edge
-    /// only when worker 0 is parked past `expires_at`, then records the new,
-    /// earlier deadline so arms between the two need no second edge.
-    #[cfg(feature = "threads")]
-    fn wake_parked_worker_for(&mut self, expires_at: Instant) {
-        if !self.parked_until.is_later_than(expires_at) {
-            return;
-        }
-        let Some(notifier) = self.arm_notifier.as_ref() else {
-            return;
-        };
-        notifier();
-        self.parked_until = ParkedUntil::Deadline(expires_at);
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            self.arm_wake_edges = self.arm_wake_edges.saturating_add(1);
-        }
-    }
-
-    /// Install the scheduler's edge, run when a timer is armed earlier than
-    /// worker 0's published park deadline.
-    #[cfg(feature = "threads")]
-    pub(crate) fn set_arm_notifier(&mut self, notifier: ArmNotifier) {
-        self.arm_notifier = Some(notifier);
-    }
-
-    /// Worker 0, about to park: read the earliest armed deadline (the one
-    /// O(n) read per park) and publish it as the deadline worker 0 parks
-    /// until, both under this wheel's lock.
-    #[cfg(feature = "threads")]
-    pub(crate) fn publish_park(&mut self) -> Option<Instant> {
-        let deadline = self.earliest_deadline();
-        self.parked_until = deadline.map_or(ParkedUntil::NoDeadline, ParkedUntil::Deadline);
-        deadline
-    }
-
-    /// Worker 0 left its park: arming needs no edge until it parks again.
-    #[cfg(feature = "threads")]
-    pub(crate) fn clear_park(&mut self) {
-        self.parked_until = ParkedUntil::NotParked;
     }
 
     /// Deterministic scheduling variant used by tests and scheduler ticks.
@@ -403,13 +338,10 @@ impl TimerWheel {
     /// Return the earliest absolute deadline among pending timers.
     #[must_use]
     pub fn earliest_deadline(&self) -> Option<Instant> {
-        self.entries
-            .values()
-            .map(|entry| {
-                self.count_deadline_read();
-                entry.expires_at
-            })
-            .min()
+        self.deadlines.first().map(|(expires_at, _reference)| {
+            self.count_deadline_read();
+            *expires_at
+        })
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -480,6 +412,7 @@ impl TimerWheel {
 
     fn remove_entry(&mut self, reference: TimerRef) -> Option<TimerEntry> {
         let entry = self.entries.remove(&reference)?;
+        self.deadlines.remove(&(entry.expires_at, reference));
         self.swap_remove_bucket_slot(entry.bucket, entry.slot);
         Some(entry)
     }
@@ -510,160 +443,12 @@ impl Default for TimerWheel {
     }
 }
 
+#[cfg(feature = "threads")]
+mod park;
+#[cfg(feature = "threads")]
+pub(crate) use park::ArmNotifier;
+#[cfg(feature = "threads")]
+use park::ParkedUntil;
+
 #[cfg(test)]
-mod tests {
-    use std::time::{Duration, Instant};
-
-    use super::{TimerKind, TimerWheel};
-    use crate::atom::Atom;
-    use crate::term::Term;
-
-    #[test]
-    fn timer_schedule_and_tick_expire_due_timers() {
-        let start = Instant::now();
-        let mut wheel = TimerWheel::with_bucket_count(8);
-        let reference = wheel.schedule_at(
-            start,
-            Duration::from_millis(10),
-            12,
-            Term::atom(Atom::OK),
-            TimerKind::Deliver,
-        );
-
-        assert!(wheel.tick_at(start + Duration::from_millis(9)).is_empty());
-        let expired = wheel.tick_at(start + Duration::from_millis(10));
-
-        assert_eq!(expired.len(), 1);
-        assert_eq!(expired[0].reference, reference);
-        assert_eq!(expired[0].target_pid, 12);
-        assert_eq!(expired[0].message, Term::atom(Atom::OK));
-        assert_eq!(expired[0].kind, TimerKind::Deliver);
-        assert!(wheel.is_empty());
-    }
-
-    #[test]
-    fn timer_reports_earliest_absolute_deadline() {
-        let start = Instant::now();
-        let mut wheel = TimerWheel::with_bucket_count(8);
-        let later = start + Duration::from_millis(40);
-        let earlier = start + Duration::from_millis(10);
-
-        wheel.schedule_at(
-            start,
-            Duration::from_millis(40),
-            1,
-            Term::small_int(1),
-            TimerKind::Deliver,
-        );
-        let earlier_ref = wheel.schedule_at(
-            start,
-            Duration::from_millis(10),
-            2,
-            Term::small_int(2),
-            TimerKind::Deliver,
-        );
-
-        assert_eq!(wheel.earliest_deadline(), Some(earlier));
-        assert_eq!(
-            wheel.cancel_at(earlier_ref, start),
-            Some(Duration::from_millis(10))
-        );
-        assert_eq!(wheel.earliest_deadline(), Some(later));
-        let _expired = wheel.tick_at(later);
-        assert_eq!(wheel.earliest_deadline(), None);
-    }
-
-    #[test]
-    fn timer_cancellation_is_constant_time_and_returns_remaining_time() {
-        let start = Instant::now();
-        let mut wheel = TimerWheel::with_bucket_count(4);
-        let reference = wheel.schedule_at(
-            start,
-            Duration::from_millis(100),
-            1,
-            Term::small_int(1),
-            TimerKind::ReceiveTimeout,
-        );
-
-        assert_eq!(
-            wheel.cancel_at(reference, start + Duration::from_millis(40)),
-            Some(Duration::from_millis(60))
-        );
-        assert_eq!(wheel.cancel_at(reference, start), None);
-        assert!(wheel.tick_at(start + Duration::from_millis(100)).is_empty());
-    }
-
-    #[test]
-    fn timer_cancellation_after_fire_returns_none() {
-        let start = Instant::now();
-        let mut wheel = TimerWheel::with_bucket_count(4);
-        let reference = wheel.schedule_at(
-            start,
-            Duration::from_millis(1),
-            1,
-            Term::small_int(1),
-            TimerKind::Deliver,
-        );
-
-        assert_eq!(wheel.tick_at(start + Duration::from_millis(1)).len(), 1);
-        assert_eq!(
-            wheel.cancel_at(reference, start + Duration::from_millis(1)),
-            None
-        );
-    }
-
-    #[test]
-    fn timer_reserved_reference_cannot_be_scheduled_twice() {
-        let start = Instant::now();
-        let mut wheel = TimerWheel::with_bucket_count(4);
-        let reference = wheel.reserve_reference();
-
-        assert_eq!(
-            wheel.schedule_reserved_at(
-                reference,
-                start,
-                Duration::from_millis(10),
-                1,
-                Term::small_int(1),
-                TimerKind::Deliver,
-            ),
-            Some(reference)
-        );
-        assert_eq!(
-            wheel.schedule_reserved_at(
-                reference,
-                start,
-                Duration::from_millis(20),
-                1,
-                Term::small_int(2),
-                TimerKind::Deliver,
-            ),
-            None
-        );
-
-        let expired = wheel.tick_at(start + Duration::from_millis(20));
-        assert_eq!(expired.len(), 1);
-        assert_eq!(expired[0].message, Term::small_int(1));
-        assert!(wheel.is_empty());
-    }
-
-    #[test]
-    fn timer_handles_ten_thousand_concurrent_timers() {
-        let start = Instant::now();
-        let mut wheel = TimerWheel::with_bucket_count(256);
-        for index in 0..10_000 {
-            wheel.schedule_at(
-                start,
-                Duration::from_millis(index % 100),
-                index,
-                Term::small_int(index as i64),
-                TimerKind::Deliver,
-            );
-        }
-
-        assert_eq!(wheel.len(), 10_000);
-        let expired = wheel.tick_at(start + Duration::from_millis(100));
-        assert_eq!(expired.len(), 10_000);
-        assert!(wheel.is_empty());
-    }
-}
+mod tests;
