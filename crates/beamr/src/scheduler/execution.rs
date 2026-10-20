@@ -443,30 +443,34 @@ pub(in crate::scheduler) fn scheduler_loop(
             match next_replay_pid(shared, my_index) {
                 Some(pid) => pid,
                 None => {
-                    park_thread(shared);
+                    #[cfg(test)]
+                    park::idle_gap(shared, my_index);
+                    let timed_out = park_thread(shared, my_index);
+                    park::report_left_park(shared, my_index, timed_out, inject, stealers);
                     continue;
                 }
             }
         } else {
-            match queue.pop() {
-                Some(pid) => pid,
+            let found = match queue.pop() {
+                Some(pid) => Some(pid),
                 None => {
                     let (result, next_victim) =
                         steal::try_steal(queue, my_index, stealers, last_victim);
                     last_victim = next_victim;
                     match result {
-                        steal::StealResult::Stolen { .. } => match queue.pop() {
-                            Some(pid) => pid,
-                            None => {
-                                park_thread(shared);
-                                continue;
-                            }
-                        },
-                        steal::StealResult::Empty => {
-                            park_thread(shared);
-                            continue;
-                        }
+                        steal::StealResult::Stolen { .. } => queue.pop(),
+                        steal::StealResult::Empty => None,
                     }
+                }
+            };
+            match found {
+                Some(pid) => pid,
+                None => {
+                    #[cfg(test)]
+                    park::idle_gap(shared, my_index);
+                    let timed_out = park_thread(shared, my_index);
+                    park::report_left_park(shared, my_index, timed_out, inject, stealers);
+                    continue;
                 }
             }
         };
@@ -489,7 +493,18 @@ fn drain_injected(shared: &SharedState, queue: &RunQueue, inject: &SegQueue<Spaw
 
 mod core;
 mod native_slice;
+mod park;
 use core::run_process;
+#[cfg(any(test, feature = "test-support"))]
+pub use park::IDLE_WAKES_PER_SEC_PER_WORKER;
+pub use park::IDLE_PARK_TIMEOUT;
+#[cfg(test)]
+pub(in crate::scheduler) use park::ParkHooks;
+#[cfg(any(test, feature = "test-support"))]
+pub(in crate::scheduler) use park::ParkSeams;
+#[cfg(any(test, feature = "test-support"))]
+pub use park::{ObservedParkTimeout, WorkerParkCounts};
+use park::park_thread;
 pub(in crate::scheduler) use core::{cleanup_exited_process, finalize_exited_process};
 use std::net::SocketAddr;
 
@@ -969,54 +984,6 @@ pub(in crate::scheduler) fn priority_for_pid(
         super::ProcessSlot::Executing(metadata) => Some(metadata.priority),
         super::ProcessSlot::Absent => None,
     }
-}
-
-/// Idle-park timeout for a normal scheduler worker.
-///
-/// A worker with no runnable process parks on `wake_condvar` for at most this
-/// long before looping again to re-check the two event sources still polled
-/// rather than notified: timer-wheel expiry and IO-ring completions
-/// (spec §3.8). It is the VM's own idle tick. Exposed as a named constant so
-/// the signed §3.8 wake-rate bound reads its floor from source rather than a
-/// duplicated literal; changing it re-signs the bound (Q-F ruling).
-pub const IDLE_PARK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5);
-
-/// Per-worker idle wake rate implied by [`IDLE_PARK_TIMEOUT`], in wakes/sec.
-///
-/// The per-worker half of the signed §3.8 formula. The per-process bound is
-/// this value times the worker count the inventory attributes to the process
-/// — not a config-claimed count — so the signed number and its enforcement
-/// cannot drift (Waffles the Terrible signing note; Vesper Lynd sharpening).
-/// Consumed only by the signed idle-wake assertion, hence test-scoped.
-#[cfg(any(test, feature = "test-support"))]
-pub const IDLE_WAKES_PER_SEC_PER_WORKER: u64 = 1000u64 / IDLE_PARK_TIMEOUT.as_millis() as u64;
-
-fn park_thread(shared: &SharedState) {
-    #[cfg(any(test, feature = "test-support"))]
-    shared.idle_parks.fetch_add(1, Ordering::Relaxed);
-    if shared.shutdown.load(Ordering::Acquire) {
-        return;
-    }
-    let guard = lock_or_recover(&shared.wait_set);
-    let timeout = IDLE_PARK_TIMEOUT;
-    // Record the SAME local the wait consumes (not the constant): the seam
-    // observes the duration actually passed to `wait_timeout`. If the wait's
-    // argument is ever decoupled from `timeout`, this binding goes unused in
-    // production builds and `-D warnings` fails the gate.
-    #[cfg(any(test, feature = "test-support"))]
-    shared
-        .observed_park_timeout_millis
-        .store(timeout.as_millis() as u64, Ordering::Relaxed);
-    #[cfg(feature = "telemetry")]
-    let idle_started = Instant::now();
-    match shared.wake_condvar.wait_timeout(guard, timeout) {
-        Ok(_) => {}
-        Err(error) => {
-            let _recovered = error.into_inner();
-        }
-    }
-    #[cfg(feature = "telemetry")]
-    shared.record_scheduler_idle(idle_started.elapsed());
 }
 
 #[cfg(test)]

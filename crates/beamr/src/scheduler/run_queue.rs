@@ -200,6 +200,13 @@ impl PriorityStealers {
         self.max.len() + self.high.len() + self.normal.len() + self.low.len()
     }
 
+    /// Processes queued behind this stealer, for B-181's loss detector
+    /// (test builds only).
+    #[cfg(test)]
+    pub(in crate::scheduler) fn queued(&self) -> usize {
+        self.len()
+    }
+
     fn stealer(&self, priority: Priority) -> &Stealer<u64> {
         match priority {
             Priority::Low => &self.low,

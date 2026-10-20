@@ -413,7 +413,7 @@ fn ets_registry_create_lookup_name_and_delete() {
     scheduler.shutdown();
 }
 
-fn test_module(name: Atom, code: Vec<Instruction>) -> Module {
+pub(super) fn test_module(name: Atom, code: Vec<Instruction>) -> Module {
     let label_index = code
         .iter()
         .enumerate()
@@ -1623,7 +1623,8 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
-        observed_park_timeout_millis: AtomicU64::new(0),
+        park_seams: super::execution::ParkSeams::new(1),
+        park_hooks: super::execution::ParkHooks::default(),
         suspension_mirror_registrations: AtomicU64::new(0),
         dirty_suspension_allocations: AtomicU64::new(0),
         park_gap_hook: Mutex::new(None),
@@ -2143,7 +2144,8 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         bif_registry: Arc::new(crate::native::BifRegistryImpl::new()),
         capability_policy: Arc::new(crate::native::AllCapabilitiesPolicy),
         idle_parks: AtomicUsize::new(0),
-        observed_park_timeout_millis: AtomicU64::new(0),
+        park_seams: super::execution::ParkSeams::new(1),
+        park_hooks: super::execution::ParkHooks::default(),
         suspension_mirror_registrations: AtomicU64::new(0),
         dirty_suspension_allocations: AtomicU64::new(0),
         park_gap_hook: Mutex::new(None),
@@ -2478,7 +2480,7 @@ fn idle_threads_park_instead_of_spinning() {
 // each test pins one interleaving deterministically.
 // ---------------------------------------------------------------------------
 
-fn receive_then_return_module(registry: &ModuleRegistry, name: Atom) -> Arc<Module> {
+pub(super) fn receive_then_return_module(registry: &ModuleRegistry, name: Atom) -> Arc<Module> {
     registry.insert(test_module(
         name,
         vec![
@@ -2499,7 +2501,7 @@ fn receive_then_return_module(registry: &ModuleRegistry, name: Atom) -> Arc<Modu
 
 /// Pushes an atom message exactly the way a racing sender does: under the
 /// slot lock, with `wake_process` left to the caller.
-fn deliver_atom(shared: &SharedState, pid: u64, atom: Atom) {
+pub(super) fn deliver_atom(shared: &SharedState, pid: u64, atom: Atom) {
     let entry = shared
         .process_bodies
         .get(&pid)
@@ -3096,7 +3098,7 @@ fn disabled_standard_io_ring_registers_no_process_zero_and_reports_disabled() {
 /// `receive ... after 1 -> true end` in the erlc instruction shape: the
 /// wait_timeout fail label is the receive loop, and timer expiry falls
 /// through to `timeout` and the after-body.
-fn receive_after_module(registry: &ModuleRegistry, name: Atom) -> Arc<Module> {
+pub(super) fn receive_after_module(registry: &ModuleRegistry, name: Atom) -> Arc<Module> {
     registry.insert(test_module(
         name,
         vec![

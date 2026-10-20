@@ -145,6 +145,8 @@ pub mod thread_probe;
 pub use execution::IDLE_PARK_TIMEOUT;
 #[cfg(all(feature = "threads", any(test, feature = "test-support")))]
 pub use execution::IDLE_WAKES_PER_SEC_PER_WORKER;
+#[cfg(all(feature = "threads", any(test, feature = "test-support")))]
+pub use execution::{ObservedParkTimeout, WorkerParkCounts};
 #[cfg(feature = "threads")]
 pub use inventory::{
     ProcessVmCensus, ServiceInventoryEntry, ServicePolicyLine, deduped_thread_aggregate,
@@ -486,13 +488,16 @@ pub(super) struct SharedState {
     #[cfg(any(test, feature = "test-support"))]
     idle_parks: AtomicUsize,
 
-    /// Millisecond value of the timeout the park primitive most recently
-    /// used, written by every `park_thread` entry. The deterministic linkage
-    /// between the running code and the signed 5ms floor: the bound test
-    /// asserts this equals `IDLE_PARK_TIMEOUT` rather than inferring it from
-    /// a load-sensitive wake rate. 0 = no worker has parked yet.
+    /// Per-worker park instruments: how often each worker parked, how each
+    /// park ended, and the timeout it last waited with — the value actually
+    /// passed to the wait, never a constant beside it (§3.8, B-181).
     #[cfg(any(test, feature = "test-support"))]
-    observed_park_timeout_millis: AtomicU64,
+    park_seams: execution::ParkSeams,
+
+    /// Test-only controls on the park: the unbounded-wait seam and the hooks
+    /// at the idle gap and at the start of a wait (B-181's reds).
+    #[cfg(test)]
+    park_hooks: execution::ParkHooks,
 
     /// Count of suspension mirrors registered to date, one per
     /// `register_suspension_mirror` call. Boundary instrument for the §3.2
@@ -1708,7 +1713,9 @@ impl Scheduler {
                 #[cfg(any(test, feature = "test-support"))]
                 idle_parks: AtomicUsize::new(0),
                 #[cfg(any(test, feature = "test-support"))]
-                observed_park_timeout_millis: AtomicU64::new(0),
+                park_seams: execution::ParkSeams::new(thread_count),
+                #[cfg(test)]
+                park_hooks: execution::ParkHooks::default(),
                 #[cfg(any(test, feature = "test-support"))]
                 suspension_mirror_registrations: AtomicU64::new(0),
                 #[cfg(any(test, feature = "test-support"))]
@@ -2197,22 +2204,32 @@ impl Scheduler {
     pub fn idle_park_count(&self) -> usize {
         self.shared.idle_parks.load(Ordering::Acquire)
     }
-    /// The park timeout the workers are ACTUALLY using, in milliseconds —
-    /// `None` until the first park. Deterministic linkage for the signed
-    /// §3.8 floor: asserting this equals [`IDLE_PARK_TIMEOUT`] catches an
-    /// implementation whose wait duration decoupled from the signed
-    /// constant, with zero sensitivity to host load.
+    /// The park timeout the workers are ACTUALLY using, in milliseconds, as
+    /// the most recent park by any worker passed it to its wait: `Some` for a
+    /// park with a deadline, `None` for a park with no timeout (or before the
+    /// first park; [`Scheduler::observed_park_timeout`] tells those apart).
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
     pub fn observed_park_timeout_millis(&self) -> Option<u64> {
-        match self
-            .shared
-            .observed_park_timeout_millis
-            .load(Ordering::Acquire)
-        {
-            0 => None,
-            millis => Some(millis),
-        }
+        self.shared.park_seams.observed_any().bounded_millis()
+    }
+    /// The timeout the most recent park by any worker waited with.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn observed_park_timeout(&self) -> ObservedParkTimeout {
+        self.shared.park_seams.observed_any()
+    }
+    /// The timeout worker `worker` most recently waited with.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn worker_observed_park_timeout(&self, worker: usize) -> ObservedParkTimeout {
+        self.shared.park_seams.observed(worker)
+    }
+    /// How many times worker `worker` parked, and how those parks ended.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn worker_park_counts(&self, worker: usize) -> WorkerParkCounts {
+        self.shared.park_seams.counts(worker)
     }
     /// Cumulative suspension-mirror registrations across this scheduler —
     /// one per `register_suspension_mirror` call, counted at registration
@@ -2614,3 +2631,6 @@ mod supervision_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
+mod tickless_idle_tests;

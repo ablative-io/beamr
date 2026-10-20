@@ -87,6 +87,14 @@ pub struct TimerWheel {
     next_ref: u64,
     start: Instant,
     current_tick: u128,
+    /// Buckets walked by `tick_at` to date: the instrument for the one-lap
+    /// catch-up bound (B-181 R3, EMBEDDER-COMPOSITION-SPEC §3.8.2 C4).
+    #[cfg(any(test, feature = "test-support"))]
+    bucket_visits: u64,
+    /// Arming edges run to date: one per `schedule_reserved_at` that woke a
+    /// parked worker 0 for an earlier deadline (§3.8.2 C2 instrument).
+    #[cfg(any(test, feature = "test-support"))]
+    arm_wake_edges: u64,
 }
 
 impl TimerWheel {
@@ -107,6 +115,10 @@ impl TimerWheel {
             next_ref: 1,
             start: Instant::now(),
             current_tick: 0,
+            #[cfg(any(test, feature = "test-support"))]
+            bucket_visits: 0,
+            #[cfg(any(test, feature = "test-support"))]
+            arm_wake_edges: 0,
         }
     }
 
@@ -213,9 +225,49 @@ impl TimerWheel {
         while self.current_tick <= target_tick {
             let bucket_index = (self.current_tick % self.buckets.len() as u128) as usize;
             self.expire_bucket(bucket_index, now, &mut expired);
+            #[cfg(any(test, feature = "test-support"))]
+            {
+                self.bucket_visits = self.bucket_visits.saturating_add(1);
+            }
             self.current_tick = self.current_tick.saturating_add(1);
         }
         expired
+    }
+
+    /// The tick the wheel's next walk starts from. Test instrument for the
+    /// one-lap catch-up bound (§3.8.2 C4).
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn current_tick(&self) -> u128 {
+        self.current_tick
+    }
+
+    /// The tick `now` falls in, measured from the wheel's start. Test
+    /// instrument paired with [`TimerWheel::current_tick`].
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn target_tick(&self, now: Instant) -> u128 {
+        self.tick_for(now)
+    }
+
+    /// Buckets walked by every `tick_at` to date (§3.8.2 C4 instrument).
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn bucket_visits(&self) -> u64 {
+        self.bucket_visits
+    }
+
+    /// Arming edges run to date (§3.8.2 C2 instrument).
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn arm_wake_edges(&self) -> u64 {
+        self.arm_wake_edges
+    }
+
+    /// The bucket count of this wheel: one lap of the catch-up walk.
+    #[must_use]
+    pub fn bucket_count(&self) -> usize {
+        self.buckets.len()
     }
 
     /// Number of pending timers.
