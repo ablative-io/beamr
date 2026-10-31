@@ -200,6 +200,31 @@ floor they served (EMBEDDER-COMPOSITION-SPEC §3.8.3). The bound now signed is
 zero idle wakes with no armed timer and no IO in flight; one wake per
 deadline worker 0 reaches; one per cursor advance in replay.
 
+## 0.21.1 — 2026-10-31
+
+### Security — zstd 0.14.3
+
+`zstd` moves from `0.13.3` to `0.14.3` (and with it `zstd-safe` to `8.2.0`), in
+`beamr` (the optional `embedded` dependency and the build dependency) and in
+`beamr-wasm` `0.11.1` (build dependency only). The `0.13` line is covered by three
+advisories, all fixed by this move:
+
+- RUSTSEC-2026-0391: data from an abandoned stream leaks into the next stream on a
+  reused context (`Encoder::with_context`, `Decoder::with_context`). beamr calls
+  neither.
+- RUSTSEC-2026-0398: `Seekable::decompress` sets a `Vec` length beyond its
+  capacity. beamr does not enable the seekable API.
+- RUSTSEC-2026-0403: uninitialized memory exposed when streaming decompression of
+  a legacy frame fails. beamr reaches this one: `zstd::stream::decode_all` runs on
+  replay-log bodies (`replay/file.rs`) and on embedded modules (`loader/embed.rs`),
+  with zstd's default `legacy` feature on, so a damaged or hostile replay log could
+  expose uninitialized memory.
+
+No API changes: every call beamr makes (`encode_all`, `decode_all`) keeps its
+signature. This release is `0.21.0` plus this change only. It is cut from the
+`beamr-v0.21.0` tag, not from main, because main carries unrun scheduler work
+(B-181) that does not belong in a security fix.
+
 ## 0.21.0 — 2026-10-09
 
 ### Changed (breaking) — checked Gleam sidecar serialization
