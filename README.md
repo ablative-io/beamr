@@ -4,7 +4,7 @@ A ground-up BEAM virtual machine written in Rust, targeting [Gleam](https://glea
 
 Built for [Meridian](https://github.com/ablative/yggdrasil) workflow execution, where Gleam's type system provides compile-time validation: if the workflow compiles, the types are correct.
 
-<!-- release: 0.20.0 -->
+<!-- release: 0.21.1 -->
 
 ## ⚠️ Security advisory (2026-09-03)
 
@@ -25,7 +25,7 @@ are recorded in the CHANGELOG advisory linked below.
 
 <!-- class: rf006-jit-rooting status: fixed fixed_in: 0.18.1 -->
 
-The current release of the `beamr` crate is `0.20.0`. The changelog's release
+The current release of the `beamr` crate is `0.21.1`. The changelog's release
 entries record the JIT GC-rooting class as fixed in `0.18.1`, compiled message
 delivery as fixed in `0.18.2`, and accumulator rooting as fixed in `0.19.0`.
 Those entries, together with the `0.16.2` and `0.16.3` records above, are the
