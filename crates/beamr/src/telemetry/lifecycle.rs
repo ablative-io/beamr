@@ -326,7 +326,8 @@ const fn exit_class(reason: ExitReason) -> &'static str {
         | ExitReason::Killed
         | ExitReason::Error
         | ExitReason::NoConnection
-        | ExitReason::NoProc => "error",
+        | ExitReason::NoProc
+        | ExitReason::WorkerCrashed => "error",
     }
 }
 

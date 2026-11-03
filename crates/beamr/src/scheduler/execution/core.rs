@@ -1317,6 +1317,7 @@ const fn exit_reason_label(reason: ExitReason) -> &'static str {
         ExitReason::Error => "error",
         ExitReason::NoConnection => "noconnection",
         ExitReason::NoProc => "noproc",
+        ExitReason::WorkerCrashed => "worker_crashed",
     }
 }
 

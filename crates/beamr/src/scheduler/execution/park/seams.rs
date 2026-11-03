@@ -641,3 +641,18 @@ pub(in crate::scheduler) fn poison_link_set(shared: &SharedState) -> bool {
     });
     shared.link_set.is_poisoned()
 }
+
+/// B-184 R5's hold, run by worker `my_index`'s guard after it died and
+/// before its recovery checks anything: waits, when armed, until its
+/// [`WorkerHold`] is dropped. Ends on that event, never a clock.
+#[cfg(test)]
+pub(in crate::scheduler) fn hold_before_recovery_if_armed(shared: &SharedState, my_index: usize) {
+    let held = shared
+        .park_seams
+        .worker(my_index)
+        .and_then(|worker| lock_or_recover(&worker.hold_before_recovery).take());
+    if let Some(held) = held {
+        // Disconnection is the release: the hold sends nothing.
+        let _released = held.recv();
+    }
+}

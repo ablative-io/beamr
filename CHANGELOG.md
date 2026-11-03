@@ -204,10 +204,12 @@ deadline worker 0 reaches; one per cursor advance in replay.
 
 A scheduler worker whose thread ends by a panic (or whose loop returns before
 shutdown) no longer vanishes while the scheduler carries on with fewer
-workers. Every worker runs under a guard that latches one permanent
-`SchedulerFailure`: the worker's name and index, where it was (`Parked`,
-`Running(pid)` or `Scheduling`) and how it ended (`Panicked(message)` or
-`Returned`). The first death wins; the latch is never cleared. On macOS,
+workers. Every worker runs under a guard. A death the scheduler can prove
+left its state consistent is recovered (tiers 1 and 2 below); any other
+death latches one permanent `SchedulerFailure`: the worker's name and index,
+where it was (`Parked`, `Running(pid)` or `Scheduling`) and how it ended
+(`Panicked(message)` or `Returned`). The first latched death wins; the latch
+is never cleared. On macOS,
 workers were ended this way by std's condvar assert in the idle park
 (`assertion failed: r == libc::ETIMEDOUT || r == 0`); a native handler that
 panics inside its slice ends its worker the same way.
@@ -238,6 +240,41 @@ panics inside its slice ends its worker the same way.
   `Scheduler::panic_worker_at_next_park`, `panic_worker_at_next_slice`,
   `await_seam_panicked`, `hold_worker_after_death`,
   `await_worker_exit_reported` and `shutdown_skipped_workers`.
+
+Each death is decided into one of three tiers, by where the worker died, a
+poison check of every scheduler-shared mutex and every process slot, and a
+check of the wait set; no count and no timer decide it:
+
+- **Tier 1, restarted.** The worker died parked, holding no process, the only
+  mutex it left poisoned is the wait set, and the wait set's check holds: what
+  its park left is undone, the wait set's poison is cleared under the same
+  lock hold that proved it, and the worker restarts on its index with its
+  queues.
+- **Tier 2, killed and restarted.** The worker died running a process, and
+  nothing but that process's slot is poisoned: the process is killed with the
+  new exit reason `worker_crashed` (its links and monitors are told so), and
+  the worker restarts with its queues.
+- **Tier 3, latched.** Anything else: a death between slices, a loop that
+  returned, a second mutex poisoned, a wait set that fails its check, or a
+  restarted worker that dies again before it runs one process slice. The
+  failure latches as above.
+
+- `Scheduler::on_worker_death(callback)` registers one
+  `Fn(&WorkerDeath) + Send + Sync` callback, run on the dying worker's thread
+  for every death, before it restarts or latches. A `WorkerDeath` carries the
+  worker's name and index, its site, how it ended (with the panic text), the
+  tier, the killed pid, the poison check and the wait-set check (both
+  `PoisonCheck` and `WaitSetCheck` are public), and the cause; each death is
+  also printed as one line on stderr. A second registration returns `false`.
+- `Scheduler::worker_deaths()` counts every death of every tier.
+- `on_failure` still runs once, for the tier-3 latch only.
+- `test-support` gains `Scheduler::panic_worker_unrecoverably`, which poisons
+  a second shared mutex and then arms the park panic, so a red can drive
+  tier 3; `panic_worker_at_next_park` now drives tier 1 and
+  `panic_worker_at_next_slice` tier 2.
+- **Breaking:** `ExitReason` gains `WorkerCrashed` (atom `worker_crashed`, an
+  error-class exit). A `match` over `ExitReason` with no wildcard arm needs
+  the new arm.
 
 ## 0.21.1 — 2026-10-31
 

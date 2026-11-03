@@ -564,6 +564,7 @@ pub(in crate::scheduler) fn scheduler_loop(
         #[cfg(feature = "telemetry")]
         let executing_started = Instant::now();
         run_process(shared, queue, pid, my_index);
+        failure::note_slice_run();
         failure::set_site(failure::WorkerSite::Scheduling);
         if shared.replay_mode {
             // W24: a replay slice consumed its Schedule and every event its
@@ -599,7 +600,9 @@ use core::run_process;
 pub(in crate::scheduler) use core::{cleanup_exited_process, finalize_exited_process};
 #[cfg(test)]
 pub(in crate::scheduler) use park::ParkHooks;
-pub(in crate::scheduler) use park::{IdleWake, surplus_edge};
+#[cfg(test)]
+pub(in crate::scheduler) use park::hold_before_recovery_if_armed;
+pub(in crate::scheduler) use park::{IdleWake, surplus_edge, undo_dead_park};
 #[cfg(any(test, feature = "test-support"))]
 pub use park::{
     ObservedParkTimeout, WakeCauses, WorkerHold, WorkerParkCounts, park_seam_panic_message,

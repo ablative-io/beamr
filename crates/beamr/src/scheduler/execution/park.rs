@@ -18,6 +18,8 @@ use crate::scheduler::{RunQueue, SharedState, WaitSet, lock_or_recover};
 mod seams;
 #[cfg(test)]
 pub(in crate::scheduler) use seams::ParkHooks;
+#[cfg(test)]
+pub(in crate::scheduler) use seams::hold_before_recovery_if_armed;
 #[cfg(any(test, feature = "test-support"))]
 pub use seams::{
     ObservedParkTimeout, WakeCauses, WorkerHold, WorkerParkCounts, park_seam_panic_message,
@@ -306,4 +308,17 @@ fn wait_for_edge(
     #[cfg(feature = "telemetry")]
     shared.record_scheduler_idle(idle_started.elapsed());
     outcome
+}
+
+/// B-184 R5, tier 1: undo what worker `my_index`, dead in its park, left in
+/// the shared park state, before it restarts: its `note_wait` (the parked
+/// census entry, under the `wait_set` mutex it is counted under), its idle
+/// ticket, and worker 0's published park deadline.
+pub(in crate::scheduler) fn undo_dead_park(shared: &SharedState, my_index: usize) {
+    {
+        let _held = lock_or_recover(&shared.wait_set);
+        note_wait_end(shared, my_index);
+    }
+    leave_idle_window(shared);
+    clear_park(shared, my_index);
 }

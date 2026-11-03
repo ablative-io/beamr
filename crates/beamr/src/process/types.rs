@@ -268,6 +268,11 @@ pub enum ExitReason {
     /// The target process was already dead when a distribution request
     /// (e.g. an inbound LINK) reached it.
     NoProc,
+    /// The scheduler worker running the process died mid-slice; the process
+    /// was killed as a crash and the worker restarted (B-184 R5, lead
+    /// amendment A.1). The worker's name and its panic message are in the
+    /// `WorkerDeath` reported to `Scheduler::on_worker_death`.
+    WorkerCrashed,
 }
 
 impl ExitReason {
@@ -281,6 +286,7 @@ impl ExitReason {
             Self::Error => Atom::ERROR,
             Self::NoConnection => Atom::NOCONNECTION,
             Self::NoProc => Atom::NOPROC,
+            Self::WorkerCrashed => Atom::WORKER_CRASHED,
         }
     }
 

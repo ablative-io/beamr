@@ -1845,19 +1845,21 @@ impl Scheduler {
             let handle = std::thread::Builder::new()
                 .name(thread_name.clone())
                 .spawn(move || {
-                    // B-184 R2: every worker runs under the guard that latches
-                    // the scheduler's failure when its thread ends by a panic,
-                    // or its loop returns before shutdown.
+                    let queue = RunQueue::new();
+                    if tx.send(queue.stealer()).is_err() {
+                        return;
+                    }
+                    barrier_for_thread.wait();
+                    let stealers = {
+                        let guard = lock_or_recover(&ready_for_thread);
+                        guard.as_ref().cloned().unwrap_or_default()
+                    };
+                    // B-184: every worker's loop runs under the guard. A death
+                    // the recovery can account for restarts the loop here, on
+                    // this thread, with this queue (the one its stealer reads)
+                    // and this inject queue (R5); any other latches the
+                    // scheduler's failure (R2).
                     failure::run_worker(&shared_for_thread, index, &guard_name, &inject, || {
-                        let queue = RunQueue::new();
-                        if tx.send(queue.stealer()).is_err() {
-                            return;
-                        }
-                        barrier_for_thread.wait();
-                        let stealers = {
-                            let guard = lock_or_recover(&ready_for_thread);
-                            guard.as_ref().cloned().unwrap_or_default()
-                        };
                         scheduler_loop(&shared_for_thread, &queue, index, &stealers, &inject);
                     });
                 })
@@ -2064,8 +2066,11 @@ impl Scheduler {
         &self.worker_names
     }
     /// The scheduler's permanent failure, or `None` while every worker is
-    /// running (B-184). Latched by the first worker whose thread ended by a
-    /// panic, or whose loop returned before shutdown; never cleared. Once it
+    /// running (B-184). Latched by the first worker death the recovery cannot
+    /// account for (R5's tier 3: a death anywhere but parked or running a
+    /// process, a poisoned shared mutex no check proves consistent, a failed
+    /// wait-set check, a loop that returned before shutdown, or a restarted
+    /// worker dying again before a slice); never cleared. Once it
     /// is set the scheduler has stopped: shutdown is set, every worker is
     /// leaving or has left its loop, processes are being finalized, new
     /// spawns and other admitted mutations are refused, and
@@ -2076,7 +2081,8 @@ impl Scheduler {
         self.shared.failure.get().cloned()
     }
     /// Register the one callback the failure latch runs (B-184, lead
-    /// amendment B). It runs exactly once: on the dying worker's own thread,
+    /// amendment B), only when a tier-3 death latches it (R5). It runs
+    /// exactly once: on the dying worker's own thread,
     /// inside its guard, before the other workers and the waiters are woken;
     /// or, registered after the latch, at once on this thread. Returns false,
     /// dropping `callback` unrun, when a callback was registered before.

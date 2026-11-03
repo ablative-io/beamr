@@ -291,6 +291,13 @@ impl PgRegistry {
         }
     }
 
+    /// Whether a thread panicked holding the group state (the scheduler's
+    /// worker-death poison check). Takes no lock.
+    #[must_use]
+    pub(crate) fn is_poisoned(&self) -> bool {
+        self.state.is_poisoned()
+    }
+
     fn lock_state(&self) -> MutexGuard<'_, PgState> {
         self.state
             .lock()

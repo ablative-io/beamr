@@ -88,6 +88,9 @@ impl Atom {
     pub const BS_GET_TAIL: Self = Self(74);
     pub const BS_EQ_EXACT: Self = Self(75);
     pub const INFINITY: Self = Self(76);
+    /// `worker_crashed`: the exit reason of a process whose scheduler worker
+    /// died running it (B-184 R5, lead amendment A.1).
+    pub const WORKER_CRASHED: Self = Self(77);
 
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
@@ -176,6 +179,7 @@ const COMMON_ATOMS: &[(&str, Atom)] = &[
     ("get_tail", Atom::BS_GET_TAIL),
     ("=:=", Atom::BS_EQ_EXACT),
     ("infinity", Atom::INFINITY),
+    ("worker_crashed", Atom::WORKER_CRASHED),
 ];
 
 /// Concurrent intern table for atom strings.

@@ -550,6 +550,12 @@ pub(super) struct ExitCompletionRegistry {
 }
 
 impl ExitCompletionRegistry {
+    /// Whether a thread panicked holding the registry's state (B-184 R5's
+    /// poison check). Takes no lock.
+    pub(super) fn is_poisoned(&self) -> bool {
+        self.state.is_poisoned()
+    }
+
     pub(super) fn new() -> Self {
         Self {
             state: Mutex::new(CompletionState {

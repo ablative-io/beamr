@@ -97,6 +97,13 @@ pub(super) struct BoundedTombstones {
 }
 
 impl BoundedTombstones {
+    /// Whether a thread panicked holding the writer mutex over the
+    /// tombstone maps and their eviction order (B-184 R5's poison check).
+    /// Takes no lock.
+    pub(super) fn is_poisoned(&self) -> bool {
+        self.order.is_poisoned()
+    }
+
     /// Create a store with the default [`TOMBSTONE_CAPACITY`].
     pub(super) fn new() -> Self {
         Self::with_capacity(TOMBSTONE_CAPACITY)

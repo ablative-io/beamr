@@ -881,7 +881,7 @@ fn a_worker_that_dies_parked_is_restarted_with_its_queues_and_reported() {
 /// FIFO. A gate holds it while two natives are spawned behind it, and a
 /// watcher monitors the first. The slice seam panics the worker as it starts
 /// the first: that process is killed through the ordinary exit path (its
-/// monitor's DOWN carries the reason), the worker restarts, the process
+/// monitor's DOWN carries `worker_crashed`), the worker restarts, the process
 /// queued behind it runs to its exit, as does one spawned afterwards, and
 /// the death is reported as tier 2 naming the pid.
 #[test]
@@ -951,8 +951,19 @@ fn a_worker_that_dies_running_a_process_kills_it_as_a_crash_and_restarts() {
         .wait_set_check()
         .unwrap_or_else(|| panic!("the wait set check was made: {death}"));
     assert!(check.holds(), "the wait set check held: {check}");
-    assert_eq!(down, Ok((crashed, Some(Atom::ERROR))));
-    assert_eq!(crashed_answer, Ok((crashed, ExitReason::Error)));
+    assert_eq!(
+        death.panic_message(),
+        Some(slice_seam_panic_message(0, crashed).as_str())
+    );
+    let printed = death.to_string();
+    assert!(
+        printed.contains("beamr-sched-0")
+            && printed.contains(&slice_seam_panic_message(0, crashed))
+            && printed.contains(&format!("pid {crashed} killed as a crash")),
+        "the printed line names the worker, the panic and the pid: {printed}"
+    );
+    assert_eq!(down, Ok((crashed, Some(Atom::WORKER_CRASHED))));
+    assert_eq!(crashed_answer, Ok((crashed, ExitReason::WorkerCrashed)));
     assert_eq!(behind_answer, Ok((behind, ExitReason::Normal)));
     assert_eq!(after_exit, ExitReason::Normal);
     assert_eq!(deaths, 1);
