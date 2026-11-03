@@ -276,6 +276,16 @@ check of the wait set; no count and no timer decide it:
   error-class exit). A `match` over `ExitReason` with no wildcard arm needs
   the new arm.
 
+The idle park stays on std's `Condvar`; no change was made to it. The
+`examples/park_error_probe` program runs the park's shape (15 waiters on one
+mutex and condvar with 5 ms timed waits, notify_all and notify_one racing
+them, one under the mutex and one after it, plus an outside 10 ms waiter)
+outside liminal and beamr. It reached 300,000,000 waits with no panic on a
+loaded Apple-silicon laptop (macOS 26.6.2) and on an M1 MacBook Air (macOS
+26.3.1), with rustc 1.97.1. With nothing reproduced there is no shape for a
+remedy to be aimed at and proven against. If the condvar assert ends a
+worker again, it dies parked, and tier 1 above restarts it and reports it.
+
 ## 0.21.1 — 2026-10-31
 
 ### Security — zstd 0.14.3
