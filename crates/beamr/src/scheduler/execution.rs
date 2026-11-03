@@ -499,6 +499,7 @@ pub(in crate::scheduler) fn scheduler_loop(
         };
         // Work found without parking: the window closes on this path too.
         park::leave_idle_window(shared);
+        park::panic_if_armed_at_slice(shared, my_index, pid);
         #[cfg(feature = "telemetry")]
         let executing_started = Instant::now();
         run_process(shared, queue, pid, my_index);
@@ -538,10 +539,15 @@ pub(in crate::scheduler) use core::{cleanup_exited_process, finalize_exited_proc
 pub(in crate::scheduler) use park::ParkHooks;
 pub(in crate::scheduler) use park::{IdleWake, surplus_edge};
 #[cfg(any(test, feature = "test-support"))]
-pub use park::{ObservedParkTimeout, WakeCauses, WorkerParkCounts};
+pub use park::{
+    ObservedParkTimeout, WakeCauses, WorkerParkCounts, park_seam_panic_message,
+    slice_seam_panic_message,
+};
 use park::{ParkExit, park_thread};
 #[cfg(any(test, feature = "test-support"))]
-pub(in crate::scheduler) use park::{ParkSeams, await_all_parked, await_worker_parked};
+pub(in crate::scheduler) use park::{
+    ParkSeams, await_all_parked, await_seam_panicked, await_worker_parked,
+};
 use std::net::SocketAddr;
 
 use super::process_slot::UdpActiveMessage;

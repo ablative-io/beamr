@@ -17,12 +17,17 @@ use crate::scheduler::{RunQueue, SharedState, WaitSet, lock_or_recover};
 mod seams;
 #[cfg(test)]
 pub(in crate::scheduler) use seams::ParkHooks;
-pub(super) use seams::account_deadline_wake;
+pub(super) use seams::{account_deadline_wake, panic_if_armed_at_slice};
 #[cfg(any(test, feature = "test-support"))]
-pub use seams::{ObservedParkTimeout, WakeCauses, WorkerParkCounts};
+pub use seams::{
+    ObservedParkTimeout, WakeCauses, WorkerParkCounts, park_seam_panic_message,
+    slice_seam_panic_message,
+};
 #[cfg(any(test, feature = "test-support"))]
-pub(in crate::scheduler) use seams::{ParkSeams, await_all_parked, await_worker_parked};
-use seams::{count_entry, note_wait, note_wait_end, record_outcome};
+pub(in crate::scheduler) use seams::{
+    ParkSeams, await_all_parked, await_seam_panicked, await_worker_parked,
+};
+use seams::{count_entry, note_wait, note_wait_end, panic_if_armed, record_outcome};
 #[cfg(test)]
 pub(super) use seams::{idle_gap, report_left_park};
 
@@ -272,6 +277,7 @@ fn wait_for_edge(
         {
             break ParkOutcome::Woken;
         }
+        panic_if_armed(shared, my_index);
         match deadline {
             None => {
                 guard = match shared.wake_condvar.wait(guard) {

@@ -88,6 +88,12 @@ struct WorkerParkSeam {
     last_timeout: AtomicU64,
     /// Set while the worker waits; changed only under the `wait_set` mutex.
     waiting: std::sync::atomic::AtomicBool,
+    /// B-184's seam: the worker panics at its next wait (taken once).
+    panic_at_park: std::sync::atomic::AtomicBool,
+    /// B-184's seam: the worker panics as it starts its next slice.
+    panic_at_slice: std::sync::atomic::AtomicBool,
+    /// Set, under the `wait_set` mutex, as a B-184 seam panics this worker.
+    seam_panicked: std::sync::atomic::AtomicBool,
 }
 
 /// Per-worker park instruments (`test-support`), sized to the worker count.
@@ -159,7 +165,106 @@ impl ParkSeams {
     pub(in crate::scheduler) fn observed_any(&self) -> ObservedParkTimeout {
         ObservedParkTimeout::decode(self.last_timeout.load(Ordering::Acquire))
     }
+
+    /// Arm B-184's park seam for worker `index`: false when no such worker.
+    pub(in crate::scheduler) fn arm_panic_at_park(&self, index: usize) -> bool {
+        self.worker(index).is_some_and(|worker| {
+            worker.panic_at_park.store(true, Ordering::Release);
+            true
+        })
+    }
+
+    /// Arm B-184's slice seam for worker `index`: false when no such worker.
+    pub(in crate::scheduler) fn arm_panic_at_slice(&self, index: usize) -> bool {
+        self.worker(index).is_some_and(|worker| {
+            worker.panic_at_slice.store(true, Ordering::Release);
+            true
+        })
+    }
 }
+
+/// The message B-184's slice seam panics with in worker `index`, as it
+/// starts a slice of `pid`.
+#[cfg(any(test, feature = "test-support"))]
+#[must_use]
+pub fn slice_seam_panic_message(index: usize, pid: u64) -> String {
+    format!("B-184 slice seam: beamr-sched-{index} panicked starting a slice of pid {pid}")
+}
+
+/// B-184's slice seam, run where the worker has popped `pid` and is about
+/// to run it: the process is still `Present`, and whatever else the worker
+/// queued stays on its local run queue. Panics once, when armed.
+#[cfg(any(test, feature = "test-support"))]
+pub(in crate::scheduler::execution) fn panic_if_armed_at_slice(
+    shared: &SharedState,
+    my_index: usize,
+    pid: u64,
+) {
+    if let Some(worker) = shared.park_seams.worker(my_index)
+        && worker.panic_at_slice.swap(false, Ordering::AcqRel)
+    {
+        let held = lock_or_recover(&shared.wait_set);
+        worker.seam_panicked.store(true, Ordering::Release);
+        shared.idle_wake.parked_changed.notify_all();
+        drop(held);
+        panic!("{}", slice_seam_panic_message(my_index, pid));
+    }
+}
+
+/// Block until a B-184 seam has panicked worker `worker`: ends on the
+/// seam's mark, made under `wait_set` (test-support; never a clock). False
+/// at once when there is no such worker.
+#[cfg(any(test, feature = "test-support"))]
+pub(in crate::scheduler) fn await_seam_panicked(shared: &SharedState, worker: usize) -> bool {
+    let Some(seam) = shared.park_seams.worker(worker) else {
+        return false;
+    };
+    let mut guard = lock_or_recover(&shared.wait_set);
+    while !seam.seam_panicked.load(Ordering::Acquire) {
+        guard = match shared.idle_wake.parked_changed.wait(guard) {
+            Ok(guard) => guard,
+            Err(error) => error.into_inner(),
+        };
+    }
+    drop(guard);
+    true
+}
+
+#[cfg(not(any(test, feature = "test-support")))]
+pub(in crate::scheduler::execution) fn panic_if_armed_at_slice(
+    _shared: &SharedState,
+    _my_index: usize,
+    _pid: u64,
+) {
+}
+
+/// The message B-184's seam panics with in worker `index`'s park.
+#[cfg(any(test, feature = "test-support"))]
+#[must_use]
+pub fn park_seam_panic_message(index: usize) -> String {
+    format!(
+        "B-184 park seam: beamr-sched-{index} panicked in its park, where std's condvar \
+         assert ended the workers on macOS"
+    )
+}
+
+/// B-184's seam, run where the worker is about to wait, with the `wait_set`
+/// lock held and the worker counted as parked: the place std's condvar
+/// assert panicked. Panics once, when armed for this worker.
+#[cfg(any(test, feature = "test-support"))]
+pub(super) fn panic_if_armed(shared: &SharedState, my_index: usize) {
+    if let Some(worker) = shared.park_seams.worker(my_index)
+        && worker.panic_at_park.swap(false, Ordering::AcqRel)
+    {
+        // The caller holds `wait_set`: the mark and the notify are made under it.
+        worker.seam_panicked.store(true, Ordering::Release);
+        shared.idle_wake.parked_changed.notify_all();
+        panic!("{}", park_seam_panic_message(my_index));
+    }
+}
+
+#[cfg(not(any(test, feature = "test-support")))]
+pub(super) fn panic_if_armed(_shared: &SharedState, _my_index: usize) {}
 
 /// A hook called with the worker index, at a point in the park sequence.
 #[cfg(test)]

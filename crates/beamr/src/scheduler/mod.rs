@@ -142,7 +142,10 @@ mod services;
 #[cfg(all(feature = "threads", any(test, feature = "test-support")))]
 pub mod thread_probe;
 #[cfg(all(feature = "threads", any(test, feature = "test-support")))]
-pub use execution::{ObservedParkTimeout, WakeCauses, WorkerParkCounts};
+pub use execution::{
+    ObservedParkTimeout, WakeCauses, WorkerParkCounts, park_seam_panic_message,
+    slice_seam_panic_message,
+};
 #[cfg(feature = "threads")]
 pub use inventory::{
     ProcessVmCensus, ServiceInventoryEntry, ServicePolicyLine, deduped_thread_aggregate,
@@ -2262,6 +2265,35 @@ impl Scheduler {
     ) -> ObservedParkTimeout {
         execution::await_worker_parked(&self.shared, worker, since)
     }
+    /// B-184's seam: make worker `worker` panic at its next park, where it is
+    /// about to wait with the `wait_set` lock held and counted as parked
+    /// (the place std's condvar assert panicked on macOS), with
+    /// [`park_seam_panic_message`]. Runs edge E so a worker already waiting
+    /// parks again. False, arming nothing, when there is no such worker.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn panic_worker_at_next_park(&self, worker: usize) -> bool {
+        let armed = self.shared.park_seams.arm_panic_at_park(worker);
+        if armed {
+            self.shared.wake_edge();
+        }
+        armed
+    }
+    /// B-184's seam: make worker `worker` panic as it starts its next slice,
+    /// with the popped process still `Present` and anything else it queued
+    /// left on its local run queue, with [`slice_seam_panic_message`].
+    /// False, arming nothing, when there is no such worker.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn panic_worker_at_next_slice(&self, worker: usize) -> bool {
+        self.shared.park_seams.arm_panic_at_slice(worker)
+    }
+    /// Block until a B-184 seam has panicked worker `worker`. Ends on the
+    /// seam's mark, never a clock; false at once when there is no such
+    /// worker. After it returns the worker runs nothing more.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn await_seam_panicked(&self, worker: usize) -> bool {
+        execution::await_seam_panicked(&self.shared, worker)
+    }
     /// Block until every normal worker is waiting at once.
     #[cfg(any(test, feature = "test-support"))]
     pub fn await_all_parked(&self) {
@@ -2685,6 +2717,9 @@ mod connection_lifecycle_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod exit_observation_tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
+mod failure_tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod inventory_tests;
