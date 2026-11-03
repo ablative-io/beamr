@@ -200,6 +200,45 @@ floor they served (EMBEDDER-COMPOSITION-SPEC §3.8.3). The bound now signed is
 zero idle wakes with no armed timer and no IO in flight; one wake per
 deadline worker 0 reaches; one per cursor advance in replay.
 
+### Changed (breaking) — a scheduler worker that dies stops the scheduler loudly (B-184)
+
+A scheduler worker whose thread ends by a panic (or whose loop returns before
+shutdown) no longer vanishes while the scheduler carries on with fewer
+workers. Every worker runs under a guard that latches one permanent
+`SchedulerFailure`: the worker's name and index, where it was (`Parked`,
+`Running(pid)` or `Scheduling`) and how it ended (`Panicked(message)` or
+`Returned`). The first death wins; the latch is never cleared. On macOS,
+workers were ended this way by std's condvar assert in the idle park
+(`assertion failed: r == libc::ETIMEDOUT || r == 0`); a native handler that
+panics inside its slice ends its worker the same way.
+
+- `Scheduler::failure()` returns the latched failure, or `None`.
+- `Scheduler::on_failure(callback)` registers one `FnOnce(&SchedulerFailure)`
+  callback. It runs exactly once, on the dying worker's own thread, before the
+  other workers and waiters are woken; registered after the latch, it runs at
+  once on the registering thread. A second registration returns `false`.
+- Once latched, shutdown is set, every parked worker and waiter is woken, and
+  new spawns and other admitted mutations are refused
+  (`ExecError::SchedulerTerminated`; `SenderHandle::call` answers
+  `ActorError::Spawn`). The dying worker, and each other worker as it leaves
+  its loop, finalizes every process that is not mid-slice, the process the
+  dead worker was running, and its own inject queue, so exit watches,
+  completion watches and the exit-event stream answer as at shutdown.
+- **Breaking:** `Scheduler::run_until_exit` returns
+  `Result<(ExitReason, OwnedTerm), SchedulerFailure>`. Once a worker has died
+  it returns the failure for any pid; an exit recorded before the failure stays
+  readable through `take_exit_outcome` and `peek_exit_reason`.
+- `Scheduler::shutdown` (and so `Drop`) returns after a worker died; it no
+  longer re-raises the worker's panic. After the latch it does not join a
+  worker the latch recorded dead or whose thread reported its own exit: those
+  handles are detached and named in one line on stderr. Every other worker is
+  joined as before, and every process left in any inject queue or body is
+  finalized.
+- `test-support` gains the seams an embedder's red uses:
+  `Scheduler::panic_worker_at_next_park`, `panic_worker_at_next_slice`,
+  `await_seam_panicked`, `hold_worker_after_death`,
+  `await_worker_exit_reported` and `shutdown_skipped_workers`.
+
 ## 0.21.1 — 2026-10-31
 
 ### Security — zstd 0.14.3
