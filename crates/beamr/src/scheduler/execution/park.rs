@@ -33,7 +33,7 @@ pub(in crate::scheduler) use seams::{
 pub(super) use seams::{account_deadline_wake, panic_if_armed_at_slice};
 use seams::{count_entry, note_wait, note_wait_end, panic_if_armed, record_outcome};
 #[cfg(test)]
-pub(super) use seams::{idle_gap, report_left_park};
+pub(super) use seams::{idle_gap, report_left_park, slice_start};
 
 /// The wake sequence and the idle count (B-181 R2, §3.8.2 C1).
 ///
@@ -126,9 +126,10 @@ pub(super) fn leave_idle_window(shared: &SharedState) {
 /// W23's surplus edge (§3.8.2 C1), run by a worker right after it pushed to
 /// its own run queue. The pusher's half of the Dekker pattern: fence, then
 /// read the idle count; run E when another worker is idle and the queue
-/// holds more than the process the pusher is about to run (a queue of one
-/// is never stolen from, so a Requeue with nothing behind it is no
-/// surplus). `pusher_in_window` says whether the pusher itself is counted.
+/// holds more than the process the pusher is about to run (between slices
+/// a queue of one is left to its owner, so a Requeue with nothing behind it
+/// is no surplus; C5's busy-owner edge covers a last process queued behind
+/// a slice). `pusher_in_window` says whether the pusher itself is counted.
 pub(in crate::scheduler) fn surplus_edge(
     shared: &SharedState,
     queue: &RunQueue,
@@ -138,6 +139,22 @@ pub(in crate::scheduler) fn surplus_edge(
     let idle = shared.idle_wake.idle_workers.load(Ordering::SeqCst);
     let others_idle = idle.saturating_sub(usize::from(pusher_in_window));
     if others_idle > 0 && queue.len() >= 2 {
+        shared.wake_edge();
+    }
+}
+
+/// B-185's busy-owner edge (§3.8.2 C5), run by a worker right after it
+/// raised its in-slice flag and before the slice runs. The owner's half of
+/// a Dekker pair with an idle thief: fence, then read the idle count, and
+/// run E when another worker is idle and the owner's queue is not empty.
+/// The owner has already left its idle window, so the count holds only
+/// others. The thief's half is its idle-window raise and fence, then its
+/// steal's read of the flag: either the owner reads the thief counted idle
+/// and wakes it, or the thief reads the owner in its slice and takes even a
+/// last queued process.
+pub(in crate::scheduler) fn busy_owner_edge(shared: &SharedState, queue: &RunQueue) {
+    fence(Ordering::SeqCst);
+    if shared.idle_wake.idle_workers.load(Ordering::SeqCst) > 0 && !queue.is_empty() {
         shared.wake_edge();
     }
 }

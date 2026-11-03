@@ -559,11 +559,21 @@ pub(in crate::scheduler) fn scheduler_loop(
         };
         // Work found without parking: the window closes on this path too.
         park::leave_idle_window(shared);
+        #[cfg(test)]
+        park::slice_start(shared, my_index);
+        // B-185 R1 (§3.8.2 C5): publish the slice, then the owner's half of
+        // the Dekker pair, so a process queued behind it is never stranded
+        // beside an idle worker. The flag drops with the guard.
+        let in_slice = queue.enter_slice();
+        if !shared.replay_mode {
+            park::busy_owner_edge(shared, queue);
+        }
         failure::set_site(failure::WorkerSite::Running(pid));
         park::panic_if_armed_at_slice(shared, my_index, pid);
         #[cfg(feature = "telemetry")]
         let executing_started = Instant::now();
         run_process(shared, queue, pid, my_index);
+        drop(in_slice);
         failure::note_slice_run();
         failure::set_site(failure::WorkerSite::Scheduling);
         if shared.replay_mode {

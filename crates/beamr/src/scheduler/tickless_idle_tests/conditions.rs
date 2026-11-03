@@ -101,6 +101,144 @@ fn surplus_behind_a_blocked_owner_runs_on_the_idle_worker() {
     scheduler.shutdown();
 }
 
+/// Hold worker `worker` at its next slice start, once armed: it has popped
+/// a process and left its idle window, and has not yet published its slice.
+/// Reports the hold on `held`; waits for `release` (a dropped sender also
+/// releases it).
+fn install_slice_hold(
+    scheduler: &Scheduler,
+    worker: usize,
+) -> (
+    Arc<AtomicBool>,
+    crossbeam_channel::Receiver<()>,
+    crossbeam_channel::Sender<()>,
+) {
+    let armed = Arc::new(AtomicBool::new(false));
+    let (held_sender, held) = crossbeam_channel::unbounded();
+    let (release, release_receiver) = crossbeam_channel::unbounded::<()>();
+    let hook_armed = Arc::clone(&armed);
+    let installed = scheduler
+        .shared
+        .park_hooks
+        .slice_start
+        .set(Box::new(move |_shared, index| {
+            if index != worker || !hook_armed.swap(false, Ordering::AcqRel) {
+                return;
+            }
+            held_sender
+                .send(())
+                .unwrap_or_else(|error| panic!("publish slice hold: {error}"));
+            let _released_or_gone = release_receiver.recv();
+        }));
+    assert!(installed.is_ok(), "slice-start hook installed once");
+    (armed, held, release)
+}
+
+/// B-185 R1's deterministic red: the owner pops the first of the pair and
+/// is held before its slice while the idle worker's steal finds one queued
+/// and takes nothing, then parks. Released, the owner must run the
+/// busy-owner edge before its slice, and the idle worker, woken, must steal
+/// the second. Every wait ends on an event: a start, a park, a hold.
+#[test]
+fn last_process_behind_an_owner_entering_a_slice_runs_on_the_idle_worker() {
+    let registry = Arc::new(ModuleRegistry::new());
+    let scheduler = scheduler_with_workers(&registry, 2);
+    let detector = install_loss_detector(&scheduler);
+    let (parked_sender, parked) = crossbeam_channel::unbounded::<usize>();
+    let installed = scheduler
+        .shared
+        .park_hooks
+        .waiting
+        .set(Box::new(move |worker, _timeout| {
+            let _receiver_gone = parked_sender.send(worker);
+        }));
+    assert!(installed.is_ok(), "waiting hook installed once");
+    let gap = install_gap_handshake(&scheduler, 1);
+    let (slice_armed, slice_held, slice_release) = install_slice_hold(&scheduler, 0);
+    gap.arm();
+    let (started, starts) = crossbeam_channel::unbounded();
+    let (release_gate, gate) = crossbeam_channel::unbounded::<()>();
+    let (release_pair, pair) = crossbeam_channel::unbounded::<()>();
+    let gate_pid = scheduler
+        .spawn_native(held_factory(&started, &gate))
+        .unwrap_or_else(|error| panic!("spawn gate: {error}"));
+    let (pid, owner_thread) = starts
+        .recv()
+        .unwrap_or_else(|error| panic!("gate starts: {error}"));
+    assert_eq!(pid, gate_pid);
+    // Worker 1 is held in its idle gap, idle, with nothing to steal.
+    assert_eq!(gap.wait_in_gap(), 1);
+    let first = scheduler
+        .spawn_native(held_factory(&started, &pair))
+        .unwrap_or_else(|error| panic!("spawn first: {error}"));
+    let second = scheduler
+        .spawn_native(held_factory(&started, &pair))
+        .unwrap_or_else(|error| panic!("spawn second: {error}"));
+    slice_armed.store(true, Ordering::Release);
+    release_gate
+        .send(())
+        .unwrap_or_else(|error| panic!("release gate: {error}"));
+    assert_eq!(await_exit(&scheduler, gate_pid), ExitReason::Normal);
+    // The owner drained both, raised the surplus edge, popped the first,
+    // and is held before its slice: the second is its queue's only entry.
+    slice_held
+        .recv()
+        .unwrap_or_else(|error| panic!("owner reaches its slice: {error}"));
+    // Worker 1 comes round once more, steals nothing from a queue of one
+    // whose owner has not yet published its slice, and parks.
+    gap.arm();
+    gap.release();
+    assert_eq!(gap.wait_in_gap(), 1);
+    let _earlier: Vec<usize> = parked.try_iter().collect();
+    gap.release();
+    while parked
+        .recv()
+        .unwrap_or_else(|error| panic!("worker 1 parks: {error}"))
+        != 1
+    {}
+    let edges_with_worker_1_parked = scheduler.shared.idle_wake.edges();
+    slice_release
+        .send(())
+        .unwrap_or_else(|error| panic!("release the owner: {error}"));
+    let (pid, thread) = starts
+        .recv()
+        .unwrap_or_else(|error| panic!("first of the pair starts: {error}"));
+    assert_eq!((pid, thread.as_str()), (first, owner_thread.as_str()));
+    assert!(
+        scheduler.shared.idle_wake.edges() > edges_with_worker_1_parked,
+        "the owner entered its slice with worker 1 parked beside its queued process \
+         and ran no wake edge"
+    );
+    loop {
+        crossbeam_channel::select! {
+            recv(starts) -> start => {
+                let (pid, thread) =
+                    start.unwrap_or_else(|error| panic!("second of the pair: {error}"));
+                assert_eq!(pid, second);
+                assert_ne!(thread, owner_thread, "the second ran on the idle worker");
+                break;
+            }
+            recv(parked) -> worker => {
+                let worker = worker.unwrap_or_else(|error| panic!("parks: {error}"));
+                assert_ne!(
+                    worker, 1,
+                    "worker 1 parked again with the second of the pair queued behind \
+                     the busy owner"
+                );
+            }
+        }
+    }
+    for _ in 0..2 {
+        release_pair
+            .send(())
+            .unwrap_or_else(|error| panic!("release pair: {error}"));
+    }
+    assert_eq!(await_exit(&scheduler, first), ExitReason::Normal);
+    assert_eq!(await_exit(&scheduler, second), ExitReason::Normal);
+    detector.assert_no_lost_wake();
+    scheduler.shutdown();
+}
+
 /// C1's second red: after a run in which workers find work without
 /// parking, the idle count equals the number of parked workers. A count
 /// left raised on the find-work path would read above it.

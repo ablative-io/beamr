@@ -6,11 +6,13 @@
 //! `NativeOutcome::Continue`) would be re-popped immediately after its own
 //! push, starving every other pid on that thread's queue indefinitely: a
 //! starved pid is runnable (not in the wait set), so message-delivery wakes
-//! no-op on it, and mid-slice the owner's queue holds a single pid, which
-//! `steal_half_from` refuses to steal. Process IDs are queued rather than
+//! no-op on it, and before B-185 a single pid queued behind an owner in a
+//! slice was never stolen. Process IDs are queued rather than
 //! process bodies because `Process` is intentionally `!Send`.
 
 use std::cell::Cell;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_deque::{Steal, Stealer, Worker};
 
@@ -27,6 +29,8 @@ pub struct PriorityStealers {
     high: Stealer<u64>,
     normal: Stealer<u64>,
     low: Stealer<u64>,
+    /// The owner's in-slice flag (B-185 R1), read by a thief as it steals.
+    owner_in_slice: Arc<AtomicBool>,
 }
 
 /// A per-thread priority run queue that stores process IDs.
@@ -37,6 +41,8 @@ pub struct RunQueue {
     low: Worker<u64>,
     low_fairness_window: usize,
     non_low_pops_since_low: Cell<usize>,
+    /// Raised (SeqCst) while the owner runs a process slice (B-185 R1).
+    in_slice: Arc<AtomicBool>,
 }
 
 impl RunQueue {
@@ -56,6 +62,7 @@ impl RunQueue {
             low: Worker::new_fifo(),
             low_fairness_window,
             non_low_pops_since_low: Cell::new(0),
+            in_slice: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -105,6 +112,18 @@ impl RunQueue {
         self.max.is_empty() && self.high.is_empty() && self.normal.is_empty() && self.low.is_empty()
     }
 
+    /// Publish that this queue's owner is about to run a process slice
+    /// (B-185 R1, §3.8.2 C5): the flag is raised `SeqCst` here, before the
+    /// slice starts, and lowered when the returned guard drops, so it is
+    /// lowered on every way out of the slice, an unwinding panic included.
+    #[must_use = "the flag is lowered when the guard drops"]
+    pub(crate) fn enter_slice(&self) -> InSlice<'_> {
+        self.in_slice.store(true, Ordering::SeqCst);
+        InSlice {
+            flag: &self.in_slice,
+        }
+    }
+
     /// Create stealer handles for other scheduler threads.
     #[must_use]
     pub fn stealer(&self) -> PriorityStealers {
@@ -113,21 +132,33 @@ impl RunQueue {
             high: self.high.stealer(),
             normal: self.normal.stealer(),
             low: self.low.stealer(),
+            owner_in_slice: Arc::clone(&self.in_slice),
         }
     }
 
     /// Steal approximately half the items from `victim` into this queue.
     ///
-    /// Queues with zero or one total items are left alone so the owning thread
-    /// keeps its last runnable process. Priority lanes are stolen independently;
-    /// victim selection remains the caller's responsibility.
+    /// An empty queue gives nothing. A queue of one is left to its owner when
+    /// the owner is between slices, since the owner is about to pop it; when
+    /// the owner is running a slice (B-185 R1, §3.8.2 C5) that one process is
+    /// taken, because it would otherwise wait beside an idle worker for the
+    /// slice to end, however long or blocking the slice is. From two or more,
+    /// half is taken, rounded down, whatever the owner is doing. Priority lanes
+    /// are stolen independently; victim selection remains the caller's
+    /// responsibility.
     pub fn steal_half_from(&self, victim: &PriorityStealers) -> usize {
         let victim_len = victim.len();
-        if victim_len <= 1 {
+        if victim_len == 0 {
             return 0;
         }
-
-        let mut remaining = victim_len / 2;
+        // The thief's half of C5's Dekker pair: its idle-window raise and
+        // fence (`enter_idle_window`) came before this read of the flag.
+        let owner_in_slice = victim.owner_in_slice.load(Ordering::SeqCst);
+        let mut remaining = if owner_in_slice {
+            (victim_len / 2).max(1)
+        } else {
+            victim_len / 2
+        };
         if remaining == 0 {
             return 0;
         }
@@ -214,6 +245,18 @@ impl PriorityStealers {
             Priority::High => &self.high,
             Priority::Max => &self.max,
         }
+    }
+}
+
+/// The owner's in-slice flag, raised by [`RunQueue::enter_slice`] and lowered
+/// (`SeqCst`) when this guard drops (B-185 R1).
+pub(crate) struct InSlice<'queue> {
+    flag: &'queue AtomicBool,
+}
+
+impl Drop for InSlice<'_> {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::SeqCst);
     }
 }
 
@@ -314,6 +357,26 @@ mod tests {
         assert_eq!(thief.steal_half_from(&victim.stealer()), 0);
         assert_eq!(victim.len(), 1);
         assert!(thief.is_empty());
+    }
+
+    /// B-185 R1's red: the owner is running a slice, so its last queued
+    /// process is stolen by the idle thief instead of waiting for the slice.
+    #[test]
+    fn steal_from_single_item_queue_of_an_owner_in_a_slice_takes_it() {
+        let victim = RunQueue::new();
+        victim.push(7);
+        let in_slice = victim.enter_slice();
+        let thief = RunQueue::new();
+
+        assert_eq!(thief.steal_half_from(&victim.stealer()), 1);
+        assert!(victim.is_empty());
+        assert_eq!(thief.pop(), Some(7));
+
+        // The slice returned: a victim of one is left alone again.
+        drop(in_slice);
+        victim.push(8);
+        assert_eq!(thief.steal_half_from(&victim.stealer()), 0);
+        assert_eq!(victim.len(), 1);
     }
 
     #[test]

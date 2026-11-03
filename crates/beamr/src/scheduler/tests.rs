@@ -4399,8 +4399,8 @@ fn run_until_exit_correct_under_tombstone_cap_pressure() {
 // slice. A message enqueued to such a starved process was delivered into its
 // mailbox (`enqueue_atom_message` returned true) but never observed:
 // `wake_process` is a no-op for a runnable pid (it is not in the wait set),
-// and the steal path cannot rescue it either (mid-slice the owner's queue
-// holds a single pid, which `steal_half_from` refuses to steal). These tests
+// and the steal path could not rescue it either (mid-slice the owner's queue
+// held a single pid, which `steal_half_from` then refused to steal). These tests
 // pin the FIFO owner pop that makes co-resident runnable processes
 // round-robin.
 

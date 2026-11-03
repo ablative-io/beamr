@@ -440,6 +440,37 @@ armed more than one lap out, worker 0 parked for longer than a lap before
 the deadline; the timer fires once, at its deadline, never early on the
 bounded walk, and `current_tick` lands on `target_tick` after it.
 
+**C5. A last process queued behind a slice is stolen, and its owner wakes
+the thief (B-185).** C1's surplus edge runs when a push leaves more than the
+pusher is about to run, and a queue of one was never stolen from. So when an
+owner pushed two, raised the surplus edge, and popped the first before the
+woken worker's steal read its queue, that steal found one, took nothing, and
+the worker parked; no source raised another edge while the owner was in its
+slice, and the second process waited for the slice to end, behind a native
+call that blocks, indefinitely. Each worker therefore publishes an in-slice
+flag: raised with a SeqCst store after it pops and leaves its idle window,
+before the slice runs, and lowered when the slice returns, on every way out.
+A thief takes `max(1, len/2)` from a victim whose owner is in a slice, and
+leaves a victim of one alone only when its owner is between slices, because
+then the owner is about to pop it. So that the steal is reached, the owner
+runs a busy-owner edge: after raising its flag it issues `fence(SeqCst)`,
+reads the idle count, and runs E when the count is non-zero (it has left its
+own window, so the count is others) and its queue is not empty. This is the
+owner's half of a Dekker pair whose other half is C1's: the idle worker
+raises the idle count, fences, and only then reads the flag as it steals. In
+the single total order of the two fences, either the owner's follows the
+thief's, so the owner reads the raised count and runs E (and the thief's
+park, finding the sequence moved, returns, and its next steal reads the
+raised flag); or the thief's follows the owner's, so its steal reads the
+raised flag and takes the last process. A steal from two or more is
+unchanged, and an idle scheduler has empty queues, so the edge adds no
+timed or idle wake. Its reds: a victim queue of one whose owner is in a
+slice is stolen from (one is returned), and with the flag lowered it is not;
+and two workers, the owner held by a test hook after it has popped the first
+of a pair and before it publishes its slice, the idle worker's steal taking
+nothing and the worker parking: released, the owner runs E and the second
+starts on the idle worker, every wait ending on an event, never a clock.
+
 W9's advance sits inside its existing critical section with the notify
 after it; the sequence is the guard. W16 needs no edge. W24's replay rule
 stands: the log decides, never the clock.

@@ -200,6 +200,19 @@ floor they served (EMBEDDER-COMPOSITION-SPEC §3.8.3). The bound now signed is
 zero idle wakes with no armed timer and no IO in flight; one wake per
 deadline worker 0 reaches; one per cursor advance in replay.
 
+### Fixed — a process queued behind a busy worker runs on an idle worker (B-185)
+
+A process queued behind a worker running a long or blocking slice now runs on
+an idle worker, where before it waited for that slice to end. An idle worker
+never stole a queue's last process, and when the owner had started its slice
+with one process still queued, nothing woke the idle worker again, so behind a
+native call that blocks the process could wait indefinitely with capacity
+free. Now a worker publishes that it is in a slice; an idle worker may take a
+last queued process from a worker in a slice (and still leaves it to an owner
+between slices); and a worker entering its slice with work still queued and
+another worker idle wakes that worker (EMBEDDER-COMPOSITION-SPEC §3.8.2 C5).
+A steal from two or more queued is unchanged.
+
 ### Changed (breaking) — a worker's death is handled in three tiers and reported, never silent (B-184)
 
 A scheduler worker whose thread ends by a panic (or whose loop returns before

@@ -356,6 +356,9 @@ pub(in crate::scheduler) struct ParkHooks {
     /// Called as a worker leaves its park, with what was pending for it
     /// (see [`LeftPark`]). No lock is held.
     pub(in crate::scheduler) left_park: std::sync::OnceLock<LeftParkHook>,
+    /// Called as a worker has popped a process and left its idle window,
+    /// before it publishes its slice (B-185). No lock is held.
+    pub(in crate::scheduler) slice_start: std::sync::OnceLock<WorkerHook>,
 }
 
 /// What a worker left its park with: the loss detector of B-181 R2's reds
@@ -419,6 +422,7 @@ impl Default for ParkHooks {
             idle_gap: std::sync::OnceLock::new(),
             waiting: std::sync::OnceLock::new(),
             left_park: std::sync::OnceLock::new(),
+            slice_start: std::sync::OnceLock::new(),
         }
     }
 }
@@ -463,6 +467,14 @@ pub(in crate::scheduler::execution) fn report_left_park(
         injected: inject.len(),
         stealable,
     });
+}
+
+/// Run the slice-start hook, if installed (test builds only).
+#[cfg(test)]
+pub(in crate::scheduler::execution) fn slice_start(shared: &SharedState, my_index: usize) {
+    if let Some(hook) = shared.park_hooks.slice_start.get() {
+        hook(shared, my_index);
+    }
 }
 
 /// Run the idle-gap hook, if installed (test builds only).

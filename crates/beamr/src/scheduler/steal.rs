@@ -2,7 +2,8 @@
 //!
 //! Idle scheduler threads deterministically scan other scheduler queues in
 //! round-robin order and steal approximately half of a victim's work. A queue
-//! with a single process is never stolen from.
+//! with a single process is stolen from only while its owner runs a slice
+//! (B-185, §3.8.2 C5).
 
 use crate::scheduler::run_queue::{PriorityStealers, RunQueue};
 
