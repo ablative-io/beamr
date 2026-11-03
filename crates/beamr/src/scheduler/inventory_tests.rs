@@ -5,7 +5,10 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+// Used only by the macOS-gated OS thread probe below.
+#[cfg(target_os = "macos")]
 use std::thread;
+#[cfg(target_os = "macos")]
 use std::time::Duration;
 
 use super::service::ServiceModeLabel;
