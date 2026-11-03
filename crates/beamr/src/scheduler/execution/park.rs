@@ -26,7 +26,7 @@ pub use seams::{
 #[cfg(any(test, feature = "test-support"))]
 pub(in crate::scheduler) use seams::{
     ParkSeams, await_all_parked, await_seam_panicked, await_worker_parked, hold_if_armed,
-    notify_park_waiters,
+    notify_park_waiters, poison_link_set,
 };
 pub(super) use seams::{account_deadline_wake, panic_if_armed_at_slice};
 use seams::{count_entry, note_wait, note_wait_end, panic_if_armed, record_outcome};

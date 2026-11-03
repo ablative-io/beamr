@@ -125,7 +125,9 @@ mod exit_events;
 #[cfg(feature = "threads")]
 mod failure;
 #[cfg(feature = "threads")]
-pub use failure::{SchedulerFailure, WorkerEnd, WorkerSite};
+pub use failure::{
+    DeathTier, PoisonCheck, SchedulerFailure, WaitSetCheck, WorkerDeath, WorkerEnd, WorkerSite,
+};
 #[cfg(feature = "threads")]
 mod exit_tombstones;
 #[cfg(feature = "threads")]
@@ -2085,6 +2087,25 @@ impl Scheduler {
     pub fn on_failure(&self, callback: impl FnOnce(&SchedulerFailure) + Send + 'static) -> bool {
         self.shared.failure.register(Box::new(callback))
     }
+    /// Register the one callback every worker death is reported to, of
+    /// every tier (B-184 R5, lead amendment A): run on the dying worker's
+    /// own thread, once per death, after the recovery decided the tier and
+    /// before the worker restarts or the failure latches. A restart is
+    /// reported exactly as loudly as a stop. Returns false, dropping
+    /// `callback`, when one was registered before. A death before the
+    /// registration is not replayed: [`Scheduler::worker_deaths`] counts
+    /// every death.
+    ///
+    /// The callback runs on a scheduler worker thread: it must not wait on
+    /// anything only that worker could provide.
+    pub fn on_worker_death(&self, callback: impl Fn(&WorkerDeath) + Send + Sync + 'static) -> bool {
+        self.shared.failure.deaths.register(Box::new(callback))
+    }
+    /// How many scheduler workers have died, of every tier (B-184 R5).
+    #[must_use]
+    pub fn worker_deaths(&self) -> u64 {
+        self.shared.failure.deaths.count()
+    }
     /// The scheduler's ancillary-service thread inventory (spec §5).
     ///
     /// One entry per ancillary service — dirty CPU/IO pools, the file-IO and
@@ -2332,6 +2353,26 @@ impl Scheduler {
     pub fn panic_worker_at_next_slice(&self, worker: usize) -> bool {
         self.shared.park_seams.arm_panic_at_slice(worker)
     }
+    /// B-184 R5's seam for a death no recovery can prove safe (tier 3):
+    /// poisons a second scheduler-shared mutex, `link_set`, by a thread that
+    /// panics holding it (joined here), then arms the park panic as
+    /// [`Scheduler::panic_worker_at_next_park`] does. False, poisoning and
+    /// arming nothing, when there is no such worker, and false, arming
+    /// nothing, when the poisoning thread could not be started.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn panic_worker_unrecoverably(&self, worker: usize) -> bool {
+        if worker >= self.shared.thread_count {
+            return false;
+        }
+        execution::poison_link_set(&self.shared) && self.panic_worker_at_next_park(worker)
+    }
+    /// B-184 R5's hold (test builds): once worker `worker` has died at its
+    /// park or in a slice, its thread waits, before its recovery checks
+    /// anything, until the returned [`WorkerHold`] is dropped.
+    #[cfg(test)]
+    pub(crate) fn hold_worker_before_recovery(&self, worker: usize) -> Option<WorkerHold> {
+        self.shared.park_seams.arm_hold_before_recovery(worker)
+    }
     /// B-184's hold (lead amendment B): once the latch has recorded worker
     /// `worker` dead, its thread stays wedged inside its guard, before it
     /// finalizes anything or reports its own exit, until the returned
@@ -2356,9 +2397,10 @@ impl Scheduler {
     pub fn shutdown_skipped_workers(&self) -> Vec<String> {
         lock_or_recover(&self.shared.shutdown_skipped).clone()
     }
-    /// Block until a B-184 seam has panicked worker `worker`. Ends on the
-    /// seam's mark, never a clock; false at once when there is no such
-    /// worker. After it returns the worker runs nothing more.
+    /// Block until a B-184 seam has panicked worker `worker` (at least once:
+    /// the mark is never cleared). Ends on the seam's mark, never a clock;
+    /// false at once when there is no such worker. After it returns the
+    /// worker runs nothing more until its recovery restarts it (R5).
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
     pub fn await_seam_panicked(&self, worker: usize) -> bool {

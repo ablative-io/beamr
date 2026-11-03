@@ -609,7 +609,7 @@ use park::{ParkExit, park_thread};
 #[cfg(any(test, feature = "test-support"))]
 pub(in crate::scheduler) use park::{
     ParkSeams, await_all_parked, await_seam_panicked, await_worker_parked, hold_if_armed,
-    notify_park_waiters,
+    notify_park_waiters, poison_link_set,
 };
 use std::net::SocketAddr;
 

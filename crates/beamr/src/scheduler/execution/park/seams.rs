@@ -97,6 +97,11 @@ struct WorkerParkSeam {
     /// B-184's hold: after the latch records this worker dead, its thread
     /// waits here until the [`WorkerHold`] is released.
     hold_after_death: std::sync::Mutex<Option<crossbeam_channel::Receiver<()>>>,
+    /// B-184 R5's hold: after this worker died at its park or in a slice,
+    /// its thread waits here, before its recovery checks anything, until
+    /// the [`WorkerHold`] is released (test builds).
+    #[cfg(test)]
+    hold_before_recovery: std::sync::Mutex<Option<crossbeam_channel::Receiver<()>>>,
 }
 
 /// B-184's hold on a worker (test-support): while this is held, the worker's
@@ -197,6 +202,19 @@ impl ParkSeams {
         let worker = self.worker(index)?;
         let (release, held) = crossbeam_channel::bounded(0);
         *lock_or_recover(&worker.hold_after_death) = Some(held);
+        Some(WorkerHold { _release: release })
+    }
+
+    /// Arm B-184 R5's hold before recovery for worker `index`: `None` when
+    /// no such worker.
+    #[cfg(test)]
+    pub(in crate::scheduler) fn arm_hold_before_recovery(
+        &self,
+        index: usize,
+    ) -> Option<WorkerHold> {
+        let worker = self.worker(index)?;
+        let (release, held) = crossbeam_channel::bounded(0);
+        *lock_or_recover(&worker.hold_before_recovery) = Some(held);
         Some(WorkerHold { _release: release })
     }
 
@@ -599,3 +617,27 @@ pub(super) fn record_outcome(shared: &SharedState, my_index: usize, outcome: Par
 
 #[cfg(not(any(test, feature = "test-support")))]
 pub(super) fn record_outcome(_shared: &SharedState, _my_index: usize, _outcome: ParkOutcome) {}
+
+/// The message B-184 R5's poisoning thread panics with.
+#[cfg(any(test, feature = "test-support"))]
+const LINK_SET_POISON: &str =
+    "B-184 R5 seam: link_set poisoned, so no recovery can prove the scheduler's state";
+
+/// B-184 R5's poison: a thread panics holding `link_set`, which poisons it;
+/// joined here, so it ends on the thread's exit, never a clock. True when
+/// `link_set` is poisoned afterwards.
+#[cfg(any(test, feature = "test-support"))]
+pub(in crate::scheduler) fn poison_link_set(shared: &SharedState) -> bool {
+    std::thread::scope(|scope| {
+        let poisoner = std::thread::Builder::new()
+            .name("beamr-b184-poison".to_string())
+            .spawn_scoped(scope, || {
+                let _held = lock_or_recover(&shared.link_set);
+                panic!("{LINK_SET_POISON}");
+            });
+        if let Ok(poisoner) = poisoner {
+            let _panicked = poisoner.join();
+        }
+    });
+    shared.link_set.is_poisoned()
+}

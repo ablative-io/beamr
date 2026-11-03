@@ -31,7 +31,7 @@ fn a_named_worker_panicked_through_the_public_seam_latches_its_failure() {
     }));
     assert_eq!(scheduler.failure(), None);
 
-    assert!(scheduler.panic_worker_at_next_park(1));
+    assert!(scheduler.panic_worker_unrecoverably(1));
     assert!(scheduler.await_seam_panicked(1));
     let (thread, called_with) = calls
         .recv()
