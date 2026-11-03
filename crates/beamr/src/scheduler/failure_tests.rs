@@ -982,6 +982,9 @@ fn a_death_with_a_second_shared_mutex_poisoned_latches_the_failure() {
 
     assert!(scheduler.panic_worker_unrecoverably(DEAD));
     let death = next_death(&reports);
+    // The tier first: a death that was not latched never sends the failure
+    // this test would otherwise wait on.
+    assert_eq!(death.tier(), DeathTier::Latched, "{death}");
     let failure = next_failure(&reports);
     assert!(scheduler.await_worker_exit_reported(DEAD));
     let shutdown = shutdown_on_another_thread(&scheduler);
@@ -1012,8 +1015,12 @@ fn a_restarted_worker_that_dies_again_before_a_slice_latches_the_failure() {
 
     assert!(scheduler.panic_worker_at_next_park(DEAD));
     let first = next_death(&reports);
+    assert_eq!(first.tier(), DeathTier::Restarted, "{first}");
     assert!(scheduler.panic_worker_at_next_park(DEAD));
     let second = next_death(&reports);
+    // The tier first: a death that was not latched never sends the failure
+    // this test would otherwise wait on.
+    assert_eq!(second.tier(), DeathTier::Latched, "{second}");
     let failure = next_failure(&reports);
     let shutdown = shutdown_on_another_thread(&scheduler);
     eprintln!("B-184 R5 died again: first {first}\n  second {second}\n  failure {failure}");
@@ -1052,6 +1059,9 @@ fn a_wait_set_that_fails_its_check_latches_instead_of_restarting() {
         .insert(seeded, DEAD);
     hold.release();
     let death = next_death(&reports);
+    // The tier first: a death that was not latched never sends the failure
+    // this test would otherwise wait on.
+    assert_eq!(death.tier(), DeathTier::Latched, "{death}");
     let failure = next_failure(&reports);
     let shutdown = shutdown_on_another_thread(&scheduler);
     eprintln!("B-184 R5 seeded violation: {death}\n  failure {failure}");
