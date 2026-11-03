@@ -18,11 +18,12 @@
 //!
 //! ```text
 //! cargo run --release --example park_error_probe -- \
-//!     [--mode timed|untimed] [--count N] [--waiters 15] [--notifiers 2] [--timeout-ms 5]
+//!     [--mode timed|untimed] [--count N] [--waiters 15] [--notifiers 2] [--timeout-ms 5] \
+//!     [--notify all|one|mixed]
 //! ```
 //!
 //! Defaults: `--mode timed --count 100000000 --waiters 15 --notifiers 2
-//! --timeout-ms 5`. Scale `--count` by the printed waits per second: the 30
+//! --timeout-ms 5 --notify all`. Scale `--count` by the printed waits per second: the 30
 //! October liminal run made at most about 1.1e9 timed waits (15 workers,
 //! 200 parks a second, about 369,500 s).
 //!
@@ -31,6 +32,14 @@
 //! kernel returned an error from a wait on valid arguments in this shape,
 //! outside liminal and beamr. Reaching the count with no panic means this
 //! shape did not reproduce it within that many waits on that venue.
+//!
+//! Widened on 4 November 2026 by Artemis (beamr lead), relayed by Apollo:
+//! `--notify mixed` gives the notifiers both kinds of wake, even-numbered
+//! ones `notify_all` and odd-numbered ones `notify_one`, racing the waiters'
+//! timeouts. The probe prints the load average and the swap line as it
+//! starts and as it ends, so a run on a loaded machine says how loaded, and
+//! counts the timed waits that returned on their timeout. `--notify all`
+//! (the default) is the shape of the first two runs.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -43,12 +52,34 @@ enum Mode {
     Untimed,
 }
 
+/// Which wake each notifier gives.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Notify {
+    /// Every notifier calls `notify_all`, as beamr's wake edge does.
+    All,
+    /// Every notifier calls `notify_one`.
+    One,
+    /// Even-numbered notifiers call `notify_all`, odd-numbered `notify_one`.
+    Mixed,
+}
+
+impl Notify {
+    fn one_for(self, notifier: usize) -> bool {
+        match self {
+            Self::All => false,
+            Self::One => true,
+            Self::Mixed => notifier % 2 == 1,
+        }
+    }
+}
+
 struct Args {
     mode: Mode,
     count: u64,
     waiters: usize,
     notifiers: usize,
     timeout: Duration,
+    notify: Notify,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -58,6 +89,7 @@ fn parse_args() -> Result<Args, String> {
         waiters: 15,
         notifiers: 2,
         timeout: Duration::from_millis(5),
+        notify: Notify::All,
     };
     let mut given = std::env::args().skip(1);
     while let Some(flag) = given.next() {
@@ -85,6 +117,14 @@ fn parse_args() -> Result<Args, String> {
                 args.notifiers = usize::try_from(number()?).map_err(|error| error.to_string())?;
             }
             "--timeout-ms" => args.timeout = Duration::from_millis(number()?),
+            "--notify" => {
+                args.notify = match value.as_str() {
+                    "all" => Notify::All,
+                    "one" => Notify::One,
+                    "mixed" => Notify::Mixed,
+                    other => return Err(format!("--notify {other}: all, one or mixed")),
+                }
+            }
             other => return Err(format!("unknown flag {other}")),
         }
     }
@@ -108,6 +148,24 @@ fn command_line(program: &str, arguments: &[&str]) -> String {
                     .join(" ")
             },
         )
+}
+
+/// The load average and the swap line, read from `sysctl` (macOS), or
+/// `/proc/loadavg` and `free` elsewhere.
+fn load_and_swap() -> String {
+    if cfg!(target_os = "macos") {
+        format!(
+            "load average {}, {}",
+            command_line("sysctl", &["-n", "vm.loadavg"]),
+            command_line("sysctl", &["vm.swapusage"])
+        )
+    } else {
+        format!(
+            "load average {}, swap {}",
+            command_line("cat", &["/proc/loadavg"]),
+            command_line("free", &["-b"])
+        )
+    }
 }
 
 fn os_version() -> String {
@@ -139,6 +197,8 @@ struct Shared {
     stop: AtomicBool,
     waits: AtomicU64,
     notifies: AtomicU64,
+    /// Timed waits that returned on their timeout.
+    timeouts: AtomicU64,
 }
 
 fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
@@ -160,7 +220,12 @@ fn waiter(shared: &Shared, args: &Args, index: usize, events: &mpsc::Sender<Even
         while !shared.stop.load(Ordering::Acquire) {
             guard = match args.mode {
                 Mode::Timed => match shared.condvar.wait_timeout(guard, args.timeout) {
-                    Ok((guard, _timeout)) => guard,
+                    Ok((guard, timeout)) => {
+                        if timeout.timed_out() {
+                            shared.timeouts.fetch_add(1, Ordering::Relaxed);
+                        }
+                        guard
+                    }
                     Err(error) => error.into_inner().0,
                 },
                 Mode::Untimed => match shared.condvar.wait(guard) {
@@ -184,13 +249,17 @@ fn waiter(shared: &Shared, args: &Args, index: usize, events: &mpsc::Sender<Even
     mine
 }
 
-fn notifier(shared: &Shared) {
+fn notifier(shared: &Shared, one: bool) {
     while !shared.stop.load(Ordering::Acquire) {
         let guard = shared
             .lock
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        shared.condvar.notify_all();
+        if one {
+            shared.condvar.notify_one();
+        } else {
+            shared.condvar.notify_all();
+        }
         drop(guard);
         shared.notifies.fetch_add(1, Ordering::Relaxed);
     }
@@ -216,15 +285,17 @@ fn main() {
         std::env::consts::ARCH
     );
     println!(
-        "park_error_probe: mode {mode}, waiters {}, notifiers {}, count {}",
-        args.waiters, args.notifiers, args.count
+        "park_error_probe: mode {mode}, waiters {}, notifiers {} (notify {:?}), count {}",
+        args.waiters, args.notifiers, args.notify, args.count
     );
+    println!("park_error_probe: START {}", load_and_swap());
     let shared = Arc::new(Shared {
         lock: Mutex::new(0),
         condvar: Condvar::new(),
         stop: AtomicBool::new(false),
         waits: AtomicU64::new(0),
         notifies: AtomicU64::new(0),
+        timeouts: AtomicU64::new(0),
     });
     let (events, ending) = mpsc::channel();
     let started = Instant::now();
@@ -243,9 +314,10 @@ fn main() {
     let notifiers: Vec<_> = (0..args.notifiers)
         .map(|index| {
             let shared = Arc::clone(&shared);
+            let one = args.notify.one_for(index);
             std::thread::Builder::new()
                 .name(format!("probe-notifier-{index}"))
-                .spawn(move || notifier(&shared))
+                .spawn(move || notifier(&shared, one))
                 .unwrap_or_else(|error| panic!("spawn notifier {index}: {error}"))
         })
         .collect();
@@ -287,6 +359,7 @@ fn main() {
         .collect();
     let total = shared.waits.load(Ordering::Relaxed);
     let notifies = shared.notifies.load(Ordering::Relaxed);
+    let timeouts = shared.timeouts.load(Ordering::Relaxed);
     println!(
         "park_error_probe: reached {total} waits of {} in {seconds:.1} s ({:.0} waits/s), \
          {notifies} notifies ({:.0}/s); per waiter min {} max {}",
@@ -296,6 +369,11 @@ fn main() {
         per_waiter.iter().min().copied().unwrap_or(0),
         per_waiter.iter().max().copied().unwrap_or(0)
     );
+    println!(
+        "park_error_probe: {timeouts} timed waits returned on their timeout ({:.4}% of waits)",
+        timeouts as f64 * 100.0 / total.max(1) as f64
+    );
+    println!("park_error_probe: END {}", load_and_swap());
     match panicked {
         Some((index, text)) => {
             println!("park_error_probe: PANICKED: probe-waiter-{index}: {text}");
