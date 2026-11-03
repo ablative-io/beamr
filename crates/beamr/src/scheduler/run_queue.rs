@@ -10,9 +10,9 @@
 //! slice was never stolen. Process IDs are queued rather than
 //! process bodies because `Process` is intentionally `!Send`.
 
-use alloc::sync::Arc;
-use core::sync::atomic::{AtomicBool, Ordering};
 use std::cell::Cell;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_deque::{Steal, Stealer, Worker};
 
