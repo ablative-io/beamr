@@ -1298,6 +1298,11 @@
           "id": "C235",
           "text": "The park no longer panics, by the remedy R1's red names, or the brief says why nothing changed, and the CHANGELOG says what changed (B-184 R4).",
           "done": false
+        },
+        {
+          "id": "C236",
+          "text": "A scheduler worker that dies parked is restarted after the wait set is proved consistent, one that dies running a process kills that process as a crash and is restarted, and anything else stops the scheduler; every death is reported to the embedder (B-184 R5, lead amendment A).",
+          "done": false
         }
       ]
     }
