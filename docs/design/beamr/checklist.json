@@ -1275,6 +1275,31 @@
           "done": false
         }
       ]
+    },
+    {
+      "name": "Scheduler worker death and the macOS park error (B-184)",
+      "items": [
+        {
+          "id": "C232",
+          "text": "The park's error return is reproduced outside liminal on Dean's laptop, Tom's Mac and skull, and its cause is named from the runs or reported NOT CONFIRMED with the counts reached (B-184 R1).",
+          "done": false
+        },
+        {
+          "id": "C233",
+          "text": "A scheduler worker that dies latches a permanent failure naming the worker and the panic, which the embedder reads and is called back on once (B-184 R2).",
+          "done": false
+        },
+        {
+          "id": "C234",
+          "text": "After the failure latches, every wait on the scheduler ends with it and shutdown completes, finalizing the dead worker's processes (B-184 R3).",
+          "done": false
+        },
+        {
+          "id": "C235",
+          "text": "The park no longer panics, by the remedy R1's red names, or the brief says why nothing changed, and the CHANGELOG says what changed (B-184 R4).",
+          "done": false
+        }
+      ]
     }
   ]
 }

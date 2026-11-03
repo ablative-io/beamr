@@ -1,0 +1,133 @@
+{
+  "id": "B-184",
+  "cluster": "beamr",
+  "title": "A scheduler worker that dies stops the scheduler loudly, and the macOS park error that killed them is reproduced",
+  "depends_on": [],
+  "blocked_by": [],
+  "checklist": [
+    "C232",
+    "C233",
+    "C234",
+    "C235"
+  ],
+  "stories": [
+    "S47"
+  ],
+  "design_anchor": [],
+  "purpose": "Written by hand by Apollo on 4 November 2026, beamr's lead, on Waffles' word that night: \"B-184 as you have it, both reds; (b) is the one that matters most, a dead worker must stop the scheduler loudly or be recovered, never look like normal running.\" Found by Hermes in his first read of liminal-open, the liminal server on Dean's laptop (macOS 26.6.2, 25G83). Everything below was read, nothing run, at beamr main e90ccb0e, in the beamr 0.21.0 and 0.21.1 sources in the cargo registry (diff -rq of their src finds no difference), and in two liminal-open logs. In exchange-20261030T062013Z-f0936ef7.log (liminal f0936ef7, Rust 1.98.1, beamr 0.21.0), lines 51-68 hold six panics, on threads beamr-sched-12, 2, 6, 13, 14 and 9, each \"assertion failed: r == libc::ETIMEDOUT || r == 0\" at std's sys/pal/unix/sync/condvar.rs:130. That line is the assert after pthread_cond_timedwait_relative_np in std's macOS timed wait (read in the 1.98.1 rust-src, whose rustc commit 48a229ce is the one the panic lines name). The only timed wait a beamr 0.21.x worker makes is park_thread's (crates/beamr/src/scheduler/execution.rs:1012 in 0.21.1): wake_condvar.wait_timeout for IDLE_PARK_TIMEOUT, 5 ms, under the wait_set mutex. Hermes's sample of the wedged process (liminal-open-30084-stuck.sample.txt) shows the nine surviving workers of the fifteen (beamr-sched-0 to 14, thread ids 2495023 to 2495037) all in that call, through _pthread_cond_wait into __psynch_cvwait, the kernel psynch path. So pthread returned an error other than ETIMEDOUT for a valid 5 ms timeout, and std turned it into a panic that ended the worker. The panics carry no timestamp, because liminal-server installs no panic hook (Hermes, 4 November; his brief SRV-061 adds one). The process went on with nine workers. On SIGTERM on 3 November at 12:58:52Z it wedged: the main thread sat in Scheduler::shutdown joining the workers, and a haematite Append on shard 2 waited 70 s and counting, until Hermes killed it. The earlier run was worse. In exchange-20261025T222628Z-f0936ef7.log, lines 48-80 hold eleven of the same panics between 25 October 22:27:00Z and 27 October 10:59:38Z. From 10:59:38Z, Appends on haematite shards 2, 7 and 4 waited and never returned, and the last wait logged was 21,575 s. Line 13010 holds a twelfth panic, beamr-sched-2, at 16:59:03-08Z. For six hours the server stayed up, logged only WARN lines, and took no write. beamr 0.21.x catches nothing at a worker's top (crates/beamr/src/scheduler/mod.rs:1828-1836 spawns scheduler_loop bare): a worker that panics ends its thread, and with it its local run queue and its claim on its inject queue, while every other part of the scheduler goes on as though it had all its workers. Which of those strands the Append is not settled, and R2's red settles it. beamr main also carries B-181 (tickless idle, written and not yet run), which parks workers other than worker 0 on an untimed wait. That path goes through the same psynch call, where std asserts r == 0, so B-181 does not remove this class. Two defects, one brief. The first is that the park can fail at all. The second, which matters most, is that a dead worker looks like normal running.",
+  "task": "Reproduce the park's error return outside liminal and name its cause (R1). Make any worker's death a permanent, loud scheduler failure that every waiter and the embedder see, and that shutdown completes through (R2, R3). Then remove the panic at its cause, by the remedy R1's red names, written as an amendment of this brief before its code (R4). Files: crates/beamr/src/scheduler/mod.rs, execution.rs, execution/park.rs, a new crates/beamr/src/scheduler/failure.rs with its tests, a probe example under crates/beamr/examples, and CHANGELOG.md.",
+  "requirements": [
+    {
+      "id": "R1",
+      "title": "The park's error return is reproduced outside liminal, and its cause named from what is observed",
+      "spec": "Diagnostic, red first. A probe example, crates/beamr/examples/park_error_probe.rs, SHALL run the park in liminal-open's shape: 15 threads, each in a loop taking one shared std Mutex and calling wait_timeout for 5 ms on one shared std Condvar, while other threads call notify_all, as wakes do, at a rate the probe prints. Each thread SHALL count its waits, and the probe SHALL end on the first thread whose wait panicked (observed as a join error carrying std's assert text), or on a wait count it is given, printing the count reached, the OS version, the Rust version and whether it panicked. Then one run with B-181's untimed wait in place of the timed wait, the same way. Then, if no run panicked, a run held across one system sleep and wake, with the pmset log lines that bracket it. The ending condition is a count or a panic, never a time. The handback SHALL name the cause from what the runs show, or say NOT CONFIRMED with the counts reached. It SHALL list which candidates each run rules out: a kernel psynch error on a valid timeout (with or without a sleep and wake), a second mutex on one condvar, or something outside the park.",
+      "acceptance": [
+        "The probe's printed lines, quoted in the handback for each venue: Dean's laptop (macOS 26.6.2, where it happened), Tom's Mac, and skull (Linux, as a control that takes the futex path, not psynch).",
+        "Before any run, the handback writes what a panic would show and what a run to the count with no panic would mean.",
+        "If no run reproduces the panic, the handback says so, with the count reached per venue against the roughly 1.1e9 timed waits the 30 October run made at most (15 workers, 200 parks a second, about 369,500 s), and R4 is decided on that."
+      ],
+      "files": {
+        "create": [
+          "crates/beamr/examples/park_error_probe.rs"
+        ],
+        "modify": [],
+        "delete": []
+      },
+      "checklist": [
+        "C232"
+      ],
+      "stories": [
+        "S47"
+      ]
+    },
+    {
+      "id": "R2",
+      "title": "A worker that dies makes a permanent scheduler failure, raised the moment it dies",
+      "spec": "Behavioural, red first. The red, written and run before the code: a test-support seam makes one named worker panic at its next park. The test then observes three things at the base. Shutdown on another thread does not complete (the wedge in Hermes's sample, ended by the nextest profile's per-test terminate, which the handback names). A process spawned after the panic either runs or does not, and the handback says which, settling what stranded the Append. Nothing the embedder can read says a worker died. With the code: THE SYSTEM SHALL run every worker under a guard that observes its thread ending by a panic (a drop guard or catch_unwind at the top of the worker's thread, whichever beamr's lint table admits). When it does, the system SHALL latch a permanent failure holding the worker's name and the panic's message, set shutdown, and wake every parked worker and every waiter. The latch is never cleared and has no setting, as beamr-wasm's terminal latch is (crates/beamr-wasm/src/failure.rs, WPORT-7). The embedder SHALL be able to read the failure (Scheduler::failure, returning the latched value or none) and to register one callback that runs once when it latches. A worker that ends by any path other than shutdown SHALL latch the failure too.",
+      "acceptance": [
+        "The red's three observations at the base, quoted from its run, then the same test green at the final commit, with the latched worker name and message asserted by value.",
+        "A test that panics two workers at once shows one latched failure, naming the first, and the callback run exactly once.",
+        "A drift injection: with the guard's latch call removed, the green test fails, quoted in the handback."
+      ],
+      "files": {
+        "create": [
+          "crates/beamr/src/scheduler/failure.rs",
+          "crates/beamr/src/scheduler/failure_tests.rs"
+        ],
+        "modify": [
+          "crates/beamr/src/scheduler/mod.rs",
+          "crates/beamr/src/scheduler/execution.rs"
+        ],
+        "delete": []
+      },
+      "checklist": [
+        "C233"
+      ],
+      "stories": [
+        "S47"
+      ]
+    },
+    {
+      "id": "R3",
+      "title": "After a failure, every wait ends with it and shutdown completes",
+      "spec": "Behavioural. After the failure latches, THE SYSTEM SHALL end every wait an embedder holds on the scheduler with the failure, never by a timeout. Scheduler::run_until_exit SHALL return the failure as an error, a breaking change released in beamr's next minor version. Exit and completion watches SHALL answer as B-179 amendment C has them answer at shutdown (AlreadyRemoved), so haematite's held writes end as it already handles that answer. Scheduler::shutdown SHALL return after a worker died: it joins every thread, takes every process left in the dead worker's local and inject queues, and finalizes it as shutdown finalizes the rest. No process SHALL stay unfinalized because the worker that held it is gone.",
+      "acceptance": [
+        "With one worker panicked, a run_until_exit held on another thread returns the failure, and shutdown returns, each observed by its own completion event, never by a sleep.",
+        "A process queued on the dead worker's local queue and one on its inject queue are both finalized by shutdown, asserted by their watches' answers.",
+        "The handback lists every public method that waits, from a search of the crate quoted in it, with the test that shows each one ending on the failure."
+      ],
+      "files": {
+        "create": [],
+        "modify": [
+          "crates/beamr/src/scheduler/execution.rs",
+          "crates/beamr/src/scheduler/execution/park.rs",
+          "crates/beamr/src/scheduler/failure_tests.rs"
+        ],
+        "delete": []
+      },
+      "checklist": [
+        "C234"
+      ],
+      "stories": [
+        "S47"
+      ]
+    },
+    {
+      "id": "R4",
+      "title": "The park no longer panics, by the remedy R1's red names, and the release says what changed",
+      "spec": "Behavioural and documentary. The remedy is written as an amendment of this brief, after R1's handback and before any of its code, by beamr's lead with the reason the runs give. If R1 shows a kernel psynch error on valid arguments, the amendment chooses a park that reports an error rather than asserting. Two candidates are named here and neither is chosen: std::thread::park_timeout with unpark (on macOS a different primitive from the pthread condvar), or a wait-on-address park, under the no-unsafe rule. If R1 reproduces nothing, the amendment says so, and R2 and R3 ship without R4's code. CHANGELOG.md SHALL say that a worker's death now stops the scheduler with a failure the embedder reads, that run_until_exit returns it, and what R4 changed or why it changed nothing.",
+      "acceptance": [
+        "If R4's code ships, R1's probe at the remedy reaches the same count on the venue where the panic reproduced, with no panic, quoted beside the base run.",
+        "The CHANGELOG lines quoted in the handback."
+      ],
+      "files": {
+        "create": [],
+        "modify": [
+          "crates/beamr/src/scheduler/execution/park.rs",
+          "CHANGELOG.md"
+        ],
+        "delete": []
+      },
+      "checklist": [
+        "C235"
+      ],
+      "stories": [
+        "S47"
+      ]
+    }
+  ],
+  "boundaries": [
+    "SHALL NOT restart a dead worker. Its local queue, its inject queue and any process it held cannot be accounted for after a panic, and a restarted worker would run on state recovered from a poisoned lock.",
+    "SHALL NOT abort the host process from beamr. The failure goes to the embedder, who decides how its process ends.",
+    "SHALL NOT end any wait by a timer or a fixed sleep, in code or in tests.",
+    "SHALL NOT add unsafe code, or a dependency without its licence and the reason in Cargo.toml.",
+    "SHALL NOT mark any test serial, ignored or skipped to make it pass."
+  ],
+  "verification": [
+    "This handwritten brief passes the design gate of this repository, judged by its parsed failures, never by its exit code.",
+    "Every red written and run before its code, and quoted against the base sha in the handback.",
+    "The full gate legs (fmt, clippy pedantic with --all-targets, ast-grep, nextest, cargo test --doc) green on the exact final commit, judged from parsed output, with df and the swap line in START and END.",
+    "Four-heading handback (BLOCKED ON, CHANGED, FOUND, NOT CONFIRMED).",
+    "Released as beamr's next minor version the hour it is green. haematite moves its beamr pin first, then liminal, the same day (Tom's rule 16), and liminal-server exits non-zero on the failure, through Hermes's SRV-061 or a server brief of its own."
+  ]
+}
