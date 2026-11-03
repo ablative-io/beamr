@@ -160,7 +160,9 @@ fn run_until_exit_bounded(scheduler: &Arc<Scheduler>, pid: u64) -> ExitReason {
     let (sender, receiver) = mpsc::channel();
     let scheduler_for_wait = Arc::clone(scheduler);
     std::thread::spawn(move || {
-        let (reason, _result) = scheduler_for_wait.run_until_exit(pid);
+        let (reason, _result) = scheduler_for_wait
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
         let _sent = sender.send(reason);
     });
     receiver

@@ -14,7 +14,7 @@ use crate::scheduler::dirty::DirtyResult;
 use crate::term::Term;
 
 use super::{
-    PriorityStealers, RunQueue, Scheduler, SharedState, SpawnRequest, lock_or_recover,
+    PriorityStealers, RunQueue, Scheduler, SharedState, SpawnRequest, failure, lock_or_recover,
     spawning::materialize_spawn_request, steal, timer_integration,
 };
 
@@ -131,13 +131,42 @@ impl Scheduler {
         // W22: the flag is stored, then edge E, so a worker between its
         // shutdown check and its wait finds the sequence moved.
         self.shared.wake_edge();
+        // B-184 R3 (lead amendment B): after the latch, a worker the latch
+        // recorded dead, or whose thread reported its own exit, is not joined:
+        // its handle is detached and its name given in the log line below.
+        // The decision is the record's, read per worker, never a timed join.
+        // Every other worker is joined as before; a join error carries a
+        // panic the guard has already latched, so it is not raised again.
         let mut threads = lock_or_recover(&self.threads);
-        for handle in threads.drain(..) {
-            if let Err(payload) = handle.join() {
-                std::panic::resume_unwind(payload);
+        let mut skipped = Vec::new();
+        for (index, handle) in threads.drain(..).enumerate() {
+            let skip = if self.shared.failure.is_latched() {
+                super::failure::skip_reason(&self.shared, index)
+            } else {
+                None
+            };
+            if let Some(reason) = skip {
+                let name = self
+                    .worker_names
+                    .get(index)
+                    .map_or("an unnamed worker", String::as_str);
+                skipped.push(format!("{name} ({reason})"));
+                drop(handle);
+            } else {
+                let _joined_or_latched = handle.join();
             }
         }
         drop(threads);
+        if let Some(failure) = self.shared.failure.get()
+            && !skipped.is_empty()
+        {
+            eprintln!(
+                "beamr: scheduler shutdown after the failure \"{failure}\" did not join {}; \
+                 their threads are detached",
+                skipped.join(", ")
+            );
+            lock_or_recover(&self.shared.shutdown_skipped).extend(skipped);
+        }
         #[cfg(test)]
         if let Some(hook) = self.shared.terminal_admission_hook.get() {
             hook();
@@ -160,10 +189,21 @@ impl Scheduler {
                 cleanup_exited_process(&self.shared, pid, reason);
             }
         }
+        // After the latch a detached worker may still hold a body mid-slice:
+        // it is left to that worker, which finalizes it as it leaves its loop
+        // (B-179 amendment D: no body is finalized while Executing).
+        let failed = self.shared.failure.is_latched();
         let remaining_pids: Vec<_> = self
             .shared
             .process_bodies
             .iter()
+            .filter(|entry| {
+                !(failed
+                    && matches!(
+                        *lock_or_recover(entry.value()),
+                        super::ProcessSlot::Executing(_)
+                    ))
+            })
             .map(|entry| *entry.key())
             .collect();
         for pid in remaining_pids {
@@ -187,8 +227,22 @@ impl Scheduler {
     /// The result is an owning deep copy made at the exit boundary: it stays
     /// valid after the process heap is freed, for as long as the caller holds
     /// it.
-    pub fn run_until_exit(&self, pid: u64) -> (ExitReason, OwnedTerm) {
+    ///
+    /// # Errors
+    ///
+    /// Returns the scheduler's [`SchedulerFailure`](super::SchedulerFailure)
+    /// once a worker has died (B-184): the wait ends on the failure, woken by
+    /// the latch, for any `pid`, including one whose exit was recorded
+    /// before the failure. Read such an exit with
+    /// [`Scheduler::take_exit_outcome`] or [`Scheduler::peek_exit_reason`].
+    pub fn run_until_exit(
+        &self,
+        pid: u64,
+    ) -> Result<(ExitReason, OwnedTerm), super::SchedulerFailure> {
         loop {
+            if let Some(failure) = self.shared.failure.get() {
+                return Err(failure.clone());
+            }
             if let Some(reason) = self.shared.exit_tombstones.get(&pid) {
                 let result = self
                     .shared
@@ -196,9 +250,15 @@ impl Scheduler {
                     .remove(&pid)
                     .map(|(_, term)| term)
                     .unwrap_or_else(|| OwnedTerm::immediate(Term::NIL));
-                return (reason, result);
+                return Ok((reason, result));
             }
             let guard = lock_or_recover(&self.shared.wait_set);
+            // Read again under `wait_set`: the latch stores its value before
+            // its wake edge takes this lock, so a failure latched after this
+            // read wakes the wait below.
+            if let Some(failure) = self.shared.failure.get() {
+                return Err(failure.clone());
+            }
             let timeout = std::time::Duration::from_millis(10);
             let _ = self.shared.wake_condvar.wait_timeout(guard, timeout);
         }
@@ -499,10 +559,12 @@ pub(in crate::scheduler) fn scheduler_loop(
         };
         // Work found without parking: the window closes on this path too.
         park::leave_idle_window(shared);
+        failure::set_site(failure::WorkerSite::Running(pid));
         park::panic_if_armed_at_slice(shared, my_index, pid);
         #[cfg(feature = "telemetry")]
         let executing_started = Instant::now();
         run_process(shared, queue, pid, my_index);
+        failure::set_site(failure::WorkerSite::Scheduling);
         if shared.replay_mode {
             // W24: a replay slice consumed its Schedule and every event its
             // body replayed; one edge, with no driver lock held.
@@ -540,13 +602,14 @@ pub(in crate::scheduler) use park::ParkHooks;
 pub(in crate::scheduler) use park::{IdleWake, surplus_edge};
 #[cfg(any(test, feature = "test-support"))]
 pub use park::{
-    ObservedParkTimeout, WakeCauses, WorkerParkCounts, park_seam_panic_message,
+    ObservedParkTimeout, WakeCauses, WorkerHold, WorkerParkCounts, park_seam_panic_message,
     slice_seam_panic_message,
 };
 use park::{ParkExit, park_thread};
 #[cfg(any(test, feature = "test-support"))]
 pub(in crate::scheduler) use park::{
-    ParkSeams, await_all_parked, await_seam_panicked, await_worker_parked,
+    ParkSeams, await_all_parked, await_seam_panicked, await_worker_parked, hold_if_armed,
+    notify_park_waiters,
 };
 use std::net::SocketAddr;
 

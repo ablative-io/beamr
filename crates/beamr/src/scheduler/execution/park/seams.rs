@@ -94,6 +94,24 @@ struct WorkerParkSeam {
     panic_at_slice: std::sync::atomic::AtomicBool,
     /// Set, under the `wait_set` mutex, as a B-184 seam panics this worker.
     seam_panicked: std::sync::atomic::AtomicBool,
+    /// B-184's hold: after the latch records this worker dead, its thread
+    /// waits here until the [`WorkerHold`] is released.
+    hold_after_death: std::sync::Mutex<Option<crossbeam_channel::Receiver<()>>>,
+}
+
+/// B-184's hold on a worker (test-support): while this is held, the worker's
+/// thread, once the latch has recorded it dead, never ends. Dropping it, or
+/// [`WorkerHold::release`], lets the thread go on and end.
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Debug)]
+pub struct WorkerHold {
+    _release: crossbeam_channel::Sender<()>,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl WorkerHold {
+    /// Let the held worker's thread go on and end.
+    pub fn release(self) {}
 }
 
 /// Per-worker park instruments (`test-support`), sized to the worker count.
@@ -174,6 +192,14 @@ impl ParkSeams {
         })
     }
 
+    /// Arm B-184's hold for worker `index`: `None` when no such worker.
+    pub(in crate::scheduler) fn arm_hold_after_death(&self, index: usize) -> Option<WorkerHold> {
+        let worker = self.worker(index)?;
+        let (release, held) = crossbeam_channel::bounded(0);
+        *lock_or_recover(&worker.hold_after_death) = Some(held);
+        Some(WorkerHold { _release: release })
+    }
+
     /// Arm B-184's slice seam for worker `index`: false when no such worker.
     pub(in crate::scheduler) fn arm_panic_at_slice(&self, index: usize) -> bool {
         self.worker(index).is_some_and(|worker| {
@@ -209,6 +235,30 @@ pub(in crate::scheduler::execution) fn panic_if_armed_at_slice(
         drop(held);
         panic!("{}", slice_seam_panic_message(my_index, pid));
     }
+}
+
+/// B-184's hold, run by worker `my_index`'s guard after the latch recorded
+/// it dead: waits, when armed, until its [`WorkerHold`] is dropped. Ends on
+/// that event, never a clock.
+#[cfg(any(test, feature = "test-support"))]
+pub(in crate::scheduler) fn hold_if_armed(shared: &SharedState, my_index: usize) {
+    let held = shared
+        .park_seams
+        .worker(my_index)
+        .and_then(|worker| lock_or_recover(&worker.hold_after_death).take());
+    if let Some(held) = held {
+        // Disconnection is the release: the hold sends nothing.
+        let _released = held.recv();
+    }
+}
+
+/// Wake every waiter on the park instruments (the latch's wake), under the
+/// `wait_set` mutex those waiters check their conditions under.
+#[cfg(any(test, feature = "test-support"))]
+pub(in crate::scheduler) fn notify_park_waiters(shared: &SharedState) {
+    let held = lock_or_recover(&shared.wait_set);
+    shared.idle_wake.parked_changed.notify_all();
+    drop(held);
 }
 
 /// Block until a B-184 seam has panicked worker `worker`: ends on the
@@ -480,8 +530,9 @@ pub(in crate::scheduler) fn await_worker_parked(
     };
     let mut guard = lock_or_recover(&shared.wait_set);
     loop {
-        if seam.waiting.load(Ordering::Acquire)
-            && seam.entered.load(Ordering::Acquire) > since.entered
+        if (seam.waiting.load(Ordering::Acquire)
+            && seam.entered.load(Ordering::Acquire) > since.entered)
+            || shared.failure.is_latched()
         {
             return ObservedParkTimeout::decode(seam.last_timeout.load(Ordering::Acquire));
         }
@@ -496,7 +547,9 @@ pub(in crate::scheduler) fn await_worker_parked(
 #[cfg(any(test, feature = "test-support"))]
 pub(in crate::scheduler) fn await_all_parked(shared: &SharedState) {
     let mut guard = lock_or_recover(&shared.wait_set);
-    while shared.idle_wake.parked_workers.load(Ordering::Acquire) < shared.thread_count {
+    while shared.idle_wake.parked_workers.load(Ordering::Acquire) < shared.thread_count
+        && !shared.failure.is_latched()
+    {
         guard = match shared.idle_wake.parked_changed.wait(guard) {
             Ok(guard) => guard,
             Err(error) => error.into_inner(),

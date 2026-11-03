@@ -336,7 +336,9 @@ fn execute_module(
     let pid = scheduler
         .spawn(module_atom, function_atom, args)
         .map_err(|error| CliError::Exec(error.format_with_atoms(&atom_table)))?;
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .map_err(|failure| CliError::Scheduler(failure.to_string()))?;
     let exit_exception = scheduler.take_exit_exception(pid);
     let exit_error = scheduler.take_exit_error(pid);
     scheduler.shutdown();

@@ -463,7 +463,9 @@ fn run_arm_with(tag: i64, threshold: u32, heat_drives: usize, edge: OuterEdge) -
         let pid = scheduler
             .spawn(names.module, names.driver, vec![Term::small_int(HEAT_TAG)])
             .expect("spawn heat drive");
-        let (reason, _value) = scheduler.run_until_exit(pid);
+        let (reason, _value) = scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
         assert_eq!(
             reason,
             ExitReason::Normal,
@@ -490,7 +492,9 @@ fn run_arm_with(tag: i64, threshold: u32, heat_drives: usize, edge: OuterEdge) -
     let pid = scheduler
         .spawn(names.module, names.driver, vec![Term::small_int(tag)])
         .expect("spawn drive");
-    let (reason, value) = scheduler.run_until_exit(pid);
+    let (reason, value) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_error = scheduler
         .take_exit_error(pid)
         .map(|error| error.to_string());

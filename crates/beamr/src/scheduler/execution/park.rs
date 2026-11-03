@@ -12,21 +12,23 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering, fence};
 use std::time::Instant;
 
+use crate::scheduler::failure::{WorkerSite, set_site};
 use crate::scheduler::{RunQueue, SharedState, WaitSet, lock_or_recover};
 
 mod seams;
 #[cfg(test)]
 pub(in crate::scheduler) use seams::ParkHooks;
-pub(super) use seams::{account_deadline_wake, panic_if_armed_at_slice};
 #[cfg(any(test, feature = "test-support"))]
 pub use seams::{
-    ObservedParkTimeout, WakeCauses, WorkerParkCounts, park_seam_panic_message,
+    ObservedParkTimeout, WakeCauses, WorkerHold, WorkerParkCounts, park_seam_panic_message,
     slice_seam_panic_message,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub(in crate::scheduler) use seams::{
-    ParkSeams, await_all_parked, await_seam_panicked, await_worker_parked,
+    ParkSeams, await_all_parked, await_seam_panicked, await_worker_parked, hold_if_armed,
+    notify_park_waiters,
 };
+pub(super) use seams::{account_deadline_wake, panic_if_armed_at_slice};
 use seams::{count_entry, note_wait, note_wait_end, panic_if_armed, record_outcome};
 #[cfg(test)]
 pub(super) use seams::{idle_gap, report_left_park};
@@ -269,6 +271,7 @@ fn wait_for_edge(
         return ParkOutcome::Woken;
     }
     note_wait(shared, my_index, deadline);
+    set_site(WorkerSite::Parked);
     #[cfg(feature = "telemetry")]
     let idle_started = Instant::now();
     let outcome = loop {
@@ -298,6 +301,7 @@ fn wait_for_edge(
         }
     };
     note_wait_end(shared, my_index);
+    set_site(WorkerSite::Scheduling);
     drop(guard);
     #[cfg(feature = "telemetry")]
     shared.record_scheduler_idle(idle_started.elapsed());

@@ -58,7 +58,9 @@ fn call(scheduler: &Scheduler, atoms: &AtomTable, function: &str) -> (ExitReason
     let pid = scheduler
         .spawn(module, function, Vec::new())
         .expect("spawn fixture function");
-    scheduler.run_until_exit(pid)
+    scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
 }
 
 fn assert_atom_tuple(atoms: &AtomTable, term: Term, expected: &[&str], context: &str) {

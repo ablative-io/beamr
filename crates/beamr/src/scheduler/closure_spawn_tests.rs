@@ -163,7 +163,10 @@ fn spawn_link_closure_runs_thunk_with_deep_copied_env() {
     assert!(fixture.scheduler.is_linked(fixture.parent, child));
     drop(host);
 
-    let (reason, result) = fixture.scheduler.run_until_exit(child);
+    let (reason, result) = fixture
+        .scheduler
+        .run_until_exit(child)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal);
     assert_eq!(
         binary_bytes(result.root(), result.borrow_terms()),
@@ -188,7 +191,10 @@ fn environment_larger_than_the_default_heap_forces_doubling_and_survives() {
         .unwrap_or_else(|error| panic!("spawn_link_closure: {error}"));
     drop(host);
 
-    let (reason, result) = fixture.scheduler.run_until_exit(child);
+    let (reason, result) = fixture
+        .scheduler
+        .run_until_exit(child)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal);
     assert_eq!(binary_bytes(result.root(), result.borrow_terms()), payload);
     fixture.scheduler.shutdown();
@@ -212,7 +218,10 @@ fn stale_generation_closure_resolves_through_unique_id_fallback() {
         .scheduler
         .spawn_link_closure(fixture.parent, closure)
         .unwrap_or_else(|error| panic!("spawn_link_closure: {error}"));
-    let (reason, result) = fixture.scheduler.run_until_exit(child);
+    let (reason, result) = fixture
+        .scheduler
+        .run_until_exit(child)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal);
     assert_eq!(
         binary_bytes(result.root(), result.borrow_terms()),
@@ -237,7 +246,10 @@ fn export_fun_thunk_spawns_through_the_export_table() {
         .scheduler
         .spawn_link_closure(fixture.parent, export)
         .unwrap_or_else(|error| panic!("spawn_link_closure: {error}"));
-    let (reason, _result) = fixture.scheduler.run_until_exit(child);
+    let (reason, _result) = fixture
+        .scheduler
+        .run_until_exit(child)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal);
     fixture.scheduler.shutdown();
 }

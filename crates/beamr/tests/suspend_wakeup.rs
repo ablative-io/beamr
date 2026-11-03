@@ -124,7 +124,9 @@ fn marker_delivered_while_executing_resumes_the_suspending_process() {
     // A lost wakeup hangs forever, so the wait is bounded.
     let (sender, receiver) = mpsc::channel();
     let waiter = std::thread::spawn(move || {
-        let outcome = scheduler.run_until_exit(pid);
+        let outcome = scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
         let _ = sender.send(outcome);
         scheduler.shutdown();
     });
@@ -219,7 +221,9 @@ fn delivery_during_in_flight_dirty_call_does_not_resume_the_process() {
 
     let (sender, receiver) = mpsc::channel();
     let waiter = std::thread::spawn(move || {
-        let outcome = scheduler.run_until_exit(pid);
+        let outcome = scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
         let _ = sender.send(outcome);
         scheduler.shutdown();
     });

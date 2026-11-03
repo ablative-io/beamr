@@ -138,7 +138,9 @@ fn run_entry_inner(entry: &str, exclude: Option<&str>) -> (ExitReason, Term, Opt
             vec![],
         )
         .unwrap_or_else(|err| panic!("spawn actor_spike:{entry}/0: {err:?}"));
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_exception = scheduler.take_exit_exception(pid);
     let exit_error = scheduler.take_exit_error(pid);
     scheduler.shutdown();

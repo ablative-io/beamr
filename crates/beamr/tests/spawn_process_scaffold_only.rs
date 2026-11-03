@@ -54,7 +54,9 @@ fn spawn_process_on_a_real_module_dies_on_the_landing_pad_while_spawn_runs_it() 
             vec![Term::small_int(10)],
         )
         .expect("spawn proof:fibonacci/1");
-    let (entry_reason, entry_result) = scheduler.run_until_exit(entry_pid);
+    let (entry_reason, entry_result) = scheduler
+        .run_until_exit(entry_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(
         entry_reason,
         ExitReason::Normal,
@@ -70,7 +72,9 @@ fn spawn_process_on_a_real_module_dies_on_the_landing_pad_while_spawn_runs_it() 
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (pad_reason, pad_result) = scheduler.run_until_exit(pad_pid);
+    let (pad_reason, pad_result) = scheduler
+        .run_until_exit(pad_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let pad_exception = scheduler.take_exit_exception(pad_pid);
     scheduler.shutdown();
 

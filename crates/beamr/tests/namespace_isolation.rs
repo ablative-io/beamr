@@ -72,8 +72,12 @@ fn namespaces_load_same_module_name_independently() {
     let p2 = scheduler
         .spawn_in(ns2, counter, version, Vec::new())
         .expect("spawn ns2 counter");
-    let (reason1, result1) = scheduler.run_until_exit(p1);
-    let (reason2, result2) = scheduler.run_until_exit(p2);
+    let (reason1, result1) = scheduler
+        .run_until_exit(p1)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
+    let (reason2, result2) = scheduler
+        .run_until_exit(p2)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
 
     assert_eq!(reason1, ExitReason::Normal);
     assert_eq!(reason2, ExitReason::Normal);
@@ -95,7 +99,9 @@ fn default_namespace_spawn_matches_existing_api() {
     let p = scheduler
         .spawn(counter, version, Vec::new())
         .expect("spawn default counter");
-    let (reason, result) = scheduler.run_until_exit(p);
+    let (reason, result) = scheduler
+        .run_until_exit(p)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
 
     assert_eq!(reason, ExitReason::Normal);
     assert_eq!(result.root(), Term::small_int(1));
@@ -127,8 +133,12 @@ fn namespace_hot_load_does_not_affect_other_namespace() {
     let p2 = scheduler
         .spawn_in(ns2, counter, version, Vec::new())
         .expect("spawn ns2 current");
-    let (_reason1, result1) = scheduler.run_until_exit(p1);
-    let (_reason2, result2) = scheduler.run_until_exit(p2);
+    let (_reason1, result1) = scheduler
+        .run_until_exit(p1)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
+    let (_reason2, result2) = scheduler
+        .run_until_exit(p2)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
 
     assert_eq!(result1.root(), Term::small_int(2));
     assert_eq!(result2.root(), Term::small_int(1));
@@ -200,7 +210,9 @@ fn force_purge_module_in_only_affects_target_namespace() {
     let p = scheduler
         .spawn_in(ns2, counter, version, Vec::new())
         .expect("spawn ns2 current");
-    let (reason, result) = scheduler.run_until_exit(p);
+    let (reason, result) = scheduler
+        .run_until_exit(p)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal);
     assert_eq!(result.root(), Term::small_int(2));
     scheduler.shutdown();
@@ -232,14 +244,18 @@ fn spawn_from_process_inherits_parent_namespace() {
     let ns1_pid = scheduler
         .spawn_in(ns1, parent, child_version, Vec::new())
         .expect("spawn child_version in ns1");
-    let (ns1_reason, ns1_result) = scheduler.run_until_exit(ns1_pid);
+    let (ns1_reason, ns1_result) = scheduler
+        .run_until_exit(ns1_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(ns1_reason, ExitReason::Normal);
     assert_eq!(ns1_result.root(), Term::small_int(1));
 
     let ns2_pid = scheduler
         .spawn_in(ns2, parent, child_version, Vec::new())
         .expect("spawn child_version in ns2");
-    let (ns2_reason, ns2_result) = scheduler.run_until_exit(ns2_pid);
+    let (ns2_reason, ns2_result) = scheduler
+        .run_until_exit(ns2_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(ns2_reason, ExitReason::Normal);
     assert_eq!(ns2_result.root(), Term::small_int(2));
 
@@ -275,14 +291,18 @@ fn deferred_import_resolves_only_in_calling_namespace() {
     let ok_pid = scheduler
         .spawn_in(ns1, caller, call_counter, Vec::new())
         .expect("spawn deferred caller in ns1");
-    let (ok_reason, ok_result) = scheduler.run_until_exit(ok_pid);
+    let (ok_reason, ok_result) = scheduler
+        .run_until_exit(ok_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(ok_reason, ExitReason::Normal);
     assert_eq!(ok_result.root(), Term::small_int(1));
 
     let missing_pid = scheduler
         .spawn_in(ns2, caller, call_counter, Vec::new())
         .expect("spawn deferred caller in ns2");
-    let (missing_reason, _missing_result) = scheduler.run_until_exit(missing_pid);
+    let (missing_reason, _missing_result) = scheduler
+        .run_until_exit(missing_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(missing_reason, ExitReason::Error);
     assert_eq!(
         scheduler.take_exit_error(missing_pid),

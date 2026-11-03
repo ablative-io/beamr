@@ -815,7 +815,10 @@ fn warm_through(rig: &Rig, entry: ResolvedImport, calls: usize, check: impl FnOn
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (reason, _result) = rig.scheduler.run_until_exit(pid);
+    let (reason, _result) = rig
+        .scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(
         reason,
         ExitReason::Normal,
@@ -837,7 +840,10 @@ fn frame_tally(rig: &Rig, entry: ResolvedImport, k: usize) -> HashMap<String, us
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (reason, _result) = rig.scheduler.run_until_exit(pid);
+    let (reason, _result) = rig
+        .scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(
         reason,
         ExitReason::Error,
@@ -1006,7 +1012,10 @@ fn caught_exception_value_reaches_the_handler_across_a_compiled_trampoline() {
             Ok(pid) => pid,
             Err(error) => panic!("scaffold spawn refused: {error}"),
         };
-        let (reason, result) = rig.scheduler.run_until_exit(pid);
+        let (reason, result) = rig
+            .scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
         let shape = describe_caught(&rig.atoms, result.root());
         rig.scheduler.shutdown();
         (reason, shape)
@@ -1093,7 +1102,10 @@ fn warm_closure_caller(rig: &Rig, expect_compiled: bool) {
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (reason, _result) = rig.scheduler.run_until_exit(pid);
+    let (reason, _result) = rig
+        .scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal, "closure warming must succeed");
     if expect_compiled {
         assert_compiled(rig, rig.names.funmod, rig.names.invoke_fun);
@@ -1125,7 +1137,10 @@ fn closure_death_observation(threshold: u32) -> (usize, bool) {
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (reason, _result) = rig.scheduler.run_until_exit(pid);
+    let (reason, _result) = rig
+        .scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Error, "the final raise must be fatal");
     let exception = rig
         .scheduler
@@ -1176,7 +1191,10 @@ fn interpreted_closure_raise_still_reaches_outer_catch() {
             Ok(pid) => pid,
             Err(error) => panic!("scaffold spawn refused: {error}"),
         };
-        let (reason, result) = rig.scheduler.run_until_exit(pid);
+        let (reason, result) = rig
+            .scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
         let shape = describe_caught(&rig.atoms, result.root());
         rig.scheduler.shutdown();
         (reason, shape)

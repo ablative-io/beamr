@@ -126,7 +126,9 @@ fn run_to_value(scheduler: &Scheduler, module: &Arc<Module>) -> Term {
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal, "program must exit normally");
     result.root()
 }

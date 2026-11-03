@@ -246,7 +246,11 @@ fn run_to_exit(scheduler: &Arc<Scheduler>, pid: u64, what: &str) -> (ExitReason,
     let (tx, rx) = std::sync::mpsc::channel();
     let scheduler = Arc::clone(scheduler);
     std::thread::spawn(move || {
-        let _ = tx.send(scheduler.run_until_exit(pid));
+        let _ = tx.send(
+            scheduler
+                .run_until_exit(pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}")),
+        );
     });
     let (reason, result) = rx
         .recv_timeout(DELIVERY_BUDGET)
@@ -356,7 +360,11 @@ fn send_delivery_arm(threshold: u32, expect_compiled: bool) {
     let (tx, rx) = std::sync::mpsc::channel();
     let scheduler_for_wait = Arc::clone(scheduler);
     std::thread::spawn(move || {
-        let _ = tx.send(scheduler_for_wait.run_until_exit(receiver_pid));
+        let _ = tx.send(
+            scheduler_for_wait
+                .run_until_exit(receiver_pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}")),
+        );
     });
     let (reason, result) = rx.recv_timeout(DELIVERY_BUDGET).unwrap_or_else(|_| {
         panic!(

@@ -117,7 +117,9 @@ fn fresh_gleam_project_runs_end_to_end() {
             vec![],
         )
         .expect("spawn beamr_gate:main/0");
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_exception = scheduler.take_exit_exception(pid);
     let exit_error = scheduler.take_exit_error(pid);
     scheduler.shutdown();

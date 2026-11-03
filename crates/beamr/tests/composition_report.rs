@@ -85,7 +85,9 @@ fn empty_registry_hot_load_report_flags_deferred_erlang_and_refuses_at_execution
     scheduler
         .send_to_mailbox(pid, OwnedTerm::immediate(Term::small_int(7)))
         .expect("mailbox admits the bump message");
-    let (reason, _result) = scheduler.run_until_exit(pid);
+    let (reason, _result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_error = scheduler.take_exit_error(pid);
     scheduler.shutdown();
 

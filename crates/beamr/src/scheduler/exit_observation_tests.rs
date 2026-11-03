@@ -64,13 +64,17 @@ fn take_exit_outcome_is_non_blocking_and_exactly_once() {
         scheduler.take_exit_outcome(pid).is_none(),
         "second take is empty"
     );
-    let (legacy_reason, legacy_value) = scheduler.run_until_exit(pid);
+    let (legacy_reason, legacy_value) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(legacy_reason, ExitReason::Normal);
     assert_eq!(legacy_value.root().as_small_int(), Some(42));
 
     let legacy_first_pid = pid + 1;
     publish_synthetic_exit(&scheduler, legacy_first_pid, Term::small_int(43));
-    let (_, legacy_value) = scheduler.run_until_exit(legacy_first_pid);
+    let (_, legacy_value) = scheduler
+        .run_until_exit(legacy_first_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(legacy_value.root().as_small_int(), Some(43));
     let (_, outcome_value) = scheduler
         .take_exit_outcome(legacy_first_pid)

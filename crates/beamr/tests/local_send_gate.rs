@@ -183,7 +183,11 @@ fn cross_process_send_via_real_scheduler_delivers() {
     let (sender, completion) = std::sync::mpsc::channel();
     let scheduler_for_wait = Arc::clone(&scheduler);
     std::thread::spawn(move || {
-        let _ = sender.send(scheduler_for_wait.run_until_exit(b_pid));
+        let _ = sender.send(
+            scheduler_for_wait
+                .run_until_exit(b_pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}")),
+        );
     });
     let (reason, result) = completion
         .recv_timeout(Duration::from_secs(30))
@@ -225,7 +229,11 @@ fn receive_timeout_path_still_fires_when_no_send() {
     let (sender, completion) = std::sync::mpsc::channel();
     let scheduler_for_wait = Arc::clone(&scheduler);
     std::thread::spawn(move || {
-        let _ = sender.send(scheduler_for_wait.run_until_exit(pid));
+        let _ = sender.send(
+            scheduler_for_wait
+                .run_until_exit(pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}")),
+        );
     });
     let (reason, result) = completion
         .recv_timeout(Duration::from_secs(30))

@@ -49,7 +49,7 @@ let scheduler = Scheduler::with_services_and_code_server(
 
 let main_fn = atom_table.intern("main");
 let pid = scheduler.spawn(module.name, main_fn, vec![]).unwrap();
-let (reason, result) = scheduler.run_until_exit(pid);
+let (reason, result) = scheduler.run_until_exit(pid).unwrap();
 scheduler.shutdown();
 
 assert_eq!(reason, ExitReason::Normal);
@@ -71,8 +71,9 @@ assert_eq!(reason, ExitReason::Normal);
 // Spawn a process calling module:function(args)
 let pid = scheduler.spawn(module_atom, function_atom, args)?;
 
-// Block until a process exits, returning its exit reason and result
-let (reason, result) = scheduler.run_until_exit(pid);
+// Block until a process exits, returning its exit reason and result, or
+// the scheduler's failure once a worker has died (Scheduler::failure)
+let (reason, result) = scheduler.run_until_exit(pid)?;
 
 // Deliver an async result to a suspended process (for NIF bridges)
 scheduler.wake_with_result(pid, result_term);

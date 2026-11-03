@@ -62,7 +62,9 @@ fn call(scheduler: &Scheduler, atoms: &AtomTable, function: &str) -> OwnedTerm {
     let pid = scheduler
         .spawn(module, function, Vec::new())
         .expect("spawn fixture function");
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal);
     result
 }

@@ -131,7 +131,11 @@ impl Arm {
         let (tx, rx) = mpsc::channel();
         let sched = Arc::clone(&self.scheduler);
         std::thread::spawn(move || {
-            let _ = tx.send(sched.run_until_exit(pid));
+            let _ = tx.send(
+                sched
+                    .run_until_exit(pid)
+                    .unwrap_or_else(|failure| panic!("scheduler failed: {failure}")),
+            );
         });
         let (exit, value) = rx
             .recv_timeout(DEADLINE)

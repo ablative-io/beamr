@@ -51,7 +51,9 @@ fn handled_exception_does_not_surface_at_normal_exit() {
             vec![],
         )
         .expect("spawn catch_then_normal/0");
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_exception = scheduler.take_exit_exception(pid);
     scheduler.shutdown();
 
@@ -76,7 +78,9 @@ fn rethrown_unmatched_class_keeps_the_original_class() {
             vec![],
         )
         .expect("spawn rethrow_unmatched_class/0");
-    let (reason, _result) = scheduler.run_until_exit(pid);
+    let (reason, _result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_exception = scheduler
         .take_exit_exception(pid)
         .expect("rethrown throw surfaces as an exit exception");

@@ -123,6 +123,10 @@ mod execution;
 #[cfg(feature = "threads")]
 mod exit_events;
 #[cfg(feature = "threads")]
+mod failure;
+#[cfg(feature = "threads")]
+pub use failure::{SchedulerFailure, WorkerEnd, WorkerSite};
+#[cfg(feature = "threads")]
 mod exit_tombstones;
 #[cfg(feature = "threads")]
 mod inventory;
@@ -143,7 +147,7 @@ mod services;
 pub mod thread_probe;
 #[cfg(all(feature = "threads", any(test, feature = "test-support")))]
 pub use execution::{
-    ObservedParkTimeout, WakeCauses, WorkerParkCounts, park_seam_panic_message,
+    ObservedParkTimeout, WakeCauses, WorkerHold, WorkerParkCounts, park_seam_panic_message,
     slice_seam_panic_message,
 };
 #[cfg(feature = "threads")]
@@ -362,6 +366,13 @@ impl std::fmt::Debug for SchedulerConfig {
 #[cfg(feature = "threads")]
 pub(super) struct SharedState {
     shutdown: AtomicBool,
+    /// B-184: the permanent failure a dead worker latches.
+    failure: failure::FailureLatch,
+    /// B-184: each worker's report of its own thread's exit.
+    worker_exits: failure::WorkerExits,
+    /// B-184: the workers shutdown did not join after the latch, as its log
+    /// line named them.
+    shutdown_skipped: Mutex<Vec<String>>,
     process_table: ProcessTable,
     module_registry: Arc<ModuleRegistry>,
     namespace_store: DashMap<NamespaceId, Arc<ModuleRegistry>>,
@@ -646,7 +657,9 @@ impl SharedState {
         self: &Arc<Self>,
     ) -> Option<TeardownAdmission> {
         let mut registry = lock_or_recover(&self.dirty_completions);
-        if registry.closed {
+        // B-184: a latched failure has stopped the scheduler; nothing it
+        // admits now would ever run.
+        if registry.closed || self.failure.is_latched() {
             return None;
         }
         registry.reserved += 1;
@@ -1642,6 +1655,9 @@ impl Scheduler {
                 .map(|service| service.consumer(route_home));
             SharedState {
                 shutdown: AtomicBool::new(false),
+                failure: failure::FailureLatch::new(thread_count),
+                worker_exits: failure::WorkerExits::new(thread_count),
+                shutdown_skipped: Mutex::new(Vec::new()),
                 process_table: ProcessTable::new(),
                 module_registry,
                 namespace_store,
@@ -1823,19 +1839,25 @@ impl Scheduler {
             let inject = Arc::clone(inject_queue);
             let thread_name = format!("beamr-sched-{index}");
             worker_names.push(thread_name.clone());
+            let guard_name = thread_name.clone();
             let handle = std::thread::Builder::new()
                 .name(thread_name.clone())
                 .spawn(move || {
-                    let queue = RunQueue::new();
-                    if tx.send(queue.stealer()).is_err() {
-                        return;
-                    }
-                    barrier_for_thread.wait();
-                    let stealers = {
-                        let guard = lock_or_recover(&ready_for_thread);
-                        guard.as_ref().cloned().unwrap_or_default()
-                    };
-                    scheduler_loop(&shared_for_thread, &queue, index, &stealers, &inject);
+                    // B-184 R2: every worker runs under the guard that latches
+                    // the scheduler's failure when its thread ends by a panic,
+                    // or its loop returns before shutdown.
+                    failure::run_worker(&shared_for_thread, index, &guard_name, &inject, || {
+                        let queue = RunQueue::new();
+                        if tx.send(queue.stealer()).is_err() {
+                            return;
+                        }
+                        barrier_for_thread.wait();
+                        let stealers = {
+                            let guard = lock_or_recover(&ready_for_thread);
+                            guard.as_ref().cloned().unwrap_or_default()
+                        };
+                        scheduler_loop(&shared_for_thread, &queue, index, &stealers, &inject);
+                    });
                 })
                 .map_err(|error| format!("failed to spawn {thread_name}: {error}"))?;
             threads.push(handle);
@@ -2038,6 +2060,30 @@ impl Scheduler {
     #[must_use]
     pub fn worker_names(&self) -> &[String] {
         &self.worker_names
+    }
+    /// The scheduler's permanent failure, or `None` while every worker is
+    /// running (B-184). Latched by the first worker whose thread ended by a
+    /// panic, or whose loop returned before shutdown; never cleared. Once it
+    /// is set the scheduler has stopped: shutdown is set, every worker is
+    /// leaving or has left its loop, processes are being finalized, new
+    /// spawns and other admitted mutations are refused, and
+    /// [`Scheduler::run_until_exit`] returns it. The embedder decides how its
+    /// process ends; beamr never aborts it.
+    #[must_use]
+    pub fn failure(&self) -> Option<SchedulerFailure> {
+        self.shared.failure.get().cloned()
+    }
+    /// Register the one callback the failure latch runs (B-184, lead
+    /// amendment B). It runs exactly once: on the dying worker's own thread,
+    /// inside its guard, before the other workers and the waiters are woken;
+    /// or, registered after the latch, at once on this thread. Returns false,
+    /// dropping `callback` unrun, when a callback was registered before.
+    ///
+    /// The callback runs on a scheduler worker thread: it must not wait on
+    /// anything only that worker could provide. [`Scheduler::shutdown`] from
+    /// inside it returns without joining the dying worker.
+    pub fn on_failure(&self, callback: impl FnOnce(&SchedulerFailure) + Send + 'static) -> bool {
+        self.shared.failure.register(Box::new(callback))
     }
     /// The scheduler's ancillary-service thread inventory (spec §5).
     ///
@@ -2285,6 +2331,30 @@ impl Scheduler {
     #[cfg(any(test, feature = "test-support"))]
     pub fn panic_worker_at_next_slice(&self, worker: usize) -> bool {
         self.shared.park_seams.arm_panic_at_slice(worker)
+    }
+    /// B-184's hold (lead amendment B): once the latch has recorded worker
+    /// `worker` dead, its thread stays wedged inside its guard, before it
+    /// finalizes anything or reports its own exit, until the returned
+    /// [`WorkerHold`] is dropped. `None` when there is no such worker.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn hold_worker_after_death(&self, worker: usize) -> Option<WorkerHold> {
+        self.shared.park_seams.arm_hold_after_death(worker)
+    }
+    /// Block until worker `worker`'s thread has reported its own exit, the
+    /// last thing its guard does. Ends on the report, never a clock; false
+    /// at once when there is no such worker.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn await_worker_exit_reported(&self, worker: usize) -> bool {
+        self.shared.worker_exits.await_reported(worker)
+    }
+    /// The workers shutdown has not joined after the latch, as its log line
+    /// named them: `"beamr-sched-N (why)"`.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn shutdown_skipped_workers(&self) -> Vec<String> {
+        lock_or_recover(&self.shared.shutdown_skipped).clone()
     }
     /// Block until a B-184 seam has panicked worker `worker`. Ends on the
     /// seam's mark, never a clock; false at once when there is no such

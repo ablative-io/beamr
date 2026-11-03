@@ -303,6 +303,9 @@ fn build_shared_state(with_dist_sender: bool, node_name: &str) -> Arc<SharedStat
         crossbeam_channel::bounded::<()>(0);
     Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
+        failure: super::failure::FailureLatch::new(1),
+        worker_exits: super::failure::WorkerExits::new(1),
+        shutdown_skipped: Mutex::new(Vec::new()),
         process_table: ProcessTable::new(),
         module_registry,
         namespace_store,

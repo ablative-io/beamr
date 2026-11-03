@@ -61,7 +61,11 @@ fn stacktrace_head_attributes_the_true_raising_function_not_a_stale_mfa() {
     let (tx, rx) = mpsc::channel::<(ExitReason, OwnedTerm)>();
     let sched = Arc::clone(&scheduler);
     std::thread::spawn(move || {
-        let _ = tx.send(sched.run_until_exit(pid));
+        let _ = tx.send(
+            sched
+                .run_until_exit(pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}")),
+        );
     });
     let (reason, result) = rx
         .recv_timeout(DEADLINE)

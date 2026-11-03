@@ -1571,6 +1571,9 @@ fn execute_slice_resumes_yielded_process_with_pinned_module_version() {
         crossbeam_channel::bounded::<()>(0);
     let shared = Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
+        failure: super::failure::FailureLatch::new(1),
+        worker_exits: super::failure::WorkerExits::new(1),
+        shutdown_skipped: Mutex::new(Vec::new()),
         process_table: ProcessTable::new(),
         module_registry: Arc::clone(&registry),
         namespace_store: {
@@ -2102,6 +2105,9 @@ fn tombstone_after_wait_store_prevents_wait_parking() {
         crossbeam_channel::bounded::<()>(0);
     let shared = Arc::new(SharedState {
         shutdown: AtomicBool::new(false),
+        failure: super::failure::FailureLatch::new(1),
+        worker_exits: super::failure::WorkerExits::new(1),
+        shutdown_skipped: Mutex::new(Vec::new()),
         process_table: ProcessTable::new(),
         module_registry: Arc::new(ModuleRegistry::new()),
         namespace_store: {
@@ -2908,7 +2914,9 @@ fn disabled_dirty_cpu_refuses_before_suspension_without_wedging_the_scheduler() 
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (peer_reason, _peer_result) = scheduler.run_until_exit(peer_pid);
+    let (peer_reason, _peer_result) = scheduler
+        .run_until_exit(peer_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(peer_reason, ExitReason::Normal);
     assert_eq!(DISABLED_PEER_PROGRESS.load(Ordering::Acquire), 1);
 
@@ -4302,7 +4310,9 @@ fn peek_exit_reason_observes_external_termination_without_consuming() {
         "tombstone must survive peeking"
     );
     // The existing blocking reader still works after peeking.
-    let (reason, _value) = scheduler.run_until_exit(pid);
+    let (reason, _value) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Kill);
     // And peek still works after run_until_exit (which leaves the tombstone).
     assert_eq!(scheduler.peek_exit_reason(pid), Some(ExitReason::Kill));
@@ -4360,7 +4370,9 @@ fn run_until_exit_correct_under_tombstone_cap_pressure() {
 
     // The blocking reader observes the real exit and returns the right reason,
     // despite full cap pressure.
-    let (reason, _value) = scheduler.run_until_exit(pid);
+    let (reason, _value) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(
         reason,
         ExitReason::Kill,

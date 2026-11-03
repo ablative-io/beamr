@@ -121,6 +121,11 @@ json = ["dep:base64", "dep:serde_json"]
 # `.beam` container writer — the mirror image of `loader::decode`. Off by
 # default; brings in no new dependencies (flate2 is already a hard dep).
 encode = []
+# Test instrumentation, off by default. Since B-184 (lead amendment B) it also
+# carries the public seams an embedder's red uses to run a real worker death
+# through beamr's guard and failure latch: Scheduler::panic_worker_at_next_park,
+# panic_worker_at_next_slice, await_seam_panicked, hold_worker_after_death,
+# await_worker_exit_reported and shutdown_skipped_workers.
 test-support = []
 telemetry = ["std", "dep:opentelemetry"]
 

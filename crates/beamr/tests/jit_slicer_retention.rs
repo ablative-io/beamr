@@ -68,7 +68,9 @@ fn run_zero_arity(scheduler: &Scheduler, module: Atom, function: Atom) -> Term {
     let pid = scheduler
         .spawn(module, function, Vec::new())
         .expect("spawn 0-arity entry");
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal, "entry must exit normally");
     result.root()
 }

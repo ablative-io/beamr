@@ -256,7 +256,13 @@ fn monitor_with_result_reports_immediate_down_for_present_queued_watcher() {
     let target = scheduler
         .spawn_native(Box::new(|| Box::new(StopImmediately)))
         .unwrap_or_else(|error| panic!("spawn target: {error}"));
-    assert_eq!(scheduler.run_until_exit(target).0, ExitReason::Error);
+    assert_eq!(
+        scheduler
+            .run_until_exit(target)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+            .0,
+        ExitReason::Error
+    );
 
     // Occupy the only worker so the watcher is provably Present and queued,
     // rather than racing into its first Executing slot before monitor returns.
@@ -305,7 +311,19 @@ fn monitor_with_result_reports_immediate_down_for_present_queued_watcher() {
             .unwrap_or_else(|error| panic!("watcher did not observe DOWN: {error}")),
         (result.reference, target, Atom::ERROR)
     );
-    assert_eq!(scheduler.run_until_exit(watcher).0, ExitReason::Normal);
-    assert_eq!(scheduler.run_until_exit(blocker).0, ExitReason::Normal);
+    assert_eq!(
+        scheduler
+            .run_until_exit(watcher)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+            .0,
+        ExitReason::Normal
+    );
+    assert_eq!(
+        scheduler
+            .run_until_exit(blocker)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+            .0,
+        ExitReason::Normal
+    );
     scheduler.shutdown();
 }

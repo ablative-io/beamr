@@ -61,7 +61,11 @@ fn if_clause_is_catchable_in_loaded_bytecode() {
     let (tx, rx) = mpsc::channel::<(ExitReason, OwnedTerm)>();
     let sched = Arc::clone(&scheduler);
     std::thread::spawn(move || {
-        let _ = tx.send(sched.run_until_exit(pid));
+        let _ = tx.send(
+            sched
+                .run_until_exit(pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}")),
+        );
     });
     let (reason, result) = rx
         .recv_timeout(DEADLINE)

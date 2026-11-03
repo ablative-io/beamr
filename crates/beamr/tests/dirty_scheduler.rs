@@ -207,13 +207,17 @@ fn dirty_nif_round_trip_does_not_block_normal_scheduler() {
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (normal_reason, normal_result) = scheduler.run_until_exit(normal_pid);
+    let (normal_reason, normal_result) = scheduler
+        .run_until_exit(normal_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(normal_reason, ExitReason::Normal);
     assert_eq!(normal_result.root(), Term::small_int(7));
     assert_eq!(NORMAL_PROGRESS.load(Ordering::Acquire), 1);
     assert!(!dirty_finished_for_generation(generation));
 
-    let (dirty_reason, dirty_result) = scheduler.run_until_exit(dirty_pid);
+    let (dirty_reason, dirty_result) = scheduler
+        .run_until_exit(dirty_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(dirty_reason, ExitReason::Normal);
     assert_eq!(dirty_result.root(), Term::small_int(42));
     assert!(dirty_finished_for_generation(generation));
@@ -265,7 +269,9 @@ fn dirty_nif_error_resumes_and_raises_exception() {
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (reason, _result) = scheduler.run_until_exit(pid);
+    let (reason, _result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Error);
     let exception = scheduler
         .take_exit_exception(pid)
@@ -386,13 +392,17 @@ fn spawn_link_dirty_dispatch_is_per_entry_on_the_linked_path() {
         .spawn_link(parent_pid, child_module_name, child_entry, Vec::new())
         .expect("linked spawn succeeds");
 
-    let (child_reason, _child_value) = scheduler.run_until_exit(child_pid);
+    let (child_reason, _child_value) = scheduler
+        .run_until_exit(child_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(
         child_reason,
         ExitReason::Error,
         "the child's dirty badarg raises and kills it"
     );
-    let (parent_reason, _parent_value) = scheduler.run_until_exit(parent_pid);
+    let (parent_reason, _parent_value) = scheduler
+        .run_until_exit(parent_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(
         parent_reason,
         ExitReason::Error,
@@ -483,7 +493,9 @@ fn disabled_dirty_cpu_pool_refuses_call_and_lets_peers_progress() {
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (dirty_reason, _dirty_result) = scheduler.run_until_exit(dirty_pid);
+    let (dirty_reason, _dirty_result) = scheduler
+        .run_until_exit(dirty_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(dirty_reason, ExitReason::Error);
     assert_eq!(
         scheduler.take_exit_error(dirty_pid),
@@ -516,7 +528,9 @@ fn disabled_dirty_cpu_pool_refuses_call_and_lets_peers_progress() {
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (normal_reason, normal_result) = scheduler.run_until_exit(normal_pid);
+    let (normal_reason, normal_result) = scheduler
+        .run_until_exit(normal_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(normal_reason, ExitReason::Normal);
     assert_eq!(normal_result.root(), Term::small_int(7));
     assert_eq!(DISABLED_PEER_PROGRESS.load(Ordering::Acquire), 1);

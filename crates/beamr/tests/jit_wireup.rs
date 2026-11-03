@@ -285,7 +285,9 @@ fn run_to_value(scheduler: &Scheduler, module: &Arc<Module>) -> Term {
         Ok(pid) => pid,
         Err(error) => panic!("scaffold spawn refused: {error}"),
     };
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal, "program must exit normally");
     result.root()
 }
@@ -1718,7 +1720,9 @@ fn run_countdown(scheduler: &Scheduler, module: Atom, run: Atom) -> Term {
     let pid = scheduler
         .spawn(module, run, Vec::new())
         .expect("spawn jit_countdown_loop:run/0");
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason, ExitReason::Normal, "run/0 must exit normally");
     result.root()
 }
@@ -1836,7 +1840,9 @@ fn no_fail_bif_badarith_deopts_to_interpreter_equal_exception() {
             .spawn(module, driver, vec![good])
             .expect("spawn driver/1");
         assert_eq!(
-            jit.run_until_exit(pid).0,
+            jit.run_until_exit(pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+                .0,
             ExitReason::Normal,
             "the good operand exits normally while f/1 heats"
         );
@@ -1854,7 +1860,10 @@ fn no_fail_bif_badarith_deopts_to_interpreter_equal_exception() {
     let jit_pid = jit
         .spawn(module, driver, vec![bad])
         .expect("spawn driver/1 with a badarith operand");
-    let jit_reason = jit.run_until_exit(jit_pid).0;
+    let jit_reason = jit
+        .run_until_exit(jit_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+        .0;
     let jit_error = jit.take_exit_error(jit_pid);
     jit.shutdown();
 
@@ -1867,7 +1876,10 @@ fn no_fail_bif_badarith_deopts_to_interpreter_equal_exception() {
     let minimal_pid = minimal
         .spawn(minimal_module, driver, vec![bad])
         .expect("spawn driver/1 (minimal)");
-    let minimal_reason = minimal.run_until_exit(minimal_pid).0;
+    let minimal_reason = minimal
+        .run_until_exit(minimal_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+        .0;
     let minimal_error = minimal.take_exit_error(minimal_pid);
     assert_zero_counters(
         minimal.jit_profiler().compile_outcome_counters(),

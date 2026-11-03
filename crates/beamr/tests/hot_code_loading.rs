@@ -188,8 +188,12 @@ fn new_processes_use_new_version_and_purge_after_old_process_exits() {
         .expect("spawn v2 process");
 
     assert!(scheduler.check_old_code(counter));
-    let (reason1, result1) = scheduler.run_until_exit(p1);
-    let (reason2, result2) = scheduler.run_until_exit(p2);
+    let (reason1, result1) = scheduler
+        .run_until_exit(p1)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
+    let (reason2, result2) = scheduler
+        .run_until_exit(p2)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason1, ExitReason::Normal);
     assert_eq!(reason2, ExitReason::Normal);
     assert_eq!(result1.root(), Term::small_int(1));
@@ -216,7 +220,9 @@ fn on_load_success_commits_and_failure_rolls_back() {
     let p1 = scheduler
         .spawn(module, version, Vec::new())
         .expect("spawn committed on_load module");
-    let (reason1, result1) = scheduler.run_until_exit(p1);
+    let (reason1, result1) = scheduler
+        .run_until_exit(p1)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason1, ExitReason::Normal);
     assert_eq!(result1.root(), Term::small_int(1));
 
@@ -229,7 +235,9 @@ fn on_load_success_commits_and_failure_rolls_back() {
     let p2 = scheduler
         .spawn(module, version, Vec::new())
         .expect("spawn retained previous module");
-    let (reason2, result2) = scheduler.run_until_exit(p2);
+    let (reason2, result2) = scheduler
+        .run_until_exit(p2)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(reason2, ExitReason::Normal);
     assert_eq!(result2.root(), Term::small_int(1));
     scheduler.shutdown();
@@ -255,8 +263,12 @@ fn closure_fixtures_hot_load_and_versions_are_tracked() {
         .spawn(module, version, Vec::new())
         .expect("spawn closure v2");
 
-    let (_reason1, result1) = scheduler.run_until_exit(p1);
-    let (_reason2, result2) = scheduler.run_until_exit(p2);
+    let (_reason1, result1) = scheduler
+        .run_until_exit(p1)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
+    let (_reason2, result2) = scheduler
+        .run_until_exit(p2)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(result1.root(), Term::small_int(1));
     assert_eq!(result2.root(), Term::small_int(2));
     scheduler.force_purge_module(module).expect("force purge");

@@ -67,7 +67,11 @@ fn run_with_watchdog(
     let (sender, receiver) = std::sync::mpsc::channel();
     let scheduler_for_wait = Arc::clone(scheduler);
     std::thread::spawn(move || {
-        let _ignored_if_watchdog_fired = sender.send(scheduler_for_wait.run_until_exit(pid));
+        let _ignored_if_watchdog_fired = sender.send(
+            scheduler_for_wait
+                .run_until_exit(pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}")),
+        );
     });
     receiver
         .recv_timeout(Duration::from_secs(30))

@@ -85,7 +85,9 @@ fn sample_workflow_run_completes_end_to_end() {
             vec![path_arg, output_arg],
         )
         .expect("spawn sample_workflow:run/2");
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_error = scheduler.take_exit_error(pid);
     let exit_exception = scheduler.take_exit_exception(pid);
     scheduler.shutdown();

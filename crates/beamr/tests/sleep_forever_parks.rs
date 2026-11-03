@@ -147,7 +147,11 @@ fn run_until_exit_bounded(
     let (sender, completion) = std::sync::mpsc::channel();
     let scheduler_for_wait = Arc::clone(scheduler);
     std::thread::spawn(move || {
-        let _sent = sender.send(scheduler_for_wait.run_until_exit(pid));
+        let _sent = sender.send(
+            scheduler_for_wait
+                .run_until_exit(pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}")),
+        );
     });
     completion
         .recv_timeout(PARK_TIMEOUT)

@@ -221,7 +221,9 @@ fn deopt_after_send_is_interpreter_equal() {
             .spawn(name, driver, vec![sink_term])
             .expect("spawn driver (heat)");
         assert_eq!(
-            jit.run_until_exit(pid).0,
+            jit.run_until_exit(pid)
+                .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+                .0,
             ExitReason::Normal,
             "pre-compile drive exits normally (interpreter runs Send + RecvMarkerReserve)"
         );
@@ -244,7 +246,10 @@ fn deopt_after_send_is_interpreter_equal() {
     let drive_pid = jit
         .spawn(name, driver, vec![sink_term])
         .expect("spawn driver (deopt drive)");
-    let jit_reason = jit.run_until_exit(drive_pid).0;
+    let jit_reason = jit
+        .run_until_exit(drive_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+        .0;
     let jit_error = jit.take_exit_error(drive_pid);
     jit.shutdown();
 
@@ -266,7 +271,10 @@ fn deopt_after_send_is_interpreter_equal() {
     let minimal_pid = minimal
         .spawn(name, driver, vec![msink_term])
         .expect("spawn driver (minimal)");
-    let minimal_reason = minimal.run_until_exit(minimal_pid).0;
+    let minimal_reason = minimal
+        .run_until_exit(minimal_pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+        .0;
     let minimal_error = minimal.take_exit_error(minimal_pid);
     minimal.shutdown();
 

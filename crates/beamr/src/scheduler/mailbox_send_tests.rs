@@ -153,7 +153,13 @@ fn typed_tagged_tuple_round_trips_by_content() {
         await_observed(&observed),
         vec![Observed::Tagged(command, 41)]
     );
-    assert_eq!(scheduler.run_until_exit(pid).0, ExitReason::Normal);
+    assert_eq!(
+        scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+            .0,
+        ExitReason::Normal
+    );
     scheduler.shutdown();
 }
 
@@ -169,7 +175,13 @@ fn waiting_process_is_woken_exactly_once() {
         .unwrap_or_else(|error| panic!("typed send succeeds: {error}"));
 
     assert_eq!(await_observed(&observed), vec![Observed::Atom(marker)]);
-    assert_eq!(scheduler.run_until_exit(pid).0, ExitReason::Normal);
+    assert_eq!(
+        scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+            .0,
+        ExitReason::Normal
+    );
     assert_eq!(
         invocations.load(Ordering::SeqCst),
         2,
@@ -250,7 +262,13 @@ fn delivery_during_long_running_slice_lands_on_next_receive() {
             .unwrap_or_else(|error| panic!("next receive did not complete: {error}")),
         Observed::Atom(marker)
     );
-    assert_eq!(scheduler.run_until_exit(pid).0, ExitReason::Normal);
+    assert_eq!(
+        scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+            .0,
+        ExitReason::Normal
+    );
     scheduler.shutdown();
 }
 
@@ -268,7 +286,13 @@ fn dead_pid_returns_typed_failure() {
             Box::new(Stop)
         }))
         .unwrap_or_else(|error| panic!("spawn stopping process: {error}"));
-    assert_eq!(scheduler.run_until_exit(pid).0, ExitReason::Normal);
+    assert_eq!(
+        scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+            .0,
+        ExitReason::Normal
+    );
 
     assert_eq!(
         scheduler.send_to_mailbox(pid, owned_immediate(Term::NIL)),
@@ -304,7 +328,13 @@ fn fifo_interleaving_with_atom_send_is_preserved() {
             Observed::Atom(last),
         ]
     );
-    assert_eq!(scheduler.run_until_exit(pid).0, ExitReason::Normal);
+    assert_eq!(
+        scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+            .0,
+        ExitReason::Normal
+    );
     scheduler.shutdown();
 }
 
@@ -352,6 +382,12 @@ fn concurrent_senders_all_succeed_without_content_loss() {
             .map(|value| i64::try_from(value).expect("sender id fits"))
             .collect::<Vec<_>>()
     );
-    assert_eq!(scheduler.run_until_exit(pid).0, ExitReason::Normal);
+    assert_eq!(
+        scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"))
+            .0,
+        ExitReason::Normal
+    );
     scheduler.shutdown();
 }

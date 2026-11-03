@@ -70,14 +70,18 @@ fn monitor_then_receive_down_matches_on_bound_ref() {
     let target = scheduler
         .spawn(probe, atom_table.intern("target"), Vec::new())
         .expect("spawn monitor_down_probe:target/0");
-    let (target_reason, _target_result) = scheduler.run_until_exit(target);
+    let (target_reason, _target_result) = scheduler
+        .run_until_exit(target)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     assert_eq!(target_reason, ExitReason::Normal, "target exits normally");
 
     // The watcher: monitor(process, DeadTarget), then receive the bound DOWN.
     let watcher = scheduler
         .spawn(probe, atom_table.intern("watch"), vec![Term::pid(target)])
         .expect("spawn monitor_down_probe:watch/1");
-    let (watcher_reason, watcher_result) = scheduler.run_until_exit(watcher);
+    let (watcher_reason, watcher_result) = scheduler
+        .run_until_exit(watcher)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_error = scheduler.take_exit_error(watcher);
     let exit_exception = scheduler.take_exit_exception(watcher);
     scheduler.shutdown();

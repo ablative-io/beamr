@@ -148,7 +148,9 @@ fn empty_registry_refusal_names_the_mfa_and_deferred_resolution() {
     let pid = spawn_probe(&scheduler, &atoms);
     // The `bump` message drives the `Observed + 1` gc_bif clause.
     send_int(&scheduler, pid, 7);
-    let (reason, _result) = scheduler.run_until_exit(pid);
+    let (reason, _result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_error = scheduler.take_exit_error(pid);
     scheduler.shutdown();
 
@@ -206,7 +208,9 @@ fn diverged_registries_refusal_does_not_accuse_the_runtime_registry() {
 
     let pid = spawn_probe(&scheduler, &atoms);
     send_int(&scheduler, pid, 7);
-    let (reason, _result) = scheduler.run_until_exit(pid);
+    let (reason, _result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_error = scheduler.take_exit_error(pid);
     scheduler.shutdown();
 
@@ -273,7 +277,9 @@ fn populated_registry_runs_the_arithmetic_clean() {
     send_int(&scheduler, pid, 7);
     send_int(&scheduler, pid, 7);
     send_int(&scheduler, pid, 2);
-    let (reason, result) = scheduler.run_until_exit(pid);
+    let (reason, result) = scheduler
+        .run_until_exit(pid)
+        .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
     let exit_error = scheduler.take_exit_error(pid);
     scheduler.shutdown();
 

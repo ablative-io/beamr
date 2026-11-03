@@ -536,7 +536,9 @@ fn run_arm_with(
         let pid = scheduler
             .spawn(names.module, names.driver, vec![Term::small_int(HEAT_TAG)])
             .expect("spawn heat drive");
-        let (reason, _value) = scheduler.run_until_exit(pid);
+        let (reason, _value) = scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
         assert_eq!(
             reason,
             ExitReason::Normal,
@@ -609,7 +611,9 @@ fn run_arm_with(
 
     let (sender, receiver) = mpsc::channel();
     let waiter = std::thread::spawn(move || {
-        let (reason, value) = scheduler.run_until_exit(pid);
+        let (reason, value) = scheduler
+            .run_until_exit(pid)
+            .unwrap_or_else(|failure| panic!("scheduler failed: {failure}"));
         let error = scheduler.take_exit_error(pid).map(|e| e.to_string());
         let _ = sender.send((reason, value.root(), error));
         scheduler.shutdown();
