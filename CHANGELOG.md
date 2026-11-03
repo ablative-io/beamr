@@ -213,6 +213,13 @@ between slices); and a worker entering its slice with work still queued and
 another worker idle wakes that worker (EMBEDDER-COMPOSITION-SPEC §3.8.2 C5).
 A steal from two or more queued is unchanged.
 
+### Changed (breaking) — `beamr-cli` 0.9.0 and `beamr-wasm` 0.12.0 move with this cut
+
+Both pin `beamr` by version, and a `0.21` requirement cannot resolve `0.22.0`:
+each `0.x` minor is a semver major, so the pins move together or not at all.
+`beamr-cli` was 0.8.0 and `beamr-wasm` 0.11.1, and both versions are already on
+crates.io, so each takes a new minor. `gleam-types` is untouched at 0.5.0.
+
 ### Changed (breaking) — a worker's death is handled in three tiers and reported, never silent (B-184)
 
 A scheduler worker whose thread ends by a panic (or whose loop returns before

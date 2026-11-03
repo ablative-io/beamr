@@ -596,9 +596,7 @@ fn completion_watch_waits_for_table_removal_and_preserves_outcome() {
     let subscription = scheduler
         .subscribe_exit_events()
         .expect("first subscription");
-    let pid = scheduler
-        .spawn_native(Box::new(|| Box::new(WaitForTermination)))
-        .expect("spawn");
+    let pid = spawn_parked_and_settled(&scheduler);
     let before = match scheduler.watch_exit_completion(pid) {
         ExitCompletionWatchState::Live(watch) => watch,
         other => panic!("expected live completion watch: {other:?}"),
@@ -723,6 +721,26 @@ impl NativeHandler for CompletionParked {
         self.ready.send(()).expect("receiver owns readiness");
         NativeOutcome::Wait
     }
+}
+
+/// Spawn a native that parks in `Wait`, and return only once its first slice
+/// has stored its body back and the one worker has parked again. Before this,
+/// a test that terminates the process could race the worker's own first
+/// slice: the worker sees the tombstone the terminator has just inserted and
+/// finalizes the process itself, removing it from the table while the
+/// terminator is still held at the publication gate (B-184 lead amendment C).
+fn spawn_parked_and_settled(scheduler: &Scheduler) -> u64 {
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let pid = scheduler
+        .spawn_native(Box::new(move || {
+            Box::new(CompletionParked {
+                ready: ready_tx.clone(),
+            })
+        }))
+        .expect("spawn");
+    ready_rx.recv().expect("process reaches its wait");
+    scheduler.await_all_parked();
+    pid
 }
 
 #[test]
@@ -857,9 +875,7 @@ fn completion_probe_rejects_early_exit_record() {
     let subscription = scheduler
         .subscribe_exit_events()
         .expect("first subscription");
-    let pid = scheduler
-        .spawn_native(Box::new(|| Box::new(WaitForTermination)))
-        .expect("spawn");
+    let pid = spawn_parked_and_settled(&scheduler);
     let observer = scheduler
         .shared
         .exit_tombstones

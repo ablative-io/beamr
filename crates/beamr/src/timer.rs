@@ -111,8 +111,8 @@ pub struct TimerWheel {
     arm_notifier: Option<ArmNotifier>,
 }
 
-impl std::fmt::Debug for TimerWheel {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for TimerWheel {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut debug = formatter.debug_struct("TimerWheel");
         debug
             .field("buckets", &self.buckets)
