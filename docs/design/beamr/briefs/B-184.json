@@ -8,7 +8,8 @@
     "C232",
     "C233",
     "C234",
-    "C235"
+    "C235",
+    "C236"
   ],
   "stories": [
     "S47"
@@ -121,10 +122,40 @@
       "stories": [
         "S47"
       ]
+    },
+    {
+      "id": "R5",
+      "title": "A dead worker is recovered where its state can be accounted for, and every death is reported",
+      "spec": "Behavioural, red first. Lead amendment A (Apollo's draft, landed by Artemis as beamr lead on 4 November 2026, decided by Waffles on Tom's word at 01:1x, \"can you run things through, I'm too busy\" and \"make it work\", answering his own question at 00:21: \"the whole point of beamr is that when something crashes it's able to deal with that, so why can't we deal with that?\"). It replaces the first boundary and adds this requirement. R1, R3 and R4 stand; R2 stands, its latch kept for the third tier. Recovery follows BEAM's supervision: a process that crashes is restarted by its supervisor, and the VM stops only when its own state cannot be trusted. A scheduler worker is part of the VM, so beamr restarts it only where it can show the worker left nothing half-done. R2's guard SHALL record where the worker was when it died: parked (in its park, holding no process), running a named pid, or anywhere else. After the death the recovery SHALL check every scheduler-shared mutex for poison before deciding the tier, and print what it checked and what it found. Tier 1: a worker that died parked SHALL be restarted. The park takes the wait_set guard, changes nothing in the WaitSet, and waits, so a panic there leaves wait_set poisoned with no change of its own half-made. Poison is no proof (Waffles' condition): before the restarted worker takes any queue, the recovery SHALL check the WaitSet's invariants (every waiting pid names a live process in a waiting or suspended state; every woken entry names a live pid), clear the poison only if they hold, and print the figure, entries checked and violations found; if the check cannot be made or fails, the death is tier 3. It SHALL undo what the dead worker left behind (its parked census entry, its idle ticket and its note_wait), and the restarted worker SHALL run on the same index with the same local queue, through its stealer, and the same inject queue. Tier 2: a worker that died running a process SHALL kill that process through the ordinary exit path with a named reason carrying the worker's name and the panic message, so its links and monitors are told and its supervisor restarts it, and the worker SHALL restart as in tier 1. This applies only when no shared mutex other than that process's own slot is poisoned and the WaitSet check passes; otherwise the death is tier 3. Tier 3: anything else SHALL latch R2's permanent failure, and R3 ends every wait. That is a worker that died anywhere but parked or running a process, a poisoned shared mutex the recovery cannot prove consistent, and a restarted worker that dies again before it has run one process slice. No count and no timer decide this; the event does. Nothing is silent. Every death, of every tier, SHALL be reported to the embedder through a callback registered by Scheduler::on_worker_death, taking an Fn(&WorkerDeath) that is Send, Sync and 'static, run on the dying worker's thread for each death, carrying the worker's name, where it was, the panic message, the tier, the pid crashed (tier 2) and the poison check's figure; Scheduler::worker_deaths SHALL return the count. Scheduler::on_failure (R2, lead amendment B) still runs once, only when a tier-3 death latches the failure. A recovery that looks like normal running is the defect this brief exists to remove, so a restart is reported exactly as loudly as a stop.",
+      "acceptance": [
+        "Red first: the R2 seam panics one worker in its park. With the code, the worker restarts on the same index, a process spawned afterwards runs to exit, processes already on the dead worker's local and inject queues run, and on_worker_death reports tier 1 with the WaitSet figure printed.",
+        "Red first: the slice seam panics a worker while it runs a named pid. With the code, that pid exits with the named reason, a monitor on it receives the down message carrying that reason, the worker restarts, the scheduler goes on running the other processes, and on_worker_death reports tier 2 naming the pid.",
+        "Red first: with a second shared mutex poisoned by a seam before the park panic, the death latches R2's failure (tier 3), on_failure runs once, and shutdown completes as R3 has it.",
+        "Red first: a restarted worker made to die again before running a slice latches tier 3.",
+        "Every wait in these tests ends on an event (a watch, a down message, a callback), never a sleep or timer.",
+        "Drift injections, each quoted in the handback: the WaitSet check removed, so a seeded violation is restarted through and the test fails; the poison check removed, so the tier-3 case restarts and the test fails."
+      ],
+      "files": {
+        "create": [],
+        "modify": [
+          "crates/beamr/src/scheduler/failure.rs",
+          "crates/beamr/src/scheduler/failure_tests.rs",
+          "crates/beamr/src/scheduler/mod.rs",
+          "crates/beamr/src/scheduler/execution.rs",
+          "crates/beamr/src/scheduler/execution/park.rs"
+        ],
+        "delete": []
+      },
+      "checklist": [
+        "C236"
+      ],
+      "stories": [
+        "S47"
+      ]
     }
   ],
   "boundaries": [
-    "SHALL NOT restart a dead worker. Its local queue, its inject queue and any process it held cannot be accounted for after a panic, and a restarted worker would run on state recovered from a poisoned lock.",
+    "SHALL NOT restart a dead worker except as R5 has it (lead amendment A): only a worker that died parked, after the wait set is proved consistent with a printed figure, or one that died running a process, after that process is killed as a crash. Every other death, any unproven poison, and a second death before a slice latch R2's failure.",
     "SHALL NOT abort the host process from beamr. The failure goes to the embedder, who decides how its process ends.",
     "SHALL NOT end any wait by a timer or a fixed sleep, in code or in tests.",
     "SHALL NOT add unsafe code, or a dependency without its licence and the reason in Cargo.toml.",
