@@ -1305,6 +1305,21 @@
           "done": false
         }
       ]
+    },
+    {
+      "name": "Work behind a busy owner (B-185)",
+      "items": [
+        {
+          "id": "C237",
+          "text": "A process queued behind an owner that is running a slice is stolen by an idle worker, so an idle worker never waits beside work stranded behind a busy one (B-185 R1).",
+          "done": false
+        },
+        {
+          "id": "C238",
+          "text": "The steal rule and the busy-owner edge are written into the composition spec's conditions, and the CHANGELOG says what changed (B-185 R2).",
+          "done": false
+        }
+      ]
     }
   ]
 }
