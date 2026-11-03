@@ -19,11 +19,13 @@
 //! ```text
 //! cargo run --release --example park_error_probe -- \
 //!     [--mode timed|untimed] [--count N] [--waiters 15] [--notifiers 2] [--timeout-ms 5] \
-//!     [--notify all|one|mixed]
+//!     [--notify all|one|mixed] [--notify-lock held|released|mixed] \
+//!     [--outside-waiters 0] [--outside-timeout-ms 10]
 //! ```
 //!
 //! Defaults: `--mode timed --count 100000000 --waiters 15 --notifiers 2
-//! --timeout-ms 5 --notify all`. Scale `--count` by the printed waits per second: the 30
+//! --timeout-ms 5 --notify all --notify-lock held --outside-waiters 0
+//! --outside-timeout-ms 10`. Scale `--count` by the printed waits per second: the 30
 //! October liminal run made at most about 1.1e9 timed waits (15 workers,
 //! 200 parks a second, about 369,500 s).
 //!
@@ -40,6 +42,17 @@
 //! starts and as it ends, so a run on a loaded machine says how loaded, and
 //! counts the timed waits that returned on their timeout. `--notify all`
 //! (the default) is the shape of the first two runs.
+//!
+//! Widened again the same day by Artemis, relayed by Apollo, for the wakes
+//! beamr gives that the first shape did not: `--notify-lock released`
+//! notifies after dropping the mutex (beamr 0.21.1's spawn path and timer
+//! wakes, and main's supervision wakes, "W9: advance inside the critical
+//! section, notify after it"), `held` under it (the default), and `mixed`
+//! even-numbered notifiers under it and odd-numbered after it.
+//! `--outside-waiters N` adds N threads waiting on the same mutex and
+//! condvar for `--outside-timeout-ms` each time (default 10), as
+//! `run_until_exit` waits from a thread that is not a worker; their waits
+//! are counted apart from `--count`.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -73,6 +86,27 @@ impl Notify {
     }
 }
 
+/// Whether each notifier notifies holding the mutex or after dropping it.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum NotifyLock {
+    /// Under the mutex.
+    Held,
+    /// After dropping it.
+    Released,
+    /// Even-numbered notifiers under it, odd-numbered after it.
+    Mixed,
+}
+
+impl NotifyLock {
+    fn released_for(self, notifier: usize) -> bool {
+        match self {
+            Self::Held => false,
+            Self::Released => true,
+            Self::Mixed => notifier % 2 == 1,
+        }
+    }
+}
+
 struct Args {
     mode: Mode,
     count: u64,
@@ -80,6 +114,9 @@ struct Args {
     notifiers: usize,
     timeout: Duration,
     notify: Notify,
+    notify_lock: NotifyLock,
+    outside_waiters: usize,
+    outside_timeout: Duration,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -90,6 +127,9 @@ fn parse_args() -> Result<Args, String> {
         notifiers: 2,
         timeout: Duration::from_millis(5),
         notify: Notify::All,
+        notify_lock: NotifyLock::Held,
+        outside_waiters: 0,
+        outside_timeout: Duration::from_millis(10),
     };
     let mut given = std::env::args().skip(1);
     while let Some(flag) = given.next() {
@@ -125,6 +165,21 @@ fn parse_args() -> Result<Args, String> {
                     other => return Err(format!("--notify {other}: all, one or mixed")),
                 }
             }
+            "--notify-lock" => {
+                args.notify_lock = match value.as_str() {
+                    "held" => NotifyLock::Held,
+                    "released" => NotifyLock::Released,
+                    "mixed" => NotifyLock::Mixed,
+                    other => {
+                        return Err(format!("--notify-lock {other}: held, released or mixed"));
+                    }
+                }
+            }
+            "--outside-waiters" => {
+                args.outside_waiters =
+                    usize::try_from(number()?).map_err(|error| error.to_string())?;
+            }
+            "--outside-timeout-ms" => args.outside_timeout = Duration::from_millis(number()?),
             other => return Err(format!("unknown flag {other}")),
         }
     }
@@ -187,8 +242,8 @@ enum Event {
     Tenth(u64),
     /// The total reached the count.
     Reached,
-    /// A waiter's wait panicked, with the panic's text.
-    Panicked(usize, String),
+    /// A wait panicked, with the waiting thread's name and the panic's text.
+    Panicked(String, String),
 }
 
 struct Shared {
@@ -199,6 +254,16 @@ struct Shared {
     notifies: AtomicU64,
     /// Timed waits that returned on their timeout.
     timeouts: AtomicU64,
+    /// Waits made by the outside waiters, counted apart.
+    outside_waits: AtomicU64,
+}
+
+/// The name of the current thread, for a panic report.
+fn thread_name() -> String {
+    std::thread::current()
+        .name()
+        .unwrap_or("an unnamed thread")
+        .to_string()
 }
 
 fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
@@ -209,7 +274,7 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
         .unwrap_or_else(|| "a non-text panic payload".to_string())
 }
 
-fn waiter(shared: &Shared, args: &Args, index: usize, events: &mpsc::Sender<Event>) -> u64 {
+fn waiter(shared: &Shared, args: &Args, events: &mpsc::Sender<Event>) -> u64 {
     let tenth = (args.count / 10).max(1);
     let mut mine = 0u64;
     let waited = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -244,23 +309,54 @@ fn waiter(shared: &Shared, args: &Args, index: usize, events: &mpsc::Sender<Even
         }
     }));
     if let Err(payload) = waited {
-        let _sent = events.send(Event::Panicked(index, panic_text(payload.as_ref())));
+        let _sent = events.send(Event::Panicked(thread_name(), panic_text(payload.as_ref())));
     }
     mine
 }
 
-fn notifier(shared: &Shared, one: bool) {
-    while !shared.stop.load(Ordering::Acquire) {
-        let guard = shared
-            .lock
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+/// A `run_until_exit`-style waiter: a thread that is not a worker, waiting
+/// on the same mutex and condvar for `--outside-timeout-ms` at a time.
+fn outside_waiter(shared: &Shared, args: &Args, events: &mpsc::Sender<Event>) {
+    let waited = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        while !shared.stop.load(Ordering::Acquire) {
+            let guard = shared
+                .lock
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if shared.stop.load(Ordering::Acquire) {
+                break;
+            }
+            let _woken = shared.condvar.wait_timeout(guard, args.outside_timeout);
+            shared.outside_waits.fetch_add(1, Ordering::Relaxed);
+        }
+    }));
+    if let Err(payload) = waited {
+        let _sent = events.send(Event::Panicked(thread_name(), panic_text(payload.as_ref())));
+    }
+}
+
+fn notifier(shared: &Shared, one: bool, released: bool) {
+    let notify = || {
         if one {
             shared.condvar.notify_one();
         } else {
             shared.condvar.notify_all();
         }
-        drop(guard);
+    };
+    while !shared.stop.load(Ordering::Acquire) {
+        let mut guard = shared
+            .lock
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        // What beamr's wake edge advances inside its critical section.
+        *guard = guard.wrapping_add(1);
+        if released {
+            drop(guard);
+            notify();
+        } else {
+            notify();
+            drop(guard);
+        }
         shared.notifies.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -285,9 +381,31 @@ fn main() {
         std::env::consts::ARCH
     );
     println!(
-        "park_error_probe: mode {mode}, waiters {}, notifiers {} (notify {:?}), count {}",
-        args.waiters, args.notifiers, args.notify, args.count
+        "park_error_probe: mode {mode}, waiters {}, notifiers {} (notify {:?}, notify-lock \
+         {:?}), outside waiters {} ({:?} each), count {}",
+        args.waiters,
+        args.notifiers,
+        args.notify,
+        args.notify_lock,
+        args.outside_waiters,
+        args.outside_timeout,
+        args.count
     );
+    for index in 0..args.notifiers {
+        println!(
+            "park_error_probe: probe-notifier-{index} calls {} {} the mutex",
+            if args.notify.one_for(index) {
+                "notify_one"
+            } else {
+                "notify_all"
+            },
+            if args.notify_lock.released_for(index) {
+                "after dropping"
+            } else {
+                "holding"
+            }
+        );
+    }
     println!("park_error_probe: START {}", load_and_swap());
     let shared = Arc::new(Shared {
         lock: Mutex::new(0),
@@ -296,6 +414,7 @@ fn main() {
         waits: AtomicU64::new(0),
         notifies: AtomicU64::new(0),
         timeouts: AtomicU64::new(0),
+        outside_waits: AtomicU64::new(0),
     });
     let (events, ending) = mpsc::channel();
     let started = Instant::now();
@@ -306,8 +425,19 @@ fn main() {
             let events = events.clone();
             std::thread::Builder::new()
                 .name(format!("probe-waiter-{index}"))
-                .spawn(move || waiter(&shared, &args, index, &events))
+                .spawn(move || waiter(&shared, &args, &events))
                 .unwrap_or_else(|error| panic!("spawn waiter {index}: {error}"))
+        })
+        .collect();
+    let outside: Vec<_> = (0..args.outside_waiters)
+        .map(|index| {
+            let shared = Arc::clone(&shared);
+            let args = Arc::clone(&args);
+            let events = events.clone();
+            std::thread::Builder::new()
+                .name(format!("probe-outside-{index}"))
+                .spawn(move || outside_waiter(&shared, &args, &events))
+                .unwrap_or_else(|error| panic!("spawn outside waiter {index}: {error}"))
         })
         .collect();
     drop(events);
@@ -315,9 +445,10 @@ fn main() {
         .map(|index| {
             let shared = Arc::clone(&shared);
             let one = args.notify.one_for(index);
+            let released = args.notify_lock.released_for(index);
             std::thread::Builder::new()
                 .name(format!("probe-notifier-{index}"))
-                .spawn(move || notifier(&shared, one))
+                .spawn(move || notifier(&shared, one, released))
                 .unwrap_or_else(|error| panic!("spawn notifier {index}: {error}"))
         })
         .collect();
@@ -335,8 +466,8 @@ fn main() {
                 );
             }
             Event::Reached => break,
-            Event::Panicked(index, text) => {
-                panicked = Some((index, text));
+            Event::Panicked(thread, text) => {
+                panicked = Some((thread, text));
                 break;
             }
         }
@@ -352,6 +483,9 @@ fn main() {
     }
     for notifier in notifiers {
         let _joined = notifier.join();
+    }
+    for waiter in outside {
+        let _joined = waiter.join();
     }
     let per_waiter: Vec<u64> = waiters
         .into_iter()
@@ -373,10 +507,14 @@ fn main() {
         "park_error_probe: {timeouts} timed waits returned on their timeout ({:.4}% of waits)",
         timeouts as f64 * 100.0 / total.max(1) as f64
     );
+    println!(
+        "park_error_probe: outside waiters made {} waits",
+        shared.outside_waits.load(Ordering::Relaxed)
+    );
     println!("park_error_probe: END {}", load_and_swap());
     match panicked {
-        Some((index, text)) => {
-            println!("park_error_probe: PANICKED: probe-waiter-{index}: {text}");
+        Some((thread, text)) => {
+            println!("park_error_probe: PANICKED: {thread}: {text}");
             std::process::exit(1);
         }
         None => println!("park_error_probe: no panic"),
