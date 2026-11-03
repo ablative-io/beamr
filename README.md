@@ -4,7 +4,7 @@ A ground-up BEAM virtual machine written in Rust, targeting [Gleam](https://glea
 
 Built for [Meridian](https://github.com/ablative/yggdrasil) workflow execution, where Gleam's type system provides compile-time validation: if the workflow compiles, the types are correct.
 
-<!-- release: 0.21.1 -->
+<!-- release: 0.22.0 -->
 
 ## ⚠️ Security advisory (2026-09-03)
 
