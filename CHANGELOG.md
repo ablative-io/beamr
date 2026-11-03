@@ -178,7 +178,7 @@ until `0.18.1`. Its own text required that when the fix landed, the release
 carrying it would say so under "Fixed" and the paragraph be removed in the
 same commit. That is this commit — see the `0.18.1` entry.)*
 
-## Unreleased
+## 0.22.0 — 2026-11-04
 
 ### Changed (breaking) — idle workers no longer wake
 
@@ -200,7 +200,7 @@ floor they served (EMBEDDER-COMPOSITION-SPEC §3.8.3). The bound now signed is
 zero idle wakes with no armed timer and no IO in flight; one wake per
 deadline worker 0 reaches; one per cursor advance in replay.
 
-### Changed (breaking) — a scheduler worker that dies stops the scheduler loudly (B-184)
+### Changed (breaking) — a worker's death is handled in three tiers and reported, never silent (B-184)
 
 A scheduler worker whose thread ends by a panic (or whose loop returns before
 shutdown) no longer vanishes while the scheduler carries on with fewer
@@ -276,7 +276,7 @@ check of the wait set; no count and no timer decide it:
   error-class exit). A `match` over `ExitReason` with no wildcard arm needs
   the new arm.
 
-The idle park stays on std's `Condvar`; no change was made to it. The
+R4: the park is unchanged: the condvar panic did not reproduce outside liminal (3e8 waits on two venues); a worker that dies this way is restarted by tier 1 and reported. The idle park stays on std's `Condvar`; no change was made to it. The
 `examples/park_error_probe` program runs the park's shape (15 waiters on one
 mutex and condvar with 5 ms timed waits, notify_all and notify_one racing
 them, one under the mutex and one after it, plus an outside 10 ms waiter)
