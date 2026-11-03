@@ -43,20 +43,25 @@
     {
       "id": "R2",
       "title": "A worker that dies makes a permanent scheduler failure, raised the moment it dies",
-      "spec": "Behavioural, red first. The red, written and run before the code: a test-support seam makes one named worker panic at its next park. The test then observes three things at the base. Shutdown on another thread does not complete (the wedge in Hermes's sample, ended by the nextest profile's per-test terminate, which the handback names). A process spawned after the panic either runs or does not, and the handback says which, settling what stranded the Append. Nothing the embedder can read says a worker died. With the code: THE SYSTEM SHALL run every worker under a guard that observes its thread ending by a panic (a drop guard or catch_unwind at the top of the worker's thread, whichever beamr's lint table admits). When it does, the system SHALL latch a permanent failure holding the worker's name and the panic's message, set shutdown, and wake every parked worker and every waiter. The latch is never cleared and has no setting, as beamr-wasm's terminal latch is (crates/beamr-wasm/src/failure.rs, WPORT-7). The embedder SHALL be able to read the failure (Scheduler::failure, returning the latched value or none) and to register one callback that runs once when it latches. A worker that ends by any path other than shutdown SHALL latch the failure too.",
+      "spec": "Behavioural, red first. The red, written and run before the code: a test-support seam makes one named worker panic at its next park. The test then observes three things at the base. Shutdown on another thread does not complete (the wedge in Hermes's sample, ended by the nextest profile's per-test terminate, which the handback names). A process spawned after the panic either runs or does not, and the handback says which, settling what stranded the Append. Nothing the embedder can read says a worker died. With the code: THE SYSTEM SHALL run every worker under a guard that observes its thread ending by a panic (a drop guard or catch_unwind at the top of the worker's thread, whichever beamr's lint table admits). When it does, the system SHALL latch a permanent failure holding the worker's name and the panic's message, set shutdown, and wake every parked worker and every waiter. The latch is never cleared and has no setting, as beamr-wasm's terminal latch is (crates/beamr-wasm/src/failure.rs, WPORT-7). The embedder SHALL be able to read the failure (Scheduler::failure, returning the latched value or none) and to register one callback that runs once when it latches. A worker that ends by any path other than shutdown SHALL latch the failure too. Lead amendment B (Artemis, beamr lead, 4 November 2026, from Hermes's SRV-061 needs): the callback SHALL be registered by Scheduler::on_failure, taking an FnOnce(&SchedulerFailure) that is Send and 'static. It SHALL run exactly once, on the dying worker's own thread inside its guard, before the other workers and waiters are woken; registered after the latch, it SHALL run at once on the registering thread. The seam that makes a named worker panic at its next park SHALL be public behind a test-support cargo feature that is off by default, so an embedder's red runs the real panic, guard and latch.",
       "acceptance": [
         "The red's three observations at the base, quoted from its run, then the same test green at the final commit, with the latched worker name and message asserted by value.",
         "A test that panics two workers at once shows one latched failure, naming the first, and the callback run exactly once.",
-        "A drift injection: with the guard's latch call removed, the green test fails, quoted in the handback."
+        "A drift injection: with the guard's latch call removed, the green test fails, quoted in the handback.",
+        "A callback registered before the panic runs once on the dying worker's thread, and one registered after the latch runs at once on the registering thread, each observed by its own event (lead amendment B).",
+        "An integration test outside the crate, built with the test-support feature, panics a named worker through the public seam and reads the latched failure by value (lead amendment B)."
       ],
       "files": {
         "create": [
           "crates/beamr/src/scheduler/failure.rs",
-          "crates/beamr/src/scheduler/failure_tests.rs"
+          "crates/beamr/src/scheduler/failure_tests.rs",
+          "crates/beamr/tests/failure_seam.rs"
         ],
         "modify": [
           "crates/beamr/src/scheduler/mod.rs",
-          "crates/beamr/src/scheduler/execution.rs"
+          "crates/beamr/src/scheduler/execution.rs",
+          "crates/beamr/Cargo.toml",
+          "crates/beamr/src/lib.rs"
         ],
         "delete": []
       },
@@ -70,11 +75,13 @@
     {
       "id": "R3",
       "title": "After a failure, every wait ends with it and shutdown completes",
-      "spec": "Behavioural. After the failure latches, THE SYSTEM SHALL end every wait an embedder holds on the scheduler with the failure, never by a timeout. Scheduler::run_until_exit SHALL return the failure as an error, a breaking change released in beamr's next minor version. Exit and completion watches SHALL answer as B-179 amendment C has them answer at shutdown (AlreadyRemoved), so haematite's held writes end as it already handles that answer. Scheduler::shutdown SHALL return after a worker died: it joins every thread, takes every process left in the dead worker's local and inject queues, and finalizes it as shutdown finalizes the rest. No process SHALL stay unfinalized because the worker that held it is gone.",
+      "spec": "Behavioural. After the failure latches, THE SYSTEM SHALL end every wait an embedder holds on the scheduler with the failure, never by a timeout. Scheduler::run_until_exit SHALL return the failure as an error, a breaking change released in beamr's next minor version. Exit and completion watches SHALL answer as B-179 amendment C has them answer at shutdown (AlreadyRemoved), so haematite's held writes end as it already handles that answer. Scheduler::shutdown SHALL return after a worker died: it joins every thread, takes every process left in the dead worker's local and inject queues, and finalizes it as shutdown finalizes the rest. No process SHALL stay unfinalized because the worker that held it is gone. Lead amendment B (Artemis, 4 November 2026, with Waffles' condition): after the latch, shutdown and drop SHALL NOT wait on a worker that died or did not answer the wake. Whether a worker is waited on SHALL be decided by events, never by a join with a timeout: a worker whose death the latch has recorded, or whose thread has reported its own exit, is skipped, its handle detached, and its name given in shutdown's log line; every other worker is joined as before. The dead worker's queued processes are finalized as R3 has it either way.",
       "acceptance": [
         "With one worker panicked, a run_until_exit held on another thread returns the failure, and shutdown returns, each observed by its own completion event, never by a sleep.",
         "A process queued on the dead worker's local queue and one on its inject queue are both finalized by shutdown, asserted by their watches' answers.",
-        "The handback lists every public method that waits, from a search of the crate quoted in it, with the test that shows each one ending on the failure."
+        "The handback lists every public method that waits, from a search of the crate quoted in it, with the test that shows each one ending on the failure.",
+        "A worker held wedged by the test-support seam and a worker the latch has recorded dead do not hold up shutdown or drop: each returns, observed by its own completion event, and shutdown's log line names the skipped workers (lead amendment B).",
+        "A drift injection: with the latch's record no longer consulted, the held-wedged test does not complete within the nextest profile's terminate, quoted in the handback (lead amendment B)."
       ],
       "files": {
         "create": [],
