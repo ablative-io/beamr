@@ -359,3 +359,71 @@ fn reductions_decrement_saturate_and_reset() {
     assert_eq!(process.reduction_counter(), DEFAULT_REDUCTION_BUDGET);
     assert!(!process.reductions_exhausted());
 }
+
+fn references(process: &Process) -> Vec<u64> {
+    process
+        .monitors()
+        .iter()
+        .map(|monitor| monitor.reference())
+        .collect()
+}
+
+#[test]
+fn reconcile_monitors_keeps_held_order_drops_missing_and_appends_new() {
+    let mut process = Process::new(7, 233);
+    for reference in [1, 2, 3, 4] {
+        process.add_monitor(super::Monitor::new(reference, 7, 100 + reference));
+    }
+    let authoritative = [4, 5, 2, 6, 5].map(|reference| super::Monitor::new(reference, 7, 100 + reference));
+
+    process.reconcile_monitors(&authoritative);
+
+    assert_eq!(references(&process), vec![2, 4, 5, 6]);
+}
+
+#[test]
+fn reconcile_monitors_is_linear_for_a_watcher_of_many() {
+    // A watcher holding one monitor per watched process, as Liminal's channel
+    // supervisor does for every channel actor. The old merge was quadratic:
+    // 100k monitors meant 10^10 comparisons on every reschedule.
+    const WATCHED: u64 = 100_000;
+    let mut process = Process::new(7, 233);
+    for reference in 0..WATCHED {
+        process.add_monitor(super::Monitor::new(reference, 7, reference));
+    }
+    let authoritative: Vec<_> = (WATCHED / 2..WATCHED + WATCHED / 2)
+        .map(|reference| super::Monitor::new(reference, 7, reference))
+        .collect();
+
+    let started = std::time::Instant::now();
+    process.reconcile_monitors(&authoritative);
+    let took = started.elapsed();
+
+    assert_eq!(references(&process), (WATCHED / 2..WATCHED + WATCHED / 2).collect::<Vec<_>>());
+    assert!(took < std::time::Duration::from_secs(2), "reconciling {WATCHED} monitors took {took:?}");
+}
+
+#[test]
+fn add_links_matches_add_link_one_at_a_time() {
+    let mut process = Process::new(7, 233);
+    assert!(process.add_link(11));
+    process.add_links(&[13, 7, 11, 17, 13]);
+    assert_eq!(process.links(), &[11, 13, 17]);
+}
+
+#[test]
+fn reconcile_remote_links_keeps_held_order_drops_missing_and_appends_new() {
+    let remote = |pid_number| super::RemotePid {
+        node: Atom::LINE,
+        pid_number,
+        serial: 0,
+    };
+    let mut process = Process::new(7, 233);
+    for pid_number in [1, 2, 3] {
+        process.add_remote_link(remote(pid_number));
+    }
+
+    process.reconcile_remote_links(&[remote(3), remote(4), remote(1), remote(4)]);
+
+    assert_eq!(process.remote_links(), &[remote(1), remote(3), remote(4)]);
+}

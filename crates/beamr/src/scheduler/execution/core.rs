@@ -355,9 +355,7 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
             process.set_group_leader(metadata.group_leader);
             process.set_logical_clock(metadata.logical_clock);
             process.set_capabilities(metadata.capabilities.clone());
-            for linked_pid in &metadata.links {
-                process.add_link(*linked_pid);
-            }
+            process.add_links(&metadata.links);
             // Remote links: metadata is authoritative in BOTH directions.
             // While the slot is Executing every remote-link mutation — the
             // caller's own link/unlink BIFs, inbound wire LINK/UNLINK/EXIT,
@@ -366,32 +364,12 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
             // never touched), so an add-only merge would resurrect entries
             // the DC-4 exactly-once gate already consumed, double-firing the
             // exit signal on the next connection down and undoing unlink/1.
-            for remote_link in process.remote_links().to_vec() {
-                if !metadata.remote_links.contains(&remote_link) {
-                    process.remove_remote_link(remote_link);
-                }
-            }
-            for remote_link in &metadata.remote_links {
-                process.add_remote_link(*remote_link);
-            }
-            for monitor in process.monitors().to_vec() {
-                if !metadata
-                    .monitors
-                    .iter()
-                    .any(|metadata_monitor| metadata_monitor.reference() == monitor.reference())
-                {
-                    process.remove_monitor(monitor.reference());
-                }
-            }
-            for monitor in &metadata.monitors {
-                if !process
-                    .monitors()
-                    .iter()
-                    .any(|process_monitor| process_monitor.reference() == monitor.reference())
-                {
-                    process.add_monitor(*monitor);
-                }
-            }
+            process.reconcile_remote_links(&metadata.remote_links);
+            // Monitors: metadata is authoritative the same way. Reconciled in
+            // linear time, because a watcher holding one monitor per watched
+            // process (Liminal's channel supervisor watches every channel
+            // actor) runs through here on every reschedule.
+            process.reconcile_monitors(&metadata.monitors);
             for (source, reason) in metadata.pending_exit_messages.drain(..) {
                 match source {
                     crate::scheduler::process_slot::PendingExitSource::Local(source_pid) => {

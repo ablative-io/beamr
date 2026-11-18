@@ -22,6 +22,7 @@ pub use types::*;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -1239,6 +1240,17 @@ impl Process {
         true
     }
 
+    /// Add every pid in `pids` as a link, exactly as [`Self::add_link`] would
+    /// one at a time, in time linear in both lists rather than their product.
+    pub(crate) fn add_links(&mut self, pids: &[u64]) {
+        let mut held: HashSet<u64> = self.links.iter().copied().collect();
+        for &pid in pids {
+            if pid != self.pid && held.insert(pid) {
+                self.links.push(pid);
+            }
+        }
+    }
+
     /// Remove a linked process id. Returns whether the ordered set changed.
     pub fn remove_link(&mut self, pid: u64) -> bool {
         let before = self.links.len();
@@ -1269,6 +1281,22 @@ impl Process {
         true
     }
 
+    /// Make this process's remote links exactly the set in `authoritative`:
+    /// those it holds and `authoritative` lacks are dropped, keeping the order
+    /// of the rest, and those it lacks are appended in `authoritative`'s
+    /// order. Linear in both lists, where per-entry removes and adds were
+    /// their product.
+    pub(crate) fn reconcile_remote_links(&mut self, authoritative: &[RemotePid]) {
+        let keep: HashSet<RemotePid> = authoritative.iter().copied().collect();
+        self.remote_links.retain(|linked| keep.contains(linked));
+        let mut held: HashSet<RemotePid> = self.remote_links.iter().copied().collect();
+        for &pid in authoritative {
+            if held.insert(pid) {
+                self.remote_links.push(pid);
+            }
+        }
+    }
+
     /// Remove a linked remote process id. Returns whether the ordered set changed.
     pub fn remove_remote_link(&mut self, pid: RemotePid) -> bool {
         let before = self.remote_links.len();
@@ -1290,6 +1318,29 @@ impl Process {
     /// Add monitor metadata owned by or targeting this process.
     pub fn add_monitor(&mut self, monitor: Monitor) {
         self.monitors.push(monitor);
+    }
+
+    /// Make this process's monitors exactly those in `authoritative`, matched
+    /// by reference: those it holds and `authoritative` lacks are dropped,
+    /// keeping the order of the rest, and those it lacks are appended in
+    /// `authoritative`'s order. Linear in both lists. A process that watches
+    /// many others (one monitor per watched process) is reconciled every time
+    /// it is stored back after running, so a product here grows with the
+    /// square of what it watches and starves its scheduler.
+    pub(crate) fn reconcile_monitors(&mut self, authoritative: &[Monitor]) {
+        let keep: HashSet<u64> = authoritative.iter().map(|monitor| monitor.reference()).collect();
+        self.monitors
+            .retain(|monitor| keep.contains(&monitor.reference()));
+        let mut held: HashSet<u64> = self
+            .monitors
+            .iter()
+            .map(|monitor| monitor.reference())
+            .collect();
+        for &monitor in authoritative {
+            if held.insert(monitor.reference()) {
+                self.monitors.push(monitor);
+            }
+        }
     }
 
     /// Remove monitor metadata by reference. Returns removed metadata.
