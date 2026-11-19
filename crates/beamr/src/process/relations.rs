@@ -15,8 +15,6 @@
 // the same lists in B-trees: logarithmic rather than constant, still never a
 // scan. Guarded as `process/mod.rs` guards its own `alloc` import, because
 // lib.rs's `extern crate alloc` is itself conditional.
-#[cfg(feature = "std")]
-use Arc;
 #[cfg(not(feature = "std"))]
 use alloc::collections::{BTreeMap as Map, BTreeSet as Set};
 #[cfg(not(feature = "std"))]
@@ -25,6 +23,8 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 #[cfg(feature = "std")]
 use std::collections::{HashMap as Map, HashSet as Set};
+#[cfg(feature = "std")]
+use std::sync::Arc;
 
 use core::hash::Hash;
 
