@@ -564,12 +564,21 @@ impl Heap {
         threshold: f64,
     ) -> usize {
         let minimum = live_words.max(self.initial_capacity);
-        let target = fibonacci_capacity_for(minimum);
+        // Room after the copy: a third more than the live data, so old space
+        // grows geometrically. Sized to the live data alone, it came out full:
+        // every minor collection after it failed to promote and fell through
+        // to another major one, copying the whole heap each time. A process
+        // taking messages it had not read yet (a watcher's DOWNs) then cost
+        // the square of its mailbox.
+        let roomy = live_words
+            .saturating_add(live_words / 3)
+            .max(self.initial_capacity);
+        let target = fibonacci_capacity_for(roomy);
         let utilization = live_words as f64 / self.old_capacity() as f64;
         if utilization < threshold && self.old_capacity() > self.initial_capacity {
             target.min(self.old_capacity()).max(minimum)
         } else {
-            self.old_capacity().max(minimum)
+            self.old_capacity().max(target)
         }
     }
 
@@ -850,5 +859,19 @@ mod tests {
 
         assert_eq!(target, DEFAULT_HEAP_SIZE);
         assert_eq!(heap.old_capacity(), 987);
+    }
+
+    #[test]
+    fn old_space_after_a_major_collection_leaves_a_third_free() {
+        // Full after the copy, the next promotion fails and forces another
+        // major collection; a mailbox filling up then costs its square.
+        let heap = Heap::new(DEFAULT_HEAP_SIZE);
+        for live in [1_000, 10_000, 100_000] {
+            let capacity = heap.compacted_old_capacity_after_major(live, 0.25);
+            assert!(
+                capacity >= live + live / 3,
+                "{live} live words got old space of {capacity}"
+            );
+        }
     }
 }
