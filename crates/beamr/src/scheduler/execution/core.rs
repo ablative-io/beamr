@@ -317,9 +317,7 @@ pub(in crate::scheduler) fn take_runnable_process(
             let metadata = ProcessMetadata {
                 namespace_id: process.namespace_id(),
                 capabilities: process.capabilities().clone(),
-                links: process.links().to_vec(),
-                remote_links: process.remote_links().to_vec(),
-                monitors: process.monitors().to_vec(),
+                relations: process.shared_relations(),
                 trap_exit: process.trap_exit(),
                 priority: process.priority(),
                 current_mfa: process.current_mfa(),
@@ -355,21 +353,15 @@ pub(in crate::scheduler) fn store_runnable_process(shared: &SharedState, mut pro
             process.set_group_leader(metadata.group_leader);
             process.set_logical_clock(metadata.logical_clock);
             process.set_capabilities(metadata.capabilities.clone());
-            process.add_links(&metadata.links);
-            // Remote links: metadata is authoritative in BOTH directions.
-            // While the slot is Executing every remote-link mutation — the
-            // caller's own link/unlink BIFs, inbound wire LINK/UNLINK/EXIT,
-            // and the noconnection backstop — lands on
-            // `metadata.remote_links` (the checked-out `Process` copy is
-            // never touched), so an add-only merge would resurrect entries
-            // the DC-4 exactly-once gate already consumed, double-firing the
-            // exit signal on the next connection down and undoing unlink/1.
-            process.reconcile_remote_links(&metadata.remote_links);
-            // Monitors: metadata is authoritative the same way. Reconciled in
-            // linear time, because a watcher holding one monitor per watched
-            // process (Liminal's channel supervisor watches every channel
-            // actor) runs through here on every reschedule.
-            process.reconcile_monitors(&metadata.monitors);
+            // While the slot is Executing every remote-link and monitor
+            // mutation lands on the slot's lists (the checked-out `Process`
+            // copy is never touched), so they are taken back whole: merging
+            // add-only would resurrect entries the DC-4 exactly-once gate
+            // already consumed, double-firing the exit signal on the next
+            // connection down and undoing unlink/1. Taking them back is a
+            // pointer move, not a merge, so a process that watches many
+            // others costs nothing extra each time it runs.
+            process.restore_relations(std::mem::take(&mut metadata.relations));
             for (source, reason) in metadata.pending_exit_messages.drain(..) {
                 match source {
                     crate::scheduler::process_slot::PendingExitSource::Local(source_pid) => {

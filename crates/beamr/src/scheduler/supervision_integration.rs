@@ -250,7 +250,7 @@ pub(super) fn take_links_from(shared: &SharedState, pid: u64) -> Vec<u64> {
             ProcessSlot::Present(ScheduledProcess(process)) => {
                 return process.take_links();
             }
-            ProcessSlot::Executing(metadata) => return metadata.links.clone(),
+            ProcessSlot::Executing(metadata) => return metadata.links().to_vec(),
             ProcessSlot::Absent => {}
         }
     }
@@ -265,7 +265,7 @@ pub(super) fn take_remote_links_from(shared: &SharedState, pid: u64) -> Vec<Remo
                 return process.take_remote_links();
             }
             ProcessSlot::Executing(metadata) => {
-                return std::mem::take(&mut metadata.remote_links);
+                return metadata.take_remote_links();
             }
             ProcessSlot::Absent => {}
         }
@@ -2289,7 +2289,7 @@ fn slot_has_link(shared: &SharedState, pid: u64, linked_pid: u64) -> bool {
     let slot = lock_or_recover(&entry);
     match &*slot {
         ProcessSlot::Present(ScheduledProcess(process)) => process.links().contains(&linked_pid),
-        ProcessSlot::Executing(metadata) => metadata.links.contains(&linked_pid),
+        ProcessSlot::Executing(metadata) => metadata.has_link(linked_pid),
         ProcessSlot::Absent => false,
     }
 }

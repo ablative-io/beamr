@@ -361,69 +361,81 @@ fn reductions_decrement_saturate_and_reset() {
 }
 
 fn references(process: &Process) -> Vec<u64> {
-    process
+    let mut references: Vec<u64> = process
         .monitors()
         .iter()
         .map(|monitor| monitor.reference())
-        .collect()
-}
-
-#[test]
-fn reconcile_monitors_keeps_held_order_drops_missing_and_appends_new() {
-    let mut process = Process::new(7, 233);
-    for reference in [1, 2, 3, 4] {
-        process.add_monitor(super::Monitor::new(reference, 7, 100 + reference));
-    }
-    let authoritative = [4, 5, 2, 6, 5].map(|reference| super::Monitor::new(reference, 7, 100 + reference));
-
-    process.reconcile_monitors(&authoritative);
-
-    assert_eq!(references(&process), vec![2, 4, 5, 6]);
-}
-
-#[test]
-fn reconcile_monitors_is_linear_for_a_watcher_of_many() {
-    // A watcher holding one monitor per watched process, as Liminal's channel
-    // supervisor does for every channel actor. The old merge was quadratic:
-    // 100k monitors meant 10^10 comparisons on every reschedule.
-    const WATCHED: u64 = 100_000;
-    let mut process = Process::new(7, 233);
-    for reference in 0..WATCHED {
-        process.add_monitor(super::Monitor::new(reference, 7, reference));
-    }
-    let authoritative: Vec<_> = (WATCHED / 2..WATCHED + WATCHED / 2)
-        .map(|reference| super::Monitor::new(reference, 7, reference))
         .collect();
-
-    let started = std::time::Instant::now();
-    process.reconcile_monitors(&authoritative);
-    let took = started.elapsed();
-
-    assert_eq!(references(&process), (WATCHED / 2..WATCHED + WATCHED / 2).collect::<Vec<_>>());
-    assert!(took < std::time::Duration::from_secs(2), "reconciling {WATCHED} monitors took {took:?}");
+    references.sort_unstable();
+    references
 }
 
 #[test]
-fn add_links_matches_add_link_one_at_a_time() {
+fn a_run_with_no_relation_changes_takes_the_lists_back_unchanged() {
     let mut process = Process::new(7, 233);
-    assert!(process.add_link(11));
-    process.add_links(&[13, 7, 11, 17, 13]);
-    assert_eq!(process.links(), &[11, 13, 17]);
+    process.add_link(11);
+    process.add_monitor(super::Monitor::new(1, 7, 11));
+
+    let slot = process.shared_relations();
+    process.restore_relations(slot);
+
+    assert_eq!(process.links(), &[11]);
+    assert_eq!(references(&process), vec![1]);
 }
 
 #[test]
-fn reconcile_remote_links_keeps_held_order_drops_missing_and_appends_new() {
+fn the_slots_monitors_and_remote_links_are_taken_whole_and_links_are_joined() {
     let remote = |pid_number| super::RemotePid {
         node: Atom::LINE,
         pid_number,
         serial: 0,
     };
     let mut process = Process::new(7, 233);
-    for pid_number in [1, 2, 3] {
-        process.add_remote_link(remote(pid_number));
+    process.add_link(11);
+    process.add_remote_link(remote(1));
+    process.add_monitor(super::Monitor::new(1, 7, 11));
+    process.add_monitor(super::Monitor::new(2, 7, 13));
+
+    let mut slot = process.shared_relations();
+    // While it runs: a DOWN takes monitor 1 and a new monitor arrives on the
+    // slot; a remote link exit takes the remote link; another process links.
+    std::sync::Arc::make_mut(&mut slot.monitors).remove(1);
+    std::sync::Arc::make_mut(&mut slot.monitors).insert(super::Monitor::new(3, 7, 17));
+    std::sync::Arc::make_mut(&mut slot.remote_links).remove(&remote(1));
+    std::sync::Arc::make_mut(&mut slot.links).insert(19);
+    // And the process itself links to a child it spawned.
+    process.add_link(23);
+
+    process.restore_relations(slot);
+
+    assert_eq!(references(&process), vec![2, 3]);
+    assert!(process.remote_links().is_empty());
+    assert_eq!(process.links(), &[11, 23, 19]);
+}
+
+#[test]
+fn running_a_watcher_of_many_costs_nothing_per_run() {
+    // One monitor per watched process, as Liminal's channel supervisor holds
+    // for every channel actor. Each run used to copy every monitor into the
+    // slot and merge them back with a scan per monitor: at 17,000 that kept a
+    // scheduler thread busy without end.
+    const WATCHED: u64 = 100_000;
+    const RUNS: u32 = 10_000;
+    let mut process = Process::new(7, 233);
+    for reference in 0..WATCHED {
+        process.add_monitor(super::Monitor::new(reference, 7, 1_000_000 + reference));
     }
 
-    process.reconcile_remote_links(&[remote(3), remote(4), remote(1), remote(4)]);
+    let started = std::time::Instant::now();
+    for _ in 0..RUNS {
+        let slot = process.shared_relations();
+        process.restore_relations(slot);
+    }
+    let took = started.elapsed();
 
-    assert_eq!(process.remote_links(), &[remote(1), remote(3), remote(4)]);
+    assert_eq!(process.monitors().len(), usize::try_from(WATCHED).unwrap_or(0));
+    assert!(
+        took < std::time::Duration::from_millis(500),
+        "{RUNS} runs of a process watching {WATCHED} took {took:?}"
+    );
 }

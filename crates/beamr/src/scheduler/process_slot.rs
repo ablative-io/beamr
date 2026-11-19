@@ -5,7 +5,7 @@ use crate::ets::{EtsTableId, OwnedTerm};
 use crate::io::resource::FdInner;
 use crate::namespace::NamespaceId;
 use crate::native::CapabilitySet;
-use crate::process::{ExitReason, Monitor, Priority, RemotePid};
+use crate::process::{ExitReason, Monitor, Priority, RemotePid, SharedRelations};
 use crate::term::Term;
 
 use super::ScheduledProcess;
@@ -51,9 +51,9 @@ pub struct TcpActiveMessage {
 pub(super) struct ProcessMetadata {
     pub(super) namespace_id: NamespaceId,
     pub(super) capabilities: CapabilitySet,
-    pub(super) links: Vec<u64>,
-    pub(super) remote_links: Vec<RemotePid>,
-    pub(super) monitors: Vec<Monitor>,
+    /// The running process's links and monitors, shared with it until one
+    /// side changes them (see `process::relations`).
+    pub(super) relations: SharedRelations,
     pub(super) trap_exit: bool,
     pub(super) priority: Priority,
     pub(super) current_mfa: Option<(crate::atom::Atom, crate::atom::Atom, u8)>,
@@ -74,19 +74,29 @@ pub(super) struct ProcessMetadata {
 }
 
 impl ProcessMetadata {
+    pub(super) fn links(&self) -> &[u64] {
+        self.relations.links.as_slice()
+    }
+
+    pub(super) fn has_link(&self, pid: u64) -> bool {
+        self.relations.links.contains(&pid)
+    }
+
     pub(super) fn add_link(&mut self, pid: u64, self_pid: u64) {
-        if pid != self_pid && !self.links.contains(&pid) {
-            self.links.push(pid);
+        if pid != self_pid && !self.relations.links.contains(&pid) {
+            Arc::make_mut(&mut self.relations.links).insert(pid);
         }
     }
 
     pub(super) fn remove_link(&mut self, pid: u64) {
-        self.links.retain(|linked_pid| *linked_pid != pid);
+        if self.relations.links.contains(&pid) {
+            Arc::make_mut(&mut self.relations.links).remove(&pid);
+        }
     }
 
     pub(super) fn add_remote_link(&mut self, pid: RemotePid) {
-        if !self.remote_links.contains(&pid) {
-            self.remote_links.push(pid);
+        if !self.relations.remote_links.contains(&pid) {
+            Arc::make_mut(&mut self.relations.remote_links).insert(pid);
         }
     }
 
@@ -94,18 +104,25 @@ impl ProcessMetadata {
     /// (the DC-4 exactly-once gate for link exits, mirroring
     /// `Process::remove_remote_link`).
     pub(super) fn remove_remote_link(&mut self, pid: RemotePid) -> bool {
-        let before = self.remote_links.len();
-        self.remote_links.retain(|linked_pid| *linked_pid != pid);
-        before != self.remote_links.len()
+        self.relations.remote_links.contains(&pid)
+            && Arc::make_mut(&mut self.relations.remote_links).remove(&pid)
+    }
+
+    /// Every remote link, oldest first, leaving none.
+    pub(super) fn take_remote_links(&mut self) -> Vec<RemotePid> {
+        let links = self.relations.remote_links.as_slice().to_vec();
+        self.relations.remote_links = Arc::default();
+        links
     }
 
     pub(super) fn add_monitor(&mut self, monitor: Monitor) {
-        self.monitors.push(monitor);
+        Arc::make_mut(&mut self.relations.monitors).insert(monitor);
     }
 
     pub(super) fn remove_monitor(&mut self, reference: u64) {
-        self.monitors
-            .retain(|monitor| monitor.reference() != reference);
+        if self.relations.monitors.contains(reference) {
+            Arc::make_mut(&mut self.relations.monitors).remove(reference);
+        }
     }
 }
 

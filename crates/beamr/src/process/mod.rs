@@ -7,9 +7,12 @@
 pub mod gc;
 pub mod heap;
 pub mod registry;
+mod relations;
 pub mod stack;
 mod types;
 
+pub use relations::{LinkList, MonitorTable};
+pub(crate) use relations::SharedRelations;
 pub use types::*;
 
 // `Box` comes from std's prelude, which is absent under
@@ -22,7 +25,6 @@ pub use types::*;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 
-use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -229,9 +231,9 @@ pub struct Process {
     receive_wait_started: Option<crate::telemetry::spans::ReceiveWaitStarted>,
     #[cfg(feature = "telemetry")]
     trace_context: Option<crate::telemetry::spans::ProcessTraceContext>,
-    links: Vec<u64>,
-    remote_links: Vec<RemotePid>,
-    monitors: Vec<Monitor>,
+    links: Arc<relations::LinkList<u64>>,
+    remote_links: Arc<relations::LinkList<RemotePid>>,
+    monitors: Arc<relations::MonitorTable>,
     trap_exit: bool,
     group_leader: Term,
     /// Optional native handler body. `Some` exactly for native processes
@@ -356,9 +358,9 @@ impl Process {
             receive_wait_started: None,
             #[cfg(feature = "telemetry")]
             trace_context: None,
-            links: Vec::new(),
-            remote_links: Vec::new(),
-            monitors: Vec::new(),
+            links: Arc::default(),
+            remote_links: Arc::default(),
+            monitors: Arc::default(),
             trap_exit: false,
             group_leader: Self::initial_group_leader(pid),
             native: None,
@@ -1220,136 +1222,6 @@ impl Process {
     /// Take and clear the pending JIT helper execution error.
     pub fn take_jit_exec_error(&mut self) -> Option<crate::error::ExecError> {
         self.jit_exec_error.take()
-    }
-
-    /// Linked process IDs.
-    #[must_use]
-    pub fn links(&self) -> &[u64] {
-        &self.links
-    }
-
-    /// Add a linked process id. Returns whether the ordered set changed.
-    ///
-    /// Link insertion order is preserved for deterministic exit propagation.
-    /// Self-links and duplicate links are ignored.
-    pub fn add_link(&mut self, pid: u64) -> bool {
-        if pid == self.pid || self.links.contains(&pid) {
-            return false;
-        }
-        self.links.push(pid);
-        true
-    }
-
-    /// Add every pid in `pids` as a link, exactly as [`Self::add_link`] would
-    /// one at a time, in time linear in both lists rather than their product.
-    pub(crate) fn add_links(&mut self, pids: &[u64]) {
-        let mut held: HashSet<u64> = self.links.iter().copied().collect();
-        for &pid in pids {
-            if pid != self.pid && held.insert(pid) {
-                self.links.push(pid);
-            }
-        }
-    }
-
-    /// Remove a linked process id. Returns whether the ordered set changed.
-    pub fn remove_link(&mut self, pid: u64) -> bool {
-        let before = self.links.len();
-        self.links.retain(|linked| *linked != pid);
-        before != self.links.len()
-    }
-
-    /// Remove all links and return the previous link set in insertion order.
-    pub fn take_links(&mut self) -> Vec<u64> {
-        std::mem::take(&mut self.links)
-    }
-
-    /// Linked remote process IDs.
-    #[must_use]
-    pub fn remote_links(&self) -> &[RemotePid] {
-        &self.remote_links
-    }
-
-    /// Add a linked remote process id. Returns whether the ordered set changed.
-    ///
-    /// Link insertion order is preserved separately from local links so remote
-    /// exit propagation is deterministic without losing node/serial identity.
-    pub fn add_remote_link(&mut self, pid: RemotePid) -> bool {
-        if self.remote_links.contains(&pid) {
-            return false;
-        }
-        self.remote_links.push(pid);
-        true
-    }
-
-    /// Make this process's remote links exactly the set in `authoritative`:
-    /// those it holds and `authoritative` lacks are dropped, keeping the order
-    /// of the rest, and those it lacks are appended in `authoritative`'s
-    /// order. Linear in both lists, where per-entry removes and adds were
-    /// their product.
-    pub(crate) fn reconcile_remote_links(&mut self, authoritative: &[RemotePid]) {
-        let keep: HashSet<RemotePid> = authoritative.iter().copied().collect();
-        self.remote_links.retain(|linked| keep.contains(linked));
-        let mut held: HashSet<RemotePid> = self.remote_links.iter().copied().collect();
-        for &pid in authoritative {
-            if held.insert(pid) {
-                self.remote_links.push(pid);
-            }
-        }
-    }
-
-    /// Remove a linked remote process id. Returns whether the ordered set changed.
-    pub fn remove_remote_link(&mut self, pid: RemotePid) -> bool {
-        let before = self.remote_links.len();
-        self.remote_links.retain(|linked| *linked != pid);
-        before != self.remote_links.len()
-    }
-
-    /// Remove all remote links and return the previous set in insertion order.
-    pub fn take_remote_links(&mut self) -> Vec<RemotePid> {
-        std::mem::take(&mut self.remote_links)
-    }
-
-    /// Monitor metadata attached to this process.
-    #[must_use]
-    pub const fn monitors(&self) -> &Vec<Monitor> {
-        &self.monitors
-    }
-
-    /// Add monitor metadata owned by or targeting this process.
-    pub fn add_monitor(&mut self, monitor: Monitor) {
-        self.monitors.push(monitor);
-    }
-
-    /// Make this process's monitors exactly those in `authoritative`, matched
-    /// by reference: those it holds and `authoritative` lacks are dropped,
-    /// keeping the order of the rest, and those it lacks are appended in
-    /// `authoritative`'s order. Linear in both lists. A process that watches
-    /// many others (one monitor per watched process) is reconciled every time
-    /// it is stored back after running, so a product here grows with the
-    /// square of what it watches and starves its scheduler.
-    pub(crate) fn reconcile_monitors(&mut self, authoritative: &[Monitor]) {
-        let keep: HashSet<u64> = authoritative.iter().map(|monitor| monitor.reference()).collect();
-        self.monitors
-            .retain(|monitor| keep.contains(&monitor.reference()));
-        let mut held: HashSet<u64> = self
-            .monitors
-            .iter()
-            .map(|monitor| monitor.reference())
-            .collect();
-        for &monitor in authoritative {
-            if held.insert(monitor.reference()) {
-                self.monitors.push(monitor);
-            }
-        }
-    }
-
-    /// Remove monitor metadata by reference. Returns removed metadata.
-    pub fn remove_monitor(&mut self, reference: u64) -> Option<Monitor> {
-        let index = self
-            .monitors
-            .iter()
-            .position(|monitor| monitor.reference() == reference)?;
-        Some(self.monitors.remove(index))
     }
 
     /// Whether this process traps exits.

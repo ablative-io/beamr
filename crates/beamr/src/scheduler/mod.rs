@@ -2616,7 +2616,7 @@ fn process_links_contain(shared: &SharedState, pid: u64, linked_pid: u64) -> boo
     };
     match &*lock_or_recover(&entry) {
         ProcessSlot::Present(scheduled) => scheduled.0.links().contains(&linked_pid),
-        ProcessSlot::Executing(metadata) => metadata.links.contains(&linked_pid),
+        ProcessSlot::Executing(metadata) => metadata.has_link(linked_pid),
         ProcessSlot::Absent => false,
     }
 }
@@ -2680,7 +2680,7 @@ fn process_info_from_metadata(
         ProcessInfoItem::Status => ProcessInfoValue::Status(ProcessInfoStatus::Running),
         ProcessInfoItem::TrapExit => ProcessInfoValue::TrapExit(metadata.trap_exit),
         ProcessInfoItem::Priority => ProcessInfoValue::Priority(metadata.priority),
-        ProcessInfoItem::Links => ProcessInfoValue::Links(metadata.links.clone()),
+        ProcessInfoItem::Links => ProcessInfoValue::Links(metadata.links().to_vec()),
         ProcessInfoItem::Monitors => ProcessInfoValue::Monitors(
             metadata
                 .monitors

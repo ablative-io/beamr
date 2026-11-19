@@ -69,7 +69,7 @@ fn remote_links_of(shared: &SharedState, pid: u64) -> Vec<RemotePid> {
     let slot = lock_or_recover(&entry);
     match &*slot {
         ProcessSlot::Present(ScheduledProcess(process)) => process.remote_links().to_vec(),
-        ProcessSlot::Executing(metadata) => metadata.remote_links.clone(),
+        ProcessSlot::Executing(metadata) => metadata.relations.remote_links.as_slice().to_vec(),
         ProcessSlot::Absent => Vec::new(),
     }
 }

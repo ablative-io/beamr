@@ -135,9 +135,7 @@ pub(super) fn make_executing(shared: &SharedState, pid: u64) -> Process {
         ProcessSlot::Present(ScheduledProcess(process)) => {
             let metadata = ProcessMetadata {
                 namespace_id: process.namespace_id(),
-                links: process.links().to_vec(),
-                remote_links: process.remote_links().to_vec(),
-                monitors: process.monitors().to_vec(),
+                relations: process.shared_relations(),
                 trap_exit: process.trap_exit(),
                 priority: process.priority(),
                 current_mfa: process.current_mfa(),

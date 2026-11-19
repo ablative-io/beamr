@@ -23,7 +23,10 @@ pub type Reference = u64;
 #[derive(Debug, Default)]
 pub struct MonitorSet {
     next_reference: Reference,
-    monitors: Vec<Monitor>,
+    /// Every live monitor, by reference. A map, not a list: one exchange holds
+    /// a monitor per watched process, and each monitor, demonitor and DOWN
+    /// looks one up under the scheduler-wide lock.
+    monitors: HashMap<Reference, Monitor>,
     by_target: HashMap<u64, Vec<Reference>>,
     dead: HashMap<u64, ExitReason>,
 }
@@ -47,7 +50,7 @@ impl MonitorSet {
         let monitor = Monitor::new(reference, watcher.pid(), target.pid());
         watcher.add_monitor(monitor);
         target.add_monitor(monitor);
-        self.monitors.push(monitor);
+        self.monitors.insert(reference, monitor);
         self.by_target
             .entry(target.pid())
             .or_default()
@@ -67,7 +70,7 @@ impl MonitorSet {
 
         let monitor = Monitor::new(reference, watcher.pid(), target_pid);
         watcher.add_monitor(monitor);
-        self.monitors.push(monitor);
+        self.monitors.insert(reference, monitor);
         self.by_target
             .entry(target_pid)
             .or_default()
@@ -148,10 +151,7 @@ impl MonitorSet {
     /// Look up a monitor by reference without removing it.
     #[must_use]
     pub fn get_monitor(&self, reference: Reference) -> Option<crate::process::Monitor> {
-        self.monitors
-            .iter()
-            .find(|monitor| monitor.reference() == reference)
-            .copied()
+        self.monitors.get(&reference).copied()
     }
 
     /// Register a pre-built monitor entry. Used by the scheduler's supervision
@@ -163,10 +163,10 @@ impl MonitorSet {
         monitor: crate::process::Monitor,
         target_pid: u64,
     ) {
-        if self.get_monitor(reference).is_some() {
+        if self.monitors.contains_key(&reference) {
             self.remove_monitor(reference);
         }
-        self.monitors.push(monitor);
+        self.monitors.insert(reference, monitor);
         self.by_target
             .entry(target_pid)
             .or_default()
@@ -187,11 +187,7 @@ impl MonitorSet {
     }
 
     fn remove_monitor_entry(&mut self, reference: Reference) -> Option<Monitor> {
-        let index = self
-            .monitors
-            .iter()
-            .position(|monitor| monitor.reference() == reference)?;
-        Some(self.monitors.remove(index))
+        self.monitors.remove(&reference)
     }
 
     fn allocate_reference(&mut self) -> Reference {

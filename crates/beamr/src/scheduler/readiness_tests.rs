@@ -33,9 +33,7 @@ fn add_executing_process(scheduler: &Scheduler, pid: u64) {
         Mutex::new(ProcessSlot::Executing(ProcessMetadata {
             namespace_id: NamespaceId::DEFAULT,
             capabilities: process.capabilities().clone(),
-            links: Vec::new(),
-            remote_links: Vec::new(),
-            monitors: Vec::new(),
+            relations: crate::process::SharedRelations::default(),
             trap_exit: false,
             priority: process.priority(),
             current_mfa: None,
