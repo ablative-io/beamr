@@ -131,10 +131,12 @@ impl MonitorTable {
 
     /// Remove one monitor with `reference`, if any is held.
     pub fn remove(&mut self, reference: u64) -> Option<Monitor> {
+        let mut now_single = false;
         let index = if let Some(copies) = self.repeated.get_mut(&reference) {
             *copies -= 1;
             if *copies == 1 {
                 self.repeated.remove(&reference);
+                now_single = true;
             }
             self.position(reference)?
         } else {
@@ -146,11 +148,8 @@ impl MonitorTable {
         {
             *slot = index;
         }
-        if !self.repeated.contains_key(&reference)
-            && !self.at.contains_key(&reference)
-            && let Some(left) = self.position(reference)
-        {
-            // The last of a repeated reference is now held once.
+        if now_single && let Some(left) = self.position(reference) {
+            // The last copy of a repeated reference is now held once.
             self.at.insert(reference, left);
         }
         Some(removed)
