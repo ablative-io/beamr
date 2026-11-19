@@ -11,31 +11,51 @@
 //! held behind an [`Arc`]: the slot shares the running process's copy and
 //! only pays for a copy if one side changes it while the process runs.
 
-use std::collections::{HashMap, HashSet};
-use std::hash::Hash;
+// Without std there is no hashing collection, so a build without it keeps
+// the same lists in B-trees: logarithmic rather than constant, still never a
+// scan. Guarded as `process/mod.rs` guards its own `alloc` import, because
+// lib.rs's `extern crate alloc` is itself conditional.
+#[cfg(feature = "std")]
+use Arc;
+#[cfg(not(feature = "std"))]
+use alloc::collections::{BTreeMap as Map, BTreeSet as Set};
+#[cfg(not(feature = "std"))]
+use alloc::sync::Arc;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+#[cfg(feature = "std")]
+use std::collections::{HashMap as Map, HashSet as Set};
 
-use super::Monitor;
+use core::hash::Hash;
+
+use super::{Monitor, RemotePid};
+
+/// What a link list can hold: hashable for std's sets, ordered for the
+/// B-trees used without std.
+pub(crate) trait LinkId: Copy + Eq + Hash + Ord {}
+
+impl<T: Copy + Eq + Hash + Ord> LinkId for T {}
 
 /// Distinct ids in the order they were added, with constant-time lookup.
 ///
 /// Order is kept because exit signals go to links in the order they were
 /// made, which replays rely on.
 #[derive(Clone, Debug)]
-pub struct LinkList<T> {
+pub(crate) struct LinkList<T> {
     order: Vec<T>,
-    held: HashSet<T>,
+    held: Set<T>,
 }
 
 impl<T> Default for LinkList<T> {
     fn default() -> Self {
         Self {
             order: Vec::new(),
-            held: HashSet::new(),
+            held: Set::new(),
         }
     }
 }
 
-impl<T: Copy + Eq + Hash> LinkList<T> {
+impl<T: LinkId> LinkList<T> {
     /// The ids, oldest first.
     #[must_use]
     pub fn as_slice(&self) -> &[T] {
@@ -71,7 +91,7 @@ impl<T: Copy + Eq + Hash> LinkList<T> {
     /// Every id, oldest first, leaving the list empty.
     pub fn take(&mut self) -> Vec<T> {
         self.held.clear();
-        std::mem::take(&mut self.order)
+        core::mem::take(&mut self.order)
     }
 
     /// How many ids are held.
@@ -95,12 +115,12 @@ impl<T: Copy + Eq + Hash> LinkList<T> {
 /// removes one copy. Order is not kept: removal moves the last monitor into
 /// the gap, and nothing reads monitors in order.
 #[derive(Clone, Debug, Default)]
-pub struct MonitorTable {
+pub(crate) struct MonitorTable {
     monitors: Vec<Monitor>,
     /// Where each reference held exactly once sits in `monitors`.
-    at: HashMap<u64, usize>,
+    at: Map<u64, usize>,
     /// References held more than once, with how many copies.
-    repeated: HashMap<u64, usize>,
+    repeated: Map<u64, usize>,
 }
 
 impl MonitorTable {
@@ -270,7 +290,7 @@ impl super::Process {
         if pid == self.pid || self.links.contains(&pid) {
             return false;
         }
-        std::sync::Arc::make_mut(&mut self.links).insert(pid)
+        Arc::make_mut(&mut self.links).insert(pid)
     }
 
     /// Remove a linked process id. Returns whether the ordered set changed.
@@ -278,7 +298,7 @@ impl super::Process {
         if !self.links.contains(&pid) {
             return false;
         }
-        std::sync::Arc::make_mut(&mut self.links).remove(&pid)
+        Arc::make_mut(&mut self.links).remove(&pid)
     }
 
     /// Remove all links and return the previous link set in insertion order.
@@ -300,7 +320,7 @@ impl super::Process {
         if self.remote_links.contains(&pid) {
             return false;
         }
-        std::sync::Arc::make_mut(&mut self.remote_links).insert(pid)
+        Arc::make_mut(&mut self.remote_links).insert(pid)
     }
 
     /// Remove a linked remote process id. Returns whether the ordered set changed.
@@ -308,7 +328,7 @@ impl super::Process {
         if !self.remote_links.contains(&pid) {
             return false;
         }
-        std::sync::Arc::make_mut(&mut self.remote_links).remove(&pid)
+        Arc::make_mut(&mut self.remote_links).remove(&pid)
     }
 
     /// Remove all remote links and return the previous set in insertion order.
@@ -324,7 +344,7 @@ impl super::Process {
 
     /// Add monitor metadata owned by or targeting this process.
     pub fn add_monitor(&mut self, monitor: Monitor) {
-        std::sync::Arc::make_mut(&mut self.monitors).insert(monitor);
+        Arc::make_mut(&mut self.monitors).insert(monitor);
     }
 
     /// Remove monitor metadata by reference. Returns removed metadata.
@@ -332,15 +352,15 @@ impl super::Process {
         if !self.monitors.contains(reference) {
             return None;
         }
-        std::sync::Arc::make_mut(&mut self.monitors).remove(reference)
+        Arc::make_mut(&mut self.monitors).remove(reference)
     }
 
     /// The shared lists, for the scheduler's slot while this process runs.
     pub(crate) fn shared_relations(&self) -> SharedRelations {
         SharedRelations {
-            links: std::sync::Arc::clone(&self.links),
-            remote_links: std::sync::Arc::clone(&self.remote_links),
-            monitors: std::sync::Arc::clone(&self.monitors),
+            links: Arc::clone(&self.links),
+            remote_links: Arc::clone(&self.remote_links),
+            monitors: Arc::clone(&self.monitors),
         }
     }
 
@@ -351,9 +371,9 @@ impl super::Process {
     pub(crate) fn restore_relations(&mut self, slot: SharedRelations) {
         self.monitors = slot.monitors;
         self.remote_links = slot.remote_links;
-        if !std::sync::Arc::ptr_eq(&self.links, &slot.links) {
+        if !Arc::ptr_eq(&self.links, &slot.links) {
             let pid = self.pid;
-            let mine = std::sync::Arc::make_mut(&mut self.links);
+            let mine = Arc::make_mut(&mut self.links);
             for &linked in slot.links.as_slice() {
                 if linked != pid {
                     mine.insert(linked);
@@ -366,15 +386,13 @@ impl super::Process {
 /// A running process's links and monitors as its slot holds them.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SharedRelations {
-    pub(crate) links: std::sync::Arc<LinkList<u64>>,
-    pub(crate) remote_links: std::sync::Arc<LinkList<super::RemotePid>>,
-    pub(crate) monitors: std::sync::Arc<MonitorTable>,
+    pub(crate) links: Arc<LinkList<u64>>,
+    pub(crate) remote_links: Arc<LinkList<super::RemotePid>>,
+    pub(crate) monitors: Arc<MonitorTable>,
 }
 
-use super::RemotePid;
-
-fn take_list<T: Copy + Eq + Hash>(list: &mut std::sync::Arc<LinkList<T>>) -> Vec<T> {
-    match std::sync::Arc::try_unwrap(std::mem::take(list)) {
+fn take_list<T: LinkId>(list: &mut Arc<LinkList<T>>) -> Vec<T> {
+    match Arc::try_unwrap(core::mem::take(list)) {
         Ok(mut owned) => owned.take(),
         Err(shared) => shared.as_slice().to_vec(),
     }

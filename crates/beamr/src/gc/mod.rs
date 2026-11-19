@@ -158,6 +158,7 @@ pub fn ensure_space(process: &mut Process, words: usize, live_x: usize) -> Resul
         }
         Err(error) => return Err(error),
     }
+    grow_nursery_toward_live(process);
 
     if process.heap().available() >= words {
         return Ok(());
@@ -167,6 +168,25 @@ pub fn ensure_space(process: &mut Process, words: usize, live_x: usize) -> Resul
         process.heap_mut().grow_to_next_capacity_with_max()?;
     }
     Ok(())
+}
+
+/// Grow the just-emptied nursery until it is at least half the live data,
+/// within the heap's maximum.
+///
+/// Every minor collection scans every root, a process's whole mailbox among
+/// them. With the nursery left at its first size, a process holding many
+/// messages it had not read yet (a watcher's DOWNs) collected every few
+/// messages and scanned them all each time: the square of its mailbox. Sized
+/// to the live data, collections come geometrically less often as it grows.
+/// Called only after a collection, while the nursery holds nothing.
+fn grow_nursery_toward_live(process: &mut Process) {
+    debug_assert_eq!(process.heap().young_used(), 0);
+    let live = process.heap().old_used();
+    while process.heap().young_capacity() < live / 2 {
+        if process.heap_mut().grow_to_next_capacity_with_max().is_err() {
+            break;
+        }
+    }
 }
 
 fn virtual_binary_pressure_exceeds_heap(process: &Process) -> bool {
