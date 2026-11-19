@@ -931,17 +931,23 @@ pub(super) fn finalize_settled_bodies(shared: &SharedState) {
     }
 }
 
-/// The telemetry state's mutex, for the poison check.
+/// The telemetry state's mutexes, for the poison check.
 #[cfg(feature = "telemetry")]
-fn telemetry_mutexes(shared: &SharedState) -> Option<(&'static str, bool)> {
-    Some((
-        "last_process_samples",
-        shared.telemetry_metrics.last_process_samples.is_poisoned(),
-    ))
+fn telemetry_mutexes(shared: &SharedState) -> [(&'static str, bool); 2] {
+    [
+        (
+            "last_process_samples",
+            shared.telemetry_metrics.last_process_samples.is_poisoned(),
+        ),
+        (
+            "heap_words_sample",
+            shared.telemetry_metrics.heap_words_sample.is_poisoned(),
+        ),
+    ]
 }
 
 /// No telemetry state without the feature.
 #[cfg(not(feature = "telemetry"))]
-fn telemetry_mutexes(_shared: &SharedState) -> Option<(&'static str, bool)> {
-    None
+fn telemetry_mutexes(_shared: &SharedState) -> [(&'static str, bool); 0] {
+    []
 }
