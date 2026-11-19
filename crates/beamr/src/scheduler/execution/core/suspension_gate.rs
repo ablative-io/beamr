@@ -25,7 +25,7 @@ pub(super) enum SuspensionGate {
 }
 
 /// Consume `process`'s pending suspension event, if any. See the call site
-/// in [`execute_slice_with_budget`] for the protocol contract.
+/// in [`execute_slice_with_budget`](super::slice::execute_slice_with_budget) for the protocol contract.
 pub(super) fn consume_suspension_event(
     shared: &SharedState,
     process: &mut Process,

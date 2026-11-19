@@ -137,7 +137,7 @@ pub(in crate::scheduler) fn cleanup_exited_process(
 ///   body whose resources this finalizer already released. When the removal
 ///   yields an `Executing` shadow, the worker owns the real body; its
 ///   store-back finds the entry gone, the table dead, and disposes of the
-///   checked-out process itself ([`store_runnable_process`]). Table-token
+///   checked-out process itself ([`store_runnable_process`](super::store::store_runnable_process)). Table-token
 ///   consumption while the body is checked out is therefore safe: the body
 ///   half is finished by whoever actually holds the body.
 pub(in crate::scheduler) fn finalize_exited_process(

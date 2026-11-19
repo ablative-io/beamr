@@ -59,7 +59,7 @@ impl Scheduler {
     /// B-184's seam: make worker `worker` panic at its next park, where it is
     /// about to wait with the `wait_set` lock held and counted as parked
     /// (the place std's condvar assert panicked on macOS), with
-    /// [`park_seam_panic_message`]. Runs edge E so a worker already waiting
+    /// [`park_seam_panic_message`](super::park_seam_panic_message). Runs edge E so a worker already waiting
     /// parks again. False, arming nothing, when there is no such worker.
     #[cfg(any(test, feature = "test-support"))]
     pub fn panic_worker_at_next_park(&self, worker: usize) -> bool {
@@ -71,7 +71,7 @@ impl Scheduler {
     }
     /// B-184's seam: make worker `worker` panic as it starts its next slice,
     /// with the popped process still `Present` and anything else it queued
-    /// left on its local run queue, with [`slice_seam_panic_message`].
+    /// left on its local run queue, with [`slice_seam_panic_message`](super::slice_seam_panic_message).
     /// False, arming nothing, when there is no such worker.
     #[cfg(any(test, feature = "test-support"))]
     pub fn panic_worker_at_next_slice(&self, worker: usize) -> bool {

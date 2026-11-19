@@ -40,7 +40,7 @@ impl Scheduler {
     /// ever compiled, disable immediately after constructing the scheduler and
     /// before spawning any process.
     ///
-    /// Note that [`SchedulerConfig::jit_threshold`] cannot serve as this
+    /// Note that [`SchedulerConfig::jit_threshold`](super::SchedulerConfig::jit_threshold) cannot serve as this
     /// control. A very large threshold does defer compilation past any
     /// realistic workload, so it works as a *workaround* on a scheduler not yet
     /// built — but it is fixed at construction and, decisively, it says nothing

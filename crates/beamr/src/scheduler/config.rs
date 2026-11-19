@@ -31,7 +31,7 @@ pub struct SchedulerConfig {
     pub creation: Option<u32>,
     pub distribution: Option<DistributionConfig>,
     /// Hot-call count at which a function is submitted for compilation
-    /// (`None` = [`DEFAULT_JIT_THRESHOLD`]).
+    /// (`None` = [`DEFAULT_JIT_THRESHOLD`](crate::jit::DEFAULT_JIT_THRESHOLD)).
     ///
     /// **This is a tuning knob, not an off-switch.** The hotness counter
     /// increments with `saturating_add` and trips on `count >= threshold`, so
@@ -40,7 +40,7 @@ pub struct SchedulerConfig {
     /// which is beyond any realistic workload but is deferral, not refusal.
     ///
     /// Two things it cannot do at all, which is why
-    /// [`Scheduler::set_jit_enabled`] exists: it is fixed at construction, so
+    /// [`Scheduler::set_jit_enabled`](super::Scheduler::set_jit_enabled) exists: it is fixed at construction, so
     /// it cannot be changed on a live scheduler; and it governs only whether
     /// code is *compiled*, never whether **already-compiled code is entered** —
     /// once a function is in the cache the threshold is irrelevant to it.

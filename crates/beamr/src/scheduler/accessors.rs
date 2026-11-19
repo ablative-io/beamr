@@ -74,7 +74,7 @@ impl Scheduler {
     ///
     /// Distribution-facing embedders need this to intern names into the SAME
     /// atoms the scheduler uses internally: pg group/scope atoms and the node
-    /// atoms returned by [`ConnectionManager::connected_nodes`] are indices into
+    /// atoms returned by [`ConnectionManager::connected_nodes`](crate::distribution::connection::ConnectionManager::connected_nodes) are indices into
     /// this table, so a separately-constructed table would not match. Mirrors the
     /// accessor [`WasmScheduler::atom_table`](crate::scheduler::WasmScheduler::atom_table)
     /// already exposes.

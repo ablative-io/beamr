@@ -14,7 +14,7 @@ use super::spawn::SchedulerSpawnFacility;
 impl SchedulerSpawnFacility {
     /// Build and make-runnable a native process, setting its `trap_exit` flag
     /// BEFORE it is published to `process_bodies` (i.e. before its first slice
-    /// can run). Shared by [`SpawnFacility::spawn_native`] (`trap_exit=false`,
+    /// can run). Shared by [`SpawnFacility::spawn_native`](crate::native::spawn::SpawnFacility::spawn_native) (`trap_exit=false`,
     /// the historical spelling) and the flag-before-runnable entry points
     /// [`Scheduler::spawn_native_trap_exit`](crate::scheduler::Scheduler) and
     /// [`Scheduler::spawn_native_link_trap_exit`](crate::scheduler::Scheduler).
@@ -95,7 +95,7 @@ impl SchedulerSpawnFacility {
     /// The scheduler-facing entry point behind
     /// [`Scheduler::spawn_native_trap_exit`](crate::scheduler::Scheduler) and
     /// its linked sibling: `caller_pid` seeds namespace/group-leader exactly as
-    /// [`SpawnFacility::spawn_native`] does, and `link_to` links the child
+    /// [`SpawnFacility::spawn_native`](crate::native::spawn::SpawnFacility::spawn_native) does, and `link_to` links the child
     /// atomically at spawn.
     pub(in crate::scheduler) fn spawn_native_trap_exit(
         &self,

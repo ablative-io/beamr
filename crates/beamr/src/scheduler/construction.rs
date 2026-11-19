@@ -54,7 +54,7 @@ impl Scheduler {
     /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs) applied
     /// to it, hand the SAME registry to
     /// [`load_module`](crate::loader::load_module) — imports bind at LOAD time —
-    /// and consult the returned [`HotLoadResult`]'s unresolved-import report
+    /// and consult the returned [`HotLoadResult`](super::HotLoadResult)'s unresolved-import report
     /// after every load (see [`Scheduler::with_services`] for a worked example).
     pub fn new(
         config: SchedulerConfig,
@@ -80,7 +80,7 @@ impl Scheduler {
     /// Returns `Err` naming the offending service when the composition requests
     /// a capability this release cannot deliver safely — currently a shared
     /// file/generic IO ring, whose cross-scheduler routing lands with the §3.9
-    /// gate in commit 6 ([`WithServicesError`]). Validate ahead of construction
+    /// gate in commit 6 ([`WithServicesError`](super::WithServicesError)). Validate ahead of construction
     /// with [`SchedulerServices::validate`].
     ///
     /// # Declared native BIF surface
@@ -102,7 +102,7 @@ impl Scheduler {
     /// [`register_gate1_bifs`](crate::native::bifs::register_gate1_bifs)
     /// applied, load against that same registry — imports bind at LOAD time, so
     /// a scheduler carrying a different registry object does not repair a load
-    /// performed against an empty one — and consult the [`HotLoadResult`]'s
+    /// performed against an empty one — and consult the [`HotLoadResult`](super::HotLoadResult)'s
     /// unresolved-import report after every load:
     ///
     /// ```rust,no_run

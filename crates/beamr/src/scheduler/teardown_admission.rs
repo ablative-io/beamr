@@ -133,7 +133,7 @@ impl SharedState {
     /// Unjoined-bridge count: in-flight reservations plus retained handles
     /// (finished handles are reaped opportunistically at each publish).
     /// 0 after a drained shutdown. Reached via
-    /// [`Scheduler::dirty_completions_live_count`].
+    /// [`Scheduler::dirty_completions_live_count`](super::Scheduler::dirty_completions_live_count).
     #[cfg(any(test, feature = "test-support"))]
     pub(super) fn dirty_completions_live_count(&self) -> usize {
         let registry = lock_or_recover(&self.dirty_completions);
