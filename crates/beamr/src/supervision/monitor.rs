@@ -38,6 +38,12 @@ impl MonitorSet {
         Self::default()
     }
 
+    /// How many exited pids are remembered for immediate DOWN delivery.
+    #[cfg(test)]
+    pub(crate) fn remembered_dead(&self) -> usize {
+        self.dead.len()
+    }
+
     /// Remember a dead target reason for immediate DOWN delivery to future
     /// monitors of an already-exited process.
     pub fn record_dead(&mut self, pid: u64, reason: ExitReason) {
@@ -126,12 +132,17 @@ impl MonitorSet {
     /// exited, and remove the monitor entries. Used by the scheduler's
     /// supervision integration which delivers DOWN messages through
     /// process_bodies directly.
+    ///
+    /// The target is not remembered as dead here. The scheduler answers a
+    /// later monitor of a dead pid from its own exit tombstones, which are
+    /// bounded; remembering every exit here as well kept one entry per
+    /// process that ever exited, for the life of the scheduler, read by
+    /// nothing.
     pub fn collect_watchers_and_remove(
         &mut self,
         target_pid: u64,
-        reason: ExitReason,
+        _reason: ExitReason,
     ) -> Vec<(u64, Reference)> {
-        self.record_dead(target_pid, reason);
         let references = self.by_target.remove(&target_pid).unwrap_or_default();
         let mut watchers = Vec::with_capacity(references.len());
         for reference in references {

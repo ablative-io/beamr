@@ -284,3 +284,18 @@ fn remote_down_delivery_with_exactly_eleven_free_words_still_delivers() {
     assert_eq!(tuple.arity(), 5);
     assert_eq!(tuple.get(0), Some(Term::atom(Atom::DOWN)));
 }
+
+#[test]
+fn collecting_watchers_for_the_scheduler_remembers_nothing_per_exit() {
+    // The scheduler keeps bounded tombstones of its own. One entry here per
+    // exit grew without end on a long-running exchange.
+    let mut monitors = MonitorSet::new();
+    let mut watcher = running(1);
+    for pid in 2..1_002 {
+        let mut target = running(pid);
+        monitors.monitor(&mut watcher, &mut target);
+        let watchers = monitors.collect_watchers_and_remove(pid, ExitReason::Normal);
+        assert_eq!(watchers.len(), 1);
+    }
+    assert_eq!(monitors.remembered_dead(), 0);
+}
