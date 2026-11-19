@@ -28,7 +28,6 @@ mod telemetry;
 
 pub use natives::PendingNativeContinuation;
 pub(crate) use relations::SharedRelations;
-pub use relations::{LinkList, MonitorTable};
 pub use suspension::{ResumeContinuation, SuspensionKind, SuspensionRecord};
 pub use types::*;
 

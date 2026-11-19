@@ -338,7 +338,7 @@ pub enum JitStatus {
 }
 
 /// Stable identity for a PID hosted by another distribution node.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct RemotePid {
     /// Remote node atom.
     pub node: Atom,
