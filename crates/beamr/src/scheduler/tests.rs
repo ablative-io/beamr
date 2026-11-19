@@ -4,6 +4,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 use std::task::{Context, Poll, Waker};
+use std::time::Duration;
 
 #[cfg(feature = "telemetry")]
 use opentelemetry::Key;
@@ -20,7 +21,7 @@ use dashmap::{DashMap, DashSet};
 
 use super::*;
 use crate::atom::{Atom, AtomTable};
-use crate::distribution::{ResolveError, ResolveFuture};
+use crate::distribution::{DistributionConfig, ResolveError, ResolveFuture};
 use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
 use crate::hook::{Hook, HookDecision};
 use crate::io::NullSink;
@@ -29,10 +30,13 @@ use crate::loader::decode::compact::Operand;
 use crate::mailbox::Mailbox;
 use crate::module::{Module, ModuleOrigin};
 use crate::namespace::NamespaceId;
-use crate::native::{Capability, CapabilitySet, SpawnFacility, SpawnOptions};
+use crate::native::{
+    Capability, CapabilitySet, ProcessInfoItem, ProcessInfoStatus, ProcessInfoValue, SpawnFacility,
+    SpawnOptions,
+};
 use crate::process::heap::{DEFAULT_HEAP_SIZE, Heap};
 use crate::process::registry::ProcessTable;
-use crate::process::{CodePosition, ExitReason, Priority};
+use crate::process::{CodePosition, ExitReason, Priority, ProcessStatus};
 use crate::replay::{RecordedSchedule, ReplayEvent, ReplayLog};
 use crate::scheduler::execution::{
     SliceOutcome, cleanup_exited_process, cleanup_if_tombstoned_after_store, execute_slice,

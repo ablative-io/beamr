@@ -36,6 +36,7 @@ use crate::process::{ExitReason, RemotePid};
 use crate::scheduler::execution::{
     cleanup_exited_process, cleanup_if_tombstoned_after_store, store_runnable_process,
 };
+use crate::term::Term;
 use crate::term::boxed::{ExternalPid, write_external_pid};
 
 /// Route a raw control frame through `dispatch_frame` with the exact sink

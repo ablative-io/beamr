@@ -21,6 +21,7 @@ use crate::distribution::connection::ConnectionDownReason;
 use crate::distribution::connection_events::{ConnectionEvent, ConnectionGeneration};
 use crate::process::RemotePid;
 use crate::scheduler::execution::{cleanup_if_tombstoned_after_store, store_runnable_process};
+use crate::term::Term;
 use crate::term::boxed::ExternalPid;
 
 /// A connected localhost socket pair: (server end for the manager, client end

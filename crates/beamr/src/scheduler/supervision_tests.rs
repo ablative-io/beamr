@@ -10,15 +10,17 @@ use dashmap::{DashMap, DashSet};
 
 use super::*;
 use crate::atom::Atom;
+use crate::distribution::DistributionConfig;
 use crate::ets::{EtsTableMetadata, EtsTableType, Protection};
 use crate::io::resource::{FD_RESOURCE_WORDS, FdInner, FdState, write_fd_resource};
 use crate::process::registry::ProcessTable;
-use crate::process::{ProcessStatus, RemotePid};
+use crate::process::{ExitReason, ProcessStatus, RemotePid};
 use crate::scheduler::execution::{
     cleanup_exited_process, cleanup_if_tombstoned_after_store, store_runnable_process,
 };
 use crate::supervision::link::LinkSet;
 use crate::supervision::monitor::MonitorSet;
+use crate::term::Term;
 use crate::term::boxed::{self, Tuple};
 
 /// Helper: insert a running process into shared state with the given pid.
