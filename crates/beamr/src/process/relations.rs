@@ -93,18 +93,6 @@ impl<T: LinkId> LinkList<T> {
         self.held.clear();
         core::mem::take(&mut self.order)
     }
-
-    /// How many ids are held.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.order.len()
-    }
-
-    /// Whether no id is held.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.order.is_empty()
-    }
 }
 
 /// A process's monitors, both those it holds as watcher and those that
@@ -176,12 +164,14 @@ impl MonitorTable {
     }
 
     /// How many monitors are held, counting repeats.
+    #[cfg(test)]
     #[must_use]
     pub fn len(&self) -> usize {
         self.monitors.len()
     }
 
     /// Whether no monitor is held.
+    #[cfg(test)]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.monitors.is_empty()
@@ -212,7 +202,7 @@ mod tests {
         assert_eq!(links.as_slice(), &[11, 17]);
         assert!(links.contains(&17));
         assert_eq!(links.take(), vec![11, 17]);
-        assert!(links.is_empty() && !links.contains(&11));
+        assert!(links.as_slice().is_empty() && !links.contains(&11));
     }
 
     #[test]
