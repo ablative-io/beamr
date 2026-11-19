@@ -2683,7 +2683,9 @@ fn process_info_from_metadata(
         ProcessInfoItem::Links => ProcessInfoValue::Links(metadata.links().to_vec()),
         ProcessInfoItem::Monitors => ProcessInfoValue::Monitors(
             metadata
+                .relations
                 .monitors
+                .as_vec()
                 .iter()
                 .map(|monitor| ProcessMonitorInfo {
                     watcher: monitor.watcher(),

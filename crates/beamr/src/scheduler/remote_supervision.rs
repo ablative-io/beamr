@@ -138,7 +138,9 @@ pub(crate) fn connection_down(shared: &SharedState, node: Atom) {
                     .map(|remote| (pid, remote))
                     .collect::<Vec<_>>(),
                 ProcessSlot::Executing(metadata) => metadata
+                    .relations
                     .remote_links
+                    .as_slice()
                     .iter()
                     .copied()
                     .filter(|remote| remote.node == node)

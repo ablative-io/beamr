@@ -20,10 +20,19 @@ use super::Monitor;
 ///
 /// Order is kept because exit signals go to links in the order they were
 /// made, which replays rely on.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LinkList<T> {
     order: Vec<T>,
     held: HashSet<T>,
+}
+
+impl<T> Default for LinkList<T> {
+    fn default() -> Self {
+        Self {
+            order: Vec::new(),
+            held: HashSet::new(),
+        }
+    }
 }
 
 impl<T: Copy + Eq + Hash> LinkList<T> {

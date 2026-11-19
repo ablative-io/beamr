@@ -432,7 +432,7 @@ fn process_exit_signal(
                     metadata.trap_exit = false;
                 }
                 let cascade_links: Vec<u64> = metadata
-                    .links
+                    .links()
                     .iter()
                     .copied()
                     .filter(|linked_pid| *linked_pid != source_pid)
