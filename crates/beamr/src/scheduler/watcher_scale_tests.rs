@@ -62,31 +62,59 @@ fn running_a_watcher_of_many_costs_nothing_extra_per_run() {
     );
 }
 
-#[test]
-fn every_watched_process_exiting_while_the_watcher_runs_stays_linear() {
-    // The watcher is mid-run for most exits, so each DOWN lands on its slot:
-    // the slot's copy of the monitors is the one that changes.
-    let shared = watcher_of_many();
-
-    let started = Instant::now();
-    let mut running = take_runnable_process(&shared, WATCHER);
-    for target in 2..2 + WATCHED {
-        cleanup_exited_process(&shared, target, ExitReason::Normal);
-        if target % 100 == 0 {
+/// How long `watched` exits take while the watcher is mid-run for most of
+/// them, so each DOWN lands on its slot: the slot's copy of the monitors is
+/// the one that changes. Best of three, to keep a loaded machine's noise out.
+fn exit_storm(watched: u64) -> Duration {
+    (0..3)
+        .map(|_| {
+            let shared = make_shared_state();
+            insert_process(&shared, WATCHER);
+            for target in 2..2 + watched {
+                insert_process(&shared, target);
+                add_monitor(&shared, WATCHER, target);
+            }
+            let started = Instant::now();
+            let mut running = take_runnable_process(&shared, WATCHER);
+            for target in 2..2 + watched {
+                cleanup_exited_process(&shared, target, ExitReason::Normal);
+                if target % 100 == 0 {
+                    if let Some(process) = running.take() {
+                        store_runnable_process(&shared, process);
+                    }
+                    running = take_runnable_process(&shared, WATCHER);
+                }
+            }
             if let Some(process) = running.take() {
                 store_runnable_process(&shared, process);
             }
-            running = take_runnable_process(&shared, WATCHER);
-        }
-    }
-    if let Some(process) = running.take() {
-        store_runnable_process(&shared, process);
-    }
-    let took = started.elapsed();
+            let took = started.elapsed();
+            let entry = shared
+                .process_bodies
+                .get(&WATCHER)
+                .unwrap_or_else(|| panic!("the watcher is alive"));
+            let slot = lock_or_recover(&entry);
+            let ProcessSlot::Present(ScheduledProcess(process)) = &*slot else {
+                panic!("the watcher is stored back");
+            };
+            assert!(process.monitors().is_empty(), "every DOWN took its monitor");
+            took
+        })
+        .min()
+        .unwrap_or_default()
+}
 
-    assert_eq!(watcher_monitors(&shared), 0, "every DOWN took its monitor");
+#[test]
+fn every_watched_process_exiting_while_the_watcher_runs_stays_linear() {
+    // Four times the processes: about four times the time when linear,
+    // sixteen when quadratic. Compared rather than capped, so a loaded
+    // machine slows both sides alike. Before the fixes: 63 s at 20,000.
+    let small = exit_storm(WATCHED / 4);
+    let large = exit_storm(WATCHED);
+    let ratio = large.as_secs_f64() / small.as_secs_f64().max(1e-9);
     assert!(
-        took < Duration::from_secs(5),
-        "{WATCHED} exits under a running watcher took {took:?}"
+        ratio < 8.0,
+        "4x the exits took {ratio:.1}x the time ({small:?} for {}, {large:?} for {WATCHED})",
+        WATCHED / 4
     );
 }
