@@ -78,7 +78,7 @@
 # Run `./scripts/gate-nostd-ratchet.sh --self-test` to prove the arms fire.
 set -uo pipefail
 
-CEILING=1051           # rustc's own tally. LOWER THIS, NEVER RAISE IT --
+CEILING=1039           # rustc's own tally. LOWER THIS, NEVER RAISE IT --
                        # except for a MEASURED POPULATION CHANGE, of which
                        # B-144 R1 (1039 -> 1075) is the first and only
                        # instance. See below. 1075 -> 1072 at the 0.19.0 cut:
@@ -107,7 +107,16 @@ CEILING=1051           # rustc's own tally. LOWER THIS, NEVER RAISE IT --
                        # error. Ruling at this cut (Waffles): the ceiling never
                        # moves up while that delegation stands -- "STAND, not
                        # GROW" spent on a +1 is a gate that means nothing at +2.
-CEILING_PIN="0.20.0 cut (accessor-landing no_std repair)"
+                       #
+                       # 1051 -> 1039 on nova/monitor-merge-linear (19 Nov
+                       # 2026): Process's links and monitors moved into
+                       # process/relations.rs, which takes Arc, Vec and its
+                       # collections from alloc when built without std, and
+                       # the `std::mem::take` paths that came with them became
+                       # `core::mem::take`. MEASURED by this gate after the
+                       # edit: 1068 on the first cut of that module (a finding,
+                       # fixed), 1039 after.
+CEILING_PIN="relations move off std (nova/monitor-merge-linear)"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 99
