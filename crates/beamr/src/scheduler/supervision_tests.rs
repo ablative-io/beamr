@@ -102,7 +102,7 @@ pub(super) fn set_trap_exit(shared: &SharedState, pid: u64, value: bool) {
 }
 
 /// Helper: add a monitor from watcher to target. Returns the reference.
-fn add_monitor(shared: &SharedState, watcher_pid: u64, target_pid: u64) -> u64 {
+pub(super) fn add_monitor(shared: &SharedState, watcher_pid: u64, target_pid: u64) -> u64 {
     let mut ms = lock_or_recover(&shared.monitor_set);
     let reference = ms.allocate_reference_pub();
     let monitor = crate::process::Monitor::new(reference, watcher_pid, target_pid);

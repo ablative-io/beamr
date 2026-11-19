@@ -11,8 +11,8 @@ mod relations;
 pub mod stack;
 mod types;
 
-pub use relations::{LinkList, MonitorTable};
 pub(crate) use relations::SharedRelations;
+pub use relations::{LinkList, MonitorTable};
 pub use types::*;
 
 // `Box` comes from std's prelude, which is absent under

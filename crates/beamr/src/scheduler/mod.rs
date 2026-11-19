@@ -2864,3 +2864,6 @@ mod tests;
 #[cfg(feature = "threads")]
 #[cfg(test)]
 mod tickless_idle_tests;
+#[cfg(feature = "threads")]
+#[cfg(test)]
+mod watcher_scale_tests;

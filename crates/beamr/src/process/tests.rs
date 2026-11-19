@@ -433,7 +433,10 @@ fn running_a_watcher_of_many_costs_nothing_per_run() {
     }
     let took = started.elapsed();
 
-    assert_eq!(process.monitors().len(), usize::try_from(WATCHED).unwrap_or(0));
+    assert_eq!(
+        process.monitors().len(),
+        usize::try_from(WATCHED).unwrap_or(0)
+    );
     assert!(
         took < std::time::Duration::from_millis(500),
         "{RUNS} runs of a process watching {WATCHED} took {took:?}"
